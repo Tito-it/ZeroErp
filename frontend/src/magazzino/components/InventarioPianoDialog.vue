@@ -110,6 +110,7 @@ const haNonPostabili = computed(() => Number(props.riepilogo?.n_non_postabili ??
       class="app-dialog-lista"
       codice="magazzino.inventario_piano"
       data-key="chiave_riga"
+      :store="store"
       :rows="store.items"
       :total="store.totalRecords"
       :loading="store.loading"

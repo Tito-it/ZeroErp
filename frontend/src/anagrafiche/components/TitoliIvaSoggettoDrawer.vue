@@ -167,6 +167,7 @@ const onClose = useDrawerClose(emit)
       <DrawerTabLista
         ref="listaRef"
         codice="anagrafiche.soggetto_titoli_iva"
+        :store="store"
         :rows="store.items"
         :total="store.totalRecords"
         :loading="store.loading"

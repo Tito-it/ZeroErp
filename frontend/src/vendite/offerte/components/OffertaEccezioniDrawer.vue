@@ -534,7 +534,6 @@ const onClose = useDrawerClose(emit)
         </DrawerContextHeader>
 
         <div class="app-page-toolbar">
-          <div class="app-page-filters" />
           <PageActionsBar :actions="pageActions" />
         </div>
 

@@ -12,7 +12,6 @@
 import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
-import DatePicker from 'primevue/datepicker'
 import InputText from 'primevue/inputtext'
 
 import AccessoBloccatoPanel from '../../../core/components/AccessoBloccatoPanel.vue'
@@ -29,10 +28,12 @@ import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../../core/composables/useListaConfigurabilePage'
 import { useStoreFilterBindings } from '../../../core/composables/useStoreFilterBindings'
 import { useTabFreshness } from '../../../core/composables/useTabFreshness'
-import { DATE_FORMAT, TAB_ENTITIES } from '../../../core/constants'
+import { TAB_ENTITIES } from '../../../core/constants'
 import { statoResoSeverity } from '../../../core/utils/severity'
 import { exportResi } from '../api/resiApi'
 import { useResiStore } from '../stores/resi'
+import FiltroPeriodo from '../../../core/components/FiltroPeriodo.vue'
+import FiltriLista from '../../../core/components/FiltriLista.vue'
 
 const emit = defineEmits(['row-click'])
 const { t } = useI18n()
@@ -63,10 +64,10 @@ function buildExportParams(format) {
 }
 
 // --- Filtri custom (toolbar caller) — binding store via BB ---
-const { bindSelect, bindDate } = useStoreFilterBindings(store, applyFilters)
+const { bindSelect, bindPeriodo } = useStoreFilterBindings(store, applyFilters)
 const { value: statoFilter, onChange: onStatoChange } = bindSelect('stato_codice_interno')
-const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
-const { value: dataAlFilter, onChange: onDataAlChange } = bindDate('data_a')
+// Il periodo e' UN filtro con due estremi: un binding, un componente.
+const periodo = bindPeriodo()
 
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
 function onRowClick(data) { emit('row-click', data) }
@@ -85,25 +86,22 @@ onMounted(() => store.fetchList())
     <template v-else>
       <!-- Toolbar UNICA esterna (pattern lista standard). -->
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
-          <InputText v-model="searchText" :placeholder="t('vendite.resi.search_placeholder')" style="width: 260px;" />
+        <FiltriLista :store="store" :inert="perimetroBloccato">
+          <template #sempre>
+            <InputText class="app-filter-w-lg" v-model="searchText" :placeholder="t('vendite.resi.search_placeholder')"  />
+          </template>
           <LookupSelect
             v-model="statoFilter"
+            class="app-filter-w-md"
             rel="config.stati_doc_reso"
             value-field="codice_interno"
             :placeholder="t('vendite.resi.filtro_stato')"
             show-clear
             :filter="false"
-            style="width: 160px;"
             @change="onStatoChange"
           />
-          <DatePicker v-model="dataDaFilter" :placeholder="t('common.data_da')"
-            :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
-            @date-select="onDataDaChange" @clear-click="onDataDaChange" />
-          <DatePicker v-model="dataAlFilter" :placeholder="t('common.data_a')"
-            :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
-            @date-select="onDataAlChange" @clear-click="onDataAlChange" />
-        </div>
+          <FiltroPeriodo :periodo="periodo" />
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />

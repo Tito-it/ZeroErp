@@ -42,6 +42,8 @@
 //    `ricercaCorta`, `orderDirDefault`, `paramNames`. Nessuna e' un'invenzione:
 //    ognuna e' una divergenza che esisteva gia' in almeno due copie.
 import { ref } from 'vue'
+import { useContrattoFiltriLista } from './useContrattoFiltriLista'
+import { clonaFiltri } from '../utils/clonaFiltri'
 import { useListaEmptyStateFetch } from './useListaEmptyStateFetch'
 import { PAGINATION } from '../constants'
 import { paramsOrdinamento } from '../utils/listParams'
@@ -126,13 +128,19 @@ export function useListaStoreCore({
 
   // Scopo: i filtri di partenza — una funzione e non un letterale perche' li
   //        scrive sia la nascita sia `reset()`, e due letterali divergono.
+  // ⛔ `clonaFiltri` e non uno spread, ed e' la stessa ragione che sta su
+  //    `useContrattoFiltriLista`: con un default ad ARRAY lo spread mette nei
+  //    filtri vivi LO STESSO array del letterale dello store, e il primo widget
+  //    che ci scrive dentro (`push`) muta il default — da li' in poi il segno
+  //    legge «sempre al default» su una lista ristretta a mano, senza nessun
+  //    errore. Il perche' per intero sta su `core/utils/clonaFiltri`.
   function filtriDiPartenza() {
     return {
       // ⚠️ `search` c'e' SEMPRE, anche sulle liste che non cercano: fa parte del
       //    contratto di `useSearchTable`, che la scrive sul deep-link `?search=`.
       //    Dichiararla e' meglio che farla nascere per assegnazione.
       search: '',
-      ...filterDefaults,
+      ...clonaFiltri(filterDefaults),
       limit,
       offset: 0,
       order_by: orderBy,
@@ -152,29 +160,16 @@ export function useListaStoreCore({
   // ⛔ `search` NON c'e', ed e' una decisione (D2): la ricerca non e' un
   //    filtro — e' il gesto principale della lista, e gli altri la
   //    restringono. Resta sempre a video anche in modalita' compatta.
-  // ⚠️ Una COPIA congelata, non `filterDefaults`: l'oggetto e' un letterale
-  //    del chiamante, e un consumatore che vi scrivesse dentro cambierebbe i
-  //    default di uno store vivo — cioe' il metro insieme alla cosa misurata.
-  const chiaviFiltro = Object.freeze(Object.keys(filterDefaults))
-  const filtriDefault = Object.freeze({ ...filterDefaults })
-
-  // Scopo: «Pulisci filtri» — riporta i SOLI filtri di dominio al loro
-  //        default, torna a pagina 1 e rilegge la lista.
-  // ⛔ NON e' `reset()`, e la differenza non e' cosmetica: quello azzera anche
-  //    `parentId`, cioe' su una lista dentro un drawer (dodici, al 22-09-2026)
-  //    scollegherebbe la lista dal padre — a video resterebbe vuota, senza
-  //    errori, e la causa non somiglierebbe al gesto.
-  // ⚠️ La ricerca NON si tocca (D2): «pulisci filtri» non e' «annulla la
-  //    ricerca». Chi vuole svuotare la casella la svuota.
-  // ⚠️ I compagni `<chiave>_obj` di `bindLookup` non si azzerano qui: il watch
-  //    del binder li butta quando l'id diventa `null`, e al rimonto
-  //    `ricordato()` li rifiuta perche' l'id non corrisponde piu'. Toccarli
-  //    sarebbe una seconda sede della stessa pulizia.
-  function azzeraFiltri() {
-    for (const k of chiaviFiltro) filters.value[k] = filtriDefault[k]
-    filters.value.offset = 0
-    return fetchList()
-  }
+  // ⭐ LE TRE RIGHE SONO USCITE DI QUI IL 2026-09-23 (regola del 2, ok Tid):
+  //    quattordici liste hanno lo store scritto a mano e devono poter offrire
+  //    lo STESSO contratto senza cedere il proprio `buildParams`. Il core lo
+  //    CONSUMA, non lo ricopia — una seconda copia di «chi sono i filtri»
+  //    diverge al primo filtro aggiunto da una parte sola.
+  // ⚠️ `fetchList` e' una dichiarazione di funzione (issata), quindi qui e' gia'
+  //    definita anche se compare piu' sotto.
+  const { chiaviFiltro, filtriDefault, azzeraFiltri } = useContrattoFiltriLista({
+    filters, filterDefaults, fetchList,
+  })
 
   // Scopo: i parametri che decidono QUALI righe — ricerca, filtri di dominio,
   //        ordinamento — senza la paginazione. E' la sede unica per la fetch

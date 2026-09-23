@@ -14,6 +14,8 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import { useContrattoFiltriLocali } from '../../core/composables/useContrattoFiltriLocali'
 
 const { t } = useI18n()
 useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
@@ -60,6 +62,23 @@ async function fetchData() {
   }
 }
 
+// Scopo: il contratto dei filtri di questa pagina — chi sono, che default
+//        hanno, il segno che mostrano e «Pulisci filtri». UNA sede: chiave,
+//        `rif` e default sulla stessa riga.
+// ⭐ L'emittente puo' nascere VALORIZZATO (quando ce n'e' uno solo lo sceglie la
+//    pagina, a lettura avvenuta): li' il default dichiarato resta `null`, quindi
+//    si vede il NUMERO e non il pallino. E' la regola D9 — si contano sempre i
+//    filtri, default compresi — e il numero resta vero: quell'emittente sta
+//    filtrando.
+const {
+  segno: segnoFiltriPagina,
+  azzeraFiltri: pulisciFiltri,
+} = useContrattoFiltriLocali({
+  emittente_fiscale_id: { rif: emittenteFilter, default: null },
+  unita_organizzativa_id: { rif: repartoFilter, default: null },
+  super_admin: { rif: superAdminFilter, default: null },
+}, { onAzzera: () => applyFilters() })
+
 function applyFilters() {
   fetchData()
 }
@@ -91,9 +110,14 @@ const areaColumns = computed(() =>
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <!-- ⚠️ `:segno` e non `:store`: questa pagina non ha uno store-lista —
+           i filtri sono tre ref e la fetch e' locale. E' il ripiego dichiarato
+           dal brief per le superfici senza store, e resta l'unica sede del
+           conteggio. -->
+      <FiltriLista :segno="segnoFiltriPagina" @pulisci="pulisciFiltri">
         <Select
           v-model="emittenteFilter"
+          class="app-filter-w-md"
           :options="[{ ragione_sociale: t('amministrazione.permessi_filter_emittente'), id: null }, ...emittenti.items.value]"
           :loading="emittenti.loading.value"
           option-label="ragione_sociale"
@@ -103,6 +127,7 @@ const areaColumns = computed(() =>
         />
         <Select
           v-model="repartoFilter"
+          class="app-filter-w-md"
           :options="[{ descrizione: t('amministrazione.select_reparto'), id: null }, ...unitaOrg.items.value]"
           option-label="descrizione"
           option-value="id"
@@ -111,13 +136,14 @@ const areaColumns = computed(() =>
         />
         <Select
           v-model="superAdminFilter"
+          class="app-filter-w-sm"
           :options="superAdminOptions"
           option-label="label"
           option-value="value"
           :placeholder="t('amministrazione.filter_super_admin_tutti')"
           @change="applyFilters"
         />
-      </div>
+      </FiltriLista>
     </div>
 
     <DataTable

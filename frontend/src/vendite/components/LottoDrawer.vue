@@ -104,6 +104,8 @@ import { STATO_ESECUZIONE_LOTTO, LOTTO_SCHEDE } from '../constants'
 import { useSelezioneDocumentiLotto } from '../composables/useSelezioneDocumentiLotto'
 import { scegliRamoBanner, conteggiDaSegnalazioni } from '../_shared/lotti/ramoBannerLotto'
 import { motivoUscitaBloccata } from '../uscitaDalGiro'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import { useContrattoFiltriLocali } from '../../core/composables/useContrattoFiltriLocali'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -499,6 +501,35 @@ const giornaleSortOrder = ref(-1)
 //    dirlo fa credere che il lotto abbia avuto solo problemi.
 const giornaleInfoVisibili = ref(false)
 
+// Scopo: il contratto dei filtri delle sotto-liste del lotto — chi sono, che
+//        default hanno, il segno che mostrano e «Pulisci filtri».
+// ⭐ Nascono VALORIZZATI (`RILEVANTI`, «solo problemi», `CRITICHE`): finche'
+//    nessuno li tocca si vede il PALLINO — «ristretta come nasce» — e al primo
+//    cambio il numero. E' il caso per cui il pallino esiste.
+// ⚠️ Nessun `onAzzera`: queste liste ricaricano da se', col `watch` sul filtro.
+const {
+  segno: segnoAmpiezzaTask,
+  azzeraFiltri: azzeraAmpiezzaTask,
+} = useContrattoFiltriLocali({
+  ampiezza: { rif: ampiezzaTask, default: 'RILEVANTI' },
+})
+
+// ⛔ IL FILTRO VERO E' L'OPPOSTO DELLA VARIABILE DEL WIDGET, e fino al
+//    2026-09-23 il segno lo leggeva al contrario. «Mostra tutto» ALLARGA la
+//    storia: acceso, non sta restringendo niente — eppure contando
+//    `giornaleInfoVisibili` usciva «1 filtro attivo» proprio li', e il pallino
+//    compariva quando la lista era ristretta. Il filtro e' «solo problemi».
+const soloProblemiGiornale = computed({
+  get: () => (giornaleInfoVisibili.value ? null : true),
+  set: (v) => { giornaleInfoVisibili.value = v == null },
+})
+const {
+  segno: segnoGiornaleInfo,
+  azzeraFiltri: azzeraGiornaleInfo,
+} = useContrattoFiltriLocali({
+  solo_problemi: { rif: soloProblemiGiornale, default: true },
+})
+
 // ⚠️ Niente `severity` sulle due voci: non sono livelli di gravita' e il BB del
 // colore direbbe una cosa falsa — «Tutto» non e' piu' grave di «Solo problemi»,
 // e' piu' largo. Stessa ragione del filtro ampiezza dei task.
@@ -511,6 +542,12 @@ const opzioniGiornaleInfo = computed(() => [
 // fermano il lotto — chi apre la scheda ci arriva per quelle.
 const LIVELLI_SEGNALAZIONE = { CRITICHE: 'C', AVVISI: 'W', ATTENZIONI: 'I' }
 const livelloSegnalazioni = ref(LIVELLI_SEGNALAZIONE.CRITICHE)
+const {
+  segno: segnoLivelloSegnalazioni,
+  azzeraFiltri: azzeraLivelloSegnalazioni,
+} = useContrattoFiltriLocali({
+  livello: { rif: livelloSegnalazioni, default: LIVELLI_SEGNALAZIONE.CRITICHE },
+})
 // Il livello di cui abbiamo GIA' l'elenco in mano. Serve al watch qui sotto per
 // non rifare la stessa domanda: alla riapertura il drawer rimette il filtro sul
 // default e ricarica tutto — senza questo confronto la scheda partirebbe con
@@ -729,10 +766,13 @@ watch(
     // un drawer che si apre in un punto diverso a ogni giro fa perdere il
     // riferimento. Stessa ragione per il livello del filtro.
     tabAttiva.value = LOTTO_SCHEDE.DOCUMENTI
-    livelloSegnalazioni.value = LIVELLI_SEGNALAZIONE.CRITICHE
+    // ⛔ I default vengono dalla SEDE UNICA (il contratto dei filtri), non
+    //    riscritti qui: due letterali dello stesso default divergono al primo
+    //    che qualcuno cambia, e il segno resterebbe a raccontare il vecchio.
+    azzeraLivelloSegnalazioni()
     livelloCaricato.value = null
     // Stessa ragione del livello: il drawer riapre sempre dallo stesso punto.
-    ampiezzaTask.value = 'RILEVANTI'
+    azzeraAmpiezzaTask()
     esclusiTask.value = 0
     // Stessa ragione: la storia riparte dal suo default (i piu' gravi, senza
     // le righe di routine) invece che da dove l'operatore l'aveva lasciata.
@@ -741,7 +781,7 @@ watch(
     giornaleInfo.value = 0
     giornaleRitirate.value = 0
     giornaleCaricato.value = false
-    giornaleInfoVisibili.value = false
+    azzeraGiornaleInfo()
     giornaleSortField.value = 'gravita'
     giornaleSortOrder.value = -1
     await reloadAll()
@@ -1364,9 +1404,6 @@ function fatturaNumero(row) {
                    ⚠️ Sul piccolo schermo le icone collassano nel kebab da se':
                    `PageActionsBar` lo fa al breakpoint, non serve nulla qui. -->
               <div class="app-page-toolbar">
-                <!-- Spaziatore: `space-between` con un figlio solo allineerebbe
-                     a SINISTRA. Questa lista non ha filtri propri. -->
-                <span class="app-page-filters" />
                 <PageActionsBar :actions="barraDocumenti">
                   <template #suffix>
                     <ListaConfigStatusTag :dirty="azioniDocumenti.dirty.value" />
@@ -1441,7 +1478,6 @@ function fatturaNumero(row) {
 
             <TabPanel :value="LOTTO_SCHEDE.PRESI_IN_CARICO">
               <div class="app-page-toolbar">
-                <span class="app-page-filters" />
                 <PageActionsBar :actions="barraGruppi">
                   <template #suffix>
                     <ListaConfigStatusTag :dirty="azioniGruppi.dirty.value" />
@@ -1566,12 +1602,16 @@ function fatturaNumero(row) {
               </Message>
 
               <div class="app-page-toolbar">
-                <div class="app-page-filters">
+                <!-- ⚠️ `:segno` e non `:store`: queste sotto-liste del lotto non
+                     hanno uno store-lista — i loro filtri sono ref di questo
+                     drawer. E' il ripiego dichiarato dal brief. -->
+                <FiltriLista :segno="segnoAmpiezzaTask" @pulisci="azzeraAmpiezzaTask">
                   <!-- Filtro di AMPIEZZA, a sinistra come i filtri di ogni
                        lista. Non è il gemello del filtro gravità delle
                        segnalazioni: là si sceglie un livello, qui quanto si
                        guarda. -->
                   <SelectButton
+                    class="app-filtro-largo"
                     v-model="ampiezzaTask"
                     :options="opzioniAmpiezzaTask"
                     option-label="label"
@@ -1579,7 +1619,7 @@ function fatturaNumero(row) {
                     :allow-empty="false"
                     size="small"
                   />
-                </div>
+                </FiltriLista>
                 <PageActionsBar :actions="barraTask">
                   <template #suffix>
                     <ListaConfigStatusTag :dirty="azioniTask.dirty.value" />
@@ -1644,15 +1684,16 @@ function fatturaNumero(row) {
                      ⚠️ Sul piccolo schermo le icone collassano nel kebab da se':
                      `PageActionsBar` lo fa al breakpoint, non serve nulla qui. -->
                 <div class="app-page-toolbar">
-                  <div class="app-page-filters">
+                  <FiltriLista :segno="segnoLivelloSegnalazioni" @pulisci="azzeraLivelloSegnalazioni">
                     <!-- Filtro per livello, a sinistra come i filtri di ogni
                          lista. Il CONTEGGIO sta nell'etichetta: dice se vale la
                          pena guardare quel livello. -->
                     <SelectButtonGravita
+                      class="app-filtro-largo"
                       v-model="livelloSegnalazioni"
                       :options="opzioniLivello"
                     />
-                  </div>
+                  </FiltriLista>
                   <PageActionsBar :actions="barraSegnalazioni">
                     <template #suffix>
                       <ListaConfigStatusTag :dirty="azioniSegnalazioni.dirty.value" />
@@ -1772,17 +1813,25 @@ function fatturaNumero(row) {
                    sarebbe visibile e non cliccabile (memoria
                    `feedback_app_escape_pannelli_processo`). -->
               <div class="app-page-toolbar">
-                <div class="app-page-filters app-escape">
+                <!-- ⚠️ `app-escape` sta sul WIDGET e non piu' sul contenitore:
+                     `FiltriLista` ha piu' nodi radice (barra desktop, barra
+                     compatta, drawer), quindi una `class` sul tag non verrebbe
+                     ereditata da nessuno di essi — Vue non inoltra gli attrs
+                     quando le radici sono piu' d'una. La regola e' comunque
+                     discendente (`.app-readonly .app-escape`), quindi
+                     sull'elemento interno vale identica. -->
+                <FiltriLista :segno="segnoGiornaleInfo" @pulisci="azzeraGiornaleInfo">
                   <!-- ⚠️ Nuova DOMANDA al server, non un filtro in memoria:
                        l'elenco è paginato. -->
                   <SelectButton
+                    class="app-escape app-filtro-largo"
                     v-model="giornaleInfoVisibili"
                     :options="opzioniGiornaleInfo"
                     option-label="label"
                     option-value="value"
                     :allow-empty="false"
                   />
-                </div>
+                </FiltriLista>
               </div>
 
               <DataTable

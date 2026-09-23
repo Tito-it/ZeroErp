@@ -64,6 +64,53 @@ a {
   min-width: 0;
 }
 
+/* ⭐ LA ZONA SINISTRA DELLA TOOLBAR QUANDO NON SONO FILTRI (2026-09-23, ok Tid).
+ * Stesse regole di `.app-page-filters`, nome diverso — e il nome e' tutta la
+ * ragione: `app-page-filters` significa «gruppo filtri», e il registro di
+ * `check-filtri-lista.mjs` la conta come debito da portare in `<FiltriLista>`.
+ * ⛔ Nove blocchi la scrivevano per cose che filtri non sono: il titolo `<h2>`
+ *    di una pagina (approvazioni prezzo, cruscotto competenza, tool
+ *    fatturazione, code di lavoro), il `<h4>` delle righe di un documento, il
+ *    pulsante «torna alla lista» dell'editor di definizioni. Avvolgerli in
+ *    `<FiltriLista>` avrebbe mandato il titolo della pagina dentro il drawer
+ *    dal basso, dietro un'icona a forma di imbuto.
+ * ⚠️ Non e' un alias di comodo: chi ci mette un filtro dentro sta scrivendo un
+ *    gruppo filtri, e il posto di quel filtro e' `<FiltriLista>`. */
+.app-page-toolbar-start {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Una riga «testo + gesto» dentro un avviso (`Message`): etichetta e pulsante
+ * in linea, allineati al centro. ⛔ Prima del 2026-09-23 riusava
+ * `app-page-filters`, cioe' la classe del GRUPPO FILTRI, per ottenere un flex —
+ * e il registro di `check-filtri-lista.mjs` la contava fra i blocchi da portare
+ * in `<FiltriLista>`, dove quel testo non c'entra niente. */
+.app-msg-riga {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* Una toolbar SENZA zona sinistra: le azioni restano a destra.
+ * ⭐ Prima del 2026-09-23 lo faceva uno SPAZIATORE scritto nel markup —
+ *    `<div class="app-page-filters" />`, tredici volte — cioe' un gruppo filtri
+ *    senza filtri, messo li' per spingere: la spaziatura e' del foglio, non del
+ *    markup, e quei tredici tag finivano nel registro dei filtri da convertire
+ *    senza avere niente da convertire.
+ * ⚠️ `:first-child` e non `:only-child`: la barra azioni porta con se' i propri
+ *    `#suffix` (stato lista, badge sola lettura), quindi figlia unica non lo e'
+ *    quasi mai — cio' che conta e' che PRIMA di lei non ci sia nessuna zona
+ *    sinistra a spingerla. */
+.app-page-toolbar > .app-page-actions:first-child {
+  margin-left: auto;
+}
+
 /* Filtro Select standard nella toolbar filtri — width uniforme per
  * allineare i filtri delle SearchTable senza style inline. */
 .app-filter-select {
@@ -281,19 +328,29 @@ a {
 /* ⭐ IL PERIODO (`FiltroPeriodo`) e' UNA cella che si prende la riga e si divide
  * in due: i suoi estremi sono affiancati a qualunque larghezza, e restano
  * affiancati anche sopra la soglia — non si separano mai, perche' non sono due
- * filtri. */
-.app-filtri-drawer__corpo > .app-filtro-periodo {
+ * filtri.
+ * ⛔ `:has()` accanto al figlio diretto, ed e' la correzione del 2026-09-23: la
+ *    regola parla del FILTRO, non della forma del markup che lo avvolge. Un
+ *    filtro dentro un `<div class="form-field">` con la sua etichetta — che e'
+ *    markup legittimo, e nel repo ce n'e' — non e' figlio diretto della griglia,
+ *    quindi con il solo `>` la regola si spegneva in silenzio. */
+.app-filtri-drawer__corpo > .app-filtro-periodo,
+.app-filtri-drawer__corpo > :has(.app-filtro-periodo) {
   grid-column: span 2;
 }
 
-/* ⚠️ REGOLA DI TRANSIZIONE: le liste non ancora passate a `<FiltroPeriodo>`
- * mettono i due DatePicker come figli diretti della griglia, e li' la coppia si
- * riconosce dal WIDGET invece che dal modello. Vale finche' il registro di
- * `check-filtri-lista.mjs` conta coppie nude (17 file al 2026-09-22, dopo la
- * view pilota): a zero, questa regola si toglie. ⛔ Non e' la regola del periodo — quella e' quella sopra. */
-.app-filtri-drawer__corpo > .p-datepicker {
-  grid-column: span 1;
-}
+/* ⛔ QUI C'ERA UNA REGOLA DI TRANSIZIONE SUI `.p-datepicker`, ED E' STATA TOLTA
+ * il 2026-09-23: metteva a MEZZA riga ogni DatePicker figlio diretto della
+ * griglia, per riconoscere dal WIDGET le coppie di date che non erano ancora
+ * passate a `<FiltroPeriodo>`. La sua stessa intestazione diceva «a zero, questa
+ * regola si toglie», e il registro del cancello e' a zero.
+ * ⚠️ E non era piu' inerte: le uniche due date rimaste figlie dirette sono
+ *    DatePicker SOLI e legittimi («scadenza mese» dei contratti, «valido al» del
+ *    drawer BoM), che la regola stringeva a meta' riga anche sotto la soglia —
+ *    cioe' il difetto che «tutto il resto prende la riga intera finche' due non
+ *    ci stanno leggibili» esiste per evitare.
+ * ⭐ La lezione: una regola scritta «finche'» va tolta quando il «finche'»
+ *    scade, o smette di essere transitoria e diventa un difetto stabile. */
 
 @container (min-width: 27rem) {
   /* Qui due filtri ci stanno leggibili: si affiancano tutti. */
@@ -301,8 +358,15 @@ a {
     grid-column: span 1;
   }
 
+  /* ⛔ `:has()` accanto al figlio diretto, stessa ragione del periodo: un
+   * interruttore di filtro prende la riga intera perche' e' UN INTERRUTTORE,
+   * non perche' qualcuno si e' ricordato di non avvolgerlo. Nel repo la toolbar
+   * delle code di lavoro lo tiene dentro un `<div class="form-field">`, e con il
+   * solo `>` restava a mezza riga — invisibile da desktop. */
   .app-filtri-drawer__corpo > .app-filtro-toggle,
-  .app-filtri-drawer__corpo > .app-filtro-largo {
+  .app-filtri-drawer__corpo > .app-filtro-largo,
+  .app-filtri-drawer__corpo > :has(.app-filtro-toggle),
+  .app-filtri-drawer__corpo > :has(.app-filtro-largo) {
     grid-column: span 2;
   }
 }
@@ -324,7 +388,13 @@ a {
  *    comunque su tutto questo: e' il debito del lotto L3, presidiato dal
  *    registro di `check-filtri-lista.mjs`. Qui niente `!important` — una regola
  *    che combatte il markup nasconde il difetto invece di toglierlo. */
-.app-filtri-drawer__corpo > [class*="app-filter-w-"] {
+/* ⚠️ DISCENDENTE e non figlio diretto (2026-09-23): la taglia sta sul WIDGET,
+ *    e il widget puo' stare dentro un involucro (`<div class="form-field">` con
+ *    l'etichetta, un `<label>`). Col solo `>` la taglia sopravviveva dentro
+ *    l'involucro e il filtro sbordava dalla sua cella — e si vedeva solo
+ *    sotto i 1024px. La specificita' resta la stessa (due classi), quindi
+ *    continua a vincere su `.app-filter-w-*`. */
+.app-filtri-drawer__corpo [class*="app-filter-w-"] {
   width: auto;
 }
 
@@ -338,11 +408,11 @@ a {
   gap: var(--app-space-sm);
 }
 
-.app-filtri-drawer__corpo > .app-filtro-periodo {
+.app-filtri-drawer__corpo .app-filtro-periodo {
   display: flex;
 }
 
-.app-filtri-drawer__corpo > .app-filtro-periodo > * {
+.app-filtri-drawer__corpo .app-filtro-periodo > * {
   flex: 1 1 0;
   min-width: 0;
   width: auto;
@@ -361,6 +431,17 @@ a {
 
 .app-filter-w-lg {
   width: var(--app-filter-w-lg);
+}
+
+/* ⚠️ UN `InputNumber` E' UN INVOLUCRO CON UN `<input>` DENTRO, e la taglia sul
+ * primo non arriva al secondo: l'input tiene la propria larghezza intrinseca e
+ * SBORDA dall'involucro — a video il bordo del numero finiva addosso al campo
+ * accanto e si vedevano due bordi (rilievo di Tid, 2026-09-18, sul picker delle
+ * rate). Prima si rimediava con `input-style="width: 9rem"` sul singolo tag,
+ * cioe' con una larghezza scritta nel markup: qui la regola vale per tutte le
+ * taglie e per chiunque le usi. */
+.p-inputnumber[class*="app-filter-w-"] > .p-inputnumber-input {
+  width: 100%;
 }
 
 .app-filtri-drawer__footer {
@@ -2072,7 +2153,13 @@ a {
   color: var(--p-primary-color);
 }
 
-@media (max-width: 1023px) {
+/* ⚠️ `1023.98px` e non `1023px`: e' la stessa soglia di `BREAKPOINTS.TABLET`
+ * (`core/constants.js`, letta come `< 1024`) gia' usata dal blocco compatto piu'
+ * su. Le due grafie coincidono sui pixel interi e divergono con lo zoom, e
+ * questo foglio ne portava TRE per la stessa soglia — allineate il 2026-09-23.
+ * ⛔ Il numero resta scritto qui perche' un `@media` non accetta `var()`: la
+ * sede di verita' e' `BREAKPOINTS.TABLET`, questa riga la cita. */
+@media (max-width: 1023.98px) {
   .app-page-action .p-button-label {
     display: none;
   }

@@ -419,6 +419,7 @@ watch(
         <DrawerTabLista
           ref="listaRef"
           :codice="f.listaRigheCodice"
+          :store="storeRighe"
           :rows="storeRighe.items"
           :total="storeRighe.totalRecords"
           :loading="storeRighe.loading"

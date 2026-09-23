@@ -5,10 +5,9 @@
 //        personalizzazione per utente. Lista di sola consultazione: niente
 //        "Nuovo", niente click di riga (non c'e' un drawer di dettaglio) e
 //        niente export — lo scaffolding omette le azioni da se'.
-import { ref, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
-import DatePicker from 'primevue/datepicker'
 import InputText from 'primevue/inputtext'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
@@ -18,8 +17,10 @@ import { READONLY_DOMAINS } from '../../core/constants'
 import { useEmailLogsStore } from '../stores/emailLogs'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { getEmailLogStatoSeverity } from '../constants'
-import { toDateString } from '../../core/utils/date'
 import EmailLogStatoSelect from '../components/EmailLogStatoSelect.vue'
+import FiltroPeriodo from '../../core/components/FiltroPeriodo.vue'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const { t } = useI18n()
 useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
@@ -43,24 +44,19 @@ const {
 // useGlobalLookup. Sostituisce buildEmailLogStatoOptions hardcoded.
 // `getEmailLogStatoSeverity` resta locale (puro mapping CSS, non semantico).
 
-// Filtro data: default ultimi 30 giorni
-const dataDaFilter = ref(store.filters.data_da ? new Date(store.filters.data_da + 'T00:00:00') : null)
-const dataAFilter = ref(null)
+// Il periodo e' UN filtro con due estremi: un binding, un componente.
+// ⭐ Prima del 2026-09-23 i due estremi erano due ref scritte a mano, e
+//    `data_a` NON leggeva lo store alla nascita (`ref(null)` secco): un valore
+//    rimasto nel filtro restava attivo con la casella vuota. Il BB legge
+//    entrambi gli estremi dallo store, li tiene allineati anche quando li
+//    cambia qualcun altro, e porta l'invariante `da <= a`.
+const { bindPeriodo } = useStoreFilterBindings(store, applyFilters)
+const periodo = bindPeriodo()
 
 function onStatoChange(val) {
   store.filters.stato = val
   store.filters.offset = 0
   store.fetchList()
-}
-
-function onDataDaChange() {
-  store.filters.data_da = dataDaFilter.value ? toDateString(dataDaFilter.value) : null
-  applyFilters()
-}
-
-function onDataAChange() {
-  store.filters.data_a = dataAFilter.value ? toDateString(dataAFilter.value) : null
-  applyFilters()
 }
 
 onMounted(() => {
@@ -71,35 +67,18 @@ onMounted(() => {
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
-        <InputText v-model="searchText" :placeholder="t('common.search')" style="width: 250px;" />
+      <FiltriLista :store="store" :inert="perimetroBloccato">
+        <template #sempre>
+          <InputText v-model="searchText" class="app-filter-w-lg" :placeholder="t('common.search')" />
+        </template>
         <EmailLogStatoSelect
+          class="app-filter-w-sm"
           :modelValue="store.filters.stato"
           :placeholder="t('amministrazione.email_stato')"
-          style="width: 200px;"
           @update:modelValue="onStatoChange"
         />
-        <DatePicker
-          v-model="dataDaFilter"
-          :placeholder="t('common.data_da')"
-          date-format="dd/mm/yy"
-          show-icon
-          show-button-bar
-          style="width: 150px;"
-          @date-select="onDataDaChange"
-          @clear-click="onDataDaChange"
-        />
-        <DatePicker
-          v-model="dataAFilter"
-          :placeholder="t('common.data_a')"
-          date-format="dd/mm/yy"
-          show-icon
-          show-button-bar
-          style="width: 150px;"
-          @date-select="onDataAChange"
-          @clear-click="onDataAChange"
-        />
-      </div>
+        <FiltroPeriodo :periodo="periodo" />
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
           <ListaConfigStatusTag :dirty="dirty" />

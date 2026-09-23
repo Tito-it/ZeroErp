@@ -24,6 +24,7 @@ import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptySta
 import { PAGINATION } from '../../core/constants'
 import { paramsPagina } from '../../core/utils/listParams'
 import { listLotti } from '../api/lotti'
+import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
 
 // Scopo: IL PERIMETRO DELLA PAGINA come query param, in una sede sola — mese,
 //        stato e interruttore degli annullati, cioe' i tre filtri che valgono
@@ -49,12 +50,29 @@ export function paramsPerimetro(f) {
 }
 
 export const useLottiStore = defineStore('vendite-lotti', () => {
-  const filters = ref({
+  // ⭐ I FILTRI DI DOMINIO IN UNA SEDE SOLA (2026-09-23): da qui nascono i valori
+  //    di partenza della lista E il contratto che `FiltriLista` legge per il segno
+  //    dei filtri attivi (`useContrattoFiltriLista`). ⛔ Due letterali divergono
+  //    al primo filtro aggiunto da una parte sola, e il segno si spegnerebbe su
+  //    una lista che filtra — senza nessun errore.
+  const FILTRI_DEFAULT = {
     // La competenza e' SEMPRE valorizzata dalla view (sidebar anno/mese: non
     // esiste il caso "tutti i mesi"), ma nasce null perche' e' la view a
     // decidere quale mese mostrare all'apertura.
     competenza_mese: null,
     stato_lotto: null,
+    // ⭐ I lotti ANNULLATI (fiscale abortito) restano FUORI dal perimetro di
+    //    default (decisione Tid, 2026-09-12): un lotto annullato e' un guscio —
+    //    fatture cancellate, attivita' rimesse «da emettere» — non lavoro.
+    //    L'interruttore li rimette dentro OVUNQUE: lista, chip, calendario ed
+    //    export leggono lo stesso filtro.
+    // ⚠️ Il default e' `false`, non `null`: e' un valore, quindi conta nel
+    //    segno dei filtri attivi come ogni altro filtro valorizzato.
+    annullati: false,
+  }
+
+  const filters = ref({
+    ...FILTRI_DEFAULT,
     // Non esposto al BE: l'endpoint lotti non ha ricerca testuale e
     // `buildParams` la ignora. La chiave esiste perche' fa parte del contratto
     // di `useSearchTable` (che la scrive su deep-link `?search=` e ricerca
@@ -66,12 +84,6 @@ export const useLottiStore = defineStore('vendite-lotti', () => {
     // lista si apre come si e' sempre aperta, il giro piu' recente in cima.
     order_by: 'data_insert',
     order_dir: 'desc',
-    // ⭐ I lotti ANNULLATI (fiscale abortito) restano FUORI dal perimetro di
-    //    default (decisione Tid, 2026-09-12): un lotto annullato e' un guscio —
-    //    fatture cancellate, attivita' rimesse «da emettere» — non lavoro.
-    //    L'interruttore li rimette dentro OVUNQUE: lista, chip, calendario ed
-    //    export leggono lo stesso filtro.
-    annullati: false,
   })
 
   // Ripartizione per stato del perimetro corrente — `[{stato_lotto, n_lotti}]`
@@ -120,10 +132,17 @@ export const useLottiStore = defineStore('vendite-lotti', () => {
     fetchPage: listLotti,
   })
 
+  // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
+  // nascita, e come si riportano li' («Pulisci filtri»).
+  const { chiaviFiltro, filtriDefault, azzeraFiltri } = useContrattoFiltriLista({
+    filters, filterDefaults: FILTRI_DEFAULT, fetchList,
+  })
+
   return {
     items, totalRecords, loading, hasSearched, filters,
     stati, annullatiCount,
     fetchList,
+    chiaviFiltro, filtriDefault, azzeraFiltri,
   }
 }, {
   userScoped: true,

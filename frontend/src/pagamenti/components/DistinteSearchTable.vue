@@ -21,7 +21,6 @@
 import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
-import DatePicker from 'primevue/datepicker'
 import Select from 'primevue/select'
 
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
@@ -33,12 +32,12 @@ import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
-import { DATE_FORMAT } from '../../core/constants'
 import { statoDistintaSeverity } from '../../core/utils/severity'
 import { useEtichettePagamenti } from '../etichette'
 import { formatCurrency } from '../../core/utils/format'
 import { useDistinteStore } from '../stores/distinte'
-
+import FiltroPeriodo from '../../core/components/FiltroPeriodo.vue'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const emit = defineEmits(['row-click', 'new'])
 const { t } = useI18n()
@@ -57,13 +56,13 @@ const {
   searchTableOptions: { defaultSortField: 'data_contabile', defaultSortOrder: 'desc' },
 })
 
-const { bindSelect, bindDate } = useStoreFilterBindings(store, applyFilters)
+const { bindSelect, bindPeriodo } = useStoreFilterBindings(store, applyFilters)
 const { value: statoFilter, onChange: onStatoChange } = bindSelect('stato')
 const { value: origineFilter, onChange: onOrigineChange } = bindSelect('origine')
 const { value: centroFilter, onChange: onCentroChange } = bindSelect('centro_riscossione_id')
 const { value: canaleFilter, onChange: onCanaleChange } = bindSelect('ente_incasso_id')
-const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
-const { value: dataAFilter, onChange: onDataAChange } = bindDate('data_a')
+// Il periodo e' UN filtro con due estremi: un binding, un componente.
+const periodo = bindPeriodo()
 
 // ⛔ L'ORIGINE e' un vocabolario chiuso di tre valori, ed e' un CHECK del
 //    database (`MANUALE` | `AUTOMATICA` | `GENERATA`): un Select statico, non un
@@ -97,54 +96,45 @@ onMounted(() => store.fetchList())
 
     <template v-else>
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
+        <FiltriLista :store="store" :inert="perimetroBloccato">
           <LookupSelect
             v-model="statoFilter"
+            class="app-filter-w-md"
             rel="pagamenti.vendite_contabili_stati"
             value-field="codice_interno"
             :placeholder="t('pagamenti.distinte.filtro_stato')"
             show-clear
             :filter="false"
-            style="width: 170px;"
             @change="onStatoChange"
           />
           <Select
             v-model="origineFilter"
+            class="app-filter-w-md"
             :options="opzioniOrigine"
             option-label="label"
             option-value="value"
             :placeholder="t('pagamenti.distinte.filtro_origine')"
             show-clear
-            style="width: 170px;"
             @update:model-value="onOrigineChange"
           />
           <LookupSelect
             v-model="centroFilter"
+            class="app-filter-w-md"
             rel="pagamenti.centri_riscossione"
             :placeholder="t('pagamenti.distinte.filtro_centro')"
             show-clear
-            style="width: 190px;"
             @change="onCentroChange"
           />
           <LookupSelect
             v-model="canaleFilter"
+            class="app-filter-w-md"
             rel="pagamenti.enti_incasso"
             :placeholder="t('pagamenti.distinte.filtro_canale')"
             show-clear
-            style="width: 190px;"
             @change="onCanaleChange"
           />
-          <DatePicker
-            v-model="dataDaFilter" :placeholder="t('common.data_da')"
-            :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
-            @date-select="onDataDaChange" @clear-click="onDataDaChange"
-          />
-          <DatePicker
-            v-model="dataAFilter" :placeholder="t('common.data_a')"
-            :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
-            @date-select="onDataAChange" @clear-click="onDataAChange"
-          />
-        </div>
+          <FiltroPeriodo :periodo="periodo" />
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />

@@ -54,6 +54,7 @@ import FatturaDrawer from './FatturaDrawer.vue'
 import { cancellaFondoFattura, exportFondiFatturaDaDecidere } from '../api/fondiFattura'
 import { useFondiFatturaDaDecidereStore } from '../stores/fondiFatturaDaDecidere'
 import { paramsOrdinamento } from '../../core/utils/listParams'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 // Vocabolario CHIUSO dei motivi (quattro letterali nei rami della UNION della
 // vista: nessun dato li produce). Vive qui e non in `constants.js` perché è
@@ -241,11 +242,12 @@ onMounted(load)
 <template>
   <div class="app-tab-content">
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
+      <FiltriLista :store="store" :inert="perimetroBloccato">
         <div class="form-field">
           <label>{{ t('vendite.fondi_fattura_da_decidere.filtro_motivo') }}</label>
           <Select
             v-model="motivoFilter"
+            class="app-filter-w-md"
             :options="motivoOptions"
             option-label="label"
             option-value="value"
@@ -253,7 +255,7 @@ onMounted(load)
             @update:model-value="onMotivoChange"
           />
         </div>
-      </div>
+      </FiltriLista>
       <!-- Icone a destra, e su schermo stretto la barra le raccoglie da sé nel
            kebab: è il meccanismo standard di PageActionsBar. -->
       <PageActionsBar :actions="pageActions">

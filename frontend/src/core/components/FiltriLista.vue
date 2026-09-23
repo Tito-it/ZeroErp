@@ -102,6 +102,21 @@ const emit = defineEmits(['pulisci'])
 //    che il contratto dichiara ammesso va provato, non dedotto.
 const istanza = getCurrentInstance()
 
+// ⛔ UNA LISTA CON LA SOLA RICERCA NON HA FILTRI, E NON DEVE AVERE L'IMBUTO
+//    (2026-09-23, emerso convertendo le liste che hanno solo la casella —
+//    `VersioneDrawer`, i template e-mail, le conversioni UoM, i pannelli di
+//    configurazione). Senza il guard, in modalita' compatta comparivano il
+//    pulsante e un drawer VUOTO: un gesto che non porta da nessuna parte, e per
+//    giunta impossibile da vedere da desktop, dove il ramo compatto non si
+//    rende affatto.
+// ⚠️ Si guarda lo slot di DEFAULT, non `#sempre`: la ricerca non e' un filtro
+//    (D2), quindi non ha segno da mostrare ne' niente da portare nel drawer.
+// ⛔ E SI LEGGE `$slots` DAL TEMPLATE, non da una `computed` su `useSlots()`:
+//    l'oggetto degli slot viene RIMPIAZZATO a ogni render e non notifica
+//    nessuno, quindi una `computed` che lo legge non ha nessuna dipendenza
+//    tracciata — si calcolerebbe una volta sola e non si aggiornerebbe piu'
+//    (e' il difetto gia' scritto in `DrawerTabLista.slotInoltrati`).
+
 const { t } = useI18n()
 const ui = useUiStore()
 
@@ -214,6 +229,7 @@ function pulisci() {
          taglia che uno dei due stati non sa onorare. Il segno ha due forme e
          una sola di esse ha una dimensione da dire. -->
     <OverlayBadge
+      v-if="$slots.default"
       :value="modificato ? segnoRisolto.conteggio : null"
       :severity="modificato ? 'info' : 'secondary'"
       class="app-filtri-segno"
@@ -236,7 +252,7 @@ function pulisci() {
        altrimenti lo slot dei filtri sarebbe montato due volte — due DatePicker
        legati allo stesso store, e il secondo invisibile. -->
   <Drawer
-    v-if="compatto"
+    v-if="compatto && $slots.default"
     v-model:visible="drawerVisibile"
     position="bottom"
     class="app-filtri-drawer"
@@ -265,8 +281,14 @@ function pulisci() {
       <slot />
     </div>
 
+    <!-- ⚠️ `:inert` ANCHE QUI, e non e' ridondante: il corpo lo porta gia', ma
+         «Pulisci filtri» vive nel footer e AZZERA i filtri sul serio. Con il
+         perimetro bloccato l'imbuto non si puo' nemmeno premere, quindi oggi il
+         pulsante e' irraggiungibile — ma basta che il drawer sia gia' aperto
+         quando il perimetro si chiude (un cambio di emittente, una rotazione)
+         perche' l'unico comando rimasto vivo sia proprio quello che scrive. -->
     <template #footer>
-      <div class="app-filtri-drawer__footer">
+      <div class="app-filtri-drawer__footer" :inert="inert">
         <Button
           v-if="puoPulire"
           severity="secondary"

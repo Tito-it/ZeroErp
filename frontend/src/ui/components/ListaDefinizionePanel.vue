@@ -128,7 +128,6 @@ async function onDrawerSaved() {
 <template>
   <div class="app-tab-content">
     <div class="app-page-toolbar">
-      <div class="app-page-filters" />
       <PageActionsBar :actions="pageActions">
         <template #suffix>
           <ListaConfigStatusTag :dirty="dirty" />

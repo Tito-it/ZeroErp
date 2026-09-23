@@ -34,8 +34,6 @@ import FormFooter from './FormFooter.vue'
 import PageActionsBar from './PageActionsBar.vue'
 import { useDrawerContentReady } from '../composables/useDrawerContentReady'
 
-
-
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
 const { execute, loading: saveLoading, campiErrati } = useApiHandler()
@@ -256,7 +254,6 @@ function rigaLabel(n) {
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div v-if="!formMode" class="app-page-toolbar">
-        <div class="app-page-filters"></div>
         <PageActionsBar :actions="pageActions" />
       </div>
 

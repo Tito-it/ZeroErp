@@ -43,7 +43,7 @@ useReadonlyMode(READONLY_DOMAINS.VENDITE)
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-toolbar-start">
         <h2 style="margin: 0;">{{ t('vendite.tool_fatturazione.page_title') }}</h2>
         <small class="app-text-muted">
           {{ t('vendite.tool_fatturazione.page_description') }}

@@ -40,6 +40,7 @@ import { useListaConfigurabilePage } from '../../core/composables/useListaConfig
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { useEtichettePagamenti } from '../etichette'
 import { useRateFuoriCapienzaStore } from '../stores/rateFuoriCapienza'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const emit = defineEmits(['row-click'])
 // ⚠️ `te` serve a decodificare fail-visible: un motivo che il database aggiunge
@@ -83,18 +84,18 @@ onMounted(() => store.fetchList())
 
     <template v-else>
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
+        <FiltriLista :store="store" :inert="perimetroBloccato">
           <Select
             v-model="motivoFilter"
+            class="app-filter-w-md"
             :options="opzioniMotivo"
             option-label="label"
             option-value="value"
             :placeholder="t('pagamenti.rate_fuori_capienza.filtro_motivo')"
             show-clear
-            style="width: 230px;"
             @update:model-value="onMotivoChange"
           />
-        </div>
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />

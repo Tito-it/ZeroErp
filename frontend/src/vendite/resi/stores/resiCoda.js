@@ -19,6 +19,7 @@ import { ref } from 'vue'
 
 import { useListaEmptyStateFetch } from '../../../core/composables/useListaEmptyStateFetch'
 import { listDaAccreditare, listDaRiconsegnare } from '../api/resiApi'
+import { useContrattoFiltriLista } from '../../../core/composables/useContrattoFiltriLista'
 
 // Scopo: mappa filtri store → query params degli endpoint coda. Search ignorata
 //        sotto i 3 caratteri (parità lista resi/DDT). order_by/order_dir e
@@ -53,8 +54,16 @@ function buildCodaParams(f, searchTerm) {
 // che il suo endpoint non legge — sarebbe un no-op silenzioso).
 function createResiCodaStore(id, fetchPage, extraFilters = {}) {
   return defineStore(id, () => {
-    const filters = ref({
-      search: '',
+    // ⭐ I FILTRI DI DOMINIO IN UNA SEDE SOLA (2026-09-23): da qui nascono i
+    //    valori di partenza della lista E il contratto che `FiltriLista` legge
+    //    per il segno dei filtri attivi (`useContrattoFiltriLista`). ⛔ Due
+    //    letterali divergono al primo filtro aggiunto da una parte sola, e il
+    //    segno si spegnerebbe su una lista che filtra — senza nessun errore.
+    // ⭐ `extraFilters` entra QUI e non accanto: e' un filtro della coda
+    //    (l'etichetta degli accrediti), quindi conta nel segno come gli altri —
+    //    ed e' la ragione per cui il contratto si costruisce per ISTANZA e non
+    //    una volta per il modulo: le due code hanno filtri diversi.
+    const FILTRI_DEFAULT = {
       billing_account_id: null,
       data_da: null,
       data_a: null,
@@ -65,6 +74,12 @@ function createResiCodaStore(id, fetchPage, extraFilters = {}) {
       ddt_id: null,
       ordine_id: null,
       ...extraFilters,
+    }
+
+    const filters = ref({
+      // ⚠️ Fuori da `FILTRI_DEFAULT`: la ricerca non e' un filtro (D2).
+      search: '',
+      ...FILTRI_DEFAULT,
       limit: 25,
       offset: 0,
       // Default sort `data desc` (parità lista resi/DDT), allineato al
@@ -82,7 +97,16 @@ function createResiCodaStore(id, fetchPage, extraFilters = {}) {
         alwaysFetch: true,
       })
 
-    return { items, totalRecords, loading, hasSearched, filters, fetchList }
+    // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
+    // nascita, e come si riportano li' («Pulisci filtri»).
+    const { chiaviFiltro, filtriDefault, azzeraFiltri } = useContrattoFiltriLista({
+      filters, filterDefaults: FILTRI_DEFAULT, fetchList,
+    })
+
+    return {
+      items, totalRecords, loading, hasSearched, filters, fetchList,
+      chiaviFiltro, filtriDefault, azzeraFiltri,
+    }
   }, {
     userScoped: true,
   })

@@ -21,6 +21,7 @@ import { ref } from 'vue'
 import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
 import { paramsPagina } from '../../core/utils/listParams'
 import { listFondiFatturaDaDecidere } from '../api/fondiFattura'
+import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
 
 // Scopo: mappa i filtri dello store nei query param dell'endpoint.
 //
@@ -43,9 +44,18 @@ function buildParams(f) {
 export const useFondiFatturaDaDecidereStore = defineStore(
   'vendite-fondi-fattura-da-decidere',
   () => {
-    const filters = ref({
+    // ⭐ I FILTRI DI DOMINIO IN UNA SEDE SOLA (2026-09-23): da qui nascono i valori
+    //    di partenza della lista E il contratto che `FiltriLista` legge per il segno
+    //    dei filtri attivi (`useContrattoFiltriLista`). ⛔ Due letterali divergono
+    //    al primo filtro aggiunto da una parte sola, e il segno si spegnerebbe su
+    //    una lista che filtra — senza nessun errore.
+    const FILTRI_DEFAULT = {
       // Vocabolario chiuso dei quattro motivi (null = tutti).
       motivo: null,
+    }
+
+    const filters = ref({
+      ...FILTRI_DEFAULT,
       limit: 25,
       offset: 0,
       // Default `data desc`, lo stesso che applica il backend quando non gli
@@ -63,7 +73,16 @@ export const useFondiFatturaDaDecidereStore = defineStore(
         alwaysFetch: true,
       })
 
-    return { items, totalRecords, loading, hasSearched, filters, fetchList }
+    // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
+    // nascita, e come si riportano li' («Pulisci filtri»).
+    const { chiaviFiltro, filtriDefault, azzeraFiltri } = useContrattoFiltriLista({
+      filters, filterDefaults: FILTRI_DEFAULT, fetchList,
+    })
+
+    return {
+      items, totalRecords, loading, hasSearched, filters, fetchList,
+      chiaviFiltro, filtriDefault, azzeraFiltri,
+    }
   },
   { userScoped: true },
 )

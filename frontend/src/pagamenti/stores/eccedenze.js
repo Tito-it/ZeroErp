@@ -22,6 +22,7 @@ import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptySta
 import { PAGINATION } from '../../core/constants'
 import { paramsPagina } from '../../core/utils/listParams'
 import { listEccedenze } from '../api/pagamenti'
+import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
 
 function buildParams(f) {
   const p = paramsPagina(f)
@@ -33,9 +34,18 @@ function buildParams(f) {
 export const useEccedenzeStore = defineStore(
   'pagamenti-eccedenze',
   () => {
-    const filters = ref({
+    // ⭐ I FILTRI DI DOMINIO IN UNA SEDE SOLA (2026-09-23): da qui nascono i valori
+    //    di partenza della lista E il contratto che `FiltriLista` legge per il segno
+    //    dei filtri attivi (`useContrattoFiltriLista`). ⛔ Due letterali divergono
+    //    al primo filtro aggiunto da una parte sola, e il segno si spegnerebbe su
+    //    una lista che filtra — senza nessun errore.
+    const FILTRI_DEFAULT = {
       chi_e_in_credito: null,
       billing_account_id: null,
+    }
+
+    const filters = ref({
+      ...FILTRI_DEFAULT,
       // ⚠️ NON si inoltra al backend (questa lista non ha ricerca testuale), ma
       // la chiave si DICHIARA: fa parte del contratto di `useSearchTable`, che
       // la scrive su ricerca universale / deep-link `?search=` — e una chiave
@@ -57,7 +67,16 @@ export const useEccedenzeStore = defineStore(
         alwaysFetch: true,
       })
 
-    return { items, totalRecords, loading, hasSearched, filters, fetchList }
+    // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
+    // nascita, e come si riportano li' («Pulisci filtri»).
+    const { chiaviFiltro, filtriDefault, azzeraFiltri } = useContrattoFiltriLista({
+      filters, filterDefaults: FILTRI_DEFAULT, fetchList,
+    })
+
+    return {
+      items, totalRecords, loading, hasSearched, filters, fetchList,
+      chiaviFiltro, filtriDefault, azzeraFiltri,
+    }
   },
   { userScoped: true },
 )

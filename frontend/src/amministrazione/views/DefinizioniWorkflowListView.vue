@@ -28,6 +28,7 @@ import {
   pubblicaDefinizione,
 } from '../api/definizioniWorkflow'
 import { useDefinizioniWorkflowStore } from '../stores/definizioniWorkflow'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -171,15 +172,16 @@ onActivated(() => store.load())
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <FiltriLista :store="store">
         <LookupSelect
           v-model="store.filters.tipo_prestazione_id"
+          class="app-filter-w-md"
           rel="pratiche.tipi_prestazione"
           :placeholder="t('amministrazione.definizioni_workflow.filtro_tipo')"
           show-clear
           @change="onFiltroTipoChange"
         />
-      </div>
+      </FiltriLista>
       <PageActionsBar :actions="pageActions" />
     </div>
 

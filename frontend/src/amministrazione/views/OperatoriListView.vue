@@ -7,7 +7,7 @@
 // Button Nuovo -> apre OperatoreDrawer in modalita' crea.
 // Nessun export: il dominio non ha endpoint (lo scaffolding omette l'azione da
 // se', non ricevendo `exportFn`).
-import { ref, onMounted, onActivated } from 'vue'
+import { onMounted, onActivated } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
@@ -31,6 +31,8 @@ import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import Badge from 'primevue/badge'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 
 const { t } = useI18n()
 const store = useOperatoriStore()
@@ -49,9 +51,6 @@ useTabFreshness(store, TAB_ENTITIES.OPERATORE)
 // DISABILITATO) e' scomposto in:
 //   - superAdminFilter: toggle Sì/No/Tutti sul binding SUPER_ADMIN
 //   - activeFilter: stato attivo identita' (ex "DISABILITATO")
-const superAdminFilter = ref(null)
-const uoFilter = ref(null)
-const activeFilter = ref(null)
 
 const {
   searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
@@ -62,6 +61,17 @@ const {
   // Allineato al preset del seed (`soggetto_cognome asc`).
   searchTableOptions: { defaultSortField: 'soggetto_cognome' },
 })
+
+// ⭐ I FILTRI PASSANO DAI BINDER, e non e' una preferenza di stile: `bindSelect`
+//    porta con se' il `watch` store → widget, cioe' l'unico modo perche' la
+//    casella dica la verita' quando il filtro viene cambiato da FUORI —
+//    «Pulisci filtri» del drawer, un deep-link, un reset. Scritti a mano (un
+//    `ref` che spinge nello store e basta) il filtro si pulisce e la combo
+//    continua a mostrare il valore di prima, senza nessun errore.
+const { bindSelect } = useStoreFilterBindings(store, applyFilters)
+const { value: superAdminFilter, onChange: onSuperAdminChange } = bindSelect('is_super_admin')
+const { value: uoFilter, onChange: onUoChange } = bindSelect('unita_organizzativa_id')
+const { value: activeFilter, onChange: onActiveChange } = bindSelect('is_active')
 
 const superAdminOptions = buildFilterSuperAdminOptions(t)
 const activeOptions = buildFilterStatoOptions(t)
@@ -92,13 +102,6 @@ function onDrawerSavedWithStatus() {
   drawer.close()
   store.fetchList()
   loadSetupStatus(true)
-}
-
-function applyExtraFilters() {
-  store.filters.is_super_admin = superAdminFilter.value
-  store.filters.unita_organizzativa_id = uoFilter.value
-  store.filters.is_active = activeFilter.value
-  applyFilters()
 }
 
 function activeBadgeSeverity(active) {
@@ -141,36 +144,42 @@ function buildRowActions(data) {
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
-        <InputText
-          v-model="searchText"
-          :placeholder="t('amministrazione.search_placeholder')"
-        />
+      <FiltriLista :store="store" :inert="perimetroBloccato">
+        <template #sempre>
+          <InputText
+            v-model="searchText"
+            class="app-filter-w-lg"
+            :placeholder="t('amministrazione.search_placeholder')"
+          />
+        </template>
         <Select
           v-model="superAdminFilter"
+          class="app-filter-w-sm"
           :options="superAdminOptions"
           option-label="label"
           option-value="value"
           :placeholder="t('amministrazione.filter_super_admin')"
-          @change="applyExtraFilters"
+          @change="onSuperAdminChange"
         />
         <Select
           v-model="uoFilter"
+          class="app-filter-w-md"
           :options="[{ descrizione: t('amministrazione.reparto_all'), id: null }, ...unitaOrg.items.value]"
           option-label="descrizione"
           option-value="id"
           :placeholder="t('amministrazione.filter_reparto')"
-          @change="applyExtraFilters"
+          @change="onUoChange"
         />
         <Select
           v-model="activeFilter"
+          class="app-filter-w-sm"
           :options="activeOptions"
           option-label="label"
           option-value="value"
           :placeholder="t('amministrazione.filter_stato')"
-          @change="applyExtraFilters"
+          @change="onActiveChange"
         />
-      </div>
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
           <ListaConfigStatusTag :dirty="dirty" />

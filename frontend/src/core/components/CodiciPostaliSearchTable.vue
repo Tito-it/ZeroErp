@@ -35,6 +35,7 @@ function onComuneChange(id, applyFilters) {
     <template #filters="{ applyFilters }">
       <ComuneAutocomplete
         :model-value="comuneFilter"
+        class="app-filter-w-lg"
         @update:model-value="id => onComuneChange(id, applyFilters)"
       />
     </template>

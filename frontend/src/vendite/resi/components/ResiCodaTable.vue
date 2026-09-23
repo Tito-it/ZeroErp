@@ -24,7 +24,6 @@ import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
-import DatePicker from 'primevue/datepicker'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import Select from 'primevue/select'
@@ -46,7 +45,7 @@ import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../../core/composables/useListaConfigurabilePage'
 import { useStoreFilterBindings } from '../../../core/composables/useStoreFilterBindings'
 import { useSelezioneToggle } from '../../../core/composables/useSelezioneToggle'
-import { DATE_FORMAT, MANAGE_ICONS } from '../../../core/constants'
+import { MANAGE_ICONS } from '../../../core/constants'
 import { formatNumber } from '../../../core/utils/format'
 import { labelOrCode } from '../../../core/utils/i18nLabel'
 import {
@@ -60,6 +59,8 @@ import {
   useResiCodaAccreditareStore,
   useResiCodaRiconsegnareStore,
 } from '../stores/resiCoda'
+import FiltroPeriodo from '../../../core/components/FiltroPeriodo.vue'
+import FiltriLista from '../../../core/components/FiltriLista.vue'
 
 const props = defineProps({
   coda: {
@@ -100,9 +101,9 @@ const {
 // scaffolding omette l'azione da sé, non ricevendo `onNew`.
 
 // --- Filtri custom (toolbar caller): date opzionali, NESSUN default (coda). ---
-const { bindDate, bindSelect } = useStoreFilterBindings(store, applyFilters)
-const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
-const { value: dataAlFilter, onChange: onDataAlChange } = bindDate('data_a')
+const { bindSelect, bindPeriodo } = useStoreFilterBindings(store, applyFilters)
+// Il periodo e' UN filtro con due estremi: un binding, un componente.
+const periodo = bindPeriodo()
 
 // Filtro etichetta accredito (solo coda accrediti, forma contatore): DOVUTA =
 // lavoro arretrato, FACOLTATIVA = opzione dell'operatore (DL-26 — la scelta
@@ -417,25 +418,22 @@ defineExpose({ reload })
     <template v-else>
       <!-- Toolbar UNICA esterna (pattern lista standard). -->
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
-          <InputText v-model="searchText" :placeholder="searchPlaceholder" style="width: 260px;" />
-          <DatePicker v-model="dataDaFilter" :placeholder="t('common.data_da')"
-            :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
-            @date-select="onDataDaChange" @clear-click="onDataDaChange" />
-          <DatePicker v-model="dataAlFilter" :placeholder="t('common.data_a')"
-            :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
-            @date-select="onDataAlChange" @clear-click="onDataAlChange" />
+        <FiltriLista :store="store" :inert="perimetroBloccato">
+          <template #sempre>
+            <InputText class="app-filter-w-lg" v-model="searchText" :placeholder="searchPlaceholder"  />
+          </template>
+          <FiltroPeriodo :periodo="periodo" />
           <Select
             v-if="!isRiconsegna"
             v-model="etichettaFilter"
+            class="app-filter-w-md"
             :options="etichettaOptions"
             option-label="label"
             option-value="value"
             :placeholder="t('vendite.resi.coda_etichetta_tutte')"
-            style="width: 170px;"
             @change="onEtichettaChange"
           />
-        </div>
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />

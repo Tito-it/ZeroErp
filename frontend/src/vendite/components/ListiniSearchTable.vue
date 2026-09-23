@@ -44,6 +44,8 @@ import { useAuthStore } from '../../stores/auth'
 import AlertScadenzeWidget from './AlertScadenzeWidget.vue'
 import AttivaVersioneDialog from './AttivaVersioneDialog.vue'
 import ChiudiVersioneDialog from './ChiudiVersioneDialog.vue'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 
 const emit = defineEmits([
   'new',
@@ -76,8 +78,16 @@ const {
   extraActions: () => extraPageActions.value,
 })
 
-const utilityFilter = ref(null)
-const tipologiaFilter = ref(null)
+// ⭐ I FILTRI PASSANO DAI BINDER, e non e' una preferenza di stile: `bindSelect`
+//    porta con se' il `watch` store → widget, cioe' l'unico modo perche' la
+//    casella dica la verita' quando il filtro viene cambiato da FUORI —
+//    «Pulisci filtri» del drawer, un deep-link, un reset. Scritti a mano (un
+//    `ref` che spinge nello store e basta) il filtro si pulisce e la combo
+//    continua a mostrare il valore di prima, senza nessun errore.
+const { bindSelect } = useStoreFilterBindings(store, applyFilters)
+const { value: utilityFilter, onChange: onUtilityChange } = bindSelect('utility_id')
+const { value: tipologiaFilter, onChange: onTipologiaChange } = bindSelect('tipologia_id')
+const { value: attivoFilter, onChange: onAttivoChange } = bindSelect('attivo')
 
 // Lookup tipologie listino per il filtro (non filtrato per utility: lista
 // completa delle tipologie attive). Cache globale condivisa: ogni re-mount
@@ -88,7 +98,6 @@ const tipologiaLookup = useGlobalLookup(
   { immediate: true }
 )
 
-const attivoFilter = ref(true)
 const attivoOptions = [
   { value: null, label: t('amministrazione.stato_all') },
   { value: true, label: t('amministrazione.stato_attivo') },
@@ -103,21 +112,6 @@ const attivoOptions = [
 //    `<ListaConfigurabile>` e quindi dallo stesso watch qui sotto. Questa era
 //    la prima copia; ritirata alla seconda (regola del 2).
 const expandedRows = ref({})
-
-function onUtilityChange() {
-  store.filters.utility_id = utilityFilter.value
-  applyFilters()
-}
-
-function onTipologiaChange() {
-  store.filters.tipologia_id = tipologiaFilter.value
-  applyFilters()
-}
-
-function onAttivoChange() {
-  store.filters.attivo = attivoFilter.value
-  applyFilters()
-}
 
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
 function onRowClick(data) { emit('row-click', data) }
@@ -314,20 +308,24 @@ onMounted(() => store.fetchList())
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
-        <InputText v-model="searchText" :placeholder="t('vendite.listini.search_placeholder')" style="width: 320px;" />
+      <FiltriLista :store="store" :inert="perimetroBloccato">
+        <template #sempre>
+          <InputText class="app-filter-w-lg" v-model="searchText" :placeholder="t('vendite.listini.search_placeholder')" />
+        </template>
         <UtilityPerRuoloSelect v-model="utilityFilter"
+          class="app-filter-w-md"
           :placeholder="t('vendite.listini.filtro_utility')" :show-clear="true"
           apply-default
-          @change="onUtilityChange" style="width: 200px;" />
+          @change="onUtilityChange" />
         <Select v-model="tipologiaFilter" :options="tipologiaLookup.items.value"
           option-label="descrizione" option-value="id"
           :placeholder="t('vendite.listini.filtro_tipologia')" :show-clear="true"
           :loading="tipologiaLookup.loading.value"
-          @change="onTipologiaChange" class="app-filter-select" />
+          @change="onTipologiaChange" class="app-filter-select app-filter-w-md" />
         <Select v-model="attivoFilter" :options="attivoOptions" option-label="label" option-value="value"
-          :placeholder="t('vendite.listini.col_attivo')" @change="onAttivoChange" style="width: 120px;" />
-      </div>
+          class="app-filter-w-sm"
+          :placeholder="t('vendite.listini.col_attivo')" @change="onAttivoChange" />
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #prefix>
           <AlertScadenzeWidget />

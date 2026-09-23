@@ -19,6 +19,7 @@ import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { TAB_ENTITIES } from '../../core/constants'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
@@ -48,9 +49,11 @@ onMounted(() => store.fetchList())
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
-        <InputText v-model="searchText" :placeholder="t('catalogo.conv_search_placeholder')" />
-      </div>
+      <FiltriLista :store="store" :inert="perimetroBloccato">
+        <template #sempre>
+          <InputText class="app-filter-w-lg" v-model="searchText" :placeholder="t('catalogo.conv_search_placeholder')" />
+        </template>
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
           <ListaConfigStatusTag :dirty="dirty" />

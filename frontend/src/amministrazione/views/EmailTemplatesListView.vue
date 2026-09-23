@@ -19,6 +19,7 @@ import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import EmailTemplateDrawer from '../components/EmailTemplateDrawer.vue'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const { t } = useI18n()
 useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
@@ -46,9 +47,11 @@ function onRowClick(data) {
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
-        <InputText v-model="searchText" :placeholder="t('common.search')" style="width: 250px;" />
-      </div>
+      <FiltriLista :store="store" :inert="perimetroBloccato">
+        <template #sempre>
+          <InputText class="app-filter-w-lg" v-model="searchText" :placeholder="t('common.search')" />
+        </template>
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
           <ListaConfigStatusTag :dirty="dirty" />

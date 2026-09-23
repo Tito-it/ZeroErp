@@ -24,7 +24,6 @@ import { ref, computed, onActivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import InputText from 'primevue/inputtext'
-import DatePicker from 'primevue/datepicker'
 import Tag from 'primevue/tag'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
@@ -41,7 +40,9 @@ import { useAuthStore } from '../../stores/auth'
 import { useErrorLogStore } from '../stores/errorLog'
 import { exportErrorLogs } from '../api/amministrazione'
 import { classeErroreSeverity } from '../../core/utils/severity'
-import { DATE_FORMAT, MANAGE_ICONS, READONLY_DOMAINS } from '../../core/constants'
+import { MANAGE_ICONS, READONLY_DOMAINS } from '../../core/constants'
+import FiltroPeriodo from '../../core/components/FiltroPeriodo.vue'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const { t } = useI18n()
 useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
@@ -68,9 +69,9 @@ const {
   },
 })
 
-const { bindDate } = useStoreFilterBindings(store, applyFilters)
-const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
-const { value: dataAFilter, onChange: onDataAChange } = bindDate('data_a')
+const { bindPeriodo } = useStoreFilterBindings(store, applyFilters)
+// Il periodo e' UN filtro con due estremi: un binding, un componente.
+const periodo = bindPeriodo()
 
 // I quattro filtri di testo scrivono lo store e rilanciano da pagina 1 dopo
 // il debounce standard; una stringa vuota torna `null`, cosi' il core non
@@ -168,56 +169,35 @@ onActivated(applicaDeepLink)
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
+      <FiltriLista :store="store" :inert="perimetroBloccato">
         <InputText
+          class="app-filter-w-sm"
           :model-value="store.filters.area ?? ''"
           :placeholder="t('amministrazione.error_log.col_area')"
-          style="width: 140px;"
           @update:model-value="(v) => onTestoInput('area', v)"
           @keyup.enter="onTestoEnter"
         />
         <InputText
           :model-value="store.filters.function_name ?? ''"
           :placeholder="t('amministrazione.error_log.filtro_funzione')"
-          style="width: 220px;"
           @update:model-value="(v) => onTestoInput('function_name', v)"
           @keyup.enter="onTestoEnter"
         />
         <InputText
           :model-value="store.filters.codice ?? ''"
           :placeholder="t('amministrazione.error_log.col_codice')"
-          style="width: 220px;"
           @update:model-value="(v) => onTestoInput('codice', v)"
           @keyup.enter="onTestoEnter"
         />
         <InputText
           :model-value="store.filters.tx_id ?? ''"
+          class="app-filter-w-lg"
           :placeholder="t('amministrazione.error_log.col_tx_id')"
-          style="width: 290px;"
           @update:model-value="(v) => onTestoInput('tx_id', v)"
           @keyup.enter="onTestoEnter"
         />
-        <DatePicker
-          v-model="dataDaFilter"
-          :placeholder="t('common.data_da')"
-          :date-format="DATE_FORMAT"
-          show-icon
-          show-button-bar
-          style="width: 150px;"
-          @date-select="onDataDaChange"
-          @clear-click="onDataDaChange"
-        />
-        <DatePicker
-          v-model="dataAFilter"
-          :placeholder="t('common.data_a')"
-          :date-format="DATE_FORMAT"
-          show-icon
-          show-button-bar
-          style="width: 150px;"
-          @date-select="onDataAChange"
-          @clear-click="onDataAChange"
-        />
-      </div>
+        <FiltroPeriodo :periodo="periodo" />
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
           <ListaConfigStatusTag :dirty="dirty" />

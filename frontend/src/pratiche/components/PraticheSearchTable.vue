@@ -7,16 +7,14 @@
 //        servono solo a popolare i filtri Select. Nessun export: il dominio non
 //        ha endpoint (lo scaffolding omette l'azione da se', non ricevendo
 //        `exportFn`).
-import { ref, watch, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePraticheStore } from '../stores/pratiche'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
-import { toDateString } from '../../core/utils/date'
 import { statoPraticaSeverity, prioritaPraticaSeverity } from '../../core/utils/severity'
 import InputText from 'primevue/inputtext'
 import LookupSelect from '../../core/components/LookupSelect.vue'
-import DatePicker from 'primevue/datepicker'
 import Tag from 'primevue/tag'
 import FiltroToggle from '../../core/components/FiltroToggle.vue'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
@@ -27,6 +25,8 @@ import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { TAB_ENTITIES } from '../../core/constants'
+import FiltroPeriodo from '../../core/components/FiltroPeriodo.vue'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
@@ -45,57 +45,34 @@ const {
   searchTableOptions: { defaultSortField: 'data_apertura', defaultSortOrder: 'desc' },
 })
 
-// Init dallo store (persistente nella sessione, userScoped): al rientro in
-// dashboard i Select devono riflettere i filtri ancora attivi sulla lista
-// (stesso pattern di dataDaFilter; prima stato/priorita ripartivano null →
-// lista filtrata ma Select visivamente vuoti).
-const statoFilter = ref(store.filters.stato ?? null)
-const prioritaFilter = ref(store.filters.priorita_id ?? null)
-// Filtro tipo prestazione: preimpostabile dal deep-link della home launcher
-// (tile "Comincia" → dashboard filtrata sul tipo). Il watch tiene il Select
-// allineato quando il deep-link cambia il filtro a componente GIA' montato:
-// sotto KeepAlive la dashboard viene ri-attivata senza remount, quindi
-// l'init a setup-time da solo non basta.
-const tipoPrestazioneFilter = ref(store.filters.tipo_prestazione_id ?? null)
-watch(() => store.filters.tipo_prestazione_id, v => { tipoPrestazioneFilter.value = v ?? null })
-// Lente di contesto D1 (workflow v2): solo pratiche interne (senza soggetto).
-// `off: false` e non il `null` di default: lo store lo dichiara `false` e il
-// BE legge «falso» e «assente» come la stessa cosa (nota nello store).
-// ⚠️ Gli altri filtri di questo file sono ancora `ref` + `onXChange` scritti a
-//    mano (precedono il BB): debito dichiarato, non allargato qui.
-const { bindToggle } = useStoreFilterBindings(store, applyFilters)
+// ⭐ TUTTI i filtri di questa lista passano dai binder (dal 2026-09-23): ognuno
+//    porta con se' il `watch` store → widget, che qui non e' un di piu' — e'
+//    cio' che tiene il Select allineato quando il filtro lo cambia QUALCUN
+//    ALTRO. Succede in tre modi: al rientro in dashboard (store `userScoped`,
+//    i filtri sono ancora attivi sulla lista), dal deep-link della home
+//    launcher (la tile «Comincia» atterra col tipo prestazione gia' scelto, e
+//    sotto KeepAlive la view si ri-attiva SENZA remount) e dal «Pulisci
+//    filtri» del drawer compatto.
+//    ⛔ Fino al 2026-09-23 il `watch` c'era a mano per il SOLO tipo prestazione:
+//    gli altri tre erano `ref` che spingevano nello store e basta, quindi
+//    restavano a mostrare il filtro di prima. Nessun errore, da nessuna parte.
+// `off: false` e non il `null` di default sull'interruttore: lo store lo
+// dichiara `false` e il BE legge «falso» e «assente» come la stessa cosa.
+const { bindSelect, bindToggle, bindPeriodo } = useStoreFilterBindings(store, applyFilters)
+// value-field="codice": il BE filtra per codice_interno (param `stato`); per
+// gli stati pratiche codice e codice_interno coincidono (seed).
+const { value: statoFilter, onChange: onStatoChange } = bindSelect('stato')
+const { value: prioritaFilter, onChange: onPrioritaChange } = bindSelect('priorita_id')
+const { value: tipoPrestazioneFilter, onChange: onTipoPrestazioneChange } = bindSelect('tipo_prestazione_id')
 const { value: soloInterneFilter, onChange: onSoloInterneChange } = bindToggle('solo_interne', { off: false })
 
-// Filtro data sempre attivo: default inizio mese precedente (dal store)
-const dataDaFilter = ref(store.filters.data_da ? new Date(store.filters.data_da + 'T00:00:00') : null)
-const dataAFilter = ref(null)
-
-function onStatoChange() {
-  // value-field="codice": il BE filtra per codice_interno (param `stato`);
-  // per gli stati pratiche codice e codice_interno coincidono (seed).
-  store.filters.stato = statoFilter.value
-  applyFilters()
-}
-
-function onPrioritaChange() {
-  store.filters.priorita_id = prioritaFilter.value
-  applyFilters()
-}
-
-function onTipoPrestazioneChange() {
-  store.filters.tipo_prestazione_id = tipoPrestazioneFilter.value
-  applyFilters()
-}
-
-function onDataDaChange() {
-  store.filters.data_da = dataDaFilter.value ? toDateString(dataDaFilter.value) : null
-  applyFilters()
-}
-
-function onDataAChange() {
-  store.filters.data_a = dataAFilter.value ? toDateString(dataAFilter.value) : null
-  applyFilters()
-}
+// Il periodo e' UN filtro con due estremi: un binding, un componente.
+// ⭐ Prima del 2026-09-23 erano due ref scritte a mano, e `data_a` NON leggeva
+//    lo store alla nascita (`ref(null)` secco): un valore rimasto nel filtro
+//    restava attivo con la casella vuota. Il BB legge entrambi gli estremi,
+//    li tiene allineati anche quando li cambia qualcun altro (deep-link,
+//    reset) e porta l'invariante «`da > a` non puo' esistere».
+const periodo = bindPeriodo()
 
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
 function onRowClick(data) { emit('row-click', data) }
@@ -115,13 +92,17 @@ onMounted(() => { store.fetchList() })
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
-        <InputText
-          v-model="searchText"
-          :placeholder="t('pratiche.search_placeholder')"
-        />
+      <FiltriLista :store="store" :inert="perimetroBloccato">
+        <template #sempre>
+          <InputText
+            v-model="searchText"
+            class="app-filter-w-lg"
+            :placeholder="t('pratiche.search_placeholder')"
+          />
+        </template>
         <LookupSelect
           v-model="statoFilter"
+          class="app-filter-w-md"
           rel="config.stati_pratiche"
           value-field="codice"
           :placeholder="t('pratiche.filtro_stato')"
@@ -130,6 +111,7 @@ onMounted(() => { store.fetchList() })
         />
         <LookupSelect
           v-model="prioritaFilter"
+          class="app-filter-w-md"
           rel="config.priorita_pratiche"
           :placeholder="t('pratiche.filtro_priorita')"
           show-clear
@@ -137,37 +119,19 @@ onMounted(() => { store.fetchList() })
         />
         <LookupSelect
           v-model="tipoPrestazioneFilter"
+          class="app-filter-w-md"
           rel="pratiche.tipi_prestazione"
           :placeholder="t('pratiche.filtro_tipo_prestazione')"
           show-clear
           @change="onTipoPrestazioneChange"
         />
-        <DatePicker
-          v-model="dataDaFilter"
-          :placeholder="t('common.data_da')"
-          date-format="dd/mm/yy"
-          show-icon
-          show-button-bar
-          style="width: 150px;"
-          @date-select="onDataDaChange"
-          @clear-click="onDataDaChange"
-        />
-        <DatePicker
-          v-model="dataAFilter"
-          :placeholder="t('common.data_a')"
-          date-format="dd/mm/yy"
-          show-icon
-          show-button-bar
-          style="width: 150px;"
-          @date-select="onDataAChange"
-          @clear-click="onDataAChange"
-        />
+        <FiltroPeriodo :periodo="periodo" />
         <FiltroToggle
           v-model="soloInterneFilter"
           :label="t('pratiche.filtro_solo_interne')"
           @change="onSoloInterneChange"
         />
-      </div>
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
           <ListaConfigStatusTag :dirty="dirty" />

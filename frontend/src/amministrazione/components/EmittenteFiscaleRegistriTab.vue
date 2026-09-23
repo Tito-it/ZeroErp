@@ -178,6 +178,7 @@ function motivoForma(data) {
       codice="vendite.registri_numerazione"
       :emittente-esplicito="emittenteSoggettoRuoloId"
       :help-text="t('amministrazione.registri_numerazione.help')"
+      :store="store"
       :rows="store.items"
       :total="store.totalRecords"
       :loading="store.loading"
@@ -192,12 +193,14 @@ function motivoForma(data) {
       @sort="onSort"
       @config-loaded="onConfigLoaded"
     >
-      <template #filtri>
+      <template #filtri-sempre>
         <InputText
           v-model="searchText"
+          class="app-filter-w-lg"
           :placeholder="t('amministrazione.registri_numerazione.filtro_placeholder')"
-          style="width: 260px;"
         />
+      </template>
+      <template #filtri>
         <!-- ⚠️ IL PLACEHOLDER PORTA L'ETICHETTA DEL DEFAULT, e non e' cosmetica:
              il valore di partenza e' `null` = TUTTI, e per PrimeVue `null` e'
              «niente selezionato» — la combo usciva VUOTA su un filtro che era
@@ -211,7 +214,7 @@ function motivoForma(data) {
           :placeholder="t('amministrazione.stato_all')"
           option-label="label"
           option-value="value"
-          style="width: 170px;"
+          class="app-filter-w-sm"
           @update:model-value="applicaFiltroStato"
         />
       </template>

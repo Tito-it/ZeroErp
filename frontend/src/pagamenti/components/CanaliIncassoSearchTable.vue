@@ -35,6 +35,7 @@ import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBin
 import { MANAGE_ICONS } from '../../core/constants'
 import { useEtichettePagamenti } from '../etichette'
 import { useCanaliIncassoStore } from '../stores/canaliIncasso'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const emit = defineEmits(['row-click', 'new'])
 const { t } = useI18n()
@@ -120,17 +121,17 @@ onMounted(() => store.fetchList())
 
     <template v-else>
       <div class="app-page-toolbar">
-        <div class="app-page-filters">
+        <FiltriLista :store="store">
           <Select
             v-model="tipoFilter"
+            class="app-filter-w-md"
             :options="opzioniTipo"
             option-label="label"
             option-value="value"
             :placeholder="t('pagamenti.canali.filtro_tipo')"
-            style="width: 200px;"
             @update:model-value="onTipoChange"
           />
-        </div>
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />

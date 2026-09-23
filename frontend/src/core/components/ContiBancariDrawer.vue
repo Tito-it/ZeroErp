@@ -158,7 +158,6 @@ const onClose = useDrawerClose(emit)
            quando non in form mode, anche con lista vuota: il pulsante
            "Nuovo" deve essere immediatamente raggiungibile. -->
       <div v-if="!listLoading && !formMode && !isReadonly" class="app-page-toolbar">
-        <div class="app-page-filters" />
         <PageActionsBar :actions="pageActions" />
       </div>
 

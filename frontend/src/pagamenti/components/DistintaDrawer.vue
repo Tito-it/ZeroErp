@@ -630,19 +630,6 @@ watch(
           {{ t('pagamenti.distinte.righe_non_lette') }}
         </Message>
 
-        <!-- ⭐ «Mostra scartate (N)» (FE-3): il BB `FiltroToggle` col conteggio
-             del backend, come «Mostra annullati» sui lotti. Solo quando ha
-             qualcosa da dire. -->
-        <div v-if="interruttoreScartate" class="app-page-filters">
-          <FiltroToggle
-            v-model="mostraScartate"
-            :label="t('pagamenti.distinte.mostra_scartate')"
-            :hint="t('pagamenti.distinte.mostra_scartate_hint')"
-            :count="storeRighe.scartateCount"
-            @change="onMostraScartateChange"
-          />
-        </div>
-
         <!-- ⭐ LISTA STANDARD dal 2026-09-18 (decisione di Tid), col pacchetto
              intero: pagine, ricarica, «Personalizza colonne», export CSV/Excel.
              Le colonne vengono dal catalogo (`ui.lista_colonna`, lista 69):
@@ -653,6 +640,7 @@ watch(
         <DrawerTabLista
           ref="listaRef"
           codice="pagamenti.distinta_righe"
+          :store="storeRighe"
           :rows="storeRighe.items"
           :total="storeRighe.totalRecords"
           :loading="storeRighe.loading"
@@ -668,6 +656,24 @@ watch(
           @row-click="onRigaClick"
           @config-loaded="onConfigLoaded"
         >
+          <!-- ⭐ «Mostra scartate (N)» (FE-3): il BB `FiltroToggle` col conteggio
+               del backend, come «Mostra annullati» sui lotti. Solo quando ha
+               qualcosa da dire — e il `v-if` sta sul `<template>`, non sul
+               widget: condizionato dentro, lo slot esisterebbe comunque e in
+               modalita' compatta comparirebbe l'imbuto su un drawer vuoto.
+               ⭐ Dal 2026-09-23 sta nei FILTRI della lista, non in una barra
+               sua sopra di essa: e' un filtro di quelle righe, quindi sotto i
+               1024px scende nel drawer dal basso e conta nel segno. -->
+          <template v-if="interruttoreScartate" #filtri>
+            <FiltroToggle
+              v-model="mostraScartate"
+              :label="t('pagamenti.distinte.mostra_scartate')"
+              :hint="t('pagamenti.distinte.mostra_scartate_hint')"
+              :count="storeRighe.scartateCount"
+              @change="onMostraScartateChange"
+            />
+          </template>
+
           <!-- La frase del dominio al posto dell'empty-state generico.
                ⛔ MA SOLO SE LA LETTURA E' RIUSCITA: con `erroreCaricamento` la
                tabella e' vuota per un'altra ragione, e «non ha ancora righe»
