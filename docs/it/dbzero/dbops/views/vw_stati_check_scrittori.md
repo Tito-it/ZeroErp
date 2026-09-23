@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> PRESIDIO C1 — uno stato previsto dal modello (nel CHECK a lista di una colonna di stato) e mai scritto. Una riga per (colonna, valore) con il suo esito: SCRITTO (una funzione scrive la tabella e nomina il letterale, oppure lo passa a uno scrittore posizionale: il secondo salto), SCRITTO_DA_DEFAULT, DICHIARATO_APPLICAZIONE / ESENTE (sta in dbops.stati_check_dichiarazioni), NON_DICHIARATO (il debito da sanare) e DEBITO_ESTINTO nei due versi. ⚠️ Il criterio e' TESTUALE e ha due limiti, dichiarati nel suo pgTAP: nominare non e' scrivere (test 6) e a tre salti il letterale non si segue piu' (test 9). ⭐ Rev 2026-09-22: stessa misura, estratta UNA volta invece che provata per coppia — i nomi scritti da ogni funzione e i letterali citati si ricavano con un passaggio solo, poi si confrontano per uguaglianza. Output identico riga per riga (EXCEPT nei due versi su dbdev), costo per chiamata da ~535 ms a ~230 ms. Brief: brief-db-presidio-stati-mai-scritti §3-bis.
+> PRESIDIO C1 — uno stato previsto dal modello (nel CHECK a lista di una colonna di stato) e mai scritto. Una riga per (colonna, valore) con il suo esito: SCRITTO (una funzione scrive la tabella e nomina il letterale, oppure lo passa a uno scrittore posizionale: il secondo salto), SCRITTO_DA_DEFAULT, DICHIARATO_APPLICAZIONE / ESENTE (sta in dbops.stati_check_dichiarazioni), NON_DICHIARATO (il debito da sanare) e DEBITO_ESTINTO nei due versi. ⚠️ Il criterio e' TESTUALE e ha due limiti, dichiarati nel suo pgTAP: nominare non e' scrivere (test 6) e a tre salti il letterale non si segue piu' (test 9). ⭐ Rev 2026-09-22: stessa misura, estratta UNA volta invece che provata per coppia — i nomi scritti da ogni funzione e i letterali citati si ricavano con un passaggio solo, poi si confrontano per uguaglianza. Output identico riga per riga (EXCEPT nei due versi su dbdev), costo per chiamata da ~535 ms a ~230 ms. ⛔ Rev 2026-09-23: le funzioni di fixture pgTAP (prefisso fn_pgtap_ in dbops e script) NON contano, ne' come scrittori ne' come chiamanti: il presidio misura il sistema, non le fixture che lo collaudano. Brief: brief-db-presidio-stati-mai-scritti §3-bis; brief-db-fixture-che-costruiscono-giro-2 §11.
 
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_stati_check_scrittori AS
@@ -39,7 +39,7 @@ WITH colonne AS (
            FROM ((pg_proc p
              JOIN pg_namespace pn ON ((pn.oid = p.pronamespace)))
              JOIN pg_language l ON ((l.oid = p.prolang)))
-          WHERE ((pn.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) AND (l.lanname = ANY (ARRAY['plpgsql'::name, 'sql'::name])))
+          WHERE ((pn.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) AND (l.lanname = ANY (ARRAY['plpgsql'::name, 'sql'::name])) AND (NOT ((pn.nspname = ANY (ARRAY['dbops'::name, 'script'::name])) AND ((p.proname)::text ~~ 'fn\_pgtap\_%'::text))))
         ), scritture AS MATERIALIZED (
          SELECT f.oid,
             f.proname,

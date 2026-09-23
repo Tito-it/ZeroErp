@@ -92,7 +92,7 @@ Alcuni campi rilevanti:
 
 | Colonna              | Tipo       | Descrizione                                                                      |
 | -------------------- | ---------- | -------------------------------------------------------------------------------- |
-| `tipo_indirizzo`     | `varchar`  | Codice interno del tipo indirizzo **effettivamente utilizzato** (post-fallback). |
+| `tipo_indirizzo`     | `varchar`  | **Codice** del tipo effettivamente utilizzato (post-fallback): l'etichetta a video di `config.tipi_indirizzi.codice` (es. `DOM-FISC`), **non** il codice interno, anche se la firma lo dichiara `codice_interno%TYPE`. Per la logica si legge `tipo_indirizzo_id`. |
 | `indirizzo_completo` | `text`     | Indirizzo formattato in forma human-readable.                                    |
 | `geoloc`             | `geometry` | Geolocalizzazione (SRID 4326), se disponibile.                                   |
 | `is_normalizzato`    | `boolean`  | TRUE se derivato da `indirizzi_dettaglio`, FALSE se indirizzo libero/estero.     |
@@ -122,6 +122,12 @@ La funzione implementa una **ricerca a 3 livelli**, ciascuno con catena fallback
 **FASE 3 — Fallback soggetto**:
 
 1. Delega a `script.fn_get_indirizzo_by_soggetto(...)` con la propria catena fallback tipo.
+
+⭐ **Il tipo si riconosce per id** (rev 2026-09-23, `20260923-49`): a ogni giro della catena il
+codice interno richiesto si risolve in `config.tipi_indirizzi.id` e si confronta con
+`tipo_indirizzo_id`. Le viste risolte espongono il **codice**, non il codice interno: confrontati
+come testo, i due si incontravano solo per i tipi in cui coincidono (`FATT`), e per `RES`,
+`DOMFISC`, `SEDELEG`, `SEDEOP` e gli altri nessuna fase trovava mai niente.
 
 La catena tipo a ogni livello termina quando:
 

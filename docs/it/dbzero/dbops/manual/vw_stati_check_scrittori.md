@@ -62,6 +62,15 @@ degli stati li scrive l'applicazione, e per quelli il database può solo leggere
 una dichiarazione (colonna `canale` del registro) che il backend verifica dal
 suo lato.
 
+⛔ **Le fixture dei test non contano** (rev 2026-09-23, `20260923-51`). Gli helper
+che i test pgTAP usano per costruirsi i dati — le funzioni `fn_pgtap_…` negli schemi
+`dbops` e `script` — possono scrivere uno stato, ma non sono il sistema che lo
+raggiunge: sono chi lo collauda. Se contassero, una fixture che scrive `ERRORE`
+farebbe risultare «scritto» proprio lo stato che il sistema non raggiunge mai. Non
+contano né quando scrivono né quando chiamano uno scrittore. Il caso è successo: un
+helper che scrive `ATTIVA` sulle versioni di listino aveva reso «estinta» una
+dichiarazione che diceva il vero.
+
 ---
 
 ### Le sei risposte, e come si leggono

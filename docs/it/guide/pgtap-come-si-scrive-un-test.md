@@ -108,10 +108,11 @@ Costruire i casi significa costruire anche **l'azienda e chi ci lavora**:
 | un'azienda con il suo operatore (e identità) | `dbops.fn_pgtap_crea_emittente_operatore()` |
 | un **operatore umano** — persona fisica, risorsa umana, identità — **senza azienda**, volendo super admin | `dbops.fn_pgtap_crea_operatore_umano('<etichetta>'[, p_super_admin := true])` |
 | un **punto di prelievo** nuovo, su un indirizzo suo | `dbops.fn_pgtap_crea_pdp(['<utility>'])` |
+| un **listino** con una versione ATTIVA, dell'azienda di chi agisce (contesto aperto prima) | `dbops.fn_pgtap_crea_listino(<utility_id>[, '<etichetta>'[, valido_dal[, valido_al]]])` |
 | l'utente tecnico di un processo, a roster | `dbops.fn_pgtap_crea_roster_processo('<processo>')` |
 | un cliente fatturabile (soggetto → CL → istanza → BA) | `dbops.fn_pgtap_crea_cliente_ba('<etichetta>'[, utility, emittente_sr])` |
 | un soggetto con un ruolo e basta (CL, FO, BANK_B…) | `dbops.fn_pgtap_crea_soggetto_pg(...)` + `fn_pgtap_crea_soggetto_ruolo(..., 'CL')` |
-| un super admin | un'azienda come sopra + un binding al profilo `SUPER_ADMIN` sulla sua identità |
+| un **super admin** (senza azienda, come in produzione) | `dbops.fn_pgtap_crea_operatore_umano('<etichetta>', p_super_admin := true)` — sotto, §«Un super admin non ha un'azienda» |
 
 ⛔ **Ordine obbligato: prima il mondo, poi `fn_pgtap_set_contesto_operatore(<auth_user_id>)`.**
 Con un operatore già in sessione il legame BA → emittente lo scrive **anche**

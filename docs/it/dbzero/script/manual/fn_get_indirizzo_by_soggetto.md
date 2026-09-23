@@ -69,7 +69,10 @@ Il campo `indirizzo_display` contiene l’indirizzo **human-readable**.
 ### Logica di funzionamento (concettuale)
 
 1. Recupera il `tipo_soggetto_dettaglio_id` del soggetto.
-2. Prova il tipo richiesto (`p_tipo_codice`).
+2. Prova il tipo richiesto (`p_tipo_codice`). ⭐ Lo riconosce **per id** (rev 2026-09-23,
+   `20260923-49`): il codice interno si risolve in `config.tipi_indirizzi.id` e si confronta con
+   `tipo_indirizzo_id` della vista. La vista espone in `tipo_indirizzo_codice` il **codice** (etichetta
+   a video, es. `RESID`), non il codice interno (`RES`): confrontati come testo non si incontravano.
 3. Se non trova indirizzi, cerca il `fallback_tipo_indirizzo_id` nella matrice:
 
    `config.tipi_soggetto_dettaglio_tipi_indirizzo`

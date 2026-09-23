@@ -1,7 +1,7 @@
 # Brief DB — Le date di validità parlano la lingua del dominio
 
 > **Da leggere per primo: §3, la forma (un'automazione) e §6, cosa si ritira.**
-> Origine: [brief-db-fixture-che-costruiscono-giro-2.md](brief-db-fixture-che-costruiscono-giro-2.md)
+> Origine: [brief-db-fixture-che-costruiscono-giro-2.md](../work-done/brief-db-fixture-che-costruiscono-giro-2.md)
 > §11, dove `anagrafiche/test-risorse-umane` t.6 ha fatto vedere per la prima
 > volta chi rifiuta davvero le date invertite. Tid, 2026-09-23: *«farei il
 > controllo per le date come hai suggerito»* — il guard di dominio sì;
@@ -21,7 +21,7 @@
 > sullo scratch **non vengono da questo giro** (il guard non solleva nessuna
 > delle loro frasi, nessuno dei file è stato toccato qui): sono la finestra
 > differita chiusa dalla riga di contesto sul mondo vuoto, e stanno nel
-> [brief del giro 2](brief-db-fixture-che-costruiscono-giro-2.md), §11 in coda.
+> [brief del giro 2](../work-done/brief-db-fixture-che-costruiscono-giro-2.md), §11 in coda.
 
 ---
 

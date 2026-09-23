@@ -88,6 +88,7 @@
 - [fn_pgtap_crea_filiale_bancaria](funzioni/fn_pgtap_crea_filiale_bancaria.md) — (rev 2026-09-23 — D7, lotto 1)
 - [fn_pgtap_crea_gestore](funzioni/fn_pgtap_crea_gestore.md) — (rev 2026-09-23 — D7, lotto 2)
 - [fn_pgtap_crea_indirizzo_dettaglio](funzioni/fn_pgtap_crea_indirizzo_dettaglio.md)
+- [fn_pgtap_crea_listino](funzioni/fn_pgtap_crea_listino.md) — (rev 2026-09-23 — D7, lotto 2)
 - [fn_pgtap_crea_magazzino](funzioni/fn_pgtap_crea_magazzino.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_pgtap_crea_mondo_cliente](funzioni/fn_pgtap_crea_mondo_cliente.md) — (rev 2026-09-22 — D7, il giro del building block)
 - [fn_pgtap_crea_operatore_umano](funzioni/fn_pgtap_crea_operatore_umano.md)

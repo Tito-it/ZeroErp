@@ -60,29 +60,38 @@ SELECT plan(19);
 --   agisce coincidevano per caso; su un database ricostruito il mondo se lo
 --   costruisce la riga di contesto, e il primo per id e' un ALTRO — da cui
 --   «Accesso negato per scope emittente fiscale».
+-- ⛔ rev 2026-09-23 (brief-db-fixture-che-costruiscono-giro-2, lotto 2).
+--   BA, listino e versione ATTIVA si PESCAVANO («il primo BA la cui utility
+--   non e' un'utenza», «il primo listino attivo», «la prima versione
+--   ATTIVA» — tre sotto-select indipendenti, e listino e versione nemmeno
+--   legati fra loro), e l'ordine prendeva «il primo soggetto_ruolo». Su un
+--   database ricostruito (la CI) non c'e' niente di tutto questo e il file
+--   moriva al primo INSERT (billing_account_id NULL) con zero asserzioni.
+--   Ora: il cliente su una utility che non e' un'utenza (il criterio di
+--   prima, diventato una precondizione COSTRUITA) viene da
+--   dbops.fn_pgtap_crea_cliente_ba — con il contesto aperto il BA e' legato
+--   all'emittente di chi agisce — e il listino con la sua versione ATTIVA
+--   da dbops.fn_pgtap_crea_listino (20260923-50), sulla stessa utility.
+--   ⛔ Cio' che i builder scrivono si legge in un'istruzione SEPARATA.
+CREATE TEMP TABLE tmp_aa_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'available actions offerta',
+    (SELECT u.id FROM config.utilities u
+      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = u.id)
+      ORDER BY u.id LIMIT 1));
+
+CREATE TEMP TABLE tmp_aa_listino AS
+SELECT * FROM dbops.fn_pgtap_crea_listino(
+    (SELECT utility_id FROM tmp_aa_cli), 'available actions offerta');
+
 CREATE TEMP TABLE tmp_aa_ctx AS
 SELECT
-    (SELECT ba.id
-       FROM anagrafiche.billing_account ba
-      WHERE NOT EXISTS (
-          SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
-      )
-      ORDER BY ba.id LIMIT 1) AS billing_account_id,
-    (SELECT ba.istanza_utility_id
-       FROM anagrafiche.billing_account ba
-      WHERE NOT EXISTS (
-          SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
-      )
-      ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-    (SELECT ba.utility_id
-       FROM anagrafiche.billing_account ba
-      WHERE NOT EXISTS (
-          SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
-      )
-      ORDER BY ba.id LIMIT 1) AS utility_id,
+    (SELECT billing_account_id FROM tmp_aa_cli) AS billing_account_id,
+    (SELECT istanza_utility_id FROM tmp_aa_cli) AS istanza_utility_id,
+    (SELECT utility_id FROM tmp_aa_cli) AS utility_id,
     script.fn_pgtap_emittente_operatore() AS emittente_fiscale_id,
-    (SELECT l.id FROM vendite.listini l WHERE l.attivo IS TRUE ORDER BY l.id LIMIT 1) AS listino_id,
-    (SELECT lv.id FROM vendite.listini_versioni lv WHERE lv.stato = 'ATTIVA' ORDER BY lv.id LIMIT 1) AS listino_versione_id_attiva,
+    (SELECT listino_id FROM tmp_aa_listino) AS listino_id,
+    (SELECT listino_versione_id FROM tmp_aa_listino) AS listino_versione_id_attiva,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA')     AS stato_bozza_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'EMESSA')    AS stato_emessa_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'ACCETTATA') AS stato_accettata_id,
@@ -107,7 +116,8 @@ SELECT
 -- BA=NULL + emittente esplicito = niente guard emittente<->BA da soddisfare.
 CREATE TEMP TABLE tmp_aa_ord AS
 SELECT
-    (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1) AS soggetto_ruolo_id,
+    -- Il ruolo dell'ordine e' quello del cliente costruito, non «il primo».
+    (SELECT soggetto_ruolo_id FROM tmp_aa_cli) AS soggetto_ruolo_id,
     (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT' AND attivo IS TRUE LIMIT 1) AS stato_draft_ordine_id,
     (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
     (SELECT emittente_fiscale_id FROM tmp_aa_ctx) AS emittente_fiscale_id;

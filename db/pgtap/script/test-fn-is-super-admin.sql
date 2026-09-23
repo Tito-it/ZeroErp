@@ -1,9 +1,5 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
--- pgtap-differiti: escluso — la fixture non soddisfa un vincolo DIFFERITO e la
---   ragione e' scritta per esteso piu' sotto. Debito noto (§22.4): quando la
---   fixture viene completata, si toglie questa riga e si rimette il
---   SET CONSTRAINTS ALL IMMEDIATE nel punto in cui l'unita' di lavoro e' completa.
 -- pgTAP test per Zero ERP
 --
 -- Test: script.fn_is_super_admin
@@ -14,43 +10,70 @@
 --   - Identita inesistente -> false
 --   - Identita attiva + binding SUPER_ADMIN attivo -> true
 --   - Identita attiva + binding inattivo -> false
---   - Identita inattiva + binding attivo -> false
+--   - Identita inattiva + binding attivo: stato che il modello NON ammette
+--     (caso 6: si asserisce il rifiuto)
 --   - Profilo SUPER_ADMIN inattivo -> false
 --   - Identita fuori finestra temporale -> false
 --
--- Pattern: uso CLIENTE_PORTALE su cliente esistente per evitare il guard
--- PF pura sugli operatori (il test non dipende dal ruolo applicativo).
+-- Pattern: tre OPERATORI costruiti con dbops.fn_pgtap_crea_operatore_umano,
+-- dal percorso di produzione (persona fisica, risorsa umana, identita').
 --
 -- Indice test (1..8):
---    1. Setup: 3 auth_user + 3 identita CLIENTE_PORTALE su clienti distinti
+--    1. Setup: 3 operatori costruiti (identita OPERATORE attive)
 --    2. fn_is_super_admin(NULL) -> false
 --    3. fn_is_super_admin su auth_user senza identita -> false
 --    4. Identita attiva + binding attivo -> true
 --    5. Identita attiva + nessun binding -> false
---    6. Identita inattiva + binding attivo -> false
+--    6. Disattivare un'identita con binding SA attivo -> respinto
 --    7. Binding disattivato -> false
 --    8. Identita con valido_al scaduto -> false
 --
 -- BEGIN; + rollback implicito a fine file.
 -- ------------------------------------------------------------
 
+-- ============================================================================
+-- rev 2026-09-23 (brief-db-fixture-che-costruiscono-giro-2, lotto 2).
+--   La fixture PESCAVA: tre soggetti_ruolo da billing_account (clienti) per
+--   due identita' CLIENTE_PORTALE, un'identita' OPERATORE esistente senza SA,
+--   e il profilo SUPER_ADMIN per id cablato (9100). Quattro difetti:
+--   1. su un database ricostruito (la CI) non ci sono ne' clienti ne'
+--      operatori da pescare: il setup moriva al test 1;
+--   2. un binding SA su un'identita' CLIENTE_PORTALE lo rifiuta il guard di
+--      coerenza («binding non coerente col tipo del profilo»): il caso 6
+--      non poteva nascere;
+--   3. i casi 5 e 6 erano verdi per la ragione SBAGLIATA — la stessa che la
+--      rev 2026-08-18 aveva gia' trovato per il caso 7: fn_is_super_admin e'
+--      fail-closed sui contesti portale, e un'identita' CLIENTE_PORTALE
+--      risponde false comunque, binding o no;
+--   4. l'id 9100 e' vero solo perche' il seed porta l'id esplicito (lo stesso
+--      difetto corretto nella madre da 20260923-10): il profilo si risolve dal
+--      TIPO.
+--   Ora le tre identita' sono OPERATORI costruiti, e ogni caso misura il suo
+--   oggetto: il binding (4, 5, 7), la finestra (8).
+--   ⭐ Il caso 6 cambia oggetto, e non per comodita': «identita' inattiva +
+--   binding attivo» il modello NON lo ammette, in nessuno dei due versi —
+--   l'identita' non si disattiva con un binding attivo (block_deact su
+--   config.profili_accesso_bindings), e un binding non si attiva su
+--   un'identita' inattiva (trgfn_child_requires_active_parent, «Padre non
+--   attivo: figlio attivo non consentito»). Provati tutti e due il
+--   2026-09-23. Il ramo fail-closed di fn_is_super_admin su identita'
+--   inattiva resta difesa in profondita', ma uno stato irraggiungibile non
+--   si collauda: si collauda la regola che lo rende irraggiungibile.
+--   ⭐ E il debito §22.4 si chiude: i builder chiudono da soli la saga del
+--   soggetto (indirizzi compresi), quindi il file torna IMMEDIATE come gli
+--   altri — la riga «pgtap-differiti: escluso» e' tolta.
+--   ⛔ Cio' che il builder scrive si legge in un'istruzione SEPARATA: e
+--   fn_is_super_admin e' STABLE, non sta mai nella stessa istruzione del
+--   builder.
+-- ============================================================================
+
 BEGIN;
 
--- ⚠️ QUESTO FILE NON USA `SET CONSTRAINTS ALL IMMEDIATE`, a differenza degli
---   altri, e non e' una dimenticanza.
---   La fixture costruisce un soggetto con le funzioni del dominio
---   (fn_crea_soggetto_pf e sorelle). Ma `anagrafiche.soggetti` ha TRE guard
---   DEFERRABLE INITIALLY DEFERRED — indirizzi, contatti, dati societari — e la
---   deferralita' li' e' VOLUTA: si crea il soggetto, poi il suo indirizzo, e la
---   completezza si verifica al COMMIT. Forzare IMMEDIATE pretenderebbe
---   l'indirizzo nell'istante stesso dell'INSERT del soggetto, cioe' vieterebbe
---   il pattern che il dominio ha scelto — misurato: da 7 asserzioni verdi a 1,
---   con «Indirizzo obbligatorio mancante per soggetto ...».
---   ⚠️ Resta pero' un buco reale: senza la riga, quei tre guard non vengono
---   esercitati da questo test, e la fixture lascia un soggetto che
---   l'applicazione non potrebbe committare. La correzione vera e' completare la
---   fixture (indirizzo + contatti) e allora la riga si puo' rimettere.
---   Brief: brief-db-pgtap-runner-rls-baseline §20.
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio.
+--   Brief: brief-db-pgtap-runner-rls-baseline §19.
+SET CONSTRAINTS ALL IMMEDIATE;
 
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
@@ -61,105 +84,37 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(8);
 
 -- =========================================================
--- 1) Setup: 3 BA di clienti distinti + 3 auth_user + 3 identita
+-- 1) Setup: tre operatori costruiti
+--    1 = super admin (casi 4, 7, 8)
+--    2 = operatore semplice, nessun binding SA (caso 5)
+--    3 = super admin di cui si prova a disattivare l'identita' (caso 6)
 -- =========================================================
-CREATE TEMP TABLE _t_srs AS
-WITH primi_sr AS (
-    SELECT DISTINCT ON (ba.soggetto_ruolo_id) ba.soggetto_ruolo_id AS sr_id
-      FROM anagrafiche.billing_account ba
-     WHERE ba.soggetto_ruolo_id IS NOT NULL
-     ORDER BY ba.soggetto_ruolo_id, ba.id
-)
-SELECT sr_id,
-       ROW_NUMBER() OVER (ORDER BY sr_id) AS rn
-  FROM primi_sr
- LIMIT 3;
+CREATE TEMP TABLE _t_op1 AS
+SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('is SA 1', p_super_admin := true);
+
+CREATE TEMP TABLE _t_op2 AS
+SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('is SA 2');
+
+CREATE TEMP TABLE _t_op3 AS
+SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('is SA 3', p_super_admin := true);
 
 CREATE TEMP TABLE _t_au (idx int, auth_user_id int);
-DO $$
-DECLARE v_i int; v_id int;
-BEGIN
-    FOR v_i IN 1..3 LOOP
-        INSERT INTO django.auth_user (
-            username, password, is_active, is_staff, is_superuser,
-            first_name, last_name, email, date_joined
-        )
-        VALUES (
-            '_pgtap_isa_' || v_i || '_' || substring(md5(clock_timestamp()::text) from 1 for 6),
-            '!', true, false, false, '', '', '', now()
-        )
-        RETURNING id INTO v_id;
-        INSERT INTO _t_au (idx, auth_user_id) VALUES (v_i, v_id);
-    END LOOP;
-END
-$$;
-
 CREATE TEMP TABLE _t_id (idx int, identita_id bigint);
 
--- Identita 1 (casi 4 e 7): si RIUSA un'identita OPERATORE gia' esistente.
--- 🔴 Corretto il 2026-08-18. La fixture creava un'identita 'CLIENTE_PORTALE',
---   ma `fn_is_super_admin` richiede per contratto «una identita OPERATORE
---   attiva con binding SUPER_ADMIN attivo»: il filtro sul ruolo e' arrivato
---   con PR-B del 2026-04-21 (context-aware, fail-closed sui contesti
---   portale/shop) e la fixture non e' stata aggiornata. Il caso 4 chiedeva
---   `true` a un'identita di PORTALE, e la funzione rispondeva `false` — cioe'
---   correttamente.
---   ⚠️ E il caso 7 («binding disattivato -> false») era verde per la ragione
---   SBAGLIATA: sarebbe stato false comunque perche' portale. Ora misura la
---   disattivazione del binding, che e' il suo oggetto.
---
---   ⛔ Non si CREA un'identita OPERATORE: il soggetto_ruolo di questa fixture
---   viene da `billing_account` (e' un cliente) e i guard anagrafici la
---   rifiutano — «non e' stata assegnata la relazione soggetti_ruoli».
---   Costruirne una valida vorrebbe una risorsa umana con PF pura: troppa
---   impalcatura per il soggetto di questo test.
---   ⭐ Si riusa un'identita OPERATORE vera SENZA binding SUPER_ADMIN attivo, e
---   glielo si aggiunge. Il file e' transazionale: il binding sparisce al
---   ROLLBACK.
-INSERT INTO _t_id (idx, identita_id)
-SELECT 1, id.id
-  FROM anagrafiche.identita_digitali id
- WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-   AND id.attivo = true
-   AND NOT EXISTS (
-       SELECT 1 FROM config.profili_accesso_bindings b
-         JOIN config.profili_accesso pa ON pa.id = b.profilo_accesso_id
-        WHERE b.identita_digitale_id = id.id AND b.attivo = true
-          AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
-   )
- ORDER BY id.id LIMIT 1;
+INSERT INTO _t_au SELECT 1, auth_user_id FROM _t_op1
+UNION ALL          SELECT 2, auth_user_id FROM _t_op2
+UNION ALL          SELECT 3, auth_user_id FROM _t_op3;
 
--- I casi 4 e 7 interrogano per auth_user: allineo _t_au all'identita scelta.
-UPDATE _t_au SET auth_user_id = (
-    SELECT id.auth_user_id FROM anagrafiche.identita_digitali id
-     WHERE id.id = (SELECT identita_id FROM _t_id WHERE idx = 1))
- WHERE idx = 1;
-
--- Identita 2: attiva, nessun binding (caso 5)
-WITH ins AS (
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    SELECT s.sr_id, a.auth_user_id, 'CLIENTE_PORTALE', true
-      FROM _t_srs s JOIN _t_au a ON a.idx = s.rn
-     WHERE s.rn = 2
-    RETURNING id
-)
-INSERT INTO _t_id (idx, identita_id) SELECT 2, id FROM ins;
-
--- Identita 3: INATTIVA (caso 6)
-WITH ins AS (
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    SELECT s.sr_id, a.auth_user_id, 'CLIENTE_PORTALE', false
-      FROM _t_srs s JOIN _t_au a ON a.idx = s.rn
-     WHERE s.rn = 3
-    RETURNING id
-)
-INSERT INTO _t_id (idx, identita_id) SELECT 3, id FROM ins;
+INSERT INTO _t_id SELECT 1, identita_id FROM _t_op1
+UNION ALL          SELECT 2, identita_id FROM _t_op2
+UNION ALL          SELECT 3, identita_id FROM _t_op3;
 
 SELECT ok(
-    (SELECT count(*) FROM _t_id) = 3,
-    '1. Setup: 3 identita CLIENTE_PORTALE create (2 attive, 1 inattiva)'
+    (SELECT count(*) FROM anagrafiche.identita_digitali idg
+       JOIN _t_id t ON t.identita_id = idg.id
+      WHERE idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+        AND idg.attivo) = 3,
+    '1. Setup: 3 identita OPERATORE attive costruite'
 );
 
 -- =========================================================
@@ -182,10 +137,8 @@ SELECT ok(
 
 -- =========================================================
 -- 4) Identita attiva + binding SUPER_ADMIN attivo -> true
+--    Il binding l'ha scritto la madre (fn_crea_operatore_v2).
 -- =========================================================
-INSERT INTO config.profili_accesso_bindings
-    (profilo_accesso_id, identita_digitale_id, attivo)
-VALUES (9100, (SELECT identita_id FROM _t_id WHERE idx = 1), true);
 
 SELECT ok(
     script.fn_is_super_admin(
@@ -205,26 +158,28 @@ SELECT ok(
 );
 
 -- =========================================================
--- 6) Identita inattiva + binding attivo -> false
+-- 6) Identita inattiva + binding attivo: il modello non lo ammette.
+--    Disattivare l'identita' 3 col suo binding SA attivo e' respinto.
+--    (Il verso opposto — attivare un binding su un'identita' inattiva —
+--    lo respinge trgfn_child_requires_active_parent.)
 -- =========================================================
-INSERT INTO config.profili_accesso_bindings
-    (profilo_accesso_id, identita_digitale_id, attivo)
-VALUES (9100, (SELECT identita_id FROM _t_id WHERE idx = 3), true);
-
-SELECT ok(
-    script.fn_is_super_admin(
-        (SELECT auth_user_id FROM _t_au WHERE idx = 3)
-    ) = false,
-    '6. Identita inattiva + binding attivo -> false (fail-closed)'
+SELECT throws_like(
+    $$UPDATE anagrafiche.identita_digitali
+         SET attivo = false
+       WHERE id = (SELECT identita_id FROM _t_id WHERE idx = 3)$$,
+    '%ci sono ancora righe collegate attive in config.profili_accesso_bindings%',
+    '6. Identita con binding SUPER_ADMIN attivo: la disattivazione e'' respinta (lo stato «inattiva + binding attivo» non esiste)'
 );
 
 -- =========================================================
 -- 7) Binding disattivato -> false
 -- =========================================================
-UPDATE config.profili_accesso_bindings
+UPDATE config.profili_accesso_bindings pab
    SET attivo = false
- WHERE identita_digitale_id = (SELECT identita_id FROM _t_id WHERE idx = 1)
-   AND profilo_accesso_id = 9100;
+  FROM config.profili_accesso pa
+ WHERE pa.id = pab.profilo_accesso_id
+   AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+   AND pab.identita_digitale_id = (SELECT identita_id FROM _t_id WHERE idx = 1);
 
 SELECT ok(
     script.fn_is_super_admin(
@@ -234,10 +189,12 @@ SELECT ok(
 );
 
 -- Riattivo per caso 8
-UPDATE config.profili_accesso_bindings
+UPDATE config.profili_accesso_bindings pab
    SET attivo = true
- WHERE identita_digitale_id = (SELECT identita_id FROM _t_id WHERE idx = 1)
-   AND profilo_accesso_id = 9100;
+  FROM config.profili_accesso pa
+ WHERE pa.id = pab.profilo_accesso_id
+   AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+   AND pab.identita_digitale_id = (SELECT identita_id FROM _t_id WHERE idx = 1);
 
 -- =========================================================
 -- 8) Identita fuori finestra (valido_al scaduto) -> false

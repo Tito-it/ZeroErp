@@ -1,9 +1,16 @@
 # Brief DB — Il mondo si costruisce: il building block della composizione (D7, giro 2)
 
+> ✅ **CHIUSO il 2026-09-23, spostato in `work-done/`** (Tid: «per il momento
+> possiamo lasciare così»). Chiuso **il giro 2**, non D7: il debito che resta —
+> **18 file rossi** del lotto 2 da guardare uno per uno, elencati in coda al §11
+> («Stato di chiusura») — torna nel documento principale,
+> [migliorie-generali-da-test-valutazione.md](../work-in-progress/migliorie-generali-da-test-valutazione.md)
+> §3 D7, e il registro `baseline-rossi-ci.tsv` (361) cala solo con la corsa CI.
+>
 > **Da leggere per primo: §3 — la forma, e perché non sta nella riga di contesto.**
-> Origine: [migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md)
+> Origine: [migliorie-generali-da-test-valutazione.md](../work-in-progress/migliorie-generali-da-test-valutazione.md)
 > §3 D7 («la ricetta per file»), figlio del brief madre
-> [brief-db-fixture-che-costruiscono-d7-d6-d4.md](../work-done/brief-db-fixture-che-costruiscono-d7-d6-d4.md)
+> [brief-db-fixture-che-costruiscono-d7-d6-d4.md](brief-db-fixture-che-costruiscono-d7-d6-d4.md)
 > (giro 1, chiuso il 12-09) e della rev `20260920-01`, che ha insegnato alla riga
 > di contesto a **costruire** il mondo quando non lo trova.
 >
@@ -22,22 +29,38 @@
 > regressione**. 12 file su 70 verdi sul mondo vuoto.
 >
 > ✏️ **Ripresa del 23-09 pomeriggio (§11, in coda)**: lotto 2 da 16 a **22
-> verdi** sul mondo vuoto, più **11 verdi in attesa** di tre changeSet nuovi
-> **da applicare** — `20260923-07` (il codice libero del cliente si leggeva
+> verdi** sul mondo vuoto, più **11** che aspettavano tre changeSet nuovi,
+> ✅ **applicati e verdi** (Tid, 23-09, commit `b0564de6f`: **33 verdi**) — `20260923-07` (il codice libero del cliente si leggeva
 > sotto RLS), `-08` (`fn_pgtap_crea_operatore_umano`, il super admin senza
 > azienda), `-09` (`fn_pgtap_crea_pdp`). Famiglie chiuse: cliente, `RIS_UMANA`,
 > `pdp_id`, registri, utente `'1'`. Restano 36 file, elencati per forma in
 > fondo al §11. Corretto anche il profilo super admin legato per id cablato
-> `9100` (`-10`, da applicare). Il `CHECK` sulle date che oggi non parla (§11 —
+> `9100` (`-10`, ✅ applicato). Il `CHECK` sulle date che oggi non parla (§11 —
 > non è inutile, il difetto è la frase che legge l'operatore) ha ora un brief
 > suo, in riflessione:
-> [brief-db-guard-date-validita.md](brief-db-guard-date-validita.md).
+> [brief-db-guard-date-validita.md](../work-in-progress/brief-db-guard-date-validita.md).
 >
 > ✅ **23-09 sera — seconda ondata della maschera caduta, sanata**: nove file
 > che contavano sulla finestra differita di default (otto senza nessun
 > `IMMEDIATE`, invisibili al censimento del 21-09) morivano sullo scratch da
 > zero; riaperta la finestra dopo la riga di contesto, **verdi** (Tid). Dodici
 > candidati in più restano da decidere file per file: §11 in coda.
+>
+> ✏️ **23-09, terzo giro — i «18 a schema» dei 36 rossi** (§11, in coda):
+> **16 file riscritti**, provati uno per uno sullo scratch `zeroerp_ci` come
+> `zeroerp_app`: **15 verdi, nessuno `skip`**, 1 rosso per un **difetto vero**
+> di `script.fn_get_indirizzo` (codice contro codice_interno). Due restano
+> fermi su una decisione: `offerta` (serve `fn_pgtap_crea_listino`, regola
+> del 2) e `istanze-dati-precontrattuali` (`classi_utenze.csv` non lo carica
+> nessun changelog). ✅ **Test eseguiti da Tid, nessuna regressione** (23-09).
+> ✅ **Decisioni di Tid (23-09)**: i changeSet **applicati, nessuna regressione** —
+> `20260923-49` (`fn_get_indirizzo` e `fn_get_indirizzo_by_soggetto`
+> confrontano il tipo per id) e `20260923-50` (`dbops.fn_pgtap_crea_listino`,
+> copia del lotto 1 ritirata), più `20260923-51` (il presidio C1 non conta le
+> fixture `fn_pgtap_*`). ✏️ **CSV di `tipi_utenze` e `classi_utenze`: cambio di
+> decisione (Tid, 23-09 notte)** — sono catalogo e si caricano: `20260923-52`/`-53`
+> ✅ **applicati, nessuna regressione** (Tid); con loro `istanze-dati-precontrattuali`
+> è verde. §11 in coda.
 >
 > ⏳ **Quello che manca non è lavoro, è una corsa**: il registro
 > `baseline-rossi-ci.tsv` è ancora a 361 file. Le righe rientrate le toglie
@@ -316,8 +339,10 @@ chiamante scrive sempre non può stare dietro a quello raro.
   certifica i rientrati e abbassa il registro: `pgtap-baseline-ci-rientrati.sh`
   legge il log della corsa, e il log scade — va lanciato il giorno stesso;
 * ✏️ **il lotto 2 è in corso** (§11): il debito dei `COMMIT`/autocommit è chiuso,
-  12 file su 70 sono verdi sul mondo vuoto. Restano le famiglie del cliente da
-  costruire, `pdp_id`, `RIS_UMANA`, i registri e l'utente di sessione fissato;
+  `20260923-06`…`-10` sono applicati. Al 23-09 sera **33 verdi** (gli 11 in
+  attesa rimisurati da Tid dopo l'apply), 1 verde da owner, **36 rossi**,
+  elencati per forma in coda al §11. ⏳ Il registro `baseline-rossi-ci.tsv`
+  non è ancora aggiornato: serve la corsa CI (GitHub non disponibile al 23-09);
 * i 28 file che fissano `app.current_user_id = '1'`: non li tocca il BB, è una
   ricetta a sé (l'utente di sessione è quello del mondo costruito);
 * i 7 file legati a dati di **questa macchina**: o si riscrivono, o si dichiarano
@@ -561,7 +586,7 @@ I cleanup fuori transazione dei primi due file sono stati tolti: cancellavano
 righe con codici che il file non scrive più, e nessuna riga del file sopravvive
 al `ROLLBACK`.
 
-#### ⛔ Due difetti trovati per strada, due changeSet (da applicare)
+#### ⛔ Due difetti trovati per strada, due changeSet (✅ applicati il 23-09)
 
 1. **`20260923-07` — il codice «libero» di `fn_pgtap_crea_cliente_ba` si leggeva
    sotto la RLS.** Il prossimo `PGTAPBAnnnnn` era `max(codice)+1` su
@@ -696,11 +721,12 @@ planner lo esegue una volta sola. Due emittenti = due istruzioni.
 | | Mattina | Sera |
 | --- | --- | --- |
 | verdi | 16 | **22** |
-| verdi in attesa dell'apply di `-07`/`-08`/`-09` (provati con la copia in `pg_temp`) | — | **11** |
+| verdi dopo l'apply di `-07`/`-08`/`-09` (prima provati con la copia in `pg_temp`; ✅ rimisurati da Tid dopo l'apply) | — | **11** |
+| **totale verdi** | 16 | **33** |
 | verde da owner, com'è dichiarato (il banco lo misura come app, a torto) | — | 1 |
 | ancora rossi | 54 | **36** |
 
-**Da applicare** (nessuno dipende dagli altri): `20260923-07` (codice libero
+✅ **Applicati** (Tid, 23-09, commit `b0564de6f`; nessuno dipende dagli altri): `20260923-07` (codice libero
 del cliente fuori RLS), `-08` (`fn_pgtap_crea_operatore_umano`), `-09`
 (`fn_pgtap_crea_pdp`), `-10` (`fn_crea_risorsa_umana_v2`: profilo SUPER_ADMIN
 per `tipo`, non per id cablato). SQL estratto provato da owner su `zeroerp_ci`:
@@ -768,7 +794,7 @@ sede è un indice unico parziale su `tipo`: decisione a parte.
 ### ⛔ La maschera caduta, seconda ondata: nove file contavano sulla finestra di default
 
 **Il fatto (2026-09-23 sera).** Dopo l'apply del giro delle date
-([brief-db-guard-date-validita.md](brief-db-guard-date-validita.md)) la corsa
+([brief-db-guard-date-validita.md](../work-in-progress/brief-db-guard-date-validita.md)) la corsa
 sullo scratch `zeroerp_ci` **ricostruito alle 17:06** ha dato nove rossi che la
 CI non conosce. ⚠️ **Non vengono dal giro delle date**: il guard `a10` non può
 sollevare nessuna delle tre frasi, e nessuno dei nove file è stato toccato
@@ -822,3 +848,262 @@ le loro scritture non passano da un guard differito. Non toccati: si decidono
 file per file quando la loro prima causa è sanata. ⇒ Il cancello del §«da
 decidere» del documento delle migliorie deve contare **anche i file senza
 nessun `IMMEDIATE`**.
+
+### ✏️ 23-09, terzo giro — i «18 a schema» dei 36 rossi
+
+**Perimetro.** Dei 36 rossi, i tre gruppi che avevano già un builder in
+servizio: gestore (3), super admin e operatori (6), cliente con istanza/BA (9).
+Provati **uno per uno** sullo scratch `zeroerp_ci` come `zeroerp_app`, ogni
+file nella sua transazione ritirata; nessuna suite, nessuna baseline. Fatto
+datato, misura dell'esecutore: la corsa di Tid è quella che conta.
+
+✅ **Misura di Tid (23-09): test eseguiti, nessuna regressione.**
+
+| File | Prima (scratch) | Dopo | Cosa c'era, oltre alla pesca |
+| --- | --- | --- | --- |
+| `anagrafiche/create-gestore-indirizzo-res` | 3/8 | **8/8** | — (`fn_pgtap_crea_gestore`) |
+| `anagrafiche/create-gestore-indirizzo-res-domfisc` | morto | **10/10** | ⛔ RES/DOMFISC **non ammessi** per GE: contraddiceva il fratello qui sopra. Vincolo `uq_indirizzi_ruolo_tipo` sparito (oggi indice parziale `…_no_istanza`). Ricerca sul testo di `via_norm`, che il trigger `normalize` riscrive: non poteva trovare niente. **Veicolo: un ruolo CL costruito** |
+| `anagrafiche/test_indirizzi_unique_res` | 3/6 | **6/6** | ⛔ stesso RES su GE; la «pulizia» cancellava i RES del gestore **vero**. Veicolo CL |
+| `script/test-fn-check-ultimo-super-admin-attivo` | 4/5 | **5/5** | SA «preesistenti» contati per il multi-SA: due SA costruiti |
+| `script/test-fn-get-operatore-detail` | morto | **4/4** | copia di `mk_admin` (identità «vergine» pescata) ritirata |
+| `script/test-fn-is-super-admin` | morto | **8/8** | ⛔ casi 5 e 6 verdi **per la ragione sbagliata** (identità CLIENTE_PORTALE: `false` comunque). Profilo `9100` cablato. **Caso 6 cambia oggetto**: «identità inattiva + binding attivo» il modello non lo ammette in nessuno dei due versi (`block_deact` e `child_requires_active_parent`, provati) ⇒ si asserisce il rifiuto. Tolto `pgtap-differiti: escluso` (debito §22.4 chiuso per questo file) |
+| `script/test-fn-get-profili-accesso-applicabili` | morto | **5/5** | profilo PORTALE per id `9001` cablato → dal binding (tipo + ruolo applicativo) |
+| `script/test-permessi-funzioni-risoluzione` | morto | **34/34** | ⛔ il soggetto del test **era l'operatore di contesto** (gli cancellava whitelist e override); `unset_admin` moriva sull'anti-lockout senza un altro SA; `9100` cablato. Operatore costruito + SA di presidio |
+| `anagrafiche/test-billing-account-auto-link-ef` | 3/4 | **4/4** | ⛔ i **3 verdi erano finti**: lo «skip soft» scriveva il valore atteso. E il test 4 faceva «admin globale» svuotando la whitelist: dopo P-2a quello è fail-closed, non admin. L'admin globale del modello è il **super admin senza azienda** |
+| `script/test-fn-available-actions-preventivo-genera-ordine-v1` | morto | **4/4** | articolo pescato e **modificato** (natura): ora costruito |
+| `script/test-fn-available-actions-preventivo-v1` | morto | **8/8** | — (`fn_pgtap_crea_mondo_cliente`) |
+| `anagrafiche/test-trgfn-billing-account-guard-soggetto-coerenza-istanza-v1` | 3/5 | **5/5** | `throws_ok(P0001)` → frase di `E_BA_SOGGETTO_INCOERENTE_ISTANZA` |
+| `anagrafiche/test-fn-get-evento-stato-corrente-cliente-v1` | morto | **8/8** | la riga di `anagrafiche.clienti` la scrive il test; utility senza PDP |
+| `anagrafiche/test-conti-bancari-istanza-cascata` | 2/10 | **10/10** | filiale → `fn_pgtap_crea_filiale_bancaria` |
+| `anagrafiche/test-indirizzi-istanza-cascata` | 4/14 | **13/14** | ⛔ **t.10 rosso per un difetto vero**, sotto |
+| `script/test-guard-sorgente-polimorfa-testuale-v1` | morto | **18/18** | t.16 pescava «un ordine libero» con `skip`: da zero saltava sempre. Ordine costruito, `skip` sparito |
+
+Presidio statico: `guardrail_pgtap_preambolo.py` verde su 687 file, debito
+`throws_ok` senza discriminante **119** (soglia 119).
+
+#### ⛔ Un difetto vero: `script.fn_get_indirizzo` confronta codice con codice_interno
+
+`fn_get_indirizzi_by_ruolo` restituisce in `tipo_indirizzo` il **codice** del
+tipo (`DOM-FISC`); `fn_get_indirizzo` lo confronta con il **codice_interno**
+(`DOMFISC`) nelle fasi 1 (ruolo + istanza) e 2 (ruolo generico). Per ogni tipo
+in cui i due differiscono — RES, DOMFISC, SEDELEG, SEDEOP, POSTA, FORNITURA,
+CON (seed `tipi_indirizzi.csv`, uguale su dbdev e sullo scratch) — quelle fasi
+**non trovano mai niente** e si cade sul fallback del soggetto. Il t.10 di
+`test-indirizzi-istanza-cascata` su dbdev era verde, con ogni probabilità, per
+quel fallback; sul cliente costruito il soggetto non ha un DOMFISC suo, e il
+difetto si vede. ⇒ **Il test resta rosso, e ha ragione.** La correzione (il
+confronto per `tipo_indirizzo_id`, non per testo) è un changeSet su
+`fn_get_indirizzo`, con i suoi consumatori da censire: **decisione di Tid**.
+
+#### ✅ Due file fermi su una decisione — decise il 23-09 (in coda)
+
+> `offerta`: builder `fn_pgtap_crea_listino` (`-50`), **chiuso**. `istanze-dati-precontrattuali`:
+> prima «CSV lasciati così», poi **i due CSV si caricano** (`-52`/`-53`, sotto). Il testo qui è la
+> fotografia di prima.
+
+* `script/test-fn-available-actions-offerta-v1` — pesca BA, **listino**,
+  **versione ATTIVA** e un `soggetto_ruolo` qualunque per l'ordine. Sullo
+  scratch i listini sono zero. Il listino si costruisce in due `INSERT`, ma la
+  stessa costruzione c'è già in `dbops/test-fn-apply-chiusura-scadenze-v1`
+  (lotto 1): è la **seconda copia** ⇒ regola del 2, un builder
+  `dbops.fn_pgtap_crea_listino` (changeSet nuovo) e la copia del lotto 1
+  ritirata nello stesso giro.
+* `anagrafiche/test-istanze-dati-precontrattuali` — pretende una
+  `config.classi_utenze`: `80_data/sql/config/classi_utenze.csv` esiste ma
+  **nessun changelog lo carica** (CSV orfano), e anche `config.tipi_utenze` da
+  zero è vuota. Prima di toccare il test va deciso se `classi_utenze` è
+  **catalogo** (manca il loader) o **dato di macchina** (il CSV va ritirato e
+  il test costruisce la sua classe).
+
+#### 🔵 Da tenere d'occhio (non fatti in questo giro)
+
+* `pg_temp.disable_other_sa` è ora in **due** file (`check-ultimo-super-admin`,
+  `get-operatore-detail`): seconda copia, candidata a un helper `dbops`.
+* La riga di `anagrafiche.clienti` scritta a mano nella fixture è in **otto**
+  file (`create-cliente`, `test-simula-subentro`, `rls/test-rls-clienti`, …, e
+  ora `evento-stato-corrente`): `fn_pgtap_crea_cliente_ba` si ferma al BA.
+* Il t.2 di `test-fn-get-profili-accesso-applicabili` asserisce `count >= 0`:
+  non può fallire.
+
+#### ✏️ Le decisioni del 23-09 sera, e i due changeSet
+
+Tid: *«1 e 2 A, i CSV vuoti al momento lasciamoli così»*.
+
+**`20260923-49` — `update-fn-get-indirizzo-tipo-per-id`** (✅ applicato).
+Il difetto era in **due** funzioni, non in una: anche
+`script.fn_get_indirizzo_by_soggetto` (la fase 3) confrontava
+`tipo_indirizzo_codice` — il **codice** — con il codice interno. Quindi per
+RES, DOMFISC, SEDELEG, SEDEOP, POSTA, FORNITURA, CON nessuna delle tre fasi
+trovava mai niente, e l'unico consumatore, `script.fn_get_search_detail`
+(chiede `'RES'` e `'SEDEOP'` per l'indirizzo di ripiego del dettaglio di
+ricerca), riceveva **sempre** zero righe. Correzione: a ogni giro della catena
+l'id del tipo si risolve prima della query e si filtra su
+`tipo_indirizzo_id`; firme, fallback e anti-loop invariati (`CREATE OR
+REPLACE`). Corpi dalla doc auto-gen (uguali al vivo su dbdev e sullo scratch),
+dichiarazioni `%TYPE` dagli YAML `20260402-08`/`-10`.
+⚠️ **Debito lasciato, dichiarato**: la colonna `tipo_indirizzo` in uscita
+resta il **codice** mentre la firma la dichiara `codice_interno%TYPE` (§6c,
+alias non fedele). Cambiarla vuol dire DROP e censire i lettori: non in
+questo giro. La pagina `manual/` ora dice il vero.
+
+**`20260923-50` — `create-fn-pgtap-crea-listino`** (✅ applicato).
+`dbops.fn_pgtap_crea_listino(p_utility_id, p_etichetta, p_valido_dal,
+p_valido_al)`: listino + una versione ATTIVA; emittente **derivato** da chi
+agisce (guard `emittente_scope`), tipologia = la **prima ammessa** per
+l'utility (guard `tipologia_utility`: la «prima per id» del lotto 1 non vale
+per BASE). Consumatori: `script/test-fn-available-actions-offerta-v1` e
+`dbops/test-fn-apply-chiusura-scadenze-v1`, la cui copia a mano è **ritirata
+nello stesso giro** (la versione ora si rilegge per id, non per
+`codice_versione = 'FW_TEST'`).
+
+**File pgTAP toccati da questo passo**: `anagrafiche/test-indirizzi-istanza-cascata`
+(t.9 e t.10 asseriscono il tipo **per id**: il testo in uscita è un'etichetta),
+`script/test-fn-available-actions-offerta-v1` (BA, listino e versione
+costruiti; il ruolo dell'ordine è quello del cliente, non «il primo»),
+`dbops/test-fn-apply-chiusura-scadenze-v1`.
+
+**Prove (23-09, SQL estratto in transazione ritirata, da owner su `zeroerp_ci`)**:
+
+| Prova | Senza changeSet | Con changeSet |
+| --- | --- | --- |
+| `plpgsql_check` sulle tre funzioni | — | pulito |
+| `anagrafiche/test-indirizzi-istanza-cascata` | 13/14 (t.10 rosso) | **14/14** |
+| `script/test-fn-available-actions-offerta-v1` | — | **19/19** |
+| `dbops/test-fn-apply-chiusura-scadenze-v1` | — | **6/6** |
+| `anagrafiche/test-indirizzi-fallback`, `script/test-search-soggetti-universale` (già fra i 36) | 5/10, 7/8 | identici |
+| `script/test-search-scope-interno-v1` | 15/15 | 15/15 |
+| `dbops/test-riferimenti-morti-v1` | 9/9 | 9/9 (lo skip del t.8 è da owner, c'era prima) |
+
+Cancelli statici verdi (runOnChange, preCondition/seed, DDL su trigger di
+automazione, GRANT batch, letterali, timestamp, preambolo pgTAP).
+Doc: `manual/fn_pgtap_crea_listino.md` nuova; `manual/fn_get_indirizzo.md` e
+`manual/fn_get_indirizzo_by_soggetto.md` corrette; nella guida pgTAP la riga
+del listino e la riga «un super admin», che diceva ancora «un'azienda +
+binding» contro la guida stessa.
+
+**`anagrafiche/test-istanze-dati-precontrattuali` resta rosso per decisione**:
+i CSV orfani di `80_data/sql/config/` — `classi_utenze.csv` (1 riga),
+`tipi_utenze.csv` (1), `categoria_accisa.csv` (0), `tipi_tariffe_ee.csv` (0) —
+non li carica nessun changelog, e per ora restano così (Tid, 23-09).
+
+✅ **`-49` e `-50` applicati, pgTAP rilanciati, nessuna regressione** (Tid, 23-09).
+
+#### ⛔ Un rosso nato dal builder del listino, e la terza decisione (23-09 notte)
+
+**Il fatto.** Dopo l'apply di `-49`/`-50` (dbdev; sullo scratch alle 22:44),
+`dbops/test-stati-check-scrittori-v1` t.3 rosso (Tid): *«have:
+vendite.listini_versioni.stato = ATTIVA (APPLICAZIONE)»*. Il presidio C1
+cerca gli scrittori di uno stato nel corpo di **tutte** le funzioni: il
+builder scrive `'ATTIVA'` e la dichiarazione «ATTIVA la scrive
+l'APPLICAZIONE» è diventata DEBITO_ESTINTO. Prima lo stesso letterale stava
+in un file pgTAP, che la vista non legge.
+
+**La decisione (Tid: «ok A»).** Togliere la riga di registro sarebbe stato
+sbagliato: dice il vero. Il difetto è nel criterio — una fixture non è uno
+scrittore del sistema, e una fixture che scrivesse `ERRORE` spegnerebbe il
+presidio proprio dove serve. Criterio scelto: il **prefisso `fn_pgtap_`**
+negli schemi `dbops` e `script`, la convenzione con cui nascono tutti gli
+helper di fixture.
+
+**`20260923-51` — `update-vw-stati-check-scrittori-escludi-fixture`** (✅
+applicato): il CTE `funzioni` (l'unico che legge `pg_proc`) esclude gli helper
+di fixture, come scrittori e come chiamanti. Corpo di partenza: `20260922-23`,
+provato **uguale al vivo** (EXCEPT nei due versi, zero righe).
+Il pgTAP del presidio: funzioni di prova rinominate `fn_prova_stati_*` (col
+nome vecchio i casi 6..11 sarebbero spariti), **t.15 nuovo** — una fixture
+`fn_pgtap_*` che scrive `NOVE`, diretta e indiretta, lo lascia NON_DICHIARATO;
+plan 14 → 15.
+
+**Prove (SQL estratto, transazione ritirata, owner su `zeroerp_ci`)**: vecchia
+contro nuova cambia **una riga su 114** (`listini_versioni.stato = ATTIVA`,
+DEBITO_ESTINTO → DICHIARATO_APPLICAZIONE) — nessun altro stato dipendeva da
+una fixture. pgTAP con la vista vecchia **10/15** (t.3 e i quattro che vedono
+la fixture costruita), con la nuova **15/15**. Cancelli statici verdi. Doc:
+`manual/vw_stati_check_scrittori.md`, §«Chi conta come scrittore».
+
+✅ **`-51` applicato, test eseguiti, nessuna regressione** (Tid, 23-09).
+
+#### ✏️ `tipi_utenze` e `classi_utenze` si caricano (23-09 notte)
+
+Tid ha ri-esportato `classi_utenze.csv` (token `NULL`, §11.7) e ha cambiato la
+decisione: i due CSV sono **catalogo** e si caricano. Specie verificata sul
+modello: le FK puntano solo a `config.*` (iva, utilities, tipi_utenze,
+categoria_accisa, tipi_tariffe_ee), nessuna ad `anagrafiche.*`. I CSV
+coincidono con le righe di dbdev (`tipi_utenze` 1 `Dom`, `classi_utenze` 2
+`DOM`): lì il loader non cambia niente.
+
+| ChangeSet | Cosa | Stato |
+| --- | --- | --- |
+| `80_data/20260923-52-seed-tipi-utenze` | `loadUpdateData` di `tipi_utenze.csv` | ✅ applicato |
+| `80_data/20260923-53-seed-classi-utenze` | `loadUpdateData` di `classi_utenze.csv`, dopo il `-52` (FK `tipo_utenza_id`) | ✅ applicato |
+
+`categoria_accisa.csv` e `tipi_tariffe_ee.csv` (vuoti, orfani) restano come
+sono: la riga di `classi_utenze` li ha NULL.
+
+**`anagrafiche/test-istanze-dati-precontrattuali`**: oltre alla classe
+utenza pescava anche l'istanza («la prima senza dati GAS»): ora viene da
+`fn_pgtap_crea_cliente_ba` su un'utility non GAS.
+
+**Prove (23-09, owner su `zeroerp_ci`, transazione ritirata, i due seed
+simulati con le stesse righe dei CSV)**: il test **3/8 → 8/8**. Sui 29 file
+che nominano `tipi_utenze`/`classi_utenze`: **nessuna regressione**,
+`vendite/test-contratti-utilities-snapshot` **6 → 7** verdi; gli altri
+rossi erano già rossi per cause loro (in `vendite/offerte_commerciali/` quasi
+tutti «billing_account_id NULL»: offerte che pescano il BA, fuori da questo
+lotto). ⚠️ Effetto sul modello da sapere: GAS non è più «un'utility che non è
+un'utenza»; le fixture che scelgono quella utility prendono la prima per id
+(ENERGIA) e non cambiano.
+
+✅ **`-52`/`-53` applicati, test eseguiti, nessuna regressione** (Tid, 23-09).
+
+### ✅ Stato di chiusura — 2026-09-23
+
+**Lotto 1** (43 file, sei schemi): **37 verdi** sul database da zero — 16 lo
+erano già, 21 riscritti — e **3 rossi dichiarati** al §10 («Cosa NON è
+entrato»). ⚠️ I conti del §10 non chiudono su 43: 16 + 21 + 3 = 40, e **tre
+file** non sono contati né fra i verdi né fra i residui — da riconciliare con
+la stessa misura dei 18 qui sotto.
+
+**Lotto 2** (70 file, `anagrafiche` + `script`), misura di Tid:
+
+| | 23-09 mattina | 23-09 sera | Chiusura |
+| --- | --- | --- | --- |
+| verdi sul mondo vuoto | 16 | 33 | **51** |
+| verde da owner (come dichiarato) | — | 1 | 1 |
+| rossi | 54 | 36 | **18** |
+
+I 18 riscritti del terzo giro sono i 16 del «terzo giro» più `offerta` (`-50`) e
+`istanze-dati-precontrattuali` (`-52`/`-53`). ChangeSet nati dal lotto 2, tutti
+applicati senza regressioni: `20260923-06`…`-10`, `-49`, `-50`, `-51`, `-52`,
+`-53`.
+
+**I 18 rossi che restano** (da guardare uno per uno; fotografia del banco,
+elenco per forma del §11). ⚠️ Per nome sono **19**: lo scarto di uno c'era già
+nel conteggio del 23-09 (37 nomi contro 36) e va riconciliato alla prossima
+misura.
+
+* gestore: `create-soggetto-gestori`;
+* pool di utenti e ruoli CL liberi: `test-fn-sync-auth-user-is-active-or`,
+  `test-identita-digitali-unique-multi-veste`, `test-sync-auth-user-is-active-multi-role`;
+* contatti/indirizzi obbligatori: `test-fn-crea-utente-tecnico`,
+  `test-identita-tecnica`, `test-identita-digitali-guard-coerenza`; dato di
+  macchina: `test-contatti-soggetto-cliente` (CF `TTNMHL…`: da decidere se
+  riscriverlo o dichiararlo test di macchina);
+* casi singoli: `test-catasto-unita-immobiliare`, `test-indirizzi-fallback`,
+  `test-conto-incasso-un-solo-soggetto`, `test-categorie-clienti-listini-v1`,
+  `test-seed-stati-doc-ordini-evaso-v1`, `test-capability-annulla-…`,
+  `test-fn-raise-primo-motivo-se-presente-v1` (t.15), `test-search-soggetti-universale`,
+  `test-vw-giornale-entita`, `test-fn-available-actions-pdf-v1`,
+  `test-fn-available-actions-ordine-v2`.
+
+**La misura della suite intera (Tid, 2026-09-24)**, baseline sullo scratch `zeroerp_ci`:
+**229 rossi su 687** file, contro **361** noti in baseline. Il registro cala a
+229 solo con la corsa CI e `pgtap-baseline-ci-rientrati.sh` lo stesso giorno.
+
+**Altro che resta aperto, ereditato dal documento principale**: la corsa CI che
+certifica i rientrati (`pgtap-baseline-ci-rientrati.sh`, il giorno stesso della
+push); i dodici candidati della «maschera caduta, seconda ondata»; i 🔵 del terzo
+giro (`disable_other_sa` in due file, la riga di `anagrafiche.clienti` scritta a
+mano in otto, il t.2 vuoto di `profili-accesso-applicabili`) e il debito
+d'etichetta di `fn_get_indirizzo` (`tipo_indirizzo` è il codice, la firma dice
+codice_interno).
