@@ -84,7 +84,7 @@ class ConfigCrudService:
     # Scopo: Il traduttore degli errori DB per UNA operazione su UNA tabella:
     #        IntegrityError → il vincolo violato col suo campo (mappe dal
     #        catalogo), P0001 dei trigger → il codice che il DB dichiara
-    #        (`CODICE_NON_MODIFICABILE`, `E_ATTIVO_BLOCK_CHILDREN_EXIST`, …).
+    #        (`E_CODICE_NON_MODIFICABILE`, `E_ATTIVO_BLOCK_CHILDREN_EXIST`, …).
     def _db_errors(self, op: str, rel: str, schema: str, table: str) -> Any:
         mappe = _mappe_vincoli(self._meta.get_table_constraints(schema, table))
         return translate_db_errors(

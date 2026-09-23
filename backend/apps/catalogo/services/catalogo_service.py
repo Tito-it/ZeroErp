@@ -59,7 +59,7 @@ _ARTICOLO_FLAG_FIELDS: tuple[str, ...] = (
     "gestito_a_magazzino",
 )
 # Scopo: Campi int nullable di articolo (escluso uom_id che e' NOT NULL e immutabile).
-# Vedi DDL catalogo.articoli e trigger trg_articoli_a10_protect_uom_id_upd.
+# Vedi DDL catalogo.articoli e il suo lock di colonna (`E_CODICE_NON_MODIFICABILE`).
 _ARTICOLO_INT_FIELDS: tuple[str, ...] = (
     "tipo_voce_id",
     "gruppo_voce_id",

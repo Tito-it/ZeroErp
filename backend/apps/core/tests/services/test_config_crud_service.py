@@ -111,11 +111,11 @@ class ErroriTradottiTests(SimpleTestCase):
     # 6.
     def test_p0001_del_trigger_porta_il_suo_codice(self) -> None:
         exc = _db_exc(DatabaseError, "Impossibile modificare il valore interno della colonna codice_interno",
-                      constraint_name="CODICE_NON_MODIFICABILE", sqlstate="P0001")
+                      constraint_name="E_CODICE_NON_MODIFICABILE", sqlstate="P0001")
         with patch.object(self.svc._repo, "update_record", side_effect=exc):
             with self.assertRaises(ServiceError) as cm:
                 self.svc.update_record("magazzino.causali", 13, {"codice_interno": "Y"})
-        self.assertEqual(cm.exception.code, "CODICE_NON_MODIFICABILE")
+        self.assertEqual(cm.exception.code, "E_CODICE_NON_MODIFICABILE")
         self.assertNotEqual(cm.exception.code, E_CONFIG_DUPLICATO)
 
     # Il modulo importa la whitelist, non un superset: e' il presidio di Q-6.

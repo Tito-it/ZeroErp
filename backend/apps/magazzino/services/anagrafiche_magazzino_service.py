@@ -7,7 +7,7 @@
 #        sottile: validazione del payload, 404 no-leak, traduzione degli errori
 #        del database, composizione della risposta paginata.
 # Note: 🔴 Le regole vivono nel database e qui NON si riscrivono: il codice
-#       del magazzino e' lockato (`CODICE_NON_MODIFICABILE`), `usa_ubicazioni`
+#       del magazzino e' lockato (`E_CODICE_NON_MODIFICABILE`), `usa_ubicazioni`
 #       si cambia solo a registro vuoto (`E_MAG_MAGAZZINO_CON_GIACENZA`), la
 #       disattivazione con figli attivi e' rifiutata
 #       (`E_ATTIVO_BLOCK_CHILDREN_EXIST`), il padre dell'ubicazione e' dello
