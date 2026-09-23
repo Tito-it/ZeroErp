@@ -35,7 +35,7 @@ Le tabelle DB esistono gia' (`vendite.preventivi`, `preventivi_righe`, `preventi
   - `utility_id` (int) — filtro per utility
   - `data_da` (date ISO) — data minima (su `data` preventivo). **Default: 1 gennaio anno-1** (regola standard liste con date, lato frontend)
   - `data_al` (date ISO) — data massima
-  - `search` (string, min 3 char) — ILIKE su `numero` e `ragione_sociale_completa`
+  - `search` (string, min 3 char) — ILIKE su `numero`, `ragione_sociale_completa`, `ba_codice` e `id_fiscale_univoco_cf_piva`
   - `solo_attiva` (bool, default `true`) — solo l'ultima revisione viva per numero (`is_attiva`); `false` = storico revisioni completo (toggle "Mostra storico")
   - `page` (int, default 1) — pagina
   - `page_size` (int, default 50, max 200) — righe per pagina

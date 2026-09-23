@@ -180,7 +180,7 @@ Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 
 | Parametro              | Tipo     | Descrizione                                                                                |
 | ---------------------- | -------- | ------------------------------------------------------------------------------------------ |
-| `search`               | string   | ILIKE su `codice` offerta e `ragione_sociale_completa` BA (minimo 3 char se valorizzato)    |
+| `search`               | string   | ILIKE su `codice` offerta, `ragione_sociale_completa`, `ba_codice` e `id_fiscale_univoco_cf_piva` (minimo 3 char se valorizzato) |
 | `billing_account_id`   | int      | Filtro cliente                                                                              |
 | `stato_codice_interno` | string   | `BOZZA` \| `EMESSA` \| `ACCETTATA` \| `RIFIUTATA` \| `ANNULLATA` \| `SUPERATA`               |
 | `utility_id`           | int      | Filtro utility                                                                              |

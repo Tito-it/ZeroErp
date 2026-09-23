@@ -1,8 +1,7 @@
 # Brief DB — L'annullamento chiude la vita: un lotto annullato esce dai controlli
 
-> **Destinatari:** team DB (`dev/db-tid`). ⚠️ **Una richiesta al BE, da fare
-> prima del merge** (§9.8): rigenerare `error_policies_generated.py` per il
-> codice nuovo, altrimenti `test_error_policies_divergenza_db` è rosso in CI.
+> **Destinatari:** team DB (`dev/db-tid`). La richiesta al BE (rigenerare
+> `error_policies_generated.py` per il codice nuovo) è fatta: §9.10.
 >
 > **Tipo:** brief di cantiere, nato da una **decisione di Tid del 2026-09-22**
 > (§1) presa davanti a un difetto trovato lo stesso giorno (§2).
@@ -12,13 +11,12 @@
 > si scrive più come filtro nei controlli, si scrive nell'annullo). Il §8 è la
 > rilettura che ha portato alla decisione.
 >
-> **Stato (2026-09-23 sera):** 🟢 **DB applicato e verificato** — i cinque
+> **Stato (2026-09-23): ✅ CHIUSO.** DB applicato e verificato — i cinque
 > changeSet `20260923-30` → `-34` sono `EXECUTED` su dbdev (15:43), pgTAP
-> eseguiti da Tid **senza regressioni** (§9.9). ⛔ **Non ancora chiudibile**:
-> manca un passo BE che blocca il merge — rigenerare
-> `error_policies_generated.py` (oggi non contiene il codice nuovo), altrimenti
-> `test_error_policies_divergenza_db` è rosso in CI. Fatto quello, il brief si
-> archivia (§9.9 dice cosa passa a PROJECT_CONTEXT). ⚠️ Il §9.3 è stato
+> eseguiti da Tid **senza regressioni** (§9.9). Passo BE fatto lo stesso giorno
+> (§9.10): `error_policies_generated.py` rigenerato e ripiego scritto in
+> `error_messages_fallback.py`. I due debiti dichiarati sono passati a
+> `PROJECT_CONTEXT` § «Aperto — Media priorità». ⚠️ Il §9.3 è stato
 > **corretto scrivendolo**: la guardia sta su un trigger, non nella funzione.
 >
 > **In una riga:** un lotto annullato è **vuoto** — l'annullo chiude ogni
@@ -705,7 +703,7 @@ Riletto sul vivo dopo l'apply (fatto datato, 23-09):
 | `fn_conta_presidio('dbops.vw_lotti_chiusi_con_errori_da_guardare')` | **0** |
 | esiti non `ESCLUSO` su lotti con stato abortito | **0** |
 | `E_LOTTO_COMPLETATO_NON_GUADAGNATO` in `codici_errore` / `messaggi_errore` | 1 / 1 |
-| `E_LOTTO_COMPLETATO_NON_GUADAGNATO` in `error_policies_generated.py` | ⛔ **0** — il passo BE manca |
+| `E_LOTTO_COMPLETATO_NON_GUADAGNATO` in `error_policies_generated.py` | ⛔ **0** all'apply — ✅ fatto dal BE (§9.10) |
 
 **Per chiudere** (e solo questo):
 
@@ -724,3 +722,34 @@ brief archiviato non lo rilegge nessuno:
 
 Da guardare, ma non bloccante: a video un annullato mostra tutti i documenti
 `ESCLUSO` con il motivo «Annullo del lotto …».
+
+### 9.10 ✅ Il passo BE — 2026-09-23
+
+Sul ramo `dev/backend-tid`, dopo il merge di PR #1652 (i CSV del codice nuovo
+sono in git, quindi DB e ramo sono allineati e rigenerare è la cosa giusta):
+
+| File | Che cosa |
+| --- | --- |
+| `backend/apps/core/services/error_policies_generated.py` | rigenerato: **una** voce nuova (`E_LOTTO_COMPLETATO_NON_GUADAGNATO` → `TECNICO`), contatore 909 → 910, **nessuna classe spostata**; `--check` pulito |
+| `backend/apps/core/services/error_messages_fallback.py` | il ripiego senza `%s`: il codice a catalogo porta due segnaposti, ed è proprio quello che serve quando gli argomenti non arrivano |
+
+Prove (con `ZEROERP_TEST_DB_E2E=1`): `test_error_policies_classi` 17/17 (tra
+cui `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego` e il gemello senza
+segnaposti), `test_error_policies_divergenza_db` +
+`test_error_codes_declared_guardrail` + `test_error_codes_db_policy_guardrail`
+9/9, nessuno saltato.
+
+Il punto «BE, da guardare» del §9.7 è chiuso senza modifiche: nei test Django
+lo `stato_lotto = COMPLETATO` compare solo in dizionari e SQL **mockati**
+(`test_numerazione_esiti_service`, `test_lotto_capabilities_service`,
+`test_pipeline_repository`); nessuna fixture lo scrive sul DB vero.
+
+✅ **Guardato a video da Tid** (2026-09-23, LTF-0012056 annullato): la scheda
+«Presi in carico» mostra tutti i documenti `ESCLUSO` con il motivo.
+
+**Pregresso accettato, decisione di Tid del 2026-09-23.** I lotti annullati
+creati prima del 07-09 (fatto datato: 16 su dbdev, es. LTF-0004020) hanno
+documenti nel **perimetro** (`fatturazione_lotti_gruppi`) senza riga di esito:
+la tabella degli esiti non esisteva ancora, quindi l'allineamento `-34` non
+aveva righe da chiudere e la scheda li mostra senza stato. Sono dati di prova:
+non si allineano. Nessun lotto creato dal 07-09 in poi ha perimetro senza esito.

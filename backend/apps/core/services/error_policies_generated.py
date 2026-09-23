@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 909, di cui 95 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 910, di cui 95 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -665,6 +665,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_LOGOUT_NO_TOKEN": "DATO_ERRATO",
     # Sollevato da dbops.fn_get_lookup_codici (migration 20260520-04+06) · quando la tabella passata non ha la struttura attesa · (id + codice/codice_interno + descrizione) e non esiste override · dichiarativo in dbops.automation_overrides_cols (CODICE_COL/CODICE_INTERNO_COL). · E' un errore di configurazione/sviluppo (rel whitelistato in dbops_repository · senza colonne compatibili, o override mancante per tabella custom): · utente finale non puo' rimediarlo, va corretto dal team.
     "E_LOOKUP_STRUTTURA_TABELLA_INVALIDA": "TECNICO",
+    # vendite.trgfn_fatturazione_lotti_guard_completato (BEFORE UPDATE OF stato_lotto): qualcuno sta scrivendo COMPLETATO su un lotto che la sede unica vw_lotti_segnalazioni_summary dice fermo, o il cui stato fiscale e abortito. Nessun operatore lo provoca: il runner fa la stessa domanda alla stessa sede prima di scrivere, quindi chi arriva qui e un chiamante che diverge. Nasce da LTF-0010972 (2026-09-12). Brief: brief-db-annullamento-chiude-la-vita par. 9.3.
+    "E_LOTTO_COMPLETATO_NON_GUADAGNATO": "TECNICO",
     # script.fn_check_documento_escludibile_da_giro: il documento e gia stato tolto da questo giro. Non e un guasto ed e la lettura idempotente del verbo: due operatori sulla stessa lista, o un doppio clic. Il rifiuto serve a non riscrivere il timbro dell uscita, che e immutabile per costruzione. Brief: brief-db-uscita-documento-dal-giro.
     "E_LOTTO_DOC_GIA_USCITO": "CONFLITTO_STATO",
     # script.fn_check_documento_escludibile_da_giro: si tolgono dal giro solo i documenti in ERRORE (decisione D-4). Un documento sano non si toglie: se non deve essere fatturato non lo si mette nel perimetro, oppure si annulla il lotto e si rigenera senza di lui. Il verbo resta stretto apposta - uno largo andrebbe spiegato ogni volta, e permetterebbe di svuotare un giro a mano una riga per volta. Brief: brief-db-uscita-documento-dal-giro.
