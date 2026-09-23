@@ -608,6 +608,18 @@ class ApiArticoliLookup(DomainAPIView):
             OpenApiParameter(name="is_composito", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="is_solo_componente", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(
+                name="gestito_a_magazzino",
+                type=bool,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Solo articoli gestiti a magazzino (o solo quelli che non "
+                    "lo sono, se false). Assente = nessun filtro. Lo passa il "
+                    "picker di riga di inventari e rettifiche: un articolo non "
+                    "gestito si salva, ma il piano lo marca NON_POSTABILE."
+                ),
+            ),
+            OpenApiParameter(
                 name="escludi_destinazione",
                 type=str,
                 location=OpenApiParameter.QUERY,
@@ -658,6 +670,7 @@ class ApiArticoliLookup(DomainAPIView):
             attivo=qp_bool(qp.get("attivo"), True),
             is_composito=qp_bool_optional(request.query_params.get("is_composito"), "is_composito"),
             is_solo_componente=qp_bool_optional(request.query_params.get("is_solo_componente"), "is_solo_componente"),
+            gestito_a_magazzino=qp_bool_optional(qp.get("gestito_a_magazzino"), "gestito_a_magazzino"),
             escludi_destinazione_tipi=escludi_destinazione_tipi,
             # Gli articoli-onere sono pochi (uno per causale) e si presentano
             # come tendina, non come autocomplete: il filtro vive senza `search`.

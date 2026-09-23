@@ -1509,6 +1509,9 @@ def fn_lookup_articoli(
     attivo: bool | None = True,
     is_composito: bool | None = None,
     is_solo_componente: bool | None = None,
+    # R-5 (brief magazzino 2-bis): `None` = nessun filtro. Lo passa SOLO il
+    # picker di riga di inventario e rettifica; altrove la tendina propone tutto.
+    gestito_a_magazzino: bool | None = None,
     escludi_destinazione_tipi: list[str] | None = None,
     solo_oneri: bool = False,
     limit: int = 20,
@@ -1524,6 +1527,7 @@ def fn_lookup_articoli(
         attivo=attivo,
         is_composito=is_composito,
         is_solo_componente=is_solo_componente,
+        gestito_a_magazzino=gestito_a_magazzino,
         escludi_destinazione_tipi=escludi_destinazione_tipi,
         solo_oneri=solo_oneri,
         limit=limit,

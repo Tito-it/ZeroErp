@@ -404,6 +404,7 @@ class CatalogoRepository:
         attivo: bool | None,
         is_composito: bool | None,
         is_solo_componente: bool | None = None,
+        gestito_a_magazzino: bool | None = None,
         escludi_destinazione_tipi: list[str] | None = None,
         solo_oneri: bool = False,
         limit: int,
@@ -432,6 +433,17 @@ class CatalogoRepository:
         if is_solo_componente is not None:
             conditions.append("a.is_solo_componente = %s")
             params.append(is_solo_componente)
+        # R-5 del brief magazzino 2-bis: il picker di riga di un inventario o
+        # di una rettifica propone SOLO gli articoli gestiti a magazzino — un
+        # articolo non gestito si potrebbe anche salvare, ma il piano lo
+        # marcherebbe `NON_POSTABILE` e fermerebbe la registrazione.
+        # ⛔ Non e' un filtro di default (`None` = nessun filtro, come
+        #    `is_solo_componente`): altrove la tendina continua a proporre
+        #    tutto. E non blocca niente — chi non lo passa vede gli stessi
+        #    articoli di prima, e l'anteprima dei motivi lo dice comunque.
+        if gestito_a_magazzino is not None:
+            conditions.append("a.gestito_a_magazzino = %s")
+            params.append(gestito_a_magazzino)
         # Filtro natura data-driven (difesa in profondità del modello split per
         # natura, brief-preventivi-ordini.md §7.3): esclude gli articoli la cui
         # natura ha una destinazione vietata sul documento chiamante — es. la

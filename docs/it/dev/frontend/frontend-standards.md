@@ -347,6 +347,12 @@ UN filtro»).
 | Desktop | `#sempre` + slot di default in linea, dentro `app-page-filters` |
 | Compatta (`< 1024px` **o** touch senza hover) | `#sempre` in linea + **icona filtro col segno**; al click lo **stesso** slot dentro un `Drawer position="bottom"`, su una griglia di **al massimo due filtri per riga** (§sotto), «Pulisci filtri» in fondo |
 
+⭐ **«Pulisci filtri» vive su entrambe le rese** (A3, Tid 2026-09-23): nel
+drawer compatto col nome per esteso, nella toolbar desktop come **icona sola col
+tooltip**, come ogni altro comando di quella riga. Compare quando c'è qualcosa da
+riportare al default — non quando c'è un segno: le due domande divergono da
+quando esistono i valori neutri.
+
 **Il segno ha tre stati**, e dal 2026-09-23 il **numero c'è sempre**: niente
 (niente sta restringendo) · **numero grigio** (qualcosa restringe, tutto al suo
 default) · **numero blu** (almeno uno diverso dal default). ⛔ Prima lo stato
@@ -1962,6 +1968,21 @@ const pageActions = computed(() => [
 ---
 
 ## Azioni Drawer — `DrawerActionsBar`
+
+> ✅ **Tre presidi dal 2026-09-23**, e coprono tre cose diverse:
+> `DrawerActionsBar.spec.js` (12 test) monta il componente **vero** e prova ciò
+> che nessuna funzione pura può vedere — fra l'altro che il tooltip del motivo
+> sta sull'**involucro** e non sul `<Button disabled>`, che è il difetto del
+> 2026-08-27 rimasto senza presidio per mesi;
+> `useDrawerActions.spec.js` (11 test, provati **per mutazione**) fissa il
+> contratto del mapper — quale pulsante nasce, se è acceso, che cosa dice
+> quando è spento — e vale per gli **undici** drawer che ci passano;
+> `npm run guard:capability` verifica che ogni campo letto da un blob
+> `capabilities.*` sia un campo che una `script.fn_available_actions_*`
+> **emette davvero**, leggendo il contratto dalla doc auto-generata.
+> ⚠️ Nessuno dei due guarda la **resa a video**: quella la presidia
+> `DrawerActionsBar.spec.js`, che monta il componente (`@vue/test-utils` +
+> `jsdom`, nel progetto dal 2026-09-23 — vedi §Test).
 
 Le azioni di processo dei drawer entita' (cambio stato data-driven, apertura
 sub-drawer "gestisci righe/note", PDF, export) si renderizzano tramite il
@@ -3915,6 +3936,62 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 
 ---
 
+## Test — le tre altezze, e come si sceglie
+
+> ⭐ **Dal 2026-09-23 si montano i componenti** (`@vue/test-utils` + `jsdom`,
+> ok di Tid). Fino a quel giorno il frontend provava solo funzioni pure: quel
+> confine ha presentato il conto tre volte in una settimana — rate, filtri di
+> lista, barra del drawer di magazzino — e i filtri ne hanno pagati **due
+> difetti in un giorno**, entrambi invisibili a qualunque funzione pura.
+
+| Altezza | Ambiente | Vede | Costo |
+| --- | --- | --- | --- |
+| **funzione pura** (composable, utility) | node — il **default** | logica, calcoli, contratti di dato | il più basso: si scrive sempre per primo |
+| **componente montato** (`// @vitest-environment jsdom`) | jsdom | che cosa **esiste** nel DOM: quali pulsanti, acceso/spento, dove sta un attributo | medio: vuole l'impalcatura, e parte più lento |
+| **a video** | un browser vero, cioè una persona | come è **disegnato**: media query, ingombri, il telefono | il più alto, e non si automatizza oggi |
+
+**La regola di scelta**: si scende di un'altezza solo quando quella sopra non
+può vedere il difetto. ⛔ Un componente montato per provare un `if` che sta in
+un composable è un test lento che prova la cosa sbagliata.
+
+### Come si monta
+
+```js
+// @vitest-environment jsdom        ← in cima al file, prima di tutto
+import { monta } from '../../../test/montaggio'
+
+const w = monta(Componente, { prop: 'x' }, { provide: { [CHIAVE]: ref(true) } })
+expect(w.findAll('button').map(b => b.text())).toContain('Conferma')
+```
+
+* **`frontend/test/montaggio.js`** è l'impalcatura: installa i plugin che
+  `main.js` installa sull'app vera (Pinia, PrimeVue + i suoi servizi, i18n,
+  la direttiva tooltip) e colma le lacune di jsdom (`matchMedia`). Vive
+  **fuori da `src/`**: non è codice applicativo e non deve finire in un bundle.
+* ⛔ **Il DOM non si accende globalmente**: chi ne ha bisogno lo dichiara in
+  testa al proprio file. Accenderlo per tutti rallenterebbe i test puri — che
+  sono la maggioranza — e nasconderebbe **quali** file toccano il DOM.
+* ⭐ **Si monta il componente vero, si fingono solo i suoi contorni** (un'API,
+  la config che arriva dal server). Un test che stubba ciò che deve provare
+  prova lo stub.
+* **`t` rende la chiave, non la frase**: le asserzioni parlano di *chiavi*
+  i18n. Le frasi vivono nei `locales`, si riscrivono quando cambia il tono, e
+  un test che le pinna diventa rosso per una virgola.
+* ⚠️ **Le media query non si provano**: jsdom non calcola il CSS. La variante
+  compatta sotto i 1024px resta materia di collaudo a video, e va detto invece
+  che sottinteso.
+
+### ⛔ Un test verde al primo colpo si prova per mutazione
+
+Si rompe di proposito il codice sotto esame e si guarda se il test **diventa
+rosso**. Un test che resta verde su un codice rotto non presidia niente.
+
+🔴 **Non è teoria: è già servito due volte lo stesso giorno.** Sul mapper delle
+azioni, quattro mutazioni su cinque venivano viste e la quinta no — il ramo
+«motivo senza `reason_key`» non era coperto, e un dominio che perdesse la
+chiave avrebbe mostrato un **tooltip vuoto** su un pulsante spento, cioè il
+caso peggiore. Il test è nato da lì.
+
 ## Regole per il developer
 
 1. Ogni componente e' autonomo — logica nei composables di `core/`
@@ -3923,6 +4000,7 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 4. Dialog conferma via `useConfirmAction()` — mai `useConfirm()` direttamente; **sempre con `header`** (il nome dell'azione)
 5. Drawer usano PrimeVue `Drawer` + `FormFooter` — mai pulsanti inline
 6. Testi visibili via `$t()` — mai stringhe hardcoded
+6-bis. Un test si scrive all'**altezza più bassa** che vede il difetto (§Test), e se passa al primo colpo si prova **per mutazione**
 7. Nessun `console.log` in produzione
 8. Componenti di dominio non importano da altri domini — solo da `core/`
 9. Larghezze drawer da `constants.js` — mai hardcoded
@@ -3934,6 +4012,7 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 15. Sola lettura da classe `.app-readonly` sul container — mai componenti duplicati
 16. Azioni processo via `action` su `PageActionsBar`/`FormFooter` — mai `v-if` manuali per permessi
 17. `ConfirmDialog` solo globale in `App.vue` — mai dentro Drawer (interferenza overlay)
+18-bis. Un campo letto da un blob `capabilities.*` deve essere un campo che il database emette: il contratto si legge dalla doc auto-generata, non da un elenco ricopiato (presidio: `npm run guards` → `check-capability-contratto.mjs`). ⛔ Un refuso lì non rompe niente — lascia un pulsante spento che sembra una regola
 18. Dialog modali solo `AppDialog`, con `header`, **senza X** e senza `:closable` sul tag — il chrome è `DIALOG_CHROME`, un cambio di layout è una riga lì (presidio: `npm run guards` → `check-dialog-chrome.mjs`)
 
 ---

@@ -218,6 +218,33 @@ function pulisci() {
   <div v-if="!compatto" class="app-page-filters" :inert="inert">
     <slot name="sempre" />
     <slot />
+    <!-- ⭐ «PULISCI FILTRI» ANCHE SU DESKTOP (decisione A3 di Tid, 2026-09-23).
+         Su desktop i filtri si vedono tutti, quindi il SEGNO sarebbe poco piu'
+         che decorazione; il VERBO no — riportarli al default a mano vuole tanti
+         gesti quanti sono i filtri, e su una lista con sei filtri l'operatore
+         non sa nemmeno quali ha toccato.
+         ⚠️ Stessa condizione del ramo compatto, e non e' una ripetizione: e'
+         `puoPulire`, cioe' «c'e' qualcosa da riportare al default» — non «c'e'
+         un segno». Le due domande divergono da quando esistono i valori neutri
+         (§11.10 del brief).
+         ⛔ E `$slots.default` come il badge: una lista che qui dentro non mette
+         nessun filtro non ha niente da pulire, anche se il suo store dichiara
+         dei `filterDefaults`.
+         ⭐ Icona sola col tooltip, come ogni altro pulsante di questa toolbar
+         (`ReloadButton`): l'etichetta per esteso resta nel drawer, dove c'e' lo
+         spazio e il gesto e' piu' lontano dai filtri. La classe e' quella del
+         pulsante-imbuto perche' sono la stessa famiglia — i comandi dei filtri
+         nella toolbar — e i colori vivono in una sede sola. -->
+    <Button
+      v-if="$slots.default && puoPulire"
+      class="app-filtri-btn"
+      :icon="MANAGE_ICONS.FILTRI_PULISCI"
+      :aria-label="t('common.pulisci_filtri')"
+      v-tooltip.bottom="t('common.pulisci_filtri')"
+      severity="secondary"
+      text
+      @click="pulisci"
+    />
   </div>
 
   <!-- Compatta: la ricerca resta, i filtri diventano un gesto. -->

@@ -139,7 +139,11 @@ class AnagraficheMagazzinoDbTests(unittest.TestCase):
     def test_il_codice_del_magazzino_e_lockato_e_il_duplicato_dice_il_campo(self):
         def _prova(cur, m):
             e = self._rifiuto(lambda: svc.aggiorna_magazzino(m.mag_a, {"codice": "ALTRO"}))
-            self.assertEqual(e.code, "CODICE_NON_MODIFICABILE")
+            # ⚠️ `E_CODICE_NON_MODIFICABILE` dal 2026-09-23: il vecchio
+            #    `CODICE_NON_MODIFICABILE` e' obsoleto dal 2026-08-05 e il
+            #    changeSet `90_end/20260923-02` ha rigenerato i lock coi codici
+            #    vivi (brief-db-codici-ritirati-negli-argomenti-dei-trigger).
+            self.assertEqual(e.code, "E_CODICE_NON_MODIFICABILE")
             # Lo stesso codice riscritto NON e' un cambio: il delta non lo manda,
             # e se lo manda il lock non scatta (OLD = NEW).
             self.assertEqual(svc.aggiorna_magazzino(m.mag_a, {"codice": "BE-ANA-A"})["codice"], "BE-ANA-A")
@@ -194,14 +198,14 @@ class AnagraficheMagazzinoDbTests(unittest.TestCase):
             self.assertEqual((lotto["codice"], lotto["data_arrivo"], lotto["data_scadenza"]), ("L-01", oggi, oggi + timedelta(days=30)))
             e = self._rifiuto(lambda: svc.crea_lotto({"articolo_id": m.art_l, "codice": "L-02", "data_arrivo": oggi.isoformat(),
                                                       "data_scadenza": (oggi - timedelta(days=1)).isoformat()}))
-            self.assertEqual((e.code, e.context.get("field")), ("E_VALIDATION_INPUT", "data_scadenza"))
+            self.assertEqual((e.code, e.context.get("field")), ("E_MAGAZZINO_VALIDATION", "data_scadenza"))
             e = self._rifiuto(lambda: svc.crea_lotto({"articolo_id": m.art_l, "codice": "L-01", "data_arrivo": oggi.isoformat()}))
             self.assertEqual((e.code, e.context.get("field")), ("E_ANAG_DUPLICATO", "codice"))
             # La lista pretende l'articolo (uuid): senza e' un 400 col campo.
             e = self._rifiuto(lambda: svc.list_lotti(articolo_id=None, limit=10))
-            self.assertEqual((e.code, e.context.get("field")), ("E_VALIDATION_INPUT", "articolo_id"))
+            self.assertEqual((e.code, e.context.get("field")), ("E_MAGAZZINO_VALIDATION", "articolo_id"))
             e = self._rifiuto(lambda: svc.list_lotti(articolo_id="abc", limit=10))
-            self.assertEqual(e.code, "E_VALIDATION_INPUT")
+            self.assertEqual(e.code, "E_MAGAZZINO_VALIDATION")
             self.assertEqual(svc.list_lotti(articolo_id=m.art_l, limit=10)["count"], 1)
             self.assertEqual(svc.list_lotti(articolo_id=m.art_l, search="ZZZ", limit=10)["count"], 0)
             senza = svc.aggiorna_lotto(lotto["id"], {"data_scadenza": None})
