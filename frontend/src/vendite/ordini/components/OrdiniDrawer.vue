@@ -25,6 +25,7 @@ import {
   STATO_ORDINE,
   STATI_ORDINE_EVADIBILI,
 } from '../constants'
+import { AZIONE_PUSH_COMMESSA } from '../../constants'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
 import { displayDate, toDateString } from '../../../core/utils/date'
@@ -115,6 +116,7 @@ provide(READONLY_KEY, isReadonly)
 // availableActions + can_edit_testata + non_editable_fields. Composable
 // centralizzato, uniforme a Preventivi/Contratti (Fase 4.F2).
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 const canEditTestata = caps.canEdit
 const canEditTestataEffective = computed(() => !isEdit.value || canEditTestata.value)
@@ -125,26 +127,12 @@ const canEditRighe = computed(() => caps.flag('can_edit_righe'))
 // DISABILITATO, non banner (Decisione D del brief catch-all DDT, applicata qui
 // per simmetria XOR: `fattura_da_ddt` e' la causa permanente speculare di
 // `fattura_da_ordine` — un banner sempre visibile sarebbe rumore perpetuo su
-// ogni ordine a trigger SPEDITO/CONSEGNATO). Entry sintetica nella stessa
-// shape delle azioni DB: il mapper condiviso la rende disabled+tooltip.
-const canPushCommessa = computed(() => caps.flag('can_push_commessa'))
-const pushCommessaDisabledAction = computed(() => {
-  if (!hasDetail.value || canPushCommessa.value) return []
-  const reason = detail.value?.can_push_commessa_reason
-  const reasonKey = detail.value?.can_push_commessa_reason_key
-  if (!reason && !reasonKey) return []
-  return [{
-    key: 'push_commessa',
-    target_state: null,
-    label_key: 'vendite.ordini.azione_push_commessa',
-    severity: 'success',
-    icon: 'pi pi-arrow-right',
-    outlined: false,
-    enabled: false,
-    reason,
-    reason_key: reasonKey,
-  }]
-})
+// ogni ordine a trigger SPEDITO/CONSEGNATO). L'entry disabled la sintetizza il
+// BB (`azioneNegata`), condivisa con DdtDrawer.
+const pushCommessaDisabledAction = computed(() => caps.azioneNegata('can_push_commessa', {
+  ...AZIONE_PUSH_COMMESSA,
+  label_key: 'vendite.ordini.azione_push_commessa',
+}))
 
 // Campi bloccati lato UX. Una volta che l'ordine esiste (EDIT classico o CREATE
 // post auto-save), il cliente NON e' piu' modificabile: il BE deriva
@@ -620,14 +608,14 @@ const drawerActions = computed(() => {
           </template>
         </DrawerEntityHeader>
 
-        <DrawerActionsBar :actions="drawerActions" :info-key="detail?.stato_info_key || ''">
+        <DrawerActionsBar :actions="drawerActions" :info-key="capabilities.stato_info_key || ''">
           <template #suffix>
             <!-- Stampa conferma d'ordine: anteprima PDF on-demand
                  (ristampabile, §12.4(a)). BB EntityPdfButton riusato 1:1. -->
             <EntityPdfButton
               :sorgente-code="SORGENTE_CODES.ORDINE_VENDITA"
               :entity-id="effectiveOrdineId"
-              :pdf="detail.pdf"
+              :pdf="capabilities.pdf"
               i18n-prefix="vendite.ordini.pdf"
               :dialog-title="detail.numero
                 ? t('vendite.ordini.pdf.dialog_title', { numero: detail.numero })

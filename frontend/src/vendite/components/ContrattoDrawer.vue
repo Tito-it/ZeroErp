@@ -93,6 +93,7 @@ const form = ref({})
 // Il drawer NON ricalcola lo stato: tutto deriva dai metadata API.
 // Composable centralizzato (Fase 4.F2): isLocked(field) = !canEdit OR Set lookup.
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 const isLocked = caps.isLocked
 const righeCount = computed(() => detail.value?.righe_count ?? detail.value?.righe?.length ?? 0)
@@ -816,12 +817,12 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
           </template>
         </DrawerEntityHeader>
 
-        <DrawerActionsBar :actions="drawerActions" :info-key="detail?.stato_info_key || ''">
+        <DrawerActionsBar :actions="drawerActions" :info-key="capabilities.stato_info_key || ''">
           <template #suffix>
             <EntityPdfButton
               :sorgente-code="SORGENTE_CODES.CONTRATTO"
               :entity-id="props.contrattoId"
-              :pdf="detail.pdf"
+              :pdf="capabilities.pdf"
               i18n-prefix="vendite.contratti.pdf"
               :dialog-title="detail.numero
                 ? t('vendite.contratti.pdf.dialog_title', { numero: detail.numero })

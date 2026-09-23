@@ -1151,16 +1151,13 @@ class ApiLottoDetail(DomainAPIView):
                             # Segnale di un giro solo: il prossimo run RIFA' lo
                             # step corrente invece di avanzare (vedi types.py).
                             "riaperto": serializers.BooleanField(),
-                            # Blob capability (script.fn_available_actions_lotto):
-                            # assente se il capability layer e' rotto (fallback
-                            # graceful nel service) → required=False.
-                            "available_actions": serializers.ListField(
-                                child=serializers.DictField(), required=False,
-                            ),
-                            "can_change_state": serializers.BooleanField(required=False),
-                            "stato_codice": serializers.CharField(
-                                required=False, allow_null=True,
-                            ),
+                            # Blob capability (script.fn_available_actions_lotto),
+                            # SOTTO la sua chiave (api.md §«Il blob sta SOTTO
+                            # `capabilities`»): `available_actions`,
+                            # `can_change_state`, `stato_codice`, `tipo_lotto`.
+                            # Vuoto se il capability layer e' rotto (fallback
+                            # graceful nel service), mai assente.
+                            "capabilities": serializers.DictField(),
                         },
                     ),
                     "meta": serializers.DictField(required=False),

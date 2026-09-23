@@ -59,7 +59,8 @@ const isEdit = computed(() => props.mode === 'edit')
 // feedback_content_ready_after_show, applicato 2026-05-22).
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
-// Capability dal detail backend (Fase 1.B3: script.fn_capability_promo_articolo).
+// Capability dal detail backend (Fase 1.B3: script.fn_capability_promo_articolo),
+// lette da `detail.capabilities` via il BB:
 //   - stato_temporale: FUTURA | INIZIATA | SCADUTA (data-driven puro)
 //   - can_update + can_update_reason: editabilita' globale
 //   - min_valido_dal / min_valido_al: vincoli minDate (Date | null)
@@ -68,12 +69,13 @@ const detail = ref(null)
 // Composable centralizzato (Fase 4.F2): editFlag custom can_update; in create
 // il drawer usa default true (no detail) — wrappato in canUpdate computed sotto.
 const caps = useEntityCapabilities(detail, { editFlag: 'can_update' })
-const statoTemporale = computed(() => detail.value?.stato_temporale || null)
+const capabilities = caps.capabilities
+const statoTemporale = computed(() => capabilities.value.stato_temporale || null)
 // In create detail=null -> can_update non e' valutato dal BE; lasciamo true.
 const canUpdate = computed(() => !isEdit.value || caps.canEdit.value)
-const canUpdateReason = computed(() => detail.value?.can_update_reason || null)
-const minValidoDalDetail = computed(() => parseIsoDate(detail.value?.min_valido_dal))
-const minValidoAlDetail = computed(() => parseIsoDate(detail.value?.min_valido_al))
+const canUpdateReason = computed(() => capabilities.value.can_update_reason || null)
+const minValidoDalDetail = computed(() => parseIsoDate(capabilities.value.min_valido_dal))
+const minValidoAlDetail = computed(() => parseIsoDate(capabilities.value.min_valido_al))
 
 // Helper: campo bloccato. In create niente locked (detail assente, l'utente
 // puo' valorizzare tutto); in edit applica isLocked del composable.
@@ -187,8 +189,8 @@ async function loadDetail() {
   if (!props.recordId) return
   const data = await store.fetchDetail(props.recordId)
   if (!data) return
-  // Detail completo (include il blob capabilities spalmato dal backend:
-  // stato_temporale, can_update[+reason], min_valido_*, non_editable_fields).
+  // Detail completo (include il blob `capabilities`: stato_temporale,
+  // can_update[+reason], min_valido_*, non_editable_fields).
   detail.value = data
   form.value = {
     codice: data.codice ?? '',

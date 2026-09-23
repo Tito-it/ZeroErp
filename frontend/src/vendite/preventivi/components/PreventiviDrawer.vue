@@ -205,6 +205,7 @@ const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 // Composable centralizzato (Fase 4.F2): availableActions/canEdit/flag/isLocked/
 // nonEditableFields uniformi a Contratti/Promo. Qui editFlag = can_edit_testata.
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 const canEditTestata = caps.canEdit
 // In CREATE non c'e' detail BE: il drawer e' editabile per default (gated solo
@@ -216,11 +217,11 @@ const canEditRighe = computed(() => caps.flag('can_edit_righe'))
 // FE non lo legge piu' — l'azione `crea_revisione` arriva ora data-driven in
 // `available_actions` (post brief DB 2026-05-28, mirror offerte).
 const canPushCommessa = computed(() => caps.flag('can_push_commessa'))
-const pushCommessaReasonKey = computed(() => detail.value?.can_push_commessa_reason_key || null)
+const pushCommessaReasonKey = computed(() => capabilities.value.can_push_commessa_reason_key || null)
 // Ramo gemello dello smistamento: `genera_ordine` ha la sua reason, che finora
 // nessuno mostrava (il banner sotto copriva solo il ramo commessa).
 const canGeneraOrdine = computed(() => caps.flag('can_genera_ordine'))
-const generaOrdineReasonKey = computed(() => detail.value?.can_genera_ordine_reason_key || null)
+const generaOrdineReasonKey = computed(() => capabilities.value.can_genera_ordine_reason_key || null)
 // Pannello Smistamento visibile da ACCETTATO in poi (EVASO = consuntivo):
 // prima dell'accettazione non c'e' nulla da smistare e il pannello sarebbe
 // solo rumore (tutte RESIDUA, azioni rifiutate dal BE).
@@ -235,7 +236,7 @@ const showSmistamento = computed(() => {
 // il dettaglio righe; un cambio sarebbe un nuovo preventivo, non una modifica
 // della testata. utility_id era gia' immutabile via metadata BE.
 const nonEditableFields = computed(() => {
-  const base = detail.value?.non_editable_fields || []
+  const base = capabilities.value.non_editable_fields || []
   // Post auto-save bozza / EDIT: cambiare BA o istanza sarebbe un altro
   // preventivo, non una modifica → entrambi bloccati. utility_id è già
   // immutabile via metadata BE.
@@ -669,7 +670,7 @@ async function handleSave() {
   }
 }
 
-// --- Azioni stato (data-driven da detail.available_actions) ---
+// --- Azioni stato (data-driven da capabilities.available_actions) ---
 
 // Scopo: handler unico bottone azione. Usa requires_confirm dai metadata
 //        per decidere se mostrare il dialog di conferma. La label nel
@@ -944,12 +945,12 @@ const drawerActions = computed(() => {
                - ACCETTATO/EVASO/RIFIUTATO/SCADUTO/ANNULLATO -> Scarica (apre lista)
              Resta componente dedicato dentro #suffix (stateful), non rappresentabile
              come azione `command: () => void`. -->
-        <DrawerActionsBar :actions="drawerActions" :info-key="detail?.stato_info_key || ''">
+        <DrawerActionsBar :actions="drawerActions" :info-key="capabilities.stato_info_key || ''">
           <template #suffix>
             <EntityPdfButton
               :sorgente-code="SORGENTE_CODES.PREVENTIVO"
               :entity-id="effectivePreventivoId"
-              :pdf="detail.pdf"
+              :pdf="capabilities.pdf"
               i18n-prefix="vendite.preventivi.pdf"
               :dialog-title="detail.numero
                 ? t('vendite.preventivi.pdf.dialog_title', { numero: detail.numero })

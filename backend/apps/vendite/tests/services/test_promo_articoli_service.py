@@ -168,7 +168,7 @@ class TestGet(TestCase):
     def test_get_ok(self, mock_repo):
         mock_repo.return_value.get_promo.return_value = {"id": 1}
         mock_repo.return_value.get_capabilities.return_value = {}
-        self.assertEqual(PromoArticoliService().get_promo(1), {"id": 1})
+        self.assertEqual(PromoArticoliService().get_promo(1), {"id": 1, "capabilities": {}})
 
     @patch(_REPO)
     def test_get_not_found(self, mock_repo):
@@ -186,7 +186,8 @@ class TestGet(TestCase):
 
     # Scopo: get_promo includa il blob capabilities (Fase 1.B3 refactor
     #        frontend vendite) — stato_temporale, can_update,
-    #        min_valido_*, non_editable_fields.
+    #        min_valido_*, non_editable_fields — SOTTO `capabilities`, intatto
+    #        (api.md §«Il blob sta SOTTO `capabilities`»).
     @patch(_REPO)
     def test_get_include_capabilities(self, mock_repo):
         mock_repo.return_value.get_promo.return_value = {"id": 1, "codice": "PR-1"}
@@ -201,9 +202,13 @@ class TestGet(TestCase):
                                      "valido_dal", "attivo"],
         }
         result = PromoArticoliService().get_promo(1)
-        self.assertEqual(result["stato_temporale"], "INIZIATA")
-        self.assertTrue(result["can_update"])
-        self.assertIn("codice", result["non_editable_fields"])
+        caps = result["capabilities"]
+        self.assertEqual(caps, mock_repo.return_value.get_capabilities.return_value)
+        self.assertEqual(caps["stato_temporale"], "INIZIATA")
+        self.assertTrue(caps["can_update"])
+        self.assertIn("codice", caps["non_editable_fields"])
+        for chiave in caps:
+            self.assertNotIn(chiave, result)
         mock_repo.return_value.get_capabilities.assert_called_once_with(1)
 
 

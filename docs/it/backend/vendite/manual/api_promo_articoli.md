@@ -94,8 +94,8 @@ Generato dal trigger `trg_promo_articoli_a20_set_validita_ins_upd` da
 
 ### Capabilities nel detail (Fase 1.B3 refactor frontend vendite)
 
-Il dettaglio espone capability data-driven da `script.fn_capability_promo_articolo`,
-spalmate top-level nel payload. Modello **data-driven puro**: nessun stato
+Il dettaglio espone capability data-driven da `script.fn_capability_promo_articolo`
+nella chiave `capabilities`, non fuse nella testata (dal 2026-09-23, [api.md §«Il blob sta SOTTO `capabilities`»](../../../dev/api.md)). Modello **data-driven puro**: nessun stato
 persistito, nessuna `available_actions` (le promo non hanno transizioni manuali).
 
 | Campo | Tipo | Significato |

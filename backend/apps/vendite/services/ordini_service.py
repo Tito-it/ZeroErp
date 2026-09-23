@@ -272,10 +272,12 @@ def get_ordine(ordine_id: int) -> dict[str, object]:
     # fields, stato_codice. Sostituisce il calcolo hardcoded: la verita' e' a DB
     # (lettura) + trigger guard (enforcement). `can_conferma` non e' piu' un
     # flag: la conferma e' un'entry di available_actions (key='conferma').
+    # Il blob viaggia SOTTO `capabilities` (api.md §«Il blob sta SOTTO
+    # `capabilities`»).
     capabilities = repo.get_capabilities(ordine_id)
     return {
         **testata,
-        **capabilities,
+        "capabilities": capabilities,
         "righe_count": len(righe),
     }
 

@@ -101,6 +101,15 @@ export const PRICING_ACTIONS = Object.freeze({
   APPROVE: 'approva_prezzo_override',
 })
 
+// Azione «Invia a commessa» quando il blob la NEGA (`can_push_commessa` false
+// + motivo): la forma del pulsante, uguale per DDT e ordine — cambia solo la
+// `label_key` del dominio. Si passa a `useEntityCapabilities().azioneNegata`.
+export const AZIONE_PUSH_COMMESSA = Object.freeze({
+  key: 'push_commessa',
+  severity: 'success',
+  icon: 'pi pi-arrow-right',
+})
+
 // Codici stato preventivo (`config.stati_doc_preventivi.codice_interno`).
 // NB: 'Bozza' e' la descrizione it-IT, il codice tecnico stabile e' DRAFT.
 // EVASO e' lo stato terminale post-push commessa: transizione automatica

@@ -64,9 +64,9 @@ export function creaDocumento(famiglia, payload) {
 }
 
 // Dettaglio: testata + magazzino (`magazzino_codice`, `_descrizione`,
-// `magazzino_usa_ubicazioni`) + `righe_count` + `stato_info_key` e, per
-// l'inventario, `piano_riepilogo`. ⭐ E le `capabilities` (R-1, dal
-// 2026-09-23): `available_actions[]` (le transizioni che il guard ammette),
+// `magazzino_usa_ubicazioni`) + `righe_count` e, per l'inventario,
+// `piano_riepilogo`. ⭐ E le `capabilities` (R-1, dal 2026-09-23; la nota di
+// stato sta SOLO li'): `available_actions[]` (le transizioni che il guard ammette),
 // `can_registra` + `_reason` + `_reason_key`, `can_edit_testata`/`_righe`,
 // `can_delete`, `stato_info_key`. Il blob viene da
 // `script.fn_available_actions_<famiglia>` e il backend lo trasporta intatto:

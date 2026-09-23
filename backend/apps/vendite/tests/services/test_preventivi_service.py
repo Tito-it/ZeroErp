@@ -1754,15 +1754,21 @@ class TestPreventiviService(unittest.TestCase):
 
         result = get_preventivo(42)
 
-        # Testata + capability + summary leggero. NO `righe` embeddate.
+        # Testata + capability (SOTTO `capabilities`, api.md §«Il blob sta
+        # SOTTO `capabilities`») + summary leggero. NO `righe` embeddate.
         self.assertEqual(result["id"], 42)
-        self.assertEqual(result["can_edit_testata"], False)
-        self.assertEqual(result["can_edit_righe"], False)
-        self.assertEqual(result["can_create_revisione"], True)
-        self.assertEqual(result["can_push_commessa"], True)
-        self.assertEqual(len(result["available_actions"]), 1)
-        self.assertEqual(result["available_actions"][0]["key"], "annulla")
-        self.assertIn("billing_account_id", result["non_editable_fields"])
+        caps = result["capabilities"]
+        self.assertEqual(caps, self.mock_repo.get_capabilities.return_value)
+        self.assertEqual(caps["can_edit_testata"], False)
+        self.assertEqual(caps["can_edit_righe"], False)
+        self.assertEqual(caps["can_create_revisione"], True)
+        self.assertEqual(caps["can_push_commessa"], True)
+        self.assertEqual(len(caps["available_actions"]), 1)
+        self.assertEqual(caps["available_actions"][0]["key"], "annulla")
+        self.assertIn("billing_account_id", caps["non_editable_fields"])
+        for chiave in ("available_actions", "can_edit_testata", "can_push_commessa",
+                       "non_editable_fields"):
+            self.assertNotIn(chiave, result)
         # Fase 3.F6: detail non include `righe` ma solo `righe_count` (summary).
         self.assertNotIn("righe", result)
         self.assertEqual(result["righe_count"], 2)
@@ -2390,9 +2396,13 @@ class TestPreventiviService(unittest.TestCase):
             {"PENDING": 1, "APPROVED": 0, "REJECTED": 0, "TOTAL": 5},
         )
         out = get_preventivo(42)
-        self.assertEqual(out["available_actions"], [])
-        self.assertFalse(out["can_edit_testata"])
-        self.assertFalse(out["can_edit_righe"])
+        caps = out["capabilities"]
+        self.assertEqual(caps["available_actions"], [])
+        self.assertFalse(caps["can_edit_testata"])
+        self.assertFalse(caps["can_edit_righe"])
+        # Il riepilogo del congelamento sta sulla TESTATA: nessuna
+        # capability lo emette (brief-be-fe-capability-annidata §5).
+        self.assertNotIn("frozen_for_pending_pricing", caps)
         self.assertTrue(out["frozen_for_pending_pricing"])
         self.assertFalse(out["frozen_for_rejected_pricing"])
         self.assertEqual(out["pending_pricing_count"], 1)
@@ -2406,11 +2416,23 @@ class TestPreventiviService(unittest.TestCase):
             {"PENDING": 0, "APPROVED": 0, "REJECTED": 2, "TOTAL": 4},
         )
         out = get_preventivo(42)
-        self.assertEqual(out["available_actions"], [])
-        self.assertFalse(out["can_edit_testata"])
-        self.assertTrue(out["can_edit_righe"])  # ← chiave del fix
+        caps = out["capabilities"]
+        self.assertEqual(caps["available_actions"], [])
+        self.assertFalse(caps["can_edit_testata"])
+        self.assertTrue(caps["can_edit_righe"])  # ← chiave del fix
         self.assertFalse(out["frozen_for_pending_pricing"])
         self.assertTrue(out["frozen_for_rejected_pricing"])
+
+    def test_get_preventivo_frozen_rejected_non_accende_edit_righe_spento_dal_db(self):
+        """Solo REJECTED ma il DB dice can_edit_righe=false → resta false:
+        il congelamento restringe il blob, non lo allarga."""
+        from apps.vendite.services.preventivi_service import get_preventivo
+        self._setup_get_preventivo_mocks(
+            {"PENDING": 0, "APPROVED": 0, "REJECTED": 2, "TOTAL": 4},
+        )
+        self.mock_repo.get_capabilities.return_value["can_edit_righe"] = False
+        out = get_preventivo(42)
+        self.assertFalse(out["capabilities"]["can_edit_righe"])
 
     def test_get_preventivo_frozen_mixed_pending_vince(self):
         """PENDING + REJECTED → can_edit_righe=false (PENDING ha priorita')."""
@@ -2419,7 +2441,7 @@ class TestPreventiviService(unittest.TestCase):
             {"PENDING": 1, "APPROVED": 0, "REJECTED": 1, "TOTAL": 6},
         )
         out = get_preventivo(42)
-        self.assertFalse(out["can_edit_righe"])
+        self.assertFalse(out["capabilities"]["can_edit_righe"])
 
     def test_get_preventivo_no_freeze_quando_solo_approved(self):
         """APPROVED non congela: il prezzo override e' stato approvato."""
@@ -2429,8 +2451,7 @@ class TestPreventiviService(unittest.TestCase):
         )
         out = get_preventivo(42)
         # Capabilities originali preservate (no override BE).
-        self.assertTrue(out["can_edit_testata"])
-        self.assertEqual(len(out["available_actions"]), 1)
+        self.assertEqual(out["capabilities"], self.mock_repo.get_capabilities.return_value)
         self.assertFalse(out["frozen_for_pending_pricing"])
         self.assertFalse(out["frozen_for_rejected_pricing"])
 

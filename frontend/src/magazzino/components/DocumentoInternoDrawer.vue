@@ -449,11 +449,11 @@ watch(
           </template>
         </DrawerEntityHeader>
 
-        <!-- La nota di stato arriva dal BE (`stato_info_key`): qui nessun
+        <!-- La nota di stato arriva dal blob (`capabilities.stato_info_key`): qui nessun
              `v-if` sullo stato. Oggi e' `null` (R-1). -->
         <DrawerActionsBar
           :actions="drawerActions"
-          :info-key="detail.stato_info_key || ''"
+          :info-key="capabilities.stato_info_key || ''"
         />
 
         <!-- ══ La testata ══ -->

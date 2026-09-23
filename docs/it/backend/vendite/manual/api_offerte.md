@@ -97,7 +97,9 @@ Step migliorativo data-driven applicato dopo la consegna della fn DB
 
 - **Capability blob** nel detail: `get_offerta` ora include
   `available_actions[]`, `can_edit_*`, `can_push_contratto`,
-  `non_editable_fields`, `stato_codice` letti da `script.fn_available_actions_offerta`.
+  `non_editable_fields`, `stato_codice` letti da `script.fn_available_actions_offerta`,
+  nella chiave `capabilities` (dal 2026-09-23; vuota, mai assente, se la
+  funzione fallisce).
   Il FE consuma con `useEntityCapabilities` + `mapAvailableActionsToDrawerActions`,
   rimuovendo lo state-machine FE hardcoded.
 - **Contratto collegato**: `contratto_id` + `contratto_numero` esposti
@@ -330,37 +332,39 @@ non ancora compilato).
       "param_1_num": "1500", "param_2_txt": "POD-XYZ",
       "istanza_dati_precontrattuali_id": null, "meta": {}
     },
-    "available_actions": [
-      {
-        "key": "emetti", "target_state": "EMESSA",
-        "label_key": "vendite.offerte.azione_emetti",
-        "severity": "success", "icon": "pi pi-send",
-        "requires_confirm": true, "requires_motivazione": false
-      },
-      {
-        "key": "annulla", "target_state": "ANNULLATA",
-        "label_key": "vendite.offerte.azione_annulla",
-        "severity": "danger", "icon": "pi pi-ban",
-        "requires_confirm": true, "requires_motivazione": true
-      }
-    ],
-    "can_change_state": true,
-    "can_edit_testata": true,
-    "can_edit_eccezioni": true,
-    "can_edit_utility": true,
-    "can_create_revisione": false,
-    "can_push_contratto": false,
-    "can_push_contratto_reason": "OFFERTA_NON_ACCETTATA",
-    "can_push_contratto_reason_key": "vendite.offerte.push_reason.non_accettata",
-    "can_genera_ordine": false,
-    "can_genera_ordine_reason": "OFFERTA_NON_ACCETTATA",
-    "can_genera_ordine_reason_key": "vendite.offerte.push_reason.non_accettata",
-    "non_editable_fields": [
-      "codice", "uid", "revisione_numero", "revisione_padre_id",
-      "stato_doc_offerta_id", "data_emissione", "data_accettazione",
-      "data_rifiuto", "data_annullamento", "motivazione_rifiuto"
-    ],
-    "stato_codice": "BOZZA",
+    "capabilities": {
+      "available_actions": [
+        {
+          "key": "emetti", "target_state": "EMESSA",
+          "label_key": "vendite.offerte.azione_emetti",
+          "severity": "success", "icon": "pi pi-send",
+          "requires_confirm": true, "requires_motivazione": false
+        },
+        {
+          "key": "annulla", "target_state": "ANNULLATA",
+          "label_key": "vendite.offerte.azione_annulla",
+          "severity": "danger", "icon": "pi pi-ban",
+          "requires_confirm": true, "requires_motivazione": true
+        }
+      ],
+      "can_change_state": true,
+      "can_edit_testata": true,
+      "can_edit_eccezioni": true,
+      "can_edit_utility": true,
+      "can_create_revisione": false,
+      "can_push_contratto": false,
+      "can_push_contratto_reason": "OFFERTA_NON_ACCETTATA",
+      "can_push_contratto_reason_key": "vendite.offerte.push_reason.non_accettata",
+      "can_genera_ordine": false,
+      "can_genera_ordine_reason": "OFFERTA_NON_ACCETTATA",
+      "can_genera_ordine_reason_key": "vendite.offerte.push_reason.non_accettata",
+      "non_editable_fields": [
+        "codice", "uid", "revisione_numero", "revisione_padre_id",
+        "stato_doc_offerta_id", "data_emissione", "data_accettazione",
+        "data_rifiuto", "data_annullamento", "motivazione_rifiuto"
+      ],
+      "stato_codice": "BOZZA"
+    },
     "data_insert": "2026-05-24T18:30:00Z", "user_insert": "mctit",
     "data_update": null, "user_update": null
   }
@@ -379,8 +383,8 @@ non ancora compilato).
   `uq_contratti_offerta_id`): max 1 contratto per offerta. Il FE usa
   questi campi per il dialog "gia' generato" e per il deep-link
   `/vendite/contratti?open=<id>` post-push.
-- **Capability blob** (da `script.fn_available_actions_offerta`, mergiato
-  nel dict): `available_actions[]` lista azioni ammesse nello stato
+- **Capability blob** (da `script.fn_available_actions_offerta`, sotto
+  `capabilities`): `available_actions[]` lista azioni ammesse nello stato
   corrente (mappabili 1:1 a `DrawerActionsBar` via
   `mapAvailableActionsToDrawerActions`); `can_edit_testata` /
   `can_edit_eccezioni` / `can_edit_utility` flag editabilita';

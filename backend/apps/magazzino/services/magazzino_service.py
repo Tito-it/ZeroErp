@@ -271,16 +271,15 @@ def list_documenti(
 #    primo motivo della check che le due `fn_posta_*` chiamano
 #    (`script.fn_check_documento_interno_registrabile`): una regola, una sede,
 #    due lettori. ⛔ Nessun `dict` di stati qui: sarebbe la matrice riscritta.
-# ⚠️ `stato_info_key` sta nel blob E in cima al documento: il FE lo legge dal
-#    documento (`DrawerActionsBar :info-key`), com'e' gia' scritto nel drawer.
+# ⛔ `stato_info_key` sta SOLO nel blob: fino al 2026-09-23 era copiato anche
+#    in cima al documento, cioe' una lettura piatta con due sedi (api.md §«Il
+#    blob sta SOTTO `capabilities`»). Il FE lo legge da `capabilities`.
 def get_documento(codice_famiglia: str, doc_id: int) -> dict[str, Any]:
     f = famiglia(codice_famiglia)
     repository = MagazzinoRepository()
     documento: dict[str, Any] = dict(_documento_o_404(repository, f, doc_id))
     documento["famiglia"] = f.codice
-    capabilities = repository.get_capabilities(f, doc_id)
-    documento["capabilities"] = capabilities
-    documento["stato_info_key"] = capabilities.get("stato_info_key")
+    documento["capabilities"] = repository.get_capabilities(f, doc_id)
     if f.ha_piano:
         documento["piano_riepilogo"] = repository.piano_riepilogo(doc_id)
     return documento

@@ -80,6 +80,7 @@ provide(READONLY_KEY, isReadonly)
 // Capability data-driven dal detail BE (script.fn_available_actions_reso):
 // availableActions (conferma/annulla dalla matrice) + can_edit_testata/righe.
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 const canEditTestata = caps.canEdit
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
@@ -265,7 +266,7 @@ async function onCoperturaRiconsegnaCambiata() {
           </template>
         </DrawerEntityHeader>
 
-        <DrawerActionsBar :actions="drawerActions" :info-key="detail?.stato_info_key || ''" />
+        <DrawerActionsBar :actions="drawerActions" :info-key="capabilities.stato_info_key || ''" />
 
         <!-- Collegamenti diretti: per il reso la catena significativa e'
              l'ORIGINE (reso <- DDT <- ordine), qui riassunta nei chip; il

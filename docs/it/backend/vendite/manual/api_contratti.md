@@ -207,8 +207,9 @@ Note (refactor 2026-05-15):
 
 ### Detail `GET /api/v1/vendite/contratti/<id>/`
 
-Output: testata + `utility` + `righe[]` + **capabilities** spalmate top-level
-(Fase 1.B2 refactor frontend vendite, da `script.fn_available_actions_contratto`):
+Output: testata + `utility` + `righe[]` + **`capabilities`**
+(Fase 1.B2 refactor frontend vendite, da `script.fn_available_actions_contratto`;
+non fuse nella testata dal 2026-09-23, [api.md §«Il blob sta SOTTO `capabilities`»](../../../dev/api.md)):
 
 | Campo | Tipo | Significato |
 | --- | --- | --- |

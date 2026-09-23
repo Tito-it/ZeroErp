@@ -62,8 +62,8 @@ export const useResiStore = defineStore('vendite-resi', () => {
     orderDirDefault: 'desc',
   })
 
-  // Scopo: Dettaglio testata reso + capability (righe_count, can_edit_*,
-  //        available_actions, non_editable_fields, stato_codice).
+  // Scopo: Dettaglio testata reso + `righe_count` + il blob `capabilities`
+  //        (can_edit_*, available_actions, non_editable_fields, stato_codice).
   async function fetchDetail(id) {
     const res = await getReso(id)
     return res.data.data

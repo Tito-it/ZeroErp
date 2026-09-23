@@ -198,10 +198,12 @@ def get_ddt(ddt_id: int) -> dict[str, object]:
     # config.transizioni_stati_ddt): available_actions, can_change_state,
     # can_edit_testata/righe, can_push_commessa(+reason), non_editable_fields,
     # stato_codice. La verita' e' a DB (lettura) + trigger guard (enforcement).
+    # ⛔ Il blob viaggia SOTTO `capabilities`, non fuso nella testata (api.md
+    #    §«Il blob sta SOTTO `capabilities`», decisione Tid 2026-09-23).
     capabilities = repo.get_capabilities(ddt_id)
     return {
         **testata,
-        **capabilities,
+        "capabilities": capabilities,
         # COUNT dedicato: l'elenco righe completo (JOIN + EXISTS per riga)
         # sarebbe materializzato solo per contarlo.
         "righe_count": repo.count_righe(ddt_id),

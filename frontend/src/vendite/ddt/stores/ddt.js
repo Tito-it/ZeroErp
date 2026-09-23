@@ -62,8 +62,8 @@ export const useDdtStore = defineStore('vendite-ddt', () => {
     orderDirDefault: 'desc',
   })
 
-  // Scopo: Dettaglio testata DDT + capability (righe_count, can_edit_*,
-  //        can_change_state, can_push_commessa, available_actions,
+  // Scopo: Dettaglio testata DDT + `righe_count` + il blob `capabilities`
+  //        (can_edit_*, can_change_state, can_push_commessa, available_actions,
   //        non_editable_fields, stato_codice).
   async function fetchDetail(id) {
     const res = await getDdt(id)

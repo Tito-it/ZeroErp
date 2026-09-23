@@ -119,12 +119,13 @@ Ritorna `{id, uid, numero}`.
 ### Detail `GET /api/v1/vendite/ordini/<id>/`
 
 Testata (dalla vista + `meta`/`storicizza`) + capability **data-driven** da
-`script.fn_available_actions_ordine` (matrice `config.transizioni_stati_ordini`):
+`script.fn_available_actions_ordine` (matrice `config.transizioni_stati_ordini`),
+nella chiave `capabilities`, non fuse nella testata (dal 2026-09-23, [api.md §«Il blob sta SOTTO `capabilities`»](../../../dev/api.md)):
 `available_actions[]` (azioni di stato con `key`/`target_state`/`label_key`/
 `severity`/`icon`/`requires_confirm` — incl. `conferma`, `annulla`, e
 `push_commessa` come azione applicativa), `can_edit_testata`, `can_edit_righe`,
 `can_push_commessa` (+ `can_push_commessa_reason`/`_reason_key`),
-`non_editable_fields`, `stato_codice`, più `righe_count`. *(`can_conferma` non è
+`non_editable_fields`, `stato_codice`, `pdf`; sulla testata `righe_count`. *(`can_conferma` non è
 più un flag: la conferma è un'entry di `available_actions`.)* 404
 (`E_ORD_NOT_FOUND`) se inesistente o fuori scope (RLS).
 

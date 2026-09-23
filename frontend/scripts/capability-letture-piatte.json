@@ -1,0 +1,51 @@
+{
+  "_scopo": "Registro delle letture PIATTE di una chiave di primo livello del blob capability (npm run guard:capability, verifica 3). Il blob sta SOTTO `capabilities` (api.md §«Il blob sta SOTTO `capabilities`», decisione Tid 2026-09-23): qui stanno SOLO gli omonimi — stesso nome, altra sorgente — ciascuno col suo motivo. PUO SOLO CALARE: il guard e rosso se una lettura non dichiarata compare, e anche se una dichiarata sparisce senza che la voce venga abbassata. Si scrive a mano: il motivo non si genera.",
+  "_regola": "docs/it/dev/work-in-progress/brief-be-fe-capability-annidata.md §4.0 e §4.3",
+  "echi": {
+    "stato_codice": "Il blob riecheggia lo stato del documento. Lo stesso nome e' una colonna di documenti e righe di lista in tutto il frontend (distinte, coda righe, dashboard): una lettura piatta di `stato_codice` legge una riga, non il blob.",
+    "stato_codice_interno": "Come `stato_codice`: il blob del contratto lo riecheggia, e ogni testata e ogni vista di lista ha la sua colonna omonima.",
+    "tipo_lotto": "Il blob del lotto riecheggia la colonna `vendite.fatturazione_lotti.tipo_lotto`, che la testata del lotto porta da se'."
+  },
+  "piatte": {
+    "amministrazione/components/CategoriaClienteListinoDrawer.vue": {
+      "motivo": "`non_editable_fields` del registro dei lock (`dbops.vw_non_editable_fields` + gap Python, `compute_non_editable_fields`), non di una capability: stesso nome, altra sorgente (brief §4.0).",
+      "chiavi": { "non_editable_fields": 2 }
+    },
+    "amministrazione/components/EmittenteFiscaleUtilitiesTab.vue": {
+      "motivo": "`can_update` e' una capability di RIGA calcolata da `emittenti_fiscali_service`, non il blob di un dettaglio (api.md: una capability di dettaglio non risponde per una riga).",
+      "chiavi": { "can_update": 1 }
+    },
+    "amministrazione/components/TipoRuoloTipoIndirizzoDrawer.vue": {
+      "motivo": "`non_editable_fields` del registro dei lock (`compute_non_editable_fields`), non di una capability (brief §4.0).",
+      "chiavi": { "non_editable_fields": 2 }
+    },
+    "anagrafiche/components/SoggettoDrawer.vue": {
+      "motivo": "`non_editable_fields` calcolato da `soggetti_service._compute_non_editable_fields`, non da una capability (brief §4.0).",
+      "chiavi": { "non_editable_fields": 1 }
+    },
+    "catalogo/components/ArticoloDrawer.vue": {
+      "motivo": "`non_editable_fields` del registro dei lock (`dbops.fn_non_editable_fields` + gap Python in `catalogo_service`), non di una capability (brief §4.0).",
+      "chiavi": { "non_editable_fields": 1 }
+    },
+    "catalogo/components/ArticoloUomDrawer.vue": {
+      "motivo": "`non_editable_fields` del registro dei lock (`catalogo_service._compute_non_editable_fields`), non di una capability (brief §4.0).",
+      "chiavi": { "non_editable_fields": 1 }
+    },
+    "catalogo/components/ConversioneUomDrawer.vue": {
+      "motivo": "`non_editable_fields` del registro dei lock (`catalogo_service._compute_non_editable_fields`), non di una capability (brief §4.0).",
+      "chiavi": { "non_editable_fields": 1 }
+    },
+    "documenti/components/EntityPdfButton.vue": {
+      "motivo": "`props.pdf` e' la prop del pulsante: il sotto-oggetto che il drawer gli passa gia' estratto da `capabilities.pdf`.",
+      "chiavi": { "pdf": 2 }
+    },
+    "documenti/stores/documentiPerSorgente.js": {
+      "motivo": "L'estensione `.pdf` di un nome file in due template literal (`documento-${id}.pdf`), non una lettura.",
+      "chiavi": { "pdf": 2 }
+    },
+    "pagamenti/components/DistintaDrawer.vue": {
+      "motivo": "`stato_info_key` e' una COLONNA della distinta (`st.meta ->> 'nessuna_azione_key'` in `pagamenti_repository`): la distinta non ha una `fn_available_actions_*` ne' un blob.",
+      "chiavi": { "stato_info_key": 1 }
+    }
+  }
+}

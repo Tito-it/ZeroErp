@@ -37,7 +37,8 @@ Convenzioni identiche ad api_ordini.md (envelope, lista configurabile
   lo slot Consegna viene valorizzato best-effort dall'indirizzo di RUOLO del
   cliente (CON, fallback FATT); mai bloccante.
 - Detail `GET /api/v1/vendite/ddt/<id>/` — testata + capabilities data-driven
-  (`fn_available_actions_ddt`).
+  (`fn_available_actions_ddt`) nella chiave `capabilities`, non fuse nella
+  testata (api.md §«Il blob sta SOTTO `capabilities`», 2026-09-23).
 - Update `PATCH /api/v1/vendite/ddt/<id>/` — solo DRAFT; cliente immutabile.
 - Delete `DELETE /api/v1/vendite/ddt/<id>/` — hard delete solo DRAFT
   (pattern abbandono bozza).

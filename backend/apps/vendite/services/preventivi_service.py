@@ -217,7 +217,8 @@ def resolve_filtri_export_label(
 #        `righe_count` come summary leggero (badge UX). Le capability
 #        (available_actions, can_edit_*, can_push_commessa, can_create_revisione,
 #        non_editable_fields) sono calcolate da script.fn_available_actions_preventivo
-#        e spalmate nel detail per consumo diretto dal frontend.
+#        e viaggiano SOTTO `capabilities` (api.md §«Il blob sta SOTTO
+#        `capabilities`», 2026-09-23).
 def get_preventivo(preventivo_id: int) -> dict[str, object]:
     repo = PreventiviRepository()
     testata = _get_testata_or_raise(repo, preventivo_id, op="get_preventivo")
@@ -243,6 +244,13 @@ def get_preventivo(preventivo_id: int) -> dict[str, object]:
     # Defense-in-depth: cambia_stato_preventivo solleva
     # E_PREVENTIVO_RIGHE_PRICING_PENDENTI; qui filtriamo le capability
     # spedite al FE per disabilitare i pulsanti a monte (UX).
+    # 🔴 DEBITO DICHIARATO (brief-be-fe-capability-annidata §5): la
+    #    sovrascrittura di `available_actions`/`can_edit_*` qui sotto e' una
+    #    SECONDA sede di una regola del database — «il backend trasporta, non
+    #    deduce» (api.md §Capability). Se il trigger cambia, questo Python non
+    #    lo sa. La domanda vera (il predicato in una `fn_check_*` letta dalla
+    #    capability) e' di dominio e vuole un brief DB suo; finche' non c'e',
+    #    il blob annida come gli altri e questa riscrittura resta, con un nome.
     pending_count = counts[STATO_APPROVAZIONE_PENDING]
     rejected_count = counts[STATO_APPROVAZIONE_REJECTED]
     if pending_count > 0 or rejected_count > 0:
@@ -254,23 +262,23 @@ def get_preventivo(preventivo_id: int) -> dict[str, object]:
             # l'operatore deve poter correggere il prezzo o eliminare la
             # riga rifiutata. Lo blocchiamo solo per PENDING (in attesa
             # esito: defense-in-depth replica trgfn DB lato preventivi_righe).
-            "can_edit_righe": rejected_count > 0 and pending_count == 0,
-            "frozen_for_pending_pricing": pending_count > 0,
-            "frozen_for_rejected_pricing": rejected_count > 0,
-            "pending_pricing_count": pending_count,
-            "rejected_pricing_count": rejected_count,
+            # ⛔ Solo RESTRINGERE: il ramo REJECTED non puo' accendere un flag
+            #    che il database ha spento (es. preventivo fuori BOZZA).
+            "can_edit_righe": (
+                pending_count == 0 and capabilities.get("can_edit_righe") is True
+            ),
         }
-    else:
-        capabilities = {
-            **capabilities,
-            "frozen_for_pending_pricing": False,
-            "frozen_for_rejected_pricing": False,
-            "pending_pricing_count": 0,
-            "rejected_pricing_count": 0,
-        }
+    # ⚠️ I quattro campi del congelamento stanno sulla TESTATA, non nel blob:
+    #    sono un riepilogo delle righe (come `righe_count`), e nessuna
+    #    capability li emette — sotto `capabilities` sarebbero campi che il
+    #    contratto del database non conosce (`npm run guard:capability`).
     return {
         **testata,
-        **capabilities,
+        "capabilities": capabilities,
+        "frozen_for_pending_pricing": pending_count > 0,
+        "frozen_for_rejected_pricing": rejected_count > 0,
+        "pending_pricing_count": pending_count,
+        "rejected_pricing_count": rejected_count,
         "indirizzi": indirizzi,
         "righe_count": righe_count,
     }
