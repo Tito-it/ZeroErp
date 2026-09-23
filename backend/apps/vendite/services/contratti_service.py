@@ -939,7 +939,8 @@ class ContrattiService:
     #        Se target=CESSATO viene applicata la regola fail-safe data-driven
     #        (analoga a listini-versioni, vedi feedback_stato_terminale_con_data):
     #          - valido_al obbligatorio (no cessazione "senza data")
-    #          - valido_al >= valido_dal (anti CHK constraint DB)
+    #          - valido_al >= valido_dal: lo giudica il DB (guard comune
+    #            delle date, E_DATA_AL_MINORE_DAL col campo valido_al)
     #          - valido_al < CURRENT_DATE -> VIETATO: cessazione retroattiva
     #            rifiutata dal guard DB trgfn_contratti_guard_transizione_stato
     #            (la UI blocca a monte con min-date = oggi).
@@ -1004,8 +1005,7 @@ class ContrattiService:
         self._get_contratto_or_raise(contratto_id, op="cambia_stato", getter=self._repo.get_stato_codice)
 
         # Pre-validazione data-driven per CESSATO (regola fail-safe):
-        # - valido_al obbligatorio
-        # - valido_al >= valido_dal
+        # - valido_al obbligatorio (valido_al >= valido_dal lo giudica il DB)
         # - se valido_al > today -> cessazione programmata (no cambio stato);
         #   valido_al == today -> immediata (transizione a CESSATO)
         cessazione_programmata = False
@@ -1020,24 +1020,7 @@ class ContrattiService:
                 ),
                 context={"contratto_id": contratto_id},
             )
-            existing = self._get_contratto_or_raise(contratto_id, op="cambia_stato")
-            assert existing is not None and valido_al is not None
-            existing_valido_dal = existing.get("valido_dal")
-            if isinstance(existing_valido_dal, date):
-                ErrorManager.require(
-                    valido_al >= existing_valido_dal,
-                    code=E_VENDITE_VALIDATION,
-                    message="Data cessazione non valida.",
-                    detail=(
-                        f"valido_al ({valido_al.isoformat()}) deve essere >= "
-                        f"valido_dal del contratto ({existing_valido_dal.isoformat()})."
-                    ),
-                    context={
-                        "contratto_id": contratto_id,
-                        "valido_al": valido_al,
-                        "valido_dal": existing_valido_dal,
-                    },
-                )
+            assert valido_al is not None
             # Cessazione programmata: data STRETTAMENTE futura (> oggi) -> NON
             # cambiamo lo stato. Applichiamo solo PATCH valido_al e lasciamo
             # che il job notturno DB allinei lo stato quando la data scade.
@@ -1966,13 +1949,6 @@ class ContrattiService:
         if "valido_al" in payload and payload["valido_al"] is not None:
             valido_al = self._v.require_date(payload, "valido_al", message=_MESSAGE)
             data["valido_al"] = valido_al
-            ErrorManager.require(
-                valido_al >= data["valido_dal"],
-                code=E_VENDITE_VALIDATION,
-                message=_MESSAGE,
-                detail="valido_al deve essere >= valido_dal.",
-                context={"valido_dal": data["valido_dal"], "valido_al": valido_al},
-            )
         if "ambito" in payload:
             data["ambito"] = self._extract_ambito(payload)
         self._apply_optional_positive_int(
@@ -2086,14 +2062,6 @@ class ContrattiService:
                 data["valido_al"] = None
             else:
                 data["valido_al"] = self._v.require_date(payload, "valido_al", message=_MESSAGE)
-        if "valido_dal" in data and "valido_al" in data and data["valido_al"] is not None:
-            ErrorManager.require(
-                data["valido_al"] >= data["valido_dal"],
-                code=E_VENDITE_VALIDATION,
-                message=_MESSAGE,
-                detail="valido_al deve essere >= valido_dal.",
-                context={"valido_dal": data["valido_dal"], "valido_al": data["valido_al"]},
-            )
         self._apply_optional_positive_int(
             payload, data, "parent_contratto_id", message=_MESSAGE,
         )

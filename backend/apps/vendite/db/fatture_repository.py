@@ -27,6 +27,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    add_ricerca_full_condition,
     sql_order_clause,
     rows_to_list,
 )
@@ -40,6 +41,13 @@ from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 # ⚠️ `valuta_codice` e `azioni` restano fuori di proposito: il seed li dichiara
 #    NON ordinabili, e offrire qui una capacità che il catalogo non espone
 #    sarebbe irraggiungibile — il presidio dei seed la segnala.
+# Colonne della ricerca libera: le `ricercabile_full = t` della lista `vendite.fatture`
+# nel catalogo. Le confronta col seed `apps/core/tests/test_ricerca_full_seed`.
+# ⚠️ `numero` e' un intero nella vista: il cast a testo lo fa il BB.
+_RICERCA_COLS_FATTURE: tuple[str, ...] = (
+    "numero", "ragione_sociale_completa", "ba_codice", "id_fiscale_univoco_cf_piva",
+)
+
 _ORDER_COLS_FATTURE: dict[str, str] = {
     "numero": "v.numero",
     "serie": "v.serie",
@@ -146,17 +154,7 @@ class FattureRepository:
         if data_al is not None:
             conditions.append("v.data <= %s")
             params.append(data_al)
-        if search and len(search) >= 3:
-            # Ricerca estesa: numero + cliente + codice BA + id fiscale — gli
-            # stessi quattro campi delle sorelle, così cercare "Rossi" o una
-            # partita IVA funziona uguale su ogni documento.
-            # ⚠️ `numero` è un intero: il cast a testo serve all'ILIKE.
-            conditions.append(
-                "(v.numero::text ILIKE %s OR v.ragione_sociale_completa ILIKE %s "
-                "OR v.ba_codice ILIKE %s OR v.id_fiscale_univoco_cf_piva ILIKE %s)"
-            )
-            like = f"%{search}%"
-            params.extend([like, like, like, like])
+        add_ricerca_full_condition(conditions, params, search, colonne=_RICERCA_COLS_FATTURE)
 
         add_emittente_scope_condition(
             conditions, params,

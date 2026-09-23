@@ -27,7 +27,7 @@ Indice test eseguiti:
 15) test_create_tipo_variazione_invalido          — enum non ammesso -> VALIDAZIONE
 16) test_create_tipo_senza_valore                 — tipo_variazione ma valore_variazione assente -> VALIDAZIONE
 17) test_create_valore_senza_tipo                 — valore_variazione ma tipo assente -> VALIDAZIONE
-18) test_create_valido_al_prima_dal               — valido_al < valido_dal -> VALIDAZIONE
+18) test_create_delega_ordine_date_al_db         — valido_al < valido_dal arriva al DB (guard comune)
 19) test_create_valido_dal_formato_invalido       — data non ISO -> VALIDAZIONE
 20) test_create_valore_non_numerico               — valore_variazione string non numerica -> VALIDAZIONE
 21) test_create_duplicate_overlap                 — ExclusionViolation -> E_ANAG_MATRICE_OVERLAP
@@ -268,16 +268,23 @@ class TestCreate(TestCase):
             svc.create_matrice(_base_payload(valore_variazione="1.0"))
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
+    # L'ordine delle date NON lo giudica il service: il guard comune del DB
+    # risponde E_DATA_AL_MINORE_DAL col campo (provato sul DB vero in
+    # apps/core/tests/db/test_date_validita_guard_comune_db).
     @patch(_REPO_PATH)
-    def test_create_valido_al_prima_dal(self, mock_repo_cls):
-        del mock_repo_cls
+    def test_create_delega_ordine_date_al_db(self, mock_repo_cls):
+        mock_repo_cls.return_value.create_matrice.return_value = 10
+        mock_repo_cls.return_value.get_matrice.return_value = {"id": 10}
         svc = CategorieClientiListiniService()
-        with self.assertRaises(ServiceError) as ctx:
-            svc.create_matrice(_base_payload(
-                valido_dal="2026-06-01",
-                valido_al="2026-01-01",
-            ))
-        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        svc.create_matrice(_base_payload(
+            valido_dal="2026-06-01",
+            valido_al="2026-01-01",
+        ))
+        data = mock_repo_cls.return_value.create_matrice.call_args.args[0]
+        self.assertEqual(
+            (data["valido_dal"], data["valido_al"]),
+            (date(2026, 6, 1), date(2026, 1, 1)),
+        )
 
     @patch(_REPO_PATH)
     def test_create_valido_dal_formato_invalido(self, mock_repo_cls):

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Collection, Mapping
+import re
+from collections.abc import Collection, Mapping, Sequence
 from typing import Any
 
 from django.db import connection
@@ -112,6 +113,77 @@ def escape_ilike(value: str) -> str:
     soggetti-ruoli che lo duplicavano localmente.
     """
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+# Soglia della ricerca libera delle liste: sotto, il termine non filtra.
+# ⚠️ Una sola per tutte le liste: il frontend manda il termine a ogni tasto, e
+#    prima del BB la stessa soglia era scritta in cinque repository, assente in
+#    due e trasformata in un 400 nel service delle offerte.
+RICERCA_MIN_CARATTERI = 3
+
+_NOME_COLONNA = re.compile(r"^[a-z_][a-z0-9_]*$")
+
+
+def add_ricerca_full_condition(
+    conditions: list[str],
+    params: list[Any],
+    termine: str | None,
+    *,
+    colonne: Sequence[str],
+    alias: str = "v",
+    min_caratteri: int = RICERCA_MIN_CARATTERI,
+) -> None:
+    """La ricerca libera di una lista: un OR di `ILIKE` sulle sue colonne.
+
+    Aggiunge a `conditions`/`params` la condizione
+    `(v.a::text ILIKE %s OR v.b::text ILIKE %s ...)` col termine escapato
+    (`escape_ilike`) e racchiuso fra `%`. Termine vuoto o piu' corto di
+    `min_caratteri` (dopo lo `strip`) → non aggiunge niente.
+
+    ⛔ **`colonne` sono i `campo_sorgente` con `ricercabile_full = t` della
+    lista a catalogo (`ui.lista_colonna`), e niente altro.** Una colonna che
+    manca non si trova (il difetto di Preventivi e Offerte, 2026-09-23: il
+    catalogo dichiarava codice BA e id fiscale, il repository no); una colonna
+    in piu' da' risultati che l'operatore non sa spiegare. A tenere le due cose
+    allineate e' `apps/core/tests/test_ricerca_full_seed`, che confronta ogni
+    costante registrata col seed — non questo docstring.
+
+    Regola del 2 (2026-09-23): la stessa condizione era scritta a mano in otto
+    repository di vendite (preventivi, offerte, ordini, ddt, fatture, resi e
+    le sue due code, contratti, famiglie), e le copie si erano gia' separate.
+
+    ⭐ `::text` su ogni colonna: il catalogo dice `string` anche dove la vista
+    espone un intero (`vw_fatture_lista.numero`), e un `ILIKE` su un intero e'
+    un errore di PostgreSQL. Su una colonna gia' testo il cast non costa niente.
+
+    ⚠️ Limite noto: l'elenco e' una costante del repository, letta dal seed dal
+    test. Se un amministratore cambia `ricercabile_full` dal pannello
+    (`lista_colonna_admin_service`), la ricerca non se ne accorge. Leggere il
+    catalogo a runtime richiede che il DB esponga le colonne ricercabili GIA'
+    filtrate dai permessi di colonna (una `sensibile` bloccata non va cercata):
+    oggi `fn_resolve_lista_config` non le espone. Il cantiere che lo chiude
+    (prerequisito DB, poi mappa `campo_sorgente → SQL` + lettura a runtime) e'
+    `docs/it/dev/work-in-progress/brief-be-ricerca-full-liste-residue.md`.
+    """
+    # Nomi scritti nel codice, non input utente: il controllo trasforma un
+    # errore di dichiarazione in un errore chiaro invece che in SQL rotto.
+    # ⚠️ PRIMA della soglia: controllato solo a termine valido, un nome
+    #    sbagliato passerebbe ogni lista aperta senza ricerca e salterebbe al
+    #    primo operatore che cerca.
+    if not colonne:
+        raise ValueError("add_ricerca_full_condition: nessuna colonna di ricerca")
+    for colonna in colonne:
+        if not _NOME_COLONNA.match(colonna):
+            raise ValueError(f"add_ricerca_full_condition: colonna non valida {colonna!r}")
+    if not termine:
+        return
+    termine = termine.strip()
+    if len(termine) < min_caratteri:
+        return
+    conditions.append(
+        "(" + " OR ".join(f"{alias}.{c}::text ILIKE %s" for c in colonne) + ")"
+    )
+    params.extend([f"%{escape_ilike(termine)}%"] * len(colonne))
 
 
 def fetchone_scalar(cursor) -> Any:

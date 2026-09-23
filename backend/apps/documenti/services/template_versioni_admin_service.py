@@ -362,18 +362,9 @@ class TemplateVersioniAdminService:
             new_data["valido_dal"] = self._v.optional_date(payload, "valido_dal")
         if "valido_al" in payload:
             new_data["valido_al"] = self._v.optional_date(payload, "valido_al")
-        # Cross-field guard sulle date override.
-        if new_data.get("valido_dal") and new_data.get("valido_al"):
-            if new_data["valido_al"] < new_data["valido_dal"]:
-                ErrorManager.raise_error(
-                    code=E_VALIDATION,
-                    message="valido_al non puo' essere antecedente a valido_dal.",
-                    detail=(
-                        f"valido_dal={new_data['valido_dal']} "
-                        f"valido_al={new_data['valido_al']}"
-                    ),
-                )
-                raise  # unreachable
+        # L'ordine delle date lo giudica il DB: guard comune
+        # `script.trgfn_guard_date_validita`, E_DATA_AL_MINORE_DAL col campo
+        # `valido_al` (dal 2026-09-23).
         if "attivo" in payload:
             v = self._v.optional_bool(payload, "attivo")
             ErrorManager.require(
@@ -445,13 +436,9 @@ class TemplateVersioniAdminService:
         if "valido_al" in payload:
             valido_al = self._v.optional_date(payload, "valido_al")
 
-        if valido_al is not None and valido_al < valido_dal:
-            ErrorManager.raise_error(
-                code=E_VALIDATION,
-                message="valido_al non puo' essere antecedente a valido_dal.",
-                detail=f"valido_dal={valido_dal} valido_al={valido_al}",
-            )
-            raise  # unreachable
+        # L'ordine delle date lo giudica il DB: guard comune
+        # `script.trgfn_guard_date_validita`, E_DATA_AL_MINORE_DAL col campo
+        # `valido_al` (dal 2026-09-23).
 
         with transaction.atomic():
             try:
@@ -585,16 +572,9 @@ class TemplateVersioniAdminService:
             data["valido_dal"] = self._v.optional_date(payload, "valido_dal")
         if "valido_al" in payload:
             data["valido_al"] = self._v.optional_date(payload, "valido_al")
-        # Difesa cross-field: se entrambe presenti e valido_al < valido_dal,
-        # errore parlante (DDL non ha CHECK su questa relazione).
-        if data.get("valido_dal") and data.get("valido_al"):
-            if data["valido_al"] < data["valido_dal"]:
-                ErrorManager.raise_error(
-                    code=E_VALIDATION,
-                    message="valido_al non puo' essere antecedente a valido_dal.",
-                    detail=f"valido_dal={data['valido_dal']} valido_al={data['valido_al']}",
-                )
-                raise  # unreachable
+        # L'ordine delle date lo giudica il DB: guard comune
+        # `script.trgfn_guard_date_validita`, E_DATA_AL_MINORE_DAL col campo
+        # `valido_al` (dal 2026-09-23).
         if "context_schema" in payload:
             cs = payload["context_schema"]
             if cs is not None and not isinstance(cs, dict):

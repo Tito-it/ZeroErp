@@ -627,9 +627,10 @@ class ListiniRepository:
             #
             #    Skip riga se intersezione vuota (es. BoM scaduta o non
             #    coperta dalla versione target): il WHERE finale lo intercetta
-            #    via COALESCE→'infinity', evitando l'errore PG cripto
-            #    `range lower bound must be less than or equal to range upper bound`
-            #    sulla STORED column daterange.
+            #    via COALESCE→'infinity'. Senza lo skip la riga arriverebbe al
+            #    guard comune delle date (`script.trgfn_guard_date_validita`,
+            #    dal 2026-09-23) con `E_DATA_AL_MINORE_DAL`, e l'intera copia
+            #    fallirebbe per una sola riga fuori periodo.
             cursor.execute(
                 f"""
                 INSERT INTO vendite.listini_righe_componenti (
@@ -1472,9 +1473,10 @@ class ListiniRepository:
             # simmetricamente vs STORED su listini_versioni.validita).
             # Guard intersezione vuota: il WHERE finale skippa l'INSERT se
             # `v_dal > v_al` (es. versione [2026-04, 2026-04] vs BoM [2026-05,..]).
-            # Senza guard la STORED column daterange(v_dal,v_al,'[]') solleverebbe
-            # `range lower bound must be less than or equal to range upper bound`
-            # (errore PG cripto). rowcount=0 → log warning + conteggio skippati.
+            # Senza lo skip la riga arriverebbe al guard comune delle date
+            # (`script.trgfn_guard_date_validita`, dal 2026-09-23) con
+            # `E_DATA_AL_MINORE_DAL`, e l'intera propagazione fallirebbe per
+            # una sola riga fuori periodo. rowcount=0 → log warning + conteggio skippati.
             n_inseriti = 0
             n_skipped_no_overlap = 0
             for r in rows:

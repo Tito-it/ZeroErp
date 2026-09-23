@@ -955,10 +955,12 @@ class ContrattiServiceTests(TestCase):
         repo.update_contratto.assert_not_called()
         repo.update_stato.assert_called_once_with(1, 9)
 
-    # Scopo: cambia_stato con valido_al < valido_dal -> errore parlante
-    #        (anti CHK constraint DB generico).
+    # Scopo: cambia_stato con valido_al < valido_dal NON lo giudica il
+    #        service: la data arriva al DB, dove il guard comune delle date
+    #        risponde E_DATA_AL_MINORE_DAL col campo `valido_al` (provato sul
+    #        DB vero in apps/core/tests/db/test_date_validita_guard_comune_db).
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_cambia_stato_valido_al_anteriore_a_valido_dal_rifiutato(self, repo_cls):
+    def test_cambia_stato_delega_ordine_date_al_db(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
@@ -968,14 +970,10 @@ class ContrattiServiceTests(TestCase):
             "valido_dal": date(2026, 6, 1),
         }
 
-        with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().cambia_stato(
-                1, codice_interno="CESSATO", valido_al=date(2026, 1, 1),
-            )
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
-        self.assertIn("valido_dal", ctx.exception.detail)
-        repo.update_contratto.assert_not_called()
-        repo.update_stato.assert_not_called()
+        ContrattiService().cambia_stato(
+            1, codice_interno="CESSATO", valido_al=date(2026, 1, 1),
+        )
+        repo.update_contratto.assert_called_once_with(1, {"valido_al": date(2026, 1, 1)})
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_update_contratto_campi_vuoto_fallisce(self, repo_cls):

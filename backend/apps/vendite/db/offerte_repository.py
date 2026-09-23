@@ -27,7 +27,12 @@ from typing import Any
 from django.db import connection
 
 from apps.catalogo.db.catalogo_repository import CatalogoRepository
-from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
+from apps.core.db._helpers import (
+    add_ricerca_full_condition,
+    call_jsonb_fn,
+    row_to_dict,
+    rows_to_list,
+)
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
@@ -108,6 +113,12 @@ def _build_update(
 
 
 # Whitelist ORDER BY per la lista offerte (SQL injection safe).
+# Colonne della ricerca libera: le `ricercabile_full = t` della lista `vendite.offerte`
+# nel catalogo. Le confronta col seed `apps/core/tests/test_ricerca_full_seed`.
+_RICERCA_COLS_OFFERTE: tuple[str, ...] = (
+    "codice", "ragione_sociale_completa", "ba_codice", "id_fiscale_univoco_cf_piva",
+)
+
 _ORDER_COLS_OFFERTE: dict[str, str] = {
     # Whitelist colonne sortable LISTA (SQL injection safe). Mappate sulla vista
     # canonica `vendite.vw_offerte_commerciali_lista` (alias `v`, DEF-8). Le
@@ -406,16 +417,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         if validita_dal_max:
             wheres.append("v.validita_dal <= %s")
             params.append(validita_dal_max)
-        if search:
-            # Ricerca estesa: codice + cliente + codice BA + id fiscale — le
-            # colonne `ricercabile_full = t` di `vendite.offerte` (lista 6).
-            # Il minimo di 3 caratteri lo impone il service.
-            wheres.append(
-                "(v.codice ILIKE %s OR v.ragione_sociale_completa ILIKE %s "
-                "OR v.ba_codice ILIKE %s OR v.id_fiscale_univoco_cf_piva ILIKE %s)"
-            )
-            like = f"%{search}%"
-            params.extend([like, like, like, like])
+        add_ricerca_full_condition(wheres, params, search, colonne=_RICERCA_COLS_OFFERTE)
         # Filtro ultima revisione (mirror preventivi): di default mostra solo la
         # revisione non rimpiazzata per lineage. Quando false, storico completo.
         #

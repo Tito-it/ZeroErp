@@ -73,7 +73,7 @@ nuova.
 | `fk_promo_articoli_articolo` | FK | `E_VENDITE_FK` — "Articolo inesistente." |
 | `fk_promo_articoli_uom` | FK | `E_VENDITE_FK` — "Unita' di misura inesistente." |
 | `chk_promo_articoli_tipo_variazione` | CHECK | `E_VENDITE_VALIDATION` — enum ammesso solo `{PERCENTUALE, VALORE_FISSO, PREZZO_FISSO}` (anticipato service). |
-| `chk_promo_articoli_date` | CHECK | `E_VENDITE_VALIDATION` — `valido_al >= valido_dal`. |
+| guard comune delle date (`trg_promo_articoli_a10_date_validita_ins_upd`) | TRIGGER | `E_DATA_AL_MINORE_DAL` (400, campo `valido_al`) — `valido_al < valido_dal`. Il service non lo anticipa (dal 2026-09-23). |
 | `chk_promo_articoli_valore` | CHECK | `E_VENDITE_VALIDATION` — `PERCENTUALE`/`VALORE_FISSO` richiedono `valore > 0`; `PREZZO_FISSO` richiede `>= 0` (anticipato service). |
 | `ex_promo_articoli_no_overlap` | EXCLUDE gist | `E_VENDITE_PROMO_OVERLAP` — due righe attive si sovrappongono su `(articolo, uom)` nello stesso periodo. |
 

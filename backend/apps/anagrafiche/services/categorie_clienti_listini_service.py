@@ -351,16 +351,9 @@ class CategorieClientiListiniService:
         valido_al = self._v.optional_date(payload, "valido_al", message=_MESSAGE)
         if "valido_al" in payload:
             data["valido_al"] = valido_al
-        # Coerenza range: se entrambe presenti, valido_al >= valido_dal.
-        # Il DB ha anche il check, ma anticipiamo il messaggio parlante.
-        if valido_al is not None:
-            ErrorManager.require(
-                valido_al >= data["valido_dal"],
-                code=E_ANAG_VALIDAZIONE,
-                message=_MESSAGE,
-                detail="valido_al deve essere >= valido_dal.",
-                context={"valido_dal": data["valido_dal"], "valido_al": valido_al},
-            )
+        # L'ordine delle date (valido_al non precede valido_dal) lo giudica il
+        # DB: guard comune `script.trgfn_guard_date_validita`, E_DATA_AL_MINORE_DAL
+        # col campo `valido_al` (dal 2026-09-23). Non si ripete qui.
 
         tipo, valore = self._extract_variazione_pair(payload)
         if tipo is not None or "tipo_variazione" in payload:
@@ -390,16 +383,9 @@ class CategorieClientiListiniService:
             data["valido_al"] = self._v.optional_date(
                 payload, "valido_al", message=_MESSAGE
             )
-        # Coerenza date post-merge (best-effort: se la PATCH ne tocca solo
-        # una, l'altra resta a DB e il check lo fa il DB).
-        if "valido_dal" in data and data.get("valido_al") is not None:
-            ErrorManager.require(
-                data["valido_al"] >= data["valido_dal"],
-                code=E_ANAG_VALIDAZIONE,
-                message=_MESSAGE,
-                detail="valido_al deve essere >= valido_dal.",
-                context={"valido_dal": data["valido_dal"], "valido_al": data["valido_al"]},
-            )
+        # L'ordine delle date (valido_al non precede valido_dal) lo giudica il
+        # DB: guard comune `script.trgfn_guard_date_validita`, E_DATA_AL_MINORE_DAL
+        # col campo `valido_al` (dal 2026-09-23). Non si ripete qui.
 
         if "tipo_variazione" in payload or "valore_variazione" in payload:
             tipo, valore = self._extract_variazione_pair(payload)
