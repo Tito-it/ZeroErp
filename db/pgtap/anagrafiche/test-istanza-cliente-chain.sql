@@ -7,8 +7,8 @@
 -- 2) Esiste uno stato_cliente con codice_interno = AT
 -- 3) Esiste uno stato_cliente con codice_interno = AN
 -- 4) Esiste uno stato_cliente con codice_interno = CH
--- 5) Trovato soggetto 1 con partita_iva = 24551170426
--- 6) Trovato soggetto 2 con partita_iva = 45807930719
+-- 5) Costruito il soggetto 1
+-- 6) Costruito il soggetto 2
 -- 7) Creata istanza base di test collegata al PDP dedicato
 -- 8) Inserito primo cliente di test per istanza base
 -- 9) Per il primo cliente della catena, parent_istanza_id dell’istanza base è NULL
@@ -118,52 +118,16 @@ SELECT id AS categoria_cliente_id
 -- =========================================================
 -- 0) Precondizioni: PDP test dedicato, stati cliente, soggetti
 -- =========================================================
--- 0.1) Creazione PDP GAS dedicato al test (isolamento da dati preesistenti)
-CREATE TEMP TABLE tmp_pdp_test AS WITH gas AS (
-    SELECT id AS utility_id
-    FROM config.utilities
-    WHERE codice_interno = 'GAS'
-    LIMIT 1
-), addr_ins AS (
-    INSERT INTO anagrafiche.indirizzi_dettaglio (
-            stradario_id,
-            civico,
-            estensione_civico
-        )
-    SELECT 4,
-        -- id stradario usato nei test anagrafiche
-        9100,
-        ('CH' || substring(k.suffix, 1, 6))::varchar(10)
-    FROM tmp_test_keys k
-    RETURNING id
-),
-pdp_ins AS (
-    INSERT INTO anagrafiche.pdp (
-            pdp,
-            utility_id,
-            indirizzo_dettaglio_id,
-            cliente_id
-        )
-    -- ⚠️ Il suffisso INTERO, non i primi 2 caratteri. `pdp` e' UNIQUE
-    --   (uq_pdp_codice) e 2 cifre esadecimali sono 256 codici possibili: con 64
-    --   righe residue in tabella la collisione arrivava al 25% delle corse, ed
-    --   e' l'oscillazione «6 o 0 asserzioni» che il file mostrava da mesi.
-    --   La colonna e' varchar(30) e qui siamo a 17: il troncamento non serviva
-    --   a niente, e tutte le altre chiavi di tmp_test_keys usano gia' il
-    --   suffisso intero.
-    SELECT ('G-PDP-CH-' || k.suffix),
-        g.utility_id,
-        a.id,
-        NULL::bigint
-    FROM tmp_test_keys k
-        CROSS JOIN gas g
-        CROSS JOIN addr_ins a
-    RETURNING id,
-        indirizzo_dettaglio_id,
-        utility_id
-)
-SELECT *
-FROM pdp_ins;
+-- 0.1) PDP GAS dedicato al test (isolamento da dati preesistenti)
+-- ⭐ 2026-09-23: il PDP lo costruisce dbops.fn_pgtap_crea_pdp. Prima lo si
+--   costruiva qui a mano, su uno stradario CABLATO (`stradario_id = 4`) e con
+--   un codice derivato dal suffisso: era la prima copia di una logica che altri
+--   quattro file volevano, e con il builder si ritira (regola del 2).
+CREATE TEMP TABLE tmp_pdp_test AS
+SELECT p.pdp_id AS id,
+       p.indirizzo_dettaglio_id,
+       p.utility_id
+FROM dbops.fn_pgtap_crea_pdp('GAS') p;
 SELECT is(
         (
             SELECT count(*)::int
@@ -212,41 +176,45 @@ SELECT is(
         1,
         'Esiste uno stato_cliente con codice_interno = CH'
     );
--- 0.3) Soggetti di test (usiamo due soggetti reali esistenti)
+-- 0.3) Soggetti di test
+-- ⛔ 2026-09-23: erano «due soggetti reali esistenti», per partita IVA di
+--   QUESTA macchina: su un database ricostruito dai changelog non ci sono.
+--   Si costruiscono: due persone giuridiche, ciascuna col suo ruolo CL
+--   completo degli indirizzi di ruolo.
 CREATE TEMP TABLE tmp_soggetto_1 AS
-SELECT id
-FROM anagrafiche.soggetti
-WHERE partita_iva = '24551170426'
-LIMIT 1;
+SELECT dbops.fn_pgtap_crea_soggetto_pg('Catena soggetto 1') AS id;
 SELECT is(
         (
             SELECT count(*)::int
             FROM tmp_soggetto_1
+            WHERE id IS NOT NULL
         ),
         1,
-        'Trovato soggetto 1 con partita_iva = 24551170426'
+        'Costruito il soggetto 1'
     );
 CREATE TEMP TABLE tmp_soggetto_2 AS
-SELECT id
-FROM anagrafiche.soggetti
-WHERE partita_iva = '45807930719'
-LIMIT 1;
+SELECT dbops.fn_pgtap_crea_soggetto_pg('Catena soggetto 2') AS id;
 SELECT is(
         (
             SELECT count(*)::int
             FROM tmp_soggetto_2
+            WHERE id IS NOT NULL
         ),
         1,
-        'Trovato soggetto 2 con partita_iva = 45807930719'
+        'Costruito il soggetto 2'
     );
--- 0.4) Creazione/garanzia ruolo CLIENTE per i due soggetti
---      (fn_guard_soggetto_ruolo restituisce soggetto_ruolo_id coerente con tipo CLIENTE)
+-- 0.4) Ruolo CLIENTE per i due soggetti, con i suoi indirizzi di ruolo
 CREATE TEMP TABLE tmp_sr_1 AS
-SELECT script.fn_get_or_create_soggetto_ruolo(s.id, 'CL') AS soggetto_ruolo_id
+SELECT dbops.fn_pgtap_crea_soggetto_ruolo(s.id, 'CL') AS soggetto_ruolo_id
 FROM tmp_soggetto_1 s;
 CREATE TEMP TABLE tmp_sr_2 AS
-SELECT script.fn_get_or_create_soggetto_ruolo(s.id, 'CL') AS soggetto_ruolo_id
+SELECT dbops.fn_pgtap_crea_soggetto_ruolo(s.id, 'CL') AS soggetto_ruolo_id
 FROM tmp_soggetto_2 s;
+-- ⚠️ La finestra differita si riapre DICHIARANDOLA (2026-09-23). Il file
+--   contava su quella «di default» dopo la riga di contesto, e i builder qui
+--   sopra escono IMMEDIATE come ogni helper: l'istanza base moriva sul guard
+--   differito dei satelliti. Si richiude dopo la quarta coppia, come prima.
+SET CONSTRAINTS ALL DEFERRED;
 -- 0.5) Creazione istanza base di test per il PDP (prima anello della catena)
 WITH ins_iu_base AS (
     INSERT INTO anagrafiche.istanze_utilities (

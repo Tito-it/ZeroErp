@@ -106,6 +106,8 @@ Costruire i casi significa costruire anche **l'azienda e chi ci lavora**:
 | una **filiale bancaria** su cui agganciare un conto | `dbops.fn_pgtap_crea_filiale_bancaria('<etichetta>')` |
 | il **gestore** dell'installazione (lo prende se c'è, lo costruisce se non c'è) | `dbops.fn_pgtap_crea_gestore('<etichetta>')` |
 | un'azienda con il suo operatore (e identità) | `dbops.fn_pgtap_crea_emittente_operatore()` |
+| un **operatore umano** — persona fisica, risorsa umana, identità — **senza azienda**, volendo super admin | `dbops.fn_pgtap_crea_operatore_umano('<etichetta>'[, p_super_admin := true])` |
+| un **punto di prelievo** nuovo, su un indirizzo suo | `dbops.fn_pgtap_crea_pdp(['<utility>'])` |
 | l'utente tecnico di un processo, a roster | `dbops.fn_pgtap_crea_roster_processo('<processo>')` |
 | un cliente fatturabile (soggetto → CL → istanza → BA) | `dbops.fn_pgtap_crea_cliente_ba('<etichetta>'[, utility, emittente_sr])` |
 | un soggetto con un ruolo e basta (CL, FO, BANK_B…) | `dbops.fn_pgtap_crea_soggetto_pg(...)` + `fn_pgtap_crea_soggetto_ruolo(..., 'CL')` |
@@ -145,6 +147,18 @@ tutti e quattro; lo **stato si sceglie alla nascita** (la testata ha un guard di
 transizione), e il **terzo parametro** e' il billing account di una fattura gia'
 costruita, per la seconda dello stesso cliente. ⛔ Righe, scadenze, contabili e
 movimenti restano al test: sono il suo caso.
+
+⚠️ **Un super admin non ha un'azienda.** È multi-emittente per modello, e non è
+un dettaglio: un billing account senza legame ricade sull'emittente di **chi
+agisce** prima che sul gestore globale, quindi un super admin costruito come
+utente tecnico (che un'azienda ce l'ha sempre) sposta il ripiego. E toglierla
+dopo non si può. Si costruisce con `fn_pgtap_crea_operatore_umano(…,
+p_super_admin := true)`, che passa dalla madre di produzione e nasce senza.
+
+⛔ **Ciò che un builder scrive si legge in un'istruzione SEPARATA.** Un `JOIN`
+sulla tabella che il builder ha appena scritto, o una funzione `STABLE`, nella
+**stessa istruzione** della chiamata vede la snapshot di prima: la temp table
+nasce vuota, o il super admin risulta non esserlo.
 
 ⚠️ E `anagrafiche.bank_branches` e' **dato di macchina**, non seed: da zero e'
 vuota, e un conto bancario ci sbatte sul NOT NULL. La filiale si costruisce con

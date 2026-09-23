@@ -79,45 +79,26 @@ SELECT plan(5);
 CREATE TEMP TABLE tmp_2ef_costanti AS
 SELECT 'pgtap_titoli_iva_2ef'::text AS test_scope;
 
--- ⚠️ `codice_interno = 'EF'` e NON `codice = 'EMITT_FISC'`: il `codice` e'
---   modificabile dall'utente, e un confronto logico su quella colonna smette di
---   agganciarsi in silenzio al primo rename (linee-guida-sql §6c/§6d).
--- ⚠️ La natura del soggetto non e' libera: `trgfn_soggetti_ruoli_guard_natura_ammessa`
---   pretende che il tipo soggetto sia fra quelli ammessi per il ruolo, e senza
---   il join su config.tipi_ruoli_nature_ammesse la fixture morirebbe su un
---   errore di dominio che sembrerebbe un difetto del cantiere.
-CREATE TEMP TABLE tmp_2ef_sogg AS
-SELECT s.id, row_number() OVER (ORDER BY s.id) AS n
-  FROM anagrafiche.soggetti s
-  JOIN config.tipi_soggetto_dettaglio tsd ON tsd.id = s.tipo_soggetto_dettaglio_id
-  JOIN config.tipi_ruoli_nature_ammesse na ON na.tipo_soggetto_id = tsd.tipo_soggetto_id
-  JOIN config.tipi_ruoli tr ON tr.id = na.tipo_ruolo_id AND tr.codice_interno = 'EF'
- WHERE s.attivo IS TRUE
-   AND NOT EXISTS (SELECT 1 FROM anagrafiche.soggetti_ruoli sr
-                    WHERE sr.soggetto_id = s.id AND sr.tipo_ruolo_id = tr.id)
- ORDER BY s.id
- LIMIT 2;
-
+-- ⛔ 2026-09-23: «la fixture costruisce i due emittenti» era vero a meta'. Li
+--   costruiva promuovendo a EF «i primi due soggetti attivi senza quel
+--   ruolo», e il titolare del titolo era «il primo soggetto attivo»: su un
+--   database ricostruito dai changelog, prima che il file giri, di soggetti ce
+--   ne sono pochi o nessuno, e la fixture moriva un passo dopo (registro con
+--   emittente NULL). Ora i due emittenti li costruisce il builder — soggetto
+--   persona giuridica, ruolo EF, valuta — e il titolare e' un soggetto suo.
+-- ⚠️ Due ISTRUZIONI, non un generate_series: un LATERAL che non dipende dalla
+--   riga il planner lo esegue UNA volta, e i «due» emittenti erano lo stesso.
 CREATE TEMP TABLE tmp_2ef_emittenti AS
-WITH ruoli AS (
-  INSERT INTO anagrafiche.soggetti_ruoli (soggetto_id, tipo_ruolo_id)
-  SELECT g.id, (SELECT id FROM config.tipi_ruoli WHERE codice_interno = 'EF')
-    FROM tmp_2ef_sogg g
-  RETURNING id AS soggetto_ruolo_id, soggetto_id
-), ins AS (
-  INSERT INTO anagrafiche.emittenti_fiscali (soggetto_ruolo_id, codice, brand_meta)
-  SELECT r.soggetto_ruolo_id,
-         'PGTAP2EF' || g.n,
-         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_2ef_costanti))
-    FROM ruoli r JOIN tmp_2ef_sogg g ON g.id = r.soggetto_id
-  RETURNING id, codice
-)
-SELECT id, codice, right(codice, 1)::int AS n FROM ins;
+SELECT e.emittente_fiscale_id AS id, e.emittente_codice AS codice, 1 AS n
+  FROM dbops.fn_pgtap_crea_emittente() e;
+
+INSERT INTO tmp_2ef_emittenti
+SELECT e.emittente_fiscale_id, e.emittente_codice, 2
+  FROM dbops.fn_pgtap_crea_emittente() e;
 
 CREATE TEMP TABLE tmp_2ef_refs AS
 SELECT
-    (SELECT s.id FROM anagrafiche.soggetti s
-      WHERE s.attivo IS TRUE ORDER BY s.id LIMIT 1)     AS soggetto_id,
+    dbops.fn_pgtap_crea_soggetto_pg('Esportatore abituale 2EF') AS soggetto_id,
     (SELECT i.id FROM config.iva i
       WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)     AS iva_id,
     (SELECT t.id FROM config.tipi_titolo_iva t
@@ -139,48 +120,11 @@ SELECT ok(
 -- Fattura di appoggio: un movimento di tipo FATTURA ne nomina una per forza
 -- (CHECK chk_stiva_movimenti_documento). Ne basta UNA: il consumo si registra
 -- sul TITOLO, e l'emittente della fattura non entra nella regola sotto esame.
-CREATE TEMP TABLE tmp_2ef_ba AS
-WITH cfg AS (
-  SELECT efu.emittente_soggetto_ruolo_id, efu.utility_id
-    FROM anagrafiche.emittenti_fiscali_utilities efu
-   WHERE efu.attivo IS TRUE
-     AND EXISTS (SELECT 1 FROM anagrafiche.billing_account ba WHERE ba.utility_id = efu.utility_id)
-   ORDER BY efu.emittente_soggetto_ruolo_id, efu.utility_id
-   LIMIT 1
-)
-SELECT (SELECT emittente_soggetto_ruolo_id FROM cfg) AS emittente_soggetto_ruolo_id,
-       (SELECT utility_id FROM cfg)                  AS utility_id,
-       (SELECT ba.id FROM anagrafiche.billing_account ba
-         WHERE ba.utility_id = (SELECT utility_id FROM cfg)
-         ORDER BY ba.data_insert DESC NULLS LAST, ba.id DESC LIMIT 1) AS billing_account_id,
-       (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
-       (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DRAFT' ORDER BY id LIMIT 1) AS stato_draft_id,
-       (SELECT id FROM config.valute ORDER BY id LIMIT 1) AS valuta_id;
-
+-- ⛔ 2026-09-23: era scritta a mano su mattoni PESCATI (la prima coppia
+--   emittente/utility configurata, il BA piu' recente), e il registro nasceva
+--   con emittente NULL su un database ricostruito. La costruisce il builder.
 CREATE TEMP TABLE tmp_2ef_fattura AS
-WITH reg AS (
-  -- ⛔ emittente_soggetto_ruolo_id e' NOT NULL dal 2026-08-30 (C1-2,
-  --   20260830-11), e dev'essere lo STESSO delle fatture di questo file:
-  --   vendite.trgfn_fatture_guard_registro_emittente rifiuta un documento
-  --   sul registro di un altro emittente (C1-3, 20260830-10).
-  INSERT INTO vendite.registri_fatturazione (codice, descrizione, reset_policy, attivo,
-         emittente_soggetto_ruolo_id, meta)
-  SELECT 'REG2EF_PGTAP', 'Registro test due emittenti', 'ANNUALE', true,
-         (SELECT emittente_soggetto_ruolo_id FROM tmp_2ef_ba),
-         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_2ef_costanti))
-  RETURNING id
-), ins AS (
-  INSERT INTO vendite.fatture (
-      registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, utility_id, meta)
-  SELECT (SELECT id FROM reg), DATE '2026-06-15',
-         b.emittente_soggetto_ruolo_id, b.billing_account_id,
-         b.tipo_doc_fiscale_id, b.stato_draft_id, b.valuta_id, b.utility_id,
-         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_2ef_costanti))
-    FROM tmp_2ef_ba b
-  RETURNING id
-)
-SELECT id FROM ins;
+SELECT f.fattura_id AS id FROM dbops.fn_pgtap_crea_fattura('titoli IVA 2EF') f;
 
 -- ============================================================
 -- 1) ⭐ I due titoli convivono: e' l'emittente in chiave

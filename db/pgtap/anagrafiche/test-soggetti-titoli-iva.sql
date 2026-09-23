@@ -89,6 +89,14 @@ SELECT plan(23);
 CREATE TEMP TABLE tmp_tiva_costanti AS
 SELECT 'pgtap_titoli_iva'::text AS test_scope;
 
+-- ⭐ 2026-09-23: il soggetto del titolo e' il CLIENTE del mondo, non «il primo
+--   soggetto attivo». Su un database ricostruito quel primo soggetto e'
+--   l'azienda stessa del contesto — una lettera d'intento dell'emittente a se'
+--   stesso — e la fattura dei test 13-15 era di un altro cliente ancora,
+--   pescato. Ora titolo e fattura parlano dello stesso cliente.
+CREATE TEMP TABLE tmp_tiva_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('titoli IVA');
+
 CREATE TEMP TABLE tmp_tiva_refs AS
 SELECT
     (SELECT uef.emittente_fiscale_id
@@ -96,8 +104,7 @@ SELECT
       WHERE uef.auth_user_id = (SELECT auth_user_id FROM tmp_tiva_ctx)
       ORDER BY uef.emittente_fiscale_id
       LIMIT 1)                                              AS emittente_fiscale_id,
-    (SELECT s.id FROM anagrafiche.soggetti s
-      WHERE s.attivo IS TRUE ORDER BY s.id LIMIT 1)         AS soggetto_id,
+    (SELECT m.cliente_soggetto_id FROM tmp_tiva_mondo m)  AS soggetto_id,
     (SELECT i.id FROM config.iva i
       WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)         AS iva_id,
     (SELECT a.id FROM catalogo.articoli a
@@ -359,49 +366,17 @@ SELECT throws_ok(
 -- ============================================================
 -- Fixture: un registro di fatturazione e una fattura, che servono perche' un
 -- movimento di tipo FATTURA la nomina per forza (CHECK chk_stiva_movimenti_documento).
-CREATE TEMP TABLE tmp_tiva_ba AS
-WITH cfg AS (
-  SELECT efu.emittente_soggetto_ruolo_id, efu.utility_id
-    FROM anagrafiche.emittenti_fiscali_utilities efu
-   WHERE efu.attivo IS TRUE
-     AND EXISTS (SELECT 1 FROM anagrafiche.billing_account ba WHERE ba.utility_id = efu.utility_id)
-   ORDER BY efu.emittente_soggetto_ruolo_id, efu.utility_id
-   LIMIT 1
-)
-SELECT (SELECT emittente_soggetto_ruolo_id FROM cfg) AS emittente_soggetto_ruolo_id,
-       (SELECT utility_id FROM cfg)                  AS utility_id,
-       (SELECT ba.id FROM anagrafiche.billing_account ba
-         WHERE ba.utility_id = (SELECT utility_id FROM cfg)
-         ORDER BY ba.data_insert DESC NULLS LAST, ba.id DESC LIMIT 1) AS billing_account_id,
-       (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
-       (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DRAFT' ORDER BY id LIMIT 1) AS stato_draft_id,
-       (SELECT id FROM config.valute ORDER BY id LIMIT 1) AS valuta_id;
-
+-- ⛔ 2026-09-23: la fattura era scritta a mano su mattoni PESCATI — «la prima
+--   coppia (emittente, utility) configurata con un BA», «il BA piu' recente» —
+--   e il registro nasceva con emittente NULL su un database ricostruito, dove
+--   nessuna delle due cose c'e'. Ora la costruisce dbops.fn_pgtap_crea_fattura,
+--   sul BA del cliente del titolo (terzo parametro): registro coerente con
+--   l'azienda di chi agisce, coppia configurata, valuta risolta.
 CREATE TEMP TABLE tmp_tiva_fattura AS
-WITH reg AS (
-  -- ⛔ emittente_soggetto_ruolo_id e' NOT NULL dal 2026-08-30 (C1-2,
-  --   20260830-11), e dev'essere lo STESSO delle fatture di questo file:
-  --   vendite.trgfn_fatture_guard_registro_emittente rifiuta un documento
-  --   sul registro di un altro emittente (C1-3, 20260830-10).
-  INSERT INTO vendite.registri_fatturazione (codice, descrizione, reset_policy, attivo,
-         emittente_soggetto_ruolo_id, meta)
-  SELECT left('REGTIVA_' || (SELECT test_scope FROM tmp_tiva_costanti), 16),
-         'Registro test titoli IVA', 'ANNUALE', true,
-         (SELECT emittente_soggetto_ruolo_id FROM tmp_tiva_ba),
-         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_tiva_costanti))
-  RETURNING id
-), ins AS (
-  INSERT INTO vendite.fatture (
-      registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, utility_id, meta)
-  SELECT (SELECT id FROM reg), DATE '2026-06-15',
-         b.emittente_soggetto_ruolo_id, b.billing_account_id,
-         b.tipo_doc_fiscale_id, b.stato_draft_id, b.valuta_id, b.utility_id,
-         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_tiva_costanti))
-    FROM tmp_tiva_ba b
-  RETURNING id
-)
-SELECT id FROM ins;
+SELECT f.fattura_id AS id
+  FROM dbops.fn_pgtap_crea_fattura(
+           'titoli IVA', 'DRAFT',
+           (SELECT m.billing_account_id FROM tmp_tiva_mondo m)) f;
 
 INSERT INTO anagrafiche.soggetti_titoli_iva_movimenti
     (titolo_iva_id, tipo_movimento, imponibile, data_movimento, fattura_id)
