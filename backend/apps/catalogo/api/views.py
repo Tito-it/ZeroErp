@@ -71,7 +71,7 @@ from apps.core.api.success_responses import success_response
 # Scopo: Definisce in un solo punto i campi write articolo per schema API.
 # for_create=True abilita codice e uom_id come obbligatori (NOT NULL DDL).
 # for_create=False (PATCH) li esclude entrambi: sono immutabili dopo create
-# (lock_columns DDL trg_articoli_a10_protect_codice_upd / _protect_uom_id_upd).
+# (lock di colonna a DB su catalogo.articoli, `E_CODICE_NON_MODIFICABILE`).
 def _articolo_write_fields(*, for_create: bool) -> dict[str, serializers.Field]:
     fields: dict[str, serializers.Field] = {
         "descrizione": serializers.CharField(required=False),

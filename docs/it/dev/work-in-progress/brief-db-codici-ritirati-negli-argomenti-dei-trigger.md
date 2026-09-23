@@ -23,8 +23,12 @@
 > `zeroerp_ci` per due lock IVA scritti a mano (§5-ter). Sanate tutte e due nel
 > registro, mai allentando il controllo.
 >
-> 🔵 **Resta aperto**: la metà BE (§4) e **una domanda sul modello** — dbdev ha
-> perso dei trigger di lock che il DB da zero ha, §7.
+> ✅ **Metà BE (§4) chiusa il 2026-09-23**: i due test portano
+> `E_CODICE_NON_MODIFICABILE`, i quattro commenti non nominano più il codice
+> ritirato né i trigger di `catalogo.articoli` che non esistono più.
+>
+> 🔵 **Resta aperta** solo **una domanda sul modello** — dbdev ha perso dei
+> trigger di lock che il DB da zero ha, §7.
 >
 > **In una riga.** Un codice ritirato quarantanove giorni fa è ancora sollevato
 > da **69 trigger su 68 tabelle in 8 schemi**, e il presidio che esiste apposta
@@ -360,11 +364,15 @@ lock con un codice non vivo (dev **e** CI), zero righe malate nelle 43 del
 registro, `catalogo.articoli` con un solo trigger su `codice` e `uom_id`,
 `config.iva_stati` lockata, i due lock di magazzino armati.
 
-### 🔵 Resta al BE
+### ✅ Il BE
 
-I due test e i quattro commenti di **§4**. ⚠️ Il test e2e
-`apps/magazzino/tests/db/test_anagrafiche_magazzino_db.py:142` è **rosso da
-adesso**: è la finestra dichiarata, e quel test pinna un codice ritirato.
+✅ **Chiuso il 2026-09-23.** I due test di **§4** asseriscono
+`E_CODICE_NON_MODIFICABILE` (l'e2e di magazzino e il mock di
+`test_config_crud_service.py`, verde 7/7); i quattro commenti citano il codice
+vivo e, per `catalogo.articoli`, il lock di colonna **senza** il nome del
+trigger, che lo decide l'automazione. Le occorrenze residue del codice vecchio
+sono volute: `error_policies_generated.py` / `error_messages_fallback.py` (un
+codice ritirato continua a risolversi) e il commento storico dell'e2e.
 
 ### 🔍 Resta una domanda sul MODELLO, non un residuo di questo giro
 
