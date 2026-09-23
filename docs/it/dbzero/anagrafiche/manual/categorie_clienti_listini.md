@@ -56,7 +56,7 @@ Caratteristiche principali:
 | `valore_variazione`           | numeric(10,4) | YES      | Coerente con `tipo_variazione` (vincolo CHECK)                              |
 | `valido_dal`                  | date          | NO       | Inizio validita                                                             |
 | `valido_al`                   | date          | YES      | Fine validita (NULL = +infinity)                                            |
-| `validita`                    | daterange     | NO       | Calcolato dal trigger `script.trgfn_set_validita()`                         |
+| `validita`                    | daterange     | NO       | Colonna generata da `valido_dal`/`valido_al` (linee-guida-sql §7b)          |
 | `meta` / `attivo` / audit     | —             | —        | Campi standard                                                              |
 
 ---
@@ -96,9 +96,9 @@ Per il dominio commercio (utility `Base`) il campo e' **sempre NULL**: non esist
 
 ### Trigger coinvolti
 
-| Trigger                                                          | Fase          | Scopo                                                           |
-| ---------------------------------------------------------------- | ------------- | --------------------------------------------------------------- |
-| `trg_categorie_clienti_listini_a20_set_validita_ins_upd`         | BEFORE INS/UPD of `valido_dal`, `valido_al` | Sincronizza `validita` daterange          |
+Nessun trigger di tabella per `validita`: e' una colonna generata. L'ordine delle
+due date lo verifica il guard comune `script.trgfn_guard_date_validita`, montato
+dall'automazione `DATE_VALIDITA` su ogni tabella con `valido_dal`/`valido_al`.
 
 Trigger di audit e `tx_id` si applicano per policy globale del progetto (vedi `linee-guida-trigger.md`).
 

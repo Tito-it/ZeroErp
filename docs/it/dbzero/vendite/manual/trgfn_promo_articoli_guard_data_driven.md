@@ -8,7 +8,7 @@ Approfondimento tabelle:
 >
 Approfondimento funzioni:
 > [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
-> `script.trgfn_set_validita` — **ritirata** (DROP `20260514-33`; `validita` e' oggi una colonna generata)
+> `script.trgfn_guard_date_validita` — il guard comune dell'ordine delle date (automazione `DATE_VALIDITA`)
 > [vendite.fn_resolve_prezzo_listino_v2](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2)
 >
 Pattern correlato:
@@ -89,10 +89,10 @@ incoerente con lo snapshot pricing gia' chiuso.
 
 1. **Dispatch su `TG_OP`**:
    * `INSERT`: verifica `NEW.valido_dal > CURRENT_DATE`. Il vincolo
-     `valido_al >= valido_dal` e' gia' garantito dal CHECK constraint
-     `chk_promo_articoli_date` e dalla canonicalizzazione `daterange`
-     applicata da `script.trgfn_set_validita` (`_a20_`); non serve
-     ripeterlo nel guard.
+     `valido_al >= valido_dal` lo verifica il guard comune delle date
+     (`script.trgfn_guard_date_validita`, automazione `DATE_VALIDITA`),
+     e sotto di lui la colonna generata `validita`; non serve ripeterlo
+     nel guard.
    * `UPDATE`: stato derivato da `OLD.valido_dal`/`OLD.valido_al`,
      poi dispatch sui tre rami.
 

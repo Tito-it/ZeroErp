@@ -204,8 +204,8 @@ SELECT throws_ok(
 
 -- =========================================================
 -- 9) UPDATE validita (daterange nativo) -> raise
--- Difesa in profondita': benche' a20_set_validita ricalcoli validita
--- da valido_dal/valido_al, il trigger a10 la include fra i campi
+-- Difesa in profondita': benche' validita sia una colonna generata da
+-- valido_dal/valido_al, il trigger a10 la include fra i campi
 -- bloccati per simmetria.
 -- =========================================================
 SELECT throws_ok(
@@ -332,7 +332,8 @@ SELECT lives_ok(
 -- chk_articoli_componenti_valid_dates (valido_al > valido_dal) bloccava
 -- la chiusura same-day di una riga BoM appena inserita facendo cadere
 -- il flow FE in errore tecnico SQLSTATE 23514. Drop del CHECK in
--- 20260427-02 (codice morto: trgfn_set_validita gia' rifiuta < con
+-- 20260427-02 (codice morto: all'epoca trgfn_set_validita, oggi il guard
+-- comune delle date, gia' rifiuta < ; il daterange sotto rifiuterebbe con
 -- 22000). Il trigger block_modifica_struttura ammette
 -- NEW.valido_al = OLD.valido_dal (controllo strict <), quindi il pattern
 -- "Chiudi riga oggi" su una riga con valido_dal=oggi passa.
@@ -351,7 +352,7 @@ SELECT lives_ok(
 -- =========================================================
 -- 18) Verifica che la canonicalizzazione daterange su [X, X] da '[]'
 -- produca '[X, X+1)' (range 1 giorno) -- non degenere/empty.
--- Il trigger script.trgfn_set_validita ricalcola validita post UPDATE.
+-- La colonna generata validita si ricalcola a ogni UPDATE.
 -- =========================================================
 SELECT is(
     (SELECT validita

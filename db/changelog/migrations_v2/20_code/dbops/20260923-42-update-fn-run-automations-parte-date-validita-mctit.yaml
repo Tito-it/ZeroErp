@@ -1,0 +1,131 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_run_automations: la parte DATE_VALIDITA nell'orchestratore.
+#
+#   Il modulo e' dbops.fn_run_automations_date_validita (20260923-41). Entra
+#   anche nel DEFAULT di p_parts, accanto a LOCK_COLUMNS: e' la stessa famiglia
+#   — un guard che nasce dalla struttura della tabella — e un giro «di tutto»
+#   che lo saltasse lascerebbe scoperte proprio le tabelle nuove. Entra anche
+#   sotto TABLE_RULES, come i moduli tabellari.
+#   ⚠️ Nessun chiamante nel codice usa il default (cercato il 2026-09-23): il
+#   cambio non sposta nessun giro esistente.
+#
+# Corpo dalla doc auto-gen (= vivo su dbdev e su zeroerp_ci, stesso md5 del
+# prosrc il 2026-09-23, rev 20260804-57) piu' le righe sopra.
+# Brief: brief-db-guard-date-validita.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260923-42-update-fn-run-automations-parte-date-validita-mctit.yaml
+
+  - changeSet:
+      id: 20260923-42-update-fn-run-automations-parte-date-validita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_run_automations: parte DATE_VALIDITA (modulo
+        fn_run_automations_date_validita), anche nel default di p_parts e sotto
+        TABLE_RULES.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_run_automations(
+                  p_exec_mode text    DEFAULT 'AUTO',
+                  p_schemas   text[]  DEFAULT NULL,
+                  p_dry_run   boolean DEFAULT false,
+                  p_parts     text[]  DEFAULT ARRAY['TX_ID', 'AUDIT_UPDATE', 'STORICO', 'LOCK_COLUMNS', 'ATTIVO', 'DATE_VALIDITA']
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_schemas text[];
+                needs_table_rules boolean;
+              BEGIN
+                -- Orchestratore: calcola scope e chiama le parti richieste.
+                -- p_parts: 'TX_ID','AUDIT_UPDATE','STORICO','LOCK_COLUMNS','ATTIVO','DATE_VALIDITA','CLEANUP'
+                --          (e 'TABLE_RULES' per compatibilita').
+                -- rev 20260923-42: parte DATE_VALIDITA (guard della regola del periodo,
+                --   montato dalla sola presenza di valido_dal/valido_al), anche nel default:
+                --   e' della famiglia di LOCK_COLUMNS, un guard che nasce dalla struttura.
+
+                -- Scope schemi
+                IF p_schemas IS NOT NULL THEN
+                  v_schemas := p_schemas;
+                ELSE
+                  IF EXISTS (
+                    SELECT 1
+                      FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                    WHERE n.nspname='dbops' AND c.relname='automation_scope' AND c.relkind='r'
+                  ) AND EXISTS (SELECT 1 FROM dbops.automation_scope)
+                  THEN
+                    SELECT array_agg(DISTINCT schema_name) INTO v_schemas
+                      FROM dbops.automation_scope;
+                  ELSE
+                    -- rev 2026-08-04 (bonifica riferimenti morti, F6): il FROM non
+                    --   dichiarava l'alias `n` che le tre condizioni del WHERE usano.
+                    SELECT array_agg(n.nspname) INTO v_schemas
+                      FROM pg_namespace n
+                    WHERE n.nspname NOT LIKE 'pg_%'
+                      AND n.nspname <> 'information_schema'
+                      AND n.nspname <> 'storico';
+                  END IF;
+                END IF;
+
+                -- Compatibilita': se p_parts contiene 'TABLE_RULES', abilita i moduli tabellari
+                needs_table_rules := ('TABLE_RULES' = ANY(p_parts));
+
+                IF needs_table_rules OR 'TX_ID' = ANY(p_parts) THEN
+                  PERFORM dbops.fn_run_automations_tx_id(p_exec_mode, v_schemas, p_dry_run);
+                END IF;
+
+                IF needs_table_rules OR 'AUDIT_UPDATE' = ANY(p_parts) THEN
+                  PERFORM dbops.fn_run_automations_audit_update(p_exec_mode, v_schemas, p_dry_run);
+                END IF;
+
+                IF needs_table_rules OR 'STORICO' = ANY(p_parts) THEN
+                  PERFORM dbops.fn_run_automations_storico(p_exec_mode, v_schemas, p_dry_run);
+                END IF;
+
+                IF needs_table_rules OR 'LOCK_COLUMNS' = ANY(p_parts) THEN
+                  PERFORM dbops.fn_run_automations_lock_columns(p_exec_mode, v_schemas, p_dry_run);
+                END IF;
+
+                IF 'ATTIVO' = ANY(p_parts) THEN
+                  PERFORM dbops.fn_run_automations_attivo(p_exec_mode, v_schemas, p_dry_run);
+                END IF;
+
+                IF needs_table_rules OR 'DATE_VALIDITA' = ANY(p_parts) THEN
+                  PERFORM dbops.fn_run_automations_date_validita(p_exec_mode, v_schemas, p_dry_run);
+                END IF;
+
+                IF 'CLEANUP' = ANY(p_parts) THEN
+                  PERFORM dbops.fn_run_automations_cleanup(p_exec_mode, v_schemas, p_dry_run);
+                END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_run_automations(text, text[], boolean, text[])
+              IS '
+                  Orchestratore: calcola scope e chiama le parti richieste.
+                  p_parts: ''TX_ID'',''AUDIT_UPDATE'',''STORICO'',''LOCK_COLUMNS'',''ATTIVO'',''DATE_VALIDITA'',''CLEANUP'' (e ''TABLE_RULES'' per compatibilita'').
+                  Rev 20260923-42: parte DATE_VALIDITA (dbops.fn_run_automations_date_validita, il guard della regola del periodo montato dalla sola presenza di valido_dal/valido_al), anche nel default.
+                ';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' nella doc auto-gen alla revisione prima di
+              -- questa (20260804-57). Non si riscrive un corpo stantio.
+              SELECT 1;

@@ -611,7 +611,14 @@ script: `guardrail_pgtap_preambolo.py` potrebbe pretendere che, se il primo
 contesto, fra le due ci sia un `SET CONSTRAINTS ALL DEFERRED` dichiarato. Il
 censimento del 21-09 dà 9 candidati e 7 falsi positivi (quattro col contesto in
 autocommit, tre senza differiti in mezzo): con quel tasso il cancello va
-disegnato con cura, o resta una lente. ⚠️ Residuo del lavoro di prova sullo
+disegnato con cura, o resta una lente.
+⛔ **Aggiunta del 23-09 sera**: il criterio «`IMMEDIATE` dopo una scrittura»
+è cieco sui file che **non hanno nessun** `IMMEDIATE` — i
+`pgtap-differiti: escluso` contano sulla finestra per dichiarazione. Nove sono
+caduti sullo scratch appena il giro 2 ha tolto il residuo `PGTR0001`, e sono
+stati sanati (verdi): un cancello deve contare anche quella forma. Censimento e
+dodici candidati in
+[brief-db-fixture-che-costruiscono-giro-2.md](brief-db-fixture-che-costruiscono-giro-2.md) §11. ⚠️ Residuo del lavoro di prova sullo
 scratch: le corse forzate sui quattro file col contesto in autocommit hanno
 **committato** dodici `PGTR0002…0013` (emittente + utente tecnico + soggetti)
 alle 11:23 — stessa natura del residuo `PGTR0001` del punto 1, stesso script di

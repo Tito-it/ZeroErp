@@ -1,0 +1,193 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Automazione DATE_VALIDITA: la SOLA PRESENZA di `valido_dal` e `valido_al` in
+#   una tabella monta il guard della regola del periodo
+#   (script.trgfn_guard_date_validita, 20260923-40).
+#
+# ── ⭐ PERCHE' UN'AUTOMAZIONE E NON UN ELENCO ─────────────────────────
+#   La regola appartiene alla COPPIA DI COLONNE, non a una tabella: dove c'e'
+#   un periodo, il periodo non si capovolge. Un elenco di 25 CREATE TRIGGER
+#   invecchierebbe alla prima tabella nuova, in silenzio. E' lo stesso modello
+#   del lock di `codice_interno` (linee-guida-sql §6b: la sola presenza della
+#   colonna provisiona il lock), e ne ricalca il modulo:
+#   dbops.fn_run_automations_lock_columns — scope, regola in
+#   dbops.automation_rules_tbl, nome da template, esistenza BY_NAME /
+#   BY_FUNCTION / BOTH, dry run con audit, errore strutturato.
+#
+# ── ⚠️ DUE SCELTE, e il perche' ──────────────────────────────────────
+#   - `storico` e' ESCLUSO esplicitamente, anche se e' nello scope delle
+#     automazioni: le tabelle ombra sono la memoria di cio' che e' stato, e un
+#     guard li' rifiuterebbe di ricordare. Oggi nessuna porta le due date
+#     (2026-09-23): l'esclusione e' sul modello, non sulla misura.
+#   - Il nome pieno puo' superare i 63 caratteri, e PostgreSQL lo tronca
+#     (`tipi_soggetto_dettaglio_tipi_indirizzo`: 68). Per questo la regola
+#     nasce con existence_strategy BOTH: al giro dopo il trigger si riconosce
+#     dalla FUNZIONE, e non se ne crea un secondo. I presidi lo cercano per
+#     funzione, mai per nome.
+#
+# Chiamata da: 90_end 20260923-47 (runAlways, a ogni migrate) e dal job
+# notturno automations_lock_columns (20260923-46).
+# Permessi: funzione di chi migra, non SECURITY DEFINER.
+# Brief: brief-db-guard-date-validita.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260923-41-create-fn-run-automations-date-validita-mctit.yaml
+
+  - changeSet:
+      id: 20260923-41-create-fn-run-automations-date-validita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_run_automations_date_validita(exec_mode, schemas, dry_run): monta
+        script.trgfn_guard_date_validita (BEFORE INSERT OR UPDATE OF valido_dal,
+        valido_al) su ogni tabella dello scope che porta le due colonne, secondo
+        la regola DATE_VALIDITA di dbops.automation_rules_tbl. Esclude storico.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_run_automations_date_validita(
+                  p_exec_mode text,
+                  p_schemas   text[],
+                  p_dry_run   boolean
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              /*
+                Scopo
+                -----
+                Automazione DATE_VALIDITA: su ogni tabella dello scope che porta
+                le colonne `valido_dal` e `valido_al` monta il guard della regola
+                del periodo:
+                  BEFORE INSERT OR UPDATE OF valido_dal, valido_al
+                  FOR EACH ROW EXECUTE FUNCTION script.trgfn_guard_date_validita()
+
+                Regole di selezione
+                -------------------
+                - la sola presenza delle due colonne (niente registro per tabella:
+                  la regola e' della coppia, non della tabella);
+                - lo schema `storico` e' escluso: le tabelle ombra ricordano, non
+                  si giudicano.
+
+                Idempotenza
+                -----------
+                Esistenza secondo la regola (BY_NAME / BY_FUNCTION / BOTH). Il nome
+                oltre i 63 caratteri PostgreSQL lo tronca: con BOTH il trigger si
+                riconosce comunque dalla funzione.
+
+                Dry run
+                -------
+                p_dry_run = true: nessuna DDL, una riga di audit per tabella.
+              */
+              DECLARE
+                  v_schemas   text[];
+                  rtab        record;
+                  rrule       record;
+                  trg_name    text;
+                  exist_strat text;
+                  created     boolean;
+              BEGIN
+                  v_schemas := dbops.fn_resolve_scope(p_schemas);
+
+                  FOR rtab IN
+                      SELECT n.nspname AS schema_name,
+                             c.relname AS table_name,
+                             c.oid::regclass AS rel
+                        FROM pg_class c
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                       WHERE c.relkind = 'r'
+                         AND n.nspname = ANY(v_schemas)
+                         AND n.nspname <> 'storico'
+                         AND dbops.fn_table_in_scope(n.nspname, c.relname)
+                         AND dbops.fn_col_exists(n.nspname, c.relname, 'valido_dal')
+                         AND dbops.fn_col_exists(n.nspname, c.relname, 'valido_al')
+                       ORDER BY n.nspname, c.relname
+                  LOOP
+                      created := false;
+
+                      FOR rrule IN
+                          SELECT *
+                            FROM dbops.automation_rules_tbl r
+                           WHERE r.enabled
+                             AND upper(btrim(r.rule_type)) = 'DATE_VALIDITA'
+                             AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
+                             AND (upper(r.target_table) = '*ALL' OR rtab.table_name ILIKE r.target_table)
+                             AND (upper(btrim(r.exec_mode)) = 'AUTO' OR r.exec_mode = p_exec_mode)
+                           ORDER BY r.priority, r.id
+                      LOOP
+                          EXIT WHEN created;
+                          exist_strat := COALESCE(rrule.existence_strategy, 'BOTH');
+                          trg_name := dbops.fn_name_from_template(
+                                          COALESCE(rrule.name_template, 'trg_{table}_a10_date_validita_ins_upd'),
+                                          rtab.schema_name, rtab.table_name,
+                                          NULL, NULL, NULL, NULL);
+
+                          IF (exist_strat = 'BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rtab.rel, trg_name))
+                          OR (exist_strat = 'BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rtab.rel, 'script', 'trgfn_guard_date_validita'))
+                          OR (exist_strat = 'BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rtab.rel, trg_name)
+                                                            OR dbops.fn_trigger_exists_by_function(rtab.rel, 'script', 'trgfn_guard_date_validita')))
+                          THEN
+                              IF p_dry_run THEN
+                                  PERFORM dbops.fn_audit_log_once(
+                                      p_function_name => 'dbops.fn_run_automations',
+                                      p_status        => 'DRYRUN',
+                                      p_rule_type     => 'DATE_VALIDITA',
+                                      p_exec_mode     => p_exec_mode,
+                                      p_parts         => ARRAY['DATE_VALIDITA'],
+                                      p_dry_run       => true,
+                                      p_params        => jsonb_build_object(
+                                                           'table',   rtab.schema_name || '.' || rtab.table_name,
+                                                           'trigger', trg_name,
+                                                           'action',  'DRYRUN_CREATE_TRIGGER'),
+                                      p_message       => 'Trigger would be created'
+                                  );
+                              ELSE
+                                  BEGIN
+                                      EXECUTE format($f$
+                                          CREATE TRIGGER %I
+                                          BEFORE INSERT OR UPDATE OF valido_dal, valido_al ON %I.%I
+                                          FOR EACH ROW
+                                          EXECUTE FUNCTION script.trgfn_guard_date_validita()
+                                      $f$, trg_name, rtab.schema_name, rtab.table_name);
+                                  EXCEPTION WHEN others THEN
+                                      PERFORM script.fn_log_and_raise_error(
+                                          'dbops',
+                                          'run_automations',
+                                          'E_DATE_VALIDITA',
+                                          jsonb_build_object(
+                                              'where', 'DATE_VALIDITA',
+                                              'table', rtab.schema_name || '.' || rtab.table_name,
+                                              'error', SQLERRM),
+                                          NULL::uuid,
+                                          rtab.schema_name || '.' || rtab.table_name,
+                                          SQLERRM
+                                      );
+                                  END;
+                              END IF;
+                          END IF;
+                          -- Una regola applicata basta, anche se il trigger c'era gia'.
+                          created := true;
+                      END LOOP;
+                  END LOOP;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_run_automations_date_validita(text, text[], boolean)
+              IS 'Automazione DATE_VALIDITA: su ogni tabella dello scope che porta valido_dal e valido_al monta script.trgfn_guard_date_validita (BEFORE INSERT OR UPDATE OF valido_dal, valido_al), secondo la regola DATE_VALIDITA di dbops.automation_rules_tbl. ⭐ La regola e'' della COPPIA di colonne, non della tabella: la sola presenza basta, come il lock di codice_interno, e una tabella nuova nasce presidiata. ⚠️ Esclude lo schema storico (le tabelle ombra ricordano, non si giudicano). Esistenza BY_NAME / BY_FUNCTION / BOTH: con BOTH un nome troncato oltre i 63 caratteri si riconosce dalla funzione. Dry run con audit; errore strutturato E_DATE_VALIDITA. Chiamata a ogni migrate (90_end, runAlways) e dal job notturno automations_lock_columns. Brief: brief-db-guard-date-validita.md';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_run_automations_date_validita(text, text[], boolean);

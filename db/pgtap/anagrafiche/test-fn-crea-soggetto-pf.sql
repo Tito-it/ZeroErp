@@ -40,6 +40,19 @@ BEGIN;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
+-- ⚠️ VINCOLI DIFFERITI — ⭐ LA FINESTRA SI RIAPRE, NON SI PRESUME.
+--   anagrafiche.fn_crea_soggetto_pf restituisce un soggetto ancora incompleto
+--   (esenzione dichiarata sopra): vuole i guard di `soggetti` DIFFERITI.
+--   ⛔ Ma la riga di contesto qui sopra, quando COSTRUISCE il mondo (database
+--   senza operatori: lo scratch `zeroerp_ci`, la CI), ESCE CON I VINCOLI
+--   IMMEDIATE (rev 20260921-18, come ogni helper pgTAP). Fino al 2026-09-23 lo
+--   mascherava un residuo: `create-gestore-conto-*` committavano l'operatore
+--   `PGTR0001` e da li' la riga non costruiva piu'. Tolto quel COMMIT (brief
+--   fixture-che-costruiscono giro 2), lo scratch appena ricostruito ha dato
+--   rossi di ASSERZIONE: la creazione rifiutata all'INSERT.
+--   La finestra la riapre il file, e dice da se' cosa vuole.
+SET CONSTRAINTS ALL DEFERRED;
+
 SELECT plan(9);
 
 -- =========================================================

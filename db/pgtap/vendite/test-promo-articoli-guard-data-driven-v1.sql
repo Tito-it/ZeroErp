@@ -73,8 +73,8 @@ SELECT a.id AS articolo_id, a.uom_id,
  LIMIT 3;
 
 -- Disabilita il guard data-driven solo per inserire le fixture nei
--- 3 stati pre-esistenti. Gli altri trigger (set_validita, audit,
--- tx_id, EXCLUDE) restano attivi e popolano correttamente la riga.
+-- 3 stati pre-esistenti. Gli altri trigger (audit, tx_id, il guard comune
+-- delle date), l'EXCLUDE e la colonna generata validita restano attivi.
 ALTER TABLE vendite.promo_articoli
     DISABLE TRIGGER trg_promo_articoli_a10_guard_data_driven_ins_upd;
 

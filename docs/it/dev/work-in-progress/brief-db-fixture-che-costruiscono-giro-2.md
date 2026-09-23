@@ -33,6 +33,12 @@
 > suo, in riflessione:
 > [brief-db-guard-date-validita.md](brief-db-guard-date-validita.md).
 >
+> ✅ **23-09 sera — seconda ondata della maschera caduta, sanata**: nove file
+> che contavano sulla finestra differita di default (otto senza nessun
+> `IMMEDIATE`, invisibili al censimento del 21-09) morivano sullo scratch da
+> zero; riaperta la finestra dopo la riga di contesto, **verdi** (Tid). Dodici
+> candidati in più restano da decidere file per file: §11 in coda.
+>
 > ⏳ **Quello che manca non è lavoro, è una corsa**: il registro
 > `baseline-rossi-ci.tsv` è ancora a 361 file. Le righe rientrate le toglie
 > `scripts/pgtap-baseline-ci-rientrati.sh` leggendo il **log della corsa CI**,
@@ -759,3 +765,60 @@ toccano la funzione verdi (`test-fn-crea-operatore` 12/12,
 in RLS e `zeroerp_app` ha `SELECT`: il percorso applicativo vede lo stesso
 profilo. 🔵 Se «un solo profilo SUPER_ADMIN» è una regola del modello, la sua
 sede è un indice unico parziale su `tipo`: decisione a parte.
+### ⛔ La maschera caduta, seconda ondata: nove file contavano sulla finestra di default
+
+**Il fatto (2026-09-23 sera).** Dopo l'apply del giro delle date
+([brief-db-guard-date-validita.md](brief-db-guard-date-validita.md)) la corsa
+sullo scratch `zeroerp_ci` **ricostruito alle 17:06** ha dato nove rossi che la
+CI non conosce. ⚠️ **Non vengono dal giro delle date**: il guard `a10` non può
+sollevare nessuna delle tre frasi, e nessuno dei nove file è stato toccato
+oggi. Vengono da **questo** lotto: chiuso il debito dei `COMMIT` (sopra),
+nessun file lascia più `PGTR0001`, lo scratch nuovo ha **zero** emittenti, e la
+riga di contesto **costruisce** il mondo in ogni file — uscendo `IMMEDIATE`
+(rev `20260921-18`). Chi conta sulla finestra differita di default muore sui
+guard `DEFERRABLE` all'`INSERT`. È la caduta annunciata in testata («il giorno
+in cui si chiude, ogni file che conta sulla finestra di default cade»): i tre
+censiti allora non erano tutti.
+
+⛔ **Perché il censimento del 21-09 non li vedeva**: cercava i file in cui
+`SET CONSTRAINTS ALL IMMEDIATE` sta **dopo** una scrittura. Otto dei nove sono
+`pgtap-differiti: escluso`, cioè **non hanno** nessun `IMMEDIATE`: il criterio
+non poteva trovarli. Il nono (`test-fn-guard-soggetto-pf-pura`) era stato
+corretto il 22-09 spostando l'`IMMEDIATE` in fondo, senza riaprire la finestra
+— e la sua testata dichiarava il file indipendente da chi la chiude (corretta).
+
+| File | Esito sullo scratch | Frase |
+| --- | --- | --- |
+| `anagrafiche/test-emittenti-fiscali` | `ERRORE_FIXTURE` | «Sono richiesti dati societari …» |
+| `anagrafiche/test-fn-update-cliente-v1` | `ERRORE_FIXTURE` | «Indirizzo obbligatorio mancante …» |
+| `anagrafiche/test-risorse-umane-guard-identita-attiva-v1` | `ERRORE_FIXTURE` | idem |
+| `script/test-fn-guard-soggetto-pf-pura` | `ERRORE_FIXTURE` | idem |
+| `anagrafiche/test-trgfn-istanze-utilities-require-utility-dichiarata` | `ERRORE_FIXTURE` | «Istanza utility senza utility dichiarata …» |
+| `anagrafiche/test-fn-crea-indirizzo-soggetto`, `test-fn-crea-operatore`, `test-fn-crea-risorsa-umana`, `test-fn-crea-soggetto-pf` | `ASSERZIONE` | (la creazione rifiutata dentro un `lives_ok`) |
+
+✅ **Correzione applicata e verde** (Tid, 23-09 sera: «test verdi»): in tutti e nove
+`SET CONSTRAINTS ALL DEFERRED;` subito dopo la riga di contesto, con il motivo
+del file — la regola già dichiarata in `20260921-18`. Nessuna fixture completata
+qui: l'esenzione `pgtap-differiti: escluso` resta il debito del §22.4 del brief
+del runner. La misura l'ha fatta Tid: i nove **verdi**. Su dbdev non cambia
+nulla per costruzione (lì c'è sempre un operatore, la riga di contesto non
+tocca i vincoli e la finestra è già differita). ⛔ In CI
+**cadranno** alla prossima corsa se questa correzione non entra con lo stesso
+push della chiusura dei `COMMIT`: ora nessuno committa più l'operatore neanche
+là.
+
+🔵 **Dodici candidati in più**, dallo stesso criterio allargato (contesto senza
+argomento, nessun `IMMEDIATE` prima, una scrittura dopo, nessuna riapertura).
+Dieci sono **già** rossi a registro per un'altra causa — questa può essere la
+seconda, dietro la prima: `create-gestore-conto-bancario`,
+`create-gestore-conto-soggetto`, `test-identita-digitali-guard-coerenza`,
+`test-identita-tecnica`, `test_fn_get_conto_bancario_predefinito`,
+`test_vw_conti_bancari_per_ruolo_gestore` (anagrafiche),
+`script/test-fn-crea-utente-tecnico`, `script/test-fn-is-super-admin`,
+`vendite/test-genera-scadenze-lotto-v1`, `vendite/test-snapshot-indirizzi-lotto-v1`.
+Due sono verdi (`config/test-parameter-overrides-categoria-cliente-v1`,
+`vendite/test-promo-articoli-guard-data-driven-v1`): probabili falsi positivi,
+le loro scritture non passano da un guard differito. Non toccati: si decidono
+file per file quando la loro prima causa è sanata. ⇒ Il cancello del §«da
+decidere» del documento delle migliorie deve contare **anche i file senza
+nessun `IMMEDIATE`**.

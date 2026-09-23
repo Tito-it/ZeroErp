@@ -34,8 +34,9 @@ finestra temporale di validità.
   * `PUBBLICATA`
   * `OBSOLETA`
 * una versione `PUBBLICATA` deve avere `valido_dal`;
-* `validita` è un `daterange` calcolato da trigger standard
-  `script.trgfn_set_validita()`;
+* `validita` è un `daterange` **generato** da `valido_dal`/`valido_al`
+  (linee-guida-sql §7b), e l'ordine delle due date lo verifica il guard
+  comune `script.trgfn_guard_date_validita` (automazione `DATE_VALIDITA`);
 * non possono esistere due versioni `attivo = true` e `stato = 'PUBBLICATA'`
   con intervalli temporali sovrapposti per lo stesso template.
 * la pubblicazione operativa usa

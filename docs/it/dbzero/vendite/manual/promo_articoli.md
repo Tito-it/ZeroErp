@@ -51,7 +51,7 @@ Caratteristiche principali:
 | `valore_variazione` | numeric(10,4) | NO       | Valore libero (segno gestito da UI/business)                             |
 | `valido_dal`        | date          | NO       | Inizio validita                                                          |
 | `valido_al`         | date          | NO       | Fine validita (obbligatoria: promo e' per definizione temporale)         |
-| `validita`          | daterange     | NO       | Calcolato dal trigger `script.trgfn_set_validita()`                      |
+| `validita`          | daterange     | NO       | Colonna generata da `valido_dal`/`valido_al` (linee-guida-sql §7b)       |
 | `meta` / `attivo` / audit | —        | —        | Campi standard                                                           |
 
 ---
@@ -59,7 +59,7 @@ Caratteristiche principali:
 ### Regole di validazione
 
 * **`chk_promo_articoli_tipo_variazione`**: `tipo_variazione` ∈ {`PERCENTUALE`, `VALORE_FISSO`, `PREZZO_FISSO`}.
-* **Range di validita'**: il trigger `script.trgfn_set_validita` costruisce `daterange(valido_dal, valido_al, '[]')`; l'inversione delle date e' rifiutata dal costruttore con SQLSTATE 22000 senza bisogno di un CHECK applicativo.
+* **Range di validita'**: `validita` e' una colonna generata, `daterange(valido_dal, valido_al, '[]')`. L'inversione delle date la rifiuta il guard comune `script.trgfn_guard_date_validita` (automazione `DATE_VALIDITA`) con `E_DATA_AL_MINORE_DAL`, prima che il costruttore del daterange arrivi al suo errore tecnico.
 * **Valore variazione**: nessun vincolo sul segno (il CHECK `chk_promo_articoli_valore` rimosso il 15-04-2026 perche' restringeva inutilmente la semantica algebrica del resolver: negativo=sconto, positivo=maggiorazione).
 * **`ex_promo_articoli_no_overlap`**: nessuna sovrapposizione temporale per la stessa coppia `(articolo_id, uom_id)` quando `attivo IS TRUE`. Implementato come `EXCLUDE USING gist` (richiede `btree_gist`, gia' attivo dalla baseline).
 
@@ -81,9 +81,9 @@ Il calcolo della promo si appoggia **sempre** al prezzo base risolto dal meccani
 
 ### Trigger coinvolti
 
-| Trigger                                              | Fase         | Scopo                                       |
-| ---------------------------------------------------- | ------------ | ------------------------------------------- |
-| `trg_promo_articoli_a20_set_validita_ins_upd`        | BEFORE INS/UPD of `valido_dal`, `valido_al` | Sincronizza `validita` daterange |
+Nessun trigger di tabella per `validita`: e' una colonna generata. L'ordine delle
+due date lo verifica il guard comune `script.trgfn_guard_date_validita`, montato
+dall'automazione `DATE_VALIDITA`.
 
 Trigger di audit e `tx_id` si applicano per policy globale del progetto (vedi `linee-guida-trigger.md`).
 

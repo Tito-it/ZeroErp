@@ -37,6 +37,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_forme_giuridiche_tipi_soggetto_dettaglio_a10_date_va_da7968 | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
+| trg_forme_giuridiche_tipi_soggetto_dettaglio_a10_date_va_da7968 | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
 | trg_forme_giuridiche_tipi_soggetto_dettaglio_a10_forme_g_af5323 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'forme_giuridiche', 'attivo', 'forma_giuridica_id', 'id')` |
 | trg_forme_giuridiche_tipi_soggetto_dettaglio_a10_forme_g_af5323 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'forme_giuridiche', 'attivo', 'forma_giuridica_id', 'id')` |
 | trg_forme_giuridiche_tipi_soggetto_dettaglio_audit_data__eaaf9f | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

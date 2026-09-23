@@ -28,7 +28,7 @@ EXECUTE FUNCTION documenti.trgfn_template_asset_protect_file();
 
 1. Calcola la condizione `<colonna> NEW != OLD` per: `storage_key`, `sha256`, `file_size_bytes`, `mime_type`, `file_name`.
 2. Se almeno una di queste è cambiata, solleva `E_DOCUMENTI_ASSET_FILE_IMMUTABILE` con dettaglio `template_asset_id`, `emittente_fiscale_id`, `codice_interno`.
-3. Altrimenti l'`UPDATE` passa: rimangono modificabili `descrizione`, `attivo`, `meta`, `valido_dal`, `valido_al` (la `validita` daterange è ricalcolata da `script.trgfn_set_validita`), audit fields.
+3. Altrimenti l'`UPDATE` passa: rimangono modificabili `descrizione`, `attivo`, `meta`, `valido_dal`, `valido_al` (la `validita` daterange è una colonna generata e si ricalcola da sola), audit fields.
 
 ## Codice errore
 
