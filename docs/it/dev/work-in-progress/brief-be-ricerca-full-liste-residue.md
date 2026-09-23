@@ -1,16 +1,28 @@
 # Brief BE — La ricerca libera delle liste legge il catalogo
 
-> **Destinatari:** backend (`dev/backend-tid`), con **un prerequisito al team
-> DB** (§2.2) che apre il cantiere.
+> **Destinatari:** backend (`dev/backend-tid`). Il prerequisito al team DB
+> (§2.2) è chiuso.
 >
 > **Tipo:** brief di cantiere. Nasce il 2026-09-23 dal difetto della ricerca
 > di Preventivi e Offerte (codice BA e id fiscale non trovati) e
 > dall'estrazione del BB `add_ricerca_full_condition`, che ha già ritirato le
 > copie scritte a mano di **dieci** liste di vendite.
 >
-> **Stato:** ⏸️ in attesa del prerequisito DB (§2.2). Il lato BE **non parte**
-> prima: la forma del BB dipende da quella lettura, e partire senza vorrebbe
-> dire toccare ogni lista due volte.
+> **Stato 2026-09-23:** 🟡 in corso — passi 0-2 di §9 chiusi, 3-5 aperti.
+>
+> | Passo | Stato | Dove |
+> | --- | --- | --- |
+> | 0 — lettura DB delle colonne ricercabili, filtrata dai permessi | ✅ `ui.fn_lista_colonne_ricerca_full(lista_codice)`, applicata sul DB di sviluppo, pgTAP del team DB | [brief-db-ricerca-full-colonne-permessi](../work-done/brief-db-ricerca-full-colonne-permessi.md), PR #1656 |
+> | 0-bis — `ddt_origine_numero` di `vendite.resi` acceso a catalogo | ✅ seed `lista_colonna.csv` id 156 | PR #1658 |
+> | 1 — BB a runtime (`RicercaFull` + `add_ricerca_full_condition`) e presidi | ✅ `test_ricerca_full_seed` (senza DB) e `tests/db/test_ricerca_full_db` (DB vero) verdi, suite backend verde | §3, §4 |
+> | 2 — le **dieci** liste di vendite | ✅ convertite, provate sul DB vero colonna per colonna (tutte trovate, compreso il DDT di origine di Resi) | §5.0 |
+> | 3 — le 12 a tupla | ⏳ da aprire | §5.1 |
+> | 4 — le 11 a mappa | ⏳ | §5.2 |
+> | 5 — le 9 senza ricerca | ⏳ dopo aver guardato il frontend | §5.3 |
+>
+> ⚠️ Passi 1-2 **non ancora committati** su `dev/backend-tid` (al 23-09 sera).
+> Restano aperte le decisioni di §6 (soglia) e §7 (colonne da accendere):
+> non bloccano i passi 3-5, tranne dove scritto.
 >
 > **Decisione di Tid (2026-09-23):** la lettura del catalogo a runtime si fa
 > **per prima**, così ogni lista si modifica una volta sola.
@@ -27,23 +39,22 @@ flag non lo leggeva: ogni repository riscriveva a mano l'elenco delle
 colonne, e le copie si erano separate. Preventivi, Offerte e Contratti
 cercavano su due colonne invece che su quattro, e nessun test lo vedeva.
 
-Il 2026-09-23 è nato il BB, in [`apps/core/db/_helpers.py`](../../../../backend/apps/core/db/_helpers.py):
+Lo stesso giorno è nato il BB, in [`apps/core/db/_helpers.py`](../../../../backend/apps/core/db/_helpers.py),
+in **due tempi**:
 
-```python
-add_ricerca_full_condition(conditions, params, search, colonne=_RICERCA_COLS_X)
-```
+1. **prima versione** — un elenco fisso di colonne per lista, confrontato col
+   **seed** da [`test_ricerca_full_seed.py`](../../../../backend/apps/core/tests/test_ricerca_full_seed.py).
+   Ha corretto Preventivi, Offerte e Contratti e ritirato le otto copie;
+2. **versione attuale** — la lettura del catalogo **a runtime** (§2, §3),
+   dopo il prerequisito DB.
 
-Aggiunge l'OR di `<alias>.<col>::text ILIKE %s`, col termine `strip` +
-`escape_ilike`; sotto `min_caratteri` (default 3) non filtra. Presidio:
-[`apps/core/tests/test_ricerca_full_seed.py`](../../../../backend/apps/core/tests/test_ricerca_full_seed.py),
-che confronta la costante di ogni lista convertita col seed e tiene il
-registro di debito `_DEBITO_RICERCA_A_MANO` (le **32** liste di questo brief).
-
-⚠️ **Il limite che questo brief chiude.** L'elenco è una costante del
-codice, confrontata col **seed**. Ma `ricercabile_full` si cambia anche dal
-pannello admin (`lista_colonna_admin_service`), e quel cambio la ricerca non
-lo vede: il catalogo dice una cosa, la lista ne fa un'altra, senza errore.
-È lo stesso difetto da cui si è partiti, spostato dal seed al pannello.
+⚠️ **Il limite che la seconda versione ha chiuso.** Nella prima l'elenco era
+una costante del codice, confrontata col seed. Ma `ricercabile_full` si
+cambia anche dal pannello admin (`lista_colonna_admin_service`), e quel
+cambio la ricerca non lo vedeva: il catalogo diceva una cosa, la lista ne
+faceva un'altra, senza errore — lo stesso difetto da cui si era partiti,
+spostato dal seed al pannello. Oggi vale per le dieci liste convertite; le
+32 del registro di debito `_DEBITO_RICERCA_A_MANO` lo hanno ancora.
 
 ## 2. Chi decide cosa
 
@@ -107,17 +118,24 @@ passerebbe a vuoto):
 4. `ricercabile_full = f`, `attivo = f`, `campo_sorgente` NULL → escluse;
 5. lista inesistente → errore catalogato (come `E_UI_LISTA_NON_TROVATA`).
 
-## 3. Il BB dopo il prerequisito
+## 3. Il BB
 
 ```python
-add_ricerca_full_condition(
-    conditions, params, search,
-    lista_codice="vendite.preventivi",
-    colonne=_RICERCA_COLS_PREVENTIVI,   # mappa campo_sorgente -> SQL, o tupla
-    alias="v",                          # solo per la forma a tupla
-    min_caratteri=RICERCA_MIN_CARATTERI,
-)
+_RICERCA_PREVENTIVI = RicercaFull(
+    "vendite.preventivi",
+    ("numero", "ragione_sociale_completa", "ba_codice", "id_fiscale_univoco_cf_piva"),
+)                                        # o una mappa campo_sorgente -> SQL
+...
+add_ricerca_full_condition(conditions, params, search, _RICERCA_PREVENTIVI)
+#                                     alias="v" (forma a tupla), min_caratteri=3
 ```
+
+⭐ **Scritto il 2026-09-23 in una forma diversa da quella prevista qui**:
+`lista_codice` non è un argomento della chiamata ma sta nella
+**dichiarazione** `RicercaFull`, insieme alle colonne. Una chiamata non può
+così passare le colonne di una lista col codice di un'altra, e la
+dichiarazione valida i nomi alla costruzione: un errore esce all'import del
+modulo, non al primo operatore che cerca.
 
 - **la lettura del catalogo avviene solo se il termine supera la soglia**:
   aprire una lista senza cercare non costa niente in più;
@@ -130,19 +148,20 @@ add_ricerca_full_condition(
   lista e colonne, e si procede con le altre;
 - **nessuna colonna attiva e un termine valido → condizione `FALSE`**: una
   ricerca che non ha dove cercare non trova niente. Tornare tutta la lista
-  direbbe all'operatore che tutto corrisponde al termine. ⚠️ Da confermare con
-  Tid;
+  direbbe all'operatore che tutto corrisponde al termine. ✅ Deciso da Tid il
+  2026-09-23;
 - errore della lettura (lista inesistente) → si propaga col suo codice: è un
   errore di dichiarazione nel repository, non un caso da ripiegare.
 
-## 4. Il presidio dopo il prerequisito
+## 4. Il presidio
 
 | Test | Cosa verifica | Dove |
 | --- | --- | --- |
 | 1 — **la mappa copre il seed** | ogni `campo_sorgente` `ricercabile_full = t` del seed è una chiave della mappa (⊇, non più =). Una colonna in più nella mappa è una capacità, non un errore | `test_ricerca_full_seed` (senza DB) |
 | 2 — registro e debito | invariati: ogni lista con colonne ricercabili è registrata o in debito; il debito può solo calare | idem |
-| 3 — **il codice lista giusto** | il sito di chiamata del BB in ogni repository registrato passa il `lista_codice` della sua voce. Un codice sbagliato leggerebbe le colonne di un'altra lista: la ricerca girerebbe, sulle colonne sbagliate | idem, letto dal sorgente come fa il test 10 di `test_liste_configurabili_seed` |
-| 4 — **comportamento sul DB vero** | con una colonna **costruita**: accesa → cercata; spenta → non cercata; sensibile senza grant → non cercata; accesa ma assente dalla mappa → ignorata e `warning` | `tests/db/`, nuovo |
+| 3 — **il codice lista giusto** | la `RicercaFull` registrata per la lista X porta `lista_codice = X`. Con codice e colonne nella stessa dichiarazione (§3) non serve leggere il sito di chiamata | idem |
+| 4 — **comportamento del BB** | con la lettura del catalogo mockata: intersezione, colonna accesa non dichiarata (`warning`), nessuna colonna (`FALSE`), soglia senza lettura, mappa | idem |
+| 5 — **sul DB vero** | per ogni lista registrata la condizione parte sulla sua vista (`EXPLAIN`); il catalogo non accende colonne sconosciute; spegnere `ricercabile_full` su una colonna la toglie subito (transazione annullata). ⚠️ Il caso «sensibile senza grant» sta nel pgTAP del team DB (`test-fn-lista-colonne-ricerca-full-v1`), che lo costruisce: qui non si ricopia | `tests/db/test_ricerca_full_db` (opt-in `ZEROERP_TEST_DB_E2E=1`) |
 
 `_DIVERGENZE_NOTE` **sparisce**: una colonna che il codice sa cercare e il
 catalogo non accende non è più una divergenza, è una colonna spenta. Le
@@ -154,10 +173,11 @@ domande di §7 restano, ma diventano «si accende a catalogo o no?».
 
 `vendite.preventivi`, `offerte`, `ordini`, `ddt`, `fatture`, `contratti`,
 `resi`, `resi_da_accreditare`, `resi_da_riconsegnare`, `famiglie_documento`.
-Passano alla firma nuova (`lista_codice` + costante): è una riga per sito.
-✅ `vendite.resi` cerca anche `ddt_origine_numero`: la ricerca per DDT di origine
-è voluta (Tid, 2026-09-23) e il seed `lista_colonna.csv` la accende
-(`ricercabile_full = t`, id 156). Col BB nuovo resta cercata (§7).
+✅ **Convertite il 2026-09-23** alla lettura a runtime, con prova sul DB vero
+colonna per colonna. ✅ `vendite.resi` cerca anche `ddt_origine_numero`: la ricerca per DDT di
+origine è voluta (Tid, 2026-09-23), il repository la dichiara e il seed
+`lista_colonna.csv` la accende (`ricercabile_full = t`, id 156, PR del team DB
+del 23-09).
 
 ### 5.1 Colonne semplici — forma a tupla (12)
 
@@ -222,7 +242,7 @@ difetto visibile; casella assente è un montaggio da completare.
 
 ### 5.4 Cosa si fa per ogni lista
 
-1. si dichiara la mappa (o la tupla) `_RICERCA_COLS_…` nel repository e si
+1. si dichiara la `RicercaFull` (mappa o tupla) `_RICERCA_…` nel repository e si
    chiama il BB con il suo `lista_codice`;
 2. la lista si **toglie** da `_DEBITO_RICERCA_A_MANO` e si **aggiunge** a
    `_RICERCHE`, nello stesso giro;
@@ -263,7 +283,7 @@ no?** Ogni «sì» è una riga del seed `lista_colonna.csv` per il team DB.
 | `anagrafiche.emittenti_fiscali` | `codice_fiscale` | — | come clienti |
 | `pagamenti.rate` | `id_fiscale_univoco_cf_piva` | `numero_documento` | ⛔ **contraddizione di progetto**: il commento in `list_rate_paginata` dice «`search` cerca il CLIENTE, mai il numero» (brief D19-c §8), il seed accende il numero. Uno dei due è sbagliato |
 | `magazzino.disponibilita` | — | `magazzino_codice` | colonna mancante nel codice: entra nella mappa |
-| `vendite.resi` | `ddt_origine_numero` | — | ✅ voluta (Tid, 2026-09-23): accesa nel seed `lista_colonna.csv` (id 156) |
+| `vendite.resi` | `ddt_origine_numero` | — | ✅ voluta (Tid, 2026-09-23): dichiarata nel repository e accesa nel seed `lista_colonna.csv` (id 156) |
 
 ## 8. Helper locali da ritirare nello stesso giro
 
@@ -276,10 +296,10 @@ no?** Ogni «sì» è una riga del seed `lista_colonna.csv` per il team DB.
 
 ## 9. Ordine
 
-0. **Team DB** — la lettura di §2.2, coi pgTAP. Il BE attende.
-1. **BB e presidio** — firma nuova (§3), test 1-4 (§4). Dichiarata e
-   confermata da Tid prima di scrivere (regola del 2).
-2. **Le dieci di vendite** (§5.0) — `ddt_origine_numero` acceso a catalogo il 23-09.
+0. ✅ **Team DB** — la lettura di §2.2, coi pgTAP.
+1. ✅ **BB e presidio** — §3, §4: `test_ricerca_full_seed` e
+   `tests/db/test_ricerca_full_db`.
+2. ✅ **Le dieci di vendite** (§5.0).
 3. **Le 12 a tupla** (§5.1), per app, ritirando i loro helper (§8).
 4. **Le 11 a mappa** (§5.2).
 5. **Le 9 senza ricerca** (§5.3), dopo aver guardato il frontend.

@@ -23,6 +23,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    RicercaFull,
     add_ricerca_full_condition,
     sql_order_clause,
     call_jsonb_fn,
@@ -39,14 +40,17 @@ from apps.core.db.sql_write_helpers import execute_dynamic_update
 #        chiavi sono i `campo_sorgente` del catalogo liste ('vendite.resi') che
 #        il FE invia come sortField; i valori sono le colonne reali di
 #        `vendite.vw_resi_lista` (alias `v`).
-# Colonne della ricerca libera: le `ricercabile_full = t` della lista `vendite.resi`
-# nel catalogo. Le confronta col seed `apps/core/tests/test_ricerca_full_seed`.
-# ⚠️ `ddt_origine_numero` NON e' ricercabile a catalogo ma si cercava gia' prima
-#    del BB: e' una divergenza nota, registrata nel test, da chiudere a catalogo
-#    (o da togliere qui) — non una colonna da copiare altrove.
-_RICERCA_COLS_RESI: tuple[str, ...] = (
-    "numero", "destinatario_denominazione", "ba_codice",
-    "id_fiscale_univoco_cf_piva", "ddt_origine_numero",
+# Colonne che la ricerca libera SA cercare nella lista `vendite.resi`. Quali cerca
+# davvero lo decide il catalogo a ogni ricerca (`add_ricerca_full_condition`);
+# `test_ricerca_full_seed` verifica che coprano le `ricercabile_full` del seed.
+# ⭐ `ddt_origine_numero`: la ricerca per DDT di origine e' voluta (Tid,
+#    2026-09-23) e il seed `lista_colonna.csv` la accende (id 156).
+_RICERCA_RESI = RicercaFull(
+    "vendite.resi",
+    (
+        "numero", "destinatario_denominazione", "ba_codice",
+        "id_fiscale_univoco_cf_piva", "ddt_origine_numero",
+    ),
 )
 
 _ORDER_COLS_RESI: dict[str, str] = {
@@ -76,9 +80,8 @@ _ORDER_COLS_RESI: dict[str, str] = {
 #        per nome vista. `order_cols`: whitelist SQL-safe sortField -> colonna
 #        reale (le chiavi sono i `campo_sorgente` `ordinabile=t` del catalogo
 #        liste `vendite.resi_da_accreditare` / `..._riconsegnare`, id 10/11).
-#        `search_cols`: i `campo_sorgente` `ricercabile_full=t` (senza alias:
-#        lo mette `add_ricerca_full_condition`), confrontati col seed da
-#        `test_ricerca_full_seed`. Le due
+#        `ricerca`: la dichiarazione `RicercaFull` della coda (cosa si PUO'
+#        cercare; cosa si cerca lo legge il BB dal catalogo). Le due
 #        code hanno colonne diverse (accreditare espone il conto del contatore
 #        accredito_dovuto/tenuti/fatturati + etichetta DOVUTA|FACOLTATIVA;
 #        riconsegnare la copertura resa/riconsegnata/residua + stato_riconsegna),
@@ -100,9 +103,12 @@ _CODA_META: dict[str, dict[str, Any]] = {
             "tenuti": "v.tenuti",
             "fatturati": "v.fatturati",
         },
-        "search_cols": (
-            "reso_numero", "destinatario_denominazione",
-            "descrizione", "ddt_numero", "ba_codice",
+        "ricerca": RicercaFull(
+            "vendite.resi_da_accreditare",
+            (
+                "reso_numero", "destinatario_denominazione",
+                "descrizione", "ddt_numero", "ba_codice",
+            ),
         ),
     },
     "vendite.vw_resi_da_riconsegnare": {
@@ -120,9 +126,12 @@ _CODA_META: dict[str, dict[str, Any]] = {
             "qta_residua": "v.qta_residua",
             "stato_riconsegna": "v.stato_riconsegna",
         },
-        "search_cols": (
-            "reso_numero", "destinatario_denominazione",
-            "descrizione", "ddt_numero",
+        "ricerca": RicercaFull(
+            "vendite.resi_da_riconsegnare",
+            (
+                "reso_numero", "destinatario_denominazione",
+                "descrizione", "ddt_numero",
+            ),
         ),
     },
 }
@@ -198,7 +207,7 @@ class ResiRepository:
         if data_al is not None:
             conditions.append("v.data <= %s")
             params.append(data_al)
-        add_ricerca_full_condition(conditions, params, search, colonne=_RICERCA_COLS_RESI)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_RESI)
 
         # Scope emittente (defense-in-depth applicativa, mirror ddt/ordini).
         # La vista e' `security_invoker=on` e `vendite.resi` ha la policy RLS
@@ -611,7 +620,7 @@ class ResiRepository:
             # rispetto alle colonne delle singole viste.
             conditions.extend(extra_conditions)
             params.extend(extra_params or [])
-        add_ricerca_full_condition(conditions, params, search, colonne=meta["search_cols"])
+        add_ricerca_full_condition(conditions, params, search, meta["ricerca"])
         add_emittente_scope_condition(
             conditions, params,
             auth_user_id=auth_user_id,

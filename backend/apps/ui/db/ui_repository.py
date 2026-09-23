@@ -199,6 +199,10 @@ class UiRepository:
     #        Filtra colonne `attivo=TRUE`. Non applica permessi: il
     #        service applica filtro BLOCCATO sulla base del profilo utente
     #        (delegato a fn_resolve_lista_config — qui restiamo grezzi).
+    #        ⛔ Non e' la sede delle colonne di RICERCA: `ricercabile_full` letto
+    #        da qui cercherebbe anche le colonne BLOCCATE. Quella lettura, gia'
+    #        filtrata dai permessi, e' `ui.fn_lista_colonne_ricerca_full`, via il
+    #        BB `add_ricerca_full_condition` (apps/core/db/_helpers.py).
     def list_colonne_by_codice(
         self, lista_codice: str,
     ) -> list[dict[str, Any]]:

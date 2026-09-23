@@ -27,6 +27,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    RicercaFull,
     add_ricerca_full_condition,
     sql_order_clause,
     rows_to_list,
@@ -41,11 +42,15 @@ from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 # ⚠️ `valuta_codice` e `azioni` restano fuori di proposito: il seed li dichiara
 #    NON ordinabili, e offrire qui una capacità che il catalogo non espone
 #    sarebbe irraggiungibile — il presidio dei seed la segnala.
-# Colonne della ricerca libera: le `ricercabile_full = t` della lista `vendite.fatture`
-# nel catalogo. Le confronta col seed `apps/core/tests/test_ricerca_full_seed`.
+# Colonne che la ricerca libera SA cercare nella lista `vendite.fatture`. Quali cerca
+# davvero lo decide il catalogo a ogni ricerca (`add_ricerca_full_condition`);
+# `test_ricerca_full_seed` verifica che coprano le `ricercabile_full` del seed.
 # ⚠️ `numero` e' un intero nella vista: il cast a testo lo fa il BB.
-_RICERCA_COLS_FATTURE: tuple[str, ...] = (
-    "numero", "ragione_sociale_completa", "ba_codice", "id_fiscale_univoco_cf_piva",
+_RICERCA_FATTURE = RicercaFull(
+    "vendite.fatture",
+    (
+        "numero", "ragione_sociale_completa", "ba_codice", "id_fiscale_univoco_cf_piva",
+    ),
 )
 
 _ORDER_COLS_FATTURE: dict[str, str] = {
@@ -154,7 +159,7 @@ class FattureRepository:
         if data_al is not None:
             conditions.append("v.data <= %s")
             params.append(data_al)
-        add_ricerca_full_condition(conditions, params, search, colonne=_RICERCA_COLS_FATTURE)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_FATTURE)
 
         add_emittente_scope_condition(
             conditions, params,

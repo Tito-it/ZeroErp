@@ -22,6 +22,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    RicercaFull,
     add_ricerca_full_condition,
     sql_order_clause,
     call_jsonb_fn,
@@ -39,10 +40,14 @@ from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixi
 #        chiavi sono i `campo_sorgente` del catalogo liste ('vendite.ddt') che il
 #        FE invia come sortField; i valori sono le colonne reali di
 #        `vendite.vw_ddt_lista` (alias `v`).
-# Colonne della ricerca libera: le `ricercabile_full = t` della lista `vendite.ddt`
-# nel catalogo. Le confronta col seed `apps/core/tests/test_ricerca_full_seed`.
-_RICERCA_COLS_DDT: tuple[str, ...] = (
-    "numero", "destinatario_denominazione", "ba_codice", "id_fiscale_univoco_cf_piva",
+# Colonne che la ricerca libera SA cercare nella lista `vendite.ddt`. Quali cerca
+# davvero lo decide il catalogo a ogni ricerca (`add_ricerca_full_condition`);
+# `test_ricerca_full_seed` verifica che coprano le `ricercabile_full` del seed.
+_RICERCA_DDT = RicercaFull(
+    "vendite.ddt",
+    (
+        "numero", "destinatario_denominazione", "ba_codice", "id_fiscale_univoco_cf_piva",
+    ),
 )
 
 _ORDER_COLS_DDT: dict[str, str] = {
@@ -170,7 +175,7 @@ class DdtRepository(
         if data_al is not None:
             conditions.append("v.data <= %s")
             params.append(data_al)
-        add_ricerca_full_condition(conditions, params, search, colonne=_RICERCA_COLS_DDT)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_DDT)
 
         # Scope emittente (defense-in-depth applicativa, mirror ordini). La
         # vista `vw_ddt_lista` e' `security_invoker=on` e `vendite.ddt` ha la

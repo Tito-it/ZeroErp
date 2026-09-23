@@ -42,6 +42,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    RicercaFull,
     add_ricerca_full_condition,
     sql_order_clause,
     extract_paginated,
@@ -80,12 +81,13 @@ _ORDER_COLS: dict[str, str] = {
 }
 _ORDER_DEFAULT = "codice_interno"
 
-# Colonne su cui cade la ricerca libera.
-# ⚠️ Stesso patto della whitelist di ordinamento: sono le `ricercabile_full = t`
-#    del catalogo. Cercare su una colonna che il catalogo non dichiara
-#    ricercabile darebbe risultati che l'operatore non sa spiegare. Le
-#    confronta col seed `apps/core/tests/test_ricerca_full_seed`.
-_RICERCA_COLS: tuple[str, ...] = ("codice_interno", "descrizione", "prefisso_default")
+# Colonne che la ricerca libera SA cercare nella lista `vendite.famiglie_documento`. Quali cerca
+# davvero lo decide il catalogo a ogni ricerca (`add_ricerca_full_condition`);
+# `test_ricerca_full_seed` verifica che coprano le `ricercabile_full` del seed.
+_RICERCA = RicercaFull(
+    "vendite.famiglie_documento",
+    ("codice_interno", "descrizione", "prefisso_default"),
+)
 
 # Colonne jsonb: il backend Django per psycopg 3 le consegna come `str`.
 _COLONNE_JSONB: tuple[str, ...] = (
@@ -194,7 +196,7 @@ class FamiglieDocumentoRepository:
         # ⭐ `min_caratteri=1`: una lista di configurazione, dove prefissi e
         #    codici di uno o due caratteri sono normali e vanno trovati.
         add_ricerca_full_condition(
-            conditions, params, search, colonne=_RICERCA_COLS, min_caratteri=1,
+            conditions, params, search, _RICERCA, min_caratteri=1,
         )
         sql = f"""
             SELECT v.*,

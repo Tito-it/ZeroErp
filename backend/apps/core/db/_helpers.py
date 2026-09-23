@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Mapping
+from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any
 
 from django.db import connection
@@ -14,6 +17,8 @@ from apps.core.services.error_manager import ErrorManager
 # Cap standard del page size delle liste API (fonte unica: repo clampano e le
 # view lo dichiarano — mai lo stesso 200 ripetuto inline in più file).
 LIST_MAX_LIMIT = 200
+
+logger = logging.getLogger(__name__)
 
 
 def iso_or_none(value: Any) -> str | None:
@@ -124,66 +129,153 @@ RICERCA_MIN_CARATTERI = 3
 _NOME_COLONNA = re.compile(r"^[a-z_][a-z0-9_]*$")
 
 
+@dataclass(frozen=True)
+class RicercaFull:
+    """Cosa si PUO' cercare in una lista configurabile: la dichiarazione del repository.
+
+    `lista_codice` e' il codice della lista a catalogo (`ui.lista_definizione`),
+    `colonne` le colonne che il repository SA cercare in quella query:
+
+    - **tupla** di `campo_sorgente` quando sono colonne semplici della relazione
+      nel `FROM` (`("numero", "ba_codice")` → `v.numero`, `v.ba_codice`, con
+      l'alias passato al BB);
+    - **mappa** `campo_sorgente → espressione SQL` quando il nome del catalogo
+      e' un nome di USCITA (`{"ba_codice": "ba.codice"}`): stessa forma delle
+      whitelist di ordinamento. ⭐ Il valore e' la stessa espressione che la
+      `SELECT` proietta con quel nome: si cerca su cio' che si mostra.
+
+    ⭐ Codice lista e colonne stanno in UNA dichiarazione apposta: una chiamata
+    non puo' cosi' passare le colonne di una lista col codice di un'altra.
+
+    ⚠️ La validazione e' qui e non nel BB: un nome sbagliato esplode
+    all'IMPORT del modulo, non al primo operatore che cerca.
+    """
+
+    lista_codice: str
+    colonne: tuple[str, ...] | Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        if not self.lista_codice:
+            raise ValueError("RicercaFull: lista_codice vuoto")
+        # ⚠️ `("numero")` e' una STRINGA, non una tupla: iterata darebbe una
+        #    colonna per lettera, tutte valide per il controllo dei nomi.
+        if isinstance(self.colonne, str):
+            raise ValueError(
+                f"RicercaFull {self.lista_codice}: colonne e' una stringa, serve una tupla o una mappa"
+            )
+        # Congelata su una copia: validata qui, non deve poter cambiare dopo
+        # (una mappa del modulo modificata a runtime salterebbe il controllo).
+        congelate = (
+            MappingProxyType(dict(self.colonne)) if isinstance(self.colonne, Mapping)
+            else tuple(self.colonne)
+        )
+        object.__setattr__(self, "colonne", congelate)
+        if not self.colonne:
+            raise ValueError(f"RicercaFull {self.lista_codice}: nessuna colonna di ricerca")
+        for nome in self.colonne:
+            # Chiavi scritte nel codice, non input utente: il controllo
+            # trasforma un errore di dichiarazione in un errore chiaro.
+            if not _NOME_COLONNA.match(nome):
+                raise ValueError(f"RicercaFull {self.lista_codice}: colonna non valida {nome!r}")
+        if isinstance(self.colonne, Mapping):
+            for nome, espressione in self.colonne.items():
+                if not str(espressione).strip():
+                    raise ValueError(f"RicercaFull {self.lista_codice}: espressione vuota per {nome!r}")
+
+    # Scopo: `campo_sorgente → espressione SQL`, con l'alias per la forma a tupla.
+    def espressioni(self, alias: str) -> dict[str, str]:
+        if isinstance(self.colonne, Mapping):
+            return dict(self.colonne)
+        return {c: f"{alias}.{c}" for c in self.colonne}
+
+
+# Scopo: le colonne in cui l'utente CORRENTE puo' cercare in una lista, lette
+#        dal catalogo a ogni ricerca e gia' filtrate dai permessi di colonna
+#        (una `BLOCCATO` non esce; utente e veste dalle GUC di sessione).
+# ⚠️ `SELECT … FROM`, non `SELECT ui.fn_…(…)`: la seconda forma restituisce
+#    ogni riga come una tupla in un campo solo (brief-db-ricerca-full-colonne-
+#    permessi §6). Lista assente o spenta → `E_UI_LISTA_NON_TROVATA`, che si
+#    propaga: e' un errore di dichiarazione nel repository, non un ripiego.
+def _colonne_ricerca_accese(lista_codice: str) -> list[str]:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT campo_sorgente FROM ui.fn_lista_colonne_ricerca_full(%s)",
+            [lista_codice],
+        )
+        return [r[0] for r in cursor.fetchall()]
+
+
 def add_ricerca_full_condition(
     conditions: list[str],
     params: list[Any],
     termine: str | None,
+    ricerca: RicercaFull,
     *,
-    colonne: Sequence[str],
     alias: str = "v",
     min_caratteri: int = RICERCA_MIN_CARATTERI,
 ) -> None:
-    """La ricerca libera di una lista: un OR di `ILIKE` sulle sue colonne.
+    """La ricerca libera di una lista: un OR di `ILIKE` sulle colonne accese.
 
     Aggiunge a `conditions`/`params` la condizione
-    `(v.a::text ILIKE %s OR v.b::text ILIKE %s ...)` col termine escapato
+    `((v.a)::text ILIKE %s OR (v.b)::text ILIKE %s ...)` col termine escapato
     (`escape_ilike`) e racchiuso fra `%`. Termine vuoto o piu' corto di
-    `min_caratteri` (dopo lo `strip`) → non aggiunge niente.
+    `min_caratteri` (dopo lo `strip`) → non aggiunge niente, e il catalogo non
+    si legge nemmeno: aprire una lista senza cercare non costa niente in piu'.
 
-    ⛔ **`colonne` sono i `campo_sorgente` con `ricercabile_full = t` della
-    lista a catalogo (`ui.lista_colonna`), e niente altro.** Una colonna che
-    manca non si trova (il difetto di Preventivi e Offerte, 2026-09-23: il
-    catalogo dichiarava codice BA e id fiscale, il repository no); una colonna
-    in piu' da' risultati che l'operatore non sa spiegare. A tenere le due cose
-    allineate e' `apps/core/tests/test_ricerca_full_seed`, che confronta ogni
-    costante registrata col seed — non questo docstring.
+    ⭐ **Due sedi, due domande** (brief-be-ricerca-full-liste-residue §2):
+    cosa si PUO' cercare lo dice il codice (`ricerca`, la dichiarazione del
+    repository); cosa si CERCA adesso, per questo utente, lo dice il catalogo
+    (`ui.fn_lista_colonne_ricerca_full`), letto a ogni ricerca. La ricerca
+    cade sull'intersezione:
+
+    - l'amministratore spegne una colonna → sparisce subito dalla ricerca;
+    - la accende e il repository la conosce → entra subito;
+    - la accende e il repository NON la conosce → ignorata, con un `warning`
+      che la nomina. ⛔ Mai SQL costruito da un nome di catalogo: il trigger
+      a10 valida il `campo_sorgente` solo sulle liste con `vista_sql`, e in
+      meta' delle liste il nome del catalogo e' un nome di uscita che nel
+      `WHERE` non esiste;
+    - nessuna colonna accesa e un termine valido → **`FALSE`**: una ricerca
+      che non ha dove cercare non trova niente (decisione di Tid del
+      2026-09-23). Tornare tutta la lista direbbe all'operatore che ogni riga
+      corrisponde al termine.
 
     Regola del 2 (2026-09-23): la stessa condizione era scritta a mano in otto
-    repository di vendite (preventivi, offerte, ordini, ddt, fatture, resi e
-    le sue due code, contratti, famiglie), e le copie si erano gia' separate.
+    repository di vendite, e le copie si erano gia' separate (Preventivi,
+    Offerte e Contratti non trovavano codice BA e id fiscale). Presidio:
+    `apps/core/tests/test_ricerca_full_seed` (la dichiarazione copre il seed)
+    e `tests/db/test_ricerca_full_db` (la condizione parte sul DB vero).
 
-    ⭐ `::text` su ogni colonna: il catalogo dice `string` anche dove la vista
-    espone un intero (`vw_fatture_lista.numero`), e un `ILIKE` su un intero e'
-    un errore di PostgreSQL. Su una colonna gia' testo il cast non costa niente.
-
-    ⚠️ Limite noto: l'elenco e' una costante del repository, letta dal seed dal
-    test. Se un amministratore cambia `ricercabile_full` dal pannello
-    (`lista_colonna_admin_service`), la ricerca non se ne accorge. Leggere il
-    catalogo a runtime richiede che il DB esponga le colonne ricercabili GIA'
-    filtrate dai permessi di colonna (una `sensibile` bloccata non va cercata):
-    oggi `fn_resolve_lista_config` non le espone. Il cantiere che lo chiude
-    (prerequisito DB, poi mappa `campo_sorgente → SQL` + lettura a runtime) e'
-    `docs/it/dev/work-in-progress/brief-be-ricerca-full-liste-residue.md`.
+    ⭐ `::text` su ogni espressione: il catalogo dice `string` anche dove la
+    vista espone un intero (`vw_fatture_lista.numero`), e un `ILIKE` su un
+    intero e' un errore di PostgreSQL. Su una colonna gia' testo non costa.
     """
-    # Nomi scritti nel codice, non input utente: il controllo trasforma un
-    # errore di dichiarazione in un errore chiaro invece che in SQL rotto.
-    # ⚠️ PRIMA della soglia: controllato solo a termine valido, un nome
+    # ⚠️ PRIMA della soglia: controllato solo a termine valido, un alias
     #    sbagliato passerebbe ogni lista aperta senza ricerca e salterebbe al
     #    primo operatore che cerca.
-    if not colonne:
-        raise ValueError("add_ricerca_full_condition: nessuna colonna di ricerca")
-    for colonna in colonne:
-        if not _NOME_COLONNA.match(colonna):
-            raise ValueError(f"add_ricerca_full_condition: colonna non valida {colonna!r}")
+    if not _NOME_COLONNA.match(alias):
+        raise ValueError(f"add_ricerca_full_condition: alias non valido {alias!r}")
     if not termine:
         return
     termine = termine.strip()
     if len(termine) < min_caratteri:
         return
+    espressioni = ricerca.espressioni(alias)
+    accese = set(_colonne_ricerca_accese(ricerca.lista_codice))
+    ignote = sorted(accese - espressioni.keys())
+    if ignote:
+        logger.warning(
+            "ricerca_full.colonne_accese_non_dichiarate lista=%s colonne=%s",
+            ricerca.lista_codice, ignote,
+        )
+    attive = [e for c, e in espressioni.items() if c in accese]
+    if not attive:
+        conditions.append("FALSE")
+        return
     conditions.append(
-        "(" + " OR ".join(f"{alias}.{c}::text ILIKE %s" for c in colonne) + ")"
+        "(" + " OR ".join(f"({e})::text ILIKE %s" for e in attive) + ")"
     )
-    params.extend([f"%{escape_ilike(termine)}%"] * len(colonne))
+    params.extend([f"%{escape_ilike(termine)}%"] * len(attive))
 
 
 def fetchone_scalar(cursor) -> Any:
