@@ -459,7 +459,9 @@ class TemplateAssetAdminService:
             data["valido_dal"] = self._v.optional_date(payload, "valido_dal")
         if "valido_al" in payload:
             data["valido_al"] = self._v.optional_date(payload, "valido_al")
-        self._guard_date_range(data)
+        # L'ordine delle date lo giudica il DB: guard comune
+        # `script.trgfn_guard_date_validita`, E_DATA_AL_MINORE_DAL col campo
+        # `valido_al` (dal 2026-09-23).
         if "attivo" in payload:
             v = self._v.optional_bool(payload, "attivo")
             data["attivo"] = bool(v) if v is not None else True
@@ -480,7 +482,9 @@ class TemplateAssetAdminService:
             data["valido_dal"] = self._v.optional_date(payload, "valido_dal")
         if "valido_al" in payload:
             data["valido_al"] = self._v.optional_date(payload, "valido_al")
-        self._guard_date_range(data)
+        # L'ordine delle date lo giudica il DB: guard comune
+        # `script.trgfn_guard_date_validita`, E_DATA_AL_MINORE_DAL col campo
+        # `valido_al` (dal 2026-09-23).
         if "attivo" in payload:
             v = self._v.optional_bool(payload, "attivo")
             ErrorManager.require(
@@ -496,20 +500,3 @@ class TemplateAssetAdminService:
                 data["meta"] = m
         return data
 
-    # Scopo: Defense cross-field per coppia valido_dal/valido_al.
-    #        Il DDL non ha CHECK constraint su asset.valido_al >= valido_dal:
-    #        senza il guard service, un range invertito produrrebbe un
-    #        daterange empty (validita := empty) con UX confusa. Bloccare
-    #        a monte con messaggio parlante.
-    def _guard_date_range(self, data: dict[str, Any]) -> None:
-        if data.get("valido_dal") and data.get("valido_al"):
-            if data["valido_al"] < data["valido_dal"]:
-                ErrorManager.raise_error(
-                    code=E_VALIDATION,
-                    message="valido_al non puo' essere antecedente a valido_dal.",
-                    detail=(
-                        f"valido_dal={data['valido_dal']} "
-                        f"valido_al={data['valido_al']}"
-                    ),
-                )
-                raise  # unreachable

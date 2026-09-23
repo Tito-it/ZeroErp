@@ -23,6 +23,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    add_ricerca_full_condition,
     sql_order_clause,
     call_jsonb_fn,
     fetch_paged_with_total,
@@ -38,6 +39,16 @@ from apps.core.db.sql_write_helpers import execute_dynamic_update
 #        chiavi sono i `campo_sorgente` del catalogo liste ('vendite.resi') che
 #        il FE invia come sortField; i valori sono le colonne reali di
 #        `vendite.vw_resi_lista` (alias `v`).
+# Colonne della ricerca libera: le `ricercabile_full = t` della lista `vendite.resi`
+# nel catalogo. Le confronta col seed `apps/core/tests/test_ricerca_full_seed`.
+# ⚠️ `ddt_origine_numero` NON e' ricercabile a catalogo ma si cercava gia' prima
+#    del BB: e' una divergenza nota, registrata nel test, da chiudere a catalogo
+#    (o da togliere qui) — non una colonna da copiare altrove.
+_RICERCA_COLS_RESI: tuple[str, ...] = (
+    "numero", "destinatario_denominazione", "ba_codice",
+    "id_fiscale_univoco_cf_piva", "ddt_origine_numero",
+)
+
 _ORDER_COLS_RESI: dict[str, str] = {
     "numero": "v.numero",
     "data": "v.data",
@@ -65,7 +76,9 @@ _ORDER_COLS_RESI: dict[str, str] = {
 #        per nome vista. `order_cols`: whitelist SQL-safe sortField -> colonna
 #        reale (le chiavi sono i `campo_sorgente` `ordinabile=t` del catalogo
 #        liste `vendite.resi_da_accreditare` / `..._riconsegnare`, id 10/11).
-#        `search_cols`: colonne `ricercabile_full=t` per la search ILIKE. Le due
+#        `search_cols`: i `campo_sorgente` `ricercabile_full=t` (senza alias:
+#        lo mette `add_ricerca_full_condition`), confrontati col seed da
+#        `test_ricerca_full_seed`. Le due
 #        code hanno colonne diverse (accreditare espone il conto del contatore
 #        accredito_dovuto/tenuti/fatturati + etichetta DOVUTA|FACOLTATIVA;
 #        riconsegnare la copertura resa/riconsegnata/residua + stato_riconsegna),
@@ -87,10 +100,10 @@ _CODA_META: dict[str, dict[str, Any]] = {
             "tenuti": "v.tenuti",
             "fatturati": "v.fatturati",
         },
-        "search_cols": [
-            "v.reso_numero", "v.destinatario_denominazione",
-            "v.descrizione", "v.ddt_numero", "v.ba_codice",
-        ],
+        "search_cols": (
+            "reso_numero", "destinatario_denominazione",
+            "descrizione", "ddt_numero", "ba_codice",
+        ),
     },
     "vendite.vw_resi_da_riconsegnare": {
         "order_cols": {
@@ -107,10 +120,10 @@ _CODA_META: dict[str, dict[str, Any]] = {
             "qta_residua": "v.qta_residua",
             "stato_riconsegna": "v.stato_riconsegna",
         },
-        "search_cols": [
-            "v.reso_numero", "v.destinatario_denominazione",
-            "v.descrizione", "v.ddt_numero",
-        ],
+        "search_cols": (
+            "reso_numero", "destinatario_denominazione",
+            "descrizione", "ddt_numero",
+        ),
     },
 }
 
@@ -185,16 +198,7 @@ class ResiRepository:
         if data_al is not None:
             conditions.append("v.data <= %s")
             params.append(data_al)
-        if search and len(search) >= 3:
-            # Ricerca estesa: numero reso + destinatario + codice BA +
-            # id fiscale + numero DDT di origine.
-            conditions.append(
-                "(v.numero ILIKE %s OR v.destinatario_denominazione ILIKE %s "
-                "OR v.ba_codice ILIKE %s OR v.id_fiscale_univoco_cf_piva ILIKE %s "
-                "OR v.ddt_origine_numero ILIKE %s)"
-            )
-            like = f"%{search}%"
-            params.extend([like, like, like, like, like])
+        add_ricerca_full_condition(conditions, params, search, colonne=_RICERCA_COLS_RESI)
 
         # Scope emittente (defense-in-depth applicativa, mirror ddt/ordini).
         # La vista e' `security_invoker=on` e `vendite.resi` ha la policy RLS
@@ -607,13 +611,7 @@ class ResiRepository:
             # rispetto alle colonne delle singole viste.
             conditions.extend(extra_conditions)
             params.extend(extra_params or [])
-        if search and len(search) >= 3:
-            # Ricerca estesa sulle colonne `ricercabile_full=t` della coda
-            # (numero reso + destinatario + articolo + DDT [+ ba_codice]).
-            cols = meta["search_cols"]
-            conditions.append("(" + " OR ".join(f"{c} ILIKE %s" for c in cols) + ")")
-            like = f"%{search}%"
-            params.extend([like] * len(cols))
+        add_ricerca_full_condition(conditions, params, search, colonne=meta["search_cols"])
         add_emittente_scope_condition(
             conditions, params,
             auth_user_id=auth_user_id,

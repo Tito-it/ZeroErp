@@ -23,6 +23,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    add_ricerca_full_condition,
     sql_order_clause,
     call_jsonb_fn,
     row_to_dict,
@@ -54,6 +55,12 @@ def _ph_and_val(col: str, value: Any) -> tuple[str, Any]:
 #        (`ui.lista_colonna` di 'vendite.contratti') che il FE invia come
 #        sortField della DataTable. Niente alias `ba_*` su cliente/id_fiscale
 #        (nomi canonici del soggetto, lezione DEF-8).
+# Colonne della ricerca libera: le `ricercabile_full = t` della lista `vendite.contratti`
+# nel catalogo. Le confronta col seed `apps/core/tests/test_ricerca_full_seed`.
+_RICERCA_COLS_CONTRATTI: tuple[str, ...] = (
+    "numero", "ragione_sociale_completa", "ba_codice", "id_fiscale_univoco_cf_piva",
+)
+
 _ORDER_COLS_CONTRATTI: dict[str, str] = {
     "numero": "v.numero",
     "data": "v.data",
@@ -399,10 +406,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             )
             primo_mese = f"{scadenza_mese}-01"
             params.extend([primo_mese, primo_mese])
-        if search:
-            conditions.append("(v.numero ILIKE %s OR v.ragione_sociale_completa ILIKE %s)")
-            like = f"%{search.strip()}%"
-            params.extend([like, like])
+        add_ricerca_full_condition(conditions, params, search, colonne=_RICERCA_COLS_CONTRATTI)
 
         # Scope emittente (defense-in-depth applicativa). La vista
         # `vw_contratti_lista` e' `security_invoker=on`: la RLS della tabella

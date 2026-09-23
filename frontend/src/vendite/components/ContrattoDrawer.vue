@@ -622,6 +622,9 @@ function openCessaDialog(action) {
   cessaDialogAction.value = action
   // default_date dal BE; fallback oggi solo se la fn non lo fornisce.
   cessaDialogData.value = parseIsoDate(action?.default_date) || new Date()
+  // Il dialog evidenzia `valido_al` da `campiErrati`, che e' lo stesso del
+  // form: un rifiuto precedente del form non deve aprirlo gia' in rosso.
+  campiErrati.value = []
   cessaDialogVisible.value = true
 }
 
@@ -1031,6 +1034,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
           <DatePicker :model-value="parseIsoDate(form.valido_al)"
             @update:model-value="form.valido_al = toIsoDate($event)"
             :disabled="isEdit && isLocked('valido_al')"
+            :invalid="campiErrati.includes('valido_al')"
             date-format="dd/mm/yy" show-icon show-button-bar />
         </div>
       </div>
@@ -1228,7 +1232,8 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
       <div class="form-field">
         <label>{{ t('vendite.contratti.cessa_dialog_data') }}</label>
         <DatePicker v-model="cessaDialogData" date-format="dd/mm/yy"
-          show-icon show-button-bar :min-date="cessaDialogMinDate" />
+          show-icon show-button-bar :min-date="cessaDialogMinDate"
+          :invalid="campiErrati.includes('valido_al')" />
       </div>
       <Message :severity="cessazioneProgrammata ? 'info' : 'warn'"
         :closable="false" class="mt-1" size="small">

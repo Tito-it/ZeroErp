@@ -42,6 +42,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    add_ricerca_full_condition,
     sql_order_clause,
     extract_paginated,
     jsonb_out,
@@ -82,7 +83,8 @@ _ORDER_DEFAULT = "codice_interno"
 # Colonne su cui cade la ricerca libera.
 # ⚠️ Stesso patto della whitelist di ordinamento: sono le `ricercabile_full = t`
 #    del catalogo. Cercare su una colonna che il catalogo non dichiara
-#    ricercabile darebbe risultati che l'operatore non sa spiegare.
+#    ricercabile darebbe risultati che l'operatore non sa spiegare. Le
+#    confronta col seed `apps/core/tests/test_ricerca_full_seed`.
 _RICERCA_COLS: tuple[str, ...] = ("codice_interno", "descrizione", "prefisso_default")
 
 # Colonne jsonb: il backend Django per psycopg 3 le consegna come `str`.
@@ -184,24 +186,25 @@ class FamiglieDocumentoRepository:
             default=_ORDER_COLS[_ORDER_DEFAULT],
             tiebreak="v.id",
         )
-        pattern = f"%{search.strip()}%" if search and search.strip() else None
-        ricerca = " OR ".join(f"v.{c} ILIKE %s" for c in _RICERCA_COLS)
+        conditions = [
+            "(%s::boolean IS NULL OR v.attivo = %s)",
+            "(%s::boolean IS NULL OR v.gestisce_serie = %s)",
+        ]
+        params: list[Any] = [attivo, attivo, gestisce_serie, gestisce_serie]
+        # ⭐ `min_caratteri=1`: una lista di configurazione, dove prefissi e
+        #    codici di uno o due caratteri sono normali e vanno trovati.
+        add_ricerca_full_condition(
+            conditions, params, search, colonne=_RICERCA_COLS, min_caratteri=1,
+        )
         sql = f"""
             SELECT v.*,
                    COUNT(*) OVER () AS total_count
               FROM {_VISTA} v
-             WHERE (%s::boolean IS NULL OR v.attivo = %s)
-               AND (%s::boolean IS NULL OR v.gestisce_serie = %s)
-               AND (%s::text IS NULL OR ({ricerca}))
+             WHERE {" AND ".join(conditions)}
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
-        params: list[Any] = [
-            attivo, attivo,
-            gestisce_serie, gestisce_serie,
-            pattern, *[pattern] * len(_RICERCA_COLS),
-            limit, offset,
-        ]
+        params.extend([limit, offset])
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             righe, totale = extract_paginated(cursor)

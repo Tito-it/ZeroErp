@@ -24,7 +24,8 @@ Indice test eseguiti:
  1) test_errore_del_db_non_viene_riloggato   — campo strutturato -> il BE tace
  2) test_raise_diretto_viene_loggato         — campo assente -> il BE scrive
  3) test_violazione_vincolo_viene_loggata    — SQLSTATE 23505 -> il BE scrive
- 4) test_la_risposta_non_cambia              — la scelta tocca il diario, non l'esito
+ 4) test_la_risposta_non_cambia              — la scelta tocca il diario, non il codice
+ 5) test_col_campo_strutturato_la_frase_e_del_db — dal 2026-09-23 la frase e' del catalogo
 """
 
 from __future__ import annotations
@@ -83,12 +84,24 @@ class ErrorLogNoDuplicazione(SimpleTestCase):
         mock_log.assert_called_once()
 
     def test_la_risposta_non_cambia(self):
-        # Il codice e il messaggio consegnati al chiamante sono gli stessi nei
-        # due casi: quello che cambia e' SOLO chi scrive nel diario.
+        # Il codice consegnato al chiamante e' lo stesso nei due casi: la
+        # scelta di chi scrive nel diario non tocca l'esito.
         with patch(_LOG):
             with self.assertRaises(ServiceError) as senza:
                 _traduci(make_db_error("marcatore riconoscibile", codice=None))
             with self.assertRaises(ServiceError) as con:
                 _traduci(make_db_error("marcatore riconoscibile", codice="E_ESEMPIO"))
         self.assertEqual(senza.exception.code, con.exception.code)
-        self.assertEqual(senza.exception.message, con.exception.message)
+
+    def test_col_campo_strutturato_la_frase_e_del_db(self):
+        # ⭐ La frase invece si': col campo strutturato e' quella del catalogo
+        # (Tid, 2026-09-23 — brief-db-guard-date-validita §13); sul ripiego a
+        # marker resta quella del chiamante, perche' un RAISE diretto non ha
+        # una frase di catalogo da dare.
+        with patch(_LOG):
+            with self.assertRaises(ServiceError) as senza:
+                _traduci(make_db_error("marcatore riconoscibile", codice=None))
+            with self.assertRaises(ServiceError) as con:
+                _traduci(make_db_error("marcatore riconoscibile", codice="E_ESEMPIO"))
+        self.assertEqual(senza.exception.message, "messaggio utente")
+        self.assertEqual(con.exception.message, "marcatore riconoscibile")

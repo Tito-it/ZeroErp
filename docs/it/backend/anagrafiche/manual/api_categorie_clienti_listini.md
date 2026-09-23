@@ -179,7 +179,7 @@ con cache modulo-level via `useGlobalLookup('anag.categorie_listini_tipi_variazi
 | `fk_categ_cli_listini_listino` | FK | `E_ANAG_FK` — "Listino inesistente." |
 | `chk_categ_cli_listini_tipo_variazione` | CHECK | `E_ANAG_VALIDAZIONE` — enum invalido. Anticipato lato service. |
 | `chk_categ_cli_listini_variazione_coerente` | CHECK | `E_ANAG_VALIDAZIONE` — coppia tipo/valore incoerente. Anticipato lato service. |
-| `chk_categ_cli_listini_valido_al_ge_dal` | CHECK | `E_ANAG_VALIDAZIONE` — `valido_al < valido_dal`. Anticipato lato service. |
+| guard comune delle date (`trg_categorie_clienti_listini_a10_date_validita_ins_upd`) | TRIGGER | `E_DATA_AL_MINORE_DAL` (400, campo `valido_al`) — `valido_al < valido_dal`. Il service non lo anticipa (dal 2026-09-23). |
 | `ex_categ_cli_listini_no_overlap` | EXCLUDE gist | `E_ANAG_MATRICE_OVERLAP` — due righe attive si sovrappongono sulla stessa quadrupla (categoria, utility, emittente, classe_utenza con sentinel `-1` per NULL) nello stesso periodo. |
 
 ### Immutabilita' dimensioni in `PATCH`

@@ -90,8 +90,19 @@ class ErrorManager:
         )
 
     # Scopo: Traduce una DatabaseError (tipicamente RAISE P0001 dal DB) in
-    #        ServiceError preservando il codice originale. Il messaggio
-    #        dell'eccezione viene confrontato con `known_markers`: la PRIMA
+    #        ServiceError preservando il codice originale.
+    #        ⭐ CODICE DEL CATALOGO (campo strutturato, cioe' sollevato da
+    #        `script.fn_log_and_raise_error`): vince SEMPRE, anche se il
+    #        chiamante non lo ha in `known_markers`, e con la SUA frase — quella
+    #        del catalogo, coi valori (Tid, 2026-09-23, brief-db-guard-date-validita
+    #        §13). Fino ad allora un codice non in lista cadeva sul
+    #        `fallback_code`, e uno in lista usciva col `message` del chiamante:
+    #        un guard comune come quello delle date (25 tabelle) diventava
+    #        «Violazione vincolo contrattuale.» o un codice generico a seconda
+    #        di chi lo attraversava. `message`/`fallback_message` del chiamante
+    #        restano il ripiego solo se il DB non ha mandato una frase.
+    #        RIPIEGO SUL TESTO (i `RAISE` diretti, senza campo strutturato): il
+    #        messaggio dell'eccezione viene confrontato con `known_markers`: la PRIMA
     #        voce i cui marker compaiono TUTTI nel messaggio vince; nessun
     #        match -> `fallback_code`. I marker restano dati di dominio del
     #        chiamante (ogni service dichiara i propri); qui vive solo il
@@ -126,15 +137,13 @@ class ErrorManager:
         #    arrivavano mai all'envelope da questa strada.
         diag = diagnostica_db(exc, text=msg)
         matched_code: str | None = None
-        # Campo strutturato per primo, ma SOLO se il codice e' fra quelli che il
-        # chiamante ha dichiarato di conoscere: `message` vs `fallback_message`
-        # sotto dipendono da "riconosciuto o no", e un codice che il chiamante
-        # non ha in lista non e' riconosciuto — accettarlo qui gli farebbe usare
-        # il messaggio del caso riconosciuto per un errore che non aspettava.
-        # L'insieme degli esiti resta identico: cambia solo che il match non
-        # dipende piu' da come e' scritto il testo dell'eccezione.
+        # ⭐ Il codice del catalogo vince sempre, con la sua frase (vedi Scopo).
+        # ⚠️ Prima era accettato solo se in `known_markers`, per non dare a un
+        #    errore inatteso il `message` del caso riconosciuto: con la frase
+        #    del DB quel rischio non c'e' piu', e la lista ne scartava di veri.
         structured = diag.codice_strutturato
-        if structured is not None and any(c == structured for c, _ in known_markers):
+        frase_del_db = diag.messaggio if structured is not None else None
+        if structured is not None:
             matched_code = structured
         # ⛔ NON DUPLICARE IL DIARIO — decisione DB+BE del 2026-08-19.
         # Il campo strutturato e' valorizzato SOLO da `script.fn_log_and_raise_error`,
@@ -158,16 +167,17 @@ class ErrorManager:
             raise exc
         ErrorManager.raise_error(
             code=matched_code or fallback_code,
-            message=(
+            message=frase_del_db or (
                 message
                 if matched_code is not None or fallback_message is None
                 else fallback_message
             ),
             detail=msg,
             # ⚠️ `hint` e' la SOLUZIONE che il team DB scrive a catalogo per ogni
-            #    codice, e il `message` qui sopra e' del CHIAMANTE: sono due cose
-            #    diverse e non si scavalcano. Fino al 2026-08-24 da questa strada
-            #    la soluzione non usciva affatto.
+            #    codice, `message` la frase dell'errore (del catalogo, o del
+            #    chiamante sul ripiego): sono due cose diverse e non si
+            #    scavalcano. Fino al 2026-08-24 da questa strada la soluzione
+            #    non usciva affatto.
             hint=diag.hint,
             context=context,
             fields=diag.fields,

@@ -180,7 +180,7 @@ Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 
 | Parametro              | Tipo     | Descrizione                                                                                |
 | ---------------------- | -------- | ------------------------------------------------------------------------------------------ |
-| `search`               | string   | ILIKE su `codice` offerta, `ragione_sociale_completa`, `ba_codice` e `id_fiscale_univoco_cf_piva` (minimo 3 char se valorizzato) |
+| `search`               | string   | ILIKE su `codice` offerta, `ragione_sociale_completa`, `ba_codice` e `id_fiscale_univoco_cf_piva`. Sotto 3 caratteri il termine **non filtra** (nessun errore) |
 | `billing_account_id`   | int      | Filtro cliente                                                                              |
 | `stato_codice_interno` | string   | `BOZZA` \| `EMESSA` \| `ACCETTATA` \| `RIFIUTATA` \| `ANNULLATA` \| `SUPERATA`               |
 | `utility_id`           | int      | Filtro utility                                                                              |
@@ -193,8 +193,10 @@ Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 | `order_by`             | string   | `campo_sorgente` catalogo `vendite.offerte`: `codice` \| `ragione_sociale_completa` \| `ba_codice` \| `id_fiscale_univoco_cf_piva` \| `utility_codice` \| `utility_descrizione` \| `listino_codice` \| `validita_dal` \| `validita_al` \| `data_emissione` \| `stato_descrizione` \| `stato_codice_interno` \| `data_insert`. `revisione_numero` **non ordinabile** |
 | `order_dir`            | string   | `asc` o `desc` (default)                                                                    |
 
-> **`search` vuoto**: stringa vuota o whitespace-only trattato come "no filter"
-> (non solleva 422). Il minimo 3 char si applica solo a `search` non-vuota.
+> **`search` corto o vuoto**: vuoto, whitespace-only o sotto 3 caratteri →
+> nessun filtro, nessun errore (BB `add_ricerca_full_condition`, soglia unica
+> delle liste). Fino al 2026-09-23 sotto i 3 caratteri rispondeva 400
+> `E_VENDITE_VALIDATION`.
 
 > **Scope emittente** (dal 2026-09-21): lista **ed export** applicano il filtro
 > applicativo `v.emittente_fiscale_id = ANY(<whitelist>)` risolto da

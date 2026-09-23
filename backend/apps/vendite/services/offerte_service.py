@@ -384,19 +384,10 @@ class OfferteService:
         auth_user_id: int | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         self._v.validate_order_by(order_by, allowed=_ORDER_BY_OFFERTE)
-        # `search` vuoto/whitespace-only -> trattato come "no filter" (coerente
-        # con come la UI passa il campo: stringa vuota = filtro non applicato).
-        # Solo se l'utente fornisce una stringa non vuota richiediamo >=3 char.
-        search_norm = search.strip() if isinstance(search, str) else None
-        if search_norm:
-            ErrorManager.require(
-                len(search_norm) >= 3,
-                code=E_VENDITE_VALIDATION,
-                message="Ricerca testuale: minimo 3 caratteri.",
-                context={"search_len": len(search_norm)},
-            )
-        else:
-            search_norm = None
+        # ⭐ La soglia del termine (vuoto o sotto 3 caratteri → non filtra) la
+        #    applica il BB `add_ricerca_full_condition` nel repository, uguale
+        #    per tutte le liste. Fino al 2026-09-23 qui era un 400: il frontend
+        #    manda il termine a ogni tasto, e i primi due erano un errore.
         filters: dict[str, Any] = {
             "billing_account_id": billing_account_id,
             "stato_codice_interno": stato_codice_interno,
@@ -404,7 +395,7 @@ class OfferteService:
             "listino_id": listino_id,
             "validita_dal_min": validita_dal_min,
             "validita_dal_max": validita_dal_max,
-            "search": search_norm,
+            "search": search,
             "solo_ultima_revisione": solo_ultima_revisione,
             # Scope emittente: `None` = nessuna restrizione (superuser a
             # livello API); entra nei filtri cosi' righe e conteggio hanno lo

@@ -63,7 +63,9 @@ export function useSoggettoRuoloCollection(config) {
     onSaved,
   } = config
 
-  const { execute, loading: saving } = useApiHandler()
+  // `campiErrati`: i campi che il backend (o il DB) indica da correggere
+  // sull'ultimo salvataggio — il drawer li unisce agli errori client del form.
+  const { execute, loading: saving, campiErrati } = useApiHandler()
 
   // Lista card (in context ruolo contiene fonti editabili + ereditate readonly)
   const list = ref([])
@@ -73,6 +75,15 @@ export function useSoggettoRuoloCollection(config) {
   const formMode = ref(null)
   const editId = ref(null)
   const formErrors = ref([])
+
+  // Scopo: Azzera gli errori client E quelli del server. `campiErrati` si
+  //        azzera da se' solo al prossimo `execute`: senza questo, il campo
+  //        rosso di un salvataggio fallito resterebbe sul form nuovo, su un
+  //        altro record o alla riapertura del drawer.
+  function resetErrori() {
+    formErrors.value = []
+    campiErrati.value = []
+  }
 
   // Scopo: Risolve il set di funzioni API in base al context corrente.
   function apiFor(action) {
@@ -113,7 +124,7 @@ export function useSoggettoRuoloCollection(config) {
   function startNew() {
     formMode.value = 'new'
     editId.value = null
-    formErrors.value = []
+    resetErrori()
     resetForm()
     onAfterStartNew?.()
   }
@@ -121,7 +132,7 @@ export function useSoggettoRuoloCollection(config) {
   function startEdit(item) {
     formMode.value = 'edit'
     editId.value = item.id
-    formErrors.value = []
+    resetErrori()
     populateForm(item)
     onAfterStartEdit?.(item)
   }
@@ -129,7 +140,7 @@ export function useSoggettoRuoloCollection(config) {
   function cancelForm() {
     formMode.value = null
     editId.value = null
-    formErrors.value = []
+    resetErrori()
     resetForm()
   }
 
@@ -158,7 +169,7 @@ export function useSoggettoRuoloCollection(config) {
 
     formMode.value = null
     editId.value = null
-    formErrors.value = []
+    resetErrori()
     resetForm()
     await loadList()
     onSaved?.()
@@ -191,7 +202,7 @@ export function useSoggettoRuoloCollection(config) {
       if (!val) return
       formMode.value = null
       editId.value = null
-      formErrors.value = []
+      resetErrori()
       resetForm()
       loadList()
     },
@@ -204,6 +215,7 @@ export function useSoggettoRuoloCollection(config) {
     formMode,
     editId,
     formErrors,
+    campiErrati,
     loadList,
     startNew,
     startEdit,

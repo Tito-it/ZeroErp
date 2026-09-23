@@ -59,6 +59,7 @@ const {
   saving,
   formMode,
   formErrors,
+  campiErrati,
   loadList: loadConti,
   startNew: onStartNew,
   startEdit: onStartEdit,
@@ -209,7 +210,7 @@ const onClose = useDrawerClose(emit)
         <ContoBancarioForm
           :form="conto.form"
           :usi-disponibili="conto.usiDisponibili"
-          :errors="formErrors"
+          :errors="[...formErrors, ...campiErrati]"
           :disabled="false"
           @iban-select="conto.onIbanSelect"
           @iban-clear="conto.onIbanClear"

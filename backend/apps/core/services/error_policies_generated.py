@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 910, di cui 95 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 911, di cui 96 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -352,7 +352,11 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DATA_ERRATA": "DATO_ERRATO",
     # ⚠️ RITIRATO il 2026-08-07
     "E_DATA_FINE_INFERIORE_DI_INIZIO": "DATO_ERRATO",
+    # Ritirato il 2026-09-23 (brief-db-guard-date-validita, 20260923-43): lo sollevava solo anagrafiche.trgfn_billing_account_guard_normalize sulle date di validita, e la sua frase (minore uguale) prometteva una regola piu stretta di quella applicata. La regola del periodo ha ora una sede sola, script.trgfn_guard_date_validita, con E_DATA_AL_MINORE_DAL.
+    # ⚠️ RITIRATO il 2026-09-23
     "E_DATA_FINE_NON_MAGGIORE_DI_INIZIO": "DATO_ERRATO",
+    # dbops.fn_run_automations_date_validita non e riuscita a montare il guard delle date di validita (script.trgfn_guard_date_validita) su una tabella con valido_dal/valido_al. Nessun operatore lo provoca: e un difetto di struttura o di permessi di chi migra. Brief: brief-db-guard-date-validita.
+    "E_DATE_VALIDITA": "TECNICO",
     "E_DATI_SOCIETARI_REQUIRED_MANCANTI": "DATO_ERRATO",
     "E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO": "NON_TROVATO",
     # ── 400 · il problema non e' un campo del form (`show_error_banner`) ──
@@ -1505,6 +1509,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE",
         "E_CONTRATTO_MODALITA_C_SENZA_RIGHE",
         "E_DATA_FINE_INFERIORE_DI_INIZIO",
+        "E_DATA_FINE_NON_MAGGIORE_DI_INIZIO",
         "E_DBLINK_LOG_CONN_MISSING",
         "E_DELETE_RIGA_DOC_NON_BOZZA",
         "E_DRYRUN_CREATE_TRIGGER",

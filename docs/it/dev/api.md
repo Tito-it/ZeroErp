@@ -1927,8 +1927,8 @@ si sono sfilati. I quattro delegano tutti al modulo:
 | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `ErrorTranslator._from_database_error`   | lo usa come `ApiError.code` (→ policy → status)                                                                                        |
 | `payload_helpers.translate_db_errors`    | lo usa al posto del `fallback_code` di dominio                                                                                         |
-| `ErrorManager.raise_from_database_error` | lo accetta **solo se dichiarato** nei `known_markers` del chiamante (`message` vs `fallback_message` dipendono da «riconosciuto o no») |
-| `pratiche_service._raise_known_db_error` | idem, filtrato sui codici del dominio                                                                                                  |
+| `ErrorManager.raise_from_database_error` | lo usa **sempre**, con la **frase del DB** (`message_primary`); i `known_markers` e il `message` del chiamante restano il ripiego dei soli `RAISE` diretti senza campo. ⚠️ Fino al 2026-09-23 lo accettava solo se dichiarato, col `message` del chiamante: un guard comune (le date di validità, 25 tabelle) usciva come codice generico o come «Violazione vincolo contrattuale.» — brief-db-guard-date-validita §13 |
+| `pratiche_service._raise_known_db_error` | lo accetta se dichiarato dal dominio, con la frase del DB; un codice non dichiarato è **rilanciato nudo** e il middleware (riga 1) lo traduce allo stesso modo |
 
 Test: `apps/core/tests/services/test_db_error_fields.py` — 8 unitari sulla
 precedenza campo/testo e 3 end-to-end su DB reale (saltati se il DB non

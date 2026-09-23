@@ -125,7 +125,7 @@ Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 
 | Parametro | Tipo | Descrizione |
 |---|---|---|
-| `search` | string | ILIKE su `numero` contratto e `ragione_sociale_completa` del cliente |
+| `search` | string | ILIKE su `numero`, `ragione_sociale_completa`, `ba_codice` e `id_fiscale_univoco_cf_piva` (le colonne `ricercabile_full` a catalogo); sotto i 3 caratteri non filtra |
 | `billing_account_id` | int | Filtro cliente |
 | `stato_doc_contratto_id` | int | Filtro stato (FK `config.stati_doc_contratti`) |
 | `utility_id` | int | Filtro utility |
@@ -915,6 +915,7 @@ alle righe di contratto via `target_riga_id`.
 | `E_VENDITE_CONTRATTO_OVERLAP` | 409 | Pre-check service `fn_contratto_sovrapposto` su `emetti()` (messaggio che nomina l'incumbent) **oppure** backstop EXCLUDE gist `ex_contratti_no_overlap`. Scatta all'**attivazione** (DRAFT esclusi dal vincolo, vedi Regole §9) | — |
 | `E_CONTRATTO_NON_MODIFICABILE` | 409 | Service — **testata e utility** su contratto post-DRAFT (PATCH testata fuori whitelist, create/update utility, indirizzi). ⚠️ Fino al 2026-09-22 copriva anche righe e componenti: lì ora vale `E_RIGA_DOC_NON_BOZZA`, il codice del DB sulle stesse righe (prima lo stesso rifiuto usciva con due nomi) | — |
 | `E_CONTRATTO_VALIDO_AL_RETROATTIVO` | 409 | DB P0001 (cessazione manuale con `valido_al < CURRENT_DATE`, bypass GUC per job notturno) | `trgfn_contratti_a10_guard_cessazione_no_retroattiva` |
+| `E_DATA_AL_MINORE_DAL` | 400 | DB P0001, campo `valido_al` — `valido_al < valido_dal` in create, PATCH testata e cessazione. Il service non lo anticipa (dal 2026-09-23). Frase del catalogo con le due date, soluzione in `hint`: `raise_from_database_error` fa vincere il codice del DB anche fuori da `_KNOWN_DB_ERROR_MARKERS` | `script.trgfn_guard_date_validita` (automazione `DATE_VALIDITA`) |
 | `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE` | 422 | DB P0001 (refactor modalita 2026-05-15) — attivazione di contratto senza listino senza righe AGGIUNTA con prezzo valorizzato | `trgfn_contratti_freeze_listino_versione` (guard interno) |
 | `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO` | 422 | DB P0001 (refactor 2026-05-15) — INSERT/UPDATE riga `tipo_eccezione=AGGIUNTA` per articolo gia' presente nel listino di riferimento | `trgfn_contratti_righe_guard_aggiunta_fuori_listino` |
 | `E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA` | 422 | DB P0001 (§6.1 2026-05-16) — INSERT/UPDATE riga `tipo_eccezione=ESCLUSIONE` per articolo che e' `articolo_figlio_id` in un bundle del listino del contratto. L'ESCLUSIONE si applica al padre bundle, non al singolo componente | `trgfn_contratti_righe_guard_esclusione_figlio_bundle` |

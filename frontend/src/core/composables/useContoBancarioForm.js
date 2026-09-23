@@ -41,10 +41,9 @@ export function useContoBancarioForm() {
     }
     if (!form.bank_branch_id) errors.push('bank_branch_id')
     if (!form.uso) errors.push('uso')
-    // Date coerenti
-    if (form.valido_dal && form.valido_al && form.valido_al < form.valido_dal) {
-      errors.push('date_range')
-    }
+    // ⚠️ L'ordine delle date NON si giudica qui: lo giudica il guard comune del
+    // database (E_DATA_AL_MINORE_DAL, dal 2026-09-23), che arriva col campo
+    // `valido_al` in `campiErrati` e con la soluzione nel toast.
     return errors
   }
 

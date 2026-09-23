@@ -8,7 +8,7 @@
 """
 Indice test eseguiti:
 1)  list_offerte_invalid_order_by
-2)  list_offerte_search_too_short
+2)  list_offerte_search_corta_non_e_un_errore
 3)  get_offerta_not_found
 4)  get_offerta_ok_arricchisce_eccezioni_e_utility
 5)  crea_offerta_codice_rifiutato_in_payload          [Step 5]
@@ -108,15 +108,18 @@ class OfferteServiceTests(TestCase):
             OfferteService().list_offerte(order_by="prezzo_segreto")
         self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
 
-    # Scopo: search con meno di 3 char rifiutato.
+    # Scopo: search sotto soglia NON e' un errore (fino al 2026-09-23 era un
+    #        400): il termine arriva al repository, dove la soglia la applica
+    #        il BB `add_ricerca_full_condition` come per tutte le liste.
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_list_offerte_search_too_short(self, repo_cls):
+    def test_list_offerte_search_corta_non_e_un_errore(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
-        repo_cls.return_value.list_offerte.return_value = []
-        with self.assertRaises(ServiceError) as cm:
-            OfferteService().list_offerte(search="ab")
-        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        repo = repo_cls.return_value
+        repo.list_offerte.return_value = []
+        repo.count_offerte.return_value = 0
+        self.assertEqual(OfferteService().list_offerte(search="ab"), ([], 0))
+        self.assertEqual(repo.list_offerte.call_args.kwargs["search"], "ab")
 
     # --- dettaglio ----------------------------------------------------
 

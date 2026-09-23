@@ -11,7 +11,7 @@
 #        - delete_versione: BOZZA hard delete, non-BOZZA -> blocked;
 #        - clone_versione: copia source con override, sempre BOZZA;
 #        - pubblica_versione: BOZZA -> PUBBLICATA, valido_dal obbligatorio,
-#          valido_al < valido_dal rifiutato, idempotente per design.
+#          valido_al < valido_dal delegato al DB, idempotente per design.
 #
 # Indice test (0..N):
 #   0. create_404_if_template_invisible
@@ -25,7 +25,7 @@
 #   8. delete_bozza_happy_path
 #   9. clone_overrides_titolo_and_resets_dates
 #  10. pubblica_requires_valido_dal
-#  11. pubblica_rejects_valido_al_before_valido_dal
+#  11. pubblica_delega_ordine_date_al_db
 #  12. pubblica_bozza_happy_path
 #  13. pubblica_already_pubblicata_rejected_at_service
 # ------------------------------------------------------------
@@ -317,20 +317,23 @@ class TemplateVersioniAdminServicePubblicaTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.pubblica_versione.assert_not_called()
 
-    # 11. valido_al < valido_dal rifiutato (sanity check).
-    def test_pubblica_rejects_valido_al_before_valido_dal(self) -> None:
+    # 11. valido_al < valido_dal NON lo giudica il service: arriva al DB, dove
+    #     il guard comune delle date risponde E_DATA_AL_MINORE_DAL col campo
+    #     (provato sul DB vero in apps/core/tests/db/test_date_validita_guard_comune_db).
+    def test_pubblica_delega_ordine_date_al_db(self) -> None:
         svc, repo, _ = _service_with_mocks(
+            repo_methods={"pubblica_versione": True},
             reader_methods={"get_versione": dict(_BOZZA_VERSIONE)},
         )
-        with self.assertRaises(ServiceError) as ctx:
-            svc.pubblica_versione(
-                _make_user(),
-                1,
-                11,
-                {"valido_dal": "2026-06-01", "valido_al": "2026-05-30"},
-            )
-        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
-        repo.pubblica_versione.assert_not_called()
+        svc.pubblica_versione(
+            _make_user(),
+            1,
+            11,
+            {"valido_dal": "2026-06-01", "valido_al": "2026-05-30"},
+        )
+        repo.pubblica_versione.assert_called_once_with(
+            11, valido_dal=date(2026, 6, 1), valido_al=date(2026, 5, 30),
+        )
 
     # 12. happy path: BOZZA -> PUBBLICATA con valido_dal.
     def test_pubblica_bozza_happy_path(self) -> None:

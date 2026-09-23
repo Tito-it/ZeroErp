@@ -11,7 +11,10 @@
 > «migrazione applicata e test verdi»). Piano confermato da Tid con le
 > raccomandazioni del §8. Dieci pezzi, §10: nove changeSet (`20260923-40…-48`),
 > tre righe di CSV in `80_data`, un pgTAP nuovo e sei aggiornati. Prove in §11.
-> ⏳ Resta solo la richiesta al BE (§12): rigenerare le policy per `E_DATE_VALIDITA`.
+> ✅ Richiesta al BE (§12) fatta il 23-09 sera, con il ritiro delle copie BE/FE.
+> ⏳ **Resta la richiesta al team DB (§13)**: una copia della regola in
+> `fn_pubblica_template_documento_versione` e una nel trigger della BoM
+> (`trgfn_articoli_componenti_block_modifica_struttura`), entrambe da ritirare.
 >
 > ✅ **Applicato il 23-09 sera** su dbdev (16:43) e sullo scratch `zeroerp_ci`
 > (17:06, ricostruito); corsa dei pgTAP verde (Tid). ⚠️ I nove rossi «che la CI non conosce» della corsa
@@ -172,7 +175,10 @@ nessuna funzione lo solleva più: è marcato `obsoleto_dal = 2026-09-23` nel CSV
 ✅ **L'ordine dei rifiuti**: i guard generati si chiamano `trg_<tabella>_a10_…`,
 e in ordine alfabetico precedono i trigger delle tre funzioni
 (`trg_billing_account_ins_upd_guard_normalize`, `trg_soggetti_conti_bancari_ins_upd_guard`…):
-con le date invertite parla il guard comune. Sulle 25 tabelle **nessun** trigger
+con le date invertite parla il guard comune. ⚠️ **Non vale per ogni
+tabella** (correzione del BE, 23-09 sera): su `catalogo.articoli_componenti`
+`…_a10_block_modifica_struttura_…` viene **prima** di `…_a10_date_validita_…`
+(`b` < `d`), e il suo ramo sulle date risponde per primo — §13. Sulle 25 tabelle **nessun** trigger
 `BEFORE` riscrive le date (letto su `pg_trigger`/`prosrc`), quindi giudicare in
 `a10` giudica i valori finali.
 
@@ -301,6 +307,65 @@ generatore li produce). Nessun operatore lo vede: lo solleva l'automazione
 quando non riesce a montare un trigger. `E_DATA_AL_MINORE_DAL` il BE lo conosce
 già (`highlight_form_fields`). `E_DATA_FINE_NON_MAGGIORE_DI_INIZIO` resta nelle
 due mappe del BE, ma dal 23-09 il database non lo solleva più.
+
+✅ **Fatto lato BE, 2026-09-23**: `genera_error_policies` rigenerato (`--check`
+pulito, nessuna classe cambiata: entrano `E_DATE_VALIDITA` `TECNICO` e il ritiro
+di `E_DATA_FINE_NON_MAGGIORE_DI_INIZIO`); ripiego senza `%s` per
+`E_DATE_VALIDITA` in `error_messages_fallback.py`. Il ritirato resta nelle mappe
+(il diario lo contiene). Corretti due commenti di `vendite/db/listini_repository.py`
+che citavano l'errore del `daterange`. Cancelli dei codici verdi con
+`ZEROERP_TEST_DB_E2E=1`.
+
+✅ **Ritirate anche le copie del BE e del FE, 2026-09-23 sera** (Tid: «procedi
+e prova ogni punto»). La regola la ripetevano, perché il DB rispondeva con la
+frase del `daterange`:
+
+| Dove | Copie | Strada dell'errore DB, ora |
+| --- | --- | --- |
+| `vendite/services/contratti_service.py` | 3 (create, PATCH testata, cessazione) | `raise_from_database_error`: ⚠️ riconosce solo i codici in `_KNOWN_DB_ERROR_MARKERS` — aggiunta la voce, senza sarebbe uscito `E_VENDITE_VALIDATION` |
+| `vendite/services/promo_articoli_service.py` | 2 | `P0001` nudo al middleware |
+| `anagrafiche/services/categorie_clienti_listini_service.py` | 2 | nudo |
+| `documenti/services/template_versioni_admin_service.py` | 3 (clone, pubblica, create/update) | nudo |
+| `documenti/services/template_asset_admin_service.py` | 1 (`_guard_date_range`, upload e PATCH) | nudo; l'INSERT precede la scrittura del file |
+| FE `useContoBancarioForm.js` | 1 | conti del soggetto e del ruolo: `useSoggettoRuoloCollection` ora espone `campiErrati`, il form li lega |
+
+FE: `campiErrati` legato a `valido_al` anche nel `ContrattoDrawer` (testata e
+dialog di cessazione); promo, categorie, asset e pubblicazione lo legavano già.
+
+⭐ **La prova, sul DB vero**: `backend/apps/core/tests/db/test_date_validita_guard_comune_db.py`
+— mondo costruito coi BB `dbops.fn_pgtap_crea_*`, transazione annullata, ogni
+punto chiamato **dal service** e il rifiuto passato da
+`ErrorTranslator.to_api_error` (il traduttore del middleware): codice, campo
+`valido_al`, status 400, `highlight_form_fields`. **15 punti, 6 test, verdi.**
+Controprova: rinominata la voce dei marker dei contratti, i suoi tre punti
+diventano rossi. I test unitari che provavano le copie ora provano il
+contrario — che il service **passa** le date invertite al repository.
+
+---
+
+## 13. Richiesta al team DB — le copie rimaste nel database
+
+La prova qui sopra ne ha trovata una che il censimento del §2 non poteva vedere
+(guardava i trigger, non le funzioni che validano i propri parametri). Letto
+poi sulla doc auto-generata, cercando il confronto fra le due date:
+
+| Funzione | Che cosa fa | Proposta |
+| --- | --- | --- |
+| `documenti.fn_pubblica_template_documento_versione` | `p_valido_al < p_valido_dal` → `E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO` (campo `valido_al`), prima dell'UPDATE | ⛔ **copia**: ritirare quel ramo — l'UPDATE incontra il guard comune. Il codice resta per gli altri rami (id, `valido_dal` nullo). Il test BE asserisce oggi il codice vecchio **dichiarandolo**, e va rosso il giorno del ritiro: si aggiorna togliendo `codice=` |
+| `catalogo.trgfn_articoli_componenti_block_modifica_struttura` | su UPDATE, `NEW.valido_al < OLD.valido_dal` → `E_BOM_VALIDO_AL_INVALIDO` (campo `valido_al`) | ⛔ **copia — da ritirare (Tid, 23-09: «va risolto»)**. Verificato su `pg_constraint`: `chk_articoli_componenti_valid_dates`, che il commento cita come `CHECK` stretto, **non esiste** (la tabella ha solo `coeff_qta_pos`, `no_selfref`, `note_target_tipo`): la regola è la stessa del guard comune, con un altro codice. ⚠️ E **non è codice morto**: `…_a10_block_modifica_struttura_…` precede in ordine alfabetico `…_a10_date_validita_…`, quindi oggi sulla BoM risponde lui. Da fare: togliere il ramo (e il suo commento), `E_BOM_VALIDO_AL_INVALIDO` → `obsoleto_dal` nel CSV (nessun'altra funzione lo solleva), aggiornare `catalogo/test-articoli-componenti-immutabilita` e `dbops/test-punti-canale-campo-v1` che lo nominano. Lato BE nessun lavoro: il codice sta solo nelle mappe, e ritirato ci resta per il diario |
+| `vendite.fn_chiudi_contratto_per_successione` | `v_old.valido_dal > p_nuovo_valido_dal - 1` → `E_CONTRATTO_SUCCESSIONE_DATA_INVALIDA` | ✅ **non è una copia**: giudica una data CALCOLATA e parla della successione (col numero del contratto). Resta |
+
+✅ Nota BE, non per il DB — **risolta il 23-09 sera (Tid: «vai con A»)**.
+`ErrorManager.raise_from_database_error` riconosceva un codice del DB solo se il
+chiamante lo aveva in lista, e sul riconosciuto metteva il messaggio **del
+chiamante**: col guard comune su 25 tabelle, ogni service che lo attraversava
+lo trasformava nel suo fallback o in una frase generica. Ora il codice del
+catalogo vince sempre, con la **sua** frase; marker e messaggio del chiamante
+restano il ripiego dei `RAISE` diretti. Tolta la voce aggiunta ai contratti
+(non serve più). Provato: il test sulle date asserisce anche le due date nella
+frase, e spegnendo la frase del DB nel BB i tre punti dei contratti vanno rossi.
+`pratiche_service._raise_known_db_error` non cambia: un codice non dichiarato lo
+rilancia nudo, e il middleware lo traduce già così.
 
 ---
 {% include-markdown "signature-core.md" %}

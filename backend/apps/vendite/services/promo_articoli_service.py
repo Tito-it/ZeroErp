@@ -317,14 +317,9 @@ class PromoArticoliService:
             "valido_dal": self._v.require_date(payload, "valido_dal", message=_MESSAGE),
             "valido_al": self._v.require_date(payload, "valido_al", message=_MESSAGE),
         }
-        # Coerenza range: valido_al >= valido_dal (DB ha il check; anticipiamo UX).
-        ErrorManager.require(
-            data["valido_al"] >= data["valido_dal"],
-            code=E_VENDITE_VALIDATION,
-            message=_MESSAGE,
-            detail="valido_al deve essere >= valido_dal.",
-            context={"valido_dal": data["valido_dal"], "valido_al": data["valido_al"]},
-        )
+        # L'ordine delle date (valido_al non precede valido_dal) lo giudica il
+        # DB: guard comune `script.trgfn_guard_date_validita`, E_DATA_AL_MINORE_DAL
+        # col campo `valido_al` (dal 2026-09-23). Non si ripete qui.
 
         attivo = self._v.optional_bool(payload, "attivo")
         if attivo is not None:
@@ -363,14 +358,9 @@ class PromoArticoliService:
             data["valido_al"] = self._v.require_date(
                 payload, "valido_al", message=_MESSAGE
             )
-        if "valido_dal" in data and "valido_al" in data:
-            ErrorManager.require(
-                data["valido_al"] >= data["valido_dal"],
-                code=E_VENDITE_VALIDATION,
-                message=_MESSAGE,
-                detail="valido_al deve essere >= valido_dal.",
-                context={"valido_dal": data["valido_dal"], "valido_al": data["valido_al"]},
-            )
+        # L'ordine delle date (valido_al non precede valido_dal) lo giudica il
+        # DB: guard comune `script.trgfn_guard_date_validita`, E_DATA_AL_MINORE_DAL
+        # col campo `valido_al` (dal 2026-09-23). Non si ripete qui.
 
         if "attivo" in payload:
             value = self._v.optional_bool(payload, "attivo")
@@ -460,10 +450,10 @@ class PromoArticoliService:
 
     # Scopo: in create rifiuta date retroattive. La promo deve partire da
     #        domani in poi (preavviso operativo di 1 gg). Il check su
-    #        valido_al e' ridondante: range valido_al >= valido_dal (gia'
-    #        applicato in _build_create_data) + valido_dal > today implica
-    #        valido_al > today per costruzione. Coerente con la decisione
-    #        DB nel trigger trgfn_promo_articoli_guard_data_driven.
+    #        valido_al e' ridondante: valido_al >= valido_dal (guard comune
+    #        delle date a DB) + valido_dal > today implica valido_al > today
+    #        per costruzione. Coerente con la decisione DB nel trigger
+    #        trgfn_promo_articoli_guard_data_driven.
     def _assert_create_non_retroattiva(self, data: dict[str, Any]) -> None:
         today = date.today()
         ErrorManager.require(

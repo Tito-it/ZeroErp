@@ -144,9 +144,11 @@ video diventa «Apri Fattura 20024» senza che nessun componente scriva una riga
 
 ### La traduzione degli errori usa `translate_db_errors`
 
-⛔ **E non `raise_from_database_error`**, che accetta il codice del database solo
-se il chiamante lo ha **dichiarato** in un elenco locale — cioè una seconda copia
-del catalogo. Il vocabolario di questo dominio è già cresciuto da tre a quattro
+⛔ **E non `raise_from_database_error`**, che fino al 2026-09-23 accettava il
+codice del database solo se il chiamante lo aveva **dichiarato** in un elenco
+locale — cioè una seconda copia del catalogo (da quel giorno il codice del
+catalogo vince sempre, ma i marker restano un elenco locale per i `RAISE`
+diretti). Il vocabolario di questo dominio è già cresciuto da tre a quattro
 valori senza che il backend lo sapesse: una copia si sarebbe disallineata in
 silenzio, e un codice nuovo sarebbe arrivato all'operatore come generico.
 

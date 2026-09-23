@@ -247,6 +247,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DATA_CHIUSURA": "Data di chiusura anteriore alla data di attivazione.",
     "E_DATA_ERRATA": "Data errata o mancante.",
     "E_DATA_FINE_NON_MAGGIORE_DI_INIZIO": "La data finale deve essere successiva alla data iniziale.",
+    "E_DATE_VALIDITA": "Automazione del guard sulle date di validita' fallita: il trigger non e' stato montato. Non dipende dai dati: segnalalo a chi mantiene il database.",
     "E_DATI_SOCIETARI_REQUIRED_MANCANTI": "Dati societari obbligatori mancanti per questo tipo soggetto.",
     "E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO": "Soggetto non trovato.",
     "E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO": "Policy dati societari non configurata per questo tipo soggetto.",

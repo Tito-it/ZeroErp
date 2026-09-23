@@ -179,7 +179,7 @@ function ibanOptionLabel(item) {
         <label>{{ t('anagrafiche.conti_bancari.valido_al') }}</label>
         <DatePicker v-model="form.valido_al" :date-format="DATE_FORMAT"
           :disabled="disabled" show-icon icon-display="input"
-          :invalid="errors.includes('date_range')" />
+          :invalid="errors.includes('valido_al')" />
       </div>
     </div>
 
