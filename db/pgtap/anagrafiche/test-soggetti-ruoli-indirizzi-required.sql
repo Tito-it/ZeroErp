@@ -40,8 +40,15 @@ $$;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
--- ⚠️ Questo file non apre una transazione propria: la riga va prima di plan().
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ 2026-09-23: LA RIGA DI CONTESTO NON STA PIU' IN AUTOCOMMIT, sta dentro
+--   OGNI caso. Questo file e' multi-transazione per disegno (ogni caso e' un
+--   BEGIN … ROLLBACK a se', perche' collauda guard DEFERRABLE), e la riga
+--   fuori da una transazione, su un database ricostruito, COSTRUIVA e
+--   COMMITTAVA azienda + operatore: un residuo per corsa e una maschera per
+--   tutti i file che vengono dopo. Dentro il caso, il mondo si costruisce e il
+--   ROLLBACK se lo porta via.
+--   ⚠️ `tmp_run_sfx` invece resta fuori, ed e' giusto: e' una TEMP TABLE, non
+--   tocca il database condiviso, e dentro un caso il ROLLBACK la cancellerebbe.
 
 SELECT plan(6);
 -- =========================================================
@@ -135,6 +142,15 @@ FROM upsert;
 -- Caso 1: ruolo senza indirizzo obbligatorio -> blocco deferred
 -- =========================================================
 BEGIN;
+
+-- Contesto applicativo, dentro il caso (vedi la nota in testa).
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⚠️ E LA FINESTRA DIFFERITA SI RIAPRE, DICHIARANDOLO. La riga di contesto,
+--   quando COSTRUISCE il mondo (database ricostruito), esce con i vincoli
+--   IMMEDIATE come ogni helper: questo caso invece si regge sulla finestra
+--   differita — inserisce l'incompleto e forza IMMEDIATE dentro throws_ok.
+--   Contare sulla finestra «di default» e' verde su dev e rosso in CI.
+SET CONSTRAINTS ALL DEFERRED;
 WITH ins AS (
   INSERT INTO anagrafiche.soggetti (
       codice,
@@ -226,6 +242,15 @@ ROLLBACK;
 -- Caso 2: ruolo con indirizzo obbligatorio -> ok
 -- =========================================================
 BEGIN;
+
+-- Contesto applicativo, dentro il caso (vedi la nota in testa).
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⚠️ E LA FINESTRA DIFFERITA SI RIAPRE, DICHIARANDOLO. La riga di contesto,
+--   quando COSTRUISCE il mondo (database ricostruito), esce con i vincoli
+--   IMMEDIATE come ogni helper: questo caso invece si regge sulla finestra
+--   differita — inserisce l'incompleto e forza IMMEDIATE dentro throws_ok.
+--   Contare sulla finestra «di default» e' verde su dev e rosso in CI.
+SET CONSTRAINTS ALL DEFERRED;
 WITH ins AS (
   INSERT INTO anagrafiche.soggetti (
       codice,

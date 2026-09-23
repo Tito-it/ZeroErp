@@ -55,6 +55,11 @@ SELECT plan(19);
 -- (stesso approccio del test state_machine: BA senza tipi_utenze
 --  per evitare guard tipo/classe sui contratti_utilities al push)
 -- ============================================================
+-- ⛔ L'EMITTENTE NON SI PESCA, SI DERIVA (2026-09-23, guida pgTAP §5). Con
+--   una sola azienda a catalogo «il primo emittente attivo» e quello di chi
+--   agisce coincidevano per caso; su un database ricostruito il mondo se lo
+--   costruisce la riga di contesto, e il primo per id e' un ALTRO — da cui
+--   «Accesso negato per scope emittente fiscale».
 CREATE TEMP TABLE tmp_aa_ctx AS
 SELECT
     (SELECT ba.id
@@ -75,7 +80,7 @@ SELECT
           SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
       )
       ORDER BY ba.id LIMIT 1) AS utility_id,
-    (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
+    script.fn_pgtap_emittente_operatore() AS emittente_fiscale_id,
     (SELECT l.id FROM vendite.listini l WHERE l.attivo IS TRUE ORDER BY l.id LIMIT 1) AS listino_id,
     (SELECT lv.id FROM vendite.listini_versioni lv WHERE lv.stato = 'ATTIVA' ORDER BY lv.id LIMIT 1) AS listino_versione_id_attiva,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA')     AS stato_bozza_id,

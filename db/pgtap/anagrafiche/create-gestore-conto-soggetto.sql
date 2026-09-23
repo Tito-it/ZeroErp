@@ -14,11 +14,26 @@
 --     anagrafiche.soggetti_conti_bancari (uso=INCASSO)
 -- ------------------------------------------------------------
 
+-- ⛔ 2026-09-23: QUESTO FILE E' UN TEST, E ORA SI COMPORTA COME TALE.
+--   Fino a oggi apriva la transazione TARDI, chiamava la riga di contesto in
+--   AUTOCOMMIT e chiudeva in COMMIT. Le conseguenze erano tre, e nessuna era
+--   voluta:
+--     1. su un database ricostruito la riga di contesto, fuori da una
+--        transazione, COSTRUIVA e COMMITTAVA azienda + operatore (rev
+--        20260920-01): un residuo per corsa, e soprattutto una MASCHERA —
+--        da li' in poi ogni altro file trovava un operatore e non percorreva
+--        piu' il ramo che costruisce. Misurato il 23-09: quella maschera
+--        teneva verdi SEI file del lotto che senza di lei cadono;
+--     2. il conto creato restava nel database a fine corsa;
+--     3. i vincoli differiti scattavano al COMMIT su dati che restano, non
+--        sul mondo del test.
+--   Ora: transazione subito, contesto dentro, chiusura in ROLLBACK.
+BEGIN;
+
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
--- ⚠️ Questo file non apre una transazione propria: la riga va prima di plan().
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(4);
@@ -32,44 +47,45 @@ SELECT
     'BGSOGIT2XXX'::varchar                     AS bic_swift_test,
     'INCASSO'::varchar                         AS uso_test;
 
-BEGIN;
-
 -- ---------------------------------------------------------
--- 1) Recupero del Gestore e del suo soggetto
+-- 1) Il Gestore: si PRENDE se c'e', si costruisce se non c'e'
 -- ---------------------------------------------------------
+-- ⛔ `anagrafiche.gestori` e' dato di MACCHINA: su un database ricostruito e'
+--   vuota, e «il primo Gestore» non esiste. L'helper risponde quello che c'e'
+--   (dbdev) o lo costruisce (CI) — non ne crea mai un secondo, che un guard
+--   rifiuterebbe.
 CREATE TEMP TABLE tmp_gestore_soggetto AS
-SELECT
-    g.id                AS gestore_id,
-    g.soggetto_ruolo_id AS soggetto_ruolo_id,
-    sr.soggetto_id      AS soggetto_id
-FROM anagrafiche.gestori g
-JOIN anagrafiche.soggetti_ruoli sr
-  ON sr.id = g.soggetto_ruolo_id
-ORDER BY g.id
-LIMIT 1;
+SELECT gestore_id,
+       gestore_soggetto_ruolo_id AS soggetto_ruolo_id,
+       gestore_soggetto_id       AS soggetto_id
+  FROM dbops.fn_pgtap_crea_gestore('conto soggetto');
 
--- Test 1: esiste almeno un Gestore
+-- Test 1: il Gestore c'e', col suo soggetto collegato
 SELECT ok(
-    (SELECT count(*) FROM tmp_gestore_soggetto) = 1,
-    'Esiste almeno un Gestore, con relativo soggetto collegato'
+    (SELECT count(*) = 1 AND bool_and(soggetto_id IS NOT NULL)
+       FROM tmp_gestore_soggetto),
+    'Il Gestore c''e'', con relativo soggetto collegato'
 );
 
 -- ---------------------------------------------------------
 -- 2) Recupero di una filiale bancaria (bank_branch) da usare
 -- ---------------------------------------------------------
-CREATE TEMP TABLE tmp_bank_branch AS
-SELECT
-    bb.id,
-    bb.bank_code,
-    bb.branch_code
-FROM anagrafiche.bank_branches bb
-ORDER BY bb.id
-LIMIT 1;
+-- ⛔ Anche la filiale e' dato di MACCHINA: da zero `bank_branches` e' vuota.
+-- ⚠️ E il verbo sta in un'istruzione SUA: un builder che scrive e un JOIN che
+--   legge nella stessa istruzione condividono la snapshot, e la riga appena
+--   scritta non si vede. Prima si costruisce, poi si legge.
+CREATE TEMP TABLE tmp_bank_branch_id AS
+SELECT bank_branch_id FROM dbops.fn_pgtap_crea_filiale_bancaria('gestore conto soggetto');
 
--- Test 2: esiste almeno una bank_branch
+CREATE TEMP TABLE tmp_bank_branch AS
+SELECT bb.id, bb.bank_code, bb.branch_code
+  FROM anagrafiche.bank_branches bb
+  JOIN tmp_bank_branch_id f ON f.bank_branch_id = bb.id;
+
+-- Test 2: la filiale c'e', da collegare al conto del soggetto Gestore
 SELECT ok(
     (SELECT count(*) FROM tmp_bank_branch) = 1,
-    'Esiste almeno una bank_branch da collegare al conto del soggetto Gestore'
+    'La filiale bancaria c''e'', da collegare al conto del soggetto Gestore'
 );
 
 -- =========================================================
@@ -186,6 +202,8 @@ SELECT is(
 -- (verifica immediata di eventuali constraint deferrable)
 SET CONSTRAINTS ALL IMMEDIATE;
 
-COMMIT;
-
 SELECT * FROM finish();
+
+-- ⛔ ROLLBACK, non COMMIT (2026-09-23): questo file e' un test, e un test non
+--   lascia dietro di se' il conto che ha creato.
+ROLLBACK;

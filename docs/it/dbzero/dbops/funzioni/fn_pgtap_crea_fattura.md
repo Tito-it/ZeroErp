@@ -1,0 +1,133 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_pgtap_crea_fattura.md" %}
+# ⚙️ Funzione `fn_pgtap_crea_fattura`
+
+```sql
+CREATE FUNCTION fn_pgtap_crea_fattura(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_fattura(p_etichetta text DEFAULT 'pgTAP'::text, p_stato_codice_interno character varying DEFAULT 'DRAFT'::character varying, p_billing_account_id bigint DEFAULT NULL::bigint)
+ RETURNS TABLE(fattura_id bigint, registro_id bigint, emittente_fiscale_id bigint, emittente_soggetto_ruolo_id bigint, auth_user_id integer, billing_account_id bigint, istanza_utility_id bigint, cliente_soggetto_ruolo_id bigint, utility_id integer, tipo_doc_fiscale_id bigint, stato_doc_fiscale_id bigint, valuta_id integer)
+ LANGUAGE plpgsql
+AS $function$
+-- Scopo: dare a una fixture pgTAP una FATTURA del mondo in una
+--   chiamata — azienda, operatore, cliente, configurazione della
+--   coppia (emittente, utility), registro coerente e testata —
+--   con l'ordine obbligato dentro l'oggetto invece che nel file.
+-- Uso:
+--   CREATE TEMP TABLE tmp_f AS
+--   SELECT * FROM dbops.fn_pgtap_crea_fattura('sistemazioni');
+--   -- la seconda fattura dello STESSO cliente:
+--   SELECT * FROM dbops.fn_pgtap_crea_fattura(
+--              'sistemazioni 2', 'DRAFT',
+--              (SELECT billing_account_id FROM tmp_f));
+-- ⛔ Righe, scadenze, contabili e movimenti NON li scrive: sono il
+--   caso del test.
+-- ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.
+DECLARE
+    v_ef_id     anagrafiche.emittenti_fiscali.id%TYPE;
+    v_ef_sr_id  anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+    v_user_id   anagrafiche.identita_digitali.auth_user_id%TYPE;
+    v_ba_id     anagrafiche.billing_account.id%TYPE;
+    v_ist_id    anagrafiche.billing_account.istanza_utility_id%TYPE;
+    v_cli_sr_id anagrafiche.billing_account.soggetto_ruolo_id%TYPE;
+    v_utility   anagrafiche.billing_account.utility_id%TYPE;
+    v_tipo_id   config.tipi_doc_fiscale.id%TYPE;
+    v_stato_id  config.stati_doc_fiscale.id%TYPE;
+    v_valuta_id config.valute.id%TYPE;
+    v_registro  vendite.registri_fatturazione.id%TYPE;
+    v_fattura   vendite.fatture.id%TYPE;
+    v_link_sr   anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
+BEGIN
+    -- 1. Il mondo. Senza p_billing_account_id costruisce anche il
+    --    cliente; con, riusa quello e prende solo l'azienda di chi
+    --    agisce (il mondo la riusa quando un contesto c'e').
+    SELECT m.emittente_fiscale_id, m.emittente_soggetto_ruolo_id,
+           m.auth_user_id, m.billing_account_id, m.istanza_utility_id,
+           m.cliente_soggetto_ruolo_id, m.utility_id
+      INTO v_ef_id, v_ef_sr_id, v_user_id, v_ba_id, v_ist_id,
+           v_cli_sr_id, v_utility
+      FROM dbops.fn_pgtap_crea_mondo_cliente(p_etichetta) m;
+
+    IF p_billing_account_id IS NOT NULL THEN
+        -- ⚠️ Il BA chiesto si VERIFICA prima di usarlo: uno di
+        --   un'altra azienda produrrebbe una testata che il guard
+        --   emittente/BA rifiuta piu' avanti, con un messaggio che
+        --   non nomina la fixture.
+        SELECT efba.emittente_soggetto_ruolo_id INTO v_link_sr
+          FROM anagrafiche.emittenti_fiscali_billing_account efba
+         WHERE efba.billing_account_id = p_billing_account_id;
+
+        IF v_link_sr IS DISTINCT FROM v_ef_sr_id THEN
+            RAISE EXCEPTION
+                'fn_pgtap_crea_fattura: il billing account % e'' legato all''emittente sr = % e non a % (l''azienda di chi agisce): la seconda fattura si chiede su un BA costruito dallo stesso mondo',
+                p_billing_account_id, v_link_sr, v_ef_sr_id;
+        END IF;
+
+        SELECT ba.id, ba.istanza_utility_id, ba.soggetto_ruolo_id, ba.utility_id
+          INTO v_ba_id, v_ist_id, v_cli_sr_id, v_utility
+          FROM anagrafiche.billing_account ba
+         WHERE ba.id = p_billing_account_id;
+    END IF;
+
+    -- 2. La coppia (emittente, utility): una testata fiscale la
+    --    pretende. Si scrive una volta sola — la seconda fattura
+    --    dello stesso mondo la trova gia' fatta.
+    INSERT INTO anagrafiche.emittenti_fiscali_utilities
+        (emittente_soggetto_ruolo_id, utility_id,
+         arrotondamento_importi_dec, metodo_arrotondamento_importi, attivo)
+    SELECT v_ef_sr_id, v_utility, 2, 'HALF_UP', TRUE
+     WHERE NOT EXISTS (
+        SELECT 1 FROM anagrafiche.emittenti_fiscali_utilities efu
+         WHERE efu.emittente_soggetto_ruolo_id = v_ef_sr_id
+           AND efu.utility_id = v_utility);
+
+    -- 3. Il catalogo si SCEGLIE, e ogni scelta ha il suo ORDER BY.
+    SELECT t.id INTO v_tipo_id
+      FROM config.tipi_doc_fiscale t
+     WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1;
+
+    SELECT s.id INTO v_stato_id
+      FROM config.stati_doc_fiscale s
+     WHERE s.codice_interno = p_stato_codice_interno;
+
+    IF v_stato_id IS NULL THEN
+        RAISE EXCEPTION
+            'fn_pgtap_crea_fattura: nessuno stato documento fiscale con codice_interno = %',
+            p_stato_codice_interno;
+    END IF;
+
+    SELECT v.id INTO v_valuta_id
+      FROM config.valute v ORDER BY v.id LIMIT 1;
+
+    -- 4. Il registro dell'azienda di chi agisce: lo crea se non
+    --    c'e', e non ne pesca uno di un'altra (il guard
+    --    trgfn_fatture_guard_registro_emittente lo rifiuterebbe).
+    v_registro := script.fn_pgtap_registro_fattura(v_ef_sr_id);
+
+    INSERT INTO vendite.fatture (
+        registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
+        tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, utility_id, meta)
+    VALUES (v_registro, CURRENT_DATE, v_ef_sr_id, v_ba_id,
+            v_tipo_id, v_stato_id, v_valuta_id, v_utility,
+            jsonb_build_object('test_scope', 'pgtap_' || p_etichetta))
+    RETURNING id INTO v_fattura;
+
+    -- Contratto dichiarato, non fiducia nel chiamato.
+    SET CONSTRAINTS ALL IMMEDIATE;
+
+    RETURN QUERY
+    SELECT v_fattura, v_registro, v_ef_id, v_ef_sr_id, v_user_id,
+           v_ba_id, v_ist_id, v_cli_sr_id, v_utility,
+           v_tipo_id, v_stato_id, v_valuta_id;
+END;
+$function$
+
+COMMENT ON FUNCTION dbops.fn_pgtap_crea_fattura(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint)
+IS 'Fixture pgTAP: una FATTURA del mondo in una chiamata — azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente), la coppia (emittente, utility) configurata, il registro coerente con l''emittente di chi agisce (script.fn_pgtap_registro_fattura) e la testata nello stato scelto. ⭐ Esiste per la CATENA D''ORDINE: cliente legato a chi agisce, coppia configurata, registro dell''azienda giusta, valuta risolvibile — quattro anelli che su un database ricostruito non esistono e che ogni file riscriveva a mano. ⚠️ Terzo parametro: un billing account gia'' costruito, per la SECONDA fattura dello stesso cliente; viene verificato, e un BA di un''altra azienda solleva. ⛔ NON scrive righe, scadenze, contabili ne'' movimenti: sono il caso del test. ⛔ E non cambia stato: quello si sceglie alla nascita, perche'' vendite.fatture ha un guard di transizione. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Brief: brief-db-fixture-che-costruiscono-giro-2.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

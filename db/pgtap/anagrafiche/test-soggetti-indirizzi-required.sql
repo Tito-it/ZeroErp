@@ -32,15 +32,29 @@
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
--- ⚠️ Questo file non apre una transazione propria: la riga va prima di plan().
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ 2026-09-23: LA RIGA DI CONTESTO NON STA PIU' IN AUTOCOMMIT, sta dentro
+--   OGNI caso. Questo file e' multi-transazione per disegno (ogni caso e' un
+--   BEGIN … ROLLBACK a se', perche' collauda guard DEFERRABLE), e la riga
+--   fuori da una transazione, su un database ricostruito, COSTRUIVA e
+--   COMMITTAVA azienda + operatore: un residuo per corsa e una maschera per
+--   tutti i file che vengono dopo. Dentro il caso, il mondo si costruisce e il
+--   ROLLBACK se lo porta via.
+--   ⚠️ `tmp_run_sfx` invece resta fuori, ed e' giusto: e' una TEMP TABLE, non
+--   tocca il database condiviso, e dentro un caso il ROLLBACK la cancellerebbe.
 
 SELECT plan(9);
 
+-- ⛔ LE PARTITE IVA NON SI PRECALCOLANO QUI (2026-09-23), e la ragione e'
+--   sottile: `dbops.fn_pgtap_piva_libera()` risponde «la prima libera ADESSO».
+--   Due chiamate nella stessa istruzione danno lo STESSO numero (misurato), e
+--   soprattutto su un database ricostruito la partita libera all'inizio del
+--   file e' la stessa che il mondo — costruito dalla riga di contesto dentro
+--   il primo caso — si prende un attimo dopo: il soggetto del test collideva
+--   con il soggetto dell'azienda su `uq_soggetto_idstato_id_fiscale_univoco`.
+--   ⇒ Ogni caso chiede la sua partita DOPO aver costruito il mondo. Il
+--   suffisso random invece resta qui: non tocca il database.
 CREATE TEMP TABLE tmp_run_sfx AS
-SELECT substr(md5(clock_timestamp()::text), 1, 8) AS sfx,
-       dbops.fn_pgtap_piva_libera() AS piva_sc_err,
-       dbops.fn_pgtap_piva_libera() AS piva_sc_ok;
+SELECT substr(md5(clock_timestamp()::text), 1, 8) AS sfx;
 
 -- =========================================================
 -- Precondizioni base: stato, tipo_contatto, tipi
@@ -128,6 +142,15 @@ LIMIT 1;
 -- =========================================================
 BEGIN;
 
+-- Contesto applicativo, dentro il caso (vedi la nota in testa).
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⚠️ E LA FINESTRA DIFFERITA SI RIAPRE, DICHIARANDOLO. La riga di contesto,
+--   quando COSTRUISCE il mondo (database ricostruito), esce con i vincoli
+--   IMMEDIATE come ogni helper: questo caso invece si regge sulla finestra
+--   differita — inserisce l'incompleto e forza IMMEDIATE dentro throws_ok.
+--   Contare sulla finestra «di default» e' verde su dev e rosso in CI.
+SET CONSTRAINTS ALL DEFERRED;
+
 WITH ins AS (
   INSERT INTO anagrafiche.soggetti (
       codice,
@@ -190,6 +213,15 @@ ROLLBACK;
 -- Caso 2: PR con RES + DOMFISC -> passa
 -- =========================================================
 BEGIN;
+
+-- Contesto applicativo, dentro il caso (vedi la nota in testa).
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⚠️ E LA FINESTRA DIFFERITA SI RIAPRE, DICHIARANDOLO. La riga di contesto,
+--   quando COSTRUISCE il mondo (database ricostruito), esce con i vincoli
+--   IMMEDIATE come ogni helper: questo caso invece si regge sulla finestra
+--   differita — inserisce l'incompleto e forza IMMEDIATE dentro throws_ok.
+--   Contare sulla finestra «di default» e' verde su dev e rosso in CI.
+SET CONSTRAINTS ALL DEFERRED;
 
 WITH ins AS (
   INSERT INTO anagrafiche.soggetti (
@@ -296,6 +328,19 @@ ROLLBACK;
 -- =========================================================
 BEGIN;
 
+-- Contesto applicativo, dentro il caso (vedi la nota in testa).
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⚠️ E LA FINESTRA DIFFERITA SI RIAPRE, DICHIARANDOLO. La riga di contesto,
+--   quando COSTRUISCE il mondo (database ricostruito), esce con i vincoli
+--   IMMEDIATE come ogni helper: questo caso invece si regge sulla finestra
+--   differita — inserisce l'incompleto e forza IMMEDIATE dentro throws_ok.
+--   Contare sulla finestra «di default» e' verde su dev e rosso in CI.
+SET CONSTRAINTS ALL DEFERRED;
+
+-- La partita IVA del caso, chiesta DOPO che il mondo esiste (vedi la nota
+-- in testa): «libera» vuol dire «libera adesso».
+CREATE TEMP TABLE tmp_piva_caso_err AS SELECT dbops.fn_pgtap_piva_libera() AS piva;
+
 WITH ins AS (
   INSERT INTO anagrafiche.soggetti (
       codice,
@@ -318,8 +363,8 @@ WITH ins AS (
       -- ⚠️ rev 2026-08-18: il codice fiscale non c'era. Per una societa' di
       --   capitali trgfn_soggetti_guard_cf_piva_obbligatori lo pretende, e per
       --   una PG coincide con la partita IVA.
-      (SELECT piva_sc_err FROM tmp_run_sfx),
-      (SELECT piva_sc_err FROM tmp_run_sfx),
+      (SELECT piva FROM tmp_piva_caso_err),
+      (SELECT piva FROM tmp_piva_caso_err),
       (SELECT tipo_soggetto_dettaglio_id FROM tmp_tipo_sc),
       TRUE,
       TRUE
@@ -376,6 +421,19 @@ ROLLBACK;
 -- =========================================================
 BEGIN;
 
+-- Contesto applicativo, dentro il caso (vedi la nota in testa).
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⚠️ E LA FINESTRA DIFFERITA SI RIAPRE, DICHIARANDOLO. La riga di contesto,
+--   quando COSTRUISCE il mondo (database ricostruito), esce con i vincoli
+--   IMMEDIATE come ogni helper: questo caso invece si regge sulla finestra
+--   differita — inserisce l'incompleto e forza IMMEDIATE dentro throws_ok.
+--   Contare sulla finestra «di default» e' verde su dev e rosso in CI.
+SET CONSTRAINTS ALL DEFERRED;
+
+-- La partita IVA del caso, chiesta DOPO che il mondo esiste (vedi la nota
+-- in testa): «libera» vuol dire «libera adesso».
+CREATE TEMP TABLE tmp_piva_caso_ok AS SELECT dbops.fn_pgtap_piva_libera() AS piva;
+
 WITH ins AS (
   INSERT INTO anagrafiche.soggetti (
       codice,
@@ -398,8 +456,8 @@ WITH ins AS (
       -- ⚠️ rev 2026-08-18: il codice fiscale non c'era. Per una societa' di
       --   capitali trgfn_soggetti_guard_cf_piva_obbligatori lo pretende, e per
       --   una PG coincide con la partita IVA.
-      (SELECT piva_sc_ok FROM tmp_run_sfx),
-      (SELECT piva_sc_ok FROM tmp_run_sfx),
+      (SELECT piva FROM tmp_piva_caso_ok),
+      (SELECT piva FROM tmp_piva_caso_ok),
       (SELECT tipo_soggetto_dettaglio_id FROM tmp_tipo_sc),
       TRUE,
       TRUE
@@ -499,7 +557,8 @@ SELECT lives_ok(
     $$,
     'SC con indirizzo SEDELEG: ok'
 );
-
-commit;
+-- ⛔ ROLLBACK, non COMMIT (2026-09-23): l'ultimo caso non ha piu' motivo
+--   di lasciare le sue righe nel database, ora che il mondo se lo costruisce.
+ROLLBACK;
 
 SELECT * FROM finish();

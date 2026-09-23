@@ -7,13 +7,26 @@
 > (giro 1, chiuso il 12-09) e della rev `20260920-01`, che ha insegnato alla riga
 > di contesto a **costruire** il mondo quando non lo trova.
 >
-> ✏️ **Stato 2026-09-23: il lotto 1 è CHIUSO, da applicare.**
-> Tre changeSet scritti e provati — `20260922-17` (`fn_pgtap_crea_mondo_cliente`,
-> **applicato** il 22-09), `20260923-01` (il builder degli articoli sceglie la
-> UoM), `20260923-04` (`fn_pgtap_crea_fattura`) e `20260923-05`
-> (`fn_pgtap_crea_filiale_bancaria`) — più tre presidi nuovi e **21 file
-> riscritti**. Dettaglio in §10.
-> 🔵 A Tid: l'apply dei tre changeSet, poi la corsa CI che certifica i rientrati.
+> ✅ **Stato 2026-09-23: il lotto 1 è CHIUSO e APPLICATO.** Tutti e quattro i
+> changeSet sono in servizio su dbdev e su `zeroerp_ci` — `20260922-17`
+> (`fn_pgtap_crea_mondo_cliente`, 22-09), `20260923-01` (il builder degli
+> articoli sceglie la UoM), `20260923-04` (`fn_pgtap_crea_fattura`) e
+> `20260923-05` (`fn_pgtap_crea_filiale_bancaria`) — con **21 file riscritti**,
+> tre presidi nuovi e **nessuna regressione** (Tid, 23-09). Committato in
+> `9304f209c`, PR #1649. Dettaglio in §10.
+>
+> ✏️ **Lotto 2 in corso dal 23-09** (`anagrafiche` 39 + `script` 31, §11): il
+> debito dei `COMMIT`/autocommit è **chiuso** — nessun file della suite committa
+> più — e con lui è caduta la maschera che teneva verdi sei file per un residuo.
+> Builder nuovo `fn_pgtap_crea_gestore` (`20260923-06`), **applicato, nessuna
+> regressione**. 12 file su 70 verdi sul mondo vuoto.
+>
+> ⏳ **Quello che manca non è lavoro, è una corsa**: il registro
+> `baseline-rossi-ci.tsv` è ancora a 361 file. Le righe rientrate le toglie
+> `scripts/pgtap-baseline-ci-rientrati.sh` leggendo il **log della corsa CI**,
+> e il log scade: va lanciato il giorno stesso della push su `Tito-dev` che
+> tocca `db/`. Finché non succede, il registro racconta un debito che in buona
+> parte non c'è più.
 >
 > ⛔ **Fuori perimetro**: i 4 file che chiudono in `COMMIT` e i 6 che chiamano la
 > riga di contesto in autocommit. Decisione rinviata da Tid il 22-09 — *prima la
@@ -229,7 +242,7 @@ di non vederle** — nel messaggio, non in un commento.
 | 2 | Il **registro** dentro o fuori dal BB? | ✅ **deciso il 22-09: fuori** (§4): `fn_pgtap_registro_fattura()` si semina già dal contesto |
 | 3 | Da quale **lotto** si parte? | ✅ **lotto 1**, 43 file su sei schemi che escono interi dal registro |
 | 4 | Il **cancello** di §6 adesso o dopo il primo lotto? | ✅ **dopo**: la soglia si prende su un perimetro già sanato, altrimenti nasce grande e nessuno la guarda |
-| 5 | I 4 file che **committano** / i 6 col contesto in autocommit | 🔵 rinviata il 22-09 («prima la forma»), resta in `migliorie-generali` §6 D7 |
+| 5 | I file che **committano** / col contesto in autocommit | ✅ **decisa il 23-09: si chiude tutto nel lotto 2**, e il censimento vero era 6 + 8 (§11). Oggi nella suite non committa più nessuno |
 | 6 | I **9 file di `pagamenti`** chiedono tutti una **fattura** (scadenza, movimenti, conti): un secondo BB di composizione, o nove copie della stessa catena? | ✅ **deciso il 23-09: un BB** — anzi due, perché la filiale bancaria è la stessa storia (`20260923-04` e `-05`). I nove file sono chiusi, §10 |
 | 7 | Il ramo specifico «ultimo SUPER_ADMIN» sull'**identità** è raggiungibile, o è codice morto? (§10, punto 1) | 🔵 da guardare: oggi a rifiutare è sempre il guard generico delle figlie, che scatta prima |
 | 8 | `storico.parameters` da zero ha `parameter_id`, il trigger passa `parameters_id` (§10, punto 2) | 🔵 changeSet, non fixture: su un'installazione nuova ogni UPDATE su `config.parameters` fallisce |
@@ -281,10 +294,12 @@ chiamante scrive sempre non può stare dietro a quello raro.
 
 ## 9. Cosa resta
 
-* **l'apply di `20260922-17`** (Tid), e subito dopo la misura che qui manca: la
-  stessa chiamata come `zeroerp_app`, sui due rami;
-* poi il **lotto 1** di §5: 43 file su sei schemi, la ricetta di §5 applicata
-  file per file, e la corsa CI che li certifica **quel giorno**;
+* ✅ **Lotto 1 chiuso e applicato** il 23-09 (§10). ⏳ Resta la **corsa CI** che
+  certifica i rientrati e abbassa il registro: `pgtap-baseline-ci-rientrati.sh`
+  legge il log della corsa, e il log scade — va lanciato il giorno stesso;
+* ✏️ **il lotto 2 è in corso** (§11): il debito dei `COMMIT`/autocommit è chiuso,
+  12 file su 70 sono verdi sul mondo vuoto. Restano le famiglie del cliente da
+  costruire, `pdp_id`, `RIS_UMANA`, i registri e l'utente di sessione fissato;
 * i 28 file che fissano `app.current_user_id = '1'`: non li tocca il BB, è una
   ricetta a sé (l'utente di sessione è quello del mondo costruito);
 * i 7 file legati a dati di **questa macchina**: o si riscrivono, o si dichiarano
@@ -371,26 +386,37 @@ verdi sul database da zero.
 | `test-enti-incasso-conto-incasso` | filiale pescata, e un soggetto-ruolo «qualunque» che da zero era **proprio quello dell'azienda del contesto**: il caso negativo diventava positivo in silenzio | filiale costruita, e il ruolo è quello della banca (7/7) |
 | `test-enti-incasso-psp` | filiale pescata, titolare = «il primo emittente attivo» | filiale costruita, titolare = l'emittente di chi agisce (12/12) |
 
-⛔ **E i due database si migrano SEPARATAMENTE** (misurato il 23-09): con
-`20260923-04/-05` applicati su dbdev e lo scratch fermo al `-03` delle 09:36,
-i nove file più il presidio della fattura sono rossi **solo su `zeroerp_ci`**,
-con «la funzione `dbops.fn_pgtap_crea_fattura(unknown)` non esiste». Non è un
-difetto delle fixture: è il database indietro. ⚠️ E ha una conseguenza sul
-registro: una baseline lanciata sullo scratch **prima** del suo migrate
-scriverebbe quei dieci in `baseline-rossi-ci.tsv` come debito nuovo — debito che
-non è. Oggi nel registro non ci sono, ed è giusto così.
+⭐ **La lezione del giro, e costa un giro di rosso a chi non la sa**: i due
+database si migrano **separatamente**. Il 23-09, con `20260923-04/-05`
+applicati su dbdev e lo scratch fermo al `-03` delle 09:36, i nove file più il
+presidio della fattura erano rossi **solo su `zeroerp_ci`**, con «la funzione
+`dbops.fn_pgtap_crea_fattura(unknown)` non esiste» — non un difetto delle
+fixture, il database indietro. ⚠️ E la conseguenza vera è sul registro: una
+baseline lanciata sullo scratch **prima** del suo migrate avrebbe scritto quei
+dieci in `baseline-rossi-ci.tsv` come debito nuovo, debito che non è. ✅ Chiusa
+col migrate dello scratch (Tid, 23-09): nessuno dei dieci è mai entrato nel
+registro.
 
-⚠️ **Questi nove girano solo dopo l'apply.** Le prove sono in transazione
-ritirata su `zeroerp_ci` con l'SQL estratto dei tre changeSet in testa, **da
-owner**: su dbdev lo schema `dbops` è di `titodb` e la funzione, dentro una
-transazione, non esiste per nessun'altra sessione. Il verso dev si misura dopo.
+✅ **Le prove, e in che ordine sono arrivate.** Prima dell'apply: SQL estratto
+dei changeSet in testa a ogni file, in transazione ritirata su `zeroerp_ci`,
+**da owner** — su dbdev lo schema `dbops` è di `titodb`, e una funzione dentro
+una transazione non esiste per nessun'altra sessione. Dopo l'apply su dbdev:
+i nove più i due presidi come `zeroerp_app`, **112 asserzioni verdi, zero
+rosse**. Dopo il migrate dello scratch: nessuna regressione (Tid).
 
-### ⏳ Cosa resta del lotto 1
-* `ui/test-lista-competenza-gruppi-colonna-emittente-v1`: **eccezione
-  dichiarata**. Il suo t.7 è il guard «il t.6 non è verde per sottrazione», e su
-  un database senza documenti dice il vero: il file non ha materia da
-  giudicare. Rientra quando il lotto `vendite` gli costruisce un documento.
-* I due `parameter-fk-surrogate-*`: aspettano il changeSet del punto 2.
+### ⏳ Cosa NON è entrato nel lotto 1, e perché
+
+Tre file restano rossi sul database da zero, e nessuno dei tre per una fixture
+che cerca invece di costruire. Sono dichiarati, non dimenticati:
+
+* `ui/test-lista-competenza-gruppi-colonna-emittente-v1`: il suo t.7 è il guard
+  «il t.6 non è verde per sottrazione», e su un database senza documenti **dice
+  il vero** — il file non ha materia da giudicare. Rientra quando il lotto
+  `vendite` gli costruisce un documento;
+* i due `parameter-fk-surrogate-*`: aspettano il changeSet di `storico.parameters`
+  (§10, punto 2). È un difetto del prodotto sul database da zero, non del test;
+* `config/test-fn-email-sistema` è rosso **anche su dbdev** (5 asserzioni): va
+  guardato per quello che è, e non è questo cantiere.
 
 ### ⭐ Un changeSet nato dal lotto
 
@@ -406,3 +432,92 @@ overload ambiguo. Provato con l'SQL estratto in transazione ritirata:
 ⭐ E la soglia del cancello: `SOGLIA_THROWS_SENZA_DISCRIMINANTE` **123 → 121**,
 perché due `throws_ok(sql, NULL, NULL)` del file dei super admin hanno preso il
 loro discriminante (uno dei due ha scoperto il punto 1).
+
+---
+
+## 11. Lotto 2 (`anagrafiche` 39 + `script` 31) — in corso dal 2026-09-23
+
+### ✅ Il debito dei `COMMIT` è chiuso, e ora si sa quanto pesava
+
+Decisione di Tid (23-09): **chiudere tutto in questo lotto**, non solo i file che
+si vedono. ⭐ E il censimento andava rifatto: erano **6 file che committano** e
+**8 col contesto in autocommit**, non 4 e 6. ⚠️ Due però erano falsi positivi del
+mio criterio — un `COMMIT` dentro un `throws_ok` e menzioni in commento: il mio
+non mascherava i dollar-quote, quello di `guardrail_pgtap_preambolo.py` sì. I
+file veri erano **sei**, tutti in `anagrafiche`.
+
+⛔ **Quanto pesava, misurato.** Simulando il database vuoto — l'identità
+dell'operatore residuo spenta, così la riga di contesto percorre il ramo che
+costruisce — **sei file del lotto cambiano esito**: tre da verdi a rossi in
+fixture, tre da «asserzione rossa» a fixture. Erano verdi grazie alla `PGTR0001`
+che i file in autocommit committavano all'inizio della corsa. ⇒ Il debito non era
+di sei file: era di sei file **più tutto quello che nascondevano**.
+
+✅ **Oggi nella suite non committa più nessuno** (censito sui 683 file, con i
+dollar-quote mascherati).
+
+| File | Che cosa è cambiato |
+| ---- | ------------------- |
+| `create-gestore-conto-soggetto`, `create-gestore-conto-bancario`, `test_fn_get_conto_bancario_predefinito`, `test_vw_conti_bancari_per_ruolo_gestore` | erano test travestiti da script di setup: transazione aperta tardi, contesto in autocommit, chiusura in `COMMIT`. Ora transazione subito, contesto dentro, `ROLLBACK`, e gestore + filiale **costruiti** (4/4, 6/6, 6/6, 5/5) |
+| `test-soggetti-indirizzi-required`, `test-soggetti-ruoli-indirizzi-required` | multi-transazione **per disegno** (ogni caso collauda un guard `DEFERRABLE`): la riga di contesto è scesa **dentro ogni caso**, con la finestra differita riaperta e dichiarata, e il `commit;` finale è diventato `ROLLBACK` (9/9 e 6/6, sul mondo vuoto **e** su dev) |
+
+### ⭐ Un builder nuovo, e la ragione per cui non costruisce sempre
+
+`20_code/dbops/20260923-06-create-fn-pgtap-crea-gestore` — **applicato il 23-09,
+nessuna regressione**. `anagrafiche.gestori` è dato di macchina, ma è anche un
+**singleton**: un secondo gestore lo rifiuta un guard. ⇒ La funzione **prende**
+quello che c'è (dbdev) e **costruisce** solo se non c'è (CI). Un builder che
+creasse sempre sarebbe rosso proprio sulla macchina dove oggi il test è verde.
+
+⚠️ Trovato per strada: il vincolo che porta il nome del singleton —
+`uq_gestori_singleton`, `EXCLUDE USING gist (id WITH =) WHERE id IS NOT NULL` —
+vieta due righe con lo **stesso id**, cioè ripete la primary key. A impedire il
+secondo gestore è il guard. Il nome promette ciò che la definizione non fa: §4-bis
+della guida sui presidi. Non cambia niente nel comportamento, ma chi cercasse il
+vincolo lo troverebbe e si fiderebbe.
+
+### ⛔ «Libera» vuol dire «libera ADESSO» — e sono stati due rossi
+
+`dbops.fn_pgtap_piva_libera()` risponde la prima partita IVA non ancora usata **in
+quell'istante**. Non è un generatore: finché nessuno scrive quel soggetto, la
+chiamata dopo risponde **lo stesso numero** — anche in un'altra istruzione
+(misurato). ⇒ `test-soggetti-indirizzi-required` ne chiedeva due in testa al file
+e ne otteneva una sola, e soprattutto le chiedeva **prima** che il mondo esistesse:
+la riga di contesto, costruendo l'azienda, si prendeva proprio quella, e il
+soggetto del test collideva con il soggetto dell'azienda. Ora ogni caso chiede la
+sua, dopo. Regola scritta nella guida pgTAP.
+
+### ⛔ E l'emittente non si pesca, si deriva
+
+Sette file di `script/` prendevano «il primo emittente attivo» — mentre il loro
+stesso commento citava `script.fn_pgtap_emittente_operatore()` come il modo
+giusto. Con una sola azienda a catalogo i due coincidevano per caso; col mondo
+costruito dalla riga di contesto no, e il risultato era «Accesso negato per scope
+emittente fiscale». Sostituiti.
+
+### ⚠️ Il banco di prova mente sui file multi-transazione
+
+Il banco che simula il database vuoto avvolge il file in una transazione esterna.
+Un file multi-transazione, al suo **primo `ROLLBACK`**, chiude anche quella — e si
+porta via le temp table create prima. ⇒ Quei file si misurano **senza banco**,
+spegnendo e riaccendendo l'identità residua attorno alla corsa.
+
+⚠️ **E la misura ha lasciato un residuo, che va dichiarato**: le corse fatte
+quando i quattro file committavano ancora hanno committato **4 emittenti `PGTR*`**
+su `zeroerp_ci` (stessa natura di quelli che lo script di pulizia già conosce, da
+lanciare da Tid). Il ripristino delle identità è stato prima troppo largo e poi
+corretto: sullo scratch resta **una** identità attiva, com'era.
+
+### ⏳ Stato al 2026-09-23 (mondo vuoto, 70 file)
+
+| | |
+| --- | --- |
+| verdi | **12** |
+| muoiono in fixture | 34 |
+| asserzioni rosse | 20 |
+| attendevano l'apply del `-06` | 4, ora applicato |
+
+Le famiglie che restano: il **cliente da costruire** (`istanze_utilities` e
+`billing_account` a zero, 5 + n file), `pdp_id` (3), `RIS_UMANA` (2), i registri di
+fatturazione (2), l'utente di sessione fissato a `'1'` (3 nel lotto), e una coda
+di casi singoli.
