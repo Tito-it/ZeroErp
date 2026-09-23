@@ -31,7 +31,7 @@
 //        coincidono; per un `ref` di uno STORE no: i filtri dei due cruscotti
 //        vivono in uno store `userScoped` che SOPRAVVIVE al componente, quindi
 //        al secondo montaggio la «nascita» avrebbe fotografato il valore che
-//        l'operatore aveva lasciato — pallino invece del numero, e «Pulisci»
+//        l'operatore aveva lasciato — numero grigio invece che blu, e «Pulisci»
 //        che riporta al filtro di prima invece che al default. Nessun errore,
 //        e invisibile finche' non ci si torna sopra due volte.
 //        ⭐ E' la stessa regola dei filtri di uno store-lista: `filterDefaults`
@@ -53,20 +53,25 @@ import { clonaValore, congelaProfondo } from '../utils/clonaFiltri'
 import { segnoFiltri } from '../utils/segnoFiltri'
 
 // Params:
-//   - filtri: `{ <chiave>: { rif: Ref, default: <valore> | () => <valore> } }`
-//       — i filtri DI DOMINIO di questa superficie, uno per riga.
+//   - filtri: `{ <chiave>: { rif, default, neutro? } }` — i filtri DI DOMINIO
+//       di questa superficie, uno per riga.
+//       ⭐ `neutro` e' il valore che NON RESTRINGE, quando non e' `null`: senza,
+//       il segno conta un filtro proprio quando l'operatore ha ALLARGATO la
+//       lista (`ampiezza: 'TUTTI'` dei task del lotto, che a DB non filtra
+//       niente). Stessa opzione, stesso nome e stesso perche' di `filtriNeutri`
+//       sugli store-lista — il dettaglio sta su `segnoFiltri`.
 //       ⛔ Non ci va la ricerca (D2) ne' la paginazione: contarle accenderebbe
 //       il segno su una superficie intera.
 //       ⭐ Il default puo' essere una FUNZIONE quando si ricalcola: «oggi» non
 //       e' un valore, e' una domanda. Il drawer BoM filtra «valido al» e nasce
 //       su oggi; tenuto come istante fisso, un'applicazione aperta a cavallo
 //       della mezzanotte confronterebbe il filtro di oggi col metro di ieri e
-//       mostrerebbe il numero al posto del pallino — o, peggio, terrebbe per
+//       mostrerebbe il numero in blu invece che in grigio — o, peggio, terrebbe per
 //       «default» un giorno che e' passato.
 //       ⚠️ La funzione deve tornare un valore STABILE dentro la giornata
 //       (`addDaysToToday(0)`, mezzanotte locale) e non l'istante corrente: due
 //       `new Date()` a millisecondi di distanza non sono uguali per il segno, e
-//       il pallino non comparirebbe mai.
+//       il numero non sarebbe mai grigio.
 //   - onAzzera: che cosa fare dopo «Pulisci filtri» (rileggere, ricaricare).
 //       ⚠️ Opzionale: le tre sotto-liste del drawer lotto ricaricano da se',
 //       con un `watch` sul filtro.
@@ -112,9 +117,25 @@ export function useContrattoFiltriLocali(filtri, { onAzzera = null } = {}) {
     return congelaProfondo(Object.fromEntries(chiaviFiltro.map((k) => [k, risolviDefault(k)])))
   }
 
+  // I valori neutri, dichiarati riga per riga accanto al filtro.
+  // ⛔ COPIA PROFONDA E CONGELATA, come i default e per la stessa ragione: il
+  //    valore arriva da un letterale del chiamante, e con un neutro ad array
+  //    `Object.freeze` di primo livello non ferma una `push` — il metro si
+  //    sposterebbe insieme alla cosa misurata. E' la simmetria che mancava col
+  //    gemello sugli store-lista (`useContrattoFiltriLista`), che ci passava
+  //    gia' da `clonaFiltri`.
+  const filtriNeutri = congelaProfondo(Object.fromEntries(
+    chiaviFiltro
+      .filter((k) => 'neutro' in (filtri[k] ?? {}))
+      .map((k) => [k, clonaValore(filtri[k].neutro)]),
+  ))
+
   // ⚠️ Il metro si risolve DENTRO la computed del segno, cosi' un default a
   //    funzione («oggi») viene richiesto di nuovo a ogni ricalcolo.
-  const segno = computed(() => segnoFiltri(valori.value, chiaviFiltro, risolviFiltriDefault()))
+
+  const segno = computed(
+    () => segnoFiltri(valori.value, chiaviFiltro, risolviFiltriDefault(), filtriNeutri),
+  )
 
   // Scopo: «Pulisci filtri» — i filtri tornano al loro default dichiarato.
   // ⚠️ Si riassegna una COPIA del default, mai il default congelato.
@@ -125,5 +146,5 @@ export function useContrattoFiltriLocali(filtri, { onAzzera = null } = {}) {
     return onAzzera ? onAzzera() : undefined
   }
 
-  return { chiaviFiltro, risolviFiltriDefault, valori, segno, azzeraFiltri }
+  return { chiaviFiltro, risolviFiltriDefault, filtriNeutri, valori, segno, azzeraFiltri }
 }

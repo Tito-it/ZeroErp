@@ -17,7 +17,8 @@ import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useLookup } from '../../core/composables/useLookup'
 import { listUnitaOrganizzative } from '../api/amministrazione'
 import { useSetupStatus } from '../composables/useSetupStatus'
-import { buildFilterSuperAdminOptions, buildFilterStatoOptions } from '../constants'
+import { buildFilterSuperAdminOptions } from '../constants'
+import { buildAttivoOptions } from '../../core/utils/options'
 import { RUOLO_APPLICATIVO, READONLY_DOMAINS, TAB_ENTITIES, MANAGE_ICONS } from '../../core/constants'
 import OperatoreDrawer from '../components/OperatoreDrawer.vue'
 import OperatorePermessiDrawer from '../components/OperatorePermessiDrawer.vue'
@@ -74,7 +75,9 @@ const { value: uoFilter, onChange: onUoChange } = bindSelect('unita_organizzativ
 const { value: activeFilter, onChange: onActiveChange } = bindSelect('is_active')
 
 const superAdminOptions = buildFilterSuperAdminOptions(t)
-const activeOptions = buildFilterStatoOptions(t)
+// ⭐ Dal BB di core (regola del 2, ok Tid 2026-09-23): `buildFilterStatoOptions`
+//    era la quinta copia della stessa terna, ed e' stata ritirata.
+const activeOptions = buildAttivoOptions(t)
 
 // La LISTA al mount: il rientro sotto `<KeepAlive>` lo rinfresca gia' lo
 // scaffolding (`useListaConfigurabilePage` → `useSearchTable`, che salta la

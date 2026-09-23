@@ -347,6 +347,15 @@ UN filtro»).
 | Desktop | `#sempre` + slot di default in linea, dentro `app-page-filters` |
 | Compatta (`< 1024px` **o** touch senza hover) | `#sempre` in linea + **icona filtro col segno**; al click lo **stesso** slot dentro un `Drawer position="bottom"`, su una griglia di **al massimo due filtri per riga** (§sotto), «Pulisci filtri» in fondo |
 
+**Il segno ha tre stati**, e dal 2026-09-23 il **numero c'è sempre**: niente
+(niente sta restringendo) · **numero grigio** (qualcosa restringe, tutto al suo
+default) · **numero blu** (almeno uno diverso dal default). ⛔ Prima lo stato
+«tutto al default» era un **pallino senza numero**, e a video si leggeva
+«0 → 2» toccando **una** cosa sola: il filtro già attivo valeva zero un istante
+e uno quello dopo. *Il conteggio non è mai cambiato — era la forma a
+nasconderlo, e un segno che nasconde ciò che conta fa sembrare sbagliato un
+conto giusto.*
+
 **La ricerca non è un filtro** e resta **sempre** a video (slot `#sempre`): è il
 gesto principale di una lista, gli altri filtri la restringono.
 
@@ -617,6 +626,87 @@ caller riempie **due** slot, che sono i due del building block.
 ⛔ E i due slot si dichiarano **condizionati** (`<template v-if="…" #filtri>`),
 non condizionando il widget dentro: uno slot che esiste e rende il vuoto accende
 comunque l'icona a imbuto su un drawer senza niente dentro.
+
+#### ⛔ Il valore che NON restringe si dichiara (`filtriNeutri`)
+
+```js
+filterDefaults: { solo_ultima_revisione: true, … },
+// «mostra storico» scrive `false`, che DEVE viaggiare (il BE è `default=True`)
+// ma è lo stato più largo possibile: non deve contare nel segno.
+filtriNeutri: { solo_ultima_revisione: false },
+```
+
+Il segno conta un filtro quando **restringe**. Sapeva riconoscere un solo
+«tutto» — l'assenza (`null`/`''`) — e per la maggior parte dei filtri basta.
+Non per quelli il cui «tutto» è un valore **vero**:
+
+| Filtro | Neutro | Perché non può essere `null` |
+| --- | --- | --- |
+| `solo_ultima_revisione` (offerte, preventivi) | `false` | il BE è `qp_bool(..., default=True)`: **assente significa `true`** |
+| `ambito` (code di lavoro) | `'tutti'` | il parametro parte **solo** a «tutti»: sul filo il verso è rovesciato |
+| `ampiezza` (task del lotto) | `'TUTTI'` | è una `ref`, non va sul filo (→ `neutro` in `useContrattoFiltriLocali`) |
+| `archiviate` (code), `annullati` (lotti), `scartate` (righe distinta) | `true` | acceso **chiede in più**: il parametro parte e l'elenco diventa il più largo |
+
+⛔ **Senza, il numero SALE quando l'operatore ALLARGA la lista.**
+
+> ⭐ **La regola che li trova tutti, e va guardata prima del valore:**
+> **un interruttore «mostra anche X» ha SEMPRE un valore neutro, ed è quello
+> acceso.** Spento nasconde qualcosa — restringe, e conta a ragione; acceso apre
+> l'elenco al massimo che quella lista sappia mostrare.
+> ⚠️ Il dominio lo dichiara già: un interruttore che **allarga** porta il
+> conteggio di ciò che nasconde (`archiviate_count`, `scartate_count`,
+> `annullati_count`), uno che **restringe** («solo negativa», «solo interne»)
+> non ha niente da contare. Se il `count` c'è, il neutro esiste.
+> 🔴 Scritta il 2026-09-23 **dopo** che il primo censimento, fatto filtro per
+> filtro, ne aveva mancati quattro su sette — uno nello store che stava
+> modificando (brief §11.10).
+
+⛔ **Non si deriva e non si indovina**: `archiviate: false` — l'interruttore
+**spento** — nasconde le righe archiviate, quindi conta a ragione. È lo stesso
+filtro del neutro qui sopra, guardato dall'altro verso: è conoscenza del
+**filtro**, come `paramNames` e `gateKeys`.
+⭐ **E se il neutro può essere `null`, si usa quello**: su `pratiche` il BE legge
+«falso» e «assente» allo stesso modo, quindi il rimedio non è dichiarare il
+neutro ma **smettere di mandare il parametro** (default `null`, `bindToggle`
+senza `off`).
+⛔ **Un interruttore non è un filtro se ACCENDE un altro filtro**: nel drawer BoM
+«tutte le versioni» spegne `valido_al`, e dichiararlo come chiave a sé contava
+**2** per una restrizione sola e **1** su un elenco intero. Lì la chiave è una,
+e il legame vive nel `computed` scrivibile — come `data_da`/`data_a` sono un
+periodo e non due date.
+⚠️ **Niente cancello, ed è dichiarato**: un controllo statico non può sapere se
+un valore restringe — boccerebbe `archiviate: false`. Il presidio è la spec di
+`segnoFiltri` (quattro test sui neutri) e la regola qui sopra, che si applica
+leggendo il `count`.
+
+#### ⛔ Un filtro che l'operatore non può togliere è un difetto
+
+Se un filtro nasce valorizzato, ci dev'essere un gesto per riportarlo a «tutti»:
+la terna dal BB **`buildAttivoOptions(t)`** (o `buildBoolOptions(t)`, che è la
+stessa con `Sì`/`No`), `show-clear`, oppure — forma migliore per i booleani —
+`bindToggle('attivo', { on: null, off: true })`, dove accendere «mostra non
+attivi» porta il filtro a `null` e **lo fa smettere di contare**.
+⛔ **La terna non si riscrive a mano**, ed è la lezione del 2026-09-23: era
+copiata in **cinque** sedi e ne bastava una senza la voce «tutti» per avere un
+filtro che non si spegne. Due di quelle copie scrivevano già nella tendina una
+parola diversa da quella della loro stessa colonna.
+⚠️ Senza, il segno conta un'unità su cui non c'è nessuna azione possibile.
+Trovato il 2026-09-23 su `/catalogo/articoli` (nessun «Tutti») e, peggio, sulle
+**conversioni UoM**, dove il filtro `attivo: true` non aveva **nessun widget**:
+la lista era ristretta e non lo diceva a nessuno.
+🟡 Restano per scelta i **floor data** con `clearTo` (contratti, code di
+lavoro): non si tolgono, ma restringono davvero.
+
+⭐ **E c'è una terza risposta, che non è un widget: non era un filtro.** Se il
+valore non lo decide l'operatore ma il **dominio** — «la rata di una bozza non è
+un credito» — allora non va in `filterDefaults` affatto: è un **perimetro**, e la
+sua sede è il backend (api.md §«Un PERIMETRO non è un filtro»). ⛔ Tenerlo qui fa
+due danni insieme: il segno conta un'unità su cui non c'è nessun gesto, **e** la
+regola di dominio vale solo per il client che si ricorda di mandarla.
+⇒ La domanda è una: *«se domani un altro client chiamasse lo stesso endpoint,
+questa regola dovrebbe valere anche per lui?»* Se sì, non è un filtro.
+Successo reale: `solo_numerate` del picker delle rate, spostato nel backend il
+2026-09-23 (decisione di Tid).
 
 #### Le larghezze dei filtri stanno in una classe, non nel tag
 
@@ -3949,7 +4039,7 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 | `useLoading` | Stato loading generico (ref + toggle) | Componenti vari |
 | `useKeyboardShortcuts` | Shortcut globali: Ctrl+K ricerca, Ctrl+W chiudi tab, Ctrl+Tab naviga | AppLayout |
 | `usePagination` | Paginazione server-side (usato internamente da useSearchTable) | useSearchTable |
-| `useContrattoFiltriLista` | Il contratto che una lista offre ai suoi filtri: `chiaviFiltro`, `filtriDefault` (copia **profonda** e congelata) e `azzeraFiltri`. Lo consuma `useListaStoreCore`, e lo adottano in tre righe i dieci store scritti a mano | `useListaStoreCore`, gli store di coda |
+| `useContrattoFiltriLista` | Il contratto che una lista offre ai suoi filtri: `chiaviFiltro`, `filtriDefault` (copia **profonda** e congelata), `filtriNeutri` e `azzeraFiltri`. Lo consuma `useListaStoreCore`, e lo adottano in tre righe i dieci store scritti a mano | `useListaStoreCore`, gli store di coda |
 | `useContrattoFiltriLocali` | Lo stesso contratto per una superficie **senza store-lista**: si dichiara `{ chiave: { rif, default } }` e tornano `segno` + `azzeraFiltri()`. Il default si **dichiara** (non si fotografa dal `ref`) e può essere una **funzione** quando si ricalcola («oggi») | i due cruscotti, permessi, drawer BoM, drawer lotto, drawer contratti-per-BA |
 | `useStoreFilterBindings` | Il legame widget ↔ `store.filters`: `bindSelect`, `bindDate`, `bindPeriodo`, `bindToggle`, `bindLookup` | Tutte le toolbar filtri |
 
@@ -4002,7 +4092,7 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 | Utility | Scopo | Usato da |
 | --- | --- | --- |
 | `date.js` → `toDateString(d)` | Converte Date/string in 'YYYY-MM-DD' (ora locale, no bug UTC) | SoggettoForm, SoggettoDrawer |
-| `segnoFiltri.js` → `segnoFiltri(filtri, chiavi, defaults)` | Il segno dei filtri attivi in una funzione pura → `{stato, conteggio}`: niente / pallino (solo default) / numero | `FiltriLista`, le superfici senza store-lista |
+| `segnoFiltri.js` → `segnoFiltri(filtri, chiavi, defaults, neutri)` | Il segno dei filtri attivi in una funzione pura → `{stato, conteggio, modificato}`: niente / numero grigio (solo default) / numero blu. ⭐ `modificato` esce perché «niente restringe» e «c'è qualcosa da riportare al default» sono due domande diverse, e i valori neutri le hanno separate: la seconda è ciò che tiene vivo «Pulisci filtri» | `FiltriLista`, le superfici senza store-lista |
 | `clonaFiltri.js` → `clonaValore` / `clonaFiltri` / `congelaProfondo` | Stacca un valore di filtro dal letterale che lo dichiara. ⛔ Lo spread e `Object.freeze` sono di **primo livello**: un default ad array resterebbe condiviso per riferimento, e il primo `push` del widget sposterebbe il metro insieme alla cosa misurata | `useListaStoreCore`, i due contratti dei filtri |
 
 ### Costanti (`core/constants.js`)

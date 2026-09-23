@@ -23,7 +23,7 @@ import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
-import { buildBoolOptions } from '../../core/utils/options'
+import { buildAttivoOptions, buildBoolOptions } from '../../core/utils/options'
 import { labelOrCode } from '../../core/utils/i18nLabel'
 import FiltriLista from '../../core/components/FiltriLista.vue'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
@@ -56,10 +56,19 @@ const { value: compositoFilter, onChange: onCompositoChange } = bindSelect('is_c
 const { value: gruppoFilter, onChange: onGruppoChange } = bindSelect('gruppo_voce_id')
 
 const boolOptions = buildBoolOptions(t)
-const attivoOptions = [
-  { value: true, label: t('common.active') },
-  { value: false, label: t('common.inactive') },
-]
+// ⛔ «TUTTI» C'E', ED E' LA CORREZIONE DEL 2026-09-23 (rilievo in-app di Tid).
+//    Senza quella voce — e senza `show-clear` — questo filtro NON si poteva
+//    togliere: nasce a `Attivo` e le uniche due scelte erano `Attivo` e `Non
+//    attivo`, cioe' contava un'unita' nel segno dei filtri attivi su cui
+//    l'operatore non aveva nessun gesto.
+// ⚠️ Il backend lo ammette: la lista applica `attivo` solo se valorizzato
+//    (`qp_bool_optional` nella view, `if attivo is not None` nel repository),
+//    quindi «Tutti» mostra attivi e disattivati insieme.
+// ⭐ La terna sta nel BB `buildAttivoOptions` (regola del 2, ok Tid: era scritta
+//    a mano in cinque sedi): etichette di DOMINIO, non `Sì`/`No` di
+//    `buildBoolOptions` — qui il filtro e' lo STATO dell'articolo, le stesse
+//    parole che `AttivoTag` scrive nella colonna.
+const attivoOptions = buildAttivoOptions(t)
 
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
 function onRowClick(data) { emit('row-click', data) }

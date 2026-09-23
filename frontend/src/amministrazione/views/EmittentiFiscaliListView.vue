@@ -31,6 +31,7 @@ import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import FiltriLista from '../../core/components/FiltriLista.vue'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
+import { buildAttivoOptions } from '../../core/utils/options'
 
 const { t } = useI18n()
 const store = useEmittentiFiscaliStore()
@@ -63,11 +64,9 @@ useTabFreshness(store, TAB_ENTITIES.EMITTENTE_FISCALE)
 //    continua a mostrare il valore di prima, senza nessun errore.
 const { bindSelect } = useStoreFilterBindings(store, applyFilters)
 const { value: attivoFilter, onChange: onAttivoChange } = bindSelect('attivo')
-const attivoOptions = [
-  { label: t('amministrazione.stato_all'), value: null },
-  { label: t('amministrazione.stato_attivo'), value: true },
-  { label: t('amministrazione.stato_inattivo'), value: false }
-]
+// ⭐ Dal BB (regola del 2, ok Tid 2026-09-23): la stessa terna era scritta a
+//    mano in cinque sedi, e ognuna poteva divergere da sola.
+const attivoOptions = buildAttivoOptions(t)
 onMounted(() => { store.fetchList() })
 
 function onDrawerSaved() {

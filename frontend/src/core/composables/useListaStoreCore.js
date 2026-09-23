@@ -105,6 +105,15 @@ export function useListaStoreCore({
   fetchPage,
   parentField = null,
   filterDefaults = {},
+  // ⭐ I VALORI CHE NON RESTRINGONO, quando non sono `null` (2026-09-23).
+  //    Il segno dei filtri attivi conta un filtro se ha un valore; per quasi
+  //    tutti «tutto» e' `null` e basta cosi'. Non per quelli il cui «tutto»
+  //    deve viaggiare sul filo: `solo_ultima_revisione: false` (il BE e'
+  //    `default=True`, quindi l'assenza significa il contrario) e
+  //    `ambito: 'tutti'` delle code. ⛔ Senza, accendere «mostra storico» —
+  //    cioe' ALLARGARE la lista — fa SALIRE il numero. Perche' si dichiara qui
+  //    e non si indovina: e' conoscenza del filtro, come `paramNames`.
+  filtriNeutri: filtriNeutriOpz = {},
   gateKeys = [],
   startsEmpty = true,
   ricercaCorta = 'fetch',
@@ -167,8 +176,8 @@ export function useListaStoreCore({
   //    diverge al primo filtro aggiunto da una parte sola.
   // ⚠️ `fetchList` e' una dichiarazione di funzione (issata), quindi qui e' gia'
   //    definita anche se compare piu' sotto.
-  const { chiaviFiltro, filtriDefault, azzeraFiltri } = useContrattoFiltriLista({
-    filters, filterDefaults, fetchList,
+  const { chiaviFiltro, filtriDefault, filtriNeutri, azzeraFiltri } = useContrattoFiltriLista({
+    filters, filterDefaults, filtriNeutri: filtriNeutriOpz, fetchList,
   })
 
   // Scopo: i parametri che decidono QUALI righe — ricerca, filtri di dominio,
@@ -266,7 +275,7 @@ export function useListaStoreCore({
     paramsFiltro,
     // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
     // nascita, e come si riportano li'.
-    chiaviFiltro, filtriDefault, azzeraFiltri,
+    chiaviFiltro, filtriDefault, filtriNeutri, azzeraFiltri,
   }
   // ⭐ Il padre si espone COL SUO NOME (`soggettoId`, `fatturaId`), non come
   //    `parentId`: e' il nome che il caller scrive in `parentField` di

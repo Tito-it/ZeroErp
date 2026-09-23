@@ -22,15 +22,19 @@ export function buildFilterSuperAdminOptions(t) {
   ]
 }
 
-// Scopo: Opzioni filtro stato operatore per toolbar. Tri-state
-// null/true/false mappato direttamente su is_active del BE.
-export function buildFilterStatoOptions(t) {
-  return [
-    { label: t('amministrazione.stato_all'), value: null },
-    { label: t('amministrazione.stato_attivo'), value: true },
-    { label: t('amministrazione.stato_inattivo'), value: false }
-  ]
-}
+// ⛔ `buildFilterStatoOptions` E' STATA RITIRATA il 2026-09-23 (regola del 2,
+//    ok Tid): era la terna «tutti / attivo / non attivo» — la stessa che
+//    `EmittentiFiscaliListView`, `FamiglieDocumentoListView`,
+//    `ListiniSearchTable` e `ArticoliSearchTable` si scrivevano a mano — con le
+//    chiavi di questo dominio invece di quelle di `common`. Adesso la sede e'
+//    una: `core/utils/options.js` → `buildAttivoOptions(t)`, accanto al gemello
+//    `buildBoolOptions` che la stessa terna la produce con `Sì`/`No`.
+// ⭐ Non e' stata lasciata come alias: *quando emerge un BB generico i duplicati
+//    si ritirano subito* — un alias e' una seconda sede che aspetta solo di
+//    divergere.
+// ⚠️ `buildFilterSuperAdminOptions` qui sopra RESTA: e' tri-state uguale nella
+//    forma, ma le sue etichette sono una domanda di dominio («solo SUPER_ADMIN
+//    / escludili»), non lo stato `attivo` del modello.
 
 // Scopo: Costruisce le opzioni livello accesso per Select.
 export function buildLivelloOptions(t) {

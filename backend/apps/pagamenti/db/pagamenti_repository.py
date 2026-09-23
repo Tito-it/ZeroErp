@@ -1531,6 +1531,16 @@ class PagamentiRepository:
     #    e' piu' stretta — «solo le definitive, inviate a SDI» — ed e' un
     #    predicato di dominio che va in una sede sola a DB, non un secondo
     #    booleano qui (piano D19 §8).
+    # ⭐ IL DEFAULT E' `True` DAL 2026-09-23 (decisione di Tid), e il cambio non
+    #    e' cosmetico: e' un PERIMETRO di dominio, non un filtro dell'operatore.
+    #    Fino a quel giorno il default era `False` e la regola viveva nel
+    #    FRONTEND, che la mandava a ogni chiamata — cioe' una regola di dominio
+    #    scritta nella presentazione, e vera solo per il client che si ricordava
+    #    di dirla. ⚠️ Si vedeva da un sintomo piccolo: il picker contava «1
+    #    filtro attivo» su un filtro che l'operatore non poteva toccare.
+    #    ⇒ Chi vuole ANCHE le bozze lo chiede esplicitamente (`False`), e resta
+    #    una domanda legittima: la via d'uscita non e' stata tolta, e' stata
+    #    messa dalla parte giusta.
     def list_rate_paginata(
         self,
         *,
@@ -1541,7 +1551,7 @@ class PagamentiRepository:
         anno: int | None = None,
         search: str | None = None,
         solo_aperte: bool = False,
-        solo_numerate: bool = False,
+        solo_numerate: bool = True,
         data_scadenza_da: date | None = None,
         data_scadenza_a: date | None = None,
         natura_doc_codice: str | None = None,

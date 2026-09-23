@@ -47,6 +47,13 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
       // come `false` esplicito.
       solo_ultima_revisione: true,
     },
+    // ⛔ IL VALORE CHE NON RESTRINGE, dichiarato (2026-09-23). «Mostra storico»
+    //    acceso scrive `false`, che deve viaggiare sul filo — il BE e'
+    //    `qp_bool(..., default=True)` — ma la lista in quello stato e' la piu'
+    //    LARGA possibile: senza questa riga il segno dei filtri attivi contava 1
+    //    proprio quando l'operatore aveva tolto la restrizione, cioe' il numero
+    //    saliva allargando. Il perche' per intero sta su `segnoFiltri`.
+    filtriNeutri: { solo_ultima_revisione: false },
     gateKeys: ['stato', 'billing_account_id', 'utility_id', 'data_a', 'data_da'],
     // Il BE chiama la data di fine `data_al` (preventivi_views.py); nello store
     // resta `data_a`, che e' il nome che `useSearchTable` azzera sul deep-link

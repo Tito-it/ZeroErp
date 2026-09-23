@@ -20,13 +20,15 @@ import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { TAB_ENTITIES } from '../../core/constants'
 import FiltriLista from '../../core/components/FiltriLista.vue'
+import FiltroToggle from '../../core/components/FiltroToggle.vue'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
 const store = useConversioniUomStore()
 const isBlocked = useInjectBlocked()
 const {
-  searchText, onPage, onSort, paginatorProps, tablePage,
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'catalogo.nuova_conversione',
@@ -35,6 +37,22 @@ const {
   // (vedi lo store, che porta la stessa scelta e il perche' della direzione).
   searchTableOptions: { defaultSortField: 'valido_al', defaultSortOrder: 'desc' },
 })
+
+// ⛔ IL FILTRO C'ERA E NON SI VEDEVA (2026-09-23). Lo store dichiara
+//    `attivo: true`, quindi questa lista ha SEMPRE mostrato le sole conversioni
+//    attive — ma il blocco filtri portava la sola casella di ricerca, quindi
+//    l'operatore non aveva nessun gesto per cambiarlo e, non essendoci uno slot
+//    di filtri, `FiltriLista` non rendeva nemmeno l'icona: **nessun segno lo
+//    diceva**. Una lista ristretta e una lista completa si leggevano uguali, che
+//    e' esattamente il difetto per cui il segno dei filtri attivi esiste.
+// ⭐ La forma e' quella gia' in uso sulle altre tre liste «attivo» di magazzino
+//    (magazzini, lotti, ubicazioni): acceso = `attivo: null` (tutte), spento =
+//    `true`. Col neutro a `null` il filtro smette di contare quando non
+//    restringe, senza bisogno di dichiararlo.
+const { bindToggle } = useStoreFilterBindings(store, applyFilters)
+const { value: mostraNonAttive, onChange: onMostraNonAttiveChange } = bindToggle(
+  'attivo', { on: null, off: true },
+)
 
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
 function onRowClick(data) { emit('row-click', data) }
@@ -53,6 +71,11 @@ onMounted(() => store.fetchList())
         <template #sempre>
           <InputText class="app-filter-w-lg" v-model="searchText" :placeholder="t('catalogo.conv_search_placeholder')" />
         </template>
+        <FiltroToggle
+          v-model="mostraNonAttive"
+          :label="t('catalogo.conv_mostra_non_attive')"
+          @change="onMostraNonAttiveChange"
+        />
       </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>

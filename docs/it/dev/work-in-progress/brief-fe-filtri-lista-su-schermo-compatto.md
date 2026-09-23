@@ -25,10 +25,18 @@
 > nuovo montato su cinquanta superfici vecchie non è una funzione aggiunta, è un
 > contratto nuovo che quelle superfici non hanno mai firmato.*
 >
+> 🔴 **Poi il primo collaudo in-app (§11.9) ha cambiato la resa del segno e ha
+> introdotto i valori neutri; una RIVERIFICA di quel lavoro (§11.10) ha trovato
+> che il censimento dei neutri era incompleto — quattro filtri della stessa
+> famiglia, uno dei quali nello store che quel giro aveva in mano — e che
+> «Pulisci filtri» spariva proprio negli stati che i neutri avevano appena reso
+> raggiungibili.** ⭐ La regola che li trova tutti è in §11.10: *un interruttore
+> «mostra anche X» ha sempre un valore neutro, ed è quello acceso.*
+>
 > **In una riga:** sotto i 1024px (o su un touch senza hover) i filtri di una
 > lista escono dalla toolbar ed entrano in un **drawer dal basso**, aperto da
-> un'icona che **dice se ci sono filtri attivi** — pallino quando sono i soli
-> default, numero quando l'operatore ne ha cambiato uno.
+> un'icona che **dice se ci sono filtri attivi** — numero in grigio quando sono
+> i soli default, in blu quando l'operatore ne ha cambiato uno.
 
 ---
 
@@ -99,13 +107,34 @@ dietro le quinte. Non è spreco — alla chiusura la lista è **già** pronta.
 
 | Stato dei filtri | Segno |
 | --- | --- |
-| Nessun filtro con valore | niente |
-| Filtri con valore, **tutti** al loro default | **pallino discreto** |
-| Almeno un filtro diverso dal default | **numero** = quanti filtri stanno limitando la lista, **default compresi** |
+| Niente sta restringendo la lista | niente |
+| Qualcosa restringe, **tutto** al suo default | **numero in grigio** |
+| Almeno un filtro diverso dal default | **numero in blu** |
+
+> 🔴 **La resa è cambiata il 2026-09-23** (rilievo in-app di Tid, §11.9). Fino a
+> quel giorno lo stato «tutto al default» era un **pallino senza numero**: a
+> video si leggeva *«0 → 2»* toccando **una** cosa sola, perché il filtro già
+> attivo valeva zero un istante e uno quello dopo. Il conteggio non è mai
+> cambiato — era 1 anche col pallino — ma la forma lo **nascondeva**, e un segno
+> che nasconde ciò che conta fa sembrare sbagliato un conto giusto.
+> ⭐ **La regola di D4 resta intera**: si contano sempre i filtri, default
+> compresi. Cambia solo *come* si distingue «ristretta come nasce» da «ristretta
+> da te» — prima due **forme**, adesso due **colori** a parità di forma. Così
+> l'obiezione qui sotto continua a valere: a essere sempre acceso è il *numero*,
+> non l'allarme.
 
 ⭐ Il numero risponde alla domanda che l'operatore si fa davvero — *«quante cose
 stanno restringendo questo elenco?»* — non a *«quante ne ho toccate io»*. Con
 `data_da` al default più uno stato scelto si legge **2**, ed è giusto: sono due.
+
+⛔ **E «restringere» va preso alla lettera** (2026-09-23, §11.9): il conteggio
+sapeva riconoscere un solo «tutto» — l'assenza (`null`/`''`). Per la maggior
+parte dei filtri basta; non per quelli il cui «tutto» è un valore **vero** che
+deve viaggiare sul filo. Effetto: accendere «mostra storico» su offerte e
+preventivi — cioè **allargare** la lista — faceva **salire** il numero. Il valore
+che non restringe adesso si **dichiara** accanto ai `filterDefaults`
+(`filtriNeutri`), come `paramNames` e `gateKeys`: è conoscenza del filtro, non
+della funzione che lo conta.
 
 ⚠️ **Il caso che il pallino sistema**: con i default dentro il conteggio, quasi
 ogni lista mostrerebbe un numero **sempre**, e un segno sempre acceso smette di
@@ -976,3 +1005,227 @@ falsi positivi, ripristinando dopo ogni prova.
 puliti, **vitest 243 test su 26 file** (erano 220 su 24), `vite build` verde.
 ⛔ **E nessuna di queste è un collaudo**: L6 resta, e resta l'unica cosa che
 nessun presidio di questo cantiere sa fare — guardare un telefono.
+
+### 11.9 🔴 Il primo collaudo in-app, e i due difetti che ha tirato fuori
+
+> Tid, 2026-09-23, su `/catalogo/articoli`: *«ho attivato il solo filtro
+> composito SI e vengono conteggiati 2 filtri»*, poi *«quando apro la schermata
+> compare 0, se attivo composito compare 2, se tolgo composito 0»*.
+
+⭐ **La diagnosi che sembrava ovvia era sbagliata, e va detto perché la lezione
+è lì.** La prima lettura — la mia e quella del rilievo — era *«conta anche la
+ricerca»*. Riprodotto lo stato esatto, non era vero:
+
+```
+chiaviFiltro = [ attivo, is_composito, tipo_voce_id, gruppo_voce_id ]   ← `search` NON c'è
+
+1. lista appena aperta   -> { stato: 'default',    conteggio: 1 }   ← pallino
+2. digito «art»          -> { stato: 'default',    conteggio: 1 }   ← invariato
+3. composito = SI        -> { stato: 'modificato', conteggio: 2 }
+```
+
+Il **2** era `attivo = SI` (default dello store) + `composito = SI`. ⇒ *Un
+rilievo in-app dice sempre una verità; la causa che gli si attribuisce quasi
+mai. Si riproduce prima di correggere.*
+
+**Difetto A — la forma nascondeva il conteggio.** Lo stato «tutto al default»
+era un pallino senza numero, quindi lo stesso filtro (`attivo`) valeva **zero**
+un istante e **uno** quello dopo: toccando una cosa sola si leggeva «0 → 2».
+⇒ Il numero adesso c'è sempre, e la differenza la fa il **colore** (D4, tabella
+aggiornata). La regola del conteggio non è stata toccata.
+
+**Difetto B — un filtro che non si poteva togliere.** Su articoli il filtro
+«attivo» offriva solo `Attivo`/`Non attivo`: niente «Tutti», niente
+`show-clear`. Contava un'unità su cui l'operatore **non aveva nessun gesto**.
+⛔ Era l'**unico filtro del prodotto** in quella forma — le altre dodici liste
+con «attivo» offrono tutte «Tutti», e tre (magazzini, lotti, ubicazioni) usano
+la forma migliore, `bindToggle('attivo', { on: null, off: true })`, dove
+accendere «mostra non attivi» porta il filtro a `null` e **lo fa smettere di
+contare**.
+
+#### La verifica che ne è seguita — «ci sono altre liste così?» (Tid)
+
+Sì, e in **due** famiglie distinte.
+🔴 **⚠️ Questo elenco è INCOMPLETO sulla seconda famiglia, e lo si è scoperto
+riverificandolo la sera stessa: mancavano quattro filtri, uno nello store che
+questo stesso giro stava modificando. Il censimento corretto e la regola che li
+trova tutti sono in §11.10 — quanto segue resta com'era scritto, perché il modo
+in cui è stato contato è parte del difetto.**
+
+**① Filtri che non si possono togliere** — oltre ad articoli, uno solo, e
+peggiore: `/catalogo/unita-misura?tab=conversioni` filtrava `attivo: true` con
+**nessun widget**. La lista mostrava le sole conversioni attive, l'operatore non
+poteva cambiarlo, e siccome quel blocco aveva la sola ricerca `FiltriLista` non
+rendeva nemmeno l'icona: **nessun segno lo diceva**. ⇒ Aggiunto l'interruttore
+«Mostra non attive», nella stessa forma delle tre liste di magazzino.
+🟡 Restano **per scelta** i floor data con `clearTo` (contratti, code di
+lavoro): svuotando `data_da` torna il floor, quindi non si tolgono — ma
+restringono davvero, e il conteggio è vero.
+
+**② Filtri che contano senza restringere niente** — la famiglia del «mostra
+tutto» del giornale lotto (§11.4), che isolata non era:
+
+| Filtro | Valore neutro | Perché non poteva essere `null` |
+| --- | --- | --- |
+| `offerte` · `solo_ultima_revisione` | `false` («mostra storico») | il BE è `qp_bool(..., default=True)`: **assente significa `true`**, quindi il `false` va mandato per forza |
+| `preventivi` · idem | idem | idem |
+| code di lavoro · `ambito` | `'tutti'` | `buildCodaParams` manda il parametro **solo** quando vale «tutti»: sul filo il silenzio è «miei», nel dominio è il contrario |
+| drawer Lotto · `ampiezzaTask` | `'TUTTI'` | `AMPIEZZE_TASK.TUTTI === null`: una `ref`, non va sul filo |
+| `pratiche` · `solo_interne` | era `false` | ⭐ qui il BE fa `... or False`, quindi il rimedio migliore non è dichiarare il neutro: è **smettere di mandarlo**. Default `null` e `bindToggle` senza `off` — è la forma che quel binder già dichiara di default, *«un `false` sul filo è un parametro che il backend legge senza che filtri niente»* |
+
+⇒ Nasce **`filtriNeutri`**, dichiarato accanto ai `filterDefaults` (e `neutro`
+riga per riga in `useContrattoFiltriLocali`). ⛔ Non si indovina e non si
+deriva: è conoscenza del **filtro**, come `paramNames` e `gateKeys` — e le due
+righe qui sopra lo dimostrano, perché `archiviate: false` (code di lavoro) è
+l'esatto contrario, **nasconde** le righe archiviate e quindi conta a ragione.
+
+⚠️ **Niente cancello per questa famiglia, ed è una scelta dichiarata.** Un
+controllo statico non può sapere se un valore restringe: boccerebbe
+`archiviate: false`, che è legittimo. Vale il criterio di casa — *un cancello
+che capisce un caso su cinque boccia a caso, e dopo due blocchi sbagliati
+qualcuno lo spegne*. Il presidio praticabile è la **spec**: `segnoFiltri` ha
+quattro test sui neutri (spegnendo la riga ne vanno rossi tre) e
+`useContrattoFiltriLocali` il suo gemello.
+
+**Verifiche (2026-09-23, dopo il collaudo)**: `eslint` + `oxlint` puliti,
+**17 `[ok]`** su `npm run guards`, **vitest 248 test su 26 file**, `vite build`
+verde, `check_i18n_keys.py` con la sola differenza delle due chiavi nuove
+(parità it/en integra).
+
+---
+
+### 11.10 🔴 La riverifica del §11.9 — quattro filtri della stessa famiglia, e un verbo che spariva
+
+> ⚠️ **Il §11.9 dichiara un censimento chiuso** — *«ci sono altre liste così?
+> Sì, e in **due** famiglie distinte»* — e la riverifica lo ha smentito sulla
+> seconda. Non è un dettaglio: è **la terza volta in due giorni** che una
+> popolazione contata una volta sola si rivela incompleta (§10.2 con i
+> «quattordici store», §11.7 con lo stesso elenco riletto, adesso qui).
+
+#### La regola che il §11.9 non aveva scritto, e che li avrebbe trovati tutti
+
+> **Un interruttore «mostra anche X» ha SEMPRE un valore neutro: è quello
+> acceso.** Spento nasconde qualcosa — restringe, e conta a ragione; acceso
+> apre l'elenco al massimo che quella lista sappia mostrare.
+
+Il §11.9 aveva guardato i filtri **uno per uno** e aveva trovato i tre che
+avevano dato fastidio a video. Il prodotto ne aveva **sette** della stessa
+forma, e il discriminante non è il valore: è il **mestiere** del filtro — e il
+dominio lo dichiara già altrove, perché un interruttore che allarga porta il
+conteggio di ciò che nasconde (`archiviate_count`, `scartate_count`,
+`annullati_count`) e uno che restringe no (catalogo BB, `FiltroToggle`).
+
+| Dove | Filtro | Neutro | Perché nessuno se ne accorgeva |
+| --- | --- | --- | --- |
+| `strumenti/stores/codeJobs` | `archiviate` | `true` | ⛔ **È lo store che il §11.9 aveva in mano**: gli ha aggiunto `filtriNeutri: { ambito: 'tutti' }` e ha lasciato fuori il filtro accanto. Il §11.9 cita `archiviate: false` come esempio di «conta a ragione» — vero, e la domanda «e da acceso?» non se l'è posta |
+| `vendite/stores/lotti` | `annullati` | `true` | `annullati: 1` sul filo chiede i lotti annullati **in più** |
+| `pagamenti/stores/distintaRighe` | `scartate` | `true` | idem: acceso, l'elenco è tutta la distinta |
+| `ArticoloBomDrawer` | `tutto` | — | vedi sotto: lì il rimedio non è un neutro |
+
+#### ⛔ Il drawer BoM non voleva un neutro: voleva **una chiave in meno**
+
+`valido_al` e «tutte le versioni» erano **due** chiavi del contratto. Ma
+l'interruttore non è un filtro: è ciò che **spegne** `valido_al` — e il
+`computed` scrivibile che lo dice esisteva già. Contarlo a parte faceva due
+cose sbagliate insieme, nessuna delle quali dava errore:
+
+* a interruttore **spento** l'elenco era ristretto da **una** cosa sola (la
+  data) e il segno diceva **2**;
+* a interruttore **acceso** non restringeva più niente e il segno diceva **1** —
+  il numero che sale mentre la lista si allarga, cioè esattamente il difetto
+  del §11.9, dentro la correzione del §11.9.
+
+⇒ `tutto` esce dalle chiavi; il legame fra i due vive **solo** nel `set` del
+`computed`, che adesso spegne l'interruttore quando una data viene scritta —
+senza, «Pulisci filtri» rimetteva la data di oggi e lasciava acceso ciò che
+quella data la annulla. ⭐ È la stessa forma di `FiltroPeriodo`: *due estremi
+sono un filtro solo*; qui, *un filtro e il suo interruttore sono un filtro
+solo*.
+
+#### 🔴 E il difetto peggiore era nel building block: «Pulisci filtri» spariva
+
+`puoPulire` chiedeva `haSegno`. Le due domande — *«c'è un segno da mostrare?»* e
+*«c'è qualcosa da riportare al default?»* — coincidevano finché «non restringe»
+voleva dire «non c'è»; **i valori neutri le hanno separate**. Da allora:
+
+* un filtro portato al valore neutro («mostra non attive» sulle conversioni,
+  «tutte le versioni» nel BoM) o **un default svuotato a mano** («Tutti» su
+  articoli, dove la voce l'ha appena aggiunta il §11.9) lascia la lista intera:
+  nessun segno — e quindi **nessun pulsante**;
+* ⛔ ma è lo stato in cui «Pulisci» è l'**unico** gesto che riporta indietro:
+  l'operatore doveva ricordarsi *quale* interruttore aveva spostato.
+
+⇒ `segnoFiltri` restituisce anche **`modificato`** — la risposta alla seconda
+domanda, che prima veniva calcolata e **buttata via** nel ramo `vuoto` — e
+`puoPulire` la legge. ⚠️ Il pulsante si **aggiunge** dove mancava: non si toglie
+dallo stato «tutto al default», dove oggi c'è e ricarica la pagina 1.
+
+#### Le altre tre cose, più piccole
+
+* **I neutri del contratto locale erano congelati in superficie**
+  (`Object.freeze` + nessuna copia) mentre il gemello sugli store passa da
+  `clonaFiltri`: con un neutro ad **array** il metro sarebbe rimasto *lo stesso*
+  array del letterale. È la §11.7, un piano più giù — il caso è **dichiarato
+  ammesso** dal contratto (`uguale()` tratta apposta gli array), quindi si
+  presidia anche senza occorrenze.
+* **Un neutro su una chiave che non è un filtro non diceva niente**: refuso →
+  no-op silenzioso, e il segno continua a contare il filtro vero. Adesso è
+  `console.error`, stesso stampo del guard di `FiltriLista` e di
+  `useContrattoFiltriLocali`. ⚠️ Nel contratto **locale** non serve: lì `neutro`
+  sta sulla riga del filtro, e una chiave sbagliata non esiste.
+* **La regola CSS `:not(.p-badge-dot)` era scaduta il giorno stesso**: col
+  numero sempre presente `Badge` non entra più nello stato «dot», quindi
+  proteggeva uno stato che non esiste. Tolta (la *lezione* sulla specificità
+  resta scritta accanto). Stessa forma del rilievo §11.7 sulla regola
+  transitoria mai scaduta.
+
+#### 🟡 Due cose viste e NON toccate, perché sono decisioni
+
+* ✅ **`rate.solo_numerate` — risolto il 2026-09-23, decisione di Tid: non era
+  un filtro, era un PERIMETRO.** Era la terza occorrenza della famiglia ① del
+  §11.9 («un filtro che l'operatore non può togliere»), e le prime due si
+  curavano con un gesto — «Tutti» nell'elenco, un interruttore. Questa no: il
+  gesto non doveva esistere. *La rata di un documento non numerato non è un
+  credito su cui registrare un incasso* è una regola del **dominio**, quindi
+  vale per ogni client — e stava scritta nel frontend, cioè era vera solo per
+  il client che si ricordava di mandarla.
+  ⇒ La regola è scesa nel backend (`list_rate` e `list_rate_paginata`, default
+  `True`; l'assenza del parametro significa «applica la regola», non «falso»), e
+  `solo_numerate` è uscito da `filterDefaults`: il picker non lo manda più e il
+  suo segno non conta più un filtro che a video non esiste. La via d'uscita
+  resta, dalla parte giusta (`?solo_numerate=false`).
+  ⭐ **La lezione, ed è la ragione per cui sta scritta in api.md e negli standard
+  FE**: `filterDefaults` risponde a **due** domande — «cosa mando al backend» e
+  «cosa conto come filtro» — e per un perimetro le due risposte divergono. Il
+  sintomo che l'ha fatto emergere è piccolo (un «1» nell'imbuto), la causa no.
+  ⚠️ Provato sul **database vero**, non su un mock: `test_rate_lista_db` ora
+  costruisce la bozza e verifica che senza dire niente resti fuori, e che
+  chiedendo `solo_numerate=False` rientri — il perimetro è una scelta, non un
+  dato che manca. ⏳ Invariato il resto: il predicato più stretto di Tid («solo
+  le definitive, inviate a SDI») arriva col cantiere SDI, in una sede a DB.
+* ✅ **La terna `Tutti / Attivo / Non attivo` — estratta il 2026-09-23, ok di
+  Tid.** ⚠️ E il censimento fatto per estrarla ha alzato il conto: non erano due
+  sedi ma **cinque**, e la quinta era già una **factory** in un altro dominio
+  (`amministrazione/constants.js::buildFilterStatoOptions`), cioè la prova che
+  l'estrazione era stata fatta una volta e poi ricopiata lo stesso.
+  ⇒ `core/utils/options.js` → **`buildAttivoOptions(t)`**, accanto a
+  `buildBoolOptions`; la factory di dominio è **ritirata**, non lasciata come
+  alias. ⛔ **E le copie erano già divergenti**, che è il motivo per cui una
+  duplicazione non è mai solo estetica: `ListiniSearchTable` e
+  `FamiglieDocumentoListView` scrivevano **«Inattivo»** nella tendina e **«Non
+  attivo»** nella colonna — due parole per lo stesso stato, nella stessa
+  schermata — e la copia di `ListiniSearchTable`, che sta in `vendite`, leggeva
+  le chiavi i18n di `amministrazione`. Allineato anche
+  `amministrazione.stato_inattivo` (IT) a «Non attivo», così le colonne che
+  usano ancora quelle chiavi dicono la stessa parola delle tendine.
+  ⚠️ **Restano fuori di proposito** due terne che *sembrano* la stessa:
+  `buildFilterSuperAdminOptions` e il filtro dei registri di numerazione («Solo
+  attivi / Solo disattivati»). Hanno etichette diverse perché fanno una domanda
+  diversa: unificarle cambierebbe ciò che l'operatore legge, e sarebbe una
+  decisione, non un'estrazione.
+
+**Verifiche (2026-09-23, dopo la riverifica)**: `eslint` + `oxlint` puliti,
+**17 `[ok]`** su `npm run guards` (i tre registri restano a zero), **vitest 251
+test su 26 file**, `vite build` verde. I due presidi nuovi provati **contro le
+mutazioni**: spegnendo il congelamento profondo e il `console.error` vanno rossi
+uno per fix.

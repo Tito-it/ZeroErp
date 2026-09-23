@@ -134,15 +134,23 @@ export const useLottiStore = defineStore('vendite-lotti', () => {
 
   // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
   // nascita, e come si riportano li' («Pulisci filtri»).
-  const { chiaviFiltro, filtriDefault, azzeraFiltri } = useContrattoFiltriLista({
-    filters, filterDefaults: FILTRI_DEFAULT, fetchList,
+  // ⛔ `annullati: true` NON RESTRINGE, e va dichiarato (2026-09-23): spento
+  //    (`false`, il default) i lotti annullati restano fuori — restringe, e
+  //    conta a ragione; acceso il parametro parte (`annullati: 1`) e l'elenco
+  //    diventa il piu' largo possibile. Senza questa riga il segno contava un
+  //    filtro proprio quando l'operatore aveva tolto la restrizione.
+  const { chiaviFiltro, filtriDefault, filtriNeutri, azzeraFiltri } = useContrattoFiltriLista({
+    filters,
+    filterDefaults: FILTRI_DEFAULT,
+    filtriNeutri: { annullati: true },
+    fetchList,
   })
 
   return {
     items, totalRecords, loading, hasSearched, filters,
     stati, annullatiCount,
     fetchList,
-    chiaviFiltro, filtriDefault, azzeraFiltri,
+    chiaviFiltro, filtriDefault, filtriNeutri, azzeraFiltri,
   }
 }, {
   userScoped: true,

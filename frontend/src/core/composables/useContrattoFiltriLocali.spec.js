@@ -6,8 +6,8 @@
 //        sede unica «chiave, `rif` e default sulla stessa riga», il segno e
 //        «Pulisci filtri».
 // Note: i casi sono quelli che, sbagliati, NON danno errore: un segno spento su
-//       una superficie che filtra, un numero al posto del pallino, un «Pulisci»
-//       che riporta il valore sbagliato.
+//       una superficie che filtra, un numero blu dove andava grigio, un
+//       «Pulisci» che riporta il valore sbagliato.
 // ------------------------------------------------------------
 
 import { describe, it, expect, vi } from 'vitest'
@@ -25,18 +25,18 @@ describe('useContrattoFiltriLocali', () => {
       ritardo_giorni: { rif: ritardo, default: null },
     })
     expect(risolviFiltriDefault()).toEqual({ ritardo_giorni: null })
-    // 30 non e' il default: e' il NUMERO, non il pallino.
-    expect(segno.value).toEqual({ stato: SEGNO_MODIFICATO, conteggio: 1 })
+    // 30 non e' il default: il numero si vede BLU, non grigio.
+    expect(segno.value).toEqual({ stato: SEGNO_MODIFICATO, conteggio: 1, modificato: true })
   })
 
-  it('un default VALORIZZATO nasce col PALLINO, e al primo cambio diventa numero', () => {
+  it('un default VALORIZZATO nasce GRIGIO, e al primo cambio diventa blu', () => {
     const ampiezza = ref('RILEVANTI')
     const { segno } = useContrattoFiltriLocali({
       ampiezza: { rif: ampiezza, default: 'RILEVANTI' },
     })
-    expect(segno.value).toEqual({ stato: SEGNO_DEFAULT, conteggio: 1 })
+    expect(segno.value).toEqual({ stato: SEGNO_DEFAULT, conteggio: 1, modificato: false })
     ampiezza.value = 'TUTTI'
-    expect(segno.value).toEqual({ stato: SEGNO_MODIFICATO, conteggio: 1 })
+    expect(segno.value).toEqual({ stato: SEGNO_MODIFICATO, conteggio: 1, modificato: true })
   })
 
   it('conta TUTTI i filtri con valore, default compresi (D4)', () => {
@@ -46,9 +46,9 @@ describe('useContrattoFiltriLocali', () => {
       a: { rif: a, default: null },
       b: { rif: b, default: 'X' },
     })
-    expect(segno.value).toEqual({ stato: SEGNO_DEFAULT, conteggio: 1 })
+    expect(segno.value).toEqual({ stato: SEGNO_DEFAULT, conteggio: 1, modificato: false })
     a.value = 'Y'
-    expect(segno.value).toEqual({ stato: SEGNO_MODIFICATO, conteggio: 2 })
+    expect(segno.value).toEqual({ stato: SEGNO_MODIFICATO, conteggio: 2, modificato: true })
   })
 
   it('nessun filtro con valore = nessun segno', () => {
@@ -56,7 +56,7 @@ describe('useContrattoFiltriLocali', () => {
       a: { rif: ref(null), default: null },
       b: { rif: ref(''), default: null },
     })
-    expect(segno.value).toEqual({ stato: SEGNO_VUOTO, conteggio: 0 })
+    expect(segno.value).toEqual({ stato: SEGNO_VUOTO, conteggio: 0, modificato: false })
   })
 
   it('«Pulisci» riporta i filtri al default e chiama `onAzzera` UNA volta', () => {
@@ -106,9 +106,9 @@ describe('useContrattoFiltriLocali', () => {
     const { segno, azzeraFiltri } = useContrattoFiltriLocali({
       solo_problemi: { rif: soloProblemi, default: true },
     })
-    expect(segno.value).toEqual({ stato: SEGNO_DEFAULT, conteggio: 1 })
+    expect(segno.value).toEqual({ stato: SEGNO_DEFAULT, conteggio: 1, modificato: false })
     mostraTutto.value = true
-    expect(segno.value).toEqual({ stato: SEGNO_VUOTO, conteggio: 0 })
+    expect(segno.value).toEqual({ stato: SEGNO_VUOTO, conteggio: 0, modificato: true })
     azzeraFiltri()
     expect(mostraTutto.value).toBe(false)
   })
@@ -182,5 +182,36 @@ describe('useContrattoFiltriLocali', () => {
     expect([...chiaviFiltro]).toEqual([])
     expect(segno.value.stato).toBe(SEGNO_VUOTO)
     expect(() => azzeraFiltri()).not.toThrow()
+  })
+
+  // ⛔ Il gemello di `filtriNeutri` sugli store-lista: l'ampiezza «TUTTI» dei
+  //    task del lotto non filtra niente (`AMPIEZZE_TASK.TUTTI === null`).
+  it('un `neutro` dichiarato non conta, e non spegne `modificato`', () => {
+    const ampiezza = ref('RILEVANTI')
+    const { segno } = useContrattoFiltriLocali({
+      ampiezza: { rif: ampiezza, default: 'RILEVANTI', neutro: 'TUTTI' },
+    })
+    expect(segno.value).toEqual({ stato: SEGNO_DEFAULT, conteggio: 1, modificato: false })
+    ampiezza.value = 'ERRORI'
+    expect(segno.value).toEqual({ stato: SEGNO_MODIFICATO, conteggio: 1, modificato: true })
+    // «TUTTI»: non restringe piu' niente, quindi nessun segno — ma `modificato`
+    // resta vero, ed e' cio' che tiene vivo «Pulisci filtri».
+    ampiezza.value = 'TUTTI'
+    expect(segno.value).toEqual({ stato: SEGNO_VUOTO, conteggio: 0, modificato: true })
+  })
+
+  // ⛔ Il neutro e' un METRO come il default, e si stacca allo stesso modo: con
+  //    `Object.freeze` di primo livello un neutro ad array resterebbe LO STESSO
+  //    array del letterale del chiamante. Simmetrico al gemello sugli
+  //    store-lista, dove il neutro passa gia' da `clonaFiltri`.
+  it('un `neutro` ad ARRAY e- staccato dal letterale e congelato', () => {
+    const NEUTRO = []
+    const stati = ref(['APERTA'])
+    const { filtriNeutri } = useContrattoFiltriLocali({
+      stati: { rif: stati, default: ['APERTA'], neutro: NEUTRO },
+    })
+    expect(filtriNeutri.stati).not.toBe(NEUTRO)
+    expect(Object.isFrozen(filtriNeutri)).toBe(true)
+    expect(() => { filtriNeutri.stati.push('CHIUSA') }).toThrow()
   })
 })

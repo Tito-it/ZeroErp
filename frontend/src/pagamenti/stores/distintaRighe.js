@@ -65,6 +65,12 @@ export const useDistintaRigheStore = defineStore(
       startsEmpty: false,
       orderDir: null,
       filterDefaults: { scartate: null },
+      // ⛔ `true` NON RESTRINGE, e va dichiarato (2026-09-23): acceso,
+      //    l'interruttore CHIEDE le scartate, cioe' apre l'elenco a tutte le
+      //    righe della distinta. Senza questa riga il segno contava un filtro
+      //    attivo proprio nello stato piu' largo — lo stesso verso sbagliato di
+      //    «mostra archiviate» sulle code e di «mostra annullati» sui lotti.
+      filtriNeutri: { scartate: true },
       onPayload: (payload) => { scartateCount.value = payload.scartate_count ?? 0 },
     })
 

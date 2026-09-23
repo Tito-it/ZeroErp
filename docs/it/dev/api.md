@@ -428,6 +428,40 @@ I filtri opzionali da query string si normalizzano con gli helper di
   bool accettavano il garbage come `True`/`False`).
 * token bool riconosciuti: `1/true/yes/y/on` → `True`, `0/false/no/n/off` → `False`.
 
+#### ⛔ Un PERIMETRO non è un filtro, e «assente» non vale `False`
+
+Un booleano di lista può essere due cose diverse, e vanno scritte diversamente:
+
+| | Chi decide | «assente» significa | Dove vive il default |
+| --- | --- | --- | --- |
+| **filtro** (`solo_aperte`) | l'operatore, da un widget | `False` — nessun filtro | nel client, che lo manda |
+| **perimetro** (`solo_numerate`) | il **dominio** | **applica la regola** | nel **service/repository**, `= True` |
+
+⭐ *La rata di un documento non numerato non è un credito su cui registrare un
+incasso*: è una regola del dominio, quindi vale per **ogni** client — non solo
+per quello che si ricorda di mandare il parametro. Un perimetro scritto nel
+frontend è una regola di business nella presentazione, e il fatto che oggi il
+client sia uno solo non la rende vera.
+
+Forma (decisione di Tid, 2026-09-23, `GET /pagamenti/rate/`):
+
+* la **view** resta sull'helper *strict* (`qp_bool_optional`): `?x=banana` deve
+  restare un **400**, non diventare `True` in silenzio. ⚠️ Per questo non si usa
+  `qp_bool(raw, default=True)`, che è indulgente — è la forma già in uso su
+  `solo_ultima_revisione`, e lì quel `banana` passa;
+* il **service** traduce l'assenza: `True if x is None else bool(x)`, con il
+  perché accanto. ⛔ Mai `bool(x)` secco, che mappa `None` su `False`;
+* il **repository** dichiara `x: bool = True`, così anche un chiamante interno
+  che non ne sa nulla ottiene la regola;
+* la **via d'uscita resta e si documenta** (`?x=false`): un perimetro senza
+  escape è un dato che manca, non una scelta.
+
+⚠️ **Il sintomo che lo fa emergere sta nel frontend**: un perimetro tenuto in
+`filterDefaults` è anche una *chiave di filtro*, quindi il segno dei filtri
+attivi lo conta — l'operatore legge «1 filtro attivo» e nel pannello non trova
+niente da toccare. *`filterDefaults` risponde a due domande — «cosa mando» e
+«cosa conto come filtro» — e per un perimetro le due risposte divergono.*
+
 > **Paginazione page-based** (`page`/`page_size`, alternativa a `limit`/`offset`):
 > validala nel service con
 > `validate_pagination(page, page_size, *, error_code, function_name)`

@@ -42,6 +42,7 @@ import { useFamiglieDocumentoStore } from '../stores/famiglieDocumento'
 import { exportFamiglie } from '../api/famiglieDocumento'
 import FiltriLista from '../../core/components/FiltriLista.vue'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
+import { buildAttivoOptions } from '../../core/utils/options'
 
 const { t, te } = useI18n()
 const notify = useNotify()
@@ -76,11 +77,9 @@ const {
 const { bindSelect } = useStoreFilterBindings(store, applyFilters)
 const { value: attivoFilter, onChange: onAttivoChange } = bindSelect('attivo')
 const { value: serieFilter, onChange: onSerieChange } = bindSelect('gestisce_serie')
-const attivoOptions = [
-  { label: t('amministrazione.stato_all'), value: null },
-  { label: t('amministrazione.stato_attivo'), value: true },
-  { label: t('amministrazione.stato_inattivo'), value: false },
-]
+// ⭐ Dal BB (regola del 2, ok Tid 2026-09-23). ⛔ Anche qui la tendina diceva
+//    «Inattivo» e la colonna, resa da `AttivoTag`, «Non attivo».
+const attivoOptions = buildAttivoOptions(t)
 const serieOptions = [
   { label: t('amministrazione.famiglie_documento.serie_tutte'), value: null },
   { label: t('amministrazione.famiglie_documento.serie_si'), value: true },

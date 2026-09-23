@@ -504,21 +504,25 @@ const giornaleInfoVisibili = ref(false)
 // Scopo: il contratto dei filtri delle sotto-liste del lotto — chi sono, che
 //        default hanno, il segno che mostrano e «Pulisci filtri».
 // ⭐ Nascono VALORIZZATI (`RILEVANTI`, «solo problemi», `CRITICHE`): finche'
-//    nessuno li tocca si vede il PALLINO — «ristretta come nasce» — e al primo
-//    cambio il numero. E' il caso per cui il pallino esiste.
+//    nessuno li tocca il numero e' GRIGIO — «ristretta come nasce» — e al primo
+//    cambio diventa BLU. E' il caso per cui i due colori esistono.
 // ⚠️ Nessun `onAzzera`: queste liste ricaricano da se', col `watch` sul filtro.
 const {
   segno: segnoAmpiezzaTask,
   azzeraFiltri: azzeraAmpiezzaTask,
 } = useContrattoFiltriLocali({
-  ampiezza: { rif: ampiezzaTask, default: 'RILEVANTI' },
+  // ⛔ `'TUTTI'` NON RESTRINGE, e va detto: `AMPIEZZE_TASK.TUTTI` e' `null`,
+  //    cioe' nessun filtro di stato sui task. Senza, il segno contava 1 proprio
+  //    sull'ampiezza piu' larga — lo stesso verso sbagliato del «mostra tutto»
+  //    del giornale qui sotto.
+  ampiezza: { rif: ampiezzaTask, default: 'RILEVANTI', neutro: 'TUTTI' },
 })
 
 // ⛔ IL FILTRO VERO E' L'OPPOSTO DELLA VARIABILE DEL WIDGET, e fino al
 //    2026-09-23 il segno lo leggeva al contrario. «Mostra tutto» ALLARGA la
 //    storia: acceso, non sta restringendo niente — eppure contando
-//    `giornaleInfoVisibili` usciva «1 filtro attivo» proprio li', e il pallino
-//    compariva quando la lista era ristretta. Il filtro e' «solo problemi».
+//    `giornaleInfoVisibili` usciva «1 filtro attivo» proprio li', e il segno
+//    spariva quando la lista era ristretta. Il filtro e' «solo problemi».
 const soloProblemiGiornale = computed({
   get: () => (giornaleInfoVisibili.value ? null : true),
   set: (v) => { giornaleInfoVisibili.value = v == null },

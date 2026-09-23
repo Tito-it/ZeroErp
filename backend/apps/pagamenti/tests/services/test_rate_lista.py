@@ -19,7 +19,7 @@ Indice test eseguiti:
 4) RateListaTests.test_direzione_normalizzata_in_minuscolo
 5) RateListaTests.test_ricerca_corta_rifiutata
 6) RateListaTests.test_solo_aperte_arriva_come_booleano
-6-bis) RateListaTests.test_solo_numerate_arriva_come_booleano
+6-bis) RateListaTests.test_solo_numerate_e_un_perimetro_non_un_filtro
 7) RateListaTests.test_i_criteri_passano_intatti
 8) RateListaTests.test_natura_normalizzata_in_maiuscolo
 9) WhitelistTests.test_i_saldi_non_sono_ordinabili
@@ -107,12 +107,22 @@ class RateListaTests(SimpleTestCase):
         saldi_service.list_rate(auth_user_id=5, limit=25, solo_aperte=True)
         self.assertIs(self.repo.list_rate_paginata.call_args.kwargs["solo_aperte"], True)
 
-    # Scopo: `solo_numerate` (rilievo di Tid, 18/09) segue la stessa forma di
-    #        `solo_aperte`: al repository arriva un booleano, `None` vale
-    #        `False`. Il predicato (`numero IS NOT NULL`) si prova sul DB
-    #        provvisto, costruendo la bozza.
-    def test_solo_numerate_arriva_come_booleano(self):
+    # Scopo: ⛔ `solo_numerate` NON segue la forma di `solo_aperte`, ed e' il
+    #        test che tiene fermo il perche' (decisione di Tid, 23/09). E' un
+    #        PERIMETRO di dominio — la rata di una bozza non e' un credito —
+    #        quindi «assente» significa APPLICA LA REGOLA, non «falso»:
+    #        `None` -> `True`. `solo_aperte`, che e' un filtro vero, resta
+    #        `None` -> `False` (il test qui sopra).
+    # ⚠️ Fino al 23/09 la regola la mandava il FRONTEND a ogni chiamata, cioe'
+    #        era vera solo per il client che se la ricordava; questo test
+    #        pinnava quel mondo (`None` -> `False`). Il predicato
+    #        (`numero IS NOT NULL`) si prova sul DB provvisto, costruendo la
+    #        bozza.
+    def test_solo_numerate_e_un_perimetro_non_un_filtro(self):
         saldi_service.list_rate(auth_user_id=5, limit=25, solo_numerate=None)
+        self.assertIs(self.repo.list_rate_paginata.call_args.kwargs["solo_numerate"], True)
+        # La via d'uscita esiste, ma va CHIESTA.
+        saldi_service.list_rate(auth_user_id=5, limit=25, solo_numerate=False)
         self.assertIs(self.repo.list_rate_paginata.call_args.kwargs["solo_numerate"], False)
         saldi_service.list_rate(auth_user_id=5, limit=25, solo_numerate=True)
         self.assertIs(self.repo.list_rate_paginata.call_args.kwargs["solo_numerate"], True)

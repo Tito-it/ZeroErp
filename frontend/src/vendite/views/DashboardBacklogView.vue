@@ -231,8 +231,8 @@ function onRitardoChange() {
 //    vivono nello store `userScoped` del cruscotto, che SOPRAVVIVE al
 //    componente — al secondo montaggio una fotografia avrebbe preso il filtro
 //    lasciato dall'operatore come se fosse il default.
-// ⚠️ I due nascono entrambi a `null`, quindi qui il pallino non compare mai: o
-//    non filtrano, o sono stati scelti a mano.
+// ⚠️ I due nascono entrambi a `null`, quindi qui il numero grigio non compare
+//    mai: o non filtrano, o sono stati scelti a mano (numero blu).
 // ⛔ Non c'e' la CLASSE: quella si sceglie dalle card, che restano sempre a
 //    video — il segno esiste per cio' che in modalita' compatta non si vede piu'.
 const {

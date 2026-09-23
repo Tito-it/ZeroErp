@@ -900,8 +900,11 @@ class ApiRateList(DomainAPIView):
                 required=False,
                 description=(
                     "Solo le rate di documenti NUMERATI (`numero IS NOT NULL`): "
-                    "la bozza non e' un documento fiscale. Il picker lo passa "
-                    "sempre; vale anche sul perimetro di `solo_aperte`."
+                    "la bozza non e' un documento fiscale. **Default: true** — "
+                    "e' un perimetro di dominio, non un filtro: assente vale "
+                    "`true`, e per vedere anche le bozze si passa "
+                    "`solo_numerate=false`. Vale anche sul perimetro di "
+                    "`solo_aperte`."
                 ),
             ),
             OpenApiParameter(

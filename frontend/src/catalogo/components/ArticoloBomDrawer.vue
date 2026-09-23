@@ -96,7 +96,7 @@ const filtroValiditaTutto = ref(false)
 // ⛔ IL DEFAULT E' «OGGI», ED E' UNA DOMANDA, NON UN VALORE — e va chiesto a
 //    MEZZANOTTE, non all'istante corrente.
 //    · `new Date()` letto due volte cambia di millisecondi, e per il segno due
-//      istanti diversi sono due filtri diversi: il pallino non comparirebbe mai;
+//      istanti diversi sono due filtri diversi: il numero non sarebbe mai grigio;
 //    · un istante FOTOGRAFATO una volta sola invecchia: un'applicazione lasciata
 //      aperta a cavallo della mezzanotte terrebbe per «default» il giorno prima.
 //    `addDaysToToday(0)` risponde «mezzanotte di oggi», che e' stabile dentro la
@@ -108,18 +108,34 @@ const filtroValiditaData = ref(oggiAMezzanotte())
 //    e' acceso, la data NON sta restringendo niente. Il `computed` scrivibile
 //    dice questo, e il segno lo conta com'e' — contare `filtroValiditaData` e
 //    basta direbbe «un filtro attivo» anche a filtro spento.
+// ⛔ E SCRIVERE UNA DATA SPEGNE L'INTERRUTTORE (2026-09-23): «valido al» e
+//    «tutte le versioni» non sono due filtri, sono UN filtro e il suo
+//    interruttore — la stessa forma di `data_da`/`data_a`, che sono un periodo
+//    e non due date. Senza, «Pulisci filtri» rimetteva la data di oggi e
+//    lasciava acceso l'interruttore che quella data la annulla: il drawer
+//    tornava a un default che nessuno aveva dichiarato.
 const filtroValidoAl = computed({
   get: () => (filtroValiditaTutto.value ? null : filtroValiditaData.value),
-  set: (v) => { filtroValiditaData.value = v ?? oggiAMezzanotte() },
+  set: (v) => {
+    filtroValiditaTutto.value = false
+    filtroValiditaData.value = v ?? oggiAMezzanotte()
+  },
 })
 
 // Scopo: il contratto dei filtri di questa lista — chi sono, che default hanno,
 //        il segno che mostrano e «Pulisci filtri». UNA sede: chiave, `rif` e
 //        default sulla stessa riga.
-// ⭐ La data di validita' nasce VALORIZZATA (oggi): finche' nessuno la tocca si
-//    vede il pallino — «ristretta come nasce» — e al primo cambio il numero.
-// ⚠️ `filtroValiditaTutto` nasce `false`, che per il segno e' un valore: e'
-//    giusto, perche' spento sta davvero restringendo l'elenco alle righe valide.
+// ⭐ La data di validita' nasce VALORIZZATA (oggi): finche' nessuno la tocca il
+//    numero e' grigio — «ristretta come nasce» — e al primo cambio diventa blu.
+// ⛔ `tutto` NON E' UNA CHIAVE DEL CONTRATTO, ed e' la correzione del
+//    2026-09-23: e' l'INTERRUTTORE di `valido_al`, non un filtro suo, e il
+//    `computed` scrivibile qui sopra lo dice gia' tutto. Contarlo a parte
+//    faceva due cose sbagliate, nessuna delle quali dava errore — a filtro
+//    spento l'elenco era ristretto da UNA cosa sola e il segno diceva **2**;
+//    a «tutte le versioni» ACCESO non restringeva piu' niente e il segno
+//    diceva **1**, cioe' il numero saliva mentre la lista si allargava.
+// ⚠️ «Pulisci filtri» continua a spegnere l'interruttore: lo fa il `set` del
+//    `computed`, che e' la sede unica del legame fra i due.
 // ⛔ `filtroArticolo` NON c'e', ed e' una decisione: e' la casella di ricerca,
 //    che per D2 non e' un filtro. Fino al 2026-09-23 stava nell'oggetto dei
 //    valori e non nell'array delle chiavi — innocuo qui, ma e' la forma in cui
@@ -129,7 +145,6 @@ const {
   azzeraFiltri: pulisciFiltriBom,
 } = useContrattoFiltriLocali({
   valido_al: { rif: filtroValidoAl, default: oggiAMezzanotte },
-  tutto: { rif: filtroValiditaTutto, default: false },
 })
 
 const componentiView = computed(() => {
@@ -301,7 +316,7 @@ watch(() => props.visible, async (val) => {
   // ⛔ I FILTRI TORNANO AL DEFAULT DALLA SEDE UNICA, non riscritti a mano: fino
   //    al 2026-09-23 qui c'era `new Date()`, cioe' un «oggi» diverso di
   //    millisecondi da quello che il segno usa come metro. Bastava RIAPRIRE il
-  //    drawer per vedere il numero al posto del pallino, senza aver toccato
+  //    drawer per vedere il numero in blu invece che in grigio, senza toccare
   //    niente — e nessun errore da nessuna parte.
   pulisciFiltriBom()
   loadComponenti()
