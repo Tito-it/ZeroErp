@@ -228,6 +228,9 @@ di non vederle** — nel messaggio, non in un commento.
 | 3 | Da quale **lotto** si parte? | ✅ **lotto 1**, 43 file su sei schemi che escono interi dal registro |
 | 4 | Il **cancello** di §6 adesso o dopo il primo lotto? | ✅ **dopo**: la soglia si prende su un perimetro già sanato, altrimenti nasce grande e nessuno la guarda |
 | 5 | I 4 file che **committano** / i 6 col contesto in autocommit | 🔵 rinviata il 22-09 («prima la forma»), resta in `migliorie-generali` §6 D7 |
+| 6 | I **9 file di `pagamenti`** chiedono tutti una **fattura** (scadenza, movimenti, conti): un secondo BB di composizione, o nove copie della stessa catena? | ✅ **un BB**, con lo stesso criterio del primo: la catena fattura → registro → scadenza ha un ordine obbligato (il registro dipende dall'emittente di chi agisce) ed è già copiata in due file fuori da `pagamenti`. ⚠️ Decisione aperta: se non si fa, i nove file si riscrivono lo stesso, ma la catena resta copiata nove volte |
+| 7 | Il ramo specifico «ultimo SUPER_ADMIN» sull'**identità** è raggiungibile, o è codice morto? (§10, punto 1) | 🔵 da guardare: oggi a rifiutare è sempre il guard generico delle figlie, che scatta prima |
+| 8 | `storico.parameters` da zero ha `parameter_id`, il trigger passa `parameters_id` (§10, punto 2) | 🔵 changeSet, non fixture: su un'installazione nuova ogni UPDATE su `config.parameters` fallisce |
 
 ---
 
@@ -286,3 +289,89 @@ chiamante scrive sempre non può stare dietro a quello raro.
   test di macchina — è una decisione, non un lavoro;
 * i 109 file con `pgtap-runner: owner`: quanti di quei motivi siano ancora veri
   dopo la rev `20260912-38` **non è misurato**, e non è questo cantiere.
+
+---
+
+## 10. Lotto 1 — stato al 2026-09-23
+
+⚠️ **Prima misura, e ridimensiona il lotto.** Rieseguiti i 43 file su
+`zeroerp_ci` come `zeroerp_app` dopo l'apply del `20260920-01`: **16 erano già
+verdi**. Non è lavoro fatto oggi — è il registro che non è stato aggiornato
+dalla corsa del 21-09, e sono candidati RIENTRATI da togliere con
+`pgtap-baseline-ci-rientrati.sh`. Il lavoro vero del lotto era **27 file**.
+
+### ✅ Riscritti e verdi (12), su `zeroerp_ci` **e** su dbdev
+
+| File | Era | È |
+| ---- | --- | -- |
+| `catalogo/test-fn-get-uom` | pescava `ART_TEST_*` e asseriva fattori (6, 2, 0.25) di righe che esistono solo qui; in CI `unita_misura_conversioni` è vuota | costruisce due articoli e **scrive le conversioni** coi fattori che dichiara; +2 asserzioni sul ramo `attivo=false`, che nessuno percorreva |
+| `catalogo/test-articoli-componenti-immutabilita` | `ART_TEST_*` | due articoli costruiti (18/18) |
+| `catalogo/test-vw-articoli-componenti-dettaglio-capabilities-v1` | `ART_TEST_*` | idem (12/12) |
+| `catalogo/test-vw-articoli-dettaglio-bom-capability-v1` | `ART_TEST_*` | idem (7/7) |
+| `catalogo/test-vw-articoli-note` | `ART_TEST_BASE` → nota con `target_id` NULL | articolo costruito (7/7) |
+| `catalogo/test-vw-articoli-uom-operativa-dettaglio-capability-v1` | `ART_TEST_BASE` + «pulizia preventiva» delle righe del seed | articolo costruito: la riga base **c'è già** (la scrive un trigger), la pulizia sparisce (6/6) |
+| `ui/test-fn-resolve-dashboard-config` | pescava un `billing_account` → identità senza riga → «binding non coerente col tipo del profilo» | BB del mondo, **e la sessione torna senza veste** com'è dichiarato in testa al file (12/12) |
+| `ui/test-fn-resolve-lista-config` | idem | BB del mondo (13/13) |
+| `ui/test-fn-resolve-lista-config-contatore-colonne-nuove-v1` | «il primo utente con un profilo applicabile» → in CI **zero** utenti ne hanno uno | profilo AD_HOC + binding costruiti sull'operatore di contesto (5/5) |
+| `config/test-stati-doc-fiscale-congela-fiscale` | cercava una coppia (emittente, utility) configurata | BB del mondo + la riga di configurazione scritta dalla fixture (7/7) |
+| `config/test-permessi-user-overrides` | «il primo utente attivo», che in CI è l'operatore tecnico e un emittente ce l'ha già | un utente **nuovo**, che è il soggetto vero del file (18/18) |
+| `dbops/test-fn-apply-chiusura-scadenze-v1` | **clonava** listino e contratto da righe esistenti: in CI le INSERT … SELECT scrivevano zero righe e i due test rispondevano `NULL` | listino e contratto costruiti sul mondo (6/6) |
+| `config/test-profili-accesso-guard-ultimo-super-admin` | cercava identità OPERATORE «vergini» | ogni scenario costruisce la sua azienda+operatore, e il SUPER_ADMIN «preesistente» si costruisce (3/3) |
+
+### ⭐ Tre cose trovate per strada
+
+1. ⛔ **Un test verde per l'errore sbagliato**, e l'ha scoperto il discriminante:
+   `config/test-profili-accesso-guard-ultimo-super-admin` t.3 dichiarava
+   `E_PROFILO_ULTIMO_SUPER_ADMIN`, ma a rifiutare è il guard **generico** delle
+   figlie (`trgfn_prevent_deactivate_if_children`), che scatta prima su
+   qualunque identità con un binding attivo. Col `throws_ok(sql, NULL, NULL)` il
+   file era verde comunque. ⇒ L'asserzione ora pinna il **rifiuto con errore di
+   dominio** (che regge anche dopo un'eventuale riparazione) e un `diag()`
+   registra chi parla oggi. 🔵 **Da decidere**: il ramo specifico
+   sull'identità è raggiungibile, o è codice morto?
+2. ⛔ **Un difetto del database da zero, non della fixture.**
+   `config/test-parameter-fk-surrogate-dispatch-v1` e `-vuoto-v1` sono **verdi su
+   dbdev e rossi in CI** con `E_SNAPSHOT_CLOSE_ERROR: la colonna "parameters_id"
+   non esiste`: su `zeroerp_ci` la shadow `storico.parameters` ha la colonna
+   **`parameter_id`**, mentre il trigger `trgfn_storico_generic` riceve
+   `'parameters_id'` su entrambi i database. ⇒ Su un'installazione nuova
+   **ogni UPDATE/DELETE su `config.parameters` fallisce**. Stessa famiglia del
+   caso `tipi_ruoli.entita_tabella` del 21-09; il rimedio è un changeSet, non
+   una fixture. ⚠️ Un censimento «argomento del trigger vs colonna della
+   shadow» dà **quattro falsi positivi su entrambi i database**
+   (`comuni`, `indirizzi`, `indirizzi_dettaglio`,
+   `catasto_unita_immobiliari`: l'UPDATE lì riesce) — quindi non è un presidio
+   così com'è scritto, ed è una lente, non un criterio.
+3. ⚠️ **`config/test-fn-email-sistema` è rosso anche su dbdev** (5 asserzioni):
+   non è un file che «cerca invece di costruire», è un rosso che il registro
+   della CI nasconde dietro l'etichetta. Fuori dal lotto 1: va guardato per
+   quello che è.
+
+### ⏳ Cosa resta del lotto 1
+
+* **`pagamenti`, 9 file**: tutti chiedono la stessa cosa — una **fattura** con
+  la sua scadenza, i suoi movimenti contabili, i suoi conti. Oggi la pescano, e
+  in CI non c'è. ⇒ È la **regola del 2** un'altra volta: prima di riscriverli
+  uno a uno serve la decisione su un secondo BB di composizione (una fattura del
+  mondo), oppure si accetta che nove file ne ripetano la catena. 🔵 Decisione a
+  Tid, §7 #6.
+* `ui/test-lista-competenza-gruppi-colonna-emittente-v1`: **eccezione
+  dichiarata**. Il suo t.7 è il guard «il t.6 non è verde per sottrazione», e su
+  un database senza documenti dice il vero: il file non ha materia da
+  giudicare. Rientra quando il lotto `vendite` gli costruisce un documento.
+* I due `parameter-fk-surrogate-*`: aspettano il changeSet del punto 2.
+
+### ⭐ Un changeSet nato dal lotto
+
+`20_code/dbops/20260923-01-update-fn-pgtap-crea-articolo-uom-scelta`: il builder
+degli articoli prende un quinto parametro **`p_uom_id`** (in coda, con default:
+le 23 fixture che lo chiamano non cambiano di una riga). Serve a chi misura le
+**conversioni**, che il guard ammette solo fra unità della stessa tipologia — e
+`articoli.uom_id` è una colonna loccata, quindi la base si sceglie alla nascita
+o non si sceglie più. DROP + CREATE, perché un parametro in più sarebbe un
+overload ambiguo. Provato con l'SQL estratto in transazione ritirata:
+`plpgsql_check` pulito, `test-fn-get-uom` 9/9.
+
+⭐ E la soglia del cancello: `SOGLIA_THROWS_SENZA_DISCRIMINANTE` **123 → 121**,
+perché due `throws_ok(sql, NULL, NULL)` del file dei super admin hanno preso il
+loro discriminante (uno dei due ha scoperto il punto 1).

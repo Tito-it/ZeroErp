@@ -30,9 +30,16 @@
 -- `AND obsoleto_dal IS NULL` dentro fn_get_messaggio spegne i messaggi di 46
 -- codici ancora vivi, e nulla diventa rosso.
 --
--- L'altra meta' del contratto — che nessuna funzione viva sollevi un codice
--- ritirato — non e' asseribile qui: sta nel controllo (D) di
+-- L'altra meta' del contratto — che nessuno vivo sollevi un codice ritirato —
+-- non e' asseribile qui: sta nel controllo (D) di
 -- scripts/sql/guardrail_codice_errore_strutturato.sql.
+-- ⚠️ E dal 2026-09-23 quel controllo guarda DUE superfici, non una: i letterali
+--   nei corpi plpgsql E gli argomenti dei trigger (pg_trigger.tgargs). La
+--   seconda mancava, e dietro c'erano 69 trigger che sollevavano
+--   CODICE_NON_MODIFICABILE — ritirato il 2026-08-05 — con il guardrail verde:
+--   script.trgfn_lock_columns e' una funzione GENERICA, il codice le arriva come
+--   TG_ARGV e in pg_proc non c'e'. Bonifica: 90_end/20260923-02.
+--   Brief: brief-db-codici-ritirati-negli-argomenti-dei-trigger.
 --
 -- Indice test (1..4):
 --    1. La colonna esiste, e' DATE ed e' nullable (NULL = in servizio)

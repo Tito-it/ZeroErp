@@ -44,6 +44,12 @@ La tabella **`config.iva`** fornisce il catalogo dei codici IVA, includendo desc
   un capriccio: le righe di fattura ne congelano una copia, e cambiare la
   percentuale sotto un codice già usato farebbe divergere i documenti vivi da
   quelli emessi. Per una percentuale nuova si **conia un codice nuovo**.
+  Lo stesso blocco vale per `natura_iva_id` e `assoggettamento_id`, che dicono
+  *perché* un codice a 0% non è imponibile. Tutte e tre sollevano
+  `E_IVA_TRATTAMENTO_IMMUTABILE`, e il lock è dichiarato nel registro
+  `dbops.automation_lock_columns`. Su `assoggettamento_id` la regola esisteva dal
+  2025 in un trigger scritto a mano, con un codice poi ritirato; dal 2026-09-23
+  passa anche lei dal registro.
 * **`storicizza`**: la tabella partecipa allo storico (acceso il 2026-08-29 su
   tutte le righe: la macchina c'era già, il rubinetto era chiuso).
   * …

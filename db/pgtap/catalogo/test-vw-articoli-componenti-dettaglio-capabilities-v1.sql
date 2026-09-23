@@ -62,18 +62,15 @@ SELECT plan(12);
 -- =========================================================
 -- Setup fixture
 -- =========================================================
+-- ⛔ Gli articoli si COSTRUISCONO (2026-09-23). Fino a oggi questo file
+--   pescava `ART_TEST_BASE` / `ART_TEST_FALLBACK`, che non stanno in nessun
+--   changelog: sono due righe messe a mano su questa macchina (UUID …101 e
+--   …102). Su un database ricostruito non esistono, e il file moriva nella
+--   fixture — copertura zero, non parziale.
 CREATE TEMP TABLE _t_bomcap AS
 SELECT
-    (SELECT id FROM catalogo.articoli WHERE codice = 'ART_TEST_BASE')     AS art_base,
-    (SELECT id FROM catalogo.articoli WHERE codice = 'ART_TEST_FALLBACK') AS art_fallback;
-
-DO $pgtap$
-BEGIN
-    IF (SELECT art_base IS NULL OR art_fallback IS NULL FROM _t_bomcap) THEN
-        RAISE EXCEPTION 'Seed articoli ART_TEST_BASE / ART_TEST_FALLBACK mancanti.';
-    END IF;
-END
-$pgtap$;
+    dbops.fn_pgtap_crea_articolo('PGT-BOMCAP-A') AS art_base,
+    dbops.fn_pgtap_crea_articolo('PGT-BOMCAP-B') AS art_fallback;
 
 -- Entrambi devono essere is_composito=true per ammettere INSERT
 -- in articoli_componenti come prodotto. ROLLBACK ripristina seed.

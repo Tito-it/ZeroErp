@@ -210,13 +210,18 @@ CREATE TEMP TABLE _t_au AS WITH ins AS (
 )
 SELECT id AS auth_user_id
 FROM ins;
--- billing account per il soggetto_ruolo (necessario per CLIENTE_PORTALE)
+-- ⛔ Il cliente si COSTRUISCE (2026-09-23). Fino a oggi questa fixture pescava
+--   un `billing_account` esistente: su un database ricostruito non ce n'e'
+--   nessuno, la temp table restava VUOTA, l'INSERT dell'identita' inseriva
+--   zero righe e il binding finiva con `identita_digitale_id` NULL — da cui
+--   l'errore «binding non coerente col tipo del profilo», che nominava il
+--   profilo e non la causa. Il BB costruisce azienda, operatore e cliente
+--   nell'ordine giusto e riusa l'azienda del contesto gia' aperto.
+CREATE TEMP TABLE _t_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('lista config');
+
 CREATE TEMP TABLE _t_sr AS
-SELECT ba.soggetto_ruolo_id AS sr_id
-FROM anagrafiche.billing_account ba
-WHERE ba.soggetto_ruolo_id IS NOT NULL
-ORDER BY ba.id
-LIMIT 1;
+SELECT cliente_soggetto_ruolo_id AS sr_id FROM _t_mondo;
 -- Identita CLIENTE_PORTALE
 CREATE TEMP TABLE _t_id AS WITH ins AS (
     INSERT INTO anagrafiche.identita_digitali (

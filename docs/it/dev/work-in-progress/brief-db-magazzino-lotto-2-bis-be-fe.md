@@ -133,7 +133,7 @@ il verbo è lo stesso e la matrice è la stessa. Il BE la dichiara su
 > Il documento appartiene a quel magazzino da quando nasce. ⛔ **La `data` NO**:
 > resta la Q-2 del piano, cioè com'è — il DB non congela la testata, e il BE non
 > aggiunge una regola che il DB non ha. Da fare: `script.trgfn_lock_columns` su
-> `inventari` e `rettifiche` (stampo `trg_articoli_a10_protect_uom_id_upd`) e il
+> `inventari` e `rettifiche` (stampo `trg_ubicazioni_a10_lock_columns_upd`) e il
 > pgTAP del caso costruito.
 > ✅ **Fatto e a catalogo dal 23-09**: due righe in `automation_lock_columns`,
 > il codice `E_MAG_DOCUMENTO_MAGAZZINO_IMMUTABILE` (msg 1114), il pgTAP a 17
@@ -150,7 +150,7 @@ il verbo è lo stesso e la matrice è la stessa. Il BE la dichiara su
 Il documento è ancorato a **un** magazzino (RLS, ubicazioni delle righe,
 `qta_sistema` del piano). Il BE lo esclude dal `PATCH`; la difesa a DB è
 `script.trgfn_lock_columns('magazzino_id', …)` su `inventari` e `rettifiche`
-(stampo `trg_articoli_a10_protect_uom_id_upd`). Senza, un `UPDATE` diretto
+(stampo `trg_ubicazioni_a10_lock_columns_upd`). Senza, un `UPDATE` diretto
 sposta un conteggio su un altro magazzino con le ubicazioni di quello vecchio
 — e la primitiva se ne accorgerebbe **solo** al posting
 (`E_MAG_UBICAZIONE_DI_ALTRO_MAGAZZINO`). Un lucchetto piccolo che dice la
@@ -478,6 +478,12 @@ trigger lo **genera l'automazione** dalla riga nel CSV (su dev
 *sembra* governato dall'automazione e non lo è — è già successo una volta, e se
 ne è accorto solo un pgTAP.
 ⛔ E non si è riusato `CODICE_NON_MODIFICABILE`: è `obsoleto_dal 2026-08-05`.
+⭐ **Da quella riga è nato un cantiere**: guardando il registro dei lock si è visto
+che 26 righe su 38 nominavano quel codice ritirato o uno inesistente, e che **69
+trigger vivi** lo sollevavano ancora con il presidio verde — il codice viaggia come
+argomento del trigger, e il controllo guardava i corpi delle funzioni.
+[brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](brief-db-codici-ritirati-negli-argomenti-dei-trigger.md).
+⚠️ Quella bonifica arma **anche** i due lock di R-4: è l'automazione, chiamata una volta.
 
 ⚠️ **La `data` resta modificabile**, per decisione esplicita nella stessa
 risposta: il DB non congela la testata oltre il magazzino, e il BE non aggiunge

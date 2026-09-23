@@ -53,8 +53,39 @@ SELECT plan(6);
 DELETE FROM dbops.automazione_chiusura_scadenze;
 
 -- =============================================================
--- Setup: clona listino + crea versione fixture (per test 1)
+-- Setup: il mondo, il listino e il contratto — COSTRUITI
 -- =============================================================
+-- ⛔ 2026-09-23. Fino a oggi questo blocco CLONAVA: il listino da
+--   «il primo listino esistente», il contratto da «il primo billing account
+--   la cui utility non e' un'utenza». Su un database ricostruito `vendite` e
+--   `anagrafiche` sono a zero, quindi le due INSERT ... SELECT inserivano
+--   ZERO righe, le temp table restavano vuote e i due test rispondevano NULL:
+--   il framework di chiusura non veniva esercitato affatto, e il file
+--   sembrava misurare due righe di prodotto mentre misurava la presenza di
+--   dati di questa macchina.
+-- ⚠️ Il criterio del caso 2 — una utility che NON sia un'utenza — resta
+--   quello di prima, ma diventa una precondizione COSTRUITA: si sceglie la
+--   utility col criterio e ci si costruisce sopra il cliente.
+CREATE TEMP TABLE tmp_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('chiusura scadenze');
+
+CREATE TEMP TABLE tmp_ctx_ba AS
+SELECT c.billing_account_id, c.istanza_utility_id, c.utility_id
+  FROM dbops.fn_pgtap_crea_cliente_ba(
+           'chiusura scadenze',
+           (SELECT u.id FROM config.utilities u
+             WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu
+                                WHERE tu.utility_id = u.id)
+             ORDER BY u.id LIMIT 1)) c;
+
+DO $pgtap$
+BEGIN
+    IF (SELECT utility_id IS NULL FROM tmp_ctx_ba) THEN
+        RAISE EXCEPTION 'Seed mancante: nessuna utility senza tipi_utenze in config.utilities';
+    END IF;
+END
+$pgtap$;
+
 CREATE TEMP TABLE tmp_listino AS
 WITH ins AS (
     INSERT INTO vendite.listini (
@@ -62,10 +93,9 @@ WITH ins AS (
     )
     SELECT 'PGTAP_FW_LV_' || substr(md5(clock_timestamp()::text), 1, 10),
            'Listino pgtap framework chiusura',
-           utility_id, tipologia_id, emittente_soggetto_ruolo_id
-      FROM vendite.listini
-     ORDER BY id
-     LIMIT 1
+           (SELECT utility_id FROM tmp_ctx_ba),
+           (SELECT id FROM config.listini_tipologie ORDER BY id LIMIT 1),
+           (SELECT emittente_soggetto_ruolo_id FROM tmp_mondo)
     RETURNING id
 )
 SELECT id AS listino_id FROM ins;
@@ -77,31 +107,13 @@ INSERT INTO vendite.listini_versioni (
 SELECT listino_id, 'FW_TEST', DATE '2022-01-01', DATE '2022-12-31', 'ATTIVA'
   FROM tmp_listino;
 
--- =============================================================
--- Setup: clona BA + crea contratto fixture (per test 2)
--- Inserito in modalita' A (listino + variazione globale) per evitare
--- il guard modalita' C che richiederebbe righe in contratti_righe
--- con prezzo_unitario.
--- =============================================================
-CREATE TEMP TABLE tmp_ctx_ba AS
-SELECT ba.id AS billing_account_id,
-       ba.istanza_utility_id,
-       ba.utility_id
-  FROM anagrafiche.billing_account ba
- WHERE NOT EXISTS (
-     SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
- )
- ORDER BY ba.id
- LIMIT 1;
-
 CREATE TEMP TABLE tmp_ctx_stati AS
 SELECT
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO')  AS id_attivo,
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'CESSATO') AS id_cessato;
 
-CREATE TEMP TABLE tmp_ctx_listino AS
-SELECT id AS listino_id FROM vendite.listini WHERE attivo IS TRUE ORDER BY id LIMIT 1;
-
+-- Contratto in modalita' A (listino + variazione globale): la modalita' C
+-- pretenderebbe righe in contratti_righe con prezzo_unitario.
 INSERT INTO vendite.contratti(
     numero, billing_account_id, istanza_utility_id, utility_id,
     stato_doc_contratto_id, valido_dal, valido_al,
@@ -110,7 +122,7 @@ INSERT INTO vendite.contratti(
 SELECT 'PGTAP_FW_CONTR_SCAD', ba.billing_account_id, ba.istanza_utility_id, ba.utility_id,
        s.id_attivo, DATE '2022-01-01', DATE '2022-12-31',
        l.listino_id, 'PERCENTUALE', -10
-  FROM tmp_ctx_ba ba, tmp_ctx_stati s, tmp_ctx_listino l;
+  FROM tmp_ctx_ba ba, tmp_ctx_stati s, tmp_listino l;
 
 -- =============================================================
 -- 1) Esecuzione VARCHAR: chiude versione listino scaduta

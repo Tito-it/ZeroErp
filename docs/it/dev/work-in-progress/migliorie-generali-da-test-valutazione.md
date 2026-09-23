@@ -934,8 +934,18 @@ D6 e il registro dei rossi in CI.
       `dbops/test-fn-pgtap-crea-mondo-cliente-v1.sql`, 9/9 su `zeroerp_ci`,
       riferimenti morti e rubinetto verdi, cancelli statici verdi): da
       applicare. Poi i lotti del brief §5, dai sei schemi piccoli (43 file, che
-      escono interi dal registro). 🔵 Rinviata da Tid la decisione sui 4 file che
-      COMMITTANO / 6 col contesto in autocommit: prima la forma.
+      escono interi dal registro). ✅ **Lotto 1 in corso, 23-09**: dei 43 file
+      **16 erano già verdi** (il `20260920-01` ha fatto effetto, il registro non
+      è stato aggiornato), **12 riscritti e verdi** su entrambi i database (114
+      asserzioni), `20260923-01` scritto (il builder degli articoli sceglie la
+      UoM) e la soglia `throws_ok` scesa **123 → 121**. ⛔ Due findings: un test
+      era **verde per l'errore sbagliato** (super admin) e due sono rossi per un
+      **difetto del DB da zero** — `storico.parameters` ha `parameter_id` mentre
+      il trigger passa `parameters_id`, quindi su un'installazione nuova ogni
+      UPDATE su `config.parameters` fallisce. Restano i 9 di `pagamenti`, che
+      chiedono tutti una fattura: decisione su un secondo BB nel brief §7.
+      🔵 Rinviata da Tid la decisione sui 4 file che COMMITTANO / 6 col contesto
+      in autocommit: prima la forma.
 * [x] **D13** — ✅ chiuso il 2026-09-13: changeSet `20260913-01/02/03`
       applicati, baseline di sviluppo senza regressioni, brief
       `brief-db-ba-riserva-emittente-operatore-d13.md`. ✅ Le tre copie

@@ -67,14 +67,37 @@ SELECT plan(5);
 --    colonna resta bloccata comunque. I test 3-4 sarebbero verdi per la ragione
 --    sbagliata. Si sceglie quindi il primo utente che ha davvero un profilo
 --    sotto la veste corrente, con un criterio esplicito e non un id fisso.
+-- ⛔ E L'UTENTE COL PROFILO SI COSTRUISCE (2026-09-23). Sceglierlo fra quelli
+--    che ne hanno gia' uno e' lo stesso criterio, ma su un database
+--    ricostruito NESSUNO ne ha uno (misurato: zero utenti con profilo
+--    applicabile) e la sotto-select tornava NULL: la funzione veniva chiamata
+--    con l'utente NULL, il contatore rispondeva un numero suo e il test 5
+--    falliva dicendo «have 1, want 2» — cioe' il file misurava l'assenza di
+--    dati, non il contatore. Qui il profilo lo si crea e lo si lega
+--    all'identita' dell'operatore di contesto: il criterio del commento qui
+--    sopra («un utente che ha davvero un profilo sotto la veste corrente»)
+--    diventa una precondizione costruita invece che una speranza.
+CREATE TEMP TABLE _t_profilo AS
+WITH ins AS (
+    INSERT INTO config.profili_accesso (tipo, codice, descrizione, attivo)
+    VALUES ('AD_HOC',
+            '_PGTAP_COLNEW_' || upper(substr(md5(clock_timestamp()::text), 1, 8)),
+            'Profilo AD_HOC per il contatore colonne_nuove', TRUE)
+    RETURNING id
+)
+SELECT id AS profilo_id FROM ins;
+
+INSERT INTO config.profili_accesso_bindings (profilo_accesso_id, identita_digitale_id, attivo)
+SELECT (SELECT profilo_id FROM _t_profilo), idg.id, TRUE
+  FROM anagrafiche.identita_digitali idg
+ WHERE idg.auth_user_id = NULLIF(current_setting('app.current_user_id', true), '')::integer
+   AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+   AND idg.attivo;
+
 CREATE TEMP TABLE _t_ctx AS
 SELECT ld.codice                                                         AS lista_codice,
        ld.id                                                             AS lista_id,
-       (SELECT u.id FROM django.auth_user u
-         WHERE EXISTS (SELECT 1 FROM script.fn_get_profili_accesso_applicabili(
-                         u.id,
-                         NULLIF(current_setting('app.ruolo_applicativo', true), '')::config.ruolo_applicativo))
-         ORDER BY u.id LIMIT 1)                                          AS auth_user_id,
+       NULLIF(current_setting('app.current_user_id', true), '')::integer AS auth_user_id,
        -- ⚠️ `campo_sorgente` NON si inventa: `trgfn_ui_lista_colonna_a10_valida_campo_sorgente`
        --    verifica che corrisponda a un attributo reale della vista della
        --    lista. Si riusa quello di una colonna gia' a catalogo — il codice

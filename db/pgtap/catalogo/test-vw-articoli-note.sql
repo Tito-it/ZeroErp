@@ -30,13 +30,17 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(7);
 
+-- ⛔ L'articolo si COSTRUISCE (2026-09-23): `ART_TEST_BASE` non sta in nessun
+--   changelog — e' una riga messa a mano su questa macchina — e su un database
+--   ricostruito la nota finiva con `target_id` NULL, cioe' il file moriva in
+--   fixture. ⚠️ Lo stile e la lingua invece restano PESCATI: sono seed di
+--   `80_data` e ci sono anche da zero.
 CREATE TEMP TABLE tmp_seed AS
-SELECT
-  (SELECT id FROM catalogo.articoli WHERE codice = 'ART_TEST_BASE') AS articolo_id;
+SELECT dbops.fn_pgtap_crea_articolo('PGT-NOTE-ART') AS articolo_id;
 
 SELECT ok(
   (SELECT articolo_id IS NOT NULL FROM tmp_seed),
-  'Seed articolo presente per note'
+  'Articolo costruito per le note'
 );
 
 CREATE TEMP TABLE tmp_note_stile AS

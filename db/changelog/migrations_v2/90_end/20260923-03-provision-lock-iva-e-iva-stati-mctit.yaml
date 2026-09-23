@@ -1,0 +1,216 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Porta a convergenza i lock di config.iva e config.iva_stati dopo le tre righe
+#   entrate nel registro il 2026-09-23. Brief:
+#   brief-db-codici-ritirati-negli-argomenti-dei-trigger
+#
+# ── DA DOVE VIENE ──────────────────────────────────────────────────────
+#
+#   Il primo migrate su zeroerp_ci di 90_end/20260923-02 e' andato rosso:
+#   «tabelle rimaste SENZA lock dopo la rigenerazione: config.iva_stati».
+#   Due trigger di lock SCRITTI A MANO nel 2025 (20251006-13 su config.iva,
+#   20251006-22 su config.iva_stati, rinominati dal 20251119-21) nominano
+#   E_PERC_IVA_NO_MOD / E_ASSOGGETTAMENTO_NO_MOD, ritirati il 2026-08-07 con lo
+#   stesso punto cieco su tgargs. Il registro non li conosceva:
+#     * config.iva_stati: nessuna riga ⇒ droppato e non rigenerato (a);
+#     * config.iva: righe per aliquota_iva e natura_iva_id, NON per
+#       assoggettamento_id ⇒ il rosso successivo sarebbe stato (b).
+#   ⇒ Tre righe nuove in 80_data/sql/dbops/automation_lock_columns.csv, tutte
+#   con E_IVA_TRATTAMENTO_IMMUTABILE: stessa regola del codice IVA, stesso
+#   codice. Il controllo del 20260923-02 non si tocca: ha detto la verita'.
+#
+# ── PERCHE' SERVE ANCHE QUESTO CHANGESET ───────────────────────────────
+#
+#   Su un DB da ZERO le tre righe bastano: il loader di 80_data gira prima di
+#   90_end, e il 20260923-02 rigenera i due trigger gia' completi. Qui non trova
+#   niente da fare ed esce.
+#   Su dbdev NO, e per due motivi diversi (fatto datato, 2026-09-23):
+#     * config.iva_stati non ha NESSUN trigger di lock (tolto fuori da
+#       Liquibase, da chi non si sa): il runner lo crea — sarebbe successo
+#       anche solo alla passata di ci_apply o col pgagent della sera, qui
+#       succede subito, come in 90_end/20260821-07;
+#     * config.iva HA il trigger generato, ma senza assoggettamento_id. Il
+#       runner e' create-if-not-exists (existence_strategy BOTH): una colonna
+#       nuova su un lock esistente non entra MAI da sola. ⇒ DROP + rigenera.
+#   Il 20260923-02 su dev e' gia' EXECUTED (runOnChange false): non si
+#   riesegue, quindi il passo va qui.
+#
+# ── ⚠️ COME DECIDE CHE COSA DROPPARE ───────────────────────────────────
+#
+#   Una tabella del perimetro si rifa' solo se una colonna che il registro
+#   dichiara (enabled, AUTO, colonna esistente) non e' negli argomenti di
+#   NESSUN suo trigger di lock. Se si rifa', si droppano TUTTI i suoi trigger
+#   di lock e si richiama il runner: la sede di cosa si locka resta una.
+#   Poi due controlli, come nel 20260923-02: ogni colonna del registro e'
+#   coperta, e nessuna colonna che era lockata e' rimasta scoperta.
+#   Perimetro FISSO: config.iva e config.iva_stati. Una convergenza generale
+#   del registro («trigger vivo ≠ registro») e' un altro cantiere (brief §7).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260923-03-provision-lock-iva-e-iva-stati-mctit.yaml
+
+  - changeSet:
+      id: 20260923-03-provision-lock-iva-e-iva-stati
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Porta i lock di config.iva e config.iva_stati a coincidere col registro
+        automation_lock_columns (tre righe nuove del 2026-09-23, codice
+        E_IVA_TRATTAMENTO_IMMUTABILE). Crea il trigger di iva_stati se manca e
+        rifa' quello di iva se non copre assoggettamento_id. Su un DB da zero non
+        fa niente: lo ha gia' fatto il 20260923-02.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 3
+                sql: |
+                  SELECT count(*) FROM dbops.automation_lock_columns
+                   WHERE enabled IS TRUE
+                     AND (target_schema, target_table, column_name) IN (
+                           ('config', 'iva',       'assoggettamento_id'),
+                           ('config', 'iva_stati', 'aliquota_override'),
+                           ('config', 'iva_stati', 'assoggettamento_id_override'));
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  -- Il codice deve essere vivo, o il lock risponderebbe con un
+                  -- segnaposto irrisolto invece che con la sua frase.
+                  SELECT count(*) FROM config.codici_errore
+                   WHERE codice = 'E_IVA_TRATTAMENTO_IMMUTABILE'
+                     AND (obsoleto_dal IS NULL OR obsoleto_dal > CURRENT_DATE);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $convergenza$
+              DECLARE
+                  -- Colonne lockate PRIMA, per tabella del perimetro: servono al
+                  -- controllo (b), e l'unico momento in cui si sanno e' adesso.
+                  v_prima     jsonb;
+                  v_da_rifare text[];
+                  v_scoperte  text;
+                  v_perse     text;
+                  r           record;
+              BEGIN
+                  SELECT jsonb_agg(jsonb_build_object('sch', n.nspname, 'tab', c.relname, 'col', u.a))
+                    INTO v_prima
+                    FROM pg_trigger t
+                    JOIN pg_class c      ON c.oid = t.tgrelid
+                    JOIN pg_namespace n  ON n.oid = c.relnamespace
+                    JOIN pg_proc p       ON p.oid = t.tgfoid
+                    CROSS JOIN LATERAL unnest(string_to_array(encode(t.tgargs,'escape'), '\000'))
+                         WITH ORDINALITY u(a, i)
+                   WHERE NOT t.tgisinternal
+                     AND p.proname = 'trgfn_lock_columns'
+                     AND (n.nspname, c.relname) IN (('config','iva'), ('config','iva_stati'))
+                     AND u.i % 2 = 1
+                     AND u.a <> '';
+
+                  -- Le tabelle con almeno una colonna del registro non coperta da
+                  -- NESSUN loro trigger di lock.
+                  SELECT array_agg(DISTINCT l.target_schema||'.'||l.target_table)
+                    INTO v_da_rifare
+                    FROM dbops.automation_lock_columns l
+                   WHERE l.enabled
+                     AND upper(btrim(l.exec_mode)) = 'AUTO'
+                     AND (l.target_schema, l.target_table) IN (('config','iva'), ('config','iva_stati'))
+                     AND dbops.fn_col_exists(l.target_schema, l.target_table, l.column_name)
+                     AND NOT EXISTS (
+                           SELECT 1 FROM jsonb_to_recordset(COALESCE(v_prima, '[]'))
+                                         AS z(sch text, tab text, col text)
+                            WHERE z.sch = l.target_schema AND z.tab = l.target_table
+                              AND z.col = l.column_name);
+
+                  -- DB da zero: il 20260923-02 li ha gia' generati completi.
+                  IF v_da_rifare IS NULL THEN
+                      RAISE NOTICE 'LOCK_COLUMNS iva/iva_stati: gia'' allineati al registro, niente da fare.';
+                      RETURN;
+                  END IF;
+
+                  RAISE NOTICE 'LOCK_COLUMNS: da riallineare al registro: %', v_da_rifare;
+
+                  FOR r IN
+                      SELECT n.nspname AS sch, c.relname AS tab, t.tgname AS trg
+                        FROM pg_trigger t
+                        JOIN pg_class c      ON c.oid = t.tgrelid
+                        JOIN pg_namespace n  ON n.oid = c.relnamespace
+                        JOIN pg_proc p       ON p.oid = t.tgfoid
+                       WHERE NOT t.tgisinternal
+                         AND p.proname = 'trgfn_lock_columns'
+                         AND n.nspname||'.'||c.relname = ANY(v_da_rifare)
+                  LOOP
+                      EXECUTE format('DROP TRIGGER %I ON %I.%I', r.trg, r.sch, r.tab);
+                  END LOOP;
+
+                  -- ⭐ Si rigenera dalla sede. Solo lo schema `config`: un runner a
+                  --    tappeto provisionerebbe tabelle che con questo passo non
+                  --    c'entrano, e un loro fallimento verrebbe attribuito a noi.
+                  PERFORM dbops.fn_run_automations_lock_columns('AUTO', ARRAY['config'], false);
+
+                  -- (a) ogni colonna del registro, nel perimetro, e' coperta
+                  SELECT string_agg(l.target_schema||'.'||l.target_table||'.'||l.column_name, ', '
+                                    ORDER BY l.target_schema, l.target_table, l.column_name)
+                    INTO v_scoperte
+                    FROM dbops.automation_lock_columns l
+                   WHERE l.enabled
+                     AND upper(btrim(l.exec_mode)) = 'AUTO'
+                     AND (l.target_schema, l.target_table) IN (('config','iva'), ('config','iva_stati'))
+                     AND dbops.fn_col_exists(l.target_schema, l.target_table, l.column_name)
+                     AND NOT EXISTS (
+                           SELECT 1 FROM pg_trigger t
+                             JOIN pg_class c     ON c.oid = t.tgrelid
+                             JOIN pg_namespace n ON n.oid = c.relnamespace
+                             JOIN pg_proc p      ON p.oid = t.tgfoid
+                            WHERE NOT t.tgisinternal AND p.proname = 'trgfn_lock_columns'
+                              AND n.nspname = l.target_schema AND c.relname = l.target_table
+                              AND l.column_name = ANY(string_to_array(encode(t.tgargs,'escape'), '\000')));
+
+                  IF v_scoperte IS NOT NULL THEN
+                      RAISE EXCEPTION 'LOCK_COLUMNS: colonne del registro ancora senza lock: %', v_scoperte;
+                  END IF;
+
+                  -- (b) nessuna colonna che era lockata e' rimasta scoperta
+                  SELECT string_agg(z.sch||'.'||z.tab||'.'||z.col, ', ' ORDER BY z.sch, z.tab, z.col)
+                    INTO v_perse
+                    FROM jsonb_to_recordset(COALESCE(v_prima, '[]')) AS z(sch text, tab text, col text)
+                   WHERE z.sch||'.'||z.tab = ANY(v_da_rifare)
+                     AND NOT EXISTS (
+                           SELECT 1 FROM pg_trigger t
+                             JOIN pg_class c     ON c.oid = t.tgrelid
+                             JOIN pg_namespace n ON n.oid = c.relnamespace
+                             JOIN pg_proc p      ON p.oid = t.tgfoid
+                            WHERE NOT t.tgisinternal AND p.proname = 'trgfn_lock_columns'
+                              AND n.nspname = z.sch AND c.relname = z.tab
+                              AND z.col = ANY(string_to_array(encode(t.tgargs,'escape'), '\000')));
+
+                  IF v_perse IS NOT NULL THEN
+                      RAISE EXCEPTION
+                        'LOCK_COLUMNS: colonne che erano lockate e non lo sono piu'': %. '
+                        'Va aggiunta la riga nel registro dbops.automation_lock_columns, '
+                        'non tolto questo controllo.', v_perse;
+                  END IF;
+
+                  RAISE NOTICE 'LOCK_COLUMNS iva/iva_stati: allineati al registro, nessuna colonna persa.';
+              END
+              $convergenza$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ No-op dichiarato, come il 20260923-02: tornare indietro vorrebbe
+              --    dire togliere un lock che il registro dichiara. Le righe nel CSV
+              --    sono la sede della regola; se si vuole togliere il lock, si
+              --    toglie la riga e si rigenera.
+              SELECT 1;
