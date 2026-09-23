@@ -40,7 +40,8 @@ export via `ListaExportService`, scope emittente RLS + filtro applicativo).
   `numero` NULL fino a CONFERMATO (trigger). BA/destinatario/utility/valuta/
   emittente ereditati dal DDT sorgente (**CONSEGNATO**, guard DB).
 - Detail `GET /<id>/` — testata + capabilities data-driven
-  (`fn_available_actions_reso`).
+  (`fn_available_actions_reso`) nella chiave `capabilities`, non fuse nella
+  testata (api.md §«Il blob sta SOTTO `capabilities`», 2026-09-23).
 - Update `PATCH /<id>/` — solo DRAFT (data/meta). Delete `DELETE /<id>/` — hard
   delete solo DRAFT + 0 righe (abbandono bozza).
 

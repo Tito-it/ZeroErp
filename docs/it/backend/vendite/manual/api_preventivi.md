@@ -35,7 +35,7 @@ Le tabelle DB esistono gia' (`vendite.preventivi`, `preventivi_righe`, `preventi
   - `utility_id` (int) — filtro per utility
   - `data_da` (date ISO) — data minima (su `data` preventivo). **Default: 1 gennaio anno-1** (regola standard liste con date, lato frontend)
   - `data_al` (date ISO) — data massima
-  - `search` (string, min 3 char) — ILIKE su `numero` e `ragione_sociale_completa`
+  - `search` (string, min 3 char) — ILIKE su `numero`, `ragione_sociale_completa`, `ba_codice` e `id_fiscale_univoco_cf_piva`
   - `solo_attiva` (bool, default `true`) — solo l'ultima revisione viva per numero (`is_attiva`); `false` = storico revisioni completo (toggle "Mostra storico")
   - `page` (int, default 1) — pagina
   - `page_size` (int, default 50, max 200) — righe per pagina
@@ -135,7 +135,7 @@ permessi — colonne nascoste escluse, ordine utente rispettato).
 - **Fase 3.F6 refactor frontend vendite** — il detail NON include piu' `righe[]` (decisione C2: detail = testata + summary, righe via endpoint autonomo `/righe/`). Il FE chiama `GET /righe/` separatamente. Vantaggi: payload detail piu' leggero su lista refresh, mai mismatch con totali ricalcolati dai trigger DB. `righe_count` resta disponibile come badge UX.
 - Errori: `E_PREV_NOT_FOUND` (404)
 
-**Capabilities** (spalmate top-level nel detail, da `script.fn_available_actions_preventivo`):
+**Capabilities** (da `script.fn_available_actions_preventivo`, nella chiave `capabilities` del detail, non fuse nella testata — dal 2026-09-23, [api.md §«Il blob sta SOTTO `capabilities`»](../../../dev/api.md)):
 
 | Campo | Tipo | Significato |
 | --- | --- | --- |
@@ -149,6 +149,15 @@ permessi — colonne nascoste escluse, ordine utente rispettato).
 | `non_editable_fields[]` | string[] | Whitelist campi immutabili nello stato corrente. **`utility_id` sempre incluso** (regola di dominio: utility immutabile post-create) |
 
 Il frontend (`PreventiviDrawer.vue`) consuma questi metadata direttamente: niente `if (stato === 'DRAFT')` cablato.
+
+⚠️ **Il blob non arriva intatto**: con righe `PENDING`/`REJECTED` il service
+azzera `available_actions` e riscrive `can_edit_testata`/`can_edit_righe` in
+Python — debito dichiarato (una seconda sede di una regola del database,
+[brief-be-fe-capability-annidata §5](../../../dev/work-in-progress/brief-be-fe-capability-annidata.md)).
+I quattro campi del congelamento — `frozen_for_pending_pricing`,
+`frozen_for_rejected_pricing`, `pending_pricing_count`, `rejected_pricing_count`
+— stanno sulla **testata**, non in `capabilities`: sono un riepilogo delle righe,
+e nessuna capability li emette.
 
 ---
 

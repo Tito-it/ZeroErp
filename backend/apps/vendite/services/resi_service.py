@@ -210,11 +210,12 @@ def get_reso(reso_id: int) -> dict[str, object]:
     # Capability da script.fn_available_actions_reso (matrice
     # config.transizioni_stati_reso): available_actions (conferma/annulla),
     # can_change_state, can_edit_testata/righe, non_editable_fields,
-    # stato_codice. Mirror ridotto DDT (no push, no pdf).
+    # stato_codice. Mirror ridotto DDT (no push, no pdf). Il blob viaggia
+    # SOTTO `capabilities` (api.md §«Il blob sta SOTTO `capabilities`»).
     capabilities = repo.get_capabilities(reso_id)
     return {
         **testata,
-        **capabilities,
+        "capabilities": capabilities,
         "righe_count": repo.count_righe(reso_id),
     }
 

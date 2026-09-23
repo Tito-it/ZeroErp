@@ -96,6 +96,28 @@ class DdtServiceGuardsTests(SimpleTestCase):
             ddt_service.get_ddt(99)
         self.assertEqual(cm.exception.code, "E_DDT_NOT_FOUND")
 
+    # Scopo: il blob di fn_available_actions_ddt viaggia intatto SOTTO
+    #        `capabilities`, e nessuna sua chiave sale nella testata (api.md
+    #        §«Il blob sta SOTTO `capabilities`», 2026-09-23). Fino a quel
+    #        giorno nessun test del DDT guardava la forma del dettaglio.
+    @patch(_REPO)
+    def test_get_ddt_capabilities_annidate(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ddt.return_value = {"id": 7, "stato_codice_interno": "DRAFT"}
+        repo.get_capabilities.return_value = {
+            "available_actions": [{"key": "emetti", "target_state": "EMESSO"}],
+            "can_edit_testata": True,
+            "can_push_commessa": False,
+            "can_push_commessa_reason_key": "vendite.ddt.push_commessa_reason.x",
+            "stato_codice": "DRAFT",
+        }
+        repo.count_righe.return_value = 3
+        out = ddt_service.get_ddt(7)
+        self.assertEqual(out["capabilities"], repo.get_capabilities.return_value)
+        for chiave in repo.get_capabilities.return_value:
+            self.assertNotIn(chiave, out)
+        self.assertEqual(out["righe_count"], 3)
+
     @patch(_REPO)
     def test_cambia_stato_ddt_not_found(self, repo_cls) -> None:
         # Guard esistenza leggero: stato corrente None -> E_DDT_NOT_FOUND.

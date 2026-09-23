@@ -180,16 +180,20 @@ class DettaglioTests(_ConRepo):
         self.assertEqual(d["capabilities"], blob)
         self.assertEqual(self.repo.get_capabilities.call_args.args[0], FAMIGLIE["inventari"])
 
-    # Scopo: `stato_info_key` sta in cima al documento perche' il drawer la
-    #        legge da li' (`DrawerActionsBar :info-key`) — e il valore e'
-    #        quello del blob, non un `None` scritto dal backend.
-    def test_stato_info_key_viene_dal_blob(self):
+    # Scopo: `stato_info_key` sta SOLO nel blob — fino al 2026-09-23 era
+    #        copiata anche in cima al documento, una lettura piatta con due
+    #        sedi (api.md §«Il blob sta SOTTO `capabilities`»). Il drawer la
+    #        legge da `capabilities`, e nessuna chiave del blob sale di livello.
+    def test_stato_info_key_solo_nel_blob(self):
         self.repo.get_capabilities.return_value = {
             "stato_codice": "POSTED",
             "stato_info_key": "magazzino.documenti_interni.stato_info.posted",
         }
         d = svc.get_documento("inventari", 7)
-        self.assertEqual(d["stato_info_key"], "magazzino.documenti_interni.stato_info.posted")
+        self.assertEqual(
+            d["capabilities"]["stato_info_key"], "magazzino.documenti_interni.stato_info.posted",
+        )
+        self.assertNotIn("stato_info_key", d)
 
     # Scopo: un documento fuori perimetro e' un 404 sulla TESTATA, e la
     #        capability non si chiama nemmeno (una capability non solleva).

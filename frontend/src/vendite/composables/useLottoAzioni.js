@@ -332,7 +332,7 @@ function verdettoRunner(res) {
   async function eseguiVerificato(lottoId, key) {
     const dettaglio = await execute(() => getLotto(lottoId))
     if (dettaglio === null) return
-    const azione = (dettaglio.available_actions ?? []).find((a) => a.key === key)
+    const azione = (dettaglio.capabilities?.available_actions ?? []).find((a) => a.key === key)
     // ⭐ DUE FAMIGLIE, UNA SOLA DOMANDA: «la riga fresca propone ancora questo
     //   verbo?». Per i verbi di stato la risposta è nel blob del DB; per i tre
     //   di pipeline, che nel blob non ci sono per costruzione, è `verbiPipeline`

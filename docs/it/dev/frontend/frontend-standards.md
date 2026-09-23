@@ -1979,7 +1979,14 @@ const pageActions = computed(() => [
 > quando è spento — e vale per gli **undici** drawer che ci passano;
 > `npm run guard:capability` verifica che ogni campo letto da un blob
 > `capabilities.*` sia un campo che una `script.fn_available_actions_*`
-> **emette davvero**, leggendo il contratto dalla doc auto-generata.
+> **emette davvero**, leggendo il contratto dalla doc auto-generata — e dal
+> 2026-09-23 conta le **letture piatte** (una chiave del blob letta fuori da
+> `capabilities`, anche con le parentesi o per destrutturazione), ammettendo
+> solo gli omonimi dichiarati in `scripts/capability-letture-piatte.json`.
+> Un flag **negato con un motivo** che non è un'azione di stato (es.
+> `can_push_commessa`) diventa un pulsante spento col tooltip via
+> `useEntityCapabilities().azioneNegata(flag, forma)`, mai con un'entry
+> composta a mano nel drawer.
 > ⚠️ Nessuno dei due guarda la **resa a video**: quella la presidia
 > `DrawerActionsBar.spec.js`, che monta il componente (`@vue/test-utils` +
 > `jsdom`, nel progetto dal 2026-09-23 — vedi §Test).
@@ -4012,7 +4019,7 @@ caso peggiore. Il test è nato da lì.
 15. Sola lettura da classe `.app-readonly` sul container — mai componenti duplicati
 16. Azioni processo via `action` su `PageActionsBar`/`FormFooter` — mai `v-if` manuali per permessi
 17. `ConfirmDialog` solo globale in `App.vue` — mai dentro Drawer (interferenza overlay)
-18-bis. Un campo letto da un blob `capabilities.*` deve essere un campo che il database emette: il contratto si legge dalla doc auto-generata, non da un elenco ricopiato (presidio: `npm run guards` → `check-capability-contratto.mjs`). ⛔ Un refuso lì non rompe niente — lascia un pulsante spento che sembra una regola
+18-bis. Un campo letto da un blob `capabilities.*` deve essere un campo che il database emette: il contratto si legge dalla doc auto-generata, non da un elenco ricopiato (presidio: `npm run guards` → `check-capability-contratto.mjs`). ⛔ Un refuso lì non rompe niente — lascia un pulsante spento che sembra una regola. ⛔ E il blob si legge **sotto `capabilities`** (via `useEntityCapabilities` o `capabilities.x`), mai `detail.can_x` / `detail.pdf`: la forma piatta è chiusa (api.md §«Il blob sta SOTTO `capabilities`», 2026-09-23) e lo stesso guard la conta
 18. Dialog modali solo `AppDialog`, con `header`, **senza X** e senza `:closable` sul tag — il chrome è `DIALOG_CHROME`, un cambio di layout è una riga lì (presidio: `npm run guards` → `check-dialog-chrome.mjs`)
 
 ---

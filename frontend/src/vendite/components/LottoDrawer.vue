@@ -402,7 +402,9 @@ const fatturaDrawerId = ref(null)
 // mutazione sollevano. Resta al frontend il solo gate di pipeline (avanza /
 // rilancia), che il DB non espone di proposito: vive in `useLottoAzioni`,
 // condiviso col kebab della lista.
-const availableActions = computed(() => lotto.value?.available_actions ?? [])
+// Il blob sta SOTTO `capabilities` (api.md §«Il blob sta SOTTO `capabilities`»).
+const capabilities = computed(() => lotto.value?.capabilities ?? {})
+const availableActions = computed(() => capabilities.value.available_actions ?? [])
 
 // ⭐ IL LOTTO E' FERMO? LO DICE IL BACKEND, e qui si LEGGE — non si ricalcola.
 //    `blocks_next_step` e' il verdetto di `LottoSegnalazioniService`: critiche
@@ -1365,7 +1367,7 @@ function fatturaNumero(row) {
              chiama. In sola lettura la barra resta vuota. -->
         <DrawerActionsBar
           :actions="drawerActions"
-          :info-key="lotto?.stato_info_key || ''"
+          :info-key="capabilities.stato_info_key || ''"
           :disabled="loading || azioniLoading"
         />
 

@@ -30,10 +30,11 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from django.db import DatabaseError, transaction
+from django.db import transaction
 from django.utils import timezone
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.capability_blob import capabilities_o_vuoto
 from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import (
     PayloadValidator,
@@ -473,15 +474,15 @@ class OfferteService:
     #        (refactor data-driven 2026-05-26). Lo stato della macchina e
     #        le azioni ammesse arrivano da `script.fn_available_actions_offerta`,
     #        cosi' il drawer Vue NON ricalcola nulla lato client (pattern
-    #        coerente con contratti/preventivi/promo). Il merge applica
-    #        l'unione delle chiavi del jsonb in testa al dict di ritorno:
-    #        eventuali collisioni di nome con i display fields sono evitate
-    #        per costruzione (la fn ritorna `stato_codice`, lo SELECT ritorna
-    #        `stato_codice_interno` + `stato_descrizione`).
+    #        coerente con contratti/preventivi/promo). Il blob viaggia
+    #        intatto SOTTO `capabilities`, non fuso nella testata (api.md
+    #        §«Il blob sta SOTTO `capabilities`», 2026-09-23): il merge
+    #        nasconde le collisioni invece di evitarle.
     #
     #        Graceful fallback (2026-05-26 post bug fn DB `??` JSONB):
     #        se la fn capability solleva DatabaseError, logghiamo warning e
-    #        ritorniamo il dettaglio senza blob. Il FE cade in readonly
+    #        ritorniamo il dettaglio con `capabilities` VUOTO (la chiave c'e'
+    #        sempre: la forma non dipende dall'esito). Il FE cade in readonly
     #        conservativo (canEditTestata=false), ma l'operatore vede
     #        comunque l'offerta — niente errore E_DATABASE criptico al
     #        client per un problema diagnostico del DB. Pattern coerente
@@ -492,17 +493,10 @@ class OfferteService:
         row = self._get_offerta_or_raise(offerta_id, op="get_offerta")
         row["eccezioni"] = self._repo.list_eccezioni(offerta_id)
         row["utility"] = self._repo.get_utility(offerta_id)
-        try:
-            row.update(self._repo.get_available_actions(offerta_id))
-        except DatabaseError as exc:
-            # Capability layer rotto (es. fn DB inesistente o con SQL
-            # invalido). Detail comunque consistente: il FE legge senza
-            # `available_actions[]`/`can_*` e cade in readonly conservativo.
-            logger.warning(
-                "fn_available_actions_offerta fallita per offerta_id=%s: %s. "
-                "Detail ritornato senza blob capability (drawer readonly).",
-                offerta_id, exc,
-            )
+        row["capabilities"] = capabilities_o_vuoto(
+            lambda: self._repo.get_available_actions(offerta_id),
+            funzione="fn_available_actions_offerta", entita_id=offerta_id, logger=logger,
+        )
         return row
 
     # =================================================================

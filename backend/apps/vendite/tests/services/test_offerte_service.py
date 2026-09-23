@@ -133,7 +133,7 @@ class OfferteServiceTests(TestCase):
 
     # Scopo: get_offerta arricchisce con eccezioni + utility + capability blob
     #        (data-driven 2026-05-26: il blob arriva da script.fn_available_actions_offerta,
-    #        merged nel dict di ritorno).
+    #        e dal 2026-09-23 viaggia SOTTO `capabilities`, non fuso nel dettaglio).
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
     def test_get_offerta_ok_arricchisce_eccezioni_e_utility(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
@@ -158,15 +158,17 @@ class OfferteServiceTests(TestCase):
 
         self.assertEqual(result["eccezioni"], [{"id": 7, "articolo_id": "abc"}])
         self.assertEqual(result["utility"], {"id": 99, "tipo_utenza_id": 5})
-        # Blob capability merged: il FE consuma da qui
-        self.assertEqual(len(result["available_actions"]), 2)
-        self.assertEqual(result["available_actions"][0]["key"], "emetti")
-        self.assertTrue(result["can_edit_testata"])
-        self.assertFalse(result["can_push_contratto"])
-        self.assertEqual(result["non_editable_fields"], [])
-        self.assertEqual(result["stato_codice"], "BOZZA")
-        # I display fields del SELECT non vengono sovrascritti dal merge
-        # (la fn ritorna `stato_codice` distinto da `stato_codice_interno`).
+        # Blob capability intatto sotto la sua chiave: il FE consuma da qui
+        caps = result["capabilities"]
+        self.assertEqual(caps, repo.get_available_actions.return_value)
+        self.assertEqual(len(caps["available_actions"]), 2)
+        self.assertEqual(caps["available_actions"][0]["key"], "emetti")
+        self.assertTrue(caps["can_edit_testata"])
+        self.assertFalse(caps["can_push_contratto"])
+        # Nessuna chiave del blob sale nella testata: i display fields del
+        # SELECT restano i loro.
+        for chiave in caps:
+            self.assertNotIn(chiave, result)
         self.assertEqual(result["stato_codice_interno"], "BOZZA")
 
     # --- create -------------------------------------------------------
@@ -936,11 +938,10 @@ class OfferteServiceTests(TestCase):
         self.assertEqual(result["stato_codice_interno"], "BOZZA")
         self.assertEqual(result["eccezioni"], [])
         self.assertIsNone(result["utility"])
-        # Blob capability ASSENTE: niente chiavi `available_actions`/`can_*`.
-        # Il FE cade in readonly conservativo via `useEntityCapabilities`.
-        self.assertNotIn("available_actions", result)
-        self.assertNotIn("can_edit_testata", result)
-        self.assertNotIn("can_push_contratto", result)
+        # Blob capability VUOTO, ma la chiave c'e': la forma non dipende
+        # dall'esito. Il FE cade in readonly conservativo via
+        # `useEntityCapabilities`.
+        self.assertEqual(result["capabilities"], {})
 
     # --- BoM componenti su eccezione (simmetria contratti 2026-05-26) ---
 

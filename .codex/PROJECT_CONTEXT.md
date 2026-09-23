@@ -249,6 +249,20 @@ emerge un BB generico, i duplicati esistenti si ritirano subito — non c'è
 produzione, non c'è niente da aspettare.*
 
 ### Aperto — Media priorità
+- **La matrice di `stato_lotto` in due sedi che dissentono** (BE + DB,
+  ereditata il 2026-09-23 dalla chiusura di
+  `work-done/brief-db-annullamento-chiude-la-vita.md`, §9.3): il BE ammette
+  `COMPLETATO → ERRORE`, `vendite.fn_set_fatturazione_lotto_stato` no — e
+  quella funzione è di fatto **morta**, il runner scrive `stato_lotto` con un
+  `UPDATE` diretto (è per questo che la guardia su `COMPLETATO` sta su un
+  trigger della colonna). Da decidere quale sia la sede unica della matrice e
+  ritirare l'altra. Cantiere a sé
+- **La porta dell'esito ancora aperta** (DB, stessa origine, §9.9): un
+  documento marcato `ERRORE` su un lotto **già** `COMPLETATO` produce la
+  contraddizione «COMPLETATO con documenti in errore» senza toccare
+  `stato_lotto`, quindi la guardia del trigger non la vede. Oggi la sorveglia
+  il presidio a catalogo `dbops.vw_lotti_chiusi_con_errori_da_guardare` (deve
+  restare vuoto); chiuderla a DB è una decisione a sé, di Tid
 - **`zeroerp_log` in CI non ha `USAGE` su `dbops`: ogni test Django lavora con
   `tx_id = uuid_nil`** (DB+CI, ereditata il 2026-09-19 dalla chiusura di
   `work-done/brief-db-privilegio-app-job-run-log.md`, §5). La sede del

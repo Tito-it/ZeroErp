@@ -141,13 +141,19 @@ class ContrattiServiceTests(TestCase):
         self.assertEqual(result["righe_count"], 2)
 
     # Scopo: Verifica che get_contratto includa nel detail il blob capabilities
-    #        ritornato da script.fn_available_actions_contratto (Fase 1.B2).
+    #        ritornato da script.fn_available_actions_contratto (Fase 1.B2),
+    #        SOTTO `capabilities` (api.md §«Il blob sta SOTTO `capabilities`»).
+    #        ⚠️ Il blob porta `stato_codice_interno`, che la testata ha gia':
+    #        fuso, vinceva il blob in silenzio. Qui i due valori DIFFERISCONO
+    #        apposta, e la testata deve restare la sua.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_get_contratto_include_capabilities(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.get_contratto.return_value = _testata_default()
+        testata = _testata_default()
+        testata["stato_codice_interno"] = "DRAFT"
+        repo.get_contratto.return_value = testata
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
         repo.list_righe_preview.return_value = []
@@ -168,13 +174,18 @@ class ContrattiServiceTests(TestCase):
 
         result = ContrattiService().get_contratto(1)
 
-        self.assertEqual(result["can_change_state"], True)
-        self.assertEqual(result["can_edit_righe"], False)
-        self.assertEqual(len(result["available_actions"]), 1)
-        action = result["available_actions"][0]
+        caps = result["capabilities"]
+        self.assertEqual(caps, repo.get_capabilities.return_value)
+        self.assertEqual(caps["can_change_state"], True)
+        self.assertEqual(caps["can_edit_righe"], False)
+        self.assertEqual(len(caps["available_actions"]), 1)
+        action = caps["available_actions"][0]
         self.assertEqual(action["key"], "cessa")
         self.assertEqual(action["default_date"], "2026-04-30")
-        self.assertIn("billing_account_id", result["non_editable_fields"])
+        self.assertIn("billing_account_id", caps["non_editable_fields"])
+        self.assertNotIn("can_change_state", result)
+        self.assertNotIn("available_actions", result)
+        self.assertEqual(result["stato_codice_interno"], "DRAFT")
         repo.get_capabilities.assert_called_once_with(1)
 
     # Scopo: in modalita' A/B il conteggio righe del detail usa la preview

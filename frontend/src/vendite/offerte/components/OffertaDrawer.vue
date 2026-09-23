@@ -111,7 +111,7 @@ const { activeTab, revisioni } = revisioniTab
 // State machine data-driven dal BE (Step 9b 2026-05-26:
 // script.fn_available_actions_offerta + arricchimento `get_offerta`).
 // Le capability `canEdit`, `availableActions`, `isLocked(field)` arrivano
-// dal blob jsonb merged nel detail. Il drawer NON ricalcola stato lato
+// dal blob `detail.capabilities`. Il drawer NON ricalcola stato lato
 // client: legge la verita' BE. Pattern allineato a Contratto/Preventivo.
 const stato = computed(() => detail.value?.stato_codice_interno || null)
 // `useEntityCapabilities` espone anche `isLocked(field)` per granularita'
@@ -119,6 +119,7 @@ const stato = computed(() => detail.value?.stato_codice_interno || null)
 // blocca tutta la testata fuori BOZZA, equivalente a `!canEdit`), ma resta
 // pronto per future estensioni (es. "modificabile solo meta in EMESSA").
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 const canEditTestata = caps.canEdit
 
@@ -128,8 +129,8 @@ const canEditTestata = caps.canEdit
 // informativo, mirror di PreventiviDrawer/OrdiniDrawer.
 const pushReasons = computed(() =>
   [
-    { ok: caps.flag('can_push_contratto'), key: detail.value?.can_push_contratto_reason_key },
-    { ok: caps.flag('can_genera_ordine'), key: detail.value?.can_genera_ordine_reason_key },
+    { ok: caps.flag('can_push_contratto'), key: capabilities.value.can_push_contratto_reason_key },
+    { ok: caps.flag('can_genera_ordine'), key: capabilities.value.can_genera_ordine_reason_key },
   ].filter((r) => !r.ok && r.key && te(r.key)),
 )
 
@@ -836,12 +837,12 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
             </template>
           </DrawerEntityHeader>
 
-          <DrawerActionsBar :actions="drawerActions" :info-key="detail?.stato_info_key || ''">
+          <DrawerActionsBar :actions="drawerActions" :info-key="capabilities.stato_info_key || ''">
             <template #suffix>
               <EntityPdfButton
                 :sorgente-code="SORGENTE_CODES.OFFERTA_COMMERCIALE"
                 :entity-id="props.offertaId"
-                :pdf="detail.pdf"
+                :pdf="capabilities.pdf"
                 i18n-prefix="vendite.offerte.pdf"
                 :dialog-title="detail.codice
                   ? t('vendite.offerte.pdf.dialog_title', { codice: detail.codice })

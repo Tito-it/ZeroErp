@@ -14,10 +14,10 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
-from django.db import DatabaseError
 
 from apps.core.api.payload_validators import paginated_envelope
 from apps.core.services.payload_helpers import translate_db_errors
+from apps.core.services.capability_blob import capabilities_o_vuoto
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import (
     validate_enum_param,
@@ -395,13 +395,14 @@ def fn_lotti_mensile(
 #        cancello di scope — `fn_available_actions_lotto` non filtra per
 #        emittente. Stesso ordine di lettura della fattura (api.md §dettaglio).
 #
-#        Collisione di chiavi: il blob porta `tipo_lotto`, che la testata ha
-#        gia'. E' lo stesso valore letto dalla stessa colonna, quindi il merge
-#        e' innocuo; `stato_codice` (blob) e `stato_doc_fiscale_codice`
-#        (testata) sono nomi diversi per lo stesso codice, come per le sorelle.
+#        Il blob viaggia intatto SOTTO `capabilities`, non fuso nella testata
+#        (api.md §«Il blob sta SOTTO `capabilities`», 2026-09-23). ⚠️ Fuso,
+#        il suo `tipo_lotto` sovrascriveva quello della testata: stesso valore
+#        oggi, ma era una collisione che nessuno avrebbe visto cambiare.
 #
 #        Fallback graceful (pattern offerte/contratti): se il capability layer
-#        e' rotto (DatabaseError) si logga e si ritorna la testata SENZA blob.
+#        e' rotto (DatabaseError) si logga e si ritorna la testata con
+#        `capabilities` VUOTO — la chiave c'e' sempre.
 #        Il FE degrada a sola consultazione (nessuna azione), ma l'operatore
 #        vede comunque il lotto — una rottura delle capability non deve
 #        impedire la lettura dell'entita'.
@@ -428,14 +429,10 @@ def fn_get_lotto(*, lotto_id: int, auth_user_id: int | None = None) -> dict[str,
         )
     assert lotto is not None
     result = dict(lotto)
-    try:
-        result.update(repository.get_available_actions_lotto(lotto_id))
-    except DatabaseError as exc:
-        logger.warning(
-            "fn_available_actions_lotto fallita per lotto_id=%s: %s. "
-            "Dettaglio ritornato senza blob capability (drawer in sola consultazione).",
-            lotto_id, exc,
-        )
+    result["capabilities"] = capabilities_o_vuoto(
+        lambda: repository.get_available_actions_lotto(lotto_id),
+        funzione="fn_available_actions_lotto", entita_id=lotto_id, logger=logger,
+    )
     return result
 
 

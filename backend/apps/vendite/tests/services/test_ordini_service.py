@@ -152,9 +152,11 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         repo.update_ordine.assert_called_once()
 
     @patch(_REPO)
-    def test_get_ordine_merge_capabilities_data_driven(self, repo_cls) -> None:
-        # get_ordine fonde le capability da fn_available_actions_ordine
-        # (available_actions, can_edit_*, ...). `can_conferma` non e' piu' un flag.
+    def test_get_ordine_capabilities_annidate(self, repo_cls) -> None:
+        # get_ordine trasporta le capability di fn_available_actions_ordine
+        # (available_actions, can_edit_*, ...) SOTTO `capabilities`, senza
+        # fonderle nella testata (api.md §«Il blob sta SOTTO `capabilities`»).
+        # `can_conferma` non e' piu' un flag.
         repo = repo_cls.return_value
         repo.get_ordine.return_value = {"id": 7, "stato_codice_interno": "DRAFT"}
         repo.list_righe.return_value = [{"id": 1}]
@@ -165,10 +167,13 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
             "stato_codice": "DRAFT",
         }
         out = ordini_service.get_ordine(7)
-        self.assertEqual(out["available_actions"][0]["key"], "conferma")
+        caps = out["capabilities"]
+        self.assertEqual(caps, repo.get_capabilities.return_value)
+        self.assertEqual(caps["available_actions"][0]["key"], "conferma")
         self.assertEqual(out["righe_count"], 1)
-        self.assertEqual(out["stato_codice"], "DRAFT")
-        self.assertNotIn("can_conferma", out)
+        for chiave in caps:
+            self.assertNotIn(chiave, out)
+        self.assertNotIn("can_conferma", caps)
 
     @patch(_REPO)
     def test_cambia_stato_ok(self, repo_cls) -> None:

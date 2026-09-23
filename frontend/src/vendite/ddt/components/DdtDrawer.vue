@@ -27,6 +27,7 @@ import { useEntityCapabilities } from '../../../core/composables/useEntityCapabi
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { statoDdtSeverity } from '../../../core/utils/severity'
 import { STATO_DDT } from '../constants'
+import { AZIONE_PUSH_COMMESSA } from '../../constants'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
 import { displayDate, toDateString } from '../../../core/utils/date'
@@ -160,6 +161,7 @@ const showResoAction = computed(
 // availableActions + can_edit_testata + non_editable_fields. Composable
 // centralizzato, uniforme a Ordini/Preventivi/Contratti.
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 const canEditTestata = caps.canEdit
 const canEditTestataEffective = computed(() => !isEdit.value || canEditTestata.value)
@@ -169,27 +171,12 @@ const canEditRighe = computed(() => caps.flag('can_edit_righe'))
 // can_push_commessa_reason/_key. Presentazione = tooltip su pulsante
 // DISABILITATO, non banner (Decisione D, brief-db-ddt-reason-push-catch-all §3):
 // molte cause sono PERMANENTI — fattura_da_ordine e' il caso default — e un
-// banner sempre visibile sarebbe rumore perpetuo. Si sintetizza quindi lato FE
-// l'entry disabled nella stessa shape che emette il DB per le azioni di stato:
-// il mapper condiviso la rende gia' disabled+tooltip (fail-visible labelOrCode).
-const canPushCommessa = computed(() => caps.flag('can_push_commessa'))
-const pushCommessaDisabledAction = computed(() => {
-  if (!hasDetail.value || canPushCommessa.value) return []
-  const reason = detail.value?.can_push_commessa_reason
-  const reasonKey = detail.value?.can_push_commessa_reason_key
-  if (!reason && !reasonKey) return []
-  return [{
-    key: 'push_commessa',
-    target_state: null,
-    label_key: 'vendite.ddt.azione_push_commessa',
-    severity: 'success',
-    icon: 'pi pi-arrow-right',
-    outlined: false,
-    enabled: false,
-    reason,
-    reason_key: reasonKey,
-  }]
-})
+// banner sempre visibile sarebbe rumore perpetuo. L'entry disabled la
+// sintetizza il BB (`azioneNegata`), condivisa con OrdiniDrawer.
+const pushCommessaDisabledAction = computed(() => caps.azioneNegata('can_push_commessa', {
+  ...AZIONE_PUSH_COMMESSA,
+  label_key: 'vendite.ddt.azione_push_commessa',
+}))
 
 // Campi bloccati lato UX. Una volta che il DDT esiste, il cliente NON e' piu'
 // modificabile: il BE deriva il destinatario_soggetto_ruolo dal billing_account
@@ -632,14 +619,14 @@ const drawerActions = computed(() => {
           </template>
         </DrawerEntityHeader>
 
-        <DrawerActionsBar :actions="drawerActions" :info-key="detail?.stato_info_key || ''">
+        <DrawerActionsBar :actions="drawerActions" :info-key="capabilities.stato_info_key || ''">
           <template #suffix>
             <!-- Stampa DDT accompagnatorio: anteprima in bozza, gestione
                  documenti generati post-emissione. BB EntityPdfButton 1:1. -->
             <EntityPdfButton
               :sorgente-code="SORGENTE_CODES.DDT"
               :entity-id="effectiveDdtId"
-              :pdf="detail.pdf"
+              :pdf="capabilities.pdf"
               i18n-prefix="vendite.ddt.pdf"
               :dialog-title="detail.numero
                 ? t('vendite.ddt.pdf.dialog_title', { numero: detail.numero })

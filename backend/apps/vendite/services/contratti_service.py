@@ -698,8 +698,10 @@ class ContrattiService:
     #        capabilities). Le capability (available_actions con default_date/
     #        min_date per "cessa", can_change_state, can_edit_*, non_editable_fields)
     #        sono calcolate da script.fn_available_actions_contratto: il backend
-    #        non duplica la logica, spalma il blob JSONB nel detail per consumo
-    #        diretto dal frontend (Fase 1.B2 refactor frontend vendite).
+    #        non duplica la logica e trasporta il blob intatto SOTTO
+    #        `capabilities` (api.md §«Il blob sta SOTTO `capabilities`»).
+    #        ⚠️ Il blob porta `stato_codice` e `stato_codice_interno`, che la
+    #        testata ha gia': fuso, il blob li sovrascriveva in silenzio.
     def get_contratto(self, contratto_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
         testata = self._get_contratto_or_raise(contratto_id, op="get_contratto")
@@ -713,8 +715,7 @@ class ContrattiService:
             testata["righe_count"] = len(self._repo.list_righe_preview(contratto_id))
         else:
             testata["righe_count"] = len(righe)
-        capabilities = self._repo.get_capabilities(contratto_id)
-        testata.update(capabilities)
+        testata["capabilities"] = self._repo.get_capabilities(contratto_id)
         return testata
 
     # =================================================================

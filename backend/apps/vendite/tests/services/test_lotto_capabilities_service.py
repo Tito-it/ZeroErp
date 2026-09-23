@@ -68,15 +68,19 @@ class LottoCapabilitiesServiceTests(SimpleTestCase):
         self.addCleanup(patcher.stop)
 
     # Scopo: il dettaglio porta il blob capability accanto alla testata — e'
-    #        cio' che permette al drawer di NON ricalcolare le condizioni.
+    #        cio' che permette al drawer di NON ricalcolare le condizioni — e
+    #        lo porta SOTTO `capabilities`, intatto (api.md §«Il blob sta SOTTO
+    #        `capabilities`»): nessuna sua chiave sale nella testata.
     def test_dettaglio_include_blob_capability(self):
         result = fn_get_lotto(lotto_id=42, auth_user_id=7)
         self.assertEqual(result["codice"], "LOT-000042")
-        self.assertEqual(len(result["available_actions"]), 2)
-        self.assertTrue(result["can_change_state"])
-        self.assertEqual(result["stato_codice"], "EMESSA")
-        # La collisione `tipo_lotto` testata/blob e' benigna: stesso valore.
-        self.assertEqual(result["tipo_lotto"], "MASSIVO")
+        self.assertEqual(result["capabilities"], self.repo.get_available_actions_lotto.return_value)
+        self.assertEqual(len(result["capabilities"]["available_actions"]), 2)
+        self.assertTrue(result["capabilities"]["can_change_state"])
+        self.assertEqual(result["capabilities"]["stato_codice"], "EMESSA")
+        self.assertNotIn("available_actions", result)
+        self.assertNotIn("can_change_state", result)
+        self.assertNotIn("stato_codice", result)
 
     # Scopo: ORDINE DI LETTURA — la capability si legge DOPO la testata, che e'
     #        l'unico cancello di scope (`fn_available_actions_lotto` non filtra
@@ -100,15 +104,15 @@ class LottoCapabilitiesServiceTests(SimpleTestCase):
             fn_get_lotto(lotto_id=42, auth_user_id=7)
         self.repo.get_available_actions_lotto.assert_not_called()
 
-    # Scopo: capability layer rotto → il lotto si legge lo stesso, senza blob.
+    # Scopo: capability layer rotto → il lotto si legge lo stesso, col blob
+    #        VUOTO (la chiave c'e' sempre: la forma non dipende dall'esito).
     #        Il drawer degrada a sola consultazione invece di mostrare un
     #        errore criptico (pattern offerte/contratti).
     def test_capability_rotta_non_impedisce_la_lettura(self):
         self.repo.get_available_actions_lotto.side_effect = DatabaseError("boom")
         result = fn_get_lotto(lotto_id=42, auth_user_id=7)
         self.assertEqual(result["codice"], "LOT-000042")
-        self.assertNotIn("available_actions", result)
-        self.assertNotIn("can_change_state", result)
+        self.assertEqual(result["capabilities"], {})
 
     # Scopo: lotto inesistente o fuori scope → stesso codice (no leak).
     def test_lotto_non_trovato_solleva_404(self):

@@ -197,10 +197,15 @@ class PreventiviRepository(
             conditions.append("v.data <= %s")
             params.append(data_al)
         if search and len(search) >= 3:
-            # Ricerca su numero e ragione sociale (nome canonico del soggetto).
-            conditions.append("(v.numero ILIKE %s OR v.ragione_sociale_completa ILIKE %s)")
+            # Ricerca estesa: numero + cliente + codice BA + id fiscale — le
+            # colonne `ricercabile_full = t` di `vendite.preventivi` (lista 5),
+            # gli stessi quattro campi delle sorelle ordini/ddt/fatture.
+            conditions.append(
+                "(v.numero ILIKE %s OR v.ragione_sociale_completa ILIKE %s "
+                "OR v.ba_codice ILIKE %s OR v.id_fiscale_univoco_cf_piva ILIKE %s)"
+            )
             like = f"%{search}%"
-            params.extend([like, like])
+            params.extend([like, like, like, like])
         # Filtro revisione attiva: di default mostra solo l'ultima revisione
         # "viva" per numero: `is_superata IS FALSE` — "non esiste una revisione
         # successiva che l'abbia rimpiazzata". Quando l'operatore vuole lo

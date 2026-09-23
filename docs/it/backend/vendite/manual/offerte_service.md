@@ -57,9 +57,11 @@ del building block note partizionate sul nuovo target `OFFERTA`.
 - `get_offerta(offerta_id) -> OffertaRow` — arricchito con `eccezioni[]`,
   `utility` (1:1, None se non ancora creato) e **capability blob**
   (`available_actions[]`, `can_edit_*`, `can_push_contratto*`,
-  `non_editable_fields[]`, `stato_codice`) mergeato da
+  `non_editable_fields[]`, `stato_codice`) letto da
   `repo.get_available_actions` (wrapper su `script.fn_available_actions_offerta`,
-  D7 2026-05-26). Il FE consuma il blob con `useEntityCapabilities` +
+  D7 2026-05-26) e posato **intatto sotto `capabilities`** (dal 2026-09-23:
+  fino ad allora era fuso nella testata con `row.update(...)`). Se la funzione
+  fallisce, `capabilities` e' `{}`, mai assente. Il FE consuma il blob con `useEntityCapabilities` +
   `mapAvailableActionsToDrawerActions`, eliminando ogni state-machine
   hardcoded lato client.
 

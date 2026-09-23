@@ -498,6 +498,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_LOCK_COLUMNS": "Automazione delle colonne di lock fallita.",
     "E_LOGOUT_NO_TOKEN": "Token di refresh richiesto per il logout.",
     "E_LOOKUP_STRUTTURA_TABELLA_INVALIDA": "Configurazione lookup non valida: la tabella richiesta non e' compatibile col formato lookup standard. Contattare l'amministratore.",
+    "E_LOTTO_COMPLETATO_NON_GUADAGNATO": "Il lotto non puo` risultare completato: ha documenti in errore o segnalazioni critiche aperte, oppure e` annullato. Sistema o togli dal giro i documenti in errore e rilancia il giro, che chiude il lotto da se`.",
     "E_LOTTO_DOC_GIA_USCITO": "Il documento e` gia` stato tolto da questo giro: ricarica il lotto per vedere l'elenco aggiornato.",
     "E_LOTTO_DOC_NON_IN_ERRORE": "Dal giro si tolgono solo i documenti che hanno fallito, e questo non e` in errore. Se non deve essere fatturato in questo giro: annulla il lotto e rigeneralo senza di lui.",
     "E_LOTTO_DOC_SENZA_ESITO": "Il documento non risulta lavorato da questo giro: l'elenco a video potrebbe essere invecchiato, oppure il documento appartiene a un altro lotto.",

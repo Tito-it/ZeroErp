@@ -194,8 +194,8 @@ class PromoArticoliService:
     # Scopo: Dettaglio singola promo; solleva NOT_FOUND se assente.
     #        Le capability (stato_temporale, can_update, min_valido_*,
     #        non_editable_fields) arrivano da script.fn_capability_promo_articolo
-    #        e vengono spalmate nel detail per consumo diretto del frontend
-    #        (Fase 1.B3 refactor frontend vendite).
+    #        e viaggiano intatte SOTTO `capabilities` (api.md §«Il blob sta
+    #        SOTTO `capabilities`»).
     def get_promo(self, record_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(record_id, field="record_id")
         result = testata_o_not_found(
@@ -203,8 +203,7 @@ class PromoArticoliService:
             code=E_VENDITE_NOT_FOUND, message="Promo non trovata.",
             id_name="record_id", function_name="promo_articoli_service.get_promo",
         )
-        capabilities = self._repo.get_capabilities(record_id)
-        result.update(capabilities)
+        result["capabilities"] = self._repo.get_capabilities(record_id)
         return result
 
     # =================================================================

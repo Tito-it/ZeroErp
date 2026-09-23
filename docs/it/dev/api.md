@@ -654,7 +654,7 @@ il guard è cosa si *ammette*. Un client che non legge la capability prende il
 
 |          | Azione di **documento**                      | Azione **per riga**                                              |
 | -------- | -------------------------------------------- | ---------------------------------------------------------------- |
-| dove sta | blob `available_actions[]` nel **dettaglio** | **colonne della riga** di lista                                  |
+| dove sta | blob `capabilities` nel **dettaglio**        | **colonne della riga** di lista                                  |
 | esempio  | `fn_available_actions_preventivo`            | `can_remove` + `rimozione_blocco_reason` su `…/billing-account/` |
 
 ⛔ Una capability di dettaglio **non** risponde per una riga: il blob non sa
@@ -673,9 +673,14 @@ falliva.
 ⭐ Dal 2026-09-23 c'è anche un cancello, e legge il contratto dalla sorgente
 giusta: `npm run guard:capability` (`frontend/scripts/check-capability-contratto.mjs`)
 confronta ogni campo letto da un blob `capabilities.*` con le chiavi che le
-`script.fn_available_actions_*` emettono, prese dalla **doc auto-generata**.
-⚠️ Vede la forma annidata; la piatta non è distinguibile staticamente da un
-campo qualunque del dettaglio — è una delle ragioni della decisione qui sotto.
+`script.fn_available_actions_*` (e `fn_capability_promo_articolo`) emettono,
+prese dalla **doc auto-generata** — anche i nomi passati al BB
+(`flag('can_x')`, `editFlag`).
+⭐ Dalla conversione alla forma annidata (sotto) **conta anche le letture
+piatte**: una chiave di primo livello del blob letta fuori da `capabilities`
+è rossa, salvo gli omonimi dichiarati col motivo in
+`frontend/scripts/capability-letture-piatte.json` — un registro che può solo
+calare.
 
 ### ⛔ Il blob sta SOTTO `capabilities`, non fuso nel dettaglio
 
@@ -703,16 +708,30 @@ Tre conseguenze, ed è da queste che si riconosce il difetto:
   un campo che il database emette davvero o un refuso.
 
 ⚠️ **Non è una preferenza di stile ed è nata da un'asimmetria vera**: al
-2026-09-23 convivevano le due forme — commesse e magazzino annidate, DDT,
-resi, ordini, contratti e promo articoli piatte — e **nessun documento diceva
-quale fosse quella giusta**. È la ragione per cui questa sezione esiste: una
+2026-09-23 convivevano le due forme — commesse e magazzino annidate; DDT,
+resi, ordini, contratti, promo articoli, offerte, preventivi e lotto piatti —
+e **nessun documento diceva quale fosse quella giusta**. È la ragione per cui questa sezione esiste: una
 regola che non sta scritta non è una regola, e la divergenza non era colpa di
 chi l'ha scritta in un modo o nell'altro.
 
 ✅ **Il frontend legge da un posto solo**: `useEntityCapabilities` è il BB che
-unifica la lettura, e i drawer non guardano mai il blob a mano.
-🔵 **Il pregresso si converte per refactor**, non tutto insieme:
+unifica la lettura; motivi, chiavi i18n e sotto-oggetti (`pdf`) si leggono dal
+suo `capabilities`, mai da `detail.x`.
+✅ **Il pregresso è convertito** (2026-09-23, tutti i dettagli in un giro, senza
+doppia lettura):
 [brief-be-fe-capability-annidata.md](work-in-progress/brief-be-fe-capability-annidata.md).
+
+⚠️ **La chiave c'è sempre**: un dettaglio che ripiega quando la capability
+fallisce (offerte, lotto) consegna `capabilities: {}`, non la omette — la
+forma non dipende dall'esito, e il client cade spento (fail-closed).
+
+⛔ **Si trasporta tutto il blob, sotto-oggetti compresi.** Il blob ha chiavi di
+primo livello che non sembrano capability — `pdf` (`{mode, allow_allegati}`),
+`stato_info_key`, `stato_temporale`, `min_valido_*` — e sono quelle che una
+conversione dimentica: il 2026-09-23 i drawer passavano `detail.pdf` al
+pulsante PDF, e annidato il blob il pulsante avrebbe perso il `mode` senza
+nessun errore. Le chiavi di primo livello si leggono dal
+`RETURN jsonb_build_object(...)` della funzione nella doc auto-generata.
 
 ---
 

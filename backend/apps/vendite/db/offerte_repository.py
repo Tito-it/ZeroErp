@@ -407,10 +407,15 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             wheres.append("v.validita_dal <= %s")
             params.append(validita_dal_max)
         if search:
-            # Search ILIKE su codice + ragione sociale (nome canonico del
-            # soggetto). L'API impone >=3 char.
-            wheres.append("(v.codice ILIKE %s OR v.ragione_sociale_completa ILIKE %s)")
-            params.extend([f"%{search}%", f"%{search}%"])
+            # Ricerca estesa: codice + cliente + codice BA + id fiscale — le
+            # colonne `ricercabile_full = t` di `vendite.offerte` (lista 6).
+            # Il minimo di 3 caratteri lo impone il service.
+            wheres.append(
+                "(v.codice ILIKE %s OR v.ragione_sociale_completa ILIKE %s "
+                "OR v.ba_codice ILIKE %s OR v.id_fiscale_univoco_cf_piva ILIKE %s)"
+            )
+            like = f"%{search}%"
+            params.extend([like, like, like, like])
         # Filtro ultima revisione (mirror preventivi): di default mostra solo la
         # revisione non rimpiazzata per lineage. Quando false, storico completo.
         #

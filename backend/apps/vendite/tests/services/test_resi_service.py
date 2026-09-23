@@ -159,6 +159,28 @@ class ResiServiceGuardsTests(SimpleTestCase):
             resi_service.get_reso(99)
         self.assertEqual(cm.exception.code, "E_RESO_NOT_FOUND")
 
+    # Scopo: il blob di fn_available_actions_reso viaggia intatto SOTTO
+    #        `capabilities`, e nessuna sua chiave sale nella testata (api.md
+    #        §«Il blob sta SOTTO `capabilities`», 2026-09-23). Fino a quel
+    #        giorno nessun test del reso guardava la forma del dettaglio.
+    @patch(_REPO)
+    def test_get_reso_capabilities_annidate(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_reso.return_value = {"id": 7, "stato_codice_interno": "DRAFT"}
+        repo.get_capabilities.return_value = {
+            "available_actions": [{"key": "conferma", "target_state": "CONFERMATO"}],
+            "can_edit_testata": True,
+            "can_edit_righe": True,
+            "non_editable_fields": ["ddt_id"],
+            "stato_codice": "DRAFT",
+        }
+        repo.count_righe.return_value = 2
+        out = resi_service.get_reso(7)
+        self.assertEqual(out["capabilities"], repo.get_capabilities.return_value)
+        for chiave in repo.get_capabilities.return_value:
+            self.assertNotIn(chiave, out)
+        self.assertEqual(out["righe_count"], 2)
+
     @patch(_REPO)
     def test_aggiorna_reso_stato_non_draft(self, repo_cls) -> None:
         repo = repo_cls.return_value
