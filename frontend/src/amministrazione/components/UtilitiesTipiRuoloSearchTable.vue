@@ -4,7 +4,7 @@
 //        ordine e visibilita' dal catalogo `ui.lista_colonna`, con ritiro dinamico
 //        e personalizzazione per utente. Filtri search/attivo/utility/tipo_ruolo
 //        restano del caller. Nessun export: il dominio non ha endpoint.
-import {ref, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUtilitiesTipiRuoloStore } from '../stores/utilitiesTipiRuolo'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
@@ -21,6 +21,8 @@ import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
@@ -35,28 +37,21 @@ const {
   searchTableOptions: { defaultSortField: 'utility_descrizione' },
 })
 
-const attivoFilter = ref(true)
-const utilityFilter = ref(null)
-const tipoRuoloFilter = ref(null)
+// ⭐ I FILTRI PASSANO DAI BINDER, e non e' una preferenza di stile: `bindSelect`
+//    porta con se' il `watch` store → widget, cioe' l'unico modo perche' la
+//    casella dica la verita' quando il filtro viene cambiato da FUORI —
+//    «Pulisci filtri» del drawer, un deep-link, un reset. Scritti a mano (un
+//    `ref` che spinge nello store e basta) il filtro si pulisce e la combo
+//    continua a mostrare il valore di prima, senza nessun errore.
+const { bindSelect } = useStoreFilterBindings(store, applyFilters)
+const { value: attivoFilter, onChange: onAttivoChange } = bindSelect('attivo')
+const { value: utilityFilter, onChange: onUtilityChange } = bindSelect('utility_id')
+const { value: tipoRuoloFilter, onChange: onTipoRuoloChange } = bindSelect('tipo_ruolo_id')
 
 const boolOptions = buildBoolOptions(t)
 
-function onAttivoChange() {
-  store.filters.attivo = attivoFilter.value
-  applyFilters()
-}
-
 // LookupSelect emette `change` con il valore: usato per propagare la selezione
 // allo store filters senza binding manuale @update:modelValue.
-function onUtilityChange(value) {
-  store.filters.utility_id = value ?? null
-  applyFilters()
-}
-
-function onTipoRuoloChange(value) {
-  store.filters.tipo_ruolo_id = value ?? null
-  applyFilters()
-}
 
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
 function onRowClick(data) { emit('row-click', data) }
@@ -71,37 +66,40 @@ onMounted(() => store.fetchList())
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
-        <InputText
-          v-model="searchText"
-          :placeholder="t('amministrazione.matrice_utilities_ruoli.search_placeholder')"
-        />
+      <FiltriLista :store="store" :inert="perimetroBloccato">
+        <template #sempre>
+          <InputText
+            v-model="searchText"
+            class="app-filter-w-lg"
+            :placeholder="t('amministrazione.matrice_utilities_ruoli.search_placeholder')"
+          />
+        </template>
         <LookupSelect
           v-model="utilityFilter"
+          class="app-filter-w-md"
           @change="onUtilityChange"
           rel="config.utilities"
           :placeholder="t('amministrazione.matrice_utilities_ruoli.filter_utility')"
           showClear
-          style="min-width: 200px;"
         />
         <LookupSelect
           v-model="tipoRuoloFilter"
+          class="app-filter-w-md"
           @change="onTipoRuoloChange"
           rel="config.tipi_ruoli"
           :placeholder="t('amministrazione.matrice_utilities_ruoli.filter_tipo_ruolo')"
           showClear
-          style="min-width: 200px;"
         />
         <Select
           v-model="attivoFilter"
+          class="app-filter-w-sm"
           :options="boolOptions"
           option-label="label"
           option-value="value"
           :placeholder="t('common.attivo')"
           @change="onAttivoChange"
-          style="width: 120px;"
         />
-      </div>
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
           <ListaConfigStatusTag :dirty="dirty" />

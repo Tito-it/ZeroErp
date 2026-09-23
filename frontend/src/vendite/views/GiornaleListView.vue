@@ -23,7 +23,6 @@ import { onActivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import InputText from 'primevue/inputtext'
-import DatePicker from 'primevue/datepicker'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
@@ -44,7 +43,9 @@ import { useGiornaleStore, GRAVITA_SOLO_ERRORI, GRAVITA_CON_AVVISI } from '../st
 import { exportGiornale } from '../api/giornale'
 import { labelOrCode } from '../../core/utils/i18nLabel'
 import { gravitaGiornaleSeverity } from '../../core/utils/severity'
-import { DATE_FORMAT, READONLY_DOMAINS } from '../../core/constants'
+import { READONLY_DOMAINS } from '../../core/constants'
+import FiltroPeriodo from '../../core/components/FiltroPeriodo.vue'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const { t, te } = useI18n()
 useReadonlyMode(READONLY_DOMAINS.VENDITE)
@@ -97,7 +98,7 @@ const {
   },
 })
 
-const { bindSelect, bindDate, bindToggle } = useStoreFilterBindings(store, applyFilters)
+const { bindSelect, bindToggle, bindPeriodo } = useStoreFilterBindings(store, applyFilters)
 // Acceso = i soli ERROR (col NULL, che il backend include); spento = anche
 // gli avvisi. Un interruttore che RESTRINGE: niente conteggio.
 const { value: soloErrori, onChange: onSoloErroriChange } = bindToggle('gravita', {
@@ -105,8 +106,8 @@ const { value: soloErrori, onChange: onSoloErroriChange } = bindToggle('gravita'
 })
 const { value: registroFilter, onChange: onRegistroChange } = bindSelect('registro')
 const { value: entitaFilter, onChange: onEntitaChange } = bindSelect('entity_type')
-const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
-const { value: dataAFilter, onChange: onDataAChange } = bindDate('data_a')
+// Il periodo e' UN filtro con due estremi: un binding, un componente.
+const periodo = bindPeriodo()
 
 // Il filo (tx_id o correlation_id): testo con debounce, `Enter` applica subito.
 const applicaFilo = useDebouncedAction(applyFilters, { detailed: true })
@@ -160,7 +161,7 @@ onActivated(applicaDeepLink)
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
+      <FiltriLista :store="store" :inert="perimetroBloccato">
         <FiltroToggle
           v-model="soloErrori"
           :label="t('vendite.giornale.filtro_solo_errori')"
@@ -169,50 +170,31 @@ onActivated(applicaDeepLink)
         />
         <Select
           v-model="registroFilter"
+          class="app-filter-w-md"
           :options="registroOptions"
           option-label="label"
           option-value="value"
           :placeholder="t('vendite.giornale.col_registro')"
-          style="width: 170px;"
           @change="onRegistroChange"
         />
         <Select
           v-model="entitaFilter"
+          class="app-filter-w-md"
           :options="entitaOptions"
           option-label="label"
           option-value="value"
           :placeholder="t('vendite.giornale.col_entita')"
-          style="width: 170px;"
           @change="onEntitaChange"
         />
         <InputText
+          class="app-filter-w-lg"
           :model-value="store.filters.filo ?? ''"
           :placeholder="t('vendite.giornale.filtro_filo')"
-          style="width: 290px;"
           @update:model-value="onFiloInput"
           @keyup.enter="applicaFilo.flush()"
         />
-        <DatePicker
-          v-model="dataDaFilter"
-          :placeholder="t('common.data_da')"
-          :date-format="DATE_FORMAT"
-          show-icon
-          show-button-bar
-          style="width: 150px;"
-          @date-select="onDataDaChange"
-          @clear-click="onDataDaChange"
-        />
-        <DatePicker
-          v-model="dataAFilter"
-          :placeholder="t('common.data_a')"
-          :date-format="DATE_FORMAT"
-          show-icon
-          show-button-bar
-          style="width: 150px;"
-          @date-select="onDataAChange"
-          @clear-click="onDataAChange"
-        />
-      </div>
+        <FiltroPeriodo :periodo="periodo" />
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
           <ListaConfigStatusTag :dirty="dirty" />

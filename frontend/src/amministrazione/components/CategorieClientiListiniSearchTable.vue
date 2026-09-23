@@ -5,7 +5,7 @@
 //        listino con variazione opzionale. Colonne, ordine e visibilita' dal
 //        catalogo `ui.lista_colonna`, con ritiro dinamico e personalizzazione
 //        per utente. Nessun export: il dominio non ha endpoint.
-import { ref, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useCategorieClientiListiniStore } from '../stores/categorieClientiListini'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
@@ -25,6 +25,8 @@ import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
@@ -43,38 +45,20 @@ const {
 
 const emittentiLookup = useLookup(listEmittentiFiscali, { immediate: true })
 
-const attivoFilter = ref(true)
-const categoriaFilter = ref(null)
-const utilityFilter = ref(null)
-const emittenteFilter = ref(null)
-const listinoFilter = ref(null)
+// ⭐ I FILTRI PASSANO DAI BINDER, e non e' una preferenza di stile: `bindSelect`
+//    porta con se' il `watch` store → widget, cioe' l'unico modo perche' la
+//    casella dica la verita' quando il filtro viene cambiato da FUORI —
+//    «Pulisci filtri» del drawer, un deep-link, un reset. Scritti a mano (un
+//    `ref` che spinge nello store e basta) il filtro si pulisce e la combo
+//    continua a mostrare il valore di prima, senza nessun errore.
+const { bindSelect } = useStoreFilterBindings(store, applyFilters)
+const { value: attivoFilter, onChange: onAttivoChange } = bindSelect('attivo')
+const { value: categoriaFilter, onChange: onCategoriaChange } = bindSelect('categoria_cliente_id')
+const { value: utilityFilter, onChange: onUtilityChange } = bindSelect('utility_id')
+const { value: emittenteFilter, onChange: onEmittenteChange } = bindSelect('emittente_soggetto_ruolo_id')
+const { value: listinoFilter, onChange: onListinoChange } = bindSelect('listino_id')
 
 const boolOptions = buildBoolOptions(t)
-
-function onAttivoChange() {
-  store.filters.attivo = attivoFilter.value
-  applyFilters()
-}
-
-function onCategoriaChange(value) {
-  store.filters.categoria_cliente_id = value ?? null
-  applyFilters()
-}
-
-function onUtilityChange(value) {
-  store.filters.utility_id = value ?? null
-  applyFilters()
-}
-
-function onEmittenteChange(event) {
-  store.filters.emittente_soggetto_ruolo_id = event.value ?? null
-  applyFilters()
-}
-
-function onListinoChange(value) {
-  store.filters.listino_id = value ?? null
-  applyFilters()
-}
 
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
 function onRowClick(data) { emit('row-click', data) }
@@ -89,29 +73,33 @@ onMounted(() => store.fetchList())
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
-        <InputText
-          v-model="searchText"
-          :placeholder="t('amministrazione.matrice_categorie_listini.search_placeholder')"
-        />
+      <FiltriLista :store="store" :inert="perimetroBloccato">
+        <template #sempre>
+          <InputText
+            v-model="searchText"
+            class="app-filter-w-lg"
+            :placeholder="t('amministrazione.matrice_categorie_listini.search_placeholder')"
+          />
+        </template>
         <LookupSelect
           v-model="categoriaFilter"
+          class="app-filter-w-md"
           @change="onCategoriaChange"
           rel="anagrafiche.categorie_clienti"
           :placeholder="t('amministrazione.matrice_categorie_listini.filter_categoria')"
           showClear
-          style="min-width: 180px;"
         />
         <LookupSelect
           v-model="utilityFilter"
+          class="app-filter-w-md"
           @change="onUtilityChange"
           rel="config.utilities"
           :placeholder="t('amministrazione.matrice_categorie_listini.filter_utility')"
           showClear
-          style="min-width: 160px;"
         />
         <Select
           v-model="emittenteFilter"
+          class="app-filter-w-md"
           :options="emittentiLookup.items.value"
           option-label="ragione_sociale"
           option-value="soggetto_ruolo_id"
@@ -119,26 +107,25 @@ onMounted(() => store.fetchList())
           show-clear
           filter
           @change="onEmittenteChange"
-          style="min-width: 200px;"
         />
         <LookupSelect
           v-model="listinoFilter"
+          class="app-filter-w-md"
           @change="onListinoChange"
           rel="vendite.listini"
           :placeholder="t('amministrazione.matrice_categorie_listini.filter_listino')"
           showClear
-          style="min-width: 160px;"
         />
         <Select
           v-model="attivoFilter"
+          class="app-filter-w-sm"
           :options="boolOptions"
           option-label="label"
           option-value="value"
           :placeholder="t('common.attivo')"
           @change="onAttivoChange"
-          style="width: 120px;"
         />
-      </div>
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
           <ListaConfigStatusTag :dirty="dirty" />

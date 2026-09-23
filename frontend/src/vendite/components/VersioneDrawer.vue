@@ -49,8 +49,7 @@ import Tag from 'primevue/tag'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
-
-
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const { t } = useI18n()
 const { execute, loading, campiErrati } = useApiHandler()
@@ -487,10 +486,12 @@ const onClose = useDrawerClose(emit)
 
       <!-- === MASTER: toolbar + lista configurabile (server-side lazy) === -->
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
-          <InputText v-model="searchText" :placeholder="t('vendite.listini.righe_cerca_articolo')"
-            style="width: 240px;" />
-        </div>
+        <FiltriLista :store="store" :inert="perimetroBloccato">
+          <template #sempre>
+            <InputText v-model="searchText" class="app-filter-w-lg"
+              :placeholder="t('vendite.listini.righe_cerca_articolo')" />
+          </template>
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />

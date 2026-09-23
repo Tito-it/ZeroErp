@@ -21,6 +21,7 @@ import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptySta
 import { PAGINATION } from '../../core/constants'
 import { paramsPagina } from '../../core/utils/listParams'
 import { listDistinte } from '../api/pagamenti'
+import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
 
 // Scopo: filtri dello store -> query param dell'endpoint.
 // Note: ⚠️ La `search` NON si inoltra: questa lista non ha ricerca testuale a
@@ -41,7 +42,12 @@ function buildParams(f) {
 export const useDistinteStore = defineStore(
   'pagamenti-distinte',
   () => {
-    const filters = ref({
+    // ⭐ I FILTRI DI DOMINIO IN UNA SEDE SOLA (2026-09-23): da qui nascono i valori
+    //    di partenza della lista E il contratto che `FiltriLista` legge per il segno
+    //    dei filtri attivi (`useContrattoFiltriLista`). ⛔ Due letterali divergono
+    //    al primo filtro aggiunto da una parte sola, e il segno si spegnerebbe su
+    //    una lista che filtra — senza nessun errore.
+    const FILTRI_DEFAULT = {
       // Vocabolari chiusi (null = tutti). ⛔ I valori NON si cablano nel
       // frontend: gli stati arrivano dal catalogo che il dettaglio porta con
       // se', e il filtro li offre da li'.
@@ -51,6 +57,10 @@ export const useDistinteStore = defineStore(
       ente_incasso_id: null,
       data_da: null,
       data_a: null,
+    }
+
+    const filters = ref({
+      ...FILTRI_DEFAULT,
       // ⚠️ NON si inoltra al backend (questa lista non ha ricerca testuale), ma
       // la chiave si DICHIARA: fa parte del contratto di `useSearchTable`, che
       // la scrive su ricerca universale / deep-link `?search=` — e una chiave
@@ -72,7 +82,16 @@ export const useDistinteStore = defineStore(
         alwaysFetch: true,
       })
 
-    return { items, totalRecords, loading, hasSearched, filters, fetchList }
+    // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
+    // nascita, e come si riportano li' («Pulisci filtri»).
+    const { chiaviFiltro, filtriDefault, azzeraFiltri } = useContrattoFiltriLista({
+      filters, filterDefaults: FILTRI_DEFAULT, fetchList,
+    })
+
+    return {
+      items, totalRecords, loading, hasSearched, filters, fetchList,
+      chiaviFiltro, filtriDefault, azzeraFiltri,
+    }
   },
   { userScoped: true },
 )

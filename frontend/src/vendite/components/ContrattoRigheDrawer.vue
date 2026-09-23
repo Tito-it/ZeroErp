@@ -54,8 +54,7 @@ import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
-
-
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const { t } = useI18n()
 const store = useContrattiStore()
@@ -1079,11 +1078,17 @@ function origineSeverity(origine) {
 
       <!-- === MASTER: toolbar + lista paginata === -->
       <div class="app-page-toolbar">
-        <div class="app-page-filters">
-          <InputText v-model="filtroArticolo"
-            :placeholder="t('vendite.contratti.filtro_articolo_placeholder')"
-            style="min-width: 240px;" />
-        </div>
+        <!-- ⚠️ Nessuno `:store`: il filtro articolo e' CLIENT-SIDE su righe gia'
+             caricate, e `store` qui e' quello dei CONTRATTI — passarlo
+             accenderebbe il segno coi filtri di un'altra lista. Non serve: e' la
+             ricerca di questo elenco, quindi sta in `#sempre` e non c'e' nessun
+             filtro da portare nel drawer. -->
+        <FiltriLista>
+          <template #sempre>
+            <InputText v-model="filtroArticolo" class="app-filter-w-lg"
+              :placeholder="t('vendite.contratti.filtro_articolo_placeholder')" />
+          </template>
+        </FiltriLista>
         <PageActionsBar :actions="pageActions" />
       </div>
 

@@ -9,10 +9,9 @@
 // Niente casella di ricerca: l'endpoint audit non ha ricerca testuale e nel
 // seed tutte le colonne sono `ricercabile_full=f`. Il filtro e' per sorgente
 // (`tabella`) e per intervallo di date.
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Select from 'primevue/select'
-import DatePicker from 'primevue/datepicker'
 import Tag from 'primevue/tag'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
@@ -22,9 +21,11 @@ import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useAuditLogStore } from '../stores/auditLog'
 import { lookupAuditSources } from '../api/amministrazione'
-import { parseIsoDate, toDateString } from '../../core/utils/date'
 import { getAuditOpSeverity } from '../constants'
-import { DATE_FORMAT, READONLY_DOMAINS } from '../../core/constants'
+import { READONLY_DOMAINS } from '../../core/constants'
+import FiltroPeriodo from '../../core/components/FiltroPeriodo.vue'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const { t } = useI18n()
 useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
@@ -62,22 +63,16 @@ const tabellaOptions = computed(() => [
   })),
 ])
 
-// I DatePicker lavorano su Date, lo store su stringhe ISO: la conversione passa
-// per parseIsoDate/toDateString (locale-safe, niente shift di fuso).
-const dataDaFilter = ref(parseIsoDate(store.filters.data_da))
-const dataAFilter = ref(parseIsoDate(store.filters.data_a))
+// Il periodo e' UN filtro con due estremi: un binding, un componente.
+// ⭐ Prima del 2026-09-23 la conversione Date↔ISO era scritta qui a mano, con
+//    `@date-select` + `@clear-click`: una data DIGITATA nella casella non
+//    applicava il filtro — l'operatore vedeva la data scritta e una lista che
+//    non l'aveva ricevuta. Il BB usa `@update:model-value` e porta con se'
+//    anche l'invariante `da <= a`.
+const { bindPeriodo } = useStoreFilterBindings(store, applyFilters)
+const periodo = bindPeriodo()
 
 function onTabellaChange() {
-  applyFilters()
-}
-
-function onDataDaChange() {
-  store.filters.data_da = dataDaFilter.value ? toDateString(dataDaFilter.value) : null
-  applyFilters()
-}
-
-function onDataAChange() {
-  store.filters.data_a = dataAFilter.value ? toDateString(dataAFilter.value) : null
   applyFilters()
 }
 
@@ -96,37 +91,18 @@ onMounted(() => {
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
+      <FiltriLista :store="store" :inert="perimetroBloccato">
         <Select
           v-model="store.filters.tabella"
+          class="app-filter-w-md"
           :options="tabellaOptions"
           option-label="label"
           option-value="value"
           :placeholder="t('amministrazione.audit_col_tipo')"
-          style="width: 220px;"
           @change="onTabellaChange"
         />
-        <DatePicker
-          v-model="dataDaFilter"
-          :placeholder="t('common.data_da')"
-          :date-format="DATE_FORMAT"
-          show-icon
-          show-button-bar
-          style="width: 150px;"
-          @date-select="onDataDaChange"
-          @clear-click="onDataDaChange"
-        />
-        <DatePicker
-          v-model="dataAFilter"
-          :placeholder="t('common.data_a')"
-          :date-format="DATE_FORMAT"
-          show-icon
-          show-button-bar
-          style="width: 150px;"
-          @date-select="onDataAChange"
-          @clear-click="onDataAChange"
-        />
-      </div>
+        <FiltroPeriodo :periodo="periodo" />
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
           <ListaConfigStatusTag :dirty="dirty" />

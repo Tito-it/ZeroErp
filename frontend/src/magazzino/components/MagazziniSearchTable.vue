@@ -34,6 +34,7 @@ import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 import { exportMagazzini } from '../api/magazzino'
 import { useMagazziniStore } from '../stores/magazzini'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const emit = defineEmits(['new', 'row-click', 'manage-ubicazioni'])
 
@@ -91,18 +92,20 @@ onMounted(() => store.fetchList())
 
     <template v-else>
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
-          <InputText
-            v-model="searchText"
-            :placeholder="t('magazzino.magazzini.search_placeholder')"
-            style="width: 260px;"
-          />
+        <FiltriLista :store="store" :inert="perimetroBloccato">
+          <template #sempre>
+            <InputText
+              v-model="searchText"
+              class="app-filter-w-lg"
+              :placeholder="t('magazzino.magazzini.search_placeholder')"
+            />
+          </template>
           <FiltroToggle
             v-model="mostraNonAttivi"
             :label="t('magazzino.anagrafiche.mostra_non_attivi')"
             @change="onMostraNonAttiviChange"
           />
-        </div>
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />

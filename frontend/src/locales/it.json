@@ -1,5 +1,9 @@
 {
   "common": {
+    "filtri": "Filtri",
+    "filtri_attivi": "Filtri attivi: {n}",
+    "filtri_default_attivi": "Filtri predefiniti attivi",
+    "pulisci_filtri": "Pulisci filtri",
     "azione_reason": {
       "senza_righe": "Il documento non ha righe: aggiungine almeno una per procedere.",
       "indirizzi_mancanti": "Mancano gli indirizzi obbligatori del documento: compilali dalla sezione Indirizzi."

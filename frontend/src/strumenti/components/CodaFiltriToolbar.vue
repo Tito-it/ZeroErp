@@ -8,17 +8,28 @@
 //        cambio emette 'change' (il tab riparte da pagina 1).
 import { useI18n } from 'vue-i18n'
 import Select from 'primevue/select'
-import DatePicker from 'primevue/datepicker'
 import SelectButton from 'primevue/selectbutton'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import FiltroPeriodo from '../../core/components/FiltroPeriodo.vue'
 import FiltroToggle from '../../core/components/FiltroToggle.vue'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
+import { parseIsoDate } from '../../core/utils/date'
 
-// Stato filtri del padre via defineModel: il figlio muta `filtri.xxx`
-// (oggetto reactive condiviso per riferimento, pattern ContattoForm), senza
-// violare no-mutating-props. Il padre lo passa con un semplice `:filtri`.
-const filtri = defineModel('filtri', { type: Object, required: true })
-
-defineProps({
+// ⛔ UN SOLO CONDOTTO VERSO LO STATO DEI FILTRI: lo store.
+//    Fino al 2026-09-23 questo componente ne aveva DUE — un `defineModel`
+//    (`filtri`) per stato/ambito/archiviate e la prop `store` per il periodo e
+//    per il segno — con un commento che *asseriva* che fossero lo stesso
+//    oggetto. Lo erano, ma per abitudine dell'unico chiamante: niente lo
+//    imponeva, e un secondo chiamante con un `:filtri` diverso avrebbe scritto
+//    il periodo nello store e tutto il resto altrove, in silenzio.
+//    ⭐ Con lo store in mano, `filtri` era derivabile: due sedi che possono
+//    divergere si tengono solo quando non se ne puo' avere una.
+const props = defineProps({
+  // Lo store-coda: da qui passano TUTTI i filtri — quelli scritti diretti
+  // (`store.filters.stato`), il periodo (`bindPeriodo`, che porta l'invariante
+  // `da <= a`) e il segno dei filtri attivi di `FiltriLista`.
+  store: { type: Object, required: true },
   statoOptions: { type: Array, required: true },
   ambitoOptions: { type: Array, required: true },
   pageActions: { type: Array, required: true },
@@ -33,56 +44,57 @@ defineProps({
   // da tastiera o screen reader, che e' quello che serve qui.
   filtriInerti: { type: Boolean, default: false },
 })
-defineEmits(['change'])
+const emit = defineEmits(['change'])
 const { t } = useI18n()
+
+// Il periodo e' UN filtro con due estremi: un binding, un componente.
+// ⛔ I FILTRI PASSANO DAI BINDER, e qui c'e' una ragione in piu' del solito:
+//    lo store arriva come PROP, e scrivere `v-model="store.filters.x"` sarebbe
+//    mutare una prop dall'interno (`vue/no-mutating-props`). Il binder chiede
+//    il cambio con una funzione, quindi la proprieta' dello stato resta dove
+//    deve stare — ed e' la stessa cosa che un `v-model` fa, detta a voce.
+const { bindSelect, bindToggle, bindPeriodo } = useStoreFilterBindings(
+  props.store, () => emit('change'),
+)
+const { value: statoFiltro, onChange: onStatoChange } = bindSelect('stato')
+const { value: ambitoFiltro, onChange: onAmbitoChange } = bindSelect('ambito')
+// `on`/`off` espliciti: lo store dichiara `false`, e `buildCodaParams` manda il
+// parametro solo quando e' acceso (`if (f.archiviate)`).
+const { value: archiviateFiltro, onChange: onArchiviateChange } = bindToggle(
+  'archiviate', { on: true, off: false },
+)
+// ⭐ La coda vuole sempre un floor su `data_da`: svuotandolo torna il default
+//    di progetto, invece di aprire l'elenco su tutto lo storico.
+const periodo = bindPeriodo('data_da', 'data_a', {
+  clearToDa: () => parseIsoDate(props.store.filtriDefault.data_da),
+})
 </script>
 
 <template>
   <div class="app-page-toolbar">
-    <div class="app-page-filters" :inert="filtriInerti">
+    <FiltriLista :store="store" :inert="filtriInerti">
       <div class="form-field">
         <label>{{ t('strumenti.code.filtro_stato') }}</label>
         <Select
-          v-model="filtri.stato"
+          v-model="statoFiltro"
           :options="statoOptions"
           option-label="label"
           option-value="value"
           show-clear
           :placeholder="t('common.all')"
-          @update:model-value="$emit('change')"
+          @update:model-value="onStatoChange"
         />
       </div>
-      <div class="form-field">
-        <label>{{ t('common.data_da') }}</label>
-        <DatePicker
-          v-model="filtri.dataDa"
-          date-format="dd/mm/yy"
-          show-icon
-          show-button-bar
-          style="width: 150px;"
-          @update:model-value="$emit('change')"
-        />
-      </div>
-      <div class="form-field">
-        <label>{{ t('common.data_a') }}</label>
-        <DatePicker
-          v-model="filtri.dataA"
-          date-format="dd/mm/yy"
-          show-icon
-          show-button-bar
-          style="width: 150px;"
-          @update:model-value="$emit('change')"
-        />
-      </div>
+      <FiltroPeriodo :periodo="periodo" />
       <div class="form-field">
         <label>{{ t('strumenti.code.filtro_ambito') }}</label>
         <SelectButton
-          v-model="filtri.ambito"
+          v-model="ambitoFiltro"
           :options="ambitoOptions"
           option-label="label"
           option-value="value"
           :allow-empty="false"
-          @update:model-value="$emit('change')"
+          @update:model-value="onAmbitoChange"
         />
       </div>
       <!-- «Mostra archiviate (N)»: BB FiltroToggle col conteggio, lo stesso
@@ -92,14 +104,14 @@ const { t } = useI18n()
            controlli dei vicini. -->
       <div class="form-field app-coda-filtri-toggle">
         <FiltroToggle
-          v-model="filtri.archiviate"
+          v-model="archiviateFiltro"
           :label="t('strumenti.code.filtro_archiviate')"
           :hint="t('strumenti.code.filtro_archiviate_hint')"
           :count="archiviateCount"
-          @change="$emit('change')"
+          @change="onArchiviateChange"
         />
       </div>
-    </div>
+    </FiltriLista>
     <PageActionsBar :actions="pageActions">
       <template #suffix>
         <!-- Slot per i badge di stato lista (es. ListaConfigStatusTag). -->

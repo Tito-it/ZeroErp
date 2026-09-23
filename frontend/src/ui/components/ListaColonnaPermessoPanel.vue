@@ -131,7 +131,6 @@ function severityForLivello(livello) {
 
     <template v-else>
       <div class="app-page-toolbar">
-        <div class="app-page-filters" />
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />

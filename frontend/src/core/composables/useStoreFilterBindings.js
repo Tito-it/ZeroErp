@@ -66,7 +66,16 @@ export function useStoreFilterBindings(store, applyFilters) {
     watch(() => store.filters[storeKey], (nuovo) => {
       value.value = parseIsoDate(nuovo)
     })
-    function onChange() {
+    // Scopo: RISOLVERE il valore (compreso il floor di `clearTo`) e scriverlo
+    //        nello store, SENZA rilanciare la fetch.
+    // ⭐ E' separata da `onChange` perche' il valore che finisce nel filtro non
+    //    e' sempre quello che il widget ha emesso: svuotando una data con un
+    //    `clearTo` il filtro diventa il FLOOR, non `null`. Chi deve decidere
+    //    qualcosa SU quel valore — `bindPeriodo`, che controlla l'invariante
+    //    `da <= a` — puo' saperlo solo dopo, e prima della fetch: con la sola
+    //    `onChange` l'unico punto in cui guardare sarebbe dopo la partenza
+    //    della richiesta, cioe' troppo tardi per evitarne una seconda.
+    function applica() {
       if (!value.value && clearTo) {
         const fallback = clearTo()
         value.value = fallback
@@ -74,9 +83,12 @@ export function useStoreFilterBindings(store, applyFilters) {
       } else {
         store.filters[storeKey] = value.value ? toDateString(value.value) : null
       }
+    }
+    function onChange() {
+      applica()
       applyFilters()
     }
-    return { value, onChange }
+    return { value, onChange, applica }
   }
 
   // Filtro INTERRUTTORE (`FiltroToggle`): il widget e' un booleano, lo store
@@ -105,6 +117,110 @@ export function useStoreFilterBindings(store, applyFilters) {
       applyFilters()
     }
     return { value, onChange }
+  }
+
+  // ⭐ IL PERIODO — `data_da`/`data_a` NON sono due filtri: sono UN filtro con
+  // due estremi (ok Tid, 2026-09-22, voce A5 del brief dei filtri compatti).
+  // Ne discende la coppia di binding in una chiamata sola, e il building block
+  // `<FiltroPeriodo :periodo="periodo" />` che la rende come una cosa unica.
+  //
+  // ⛔ NON e' zucchero su due `bindDate`. Prima di questo, la coppia era
+  //    riscritta in DICIOTTO liste, e il cablaggio degli eventi era
+  //    DIVERGENTE: `@date-select` + `@clear-click` in quasi tutte,
+  //    `@update:modelValue` nei contratti. I due non sono equivalenti — col
+  //    primo una data DIGITATA a mano nella casella non applica il filtro:
+  //    l'operatore vede la data che ha scritto e una lista che non l'ha
+  //    ricevuta, senza nessun errore. Il BB tiene il verso giusto in un posto
+  //    solo (`feedback_bb_legge_non_trasporta`: un BB unifica la lettura, e i
+  //    punti che traducevano diversamente si cercano uno per uno).
+  //
+  // ⚠️ Internamente sono due `bindDate`, non una copia della loro logica: il
+  //    parse locale-safe, la serializzazione ISO, il sync store→ref e il
+  //    `clearTo` restano dove erano. `clearToDa`/`clearToA` esistono perche'
+  //    una lista puo' volere il FLOOR su un solo estremo (i contratti: il
+  //    default temporale si ripristina svuotando `data_da`, e `data_a` resta
+  //    libera).
+  //
+  // ⭐ E RITORNA DUE SETTER, non i ref nudi coi loro handler, ed e' una
+  //    correzione dell'API fatta dal lint (`vue/no-mutating-props`): il
+  //    componente che rende il periodo riceve la coppia come PROP, e scrivere
+  //    dentro un ref che sta in una prop e' scrivere in casa d'altri —
+  //    funziona, e nasconde chi possiede lo stato. Con `setDa`/`setA` la
+  //    proprieta' resta qui: il componente LEGGE `da.value` e CHIEDE il
+  //    cambio, che e' la stessa cosa che fa un `v-model` ma detta a voce.
+  function bindPeriodo(keyDa = 'data_da', keyA = 'data_a', { clearToDa = null, clearToA = null } = {}) {
+    const estremoDa = bindDate(keyDa, { clearTo: clearToDa })
+    const estremoA = bindDate(keyA, { clearTo: clearToA })
+
+    // ⛔ UN INTERVALLO INVERTITO NON E' UN PERIODO (decisione di Tid,
+    //    2026-09-22: «non puo' essere da > a»). E' una regola sul modello, non
+    //    una validazione di comodo: `da > a` descrive un insieme vuoto, e una
+    //    lista che torna vuota per questo non lo dice a nessuno — l'operatore
+    //    legge «non ci sono documenti» invece di «hai chiesto un intervallo che
+    //    non esiste».
+    //
+    // ⭐ IL MECCANISMO: **l'estremo che si tocca vince, l'altro si apre.** Chi
+    //    sposta `da` oltre `a` sta dicendo dove comincia la finestra; il vecchio
+    //    `a` non descrive piu' niente, quindi si SVUOTA — e un estremo vuoto e'
+    //    «aperto da quella parte», che e' un periodo legittimo.
+    // ⛔ NON si blocca con `min-date`/`max-date` incrociati: e' la trappola
+    //    provata e buttata lo stesso giorno — legando un estremo all'altro,
+    //    spostare la finestra in AVANTI diventa impossibile finche' non si tocca
+    //    prima l'altra data.
+    // ⛔ E NON si SCAMBIANO i due: lo scambio inventa un periodo che nessuno ha
+    //    chiesto, e lo fa in silenzio. Svuotare invece si VEDE — il campo
+    //    accanto si spegne davanti all'operatore, ed e' il suo avviso.
+    // ⚠️ La correzione porta l'altro estremo a `null`, MAI al suo `clearTo`: il
+    //    floor e' la risposta al gesto «svuoto io», e qui il gesto e' un altro.
+    //    Per giunta un floor puo' essere a sua volta invertito rispetto alla
+    //    data appena scelta, e si tornerebbe al punto di partenza.
+    // ⚠️ Il confronto e' sulle stringhe ISO (`YYYY-MM-DD`, ordinabili come
+    //    testo), non sui `Date`: i due estremi viaggiano cosi' verso il backend,
+    //    e confrontare gli oggetti significherebbe portarsi dentro l'ora e il
+    //    fuso per una domanda che parla di giorni.
+    // ⭐ Simmetrico nei due versi per costruzione (`feedback_normalize_guard_simmetrico`):
+    //    la stessa funzione serve i due estremi, scambiando i ruoli.
+    function invertito(nuovo, altro, nuovoEPrimo) {
+      if (!nuovo || !altro) return false
+      const a = toDateString(nuovo)
+      const b = toDateString(altro)
+      return nuovoEPrimo ? a > b : a < b
+    }
+
+    // Scopo: scrive l'estremo toccato e, se l'altro e' diventato impossibile, lo
+    //        svuota — nello stesso giro, quindi UNA sola fetch.
+    //
+    // ⛔ L'INVARIANTE SI CONTROLLA SUL VALORE RISOLTO, NON SU QUELLO EMESSO dal
+    //    widget, ed e' la correzione del 2026-09-22: guardando `v` il guard
+    //    saltava tutto il ramo del `clearTo`. Chi SVUOTA un estremo che ha un
+    //    floor (i contratti: `clearToDa`) emette `null` — e `null` non puo'
+    //    invertire niente, quindi il guard concludeva «a posto» — ma il filtro
+    //    che finisce nello store e' il FLOOR, che puo' benissimo cadere DOPO
+    //    l'altro estremo. Risultato: `da > a` sopravviveva proprio dove il
+    //    `clearTo` esiste, cioe' nell'unica lista per cui l'opzione e' nata, e
+    //    senza nessun errore. ⭐ E' il difetto che `feedback_contratto_dichiarato_provalo_intero`
+    //    descrive: un ramo che il contratto dichiara ammesso va provato per
+    //    intero, non solo nel verso che si aveva in mente scrivendolo.
+    //
+    // ⚠️ L'altro estremo si azzera scrivendo ref E store QUI, senza passare dal
+    //    suo `onChange`: quello rifarebbe la fetch, e la prima partirebbe con
+    //    l'intervallo ancora invertito — una lista vuota che lampeggia e poi si
+    //    riempie e' il modo in cui un'interfaccia sembra rotta mentre funziona.
+    //    Per la stessa ragione la fetch parte UNA VOLTA SOLA, in fondo: qui si
+    //    usa `applica()` (scrive e basta) e non `onChange()` (scrive e rilancia).
+    function scrivi(estremo, altro, chiaveAltro, v, estremoEPrimo) {
+      estremo.value.value = v
+      estremo.applica()
+      if (invertito(estremo.value.value, altro.value.value, estremoEPrimo)) {
+        altro.value.value = null
+        store.filters[chiaveAltro] = null
+      }
+      applyFilters()
+    }
+
+    const setDa = (v) => scrivi(estremoDa, estremoA, keyA, v, true)
+    const setA = (v) => scrivi(estremoA, estremoDa, keyDa, v, false)
+    return { da: estremoDa.value, a: estremoA.value, setDa, setA }
   }
 
   // Filtro LOOKUP RICCO (`ArticoloLookup`, `BillingAccountLookup`…): il
@@ -157,5 +273,5 @@ export function useStoreFilterBindings(store, applyFilters) {
     return { value, onChange }
   }
 
-  return { bindSelect, bindDate, bindToggle, bindLookup }
+  return { bindSelect, bindDate, bindPeriodo, bindToggle, bindLookup }
 }

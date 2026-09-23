@@ -27,8 +27,8 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
-
-
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import { useContrattoFiltriLocali } from '../../core/composables/useContrattoFiltriLocali'
 
 const { t } = useI18n()
 const store = useContrattiStore()
@@ -52,6 +52,21 @@ const emit = defineEmits(['update:visible'])
 const items = ref([])
 const loading = ref(false)
 const statoFilter = ref(null)
+
+// ⛔ `:segno` E NON `:store`, ed e' la correzione del 2026-09-23. Questo drawer
+//    NON rende la lista dello store contratti: le sue righe stanno in `items`
+//    (locali) e il filtro di stato e' client-side, su `filteredItems`. Passare
+//    `:store="store"` faceva due cose sbagliate insieme, e nessuna delle due
+//    dava errore: il segno contava i filtri della LISTA CONTRATTI (utility,
+//    tipologia, attivo, periodo — cioe' un'altra schermata), e «Pulisci
+//    filtri» azzerava QUEI filtri e rilanciava QUELLA fetch, lasciando intatta
+//    la tendina che l'operatore stava guardando.
+const {
+  segno: segnoFiltriContratti,
+  azzeraFiltri: pulisciFiltriContratti,
+} = useContrattoFiltriLocali({
+  stato_doc_contratto_id: { rif: statoFilter, default: null },
+})
 
 const filteredItems = computed(() => {
   if (!statoFilter.value) return items.value
@@ -205,14 +220,15 @@ const onClose = useDrawerClose(emit)
       </div>
 
       <div class="app-page-toolbar">
-        <div class="app-page-filters">
+        <FiltriLista :segno="segnoFiltriContratti" @pulisci="pulisciFiltriContratti">
           <LookupSelect
             v-model="statoFilter"
+            class="app-filter-w-md"
             rel="config.stati_doc_contratti"
             :placeholder="t('vendite.contratti.filtro_stato')"
             show-clear
           />
-        </div>
+        </FiltriLista>
         <PageActionsBar :actions="pageActions" />
       </div>
 

@@ -42,6 +42,8 @@
 //    `ricercaCorta`, `orderDirDefault`, `paramNames`. Nessuna e' un'invenzione:
 //    ognuna e' una divergenza che esisteva gia' in almeno due copie.
 import { ref } from 'vue'
+import { useContrattoFiltriLista } from './useContrattoFiltriLista'
+import { clonaFiltri } from '../utils/clonaFiltri'
 import { useListaEmptyStateFetch } from './useListaEmptyStateFetch'
 import { PAGINATION } from '../constants'
 import { paramsOrdinamento } from '../utils/listParams'
@@ -126,13 +128,19 @@ export function useListaStoreCore({
 
   // Scopo: i filtri di partenza — una funzione e non un letterale perche' li
   //        scrive sia la nascita sia `reset()`, e due letterali divergono.
+  // ⛔ `clonaFiltri` e non uno spread, ed e' la stessa ragione che sta su
+  //    `useContrattoFiltriLista`: con un default ad ARRAY lo spread mette nei
+  //    filtri vivi LO STESSO array del letterale dello store, e il primo widget
+  //    che ci scrive dentro (`push`) muta il default — da li' in poi il segno
+  //    legge «sempre al default» su una lista ristretta a mano, senza nessun
+  //    errore. Il perche' per intero sta su `core/utils/clonaFiltri`.
   function filtriDiPartenza() {
     return {
       // ⚠️ `search` c'e' SEMPRE, anche sulle liste che non cercano: fa parte del
       //    contratto di `useSearchTable`, che la scrive sul deep-link `?search=`.
       //    Dichiararla e' meglio che farla nascere per assegnazione.
       search: '',
-      ...filterDefaults,
+      ...clonaFiltri(filterDefaults),
       limit,
       offset: 0,
       order_by: orderBy,
@@ -141,6 +149,27 @@ export function useListaStoreCore({
   }
 
   const filters = ref(filtriDiPartenza())
+
+  // ⭐ CHI SONO I FILTRI DI QUESTA LISTA, e quali valori hanno per nascita. Le
+  //    due cose esistevano gia' qui dentro e non uscivano: le legge il segno
+  //    dei filtri attivi di `FiltriLista` (`segnoFiltri`, D4 di Tid
+  //    2026-09-22), che senza di esse dovrebbe indovinarle — e indovinare
+  //    vuol dire contare `limit`/`offset`/l'ordinamento come se fossero
+  //    filtri, oppure tenere nel frontend un secondo elenco che diverge al
+  //    primo filtro aggiunto.
+  // ⛔ `search` NON c'e', ed e' una decisione (D2): la ricerca non e' un
+  //    filtro — e' il gesto principale della lista, e gli altri la
+  //    restringono. Resta sempre a video anche in modalita' compatta.
+  // ⭐ LE TRE RIGHE SONO USCITE DI QUI IL 2026-09-23 (regola del 2, ok Tid):
+  //    quattordici liste hanno lo store scritto a mano e devono poter offrire
+  //    lo STESSO contratto senza cedere il proprio `buildParams`. Il core lo
+  //    CONSUMA, non lo ricopia — una seconda copia di «chi sono i filtri»
+  //    diverge al primo filtro aggiunto da una parte sola.
+  // ⚠️ `fetchList` e' una dichiarazione di funzione (issata), quindi qui e' gia'
+  //    definita anche se compare piu' sotto.
+  const { chiaviFiltro, filtriDefault, azzeraFiltri } = useContrattoFiltriLista({
+    filters, filterDefaults, fetchList,
+  })
 
   // Scopo: i parametri che decidono QUALI righe — ricerca, filtri di dominio,
   //        ordinamento — senza la paginazione. E' la sede unica per la fetch
@@ -235,6 +264,9 @@ export function useListaStoreCore({
     erroreCaricamento,
     fetchList, svuota, reset,
     paramsFiltro,
+    // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
+    // nascita, e come si riportano li'.
+    chiaviFiltro, filtriDefault, azzeraFiltri,
   }
   // ⭐ Il padre si espone COL SUO NOME (`soggettoId`, `fatturaId`), non come
   //    `parentId`: e' il nome che il caller scrive in `parentField` di

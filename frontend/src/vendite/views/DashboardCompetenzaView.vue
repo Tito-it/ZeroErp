@@ -2013,7 +2013,7 @@ onActivated(() => {
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-toolbar-start">
         <h2 style="margin: 0;">
           {{ t('vendite.dashboard_competenza.page_title', { mese: meseTitolo, anno }) }}
         </h2>

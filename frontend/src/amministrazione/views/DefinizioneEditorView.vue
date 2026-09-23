@@ -254,7 +254,7 @@ watch(defId, loadDettaglio)
 <template>
   <div class="app-page definizione-editor">
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-toolbar-start">
         <Button
           :label="t('amministrazione.definizioni_workflow.ed_torna_lista')"
           :icon="MANAGE_ICONS.BACK"

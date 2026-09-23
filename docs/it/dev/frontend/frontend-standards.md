@@ -297,11 +297,357 @@ Se il numero **sale** dopo il tuo lavoro, hai aggiunto una lista fuori standard.
 - **Azioni pagina/lista**: building block `PageActionsBar` — refresh, nuovo e azioni utility/secondarie con comportamento responsive unico
 - **Click riga** → apre drawer in edit (modifica = interazione principale)
 - **Colonna azioni** riservata alle **azioni secondarie** (apri sub-drawer, disattiva, ecc.) — mai mettere la modifica tra le azioni: e' il click riga. Vedi sotto "Colonna azioni di riga".
-- **Filtri** sopra la tabella nella toolbar, flex-wrap per responsive
+- **Filtri** sopra la tabella nella toolbar, dentro `<FiltriLista>` (vedi
+  §«Filtri della lista» qui sotto): in linea su desktop, in un drawer dal basso
+  in modalità compatta. Flex-wrap per il responsive della riga in linea
 - **Ricerca** con debounce 400ms (gestito da `useSearchTable`)
 - **DataTable** sempre con: `lazy`, `removable-sort`, `striped-rows`, `scrollable`, `scrollHeight="flex"`
 - **Scroll orizzontale** gestito globalmente da `.app-datatable` — non impostare `table-style="min-width: ..."` nelle singole liste salvo eccezioni documentate. Le soglie per 8/10/12 colonne partono dal root `.app-datatable`, così restano valide anche quando PrimeVue ricalcola il container scrollable dopo il caricamento dei record.
 - **Liste annidate** dentro drawer, expansion row o sub-pannelli devono aggiungere `app-datatable--inner` oltre a `app-datatable`: restano compatte e sono escluse dalle soglie larghezza delle liste principali. Esempio: righe preventivo e pannello componenti BoM.
+
+### Filtri della lista — `FiltriLista` (drawer dal basso in modalità compatta)
+
+> ✅ **Adozione COMPLETA dal 2026-09-23** (lotti L2 e L3 chiusi): nessuna view
+> scrive più `app-page-filters` a mano, nessuna coppia di date è scritta a mano,
+> nessuna larghezza di filtro sta in un tag. I tre registri di
+> `npm run guard:filtri` sono a **zero** e da qui in avanti dicono una cosa
+> sola: *una lista nuova fuori standard li fa risalire*.
+> Decisioni e cronaca: [brief-fe-filtri-lista-su-schermo-compatto.md](../work-in-progress/brief-fe-filtri-lista-su-schermo-compatto.md).
+
+**La regola**: un filtro è **stato della lista**, non decorazione della view.
+Ne discende che *dove* i filtri si rendono — e il segno che sono attivi —
+appartengono al building block della lista, come il paginator, il ritiro delle
+colonne e le azioni di testata.
+
+```vue
+<FiltriLista :store="store" :inert="perimetroBloccato">
+  <template #sempre>
+    <InputText v-model="searchText" :placeholder="…" />
+  </template>
+  <LookupSelect … @change="onStatoChange" />
+  <FiltroPeriodo :periodo="periodo" />
+</FiltriLista>
+```
+
+⚠️ L'esempio **non** mostra due `<DatePicker>` con `@date-select`: quel
+cablaggio è il difetto che `<FiltroPeriodo>` esiste per togliere (§«Il periodo è
+UN filtro»).
+
+| Modalità | Resa |
+| --- | --- |
+| Desktop | `#sempre` + slot di default in linea, dentro `app-page-filters` |
+| Compatta (`< 1024px` **o** touch senza hover) | `#sempre` in linea + **icona filtro col segno**; al click lo **stesso** slot dentro un `Drawer position="bottom"`, su una griglia di **al massimo due filtri per riga** (§sotto), «Pulisci filtri» in fondo |
+
+**La ricerca non è un filtro** e resta **sempre** a video (slot `#sempre`): è il
+gesto principale di una lista, gli altri filtri la restringono.
+
+**I filtri si applicano subito**, a ogni cambio, anche col drawer aperto:
+`useStoreFilterBindings` scrive diretto sullo store, che è la sede del filtro.
+
+#### ⛔ Un filtro si lega con un **binder**, mai con un `ref` che spinge e basta
+
+```js
+// ⛔ NO — spinge nello store e non torna indietro
+const attivoFilter = ref(true)
+function onAttivoChange() { store.filters.attivo = attivoFilter.value; applyFilters() }
+
+// ✅ SÌ — `bindSelect` porta con sé il `watch` store → widget
+const { bindSelect } = useStoreFilterBindings(store, applyFilters)
+const { value: attivoFilter, onChange: onAttivoChange } = bindSelect('attivo')
+```
+
+**Perché è una regola e non uno stile**: dal 2026-09-22 i filtri si possono
+cambiare **da fuori** il widget — «Pulisci filtri» del drawer compatto
+(`azzeraFiltri`), un deep-link `?search=` che azzera i default data, un reset.
+Un `ref` a senso unico resta a mostrare il valore di prima su una lista che non
+ce l'ha più: *la casella dice una cosa e l'elenco ne dice un'altra*, e
+**nessuno fallisce**. ⚠️ Si vede solo **sotto i 1024px**, perché è lì che vive
+il pulsante che pulisce.
+
+🔴 **Non era teorico: erano 49 filtri in 23 file**, sanati il 2026-09-23. E la
+forma del difetto si vedeva dentro un file solo — `PraticheSearchTable` aveva
+il `watch` scritto a mano per **uno** dei quattro filtri e non per gli altri
+tre: non una policy, una dimenticanza. Presidio: il controllo 2-bis di
+`npm run guard:filtri` verifica che dietro un `:store` ci sia davvero il
+contratto; per il verso store → widget la difesa è questa regola.
+
+⭐ **Dove un binder non arriva, ci arriva un `computed` sullo store** — che è la
+stessa cosa detta meglio, perché lo stato non si copia affatto:
+`scadenza_mese` dei contratti (lo store tiene `YYYY-MM`, il widget una `Date`:
+è un punto che *traduce*) e i tre criteri di `RatePickerDialog`. ⛔ Ciò che non
+va bene è la **terza** forma: un `ref` che scrive nello store e non lo rilegge.
+⛔ Nessun pulsante «Applica»: vorrebbe una copia temporanea dei filtri accanto a
+quella vera, e quella copia diverge alla prima cosa che la tocca da fuori (un
+deep-link `?search=`, un `reset()`, un cambio di emittente).
+
+#### Il segno dei filtri attivi — tre stati
+
+| Stato dei filtri | Segno |
+| --- | --- |
+| Nessun filtro con valore | niente |
+| Filtri con valore, **tutti** al loro default | **pallino discreto** |
+| Almeno un filtro diverso dal default | **numero** = quanti filtri limitano la lista, **default compresi** |
+
+⭐ **Perché i default contano**: `data_da` a «oggi-60gg al primo del mese»
+restringe esattamente come un filtro scelto a mano — che nessuno l'abbia
+digitato non lo rende meno vero. Nel momento in cui i filtri non sono più
+sempre a video, una lista ristretta e una lista vuota si assomigliano, e
+l'operatore attribuisce il buco al sistema («il documento non c'è»).
+⚠️ Il pallino esiste perché un segno **sempre** acceso smette di essere un
+segno: distingue «ristretta come nasce» da «ristretta da te».
+
+⛔ **Il pallino non copre i default risolti a RUNTIME, ed è deciso** (D9, Tid
+2026-09-22). I default sono il letterale `filterDefaults` dello store, cioè la
+fotografia scattata alla *nascita* della lista: un default che arriva dopo il
+mount — `UtilityPerRuoloSelect apply-default` — lì non c'è, quindi si vede il
+**numero** e non il pallino. **La regola è una sola: si contano sempre i filtri,
+default compresi.** L'eccezione non starebbe in piedi da sola — il caso gemello
+(l'operatore che *svuota* un filtro di default) vorrebbe la regola opposta, e il
+conteggio risponderebbe a due domande diverse a seconda di come il valore ci è
+arrivato. Il numero resta vero comunque: dice quante cose stanno restringendo
+l'elenco.
+
+⛔ **Il conteggio non si calcola nelle view.** Nasce in `useListaStoreCore`, che
+già conosce l'elenco dei filtri di quella lista (`filterDefaults`) e i loro
+valori di partenza (`filtriDiPartenza()`), e passa da una funzione pura con il
+suo `.spec.js`. Una lista che «dimentica» di contare direbbe *«nessun filtro»
+mentre filtra*, senza nessun errore.
+
+#### Nel drawer: al massimo DUE filtri per riga
+
+```
+┌──────────────────────── Filtri ────────────────────────┐
+│ [ Servizi                                     ▼ ]      │  ← combo: riga intera
+│ [ Data da   📅 ]  [ Data a   📅 ]                       │  ← il periodo: sempre in coppia
+│ [ ◉ Mostra non attivi                          ]       │  ← interruttore: riga intera
+│ Pulisci filtri                                         │
+└────────────────────────────────────────────────────────┘
+        ↑ drawer ≥ 27rem: anche le combo si affiancano, due per riga
+```
+
+**Regola (Tid, 2026-09-22): su una riga non stanno più di due elementi.** Tre
+filtri in fila su un telefono sono tre filtri illeggibili, e un tablet non è una
+ragione per cambiare la forma della maschera. La griglia ha **due colonne,
+sempre**.
+
+**Il periodo sta su una riga sola, e non per via del layout.** `data_da`/`data_a`
+**non sono due filtri**, sono *un* filtro con due estremi: si montano con il
+building block del periodo (§sotto), che è **una** cella della griglia e si
+divide in due. Spezzarli su due righe rompe la cosa che l'operatore legge come
+una.
+
+**Tutto il resto prende la riga intera finché due non ci stanno LEGGIBILI.** La
+soglia è una `@container` (min-width 27rem = 2 × `--app-filtro-min-combo` + gap),
+non una `@media`: dipende dalla larghezza del **drawer**, non della finestra.
+⛔ L'interruttore (`FiltroToggle`) prende la riga intera **anche** sopra la
+soglia: la sua etichetta sta fuori dal controllo e non sa degradare in ellissi.
+⭐ Il filtro che a mezza riga non si legge nemmeno lì ha una leva dichiarata,
+`class="app-filtro-largo"`, valida solo dentro il drawer. ⚠️ È una leva, non un
+default: se la mettessero tutti, la griglia tornerebbe una pila.
+
+#### Il periodo è UN filtro — `bindPeriodo` + `<FiltroPeriodo>`
+
+```vue
+<script setup>
+const { bindPeriodo } = useStoreFilterBindings(store, applyFilters)
+const periodo = bindPeriodo()                                  // 'data_da' / 'data_a'
+// con un floor su un solo estremo (contratti):
+// const periodo = bindPeriodo('data_da', 'data_a', { clearToDa: defaultFiltroDataDa })
+</script>
+
+<FiltroPeriodo :periodo="periodo" />
+```
+
+⛔ **Due `<DatePicker>` scritti a mano nei filtri sono fuori standard** e li
+conta `npm run guard:filtri` (registro che può solo calare: 17 file al
+2026-09-22). Un DatePicker **solo** resta legittimo: è un filtro a sé («scadenza
+mese» dei contratti), non un periodo.
+
+⭐ **La ragione meno visibile per cui il BB esiste è il verso degli eventi.**
+Nelle diciotto liste che scrivevano la coppia a mano il cablaggio era
+**divergente**: `@date-select` + `@clear-click` in quasi tutte,
+`@update:modelValue` nei contratti. Non sono equivalenti — col primo una data
+**digitata** nella casella non applica il filtro: l'operatore vede la data che
+ha scritto e una lista che non l'ha ricevuta, senza nessun errore. Il BB usa
+`@update:model-value`, che copre calendario, digitazione e svuotamento.
+
+⚠️ **`bindPeriodo` espone `setDa`/`setA`, non i ref nudi**: il componente legge
+`periodo.da.value` e *chiede* il cambio. Un `v-model` su un ref che arriva in
+una prop scrive in casa d'altri — funziona e nasconde chi possiede lo stato
+(lo respinge `vue/no-mutating-props`).
+#### ⛔ Un intervallo invertito non è un periodo
+
+> **`da > a` non può esistere** (Tid, 2026-09-22). Non è una validazione di
+> comodo: `da > a` descrive un insieme vuoto, e una lista che torna vuota per
+> questo **non lo dice a nessuno** — l'operatore legge «non ci sono documenti»
+> invece di «hai chiesto un intervallo che non esiste».
+
+**Il meccanismo: l'estremo che tocchi vince, l'altro si apre.** Chi sposta `da`
+oltre `a` sta dicendo dove comincia la finestra; il vecchio `a` non descrive più
+niente, quindi **si svuota** — e un estremo vuoto è «aperto da quella parte»,
+che è un periodo legittimo. Simmetrico nei due versi
+(`feedback_normalize_guard_simmetrico`), e in **una sola fetch**.
+
+| Strada | Perché no |
+| --- | --- |
+| `min-date`/`max-date` incrociati | trappola d'uso: legando un estremo all'altro, spostare la finestra *in avanti* diventa impossibile finché non tocchi prima l'altra data |
+| scambiare i due estremi | inventa un periodo che nessuno ha chiesto, e in silenzio |
+| rifiutare con un avviso | un filtro non è un form: blocca un gesto che ha una lettura ovvia |
+
+⚠️ La correzione porta l'altro estremo a `null`, **mai al suo `clearTo`**: il
+floor è la risposta al gesto «svuoto io», e qui il gesto è un altro — per
+giunta un floor può essere a sua volta invertito rispetto alla data appena
+scelta, e si tornerebbe al punto di partenza.
+⚠️ **Il guard vive in `bindPeriodo`**: le liste che scrivono ancora la coppia a
+mano non ce l'hanno. È il debito che il quinto controllo di
+`npm run guard:filtri` porta a zero.
+Presidio: `useStoreFilterBindings.spec.js` (8 casi; senza la correzione, 4 vanno
+rossi).
+
+#### Quanto si può stringere una combo con le descrizioni
+
+> **Il minimo riguarda la lettura di ciò che è GIÀ scelto, non la scelta.**
+
+È la domanda che sembra senza risposta («quanto stretta può stare una combo che
+mostra descrizioni?») e ne ha una precisa, che sta nel comportamento di PrimeVue:
+
+* il **pannello** delle opzioni riceve `min-width` = larghezza del trigger
+  (`alignOverlay`), e le opzioni hanno `white-space: nowrap` ⇒ **il pannello
+  cresce col contenuto**: un trigger stretto non taglia le descrizioni, e la
+  scelta si legge per intero;
+* il **valore selezionato** degrada in **ellissi** (`.p-select-label` ce l'ha
+  nel tema) ⇒ stringere non rompe niente, rende solo meno riconoscibile ciò che
+  è attivo.
+
+⇒ Il pavimento è quindi una soglia di **riconoscibilità**, e si dichiara una
+volta: `--app-filtro-unita: 8rem` ≈ 13 caratteri al font della toolbar — cioè
+`31/12/2026` intero più l'icona, e per una combo il punto in cui
+«Energia el…» si legge ancora e «Ene…» no.
+⚠️ **Il limite dichiarato**: una selezione troncata non si può rileggere senza
+riaprire il pannello (PrimeVue non mette il testo intero nel `title`, come fa
+invece `.app-lista-cella` per le celle). Su touch non c'è comunque hover; per il
+desktop è una decisione aperta nel brief.
+
+#### Come si verifica
+
+```bash
+cd frontend && npm run guard:filtri
+```
+
+**Sette** controlli, e due nature diverse: i file che scrivono i filtri a mano,
+le larghezze inline e le **coppie di date scritte a mano** sono **cricchetti**
+(rossi se crescono **e** se calano senza riscrivere il registro con
+`--baseline`); «ogni `<FiltriLista>` ha `:store` o `:segno`», «dietro quel
+`:store` c'è davvero il contratto» (2-bis), «la ricerca sta in `#sempre`» e
+«`app-page-toolbar-start` non contiene filtri» sono **cancelli a zero**.
+
+⭐ **Il 2-bis esiste perché il 2 non basta** (2026-09-23): quello guarda che
+l'attributo sia *scritto*, non che dietro ci sia qualcosa — uno store a mano
+senza `useContrattoFiltriLista` lo supera e lascia il segno spento identico. Il
+componente lo grida in console, ma una console la guarda chi apre quella lista,
+non la CI.
+⚠️ **E il buco che resta è dichiarato**: quando il `:store` non si risolve a una
+sorgente leggibile (lo store arriva come **prop**: `DrawerTabLista`,
+`GeoSearchTable`, `CodaFiltriToolbar`) il file finisce fra i «non verificabili»
+e viene **stampato**. Un cancello che tace su ciò che non sa guardare fa credere
+di averlo guardato.
+
+⭐ **Il cancello guarda anche i tab-lista di drawer** (`<DrawerTabLista>`, che
+gira i propri slot a `FiltriLista`): i nomi là sono `#filtri-sempre` e
+`#filtri`, e senza questa riga tredici liste — quelle dentro un drawer, cioè le
+più difficili da guardare a video — sarebbero fuori dal presidio.
+⚠️ **E legge la sola sezione `<template>`**, perché le intestazioni di questi
+componenti *nominano* i tag di cui parlano: leggendo il file intero, un
+`<DrawerTabLista>` scritto in un commento diventava un tag senza attributi —
+quindi «senza `:store`» — e la ricerca della chiusura inghiottiva mezzo file.
+⭐ I due cancelli guardano proprio ciò che **da desktop non si vede**: là i due
+slot si rendono uno accanto all'altro e il segno non serve a niente — il difetto
+compare solo sotto i 1024px, dove nessuno sta guardando mentre scrive il codice.
+Gira in CI dentro `npm run guards`.
+
+#### La zona sinistra della toolbar che filtri NON porta — `app-page-toolbar-start`
+
+Una toolbar di lista ha due zone: a sinistra i filtri, a destra le azioni.
+Quando a sinistra non ci sono filtri — il **titolo** di una pagina, un pulsante
+«torna alla lista» — la classe è `app-page-toolbar-start`, **non**
+`app-page-filters`.
+
+⛔ **Non è un alias di comodo, ed è presidiato**: `app-page-filters` significa
+«gruppo filtri», e il registro di `npm run guard:filtri` la conta come debito da
+portare in `<FiltriLista>`. Nove blocchi la usavano per un `<h2>`; avvolgerli nel
+building block avrebbe mandato il titolo della pagina dentro il drawer dal basso,
+dietro un'icona a forma di imbuto. ⚠️ Il verso opposto è un **cancello a zero**:
+un filtro messo in `app-page-toolbar-start` non scende nel drawer e non conta nel
+segno, e **da desktop la resa è identica** — il controllo guarda il contenuto,
+non il nome.
+
+⭐ E una toolbar **senza** zona sinistra non ha bisogno di niente: le azioni
+restano a destra per regola di foglio
+(`.app-page-toolbar > .app-page-actions:first-child`). Fino al 2026-09-23 lo
+faceva uno spaziatore scritto nel markup — `<div class="app-page-filters" />`,
+tredici volte — cioè un gruppo filtri senza filtri: *la spaziatura è del foglio,
+non del markup.*
+
+#### Una lista dentro un drawer — gli slot di `DrawerTabLista`
+
+Un tab-lista di drawer non scrive `<FiltriLista>`: lo monta il contenitore, e il
+caller riempie **due** slot, che sono i due del building block.
+
+```vue
+<DrawerTabLista :store="store" codice="magazzino.ubicazioni" …>
+  <template #filtri-sempre>              <!-- la ricerca: sempre a video -->
+    <InputText v-model="searchText" class="app-filter-w-lg" … />
+  </template>
+  <template #filtri>                     <!-- gli altri: nel drawer in compatta -->
+    <FiltroToggle v-model="mostraNonAttive" … />
+  </template>
+</DrawerTabLista>
+```
+
+⚠️ **`:store` serve anche qui**: è da lì che arriva il segno dei filtri attivi.
+⛔ E i due slot si dichiarano **condizionati** (`<template v-if="…" #filtri>`),
+non condizionando il widget dentro: uno slot che esiste e rende il vuoto accende
+comunque l'icona a imbuto su un drawer senza niente dentro.
+
+#### Le larghezze dei filtri stanno in una classe, non nel tag
+
+```vue
+<DatePicker class="app-filter-w-sm" />   <!-- ✅ -->
+<DatePicker style="width: 150px;" />     <!-- ⛔ -->
+```
+
+Tre taglie, dichiarate in `theme.css` come multipli dell'unità del filtro:
+`app-filter-w-sm` (10rem: date, stati, codici brevi), `app-filter-w-md` (13rem:
+combo con descrizioni), `app-filter-w-lg` (16rem: ricerca, lookup ricchi).
+🔵 Valgono per la toolbar **in linea**; nel drawer la larghezza la decide la
+griglia (§sotto). ✅ Al 2026-09-23 **nessun tag porta più un numero**, e
+`npm run guard:filtri` tiene il registro a zero — in `px` come in `rem`, e
+anche sull'`input-style` di un `InputNumber`: l'unità non cambia il difetto, e
+un criterio che ne guarda una sola è cieco sull'altra.
+
+**Come si sceglie la taglia** (§A1 del brief, decisa convertendo le settanta
+liste): `lg` alla **ricerca** e ai **lookup ricchi** (articolo, billing account,
+comune); `md` alle **combo con descrizioni** che vengono da un catalogo
+(`LookupSelect` su un `rel`, `UtilityPerRuoloSelect`); `sm` alle **date**, agli
+**stati** e alle liste di opzioni **scritte in pagina** (`attivo`, `sì/no`,
+`super admin`), che portano etichette corte.
+
+Una larghezza scritta nel tag **vince su qualunque foglio di stile**: nel drawer
+dal basso, dove ogni filtro deve occupare la riga intera, resta quella. Non dà
+nessun errore — si vede solo guardando il telefono.
+⭐ Vale anche su desktop: al 2026-09-22 i filtri portavano **118** larghezze
+inline con **16 valori distinti** (150px ×40, 160px ×14, 120px ×10, 200px, 220px,
+260px…), cioè lo stesso filtro largo in modo diverso da una schermata all'altra.
+Non era una scelta: era una sedimentazione — e con le tre taglie è finita.
+
+⭐ **Un involucro non spegne le regole del drawer** (corretto il 2026-09-23): le
+regole della griglia — la taglia che si annulla, l'interruttore e il periodo che
+prendono la riga intera — parlano del **filtro**, non della forma del markup che
+lo avvolge. Erano scritte come figli **diretti** (`>`), quindi un filtro dentro
+un `<div class="form-field">` con la sua etichetta — markup legittimo, e nel
+repo ce n'è — le perdeva in silenzio: la taglia sopravviveva dentro la cella e
+l'interruttore restava a mezza riga. Ora sono descendant + `:has()`.
+⚠️ Si vedeva **solo sotto i 1024px**.
 
 ### Ritiro dinamico colonne — `useResponsiveColumns` (responsive, ResizeObserver)
 
@@ -709,13 +1055,25 @@ lavoro), la variante e' `defaultFiltroDataDa()`. Le due condividono la formula:
 cambiare i 60 giorni e' una riga in `core/utils/date`
 (`LISTE_FILTRO_DATA_GIORNI`).
 
-**Implementazione nella SearchTable:**
+**Implementazione nella SearchTable** — ⛔ **non due `<DatePicker>`**: il
+periodo è UN filtro con due estremi, e si monta col suo building block (§«Il
+periodo è UN filtro»).
 
-```html
-<DatePicker v-model="dataDaFilter" :placeholder="t('common.data_da')"
-  date-format="dd/mm/yy" show-icon show-button-bar style="width: 150px;"
-  @date-select="onDataDaChange" @clear-click="onDataDaChange" />
+```vue
+<script setup>
+const { bindPeriodo } = useStoreFilterBindings(store, applyFilters)
+const periodo = bindPeriodo()                    // 'data_da' / 'data_a'
+</script>
+
+<FiltroPeriodo :periodo="periodo" />
 ```
+
+⚠️ **Fino al 2026-09-23 questo paragrafo mostrava esattamente la forma
+sbagliata** — due `DatePicker` con `@date-select` + `@clear-click` e
+`style="width: 150px"` — cioè le istruzioni per riprodurre due difetti muti: una
+data **digitata** che non applica il filtro, e una larghezza nel tag che vince
+sul drawer. È la stessa lezione della «regola zero della lista»: *chi legge in
+buona fede trova le istruzioni per fare la cosa sbagliata.*
 
 Le chiavi i18n `common.data_da` ("Dal") e `common.data_a` ("Al") sono condivise da tutte le liste.
 
@@ -2019,11 +2377,11 @@ Lato DB serve **defense-in-depth** per chiudere il cerchio (analogo a listini-ve
 
 ## Responsive
 
-| Breakpoint | Dispositivo | Comportamento                                                                       |
-| ---------- | ----------- | ----------------------------------------------------------------------------------- |
-| >= 1024px  | Desktop     | Layout completo: sidebar inline, tutti i filtri visibili, azioni di riga inline     |
-| 768-1023px | Tablet      | Pulsanti azione solo icona + tooltip, filtri flex-wrap, azioni di riga in kebab `⋮` |
-| < 768px    | Mobile      | Sidebar overlay, padding ridotto, azioni di riga in kebab `⋮`                       |
+| Breakpoint | Dispositivo | Comportamento                                                                                                      |
+| ---------- | ----------- | ------------------------------------------------------------------------------------------------------------------ |
+| >= 1024px  | Desktop     | Layout completo: sidebar inline, tutti i filtri visibili, azioni di riga inline                                    |
+| 768-1023px | Tablet      | Pulsanti azione solo icona + tooltip, **filtri nel drawer dal basso** (`FiltriLista`), azioni di riga in kebab `⋮` |
+| < 768px    | Mobile      | Sidebar overlay, padding ridotto, **filtri nel drawer dal basso**, azioni di riga in kebab `⋮`                     |
 
 Le classi responsive sono in `main.css` — nessun `@media` nei componenti scoped.
 Il breakpoint mobile e' gestito dallo store `ui.js` (`isMobile`, `isTablet`).
@@ -2031,6 +2389,19 @@ Il breakpoint mobile e' gestito dallo store `ui.js` (`isMobile`, `isTablet`).
 Le azioni di riga (`RowActionsMenu`) usano in aggiunta `@media (hover: none)` per
 intercettare i dispositivi touch indipendentemente dalla larghezza del viewport
 (es. iPad Pro in landscape rende comunque il kebab perche' manca l'hover).
+
+> ✅ **Una sola definizione di «modalità compatta» — `ui.isCompatto`, dal
+> 2026-09-22** ([brief](../work-in-progress/brief-fe-filtri-lista-su-schermo-compatto.md) §3.3):
+> larghezza sotto `BREAKPOINTS.TABLET` **oppure** `matchMedia('(hover: none)')`.
+> La legge chi cambia **forma** e non solo dimensione — oggi `FiltriLista`.
+> ⛔ **La larghezza da sola non basta**: un iPad Pro in orizzontale è largo
+> 1366px e non ha hover, quindi `isDesktop` direbbe «desktop» mentre le azioni
+> di riga si sono già compresse — una schermata mezza compatta e mezza no.
+> ⚠️ Il `@media (hover: none), (max-width: 1023.98px)` di `main.css` (azioni di
+> riga, barra azioni) **cita** la stessa soglia e non ne inventa una seconda:
+> `1023.98px` perché `BREAKPOINTS.TABLET` si legge come `< 1024` — un
+> `max-width: 1024px` includerebbe 1024, cioè farebbe divergere le due sedi
+> esattamente sul confine.
 
 ---
 
@@ -3505,6 +3876,8 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 | `ReadonlyBadge` | Badge grigio "Sola lettura", auto-visibile se `isReadonly && !isBlocked`, responsive (icona-only su mobile) | — | Toolbar liste + `DrawerTitle` |
 | `AccessoBloccatoPanel` | Pannello sostitutivo "Accesso negato a questo elenco" per BLOCCATO oggetto | — | SearchTable con `v-if="isBlocked"` |
 | `RowActionsMenu` | Azioni di riga responsive: pulsanti inline su desktop, kebab `⋮` su tablet/touch. Se riceve `row` disabilita le azioni operative su record inattivi (`attivo=false` / `is_active=false`) salvo `allowWhenInactive` | `actions`, `row`, `tooltip`, `disabled`, `disableWhenInactive` | Tutte le SearchTable con azioni secondarie |
+| `FiltriLista` | I FILTRI di una lista: in linea su desktop, in un drawer dal basso sotto i 1024px (o su un touch senza hover), con il segno di quanti ne sono attivi e «Pulisci filtri». Due slot: `#sempre` (la ricerca) e il default (gli altri filtri). ⚠️ I filtri dentro si legano con un **binder**, non con un `ref` a senso unico (§«Un filtro si lega con un binder») | `store` \| `segno`, `inert`, `titolo` | Tutte le liste con filtri |
+| `FiltroPeriodo` | Il PERIODO come UN filtro: i due estremi `data_da`/`data_a` resi insieme, una cella sola nella griglia del drawer | `periodo` (da `bindPeriodo`), `placeholderDa/A` | Le liste con un intervallo di date |
 | `PaginationInfo` | Info paginazione (es. "1-50 di 1234") | `pagination` | SearchTable |
 | `TagList` | Lista tag con overflow +N e tooltip | `items`, `labelField`, `maxVisible`, `severity` | Ruoli in lista soggetti |
 | `AppDrawer` | Drawer generico con header + footer + slot body | `title`, `width` | Utility wrapper |
@@ -3567,6 +3940,9 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 | `useLoading` | Stato loading generico (ref + toggle) | Componenti vari |
 | `useKeyboardShortcuts` | Shortcut globali: Ctrl+K ricerca, Ctrl+W chiudi tab, Ctrl+Tab naviga | AppLayout |
 | `usePagination` | Paginazione server-side (usato internamente da useSearchTable) | useSearchTable |
+| `useContrattoFiltriLista` | Il contratto che una lista offre ai suoi filtri: `chiaviFiltro`, `filtriDefault` (copia **profonda** e congelata) e `azzeraFiltri`. Lo consuma `useListaStoreCore`, e lo adottano in tre righe i dieci store scritti a mano | `useListaStoreCore`, gli store di coda |
+| `useContrattoFiltriLocali` | Lo stesso contratto per una superficie **senza store-lista**: si dichiara `{ chiave: { rif, default } }` e tornano `segno` + `azzeraFiltri()`. Il default si **dichiara** (non si fotografa dal `ref`) e può essere una **funzione** quando si ricalcola («oggi») | i due cruscotti, permessi, drawer BoM, drawer lotto, drawer contratti-per-BA |
+| `useStoreFilterBindings` | Il legame widget ↔ `store.filters`: `bindSelect`, `bindDate`, `bindPeriodo`, `bindToggle`, `bindLookup` | Tutte le toolbar filtri |
 
 #### Lookup e autocomplete
 
@@ -3617,6 +3993,8 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 | Utility | Scopo | Usato da |
 | --- | --- | --- |
 | `date.js` → `toDateString(d)` | Converte Date/string in 'YYYY-MM-DD' (ora locale, no bug UTC) | SoggettoForm, SoggettoDrawer |
+| `segnoFiltri.js` → `segnoFiltri(filtri, chiavi, defaults)` | Il segno dei filtri attivi in una funzione pura → `{stato, conteggio}`: niente / pallino (solo default) / numero | `FiltriLista`, le superfici senza store-lista |
+| `clonaFiltri.js` → `clonaValore` / `clonaFiltri` / `congelaProfondo` | Stacca un valore di filtro dal letterale che lo dichiara. ⛔ Lo spread e `Object.freeze` sono di **primo livello**: un default ad array resterebbe condiviso per riferimento, e il primo `push` del widget sposterebbe il metro insieme alla cosa misurata | `useListaStoreCore`, i due contratti dei filtri |
 
 ### Costanti (`core/constants.js`)
 
@@ -3637,7 +4015,12 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 | `.app-page` | Layout pagina full-height |
 | `.app-tab-content` | Contenuto tab full-height |
 | `.app-page-toolbar` | Toolbar con filtri + bottone nuovo |
-| `.app-page-filters` | Container filtri nella toolbar |
+| `.app-page-filters` | Container filtri nella toolbar — lo rende `FiltriLista`, non si scrive a mano |
+| `.app-page-toolbar-start` | Zona sinistra della toolbar che filtri NON porta (titolo, pulsante «torna»). ⛔ Cancello a zero: un filtro qui dentro è un difetto |
+| `.app-filter-w-sm\|md\|lg` | Le tre taglie di un filtro in linea (10 / 13 / 16rem) — al posto della larghezza nel tag |
+| `.app-filtro-largo` | Leva per il filtro che a mezza riga non si legge: riga intera dentro il drawer |
+| `.app-filtro-periodo` | I due estremi del periodo affiancati (`FiltroPeriodo`) |
+| `.app-filtro-toggle` | Interruttore di filtro in linea (`FiltroToggle`) |
 | `.app-datatable` | Stile DataTable (stripe, padding, paginator compatto) |
 | `.app-drawer-content` | Layout contenuto drawer (flex column, gap) |
 | `.app-drawer-section` | Separatore sezione nel drawer (h4 + border) |

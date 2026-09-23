@@ -5,12 +5,18 @@
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
 import { listDefinizioniWorkflow } from '../api/definizioniWorkflow'
+
+// ⭐ I FILTRI DI DOMINIO IN UNA SEDE SOLA (2026-09-23): da qui nascono i valori
+//    di partenza E il contratto che `FiltriLista` legge per il segno dei filtri
+//    attivi. Due letterali divergerebbero al primo filtro aggiunto.
+const FILTRI_DEFAULT = { tipo_prestazione_id: null, emittente_fiscale_id: null }
 
 export const useDefinizioniWorkflowStore = defineStore('amm-definizioni-workflow', () => {
   const items = ref([])
   const loading = ref(false)
-  const filters = ref({ tipo_prestazione_id: null, emittente_fiscale_id: null })
+  const filters = ref({ ...FILTRI_DEFAULT })
 
   async function load() {
     loading.value = true
@@ -25,5 +31,12 @@ export const useDefinizioniWorkflowStore = defineStore('amm-definizioni-workflow
     }
   }
 
-  return { items, loading, filters, load }
+  // Il contratto che `FiltriLista` legge. ⚠️ Questa lista non ha paginazione —
+  // si legge tutta in un colpo — quindi `azzeraFiltri` non ha nessun `offset`
+  // da riportare a zero, e il composable non lo inventa.
+  const { chiaviFiltro, filtriDefault, azzeraFiltri } = useContrattoFiltriLista({
+    filters, filterDefaults: FILTRI_DEFAULT, fetchList: load,
+  })
+
+  return { items, loading, filters, load, chiaviFiltro, filtriDefault, azzeraFiltri }
 }, { userScoped: true })

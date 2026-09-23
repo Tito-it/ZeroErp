@@ -25,7 +25,7 @@ import { PAGINATION } from '../../core/constants'
 import { paramsPagina } from '../../core/utils/listParams'
 import { CODE } from '../vocabolari'
 import { listCodaRighe } from '../api/pagamenti'
-
+import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
 
 function buildParams(f) {
   const p = paramsPagina(f)
@@ -40,11 +40,20 @@ function buildParams(f) {
 export const useCodaRigheStore = defineStore(
   'pagamenti-coda-righe',
   () => {
-    const filters = ref({
+    // ⭐ I FILTRI DI DOMINIO IN UNA SEDE SOLA (2026-09-23): da qui nascono i valori
+    //    di partenza della lista E il contratto che `FiltriLista` legge per il segno
+    //    dei filtri attivi (`useContrattoFiltriLista`). ⛔ Due letterali divergono
+    //    al primo filtro aggiunto da una parte sola, e il segno si spegnerebbe su
+    //    una lista che filtra — senza nessun errore.
+    const FILTRI_DEFAULT = {
       coda: CODE.DA_ABBINARE,
       billing_account_id: null,
       data_da: null,
       data_a: null,
+    }
+
+    const filters = ref({
+      ...FILTRI_DEFAULT,
       // ⚠️ NON si inoltra al backend (questa lista non ha ricerca testuale), ma
       // la chiave si DICHIARA: fa parte del contratto di `useSearchTable`, che
       // la scrive su ricerca universale / deep-link `?search=` — e una chiave
@@ -79,6 +88,12 @@ export const useCodaRigheStore = defineStore(
         },
       })
 
+    // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
+    // nascita, e come si riportano li' («Pulisci filtri»).
+    const { chiaviFiltro, filtriDefault, azzeraFiltri } = useContrattoFiltriLista({
+      filters, filterDefaults: FILTRI_DEFAULT, fetchList,
+    })
+
     // Scopo: la voce di menu sceglie la coda e ricarica.
     // Note: ⚠️ Azzera l'offset: restare a pagina 3 passando da una coda
     //       all'altra mostrerebbe una pagina che in quella coda non esiste, e
@@ -92,6 +107,7 @@ export const useCodaRigheStore = defineStore(
     return {
       items, totalRecords, loading, hasSearched, filters, fetchList, apriCoda,
       statiRiga, transizioniRiga,
+      chiaviFiltro, filtriDefault, azzeraFiltri,
     }
   },
   { userScoped: true },

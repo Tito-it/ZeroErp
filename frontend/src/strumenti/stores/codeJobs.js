@@ -6,10 +6,14 @@
 // (items/totalRecords/loading/filters/fetchList/hasSearched), come i gemelli
 // resi (stores/resiCoda.js).
 //
-// I filtri di dominio (ambito miei/tutti, stato, range date col floor
-// standard) restano con i NOMI della CodaFiltriToolbar condivisa
-// (ambito/stato/dataDa/dataA — la toolbar muta l'oggetto per riferimento);
-// qui si mappano ai query param del BE. L'ordinamento viaggia come
+// I filtri di dominio (ambito miei/tutti, stato, periodo col floor standard)
+// portano i NOMI di ogni altra lista — `data_da`/`data_a` in stringa ISO — e
+// qui si mappano ai query param del BE.
+// ⭐ Prima del 2026-09-23 si chiamavano `dataDa`/`dataA` e tenevano OGGETTI
+//    `Date`: era l'unica coppia di date del prodotto fuori standard, e per
+//    questo l'unica che non poteva passare da `bindPeriodo` — cioe' l'unica
+//    senza l'invariante «`da > a` non puo' esistere» e senza il verso giusto
+//    degli eventi (una data digitata a mano non applicava il filtro). L'ordinamento viaggia come
 // `sort_by`/`sort_dir` (convenzione endpoint tracciamento, whitelist BE
 // ELENCA_SORT_SQL / CODA_STAMPA_SORT_SQL).
 //
@@ -21,7 +25,8 @@ import { ref } from 'vue'
 
 import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
 import { listCodaLavori, listCodaStampa } from '../../core/api/tracciamento'
-import { defaultFiltroDataDa, toDateStringOrNull } from '../../core/utils/date'
+import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
+import { defaultFiltroDataDaString } from '../../core/utils/date'
 
 // Scopo: mappa filtri store → query param degli endpoint coda (limit/offset +
 //        filtri opzionali + sort_by/sort_dir maiuscolo come da contratto BE).
@@ -29,12 +34,11 @@ function buildCodaParams(f) {
   const p = { limit: f.limit, offset: f.offset }
   if (f.ambito === 'tutti') p.ambito = 'tutti'
   if (f.stato) p.stato = f.stato
-  // ⛔ `toDateStringOrNull`, non `toDateString`: qui una data non valida vale
-  //    «non filtrare», nei form varrebbe «svuota il campo». Il perche' — e da
-  //    dove arriva una Invalid Date — sta una volta sola, sulla funzione.
-  // ⚠️ Il null non parte affatto: axios omette i parametri nulli.
-  if (f.dataDa) p.data_da = toDateStringOrNull(f.dataDa)
-  if (f.dataA) p.data_a = toDateStringOrNull(f.dataA)
+  // ⚠️ Gia' in stringa ISO nello store (come ogni altra lista): qui non c'e'
+  //    nessuna conversione da fare. Il null non parte affatto — axios omette i
+  //    parametri nulli.
+  if (f.data_da) p.data_da = f.data_da
+  if (f.data_a) p.data_a = f.data_a
   // Interruttore «mostra archiviate»: le righe messe via sono nascoste di
   // default, e il parametro le chiede. ⛔ Il filtro sta nel BACKEND e non qui:
   // la lista è paginata lato server, filtrare a valle filtrerebbe solo la
@@ -74,16 +78,23 @@ function buildCodaParams(f) {
 //    averlo consegnato.
 function createCodaJobsStore(id, fetchPage, { orderBy }) {
   return defineStore(id, () => {
-    const filters = ref({
+    // ⭐ I FILTRI DI DOMINIO IN UNA SEDE SOLA (2026-09-23): da qui nascono i
+    //    valori di partenza E il contratto che `FiltriLista` legge per il segno
+    //    dei filtri attivi.
+    const FILTRI_DEFAULT = {
       ambito: 'miei',
       stato: null,
       // Floor temporale di default, regola unica di progetto (core/utils/date).
-      dataDa: defaultFiltroDataDa(),
-      dataA: null,
+      data_da: defaultFiltroDataDaString(),
+      data_a: null,
       // Le righe ARCHIVIATE sono nascoste di default: l'archiviazione serve a
       // togliere dall'elenco cio' che ha finito, e mostrarle sempre sarebbe
       // non averla. L'interruttore della toolbar le riporta a video.
       archiviate: false,
+    }
+
+    const filters = ref({
+      ...FILTRI_DEFAULT,
       limit: 25,
       offset: 0,
       order_by: orderBy,
@@ -109,9 +120,16 @@ function createCodaJobsStore(id, fetchPage, { orderBy }) {
         onPayload: (payload) => { archiviateCount.value = payload.archiviate_count ?? 0 },
       })
 
+    // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
+    // nascita, e come si riportano li' («Pulisci filtri»).
+    const { chiaviFiltro, filtriDefault, azzeraFiltri } = useContrattoFiltriLista({
+      filters, filterDefaults: FILTRI_DEFAULT, fetchList,
+    })
+
     return {
       items, totalRecords, loading, hasSearched, filters, fetchList,
       archiviateCount,
+      chiaviFiltro, filtriDefault, azzeraFiltri,
     }
   }, {
     userScoped: true,

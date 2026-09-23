@@ -388,6 +388,7 @@ function buildRowActions(atto) {
         <DrawerTabLista
           ref="listaRef"
           codice="pagamenti.sistemazioni_fattura"
+          :store="store"
           :rows="store.items"
           :total="store.totalRecords"
           :loading="store.loading"

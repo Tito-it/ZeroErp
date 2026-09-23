@@ -8,7 +8,7 @@
 // senza passare dal drawer dati.
 // Nessun export: il dominio non ha endpoint (lo scaffolding omette l'azione da
 // se', non ricevendo `exportFn`).
-import { ref, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEmittentiFiscaliStore } from '../stores/emittentiFiscali'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
@@ -29,6 +29,8 @@ import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 
 const { t } = useI18n()
 const store = useEmittentiFiscaliStore()
@@ -53,18 +55,20 @@ const { isReadonly, isBlocked } = useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
 
 useTabFreshness(store, TAB_ENTITIES.EMITTENTE_FISCALE)
 
-const attivoFilter = ref(null)
+// ⭐ I FILTRI PASSANO DAI BINDER, e non e' una preferenza di stile: `bindSelect`
+//    porta con se' il `watch` store → widget, cioe' l'unico modo perche' la
+//    casella dica la verita' quando il filtro viene cambiato da FUORI —
+//    «Pulisci filtri» del drawer, un deep-link, un reset. Scritti a mano (un
+//    `ref` che spinge nello store e basta) il filtro si pulisce e la combo
+//    continua a mostrare il valore di prima, senza nessun errore.
+const { bindSelect } = useStoreFilterBindings(store, applyFilters)
+const { value: attivoFilter, onChange: onAttivoChange } = bindSelect('attivo')
 const attivoOptions = [
   { label: t('amministrazione.stato_all'), value: null },
   { label: t('amministrazione.stato_attivo'), value: true },
   { label: t('amministrazione.stato_inattivo'), value: false }
 ]
 onMounted(() => { store.fetchList() })
-
-function applyExtraFilters() {
-  store.filters.attivo = attivoFilter.value
-  applyFilters()
-}
 
 function onDrawerSaved() {
   drawer.close()
@@ -113,20 +117,24 @@ function buildRowActions(data) {
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
-        <InputText
-          v-model="searchText"
-          :placeholder="t('amministrazione.emittenti_fiscali.search_placeholder')"
-        />
+      <FiltriLista :store="store" :inert="perimetroBloccato">
+        <template #sempre>
+          <InputText
+            v-model="searchText"
+            class="app-filter-w-lg"
+            :placeholder="t('amministrazione.emittenti_fiscali.search_placeholder')"
+          />
+        </template>
         <Select
           v-model="attivoFilter"
+          class="app-filter-w-sm"
           :options="attivoOptions"
           option-label="label"
           option-value="value"
           :placeholder="t('amministrazione.stato_all')"
-          @change="applyExtraFilters"
+          @change="onAttivoChange"
         />
-      </div>
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
           <ListaConfigStatusTag :dirty="dirty" />

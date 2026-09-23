@@ -44,6 +44,8 @@ import {
   dashMotivoLabel,
 } from '../dashboardAree'
 import { useDashboardApertoStore } from '../stores/dashboardAperto'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import { useContrattoFiltriLocali } from '../../core/composables/useContrattoFiltriLocali'
 
 const { t, te } = useI18n()
 const notify = useNotify()
@@ -194,6 +196,25 @@ function onFiltriChange() {
   loadDocumenti()
 }
 
+// Scopo: il contratto dei filtri della barra — chi sono, che default hanno, il
+//        segno che mostrano e «Pulisci filtri». UNA sede: chiave, `rif` e
+//        default sulla stessa riga.
+// ⛔ Il default si DICHIARA e non si fotografa dal `ref`: questi due filtri
+//    vivono nello store `userScoped` del cruscotto, che SOPRAVVIVE al
+//    componente — al secondo montaggio una fotografia avrebbe preso il filtro
+//    lasciato dall'operatore come se fosse il default.
+// ⚠️ I due nascono entrambi a `null`, quindi il pallino non compare mai: o non
+//    filtrano, o sono stati scelti a mano.
+// ⛔ Non c'e' l'AREA: quella si sceglie dalle card, che restano sempre a video
+//    — il segno esiste per cio' che in modalita' compatta non si vede piu'.
+const {
+  segno: segnoFiltriCruscotto,
+  azzeraFiltri: pulisciFiltri,
+} = useContrattoFiltriLocali({
+  ritardo_giorni: { rif: ritardoGiorni, default: null },
+  fase: { rif: faseSelezionata, default: null },
+}, { onAzzera: () => onFiltriChange() })
+
 // Scopo: click sul corpo della card = livello AREA (nessuna fase), SELEZIONE
 //        esclusiva (non piu' toggle: un secondo click sulla stessa area non la
 //        deseleziona piu', evitando che la lista si rimescolasse con tutte le
@@ -326,7 +347,7 @@ onActivated(() => {
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-toolbar-start">
         <h2 style="margin: 0;">{{ t('vendite.situazione_aperta.page_title') }}</h2>
         <small class="app-text-muted">{{ t('vendite.situazione_aperta.page_description') }}</small>
       </div>
@@ -406,31 +427,37 @@ onActivated(() => {
           <h4 class="app-dash-fermi-title">
             {{ t('vendite.situazione_aperta.lista_titolo') }}
           </h4>
-          <div class="app-page-filters">
+          <!-- ⚠️ `:segno` e non `:store`: un cruscotto non ha uno store-LISTA —
+               i suoi filtri sono ref sciolte, non un oggetto `filters` coi
+               propri default. E' il ripiego dichiarato dal brief per le
+               superfici senza store.
+               ⛔ `areaSelezionata` NON ci entra: si sceglie dalle card, che sono
+               sempre a video. -->
+          <FiltriLista :segno="segnoFiltriCruscotto" @pulisci="pulisciFiltri">
             <label class="app-dash-filter-toggle">
               <span>{{ t('vendite.situazione_aperta.filtro_ritardo_label') }}</span>
               <Select
                 v-model="ritardoGiorni"
+                class="app-filter-w-sm"
                 :options="ritardoOptions"
                 option-label="label"
                 option-value="value"
                 :placeholder="t('vendite.situazione_aperta.ritardo_tutti')"
                 size="small"
-                style="width: 150px;"
                 @change="onFiltriChange"
               />
             </label>
             <Select
               v-model="faseSelezionata"
+              class="app-filter-w-md"
               :options="faseOptions"
               option-label="label"
               option-value="value"
               :placeholder="t('vendite.situazione_aperta.filtro_fase_tutte')"
               size="small"
-              style="width: 200px;"
               @change="onFiltriChange"
             />
-          </div>
+          </FiltriLista>
         </div>
         <ListaConfigurabile
           v-if="documentiCount > 0 || documentiLoading"

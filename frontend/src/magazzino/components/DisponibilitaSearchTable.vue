@@ -43,6 +43,7 @@ import { exportDisponibilita, exportDisponibilitaArticoli } from '../api/magazzi
 import { useDisponibilitaArticoliStore, useDisponibilitaStore } from '../stores/disponibilita'
 import { TAB_DISPONIBILITA } from '../vocabolari'
 import DisponibilitaBlocchiPopover from './DisponibilitaBlocchiPopover.vue'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const props = defineProps({
   scheda: {
@@ -101,24 +102,27 @@ onMounted(() => store.fetchList())
 
     <template v-else>
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
-          <InputText
-            v-model="searchText"
-            :placeholder="t('magazzino.disponibilita.search_placeholder')"
-            style="width: 240px;"
-          />
+        <FiltriLista :store="store" :inert="perimetroBloccato">
+          <template #sempre>
+            <InputText
+              v-model="searchText"
+              class="app-filter-w-lg"
+              :placeholder="t('magazzino.disponibilita.search_placeholder')"
+            />
+          </template>
           <LookupSelect
             v-if="perMagazzino"
             v-model="magazzinoFilter"
+            class="app-filter-w-md"
             rel="magazzino.magazzini"
             :placeholder="t('magazzino.disponibilita.filtro_magazzino')"
             show-clear
             show-code
-            style="width: 220px;"
             @change="onMagazzinoChange"
           />
           <ArticoloLookup
             v-model="articoloFilter"
+            class="app-filter-w-lg"
             :placeholder="t('magazzino.disponibilita.filtro_articolo')"
             :solo-attivi="false"
             @update:model-value="onArticoloChange"
@@ -134,7 +138,7 @@ onMounted(() => store.fetchList())
             :label="t('magazzino.disponibilita.solo_con_giacenza')"
             @change="onSoloConGiacenzaChange"
           />
-        </div>
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />

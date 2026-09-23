@@ -36,7 +36,7 @@ import {
   makeComponenteNotesApi,
 } from '../api/catalogo'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
-import { displayDate, toDateString } from '../../core/utils/date'
+import { addDaysToToday, displayDate, toDateString } from '../../core/utils/date'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
 import NoteDrawer from '../../core/components/NoteDrawer.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -52,9 +52,9 @@ import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
 import ToggleSwitch from 'primevue/toggleswitch'
-import Checkbox from 'primevue/checkbox'
-
-
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import FiltroToggle from '../../core/components/FiltroToggle.vue'
+import { useContrattoFiltriLocali } from '../../core/composables/useContrattoFiltriLocali'
 
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
@@ -93,7 +93,44 @@ loadDefaults()
 // sotto le 50-100 righe per articolo, niente bisogno di filtro server-side.
 const filtroArticolo = ref('')
 const filtroValiditaTutto = ref(false)
-const filtroValiditaData = ref(new Date())
+// ⛔ IL DEFAULT E' «OGGI», ED E' UNA DOMANDA, NON UN VALORE — e va chiesto a
+//    MEZZANOTTE, non all'istante corrente.
+//    · `new Date()` letto due volte cambia di millisecondi, e per il segno due
+//      istanti diversi sono due filtri diversi: il pallino non comparirebbe mai;
+//    · un istante FOTOGRAFATO una volta sola invecchia: un'applicazione lasciata
+//      aperta a cavallo della mezzanotte terrebbe per «default» il giorno prima.
+//    `addDaysToToday(0)` risponde «mezzanotte di oggi», che e' stabile dentro la
+//    giornata e si sposta quando la giornata si sposta.
+const oggiAMezzanotte = () => addDaysToToday(0)
+const filtroValiditaData = ref(oggiAMezzanotte())
+
+// ⭐ IL FILTRO VERO NON E' LA VARIABILE DEL WIDGET: quando «tutte le versioni»
+//    e' acceso, la data NON sta restringendo niente. Il `computed` scrivibile
+//    dice questo, e il segno lo conta com'e' — contare `filtroValiditaData` e
+//    basta direbbe «un filtro attivo» anche a filtro spento.
+const filtroValidoAl = computed({
+  get: () => (filtroValiditaTutto.value ? null : filtroValiditaData.value),
+  set: (v) => { filtroValiditaData.value = v ?? oggiAMezzanotte() },
+})
+
+// Scopo: il contratto dei filtri di questa lista — chi sono, che default hanno,
+//        il segno che mostrano e «Pulisci filtri». UNA sede: chiave, `rif` e
+//        default sulla stessa riga.
+// ⭐ La data di validita' nasce VALORIZZATA (oggi): finche' nessuno la tocca si
+//    vede il pallino — «ristretta come nasce» — e al primo cambio il numero.
+// ⚠️ `filtroValiditaTutto` nasce `false`, che per il segno e' un valore: e'
+//    giusto, perche' spento sta davvero restringendo l'elenco alle righe valide.
+// ⛔ `filtroArticolo` NON c'e', ed e' una decisione: e' la casella di ricerca,
+//    che per D2 non e' un filtro. Fino al 2026-09-23 stava nell'oggetto dei
+//    valori e non nell'array delle chiavi — innocuo qui, ma e' la forma in cui
+//    una terza sede si dimentica in silenzio.
+const {
+  segno: segnoFiltriBom,
+  azzeraFiltri: pulisciFiltriBom,
+} = useContrattoFiltriLocali({
+  valido_al: { rif: filtroValidoAl, default: oggiAMezzanotte },
+  tutto: { rif: filtroValiditaTutto, default: false },
+})
 
 const componentiView = computed(() => {
   const filtro = (filtroArticolo.value || '').trim().toLowerCase()
@@ -261,8 +298,12 @@ watch(() => props.visible, async (val) => {
   await loadDefaults()
   resetFormState()
   filtroArticolo.value = ''
-  filtroValiditaTutto.value = false
-  filtroValiditaData.value = new Date()
+  // ⛔ I FILTRI TORNANO AL DEFAULT DALLA SEDE UNICA, non riscritti a mano: fino
+  //    al 2026-09-23 qui c'era `new Date()`, cioe' un «oggi» diverso di
+  //    millisecondi da quello che il segno usa come metro. Bastava RIAPRIRE il
+  //    drawer per vedere il numero al posto del pallino, senza aver toccato
+  //    niente — e nessun errore da nessuna parte.
+  pulisciFiltriBom()
   loadComponenti()
 })
 
@@ -529,26 +570,41 @@ function buildRigaActions(row) {
              componente" come azione primaria — pattern allineato a
              ContrattoRigheDrawer. Filtro nascosto se non c'e' nulla da filtrare. -->
         <div v-if="!isReadonly" class="app-page-toolbar">
-          <div class="app-page-filters">
-            <InputText v-if="componentiList.length > 0"
-              v-model="filtroArticolo"
-              :placeholder="t('catalogo.filtro_componente_placeholder')"
-              style="min-width: 240px;" />
-            <DatePicker
-              v-if="componentiList.length > 0"
-              v-model="filtroValiditaData"
-              :date-format="DATE_FORMAT"
-              show-icon
-              show-button-bar
-              :disabled="filtroValiditaTutto"
-              :placeholder="t('catalogo.filtro_bom_validi_al')"
-              style="width: 160px;"
-            />
-            <div v-if="componentiList.length > 0">
-              <Checkbox v-model="filtroValiditaTutto" input-id="bom-filter-all" binary />
-              <label for="bom-filter-all">{{ t('catalogo.filtro_bom_tutto') }}</label>
-            </div>
-          </div>
+          <!-- ⚠️ `:segno` e non `:store`: i filtri di questa lista sono
+               CLIENT-SIDE su righe gia' caricate, e in questo drawer non c'e'
+               nessuno store-lista da interrogare. E' il ripiego dichiarato dal
+               brief per le superfici senza store.
+               ⚠️ I `v-if` restano sui singoli widget: a lista vuota non c'e'
+               niente da filtrare, e lo slot di default esiste comunque —
+               l'imbuto comparirebbe su un drawer senza filtri dentro. Per
+               questo il `v-if` sta anche sul `<template>` del gruppo. -->
+          <FiltriLista :segno="segnoFiltriBom" @pulisci="pulisciFiltriBom">
+            <template #sempre>
+              <InputText v-if="componentiList.length > 0"
+                v-model="filtroArticolo"
+                class="app-filter-w-lg"
+                :placeholder="t('catalogo.filtro_componente_placeholder')" />
+            </template>
+            <template v-if="componentiList.length > 0" #default>
+              <DatePicker
+                v-model="filtroValiditaData"
+                class="app-filter-w-sm"
+                :date-format="DATE_FORMAT"
+                show-icon
+                show-button-bar
+                :disabled="filtroValiditaTutto"
+                :placeholder="t('catalogo.filtro_bom_validi_al')"
+              />
+              <!-- ⛔ Non piu' un `Checkbox` + `<label>` scritti a mano: un
+                   interruttore di filtro di una lista e' il BB `FiltroToggle`
+                   (standard FE §«Interruttore di filtro»), che nella griglia
+                   del drawer prende la riga intera da se'. -->
+              <FiltroToggle
+                v-model="filtroValiditaTutto"
+                :label="t('catalogo.filtro_bom_tutto')"
+              />
+            </template>
+          </FiltriLista>
           <PageActionsBar :actions="pageActions" />
         </div>
 

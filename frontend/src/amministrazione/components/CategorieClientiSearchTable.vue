@@ -5,7 +5,7 @@
 //        ritiro dinamico e personalizzazione per utente.
 //        Nessun export: il dominio non ha endpoint (lo scaffolding omette
 //        l'azione da se', non ricevendo `exportFn`).
-import {ref, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useCategorieClientiStore } from '../stores/categorieClienti'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
@@ -21,6 +21,8 @@ import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
@@ -36,20 +38,17 @@ const {
   searchTableOptions: { defaultSortField: 'ordinamento' },
 })
 
-const attivoFilter = ref(true)
-const partecipaPromoFilter = ref(null)
+// ⭐ I FILTRI PASSANO DAI BINDER, e non e' una preferenza di stile: `bindSelect`
+//    porta con se' il `watch` store → widget, cioe' l'unico modo perche' la
+//    casella dica la verita' quando il filtro viene cambiato da FUORI —
+//    «Pulisci filtri» del drawer, un deep-link, un reset. Scritti a mano (un
+//    `ref` che spinge nello store e basta) il filtro si pulisce e la combo
+//    continua a mostrare il valore di prima, senza nessun errore.
+const { bindSelect } = useStoreFilterBindings(store, applyFilters)
+const { value: attivoFilter, onChange: onAttivoChange } = bindSelect('attivo')
+const { value: partecipaPromoFilter, onChange: onPartecipaPromoChange } = bindSelect('partecipa_promo')
 
 const boolOptions = buildBoolOptions(t)
-
-function onAttivoChange() {
-  store.filters.attivo = attivoFilter.value
-  applyFilters()
-}
-
-function onPartecipaPromoChange() {
-  store.filters.partecipa_promo = partecipaPromoFilter.value
-  applyFilters()
-}
 
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
 function onRowClick(data) { emit('row-click', data) }
@@ -64,30 +63,33 @@ onMounted(() => store.fetchList())
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
-        <InputText
-          v-model="searchText"
-          :placeholder="t('amministrazione.categorie_clienti.search_placeholder')"
-        />
+      <FiltriLista :store="store" :inert="perimetroBloccato">
+        <template #sempre>
+          <InputText
+            v-model="searchText"
+            class="app-filter-w-lg"
+            :placeholder="t('amministrazione.categorie_clienti.search_placeholder')"
+          />
+        </template>
         <Select
           v-model="partecipaPromoFilter"
+          class="app-filter-w-sm"
           :options="boolOptions"
           option-label="label"
           option-value="value"
           :placeholder="t('amministrazione.categorie_clienti.filter_partecipa_promo')"
           @change="onPartecipaPromoChange"
-          style="width: 180px;"
         />
         <Select
           v-model="attivoFilter"
+          class="app-filter-w-sm"
           :options="boolOptions"
           option-label="label"
           option-value="value"
           :placeholder="t('common.attivo')"
           @change="onAttivoChange"
-          style="width: 120px;"
         />
-      </div>
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
           <ListaConfigStatusTag :dirty="dirty" />

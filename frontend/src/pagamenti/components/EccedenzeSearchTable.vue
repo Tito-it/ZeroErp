@@ -31,6 +31,7 @@ import { useEtichettePagamenti } from '../etichette'
 import { formatCurrency } from '../../core/utils/format'
 import { SEVERITY_CHI_E_IN_CREDITO } from '../vocabolari'
 import { useEccedenzeStore } from '../stores/eccedenze'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const emit = defineEmits(['row-click'])
 const { t } = useI18n()
@@ -74,18 +75,18 @@ onMounted(() => store.fetchList())
 
     <template v-else>
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
+        <FiltriLista :store="store" :inert="perimetroBloccato">
           <Select
             v-model="creditoFilter"
+            class="app-filter-w-md"
             :options="opzioniCredito"
             option-label="label"
             option-value="value"
             :placeholder="t('pagamenti.eccedenze.filtro_credito')"
             show-clear
-            style="width: 220px;"
             @update:model-value="onCreditoChange"
           />
-        </div>
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />

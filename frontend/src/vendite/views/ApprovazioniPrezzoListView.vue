@@ -56,7 +56,7 @@ async function safeFetch() {
 
 const {
   onPage, onSort, paginatorProps, tablePage,
-  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
+  listaRef, dirty, onConfigLoaded, pageActions,
 } = useListaConfigurabilePage(store, { onReload: safeFetch })
 
 // Primo caricamento al mount. La freshness al rientro tab (KeepAlive) —
@@ -206,7 +206,11 @@ function buildRowActions(data) {
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
+      <!-- ⛔ NIENTE `:inert` qui: questa lista non ha filtri, e il blocco
+           porta il TITOLO della pagina. Inertizzare un titolo lo toglie
+           anche agli screen reader proprio quando la pagina spiega perche'
+           non si vede niente (cancello di perimetro emittente). -->
+      <div class="app-page-toolbar-start">
         <h2 style="margin: 0;">{{ t('vendite.approvazioni_prezzo.page_title') }}</h2>
         <small class="app-text-muted">{{ t('vendite.approvazioni_prezzo.page_description') }}</small>
       </div>

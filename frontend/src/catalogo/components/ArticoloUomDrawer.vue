@@ -33,8 +33,6 @@ import InputText from 'primevue/inputtext'
 import ToggleSwitch from 'primevue/toggleswitch'
 import DatePicker from 'primevue/datepicker'
 
-
-
 const { t, te } = useI18n()
 const isReadonly = useInjectReadonly()
 const { execute, loading, campiErrati } = useApiHandler()
@@ -313,7 +311,6 @@ const onClose = useDrawerClose(emit)
              "Nuovo" prima della lista. Pattern frontend-standards lista
              "PageActionsBar". -->
         <div class="app-page-toolbar">
-          <div class="app-page-filters"></div>
           <PageActionsBar :actions="pageActions" />
         </div>
 

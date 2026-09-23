@@ -51,6 +51,7 @@ import { labelOrCode } from '../../core/utils/i18nLabel'
 import { exportLotti, listLotti, listLottiMensile } from '../api/lotti'
 import { paramsPerimetro, useLottiStore } from '../stores/lotti'
 import { paramsOrdinamento } from '../../core/utils/listParams'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const { t, te } = useI18n()
 const notify = useNotify()
@@ -65,6 +66,17 @@ const store = useLottiStore()
 // Filtro stato lotto (select statico sui valori di dominio; una nuova voce si
 // mostra comunque via fail-visible).
 const statoFilter = ref(null)
+// ⛔ IL VERSO STORE → WIDGET, che fino al 2026-09-23 mancava. Questo `ref` e'
+//    la sede condivisa dei DUE comandi (i pulsanti di stato e la tendina) e la
+//    spinta verso lo store la fa `syncFiltri()`; ma quando il filtro lo cambia
+//    QUALCUN ALTRO — il «Pulisci filtri» del drawer compatto — nessuno
+//    riportava indietro il valore: la lista tornava a tutti gli stati e la
+//    tendina continuava a mostrare quello di prima. Nessun errore.
+// ⚠️ Qui non si usa `bindSelect` e non e' una dimenticanza: il suo `onChange`
+//    scriverebbe subito nello store, e `syncFiltri()` decide il reset a pagina 1
+//    proprio CONFRONTANDO ref e store — con un binder i due sarebbero sempre
+//    uguali e l'offset non si azzererebbe mai.
+watch(() => store.filters.stato_lotto, (v) => { statoFilter.value = v ?? null })
 
 // Navigazione anno/mese — stesso telaio della Lente Competenza (BB condiviso
 // useDashMesiNav + DashMesiSidebar): anno in alto, 12 mesi sotto. C'è SEMPRE un
@@ -732,7 +744,7 @@ const azioniPagina = computed(() =>
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-toolbar-start">
         <h2 style="margin: 0;">{{ t('vendite.lotti.page_title') }}</h2>
         <small class="app-text-muted">{{ t('vendite.lotti.page_description') }}</small>
       </div>
@@ -787,7 +799,7 @@ const azioniPagina = computed(() =>
         <FatturazioneEsitiPanel ref="esitiRef" :competenza-mese="competenzaParam" />
 
         <div class="app-page-toolbar">
-          <div class="app-page-filters" :inert="perimetroBloccato">
+          <FiltriLista :store="store" :inert="perimetroBloccato">
             <!-- Etichetta A SINISTRA della tendina, non sopra: due righe per un
                  filtro sono altezza tolta ai lotti, che sono il lavoro.
                  ⭐ `app-dash-filter-toggle` e' la classe che i tre cruscotti
@@ -842,7 +854,7 @@ const azioniPagina = computed(() =>
               :count="annullatiNascosti"
               @change="onAnnullatiChange"
             />
-          </div>
+          </FiltriLista>
 
           <!-- I DUE VERBI DELL'ATTO FISCALE. ⚠️ `severity="warn"` su entrambi:
                è la convenzione che distingue la numerazione — irreversibile —
@@ -945,7 +957,6 @@ const azioniPagina = computed(() =>
               <!-- Personalizza colonne + esporta anche qui: è una lista come le
                    altre, e l'export porta con sé il filtro della scheda. -->
               <div class="app-page-toolbar">
-                <span class="app-page-filters" />
                 <PageActionsBar :actions="azioniRecuperi.azioniLista.value">
                   <template #suffix>
                     <ListaConfigStatusTag :dirty="azioniRecuperi.dirty.value" />

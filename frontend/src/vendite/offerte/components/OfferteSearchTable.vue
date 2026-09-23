@@ -10,7 +10,6 @@
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
-import DatePicker from 'primevue/datepicker'
 import InputText from 'primevue/inputtext'
 
 import AccessoBloccatoPanel from '../../../core/components/AccessoBloccatoPanel.vue'
@@ -31,12 +30,14 @@ import OffertaNoteDrawer from './OffertaNoteDrawer.vue'
 import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../../core/composables/useTabFreshness'
-import { DATE_FORMAT, MANAGE_ICONS, TAB_ENTITIES, TIPO_RUOLO } from '../../../core/constants'
+import { MANAGE_ICONS, TAB_ENTITIES, TIPO_RUOLO } from '../../../core/constants'
 import { useStoreFilterBindings } from '../../../core/composables/useStoreFilterBindings'
 import { statoOffertaSeverity } from '../../../core/utils/severity'
 import { STATI_OFFERTA_SEGNALA_SCADENZA } from '../constants'
 import { exportOfferte } from '../api/offerteApi'
 import { useOfferteStore } from '../stores/offerte'
+import FiltroPeriodo from '../../../core/components/FiltroPeriodo.vue'
+import FiltriLista from '../../../core/components/FiltriLista.vue'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
@@ -56,11 +57,11 @@ const {
 })
 
 // --- Filtri custom (toolbar caller) — binding store via BB (B14) ---
-const { bindSelect, bindDate, bindToggle } = useStoreFilterBindings(store, applyFilters)
+const { bindSelect, bindToggle, bindPeriodo } = useStoreFilterBindings(store, applyFilters)
 const { value: statoFilter, onChange: onStatoChange } = bindSelect('stato_codice_interno')
 const { value: utilityFilter, onChange: onUtilityChange } = bindSelect('utility_id')
-const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
-const { value: dataAlFilter, onChange: onDataAlChange } = bindDate('data_a')
+// Il periodo e' UN filtro con due estremi: un binding, un componente.
+const periodo = bindPeriodo()
 // Toggle «mostra storico revisioni»: la NEGAZIONE del filtro dello store —
 // acceso ⇔ `solo_ultima_revisione = false`, spento ⇔ `true` (il default).
 // `bindToggle` con i due valori dichiarati: il widget resta un booleano.
@@ -141,37 +142,35 @@ onMounted(() => store.fetchList())
     <template v-else>
       <!-- Toolbar UNICA esterna (pattern lista standard). -->
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
-          <InputText v-model="searchText" :placeholder="t('vendite.offerte.search_placeholder')" style="width: 260px;" />
+        <FiltriLista :store="store" :inert="perimetroBloccato">
+          <template #sempre>
+            <InputText class="app-filter-w-lg" v-model="searchText" :placeholder="t('vendite.offerte.search_placeholder')"  />
+          </template>
           <LookupSelect
             v-model="statoFilter"
+            class="app-filter-w-md"
             rel="config.stati_doc_offerte"
             value-field="codice_interno"
             :placeholder="t('vendite.offerte.filtro_stato')"
             show-clear
-            style="width: 160px;"
             @change="onStatoChange"
           />
           <UtilityPerRuoloSelect
             v-model="utilityFilter"
+            class="app-filter-w-md"
             :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
             :placeholder="t('vendite.offerte.filtro_utility')"
             show-clear
             apply-default
             @change="onUtilityChange"
           />
-          <DatePicker v-model="dataDaFilter" :placeholder="t('common.data_da')"
-            :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
-            @date-select="onDataDaChange" @clear-click="onDataDaChange" />
-          <DatePicker v-model="dataAlFilter" :placeholder="t('common.data_a')"
-            :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
-            @date-select="onDataAlChange" @clear-click="onDataAlChange" />
+          <FiltroPeriodo :periodo="periodo" />
           <FiltroToggle
             v-model="mostraStorico"
             :label="t('vendite.offerte.filtro_mostra_storico')"
             @change="onMostraStoricoChange"
           />
-        </div>
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />

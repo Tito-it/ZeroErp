@@ -20,6 +20,7 @@ import PageActionsBar from './PageActionsBar.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
+import FiltriLista from './FiltriLista.vue'
 
 const props = defineProps({
   store: { type: Object, required: true },
@@ -60,10 +61,20 @@ function onRowClick(event) {
 <template>
   <div class="app-tab-content">
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
-        <InputText v-model="searchText" :placeholder="t(searchPlaceholderKey)" />
-        <slot name="filters" :apply-filters="applyFilters" />
-      </div>
+      <FiltriLista :store="store">
+        <template #sempre>
+          <InputText class="app-filter-w-lg" v-model="searchText" :placeholder="t(searchPlaceholderKey)" />
+        </template>
+        <!-- ⚠️ `v-if` sullo slot, non `<slot>` nudo: uno `<slot>` scritto senza
+             condizione E' un default slot per `FiltriLista` anche quando il
+             caller non passa `#filters` — l'icona a imbuto comparirebbe su un
+             drawer vuoto.
+             ⚠️ La taglia la mette il CALLER sul proprio widget: qui non si sa
+             che filtro sara'. -->
+        <template v-if="$slots.filters" #default>
+          <slot name="filters" :apply-filters="applyFilters" />
+        </template>
+      </FiltriLista>
       <PageActionsBar :actions="pageActions" />
     </div>
     <DataTable

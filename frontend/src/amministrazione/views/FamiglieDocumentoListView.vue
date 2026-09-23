@@ -19,7 +19,7 @@
 // ⛔ Il CRUD è per il solo AMMINISTRATORE (D6): il cancello sta sull'endpoint
 //    (`AdminAPIView`), non nel database — `vendite.famiglie_documento` non ha
 //    RLS e non gliene si aggiunge una per un caso che un permesso risolve.
-import { onMounted, ref } from 'vue'
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -40,6 +40,8 @@ import { bloccoAttivo, motivoBloccoRiga } from '../../core/utils/bloccoMotivo'
 import { READONLY_DOMAINS, MANAGE_ICONS } from '../../core/constants'
 import { useFamiglieDocumentoStore } from '../stores/famiglieDocumento'
 import { exportFamiglie } from '../api/famiglieDocumento'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 
 const { t, te } = useI18n()
 const notify = useNotify()
@@ -65,8 +67,15 @@ const {
 // ⛔ `null` = TUTTE, spente comprese: una famiglia spenta è la riga che spiega
 //    perché una tabella non è più disponibile. Un default «solo attive»
 //    nasconderebbe proprio quella.
-const attivoFilter = ref(null)
-const serieFilter = ref(null)
+// ⭐ I FILTRI PASSANO DAI BINDER, e non e' una preferenza di stile: `bindSelect`
+//    porta con se' il `watch` store → widget, cioe' l'unico modo perche' la
+//    casella dica la verita' quando il filtro viene cambiato da FUORI —
+//    «Pulisci filtri» del drawer, un deep-link, un reset. Scritti a mano (un
+//    `ref` che spinge nello store e basta) il filtro si pulisce e la combo
+//    continua a mostrare il valore di prima, senza nessun errore.
+const { bindSelect } = useStoreFilterBindings(store, applyFilters)
+const { value: attivoFilter, onChange: onAttivoChange } = bindSelect('attivo')
+const { value: serieFilter, onChange: onSerieChange } = bindSelect('gestisce_serie')
 const attivoOptions = [
   { label: t('amministrazione.stato_all'), value: null },
   { label: t('amministrazione.stato_attivo'), value: true },
@@ -79,12 +88,6 @@ const serieOptions = [
 ]
 
 onMounted(() => { store.fetchList() })
-
-function applyExtraFilters() {
-  store.filters.attivo = attivoFilter.value
-  store.filters.gestisce_serie = serieFilter.value
-  applyFilters()
-}
 
 function onRowClick(data) {
   drawer.editRow(data, 'id')
@@ -153,33 +156,37 @@ function cambiaAttivo(data) {
 
     <template v-else>
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
-          <InputText
-            v-model="searchText"
-            :placeholder="t('amministrazione.famiglie_documento.search_placeholder')"
-            style="width: 250px;"
-          />
+        <FiltriLista :store="store" :inert="perimetroBloccato">
+          <template #sempre>
+            <InputText
+              v-model="searchText"
+              class="app-filter-w-lg"
+              :placeholder="t('amministrazione.famiglie_documento.search_placeholder')"
+            />
+          </template>
           <!-- ⚠️ Il placeholder porta l'etichetta del DEFAULT: il valore di
                partenza e' `null` = tutte, e per PrimeVue `null` e' «niente
                selezionato» — senza, le due combo escono vuote su filtri che
                valgono «tutte». -->
           <Select
             v-model="attivoFilter"
+            class="app-filter-w-sm"
             :options="attivoOptions"
             :placeholder="t('amministrazione.stato_all')"
             option-label="label"
             option-value="value"
-            @change="applyExtraFilters"
+            @change="onAttivoChange"
           />
           <Select
             v-model="serieFilter"
+            class="app-filter-w-sm"
             :options="serieOptions"
             :placeholder="t('amministrazione.famiglie_documento.serie_tutte')"
             option-label="label"
             option-value="value"
-            @change="applyExtraFilters"
+            @change="onSerieChange"
           />
-        </div>
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />

@@ -84,15 +84,20 @@ jobs:
       - name: Lint (oxlint + eslint, senza --fix)
         run: npm run lint
 
-      # ⭐ I quattro presidi scritti apposta per il frontend, che fino a oggi
-      #    lanciava una persona quando se ne ricordava:
-      #    · check-liste-configurabili   — il contratto @row-click del BB lista
-      #    · check-pinia-user-scoped-reset — che il reset al logout sia efficace
-      #      (9 verifiche, e sa contro quale versione di Pinia gira)
-      #    · check-drawer-width          — le chiavi DRAWER_WIDTH esistono
-      #    · check-primeicons-codepoints — i codepoint cablati risolvono, con
-      #      baseline anti-drift
-      - name: Guard frontend (liste · pinia · drawer · icone)
+      # ⭐ I presidi scritti apposta per il frontend, che prima del 2026-09-09
+      #    lanciava una persona quando se ne ricordava. `npm run guards` e'
+      #    `run-s guard:*`: ogni presidio nuovo entra qui **da se'**, senza
+      #    toccare questo file.
+      # ⛔ L'ELENCO NON SI RICOPIA QUI, e questa riga lo dice perche' e' gia'
+      #    successo: fino al 2026-09-22 il commento annunciava «i quattro
+      #    presidi» mentre `package.json` ne dichiarava OTTO — keepalive,
+      #    datatable, dialog e filtri erano entrati senza che nessuno
+      #    aggiornasse la lista. Vale la regola di casa: *un elenco scritto in
+      #    due posti ne ha sempre uno stantio, e quello senza presidio e'
+      #    sempre il commento.* La sede unica e' `frontend/package.json`
+      #    (script `guard:*`); ciascuno spiega il proprio «perche'» nella
+      #    propria intestazione.
+      - name: Guard frontend (tutti i `guard:*` di package.json)
         run: npm run guards
 
       # ⭐ I PRIMI TEST DEL FRONTEND (2026-09-09). Fino a quel giorno non ne

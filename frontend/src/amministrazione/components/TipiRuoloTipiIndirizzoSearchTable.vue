@@ -24,6 +24,8 @@ import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
@@ -42,9 +44,16 @@ const {
 
 useTabFreshness(store, TAB_ENTITIES.TIPI_RUOLO_TIPI_INDIRIZZO)
 
-const tipoRuoloFilter = ref(store.filters.tipo_ruolo_id)
-const tipoIndirizzoFilter = ref(store.filters.tipo_indirizzo_id)
-const attivoFilter = ref(true)
+// ⭐ I FILTRI PASSANO DAI BINDER, e non e' una preferenza di stile: `bindSelect`
+//    porta con se' il `watch` store → widget, cioe' l'unico modo perche' la
+//    casella dica la verita' quando il filtro viene cambiato da FUORI —
+//    «Pulisci filtri» del drawer, un deep-link, un reset. Scritti a mano (un
+//    `ref` che spinge nello store e basta) il filtro si pulisce e la combo
+//    continua a mostrare il valore di prima, senza nessun errore.
+const { bindSelect } = useStoreFilterBindings(store, applyFilters)
+const { value: tipoRuoloFilter, onChange: onTipoRuoloChange } = bindSelect('tipo_ruolo_id')
+const { value: tipoIndirizzoFilter, onChange: onTipoIndirizzoChange } = bindSelect('tipo_indirizzo_id')
+const { value: attivoFilter, onChange: onAttivoChange } = bindSelect('attivo')
 
 const boolOptions = buildBoolOptions(t)
 
@@ -74,19 +83,6 @@ async function loadFallbackOptions(row) {
   } finally {
     fallbackOptionsLoadingByRow.value[row.id] = false
   }
-}
-
-function onTipoRuoloChange() {
-  store.filters.tipo_ruolo_id = tipoRuoloFilter.value
-  applyFilters()
-}
-function onTipoIndirizzoChange() {
-  store.filters.tipo_indirizzo_id = tipoIndirizzoFilter.value
-  applyFilters()
-}
-function onAttivoChange() {
-  store.filters.attivo = attivoFilter.value
-  applyFilters()
 }
 
 async function changeFallback(row, newFallbackId) {
@@ -135,18 +131,24 @@ onMounted(() => { if (!store.hasSearched) store.fetchList() })
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
-        <InputText v-model="searchText" :placeholder="t('amministrazione.matrice_indirizzi_ruoli.search_placeholder')"
-          @keydown.enter="applyFilters" />
+      <FiltriLista :store="store" :inert="perimetroBloccato">
+        <template #sempre>
+          <InputText v-model="searchText" :placeholder="t('amministrazione.matrice_indirizzi_ruoli.search_placeholder')"
+            class="app-filter-w-lg"
+            @keydown.enter="applyFilters" />
+        </template>
         <LookupSelect v-model="tipoRuoloFilter" rel="config.tipi_ruoli"
+          class="app-filter-w-md"
           :placeholder="t('amministrazione.matrice_indirizzi_ruoli.filter_tipo_ruolo')"
           show-clear @change="onTipoRuoloChange" />
         <LookupSelect v-model="tipoIndirizzoFilter" rel="config.tipi_indirizzi"
+          class="app-filter-w-md"
           :placeholder="t('amministrazione.matrice_indirizzi_ruoli.filter_tipo_indirizzo')"
           show-clear @change="onTipoIndirizzoChange" />
         <Select v-model="attivoFilter" :options="boolOptions" option-label="label" option-value="value"
-          :placeholder="t('common.attivo')" @change="onAttivoChange" style="width: 120px;" />
-      </div>
+          class="app-filter-w-sm"
+          :placeholder="t('common.attivo')" @change="onAttivoChange" />
+      </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
           <ListaConfigStatusTag :dirty="dirty" />

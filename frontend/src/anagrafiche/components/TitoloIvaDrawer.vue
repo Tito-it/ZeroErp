@@ -648,6 +648,7 @@ const onClose = useDrawerClose(emit)
           ref="listaAmbitiRef"
           codice="anagrafiche.titolo_iva_ambiti"
           :paginata="false"
+          :store="storeAmbiti"
           :rows="storeAmbiti.items"
           :total="storeAmbiti.totalRecords"
           :loading="storeAmbiti.loading"
@@ -688,7 +689,7 @@ const onClose = useDrawerClose(emit)
                   @select="ambitoForm.articolo_id = $event?.id ?? null" />
                 <LookupSelect v-else-if="ambitoForm.livello === 'GRUPPO_VOCE'"
                   v-model="ambitoForm.gruppo_voce_id" rel="vendite.articoli_gruppi"
-                  />
+                />
                 <LookupSelect v-else v-model="ambitoForm.tipo_voce_id"
                   rel="vendite.articoli_tipologie" />
               </div>
@@ -721,6 +722,7 @@ const onClose = useDrawerClose(emit)
         <DrawerTabLista
           ref="listaMovimentiRef"
           codice="anagrafiche.titolo_iva_movimenti"
+          :store="storeMovimenti"
           :rows="storeMovimenti.items"
           :total="storeMovimenti.totalRecords"
           :loading="storeMovimenti.loading"

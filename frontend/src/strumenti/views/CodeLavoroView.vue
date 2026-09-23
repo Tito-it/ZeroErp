@@ -40,7 +40,7 @@ const activeTab = useTabDaQuery({
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-toolbar-start">
         <h2 style="margin: 0;">{{ t('strumenti.code.page_title') }}</h2>
         <small class="app-text-muted">{{ t('strumenti.code.page_description') }}</small>
       </div>

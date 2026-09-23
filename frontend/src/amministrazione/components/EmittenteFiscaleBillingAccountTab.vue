@@ -217,6 +217,7 @@ function buildRowActions(data) {
     codice="anagrafiche.emittente_billing_account"
     :emittente-esplicito="emittenteId"
     :help-text="t('amministrazione.emittenti_fiscali.ba_help')"
+    :store="store"
     :rows="store.items"
     :total="store.totalRecords"
     :loading="store.loading"
@@ -259,11 +260,11 @@ function buildRowActions(data) {
       </div>
     </template>
 
-    <template #filtri>
+    <template #filtri-sempre>
       <InputText
         v-model="searchText"
+        class="app-filter-w-lg"
         :placeholder="t('amministrazione.emittenti_fiscali.ba_filter_placeholder')"
-        style="width: 300px;"
       />
     </template>
 

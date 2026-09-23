@@ -39,6 +39,8 @@ import {
   dashMotivoLabel,
 } from '../dashboardAree'
 import { useDashboardBacklogStore } from '../stores/dashboardBacklog'
+import FiltriLista from '../../core/components/FiltriLista.vue'
+import { useContrattoFiltriLocali } from '../../core/composables/useContrattoFiltriLocali'
 
 const { t, te } = useI18n()
 const notify = useNotify()
@@ -222,6 +224,30 @@ function onRitardoChange() {
   loadDocumenti()
 }
 
+// Scopo: il contratto dei filtri della barra — chi sono, che default hanno, il
+//        segno che mostrano e «Pulisci filtri». UNA sede: chiave, `rif` e
+//        default sulla stessa riga.
+// ⛔ Il default si DICHIARA e non si fotografa dal `ref`: questi due filtri
+//    vivono nello store `userScoped` del cruscotto, che SOPRAVVIVE al
+//    componente — al secondo montaggio una fotografia avrebbe preso il filtro
+//    lasciato dall'operatore come se fosse il default.
+// ⚠️ I due nascono entrambi a `null`, quindi qui il pallino non compare mai: o
+//    non filtrano, o sono stati scelti a mano.
+// ⛔ Non c'e' la CLASSE: quella si sceglie dalle card, che restano sempre a
+//    video — il segno esiste per cio' che in modalita' compatta non si vede piu'.
+const {
+  segno: segnoFiltriCruscotto,
+  azzeraFiltri: pulisciFiltri,
+} = useContrattoFiltriLocali({
+  ritardo_giorni: { rif: ritardoGiorni, default: null },
+  area: { rif: areaSelezionata, default: null },
+}, {
+  onAzzera: () => {
+    store.resetDocumenti()
+    loadDocumenti()
+  },
+})
+
 // Scopo: paginazione DataTable documenti (lazy, paginator top; calcolo
 //        pagina nel BB usePagedDashFetch).
 function onDocumentiPage(event) {
@@ -316,7 +342,7 @@ onActivated(() => {
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-toolbar-start">
         <h2 style="margin: 0;">{{ t('vendite.dashboard_backlog.page_title') }}</h2>
         <small class="app-text-muted">{{ t('vendite.dashboard_backlog.page_description') }}</small>
       </div>
@@ -410,31 +436,38 @@ onActivated(() => {
           <h4 class="app-dash-fermi-title">
             {{ t('vendite.dashboard_backlog.lista_titolo') }}
           </h4>
-          <div class="app-page-filters">
+          <!-- ⚠️ `:segno` e non `:store`: un cruscotto non ha uno store-LISTA —
+               i suoi filtri sono ref sciolte, non un oggetto `filters` con i
+               propri default. E' il ripiego dichiarato dal brief per le
+               superfici senza store, e resta l'unica sede del conteggio.
+               ⛔ `classeSelezionata` NON ci entra: si sceglie dalle card, che
+               sono sempre a video — il segno esiste per cio' che, in modalita'
+               compatta, non si vede piu'. -->
+          <FiltriLista :segno="segnoFiltriCruscotto" @pulisci="pulisciFiltri">
             <label class="app-dash-filter-toggle">
               <span>{{ t('vendite.dashboard_backlog.filtro_ritardo_label') }}</span>
               <Select
                 v-model="ritardoGiorni"
+                class="app-filter-w-sm"
                 :options="ritardoOptions"
                 option-label="label"
                 option-value="value"
                 :placeholder="t('vendite.dashboard_backlog.ritardo_tutti')"
                 size="small"
-                style="width: 150px;"
                 @change="onRitardoChange"
               />
             </label>
             <Select
               v-model="areaSelezionata"
+              class="app-filter-w-md"
               :options="areaOptions"
               option-label="label"
               option-value="value"
               :placeholder="t('vendite.dashboard_backlog.filtro_area_tutte')"
               size="small"
-              style="width: 200px;"
               @change="onAreaChange"
             />
-          </div>
+          </FiltriLista>
         </div>
         <ListaConfigurabile
           v-if="documentiCount > 0 || documentiLoading"

@@ -27,8 +27,6 @@ import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
 import ToggleSwitch from 'primevue/toggleswitch'
 
-
-
 const ALWAYS_VALID_FROM = '1900-01-01'
 
 const { t } = useI18n()
@@ -215,7 +213,6 @@ const pageActions = computed(() => [
              della lista. Visibile sempre in modalita' lista (non in adding),
              cosi' anche l'empty state ha il pulsante "Nuovo" accessibile. -->
         <div v-if="!adding" class="app-page-toolbar">
-          <div class="app-page-filters"></div>
           <PageActionsBar :actions="pageActions" />
         </div>
 

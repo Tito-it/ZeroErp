@@ -25,6 +25,7 @@ import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import AttivoTag from './AttivoTag.vue'
 import api from '../api'
+import FiltriLista from './FiltriLista.vue'
 
 const { t, te } = useI18n()
 useReadonlyMode(READONLY_DOMAINS.CONFIG)
@@ -193,12 +194,19 @@ function selectTable(rel) {
     <div class="config-panel-content">
       <template v-if="selectedRel">
         <div class="app-page-toolbar">
-          <div class="app-page-filters">
-            <InputText
-              v-model="searchRecords"
-              :placeholder="t('config_panel.search_record')"
-            />
-          </div>
+          <!-- ⚠️ Nessuno `:store`: questo pannello non ha uno store-lista e non
+               ha FILTRI — solo la ricerca, che per D2 non e' un filtro. Senza
+               slot di default il building block non rende ne' l'imbuto ne' il
+               drawer, quindi non c'e' nessun segno da alimentare. -->
+          <FiltriLista>
+            <template #sempre>
+              <InputText
+                v-model="searchRecords"
+                class="app-filter-w-lg"
+                :placeholder="t('config_panel.search_record')"
+              />
+            </template>
+          </FiltriLista>
           <PageActionsBar :actions="pageActions" />
         </div>
 

@@ -207,7 +207,7 @@ defineExpose({ loadRighe })
 <template>
   <div>
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-toolbar-start">
         <h4 style="margin: 0;">{{ t(titleKey) }}</h4>
       </div>
       <PageActionsBar :actions="pageActions" />

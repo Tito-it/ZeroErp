@@ -25,6 +25,7 @@ import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptySta
 import { PAGINATION } from '../../core/constants'
 import { paramsPagina } from '../../core/utils/listParams'
 import { listEntiIncasso } from '../api/pagamenti'
+import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
 
 function buildParams(f) {
   // ⚠️ `orderDirDefault: 'asc'`: e' l'ordine naturale di un elenco di codici, ed
@@ -42,10 +43,19 @@ function buildParams(f) {
 export const useCanaliIncassoStore = defineStore(
   'pagamenti-canali-incasso',
   () => {
-    const filters = ref({
+    // ⭐ I FILTRI DI DOMINIO IN UNA SEDE SOLA (2026-09-23): da qui nascono i valori
+    //    di partenza della lista E il contratto che `FiltriLista` legge per il segno
+    //    dei filtri attivi (`useContrattoFiltriLista`). ⛔ Due letterali divergono
+    //    al primo filtro aggiunto da una parte sola, e il segno si spegnerebbe su
+    //    una lista che filtra — senza nessun errore.
+    const FILTRI_DEFAULT = {
       tipo: null,
       centro_riscossione_id: null,
       attivo: null,
+    }
+
+    const filters = ref({
+      ...FILTRI_DEFAULT,
       // Dichiarata per contratto con `useSearchTable`, che la scrive su
       // deep-link `?search=`. Il backend dei canali non ha ricerca testuale.
       search: '',
@@ -63,7 +73,16 @@ export const useCanaliIncassoStore = defineStore(
         alwaysFetch: true,
       })
 
-    return { items, totalRecords, loading, hasSearched, filters, fetchList }
+    // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
+    // nascita, e come si riportano li' («Pulisci filtri»).
+    const { chiaviFiltro, filtriDefault, azzeraFiltri } = useContrattoFiltriLista({
+      filters, filterDefaults: FILTRI_DEFAULT, fetchList,
+    })
+
+    return {
+      items, totalRecords, loading, hasSearched, filters, fetchList,
+      chiaviFiltro, filtriDefault, azzeraFiltri,
+    }
   },
   { userScoped: true },
 )

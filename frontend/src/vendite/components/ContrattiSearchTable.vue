@@ -35,6 +35,8 @@ import PdfDocumentiSorgenteDialog from '../../documenti/components/PdfDocumentiS
 import ContrattoNoteDrawer from './ContrattoNoteDrawer.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { TIPO_RUOLO, MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
+import FiltroPeriodo from '../../core/components/FiltroPeriodo.vue'
+import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const emit = defineEmits(['new', 'row-click', 'open-righe'])
 const { t } = useI18n()
@@ -54,19 +56,43 @@ const {
 })
 
 // Filtri custom (toolbar caller) — binding store via BB (B14).
-const { bindSelect, bindDate } = useStoreFilterBindings(store, applyFilters)
+const { bindSelect, bindPeriodo } = useStoreFilterBindings(store, applyFilters)
 const { value: statoFilter, onChange: onStatoChange } = bindSelect('stato_doc_contratto_id')
 const { value: utilityFilter, onChange: onUtilityChange } = bindSelect('utility_id')
 const { value: ambitoFilter, onChange: onAmbitoChange } = bindSelect('ambito')
-// data_da: la lista vuole sempre un floor → `clearTo` ripristina lo stesso
-// default dello store (regola unica in core/utils/date). Ricalcolarlo qui
-// significherebbe due formule da tenere allineate a mano.
-const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da', {
-  clearTo: defaultFiltroDataDa,
+// Il periodo e' UN filtro con due estremi: un binding, un componente.
+// ⭐ `clearToDa`: questa lista vuole sempre un floor su `data_da` — svuotandola
+//    torna lo stesso default dello store (regola unica in core/utils/date).
+//    Ricalcolarlo qui significherebbe due formule da tenere allineate a mano.
+// ⚠️ Il floor entra anche nell'invariante `da <= a`: `bindPeriodo` controlla il
+//    valore RISOLTO, non quello emesso dal widget — altrimenti svuotare
+//    `data_da` scriverebbe un floor che puo' cadere dopo `data_a`, e
+//    l'intervallo resterebbe invertito proprio dove il `clearTo` esiste.
+const periodo = bindPeriodo('data_da', 'data_a', { clearToDa: defaultFiltroDataDa })
+// ⭐ `scadenza_mese` e' UN `computed` SULLO STORE, non un `ref` copiato, e la
+//    ragione non e' lo stile: lo store tiene `YYYY-MM` e il widget una `Date`,
+//    quindi qui c'e' un punto che TRADUCE. Un `ref` che spinge e basta
+//    continuerebbe a mostrare il mese scelto dopo un «Pulisci filtri» del
+//    drawer, su una lista che quel filtro non ce l'ha piu' — senza nessun
+//    errore. Cosi' la sede del filtro resta una sola e la casella la legge.
+// ⚠️ Non c'e' un `bindMese` nel BB dei binder: e' l'unica occorrenza del
+//    prodotto, e la regola del 2 dice di estrarre alla seconda.
+const scadenzaMeseFilter = computed({
+  get: () => {
+    const v = store.filters.scadenza_mese
+    if (!v) return null
+    const [anno, mese] = String(v).split('-')
+    return new Date(Number(anno), Number(mese) - 1, 1)
+  },
+  set: (val) => {
+    if (!val) {
+      store.filters.scadenza_mese = null
+      return
+    }
+    const d = val instanceof Date ? val : new Date(val)
+    store.filters.scadenza_mese = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  },
 })
-const { value: dataAFilter, onChange: onDataAChange } = bindDate('data_a')
-// scadenza_mese: cast a YYYY-MM da Date → resta custom.
-const scadenzaMeseFilter = ref(null)
 
 const ambitoOptions = computed(() => [
   { value: null, label: t('common.all') },
@@ -85,15 +111,10 @@ function buildExportParams(format) {
   return { formato: format, ...store.paramsFiltro() }
 }
 
-function onScadenzaMeseChange(val) {
-  if (val) {
-    const d = val instanceof Date ? val : new Date(val)
-    const yyyy = d.getFullYear()
-    const mm = String(d.getMonth() + 1).padStart(2, '0')
-    store.filters.scadenza_mese = `${yyyy}-${mm}`
-  } else {
-    store.filters.scadenza_mese = null
-  }
+// ⚠️ Nel template `v-model` PRECEDE `@update:model-value`: Vue accoda i
+//    listener nell'ordine in cui sono scritti, quindi qui lo store e' gia'
+//    scritto dal setter (stessa regola gia' in uso per `bindSelect`).
+function onScadenzaMeseChange() {
   applyFilters()
 }
 
@@ -161,10 +182,13 @@ onMounted(() => {
       <!-- Toolbar UNICA esterna (pattern lista standard): filtri a sinistra,
            PageActionsBar a destra. -->
       <div class="app-page-toolbar">
-        <div class="app-page-filters" :inert="perimetroBloccato">
-          <InputText v-model="searchText" :placeholder="t('vendite.contratti.search_placeholder')" style="width: 320px;" />
+        <FiltriLista :store="store" :inert="perimetroBloccato">
+          <template #sempre>
+            <InputText class="app-filter-w-lg" v-model="searchText" :placeholder="t('vendite.contratti.search_placeholder')"  />
+          </template>
           <LookupSelect
             v-model="statoFilter"
+            class="app-filter-w-md"
             rel="config.stati_doc_contratti"
             :placeholder="t('vendite.contratti.filtro_stato')"
             show-clear
@@ -172,6 +196,7 @@ onMounted(() => {
           />
           <UtilityPerRuoloSelect
             v-model="utilityFilter"
+            class="app-filter-w-md"
             :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
             :placeholder="t('vendite.contratti.filtro_utility')"
             show-clear
@@ -180,24 +205,22 @@ onMounted(() => {
           />
           <Select
             v-model="ambitoFilter"
+            class="app-filter-w-md"
             :options="ambitoOptions"
             option-label="label"
             option-value="value"
             :placeholder="t('vendite.contratti.filtro_ambito')"
             @change="onAmbitoChange"
-            style="min-width: 160px;"
           />
-          <DatePicker v-model="dataDaFilter" :placeholder="t('common.data_da')"
-            date-format="dd/mm/yy" show-icon show-button-bar style="width: 150px;"
-            @update:modelValue="onDataDaChange" />
-          <DatePicker v-model="dataAFilter" :placeholder="t('common.data_a')"
-            date-format="dd/mm/yy" show-icon show-button-bar style="width: 150px;"
-            @update:modelValue="onDataAChange" />
+          <FiltroPeriodo :periodo="periodo" />
+          <!-- ⚠️ Un DatePicker SOLO resta legittimo: «scadenza mese» e' un
+               filtro a se', non un estremo di periodo. -->
           <DatePicker v-model="scadenzaMeseFilter" :placeholder="t('vendite.contratti.filtro_scadenza_mese')"
-            view="month" date-format="mm/yy" show-icon show-button-bar style="width: 160px;"
+            class="app-filter-w-sm"
+            view="month" date-format="mm/yy" show-icon show-button-bar
             :min-date="new Date()"
             @update:modelValue="onScadenzaMeseChange" />
-        </div>
+        </FiltriLista>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />

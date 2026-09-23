@@ -225,7 +225,7 @@ defineExpose({ load })
 <template>
   <div class="app-tab-content">
     <CodaFiltriToolbar
-      :filtri="store.filters"
+      :store="store"
       :stato-options="statoOptions"
       :ambito-options="ambitoOptions"
       :page-actions="pageActions"

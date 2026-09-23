@@ -111,6 +111,7 @@ const onClose = useDrawerClose(emit)
       <DrawerTabLista
         ref="listaRef"
         codice="magazzino.lotti"
+        :store="store"
         :rows="store.items"
         :total="store.totalRecords"
         :loading="store.loading"
