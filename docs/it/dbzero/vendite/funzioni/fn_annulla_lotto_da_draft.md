@@ -18,6 +18,13 @@ AS $function$
 -- Perimetro (D-L pt.2 + D-T): vale per MASSIVO **e** GIORNALIERO.
 --        Il vincolo al solo MASSIVO e' caduto quando D-T ha reso
 --        lecita la transizione DRAFT->ANNULLATA per entrambi.
+-- rev 2026-09-23 (brief-db-annullamento-chiude-la-vita §9.4):
+--        l'annullo CHIUDE anche gli ESITI — un lotto annullato e'
+--        VUOTO. Ogni esito non ancora ESCLUSO passa a ESCLUSO con
+--        il motivo dell'annullo; il timbro lo mette il trigger.
+--        ⚠️ Qui la sorella fn_riporta_lotto_a_draft NON va
+--        imitata, ed e' voluto: lei tiene il lotto vivo e il giro
+--        dopo riscrive gli esiti; l'annullo non ha un giro dopo.
 -- rev 2026-09-04 (brief-residuo-fatturabili-e-bandiere-esito-parziale,
 --        D4): l'annullo CHIUDE anche i task run del lotto, con
 --        l'esito ANNULLATO. Prima non li nominava affatto, e un
@@ -46,7 +53,9 @@ AS $function$
 --        funzione non possono piu' divergere.
 DECLARE
     v_lock_batch_id        vendite.fatturazione_lotti.lock_batch_id%TYPE;
+    v_lotto_codice         vendite.fatturazione_lotti.codice%TYPE;
     v_annullata_id         config.stati_doc_fiscale.id%TYPE;
+    v_uscita_motivo        vendite.fatturazione_lotti_esiti.uscita_motivo%TYPE;
     v_motivi               jsonb;
     v_fatture_ids          BIGINT[];
     v_updated_lotti        INTEGER := 0;
@@ -54,6 +63,7 @@ DECLARE
     v_deleted_fatture      INTEGER := 0;
     v_deleted_righe        INTEGER := 0;
     v_annullati_task_run   INTEGER := 0;
+    v_esiti_chiusi         INTEGER := 0;
 BEGIN
     IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_annulla_lotto_da_draft', 'E_PARAMETRO_INVALIDO',
@@ -74,8 +84,9 @@ BEGIN
             v_motivi -> 0 ->> 'dettaglio');
     END IF;
 
-    SELECT fl.lock_batch_id
-      INTO v_lock_batch_id
+    -- rev 2026-09-23: anche il codice, per il motivo d'uscita degli esiti.
+    SELECT fl.lock_batch_id, fl.codice
+      INTO v_lock_batch_id, v_lotto_codice
       FROM vendite.fatturazione_lotti fl WHERE fl.id = p_lotto_id;
 
     SELECT s.id INTO v_annullata_id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'ANNULLATA' AND s.attivo IS TRUE LIMIT 1;
@@ -120,6 +131,26 @@ BEGIN
     )
     SELECT count(*)::INTEGER INTO v_annullati_task_run FROM annullati;
 
+    -- ⭐ rev 2026-09-23 — GLI ESITI ESCONO TUTTI. Un lotto annullato
+    --   e' vuoto: la pulizia qui sopra ha cancellato ogni fattura del
+    --   giro, quindi nessun esito puo' piu' dire com'e' andato un
+    --   documento in QUESTO lotto — nemmeno COMPLETED, che direbbe
+    --   «e' andato bene» su un documento senza fattura.
+    -- ⭐ ESCLUSO, lo stato che dice gia' «uscito dal giro», con il
+    --   motivo obbligatorio per CHECK. uscita_quando/uscita_da li
+    --   scrive trgfn_fatturazione_lotti_esiti_uscita: non qui.
+    -- ⚠️ `<> 'ESCLUSO'`: chi era gia' uscito tiene il SUO motivo e il
+    --    suo timbro (e il trigger non li toccherebbe comunque), e la
+    --    funzione resta idempotente.
+    v_uscita_motivo := format('Annullo del lotto %s', v_lotto_codice);
+
+    UPDATE vendite.fatturazione_lotti_esiti e
+       SET stato_esecuzione = 'ESCLUSO',
+           uscita_motivo    = v_uscita_motivo
+     WHERE e.lotto_id = p_lotto_id
+       AND e.stato_esecuzione <> 'ESCLUSO';
+    GET DIAGNOSTICS v_esiti_chiusi = ROW_COUNT;
+
     -- ⛔ `stato_lotto` NON SI TOCCA (rev 2026-09-07). Fino a oggi questa riga
     --   ci scriveva 'COMPLETATO', e sono TRE regole infrante in una:
     --     1. la macchina a stati la vieta — fn_set_fatturazione_lotto_stato
@@ -151,9 +182,28 @@ BEGIN
     UPDATE vendite.fatturazione_lotti SET stato_operativo = 'CHIUSO', stato_doc_fiscale_id = v_annullata_id, data_update = now(), user_update = current_user WHERE id = p_lotto_id;
     GET DIAGNOSTICS v_updated_lotti = ROW_COUNT;
 
+    -- ⭐ rev 2026-09-23 — L'USCITA SI RACCONTA NEL GIORNALE, come fa
+    --   fn_escludi_documento_da_giro per il singolo documento. Dopo
+    --   l'UPDATE: la riga porta lo stato del lotto chiuso. `I`: e' un
+    --   fatto, non un allarme. Il motivo nel MESSAGGIO, non solo in
+    --   meta: chi legge il giornale legge il messaggio.
+    IF v_esiti_chiusi > 0 THEN
+        PERFORM vendite.fn_log_pipeline_fase(
+            p_lotto_id,
+            v_annullata_id,
+            'ANNULLO_LOTTO',
+            'I'::char,
+            format('%s: %s documenti usciti dal giro', v_uscita_motivo, v_esiti_chiusi),
+            jsonb_build_object('esiti_chiusi',  v_esiti_chiusi,
+                               'uscita_motivo', v_uscita_motivo));
+    END IF;
+
     RETURN QUERY SELECT v_updated_lotti, v_updated_attivita, v_deleted_fatture, v_deleted_righe, v_annullati_task_run;
 END;
 $function$
+
+COMMENT ON FUNCTION vendite.fn_annulla_lotto_da_draft(p_lotto_id bigint)
+IS 'Annullo di un lotto in DRAFT (MASSIVO e GIORNALIERO): precondizioni da script.fn_check_lotto_annullabile, cancella le fatture pre-fiscali e ripristina le attivita'' (fn_cleanup_fatture_by_ids), chiude i task run con esito ANNULLATO, porta il lotto a CHIUSO/ANNULLATA senza toccare stato_lotto (rev 2026-09-07). ⭐ rev 2026-09-23: chiude anche gli ESITI — ogni riga di vendite.fatturazione_lotti_esiti non ancora ESCLUSO passa a ESCLUSO con uscita_motivo «Annullo del lotto <codice>» (timbro dal trigger) — e scrive una riga I nel giornale (fase ANNULLO_LOTTO) col numero di documenti usciti. Un lotto annullato e'' VUOTO: nessun controllo deve escluderlo. ⚠️ La sorella fn_riporta_lotto_a_draft non chiude gli esiti, ed e'' voluto: il lotto resta vivo e il giro dopo li riscrive. Firma invariata (il backend legge le cinque colonne per posizione). Brief: brief-db-annullamento-chiude-la-vita §9.4.';
 ```
 
 ---

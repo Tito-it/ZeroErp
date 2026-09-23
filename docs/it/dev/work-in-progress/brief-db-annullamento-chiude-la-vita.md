@@ -1,7 +1,8 @@
 # Brief DB — L'annullamento chiude la vita: un lotto annullato esce dai controlli
 
-> **Destinatari:** team DB (`dev/db-tid`). Nessun prerequisito BE/FE: la
-> modifica è tutta lato database.
+> **Destinatari:** team DB (`dev/db-tid`). ⚠️ **Una richiesta al BE, da fare
+> prima del merge** (§9.8): rigenerare `error_policies_generated.py` per il
+> codice nuovo, altrimenti `test_error_policies_divergenza_db` è rosso in CI.
 >
 > **Tipo:** brief di cantiere, nato da una **decisione di Tid del 2026-09-22**
 > (§1) presa davanti a un difetto trovato lo stesso giorno (§2).
@@ -11,9 +12,14 @@
 > si scrive più come filtro nei controlli, si scrive nell'annullo). Il §8 è la
 > rilettura che ha portato alla decisione.
 >
-> **Stato (2026-09-23):** 🔵 aperto, **tutte le decisioni prese** (§9.1, e il
-> pregresso §9.5: si allinea). Nessun changeSet scritto; l'elenco del lavoro è
-> il §9.7.
+> **Stato (2026-09-23 sera):** 🟢 **DB applicato e verificato** — i cinque
+> changeSet `20260923-30` → `-34` sono `EXECUTED` su dbdev (15:43), pgTAP
+> eseguiti da Tid **senza regressioni** (§9.9). ⛔ **Non ancora chiudibile**:
+> manca un passo BE che blocca il merge — rigenerare
+> `error_policies_generated.py` (oggi non contiene il codice nuovo), altrimenti
+> `test_error_policies_divergenza_db` è rosso in CI. Fatto quello, il brief si
+> archivia (§9.9 dice cosa passa a PROJECT_CONTEXT). ⚠️ Il §9.3 è stato
+> **corretto scrivendolo**: la guardia sta su un trigger, non nella funzione.
 >
 > **In una riga:** un lotto annullato è **vuoto** — l'annullo chiude ogni
 > attività del giro, esiti compresi, e da lì nessun controllo ha bisogno di
@@ -446,6 +452,34 @@ del modello.
 
 ### 9.3 Il lavoro 1 — `COMPLETATO` si rifiuta su un lotto fermo
 
+> ⛔ **Corretto il 2026-09-23 scrivendolo — il testo sotto è la prima stesura.**
+> La guardia **non** sta in `fn_set_fatturazione_lotto_stato`: lì sarebbe stata
+> **muta**. Il runner non chiama quella funzione: `set_lotto_job_stato`
+> (`pipeline_repository.py`) scrive `stato_lotto` con un `UPDATE` diretto e una
+> sua copia della matrice degli stati. Nessuna funzione DB viva scrive
+> `COMPLETATO`, e la funzione la chiamano solo due pgTAP.
+> ⇒ **Trigger** `trg_fatturazione_lotti_a10_guard_completato_upd`,
+> `BEFORE UPDATE OF stato_lotto`: l'unico punto che ogni scrittore attraversa.
+> Legge `fermo` (e `fermo_motivo`, per la frase) dalla sede
+> `vw_lotti_segnalazioni_summary`.
+>
+> ⭐ **E un secondo ramo, nato dal §9.4:** con gli esiti chiusi dall'annullo,
+> `fermo` su un lotto annullato torna falso, e la domanda «è fermo?» lascerebbe
+> passare un `COMPLETATO` su un annullato. È la falsificazione del 07-09 («la
+> corsa è finita bene» di un giro interrotto). Il runner rifiuta già i giri su
+> un ANNULLATA; ora lo dice anche il modello: `COMPLETATO` si rifiuta se lo
+> stato fiscale è **abortito** (il flag `is_abortito`, non un elenco).
+>
+> Codice `E_LOTTO_COMPLETATO_NON_GUADAGNATO` (TECNICO); la frase dice il motivo
+> in italiano («ha documenti in errore», «è annullato»), il codice del motivo
+> resta nel contesto.
+>
+> ⚠️ **Debito trovato, non toccato:** la matrice degli stati di `stato_lotto`
+> vive in **due** sedi che dissentono — `fn_set_fatturazione_lotto_stato` rifiuta
+> `COMPLETATO → ERRORE`, il backend lo ammette (decisione del 24-08, lotto 6260).
+> La funzione è di fatto morta. Va deciso se ritirarla o farla diventare la
+> sede unica che il backend chiama: cantiere a sé, BE + DB.
+
 In `vendite.fn_set_fatturazione_lotto_stato`: la transizione verso `COMPLETATO`
 si rifiuta se il lotto è `fermo`, letto dal lettore per-lotto della sede unica
 (`vendite.fn_get_lotto_segnalazioni_summary(p_lotto_id)`, colonna `fermo`). Non
@@ -542,6 +576,15 @@ annullati con esiti `COMPLETED`/`PENDING` che nessun controllo nomina.
 
 ### 9.6 Il lavoro 3 — il controllo a catalogo, e i pgTAP
 
+> ✅ **Scritto** (§9.8). Il lettore si chiama
+> **`dbops.vw_lotti_chiusi_con_errori_da_guardare`**, non come la sorgente: due
+> viste omonime in due schemi si distinguerebbero solo per `search_path`. I casi
+> 11-12 di `test-lotti-gruppi-esito.sql` **non** vanno toccati: costruiscono la
+> contraddizione con un `INSERT` già `COMPLETATO` e un esito scritto dopo, cioè
+> dalla porta dell'esito, che la guardia non chiude — verdi con l'SQL nuovo.
+> Da rileggere è invece `test-lotti-attivita-stato-esecuzione-v2.sql`, che
+> fissava come atteso un lotto `COMPLETATO` con una fattura in `ERRORE`.
+
 **Catalogo** (§8.3): un lettore `dbops.vw_lotti_chiusi_con_gruppi_in_errore`
 sopra la vista di `vendite`, stessa forma di `dbops.vw_lotti_fermi_da_guardare`.
 `vendite` non entra nella colonna `vista` (test 2 di
@@ -580,23 +623,104 @@ che quel test costruisce non è più raggiungibile dal dominio.
 
 ### 9.7 Cosa resta
 
-* 🔵 §9.3 guard su `COMPLETATO` in `fn_set_fatturazione_lotto_stato` + codice
-  errore nuovo — ⚠️ prima il grep dei pgTAP;
-* 🔵 §9.4 l'annullo chiude tutti gli esiti (`ESCLUSO` + motivo) e scrive una
-  riga di giornale; firma invariata;
-* 🔵 §9.5 changeSet `80_data` una tantum: esiti dei lotti già annullati →
-  `ESCLUSO` con motivo «Annullo del lotto — allineato il GG-MM-AAAA»,
-  `stato_lotto` intatto. Dopo il §9.4;
-* 🔵 §9.6 lettore `dbops` + riga in `presidi.csv` + `COMMENT` della vista di
-  `vendite` riscritto: invariante di nuovo **«vuoto»**, e il blocco sul pregresso
-  (rev 2026-09-07) raccontato come **chiuso**. Va detto che la clausola «⛔ non
-  si filtrano via» non è stata rovesciata: le righe non sono nascoste, sono
-  sparite perché gli esiti sono stati chiusi. Va detto anche dove restano
-  nominati gli undici lotti con `stato_lotto` falsificato: lo storico.
-  `security_invoker` va ri-specificato se si passa da `CREATE OR REPLACE VIEW`;
-* 🔵 §9.6 quattro pgTAP costruiti + rilettura dei casi 11-12 di
-  `test-lotti-gruppi-esito.sql`;
-* ▶ **BE**: solo la rigenerazione delle policy per il codice nuovo del §9.3.
-  Nessun endpoint cambia; la lista gruppi del lotto mostra già `ESCLUSO` con il
-  suo motivo — da guardare a video che un annullato con tutti i documenti
-  «usciti» si legga bene.
+* ✅ §9.3 guardia su `COMPLETATO` — **trigger**, due rami (fermo, abortito) +
+  codice nuovo (`20260923-30`);
+* ✅ §9.4 l'annullo chiude tutti gli esiti e scrive una riga di giornale, firma
+  invariata (`20260923-31`);
+* ✅ §9.5 allineamento dei lotti già annullati (`80_data 20260923-34`);
+* ✅ §9.6 lettore `dbops` (`20260923-33`) + riga in `presidi.csv` + `COMMENT`
+  della vista di `vendite` (`20260923-32`, solo `COMMENT ON VIEW`: la
+  definizione non cambia);
+* ✅ §9.6 pgTAP: `test-annullamento-chiude-la-vita-v1.sql` (nuovo, 17) e
+  `test-lotti-attivita-stato-esecuzione-v2.sql` (9-12 riscritti, 14 → 15);
+* ✅ manuale `fn_annulla_lotto_da_draft` riscritto: era fermo al 03-08 e diceva
+  ancora `stato_lotto = COMPLETATO`;
+* ✅ **Tid**: apply dei cinque changeSet e corsa pgTAP, nessuna regressione
+  (2026-09-23, §9.9);
+* 🔴 **BE, prima del merge**: `manage.py genera_error_policies` e commit di
+  `error_policies_generated.py` (codice `E_LOTTO_COMPLETATO_NON_GUADAGNATO`).
+  Senza, `test_error_policies_divergenza_db` è rosso in CI;
+* ▶ **BE, da guardare**: i test Django e2e (`ZEROERP_TEST_DB_E2E=1`) che portano
+  un lotto a `COMPLETATO` con errori aperti ora ricevono il rifiuto dal DB. Il
+  runner non lo fa (chiede prima `fermo`), ma una fixture sì potrebbe;
+* ▶ **A video**: un annullato mostra tutti i documenti `ESCLUSO` col motivo
+  «Annullo del lotto …» nella lista gruppi — da guardare che si legga bene;
+* ⚠️ debito dichiarato (§9.3): la matrice di `stato_lotto` in due sedi che
+  dissentono, `fn_set_fatturazione_lotto_stato` morta. Cantiere a sé.
+
+### 9.8 La consegna — 2026-09-23
+
+| File | Che cosa |
+| --- | --- |
+| `20_code/vendite/20260923-30-create-trgfn-fatturazione-lotti-guard-completato` | `trgfn_fatturazione_lotti_guard_completato` + trigger `_a10_guard_completato_upd` |
+| `20_code/vendite/20260923-31-update-fn-annulla-lotto-da-draft-chiude-esiti` | l'annullo chiude gli esiti (`ESCLUSO` + motivo) + riga `ANNULLO_LOTTO` nel giornale |
+| `20_code/vendite/20260923-32-comment-vw-lotti-chiusi-con-gruppi-in-errore-invariante-vuoto` | `COMMENT ON VIEW`: invariante vuota, le due porte, pregresso chiuso |
+| `20_code/dbops/20260923-33-create-vw-lotti-chiusi-con-errori-da-guardare` | il lettore a catalogo |
+| `80_data/changelog/20260923-34-allinea-esiti-lotti-annullati` | una tantum: lotti già annullati come quelli di domani |
+| `config/codici_errore.csv`, `config/messaggi_errore.csv` (id 1117), `dbops/presidi.csv` | codice nuovo, frase, riga di catalogo |
+| `db/pgtap/vendite/test-annullamento-chiude-la-vita-v1.sql` | nuovo, 17 test, tutti su casi costruiti |
+| `db/pgtap/vendite/test-lotti-attivita-stato-esecuzione-v2.sql` | 9-12 riscritti: il vecchio 11 fissava la contraddizione come attesa |
+| `docs/it/dbzero/vendite/manual/fn_annulla_lotto_da_draft.md` | manuale riscritto |
+
+⚠️ I numeri `-30 → -34` sono stati scelti **lontani** da quelli del cantiere
+fixture, che il 23-09 avanzava in sequenza (`-01 → -10`).
+
+**Le prove** — da owner, SQL **estratto** dagli YAML, in `BEGIN … ROLLBACK`;
+fotografia degli oggetti vivi prima e dopo, identica (niente applicato).
+
+* SQL estratto + righe CSV nuove + allineamento: compila, `plpgsql_check` a
+  zero su entrambe le funzioni. Sulla macchina del 23-09 (fatto datato):
+  **30 lotti annullati, 83 esiti chiusi**; la vista **7 → 0**;
+  `fn_conta_presidio` del lettore = 0; `LTF-0010972` con i due esiti `ESCLUSO`
+  e la sua riga di giornale; zero annullati con esiti aperti.
+* `test-annullamento-chiude-la-vita-v1`: **16/17**. Il 16 (cecità senza veste)
+  è **rosso da owner per costruzione** — l'owner attraversa la RLS — ed è lo
+  stesso comportamento del gemello (test 18 di `test-lotti-fermi-verdetto-a-db-v1`,
+  rosso da owner anche senza l'SQL nuovo). Da app deve essere verde.
+* `test-lotti-attivita-stato-esecuzione-v2` adattato: **15/15**. La versione
+  **originale** con l'SQL nuovo: rossi 9 e 10 — la modifica serviva.
+* Con l'SQL nuovo in testa, verdi: `test-lotti-gruppi-esito` (13),
+  `test-annulla-lotto-non-riscrive-stato-v1` (7), `test-annulla-lotto-vuoto-v1`
+  (6), `test-annulla-lotto-task-runs-v1` (7), `test-fatture-log-trigger-sync` (8),
+  `test-fn-get-or-create-lotto-emittente` (10), `test-catalogo-presidi-v1` (11),
+  `test-available-actions-lotto-v1` (12), `test-fatturazione-reset-lotto-draft`
+  (16); `test-lotti-fermi-verdetto-a-db-v1` 20/21, il 18 come sopra.
+* Guardrail statici verdi: letterali SQL, `runOnChange`, preCondition/seed,
+  DDL su trigger generati, GRANT batch, preambolo pgTAP.
+* ⚠️ Non provato qui: l'upsert **completo** dei tre CSV (il mirror li rilegge
+  interi, §11.2 delle linee guida) — si vede all'apply. ✅ Passato all'apply
+  (§9.9).
+
+### 9.9 ✅ Applicato — 2026-09-23
+
+**Apply di Tid**, letto dal `databasechangelog`: `20260923-30`, `-31`, `-32`,
+`-33` e `-34` tutti `EXECUTED` alle 15:43 (i tre mirror CSV riletti senza
+rifiuti). **Corsa pgTAP di Tid: nessuna regressione.**
+
+Riletto sul vivo dopo l'apply (fatto datato, 23-09):
+
+| Che cosa | Valore |
+| --- | --- |
+| righe di `vendite.vw_lotti_chiusi_con_gruppi_in_errore` | **0** (erano 7) |
+| `fn_conta_presidio('dbops.vw_lotti_chiusi_con_errori_da_guardare')` | **0** |
+| esiti non `ESCLUSO` su lotti con stato abortito | **0** |
+| `E_LOTTO_COMPLETATO_NON_GUADAGNATO` in `codici_errore` / `messaggi_errore` | 1 / 1 |
+| `E_LOTTO_COMPLETATO_NON_GUADAGNATO` in `error_policies_generated.py` | ⛔ **0** — il passo BE manca |
+
+**Per chiudere** (e solo questo):
+
+1. 🔴 **BE**: `manage.py genera_error_policies` e commit di
+   `error_policies_generated.py`, nello stesso giro del merge.
+
+**Cosa passa a PROJECT_CONTEXT alla chiusura**, perché un debito lasciato in un
+brief archiviato non lo rilegge nessuno:
+
+* la matrice di `stato_lotto` in **due** sedi che dissentono (BE ammette
+  `COMPLETATO → ERRORE`, `fn_set_fatturazione_lotto_stato` no) e la funzione di
+  fatto morta — cantiere BE + DB (§9.3);
+* la porta dell'esito ancora aperta (ERRORE marcato su un lotto già
+  `COMPLETATO`): oggi la sorveglia il presidio a catalogo; chiuderla a DB è una
+  decisione a sé.
+
+Da guardare, ma non bloccante: a video un annullato mostra tutti i documenti
+`ESCLUSO` con il motivo «Annullo del lotto …».
