@@ -55,6 +55,19 @@ La tabella **`config.iva_stati`** permette di definire **override locali** di al
    * **Quando**: `BEFORE UPDATE`
    * **Cosa**: aggiorna i campi di audit `data_update` e `user_update` tramite la funzione generica `script.trgfn_audit_data_user_generic()`.
 
+2. **`trg_iva_stati_a10_lock_columns_upd`** — generato dal registro `dbops.automation_lock_columns`
+
+   * **Quando**: `BEFORE UPDATE`
+   * **Cosa**: blocca la modifica di `aliquota_override` e `assoggettamento_id_override`
+     con `E_IVA_TRATTAMENTO_IMMUTABILE`, lo stesso codice che protegge l'aliquota
+     di `config.iva`. Per cambiare un override se ne crea uno nuovo. INSERT e
+     DELETE restano liberi.
+   * ⚠️ Fino al 2026-09-23 questo lock era un trigger scritto a mano
+     (`trg_iva_stati_a10_protect_columns_upd`) con codici poi ritirati, e il
+     registro non lo conosceva. Sul database di sviluppo il trigger era sparito
+     senza che nessun changeSet lo togliesse. Adesso la regola è dichiarata nel
+     registro e il trigger lo genera l'automazione.
+
 ---
 
 ### Vantaggi Operativi

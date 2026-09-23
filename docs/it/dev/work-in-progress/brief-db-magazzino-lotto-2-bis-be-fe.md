@@ -6,10 +6,37 @@
 > il BE non può fare da sé senza riscrivere una regola del DB, più **due**
 > difese opzionali. Nessuna ridiscute il Lotto 2: ogni riga cita la decisione
 > da cui discende (D-L2-* del [brief del motore](brief-db-magazzino-lotto-2-motore.md)).
-> **Stato:** 🔵 da decidere lato DB. ✅ Le cinque domande del piano (Q-1 … Q-5)
-> sono decise da Tid il 2026-09-18: qui non resta niente in sospeso lato BE/FE.
-> Bloccano parti **diverse** del piano: R-1 il drawer (Pezzo 3), R-2 le righe
-> (Pezzo 2), R-3 il gate di «Registra». Tutto il resto del piano procede senza.
+> **Stato:** ✅ **LE TRE BLOCCANTI SONO FATTE, APPLICATE E VERDI — 2026-09-22.**
+> Sei changeSet `EXECUTED` su dbdev (i cinque del disegno alle 19:06, la rev
+> della vista del presidio C1 in serata), i quattro seed a catalogo, i pgTAP
+> rilanciati da Tid: verdi.
+> R-1 (la capability, in quattro changeSet), R-2 (il codice del `UNIQUE`) e R-3
+> (l'azione di processo) sono nel repo: cinque changeSet `20260922-18 … -22`,
+> tre righe di catalogo nei CSV, un pgTAP nuovo da 14 asserzioni, la doc. Ogni
+> passo provato con l'**SQL estratto** in transazione annullata su dbdev — i
+> quindici pgTAP del Lotto 2 toccati restano verdi, i due presidi trasversali
+> pure. ⚠️ **L'apply ha fatto emergere una ricaduta**, ed è una cosa buona: il
+> presidio C1 «stati mai scritti» ha smesso di essere verde per coincidenza — e
+> si è scoperto anche **lento**: rimedio nel CSV delle dichiarazioni più due
+> interventi di costo (§Consegna). ✅ **Tutto applicato e verde la sera del
+> 22-09** (sei changeSet `-18 … -23`, i quattro seed, pgTAP rilanciati da Tid).
+> ✅ **E le quattro «opzionali» R-4 … R-7 sono state decise da Tid la stessa
+> sera**, una alla volta (§Il secondo giro): nessuna è un changeSet — tre sono
+> righe nei CSV di catalogo, una è lavoro del backend. ✅ **Anche il secondo
+> giro è applicato**: migrate delle 00:05 del 23-09, mirror `20260614-08` e
+> `20260110-15` `RERAN`, i tre codici (msg 1114-1116) e le due righe di lock a
+> catalogo — letti sul catalogo vivo, non dedotti dai file.
+> ⏳ **Restano due gesti**: far girare l'**automazione dei lock**
+> (`CALL maintenance.proc_automations_lock_columns_job()`) — il registro
+> dichiara le due colonne ma i trigger **non ci sono ancora**, e finché non ci
+> sono il test 17 del guard fa `skip` — e il **commit**.
+> ⇒ Per il resto, ciò che tiene aperto questo brief è **la metà BE/FE** di R-1,
+> R-2, R-3, R-5, R-6 e R-7, elencata in coda.
+> ✅ Le cinque domande del piano (Q-1 … Q-5) erano decise da Tid il 2026-09-18:
+> lato BE/FE non restava niente in sospeso. Bloccavano parti **diverse** del
+> piano: R-1 il drawer (Pezzo 3), R-2 le righe (Pezzo 2), R-3 il gate di
+> «Registra» — ⛔ e il passo 7 del piano era fermo lì: senza queste funzioni il
+> drawer non ha la barra delle azioni, e il BE non finge le capability.
 >
 > **In una riga.** Il Lotto 2 ha messo la matrice degli stati **dentro il
 > guard** e nessuna funzione la espone: il drawer, che deve disegnare i pulsanti
@@ -19,7 +46,7 @@
 
 ---
 
-## R-1 🔴 — la capability dei documenti interni (D-L2-h; linee-guida-sql §12)
+## R-1 ✅ FATTA (22-09) — la capability dei documenti interni (D-L2-h; linee-guida-sql §12)
 
 **Il fatto.** `trgfn_documento_interno_guard_transizione` porta la matrice in
 un `CASE v_old …` nel corpo. Il frontend monta le azioni di stato **solo** da
@@ -71,7 +98,7 @@ nei tre casi e acceso sul caso buono; fuori perimetro `{}`.
 
 ---
 
-## R-2 🟠 — `E_MAG_INVENTARIO_RIGA_POSIZIONE_DUPLICATA` (C14)
+## R-2 ✅ FATTA (22-09) — `E_MAG_INVENTARIO_RIGA_POSIZIONE_DUPLICATA` (C14)
 
 `uq_mag_inventari_righe_posizione` (UNIQUE NULLS NOT DISTINCT su
 `(inventario, articolo, ubicazione, lotto, asset)`) rifiuta con un `23505` —
@@ -88,7 +115,7 @@ delta dati non sono due letture).
 
 ---
 
-## R-3 🟠 — l'azione di processo `registra_magazzino`
+## R-3 ✅ FATTA (22-09) — l'azione di processo `registra_magazzino`
 
 Una riga in `config/azioni_processo.csv`: area **6** (`magazzino`),
 `permission_codename = registra_magazzino`, *«Registra inventario o rettifica
@@ -100,12 +127,30 @@ il verbo è lo stesso e la matrice è la stessa. Il BE la dichiara su
 
 ---
 
-## R-4 🟡 (opzionale) — `magazzino_id` si sceglie alla nascita
+## R-4 ✅ DECISA (22-09) — `magazzino_id` si sceglie alla nascita
+
+> ✅ **Tid, 2026-09-22: si mette il lucchetto su `magazzino_id`, in ogni stato.**
+> Il documento appartiene a quel magazzino da quando nasce. ⛔ **La `data` NO**:
+> resta la Q-2 del piano, cioè com'è — il DB non congela la testata, e il BE non
+> aggiunge una regola che il DB non ha. Da fare: `script.trgfn_lock_columns` su
+> `inventari` e `rettifiche` (stampo `trg_ubicazioni_a10_lock_columns_upd`) e il
+> pgTAP del caso costruito.
+> ✅ **Fatto e a catalogo dal 23-09**: due righe in `automation_lock_columns`,
+> il codice `E_MAG_DOCUMENTO_MAGAZZINO_IMMUTABILE` (msg 1114), il pgTAP a 17
+> asserzioni, e la regola scritta in `manual/inventari.md`, `manual/rettifiche.md`
+> e `_dominio-magazzino.md`. 🔴 **Manca solo l'automazione che genera i due
+> trigger**: finché non gira, la regola è dichiarata e non in vigore.
+> ⚠️ Letto sul catalogo vivo il 22-09, ed è il motivo per cui serve: sulla
+> testata oggi sorvegliano solo `sorgente_*` (guard tipizzato), lo stato
+> (matrice + porta) e l'esistenza del magazzino attivo — nessuno impedisce di
+> **spostare** il documento su un altro magazzino, nemmeno dopo la
+> registrazione, e le righe resterebbero a nominare ubicazioni di un magazzino
+> che non è più il suo.
 
 Il documento è ancorato a **un** magazzino (RLS, ubicazioni delle righe,
 `qta_sistema` del piano). Il BE lo esclude dal `PATCH`; la difesa a DB è
 `script.trgfn_lock_columns('magazzino_id', …)` su `inventari` e `rettifiche`
-(stampo `trg_articoli_a10_protect_uom_id_upd`). Senza, un `UPDATE` diretto
+(stampo `trg_ubicazioni_a10_lock_columns_upd`). Senza, un `UPDATE` diretto
 sposta un conteggio su un altro magazzino con le ubicazioni di quello vecchio
 — e la primitiva se ne accorgerebbe **solo** al posting
 (`E_MAG_UBICAZIONE_DI_ALTRO_MAGAZZINO`). Un lucchetto piccolo che dice la
@@ -120,7 +165,22 @@ dicono due cose. Se per voi è un difetto del modello, il congelamento della
 testata fuori da `DRAFT`/`CONFIRM` è un lucchetto vostro, nello stesso giro di
 R-4; se no, resta com'è.
 
-## R-5 🟡 (opzionale) — `fn_lookup_articoli`: filtro `p_gestito_a_magazzino`
+## R-5 ✅ DECISA (22-09) — `fn_lookup_articoli`: filtro `p_gestito_a_magazzino`
+
+> ✅ **Tid, 2026-09-22: si aggiunge il filtro.** Il ragionamento che l'ha
+> decisa: un errore che non si può proprio fare è meglio di un errore spiegato
+> dopo.
+>
+> 🔴 **Ma la premessa di questa richiesta è falsa, e il lavoro non è del DB.**
+> `fn_lookup_articoli` **non esiste**: cercata in `pg_proc` il 22-09, zero
+> funzioni con quel nome. Il picker degli articoli è SQL costruito in Python —
+> `catalogo/db/catalogo_repository.py::lookup_articoli` — che legge
+> `catalogo.vw_articoli_dettaglio` e monta le condizioni `WHERE` dai parametri
+> ricevuti. ⭐ E quella vista **espone già `gestito_a_magazzino`**: il repository
+> lo seleziona persino (ce l'ha messo il Lotto 2, per lotto e seriale nel form
+> di riga). ⇒ Il filtro è **una condizione in più nel BE** e un parametro che il
+> FE passa dal picker del magazzino: **zero changeSet**. La richiesta si sposta
+> in §A BE/FE.
 
 Il picker della riga di inventario propone oggi **tutti** gli articoli; uno non
 gestito diventa `NON_POSTABILE` al piano. Un filtro `boolean DEFAULT NULL`
@@ -130,13 +190,26 @@ form (`fn_check_riga_magazzino`) lo dice comunque.
 
 ---
 
-## R-6 🟡 (opzionale, 18-09 notte) — `E_MAGAZZINO_VALIDATION`
+## R-6 ✅ DECISA (22-09) — `E_MAGAZZINO_VALIDATION`
+
+> ✅ **Tid, 2026-09-22: si conia.** Gemello di `E_PAGAMENTI_VALIDATION`: il
+> magazzino dice il proprio nome quando rifiuta un payload, e nel registro degli
+> errori i suoi si contano. Una riga a catalogo + la frase; al BE una riga
+> (`magazzino_service.E_VALIDAZIONE`).
+> ⚠️ La frase è **senza segnaposto**, come quella dei diciotto fratelli
+> `*_VALIDATION`: nessuna funzione PL/pgSQL solleva questo codice, quindi un
+> `%s` non lo riempirebbe nessuno (§Il secondo giro, rilettura del 22-09).
 
 Il codice di validazione del payload del dominio (`DATO_ERRATO`), gemello di
 `E_PAGAMENTI_VALIDATION`: oggi il BE usa il generico `E_VALIDATION_INPUT`, ed è
 **una riga** da cambiare (`magazzino_service.E_VALIDAZIONE`). Il BE non conia.
 
-## R-7 🟡 (opzionale, 18-09 notte) — `E_MAG_DOCUMENTO_RIGA_NON_TROVATA`
+## R-7 ✅ DECISA (22-09) — `E_MAG_DOCUMENTO_RIGA_NON_TROVATA`
+
+> ✅ **Tid, 2026-09-22: si conia.** La risposta a chi guarda non cambia (404,
+> nessuna informazione in più: resta la convenzione no-leak), ma il codice smette
+> di dire «documento» mentre la frase dice «riga» — e quella frase torna al
+> catalogo, invece di essere scritta nel backend.
 
 La coppia (documento, riga) è la risorsa dell'URL
 (`inventari/<id>/righe/<rid>/`): una riga di un altro documento «non c'è», e
@@ -153,3 +226,341 @@ manca; è un candidato allo split, non un difetto.
   esce quando il Pezzo 0 del piano è mergiato.
 - 🔵 BE/FE: le chiavi di R-1 nei locales **prima** che la doc auto-gen delle
   capability entri nel repo; `genera_error_policies` + ripiego per R-2.
+
+---
+
+## Consegna del 2026-09-22 — che cosa c'è, che cosa resta
+
+> Scritto dal team DB rispondendo alla contestazione del BE sul **passo 7**: le
+> tre righe che chiedeva — le due `fn_available_actions_*`, il codice del
+> `UNIQUE`, l'azione `registra_magazzino` — erano **zero** sul database, e
+> aveva ragione: non erano del Lotto 2 (chiuso e consegnato), erano di questo
+> brief, che dal 18-09 stava in `work-in-progress` con stato «da decidere».
+
+### I changeSet — cinque, `runOnChange: false`, `failOnError: true`, con rollback
+
+| # | Fase | Che cosa |
+| --- | --- | --- |
+| `20260922-18` | `20_code/magazzino` | `fn_documento_interno_transizioni(p_stato_da)`: la **matrice** esce dal guard e diventa una sede con due lettori. `IMMUTABLE`, plpgsql (non `LANGUAGE sql`: resterebbe fuori dal presidio dei riferimenti morti) |
+| `-19` | `20_code/magazzino` | rev di `trgfn_documento_interno_guard_transizione`: il `CASE` diventa `v_new = ANY (…)`. ⛔ Nient'altro cambia — DELETE solo in bozza, porta `POSTED`, codici e VARIADIC identici |
+| `-20` | `20_code/script` | `fn_check_documento_interno_registrabile(p_famiglia, p_documento_id)`: i **tre** motivi che impediscono di registrare, nell'ordine che è il contratto |
+| `-21` | `20_code/magazzino` | rev di `fn_posta_inventario` e `fn_posta_rettifica`: chiamano la check invece di ripeterla. Il `FOR UPDATE` resta primo (è il lock, e la check è `STABLE`) |
+| `-22` | `20_code/script` | `fn_available_actions_documento_interno` + i due involucri `_inventario` e `_rettifica` |
+
+**In place** (non changeSet): `80_data/sql/config/codici_errore.csv` +
+`messaggi_errore.csv` (R-2, messaggio id 1113) e `azioni_processo.csv` (R-3,
+id 36, area 6 `magazzino`). ⚠️ L'id 36 in coda a un CSV di seed **scade
+subito** se un'altra sessione ne prende uno: va riguardato prima del migrate.
+La sequenza la riallinea `90_end/20260818-72`, che è `runAlways` e dinamica.
+
+### Le scelte che il brief lasciava al DB
+
+* **un corpo e due involucri** (R-1 lo lasciava aperto): la regola è la stessa
+  per le due famiglie, e due corpi gemelli sarebbero due posti dove cambiarla —
+  cioè il difetto che R-1 viene a chiudere;
+* **la madre chiama la check** (R-1 lo proponeva come alternativa): è la forma
+  di casa (§12.5.2, e la domanda di AGENTS.md «questa regola deve anche
+  accendere un pulsante?»). Il prezzo è la rev delle due madri; il guadagno è
+  che il rifiuto e il tooltip **non possono** divergere.
+
+### ⚠️ Due `reason_key` in più di quelle che R-1 elencava
+
+R-1 ne chiedeva tre; ne escono **cinque**, e la ragione è un difetto trovato
+provando la funzione: su un documento `POSTED` il motivo era
+`DOCUMENTO_NON_CONFERMATO`, cioè una frase **falsa** nel tooltip del pulsante.
+Il codice dell'errore resta uno solo (`E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA`:
+la frase per l'operatore è la stessa), ma il `reason` no.
+
+**Le chiavi i18n da seminare — al FE, nello stesso giro** (senza,
+`scripts/check_i18n_keys.py` controllo 4 fallisce appena la doc auto-gen entra
+nel repo, e il tooltip è vuoto):
+
+| Chiave | Dove compare |
+| --- | --- |
+| `magazzino.documenti_interni.azione.conferma` · `.riapri` · `.annulla` | le etichette dei tre pulsanti |
+| `magazzino.documenti_interni.registra_reason.non_confermato` | «Registra» spento su una bozza |
+| `magazzino.documenti_interni.registra_reason.gia_registrato` | …su un documento già registrato |
+| `magazzino.documenti_interni.registra_reason.annullato` | …su uno annullato |
+| `magazzino.documenti_interni.registra_reason.senza_righe` | …su un documento vuoto |
+| `magazzino.documenti_interni.registra_reason.righe_non_postabili` | …quando una riga non si può registrare |
+| `magazzino.documenti_interni.stato_info.posted` · `.cancel` | la nota sugli stati chiusi (testi proposti in R-1) |
+
+#### ⛔ Il guard delle chiavi è ROSSO, e ne nomina **due su otto**
+
+Entrata la doc auto-gen nel repo, `scripts/check_i18n_keys.py` fallisce — come
+previsto. ⚠️ **Ma il suo rosso non è l'elenco del lavoro**: misurato il 22-09 a
+fine serata, nomina solo
+`magazzino.documenti_interni.registra_reason.senza_righe` e
+`….righe_non_postabili`. Le altre **sei** le legge nessuno, e la causa è la
+**forma** in cui la chiave è scritta nel corpo, non la chiave:
+
+| Chiavi | Perché il guard non le vede |
+| --- | --- |
+| `registra_reason.{gia_registrato, annullato, non_confermato}` | stanno dentro un `CASE v_stato`, e il regex `RE_DB_KEY` pretende `'reason_key', '<letterale>'` **sulla stessa riga** |
+| `azione.{conferma, riapri, annulla}` | stanno in una tupla `VALUES`, dove la chiave non è preceduta dal nome della proprietà |
+| `stato_info.{posted, cancel}` | `stato_info_key` **non è** fra i nomi che il guard cerca (`_PROP_KEY` = `label_key\|reason_key\|nessuna_azione_key`) |
+
+⇒ Chi semina «quello che il guard dice» ne mette due e lascia **sei tooltip
+vuoti**, con il guard verde a dirgli che è finita — la forma classica del verde
+per sottrazione. **La lista buona è la tabella qui sopra**, che è anche quella
+che il `COMMENT` di `fn_available_actions_documento_interno` dichiara per esteso.
+
+🔵 **Candidato a un cantiere `dbops`, non di questo brief**: il guard è cieco per
+forma, e la terza riga è la più facile da chiudere (`stato_info_key` nell'elenco
+delle proprietà). Le prime due vogliono un criterio diverso — leggere le chiavi
+dal `COMMENT`, che il progetto già obbliga a dichiararle — e quello cambia il
+perimetro di un presidio trasversale: si decide, non si allarga di straforo.
+
+### Il pgTAP
+
+`db/pgtap/magazzino/test-capability-documenti-interni-v1.sql` — **14
+asserzioni**. ⭐ Il test 3 è quello che conta: costruisce **tutte e dodici** le
+transizioni fra i quattro stati e confronta, una per una, ciò che la matrice
+ammette con ciò che il guard lascia davvero passare (tenendo aperta la porta
+`POSTED` con la GUC, perché quello è un cancello a parte e va misurato da solo).
+Un elenco scritto a mano nel test sarebbe stato una **terza** copia della
+matrice.
+
+⚠️ `db/pgtap/script/test-rubinetto-primo-motivo-v1.sql` test 5 passa da **20 a
+21**: `fn_posta_rettifica` è un sito nuovo nato sull'helper (la nota datata è
+nel file). È il presidio trasversale che ogni cantiere che aggiunge funzioni
+deve rilanciare.
+
+### Come è stato provato, e che cosa questo NON prova
+
+SQL **estratto** dai cinque changeSet, in `BEGIN … ROLLBACK` su dbdev: i cinque
+compilano; il comportamento è quello disegnato (matrice, azioni nei quattro
+stati, terna di «Registra», posting delle due famiglie); `plpgsql_check` via
+`dbops.fn_check_funzioni_riferimenti_morti` non ha niente da dire sulle otto
+funzioni toccate; sette guardrail statici verdi; e i pgTAP esistenti toccati
+restano verdi nello stesso harness — `test-fn-posta-inventario-v1` 17/17,
+`test-fn-posta-rettifica-v1` 6/6, `test-documenti-interni-guard-v1` 15/15,
+`test-rubinetto-primo-motivo-v1` 7/7, `test-punti-canale-campo-v1` 14/14.
+
+⛔ **Non prova** che regga da zero: su `zeroerp_ci` non è stato applicato niente,
+e la CI di GitHub dal 21-09 sera non parte (billing). Non prova nemmeno il
+comportamento **come applicazione**: l'harness gira da owner, quindi la RLS non
+è esercitata — il 404 no-leak del test 14 vale davvero solo col runner come app.
+
+### ⚠️ La ricaduta trovata dall'apply: il presidio C1 e un verde per coincidenza
+
+Applicati i cinque changeSet (19:06 del 22-09), il presidio **«stati mai
+scritti»** (`dbops/test-stati-check-scrittori-v1`, test 2) è diventato rosso su
+due righe:
+
+```
+magazzino.inventari.stato_mag_inventario = CONFIRM
+magazzino.rettifiche.stato_mag_rettifiche = CONFIRM
+```
+
+⭐ **E ha ragione lui.** A DB `CONFIRM` non lo scrive nessuno, e non lo ha mai
+scritto: lo scrive il **backend** (`magazzino_service.py`, `STATI_RICHIEDIBILI`
+— la conferma è un gesto dell'operatore dal drawer), esattamente come `CANCEL`,
+che infatti era già dichiarato `APPLICAZIONE` nel registro il 21-09.
+
+Fino al 22-09 quel valore risultava «scritto» per una **coincidenza testuale**:
+il criterio del presidio chiama scrittore una funzione che *scrive la tabella* e
+*nomina il letterale*, e `fn_posta_inventario` faceva tutte e due le cose —
+scriveva `POSTED` e **leggeva** `'CONFIRM'` in un `IF`. Spostando quel letterale
+nella check condivisa, la coincidenza è caduta e il presidio ha visto il buco
+che c'era da sempre. ⚠️ È la **trappola 1** che quel presidio pinna nel proprio
+test 6 (*«nominare non è scrivere»*), vista dall'altra parte: qui il criterio non
+aveva prodotto un falso rosso, ne aveva nascosto uno vero.
+
+**Rimedio** (`80_data/sql/dbops/stati_check_dichiarazioni.csv`, mirror
+`runOnChange` + `ANY`: basta il CSV, si carica al prossimo migrate):
+
+* **due righe nuove** — `inventari` e `rettifiche`, valore `CONFIRM`, canale
+  `APPLICAZIONE`, con la ragione che nomina il file del BE e dice che a DB la
+  check lo **legge** come precondizione del posting;
+* **due righe corrette**: le dichiarazioni di `CANCEL` del 21-09 affermavano
+  *«A DB fn_posta_inventario scrive CONFIRM/POSTED»* — una frase **falsa**, nata
+  dalla stessa coincidenza. Ora dicono che scrive solo `POSTED`.
+
+Provato in transazione annullata con le righe caricate: `vw_stati_check_da_sanare`
+torna a **zero** e il presidio fa **14/14**.
+
+✅ **Caricato da Tid il 22-09 alle 23:00** (il mirror `20260921-19` `RERAN`): le
+due dichiarazioni sono a catalogo e la vista da sanare è a zero.
+
+#### …e il presidio era anche LENTO: 8,3 s, e quasi tutto in una riga sola
+
+Rilanciandolo, Tid ha detto la seconda cosa: *«il test funziona, solo che è
+lento»*. Misurato il 22-09 su dbdev: **8,3 s**, di cui praticamente tutto in
+`dbops.vw_stati_check_scrittori` — **535 ms a chiamata**, e il file la
+interrogava **diciassette** volte.
+
+Due rimedi, indipendenti l'uno dall'altro:
+
+| Dove | Che cosa | Effetto |
+| --- | --- | --- |
+| `20260922-23`, rev della vista (✅ applicata il 22-09 sera) | i due CTE erano **prodotti cartesiani con un test testuale per coppia** (29 tabelle × 2250 funzioni, poi 242 × 2250). Ora si **estrae una volta e si confronta per uguaglianza**: i nomi qualificati che ogni funzione scrive, e in un passaggio solo le funzioni che citano un letterale di stato | 535 → **230 ms** a chiamata; il test 8,3 → **3,7 s** |
+| il pgTAP | **due fotografie** in `TEMP TABLE` invece di diciassette interrogazioni: il file ha due soli momenti — prima dei casi costruiti e dopo — e fra le asserzioni di uno stesso momento non cambia niente | 3,7 → **1,2 s** (2,3 s con la vista vecchia) |
+
+⛔ **Quello che NON si è fatto, ed era la tentazione**: riscrivere nel test il
+filtro di `vw_stati_check_da_sanare` per fotografare una query sola. Sarebbe una
+seconda copia del criterio — cioè il difetto che questo presidio esiste per
+trovare. Si fotografano **tutte e due** le viste, com'erano.
+
+**Prove**: la vista nuova e la vecchia confrontate con `EXCEPT` nei due versi sul
+catalogo vivo, **zero righe di differenza** (114 per parte); il pgTAP **14/14**;
+e una **prova per mutazione** — tolte le dichiarazioni dentro la transazione, il
+test 2 torna rosso e nomina le righe giuste: la fotografia non lo ha reso cieco.
+
+### Che cosa resta a Tid — 🔴 un'automazione da far girare, poi il commit
+
+1. ✅ **Migrate**: i cinque changeSet `20260922-18 … -22` `EXECUTED` alle 19:06
+   del 22-09, i **seed** alle 23:00 (mirror `20260921-19` `RERAN`: le
+   dichiarazioni del presidio C1; e i tre CSV di `config` —
+   `E_MAG_INVENTARIO_RIGA_POSIZIONE_DUPLICATA` con la sua frase e l'azione
+   `registra_magazzino` — verificati a catalogo), e **`20260922-23`** (la rev
+   della vista del presidio C1) applicato in serata. ⇒ Del **primo** giro sul
+   database non resta niente.
+2. ✅ **pgTAP**: rilanciati da Tid il 22-09 sera, **verdi**.
+3. ⏳ **commit** (non autonomo): i sei changeSet (`-18 … -23`), i **cinque** CSV
+   (`codici_errore`, `messaggi_errore`, `azioni_processo`,
+   `stati_check_dichiarazioni`, `automation_lock_columns`), il pgTAP nuovo
+   `magazzino/test-capability-documenti-interni-v1`, i due toccati
+   (`script/test-rubinetto-primo-motivo-v1` a 21,
+   `dbops/test-stati-check-scrittori-v1` con le due fotografie), le sei pagine
+   `manual/` nuove e le **cinque** aggiornate — fra queste `inventari.md` e
+   `rettifiche.md`, dove il lucchetto di R-4 mancava —, `_dominio-magazzino.md`
+   e questo brief.
+4. ✅ **Le quattro decisioni R-4 … R-7 sono prese da Tid il 22-09 sera**, una
+   alla volta, e **già scritte** (§Il secondo giro): lucchetto su
+   `magazzino_id` (e **non** sulla `data`), filtro sugli articoli gestiti — che
+   si scopre essere lavoro del **BE**, non del DB —, e i due codici nuovi.
+   ✅ **Migrate del secondo giro fatto** (23-09, 00:05): mirror `20260614-08`
+   (codici + messaggi) e `20260110-15` (registro dei lock) `RERAN`. Letto sul
+   catalogo vivo: i quattro codici ci sono con la loro classe
+   (`E_MAG_INVENTARIO_RIGA_POSIZIONE_DUPLICATA` e `E_MAGAZZINO_VALIDATION`
+   `DATO_ERRATO`, `E_MAG_DOCUMENTO_MAGAZZINO_IMMUTABILE` `CONFLITTO_STATO`,
+   `E_MAG_DOCUMENTO_RIGA_NON_TROVATA` `NON_TROVATO`), i messaggi **1113-1116**
+   pure — e il 1115 è entrato nella forma **corretta**, *«Richiesta di
+   magazzino non valida.»*, senza il segnaposto che nessuno avrebbe riempito —,
+   e `dbops.automation_lock_columns` ha le **due** righe nuove, `enabled`.
+
+5. 🔴 **Il lucchetto è DICHIARATO ma non ancora ARMATO**, ed è l'unico gesto DB
+   che resta. Su `magazzino.inventari` e `magazzino.rettifiche` non c'è nessun
+   trigger su `script.trgfn_lock_columns`: il gemello ce l'ha
+   (`trg_ubicazioni_a10_lock_columns_upd`), loro no. ⇒ `CALL
+   maintenance.proc_automations_lock_columns_job()` su dev — su dev
+   `db-ci-apply` **non** rilancia le automazioni, e il migrate non le ha
+   toccate. ⚠️ **Fino ad allora il registro racconta una regola che non è in
+   vigore**: un `UPDATE` diretto sposta ancora un documento su un altro
+   magazzino, e il **test 17 del guard fa `skip`** — cioè il pgTAP è verde
+   *senza aver misurato niente*. Il verde che conta è 17/17 **senza skip**.
+   Poi il **commit**.
+
+### Il secondo giro — le quattro decisioni, scritte (22-09 sera)
+
+Decise una alla volta da Tid e messe a terra subito. ⚠️ **Nessuna è un
+changeSet**, ed è il fatto che vale la pena leggere: tre stanno nei CSV di
+catalogo e una è del backend.
+
+| | Che cosa è entrato | Dove |
+| --- | --- | --- |
+| **R-4** | il magazzino della testata diventa **immutabile**, per le due famiglie | due righe in `80_data/sql/dbops/automation_lock_columns.csv` + il codice `E_MAG_DOCUMENTO_MAGAZZINO_IMMUTABILE` (`CONFLITTO_STATO`, msg 1114) |
+| **R-5** | il filtro sugli articoli gestiti a magazzino | 🔵 **al BE**: non c'è nessuna funzione da cambiare (vedi R-1 qui sopra) |
+| **R-6** | `E_MAGAZZINO_VALIDATION` (`DATO_ERRATO`, msg 1115) | `codici_errore.csv` + `messaggi_errore.csv` |
+| **R-7** | `E_MAG_DOCUMENTO_RIGA_NON_TROVATA` (`NON_TROVATO`, msg 1116) | idem |
+
+✅ **Applicato il 23-09 alle 00:05** (mirror `20260614-08` per codici e messaggi,
+`20260110-15` per il registro dei lock, entrambi `RERAN`): i tre codici, i tre
+messaggi e le due righe di lock sono a catalogo, verificati sul catalogo vivo.
+🔴 **Ma i trigger del lock NON ci sono ancora**: il registro li dichiara, e li
+scrive l'automazione — vedi il punto 5 di §Che cosa resta.
+
+⭐ **Il lucchetto non si scrive a mano**, ed è la cosa che si sbaglia: il
+trigger lo **genera l'automazione** dalla riga nel CSV (su dev
+`CALL maintenance.proc_automations_lock_columns_job()`, in CI `ci_apply`). Un
+`CREATE TRIGGER` scritto a mano con la stessa funzione sarebbe un oggetto che
+*sembra* governato dall'automazione e non lo è — è già successo una volta, e se
+ne è accorto solo un pgTAP.
+⛔ E non si è riusato `CODICE_NON_MODIFICABILE`: è `obsoleto_dal 2026-08-05`.
+⭐ **Da quella riga è nato un cantiere**: guardando il registro dei lock si è visto
+che 26 righe su 38 nominavano quel codice ritirato o uno inesistente, e che **69
+trigger vivi** lo sollevavano ancora con il presidio verde — il codice viaggia come
+argomento del trigger, e il controllo guardava i corpi delle funzioni.
+[brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](brief-db-codici-ritirati-negli-argomenti-dei-trigger.md).
+⚠️ Quella bonifica arma **anche** i due lock di R-4: è l'automazione, chiamata una volta.
+
+⚠️ **La `data` resta modificabile**, per decisione esplicita nella stessa
+risposta: il DB non congela la testata oltre il magazzino, e il BE non aggiunge
+una regola che il DB non ha (Q-2 del piano, confermata).
+
+**Presidio**: `magazzino/test-documenti-interni-guard-v1` passa da 15 a **17**
+asserzioni — la dichiarazione nel registro dei lock e il rifiuto del lock
+generato, quest'ultimo con `skip` finché l'automazione non l'ha scritto (stampo
+di `test-ubicazioni-guard-parent-v1`). ⚠️ Lo skip è stato **provato**: montando
+a mano il trigger nella transazione di prova, il test 17 diventa verde e la
+frase combacia — cioè lo skip non sta nascondendo un messaggio sbagliato.
+⏳ **Al 23-09 il test 17 è ancora in skip**, perché l'automazione non ha ancora
+girato: il file dà 17/17, ma una di quelle diciassette non ha misurato niente.
+
+#### ⚠️ Rilettura del 22-09 a fine serata: la frase di R-6 era l'unica col `%s`
+
+`E_MAGAZZINO_VALIDATION` era nato con la frase *«Richiesta di magazzino non
+valida: %s.»*, e quel segnaposto **non lo riempie nessuno**: a riempirlo è
+`script.fn_log_and_raise_error`, e un codice che nessuna funzione PL/pgSQL
+solleva da lì non ci passa mai — a video sarebbe uscito un `%s` grezzo.
+
+⭐ **Il difetto si vede dalla famiglia, non dalla riga**: dei diciannove codici
+`*_VALIDATION` a catalogo, i diciotto fratelli — a partire dal gemello
+dichiarato `E_PAGAMENTI_VALIDATION`, *«Parametri non validi.»* — hanno tutti una
+frase **senza argomenti**, ed è una proprietà del *chi solleva*, non uno stile:
+li solleva il backend, che la propria frase se la compone e manda il campo da
+accendere nel `context.field` e nel `detail` del `ServiceError`. La frase a
+catalogo è quella che si legge quando quegli argomenti non ci sono.
+
+⇒ Corretta in `messaggi_errore.csv` (*«Richiesta di magazzino non valida.»*), e
+il **perché** è finito nella nota del codice in `codici_errore.csv`, così la
+prossima persona non la ri-arricchisce. ✅ **Ed è entrata così**: al migrate del
+23-09 il messaggio 1115 a catalogo è la frase chiusa — la correzione ha fatto in
+tempo, il `%s` non è mai arrivato sul database. ⚠️ Gli altri tre codici del giro il `%s`
+lo tengono, ed è giusto: `E_MAG_DOCUMENTO_MAGAZZINO_IMMUTABILE` lo riempie il
+lock (la colonna), e i due `NON_TROVATO` seguono la forma dei fratelli del
+21-09 (`E_MAG_UBICAZIONE_NON_TROVATA`, `E_MAG_LOTTO_NON_TROVATO`), dove
+l'identificativo lo mette chi solleva.
+
+#### La doc del lucchetto — il debito che R-4 aveva lasciato aperto
+
+Il gemello del 21-09 la regola la **dice** nella sua pagina
+(`manual/ubicazioni.md`: *«`magazzino_id` non si cambia dopo la creazione»*);
+inventari e rettifiche no — la riga nel CSV e il pgTAP c'erano, la frase per chi
+legge il dominio mancava. Chiusa in tre posti: `manual/inventari.md` e
+`manual/rettifiche.md` (una sezione *«Il magazzino si sceglie alla nascita»*,
+con l'errore, il `E_MAG_UBICAZIONE_DI_ALTRO_MAGAZZINO` che si prenderebbe al
+posting senza il lucchetto, e la nota che la `data` invece resta modificabile) e
+`_dominio-magazzino.md`, nel capoverso dei documenti interni.
+
+### 🔵 A BE/FE, quando il DB è applicato
+
+* le **otto chiavi i18n** qui sopra (`it.json` / `en.json`) — ⚠️ **tutte e otto**,
+  non le due che `check_i18n_keys.py` nomina nel suo rosso: le altre sei sono un
+  punto cieco del guard, §«Il guard delle chiavi è ROSSO, e ne nomina due su otto»;
+* `genera_error_policies` + ripiego per `E_MAG_INVENTARIO_RIGA_POSIZIONE_DUPLICATA`
+  (R-2), e `map_integrity_error` che traduce il `23505` di
+  `uq_mag_inventari_righe_posizione` in quel codice;
+* `post_permission = registra_magazzino` sui due `.../registra/` (R-3): il
+  cancello è fail-closed finché un profilo non porta l'azione;
+* il drawer legge `available_actions` e la terna `can_registra` — nessun `v-if`
+  sullo stato, nessun `dict` in Python: è esattamente ciò che R-1 chiedeva di
+  non dover scrivere.
+
+**Dal secondo giro (R-5, R-6, R-7):**
+
+* **R-5** — in `catalogo_repository.lookup_articoli` un parametro facoltativo
+  `gestito_a_magazzino: bool | None` con la sua condizione
+  (`a.gestito_a_magazzino = %s`, la colonna è già nella vista e già selezionata),
+  esposto sull'endpoint di lookup; il FE lo passa **solo** dal picker di riga di
+  inventario e rettifica. ⛔ Non è un filtro di default: altrove la tendina
+  continua a proporre tutto;
+* **R-6** — `magazzino_service.E_VALIDAZIONE` passa da `E_VALIDATION_INPUT` a
+  **`E_MAGAZZINO_VALIDATION`** (a catalogo con la sua frase), più
+  `genera_error_policies` e il ripiego;
+* **R-7** — dove oggi il BE risponde `E_MAG_DOCUMENTO_NON_TROVATO` con la frase
+  «Riga non trovata nel documento» sugli endpoint `.../righe/<rid>/`, il codice
+  diventa **`E_MAG_DOCUMENTO_RIGA_NON_TROVATA`** e la frase **si cancella**: la
+  porta il catalogo. La risposta a chi guarda resta un 404 identico.
+

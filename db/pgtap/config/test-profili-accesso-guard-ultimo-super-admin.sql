@@ -55,21 +55,14 @@ CREATE OR REPLACE FUNCTION pg_temp.mk_admin(OUT id_id bigint, OUT bind_id bigint
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    SELECT id.id INTO id_id
-      FROM anagrafiche.identita_digitali id
-     WHERE id.ruolo_applicativo = 'OPERATORE'
-       AND id.attivo = true
-       AND NOT EXISTS (
-           SELECT 1
-             FROM config.profili_accesso_bindings pab
-            WHERE pab.identita_digitale_id = id.id
-       )
-     ORDER BY id.id
-     LIMIT 1;
-
-    IF id_id IS NULL THEN
-        RAISE EXCEPTION 'Setup impossibile: nessuna identita OPERATORE vergine (tutte hanno gia un binding)';
-    END IF;
+    -- ⛔ L'identita' si COSTRUISCE (2026-09-23). Cercare un'identita'
+    --   OPERATORE «vergine» funzionava finche' il database ne aveva in
+    --   abbondanza: su uno ricostruito ce n'e' UNA, quella dell'operatore di
+    --   contesto, e dopo il primo scenario non e' piu' vergine — il terzo
+    --   moriva sul «Setup impossibile». Un'azienda nuova con il suo operatore
+    --   e' vergine per costruzione, e ogni scenario ha la sua.
+    SELECT ceo.identita_id INTO id_id
+      FROM dbops.fn_pgtap_crea_emittente_operatore() ceo;
 
     INSERT INTO config.profili_accesso_bindings
         (profilo_accesso_id, identita_digitale_id, attivo)
@@ -113,6 +106,18 @@ END
 $$;
 
 -- =========================================================
+-- 0) Il SUPER_ADMIN che deve RESTARE
+-- =========================================================
+-- ⛔ Lo scenario 1 dice «ne disattivo uno e ne restano altri attivi»: su un
+--   database ricostruito non ce n'e' nessun altro, quindi disattivare il
+--   proprio era disattivare L'ULTIMO e il guard scattava — la fixture moriva
+--   con il messaggio del guard, che e' il comportamento GIUSTO del prodotto
+--   contro una precondizione che il file dava per scontata. Qui il
+--   «preesistente» si costruisce, e lo scenario 1 torna a dire cio' che vuole
+--   dire.
+CREATE TEMP TABLE _t_c0 AS SELECT * FROM pg_temp.mk_admin();
+
+-- =========================================================
 -- 1) Scenario SANO: disattivo 1 binding SA ad-hoc lasciando preesistenti
 --    attivi -> il guard non scatta, fn_check resta true.
 -- =========================================================
@@ -135,13 +140,17 @@ CREATE TEMP TABLE _t_c2 AS SELECT * FROM pg_temp.mk_admin();
 
 SELECT pg_temp.disable_others((SELECT bind_id FROM _t_c2));
 
-SELECT throws_ok(
+-- ⭐ Il discriminante c'e' (2026-09-23): un `throws_ok(sql, NULL, NULL)`
+--   accetta QUALUNQUE errore — anche quello sbagliato, ed e' il debito che il
+--   cancello `guardrail_pgtap_preambolo.py` conta. Qui si pinna la frase del
+--   guard, che e' il discriminante piu' stretto disponibile: gli errori di
+--   dominio del progetto sono tutti `P0001`.
+SELECT throws_like(
     format(
         $sql$ UPDATE config.profili_accesso_bindings SET attivo = false WHERE id = %s $sql$,
         (SELECT bind_id FROM _t_c2)
     ),
-    NULL,
-    NULL,
+    '%zero SUPER_ADMIN attivi%',
     '2. Scenario lockout binding: UPDATE attivo=false dell''ultimo SUPER_ADMIN -> raise E_PROFILO_ULTIMO_SUPER_ADMIN'
 );
 
@@ -156,14 +165,32 @@ CREATE TEMP TABLE _t_c3 AS SELECT * FROM pg_temp.mk_admin();
 
 SELECT pg_temp.disable_others((SELECT bind_id FROM _t_c3));
 
+-- ⛔ TROVATO IL 2026-09-23, e il file lo diceva sbagliato: questo UPDATE NON
+--   viene rifiutato da `E_PROFILO_ULTIMO_SUPER_ADMIN`. A parlare e' il guard
+--   GENERICO delle figlie — `trgfn_prevent_deactivate_if_children` sul
+--   trigger `trg_identita_digitali_a10_profili_accesso_bindings_block_…` —
+--   che rifiuta qualunque identita' con un binding ATTIVO, super admin o no,
+--   e scatta prima. Finche' l'asserzione era un `throws_ok(sql, NULL, NULL)`
+--   il file era verde per l'errore sbagliato: il ramo specifico
+--   sull'identita' non e' mai stato esercitato da questo test, e va capito
+--   se sia raggiungibile (decisione dichiarata nel brief
+--   brief-db-fixture-che-costruiscono-giro-2).
+-- ⭐ Percio' l'asserzione pinna cio' che regge in entrambi i mondi — il
+--   rifiuto con un errore di DOMINIO — e non la frase di chi lo solleva
+--   oggi: un test che pinna il sintomo diventerebbe rosso il giorno della
+--   riparazione.
+SELECT diag(
+    '3. oggi a rifiutare e'' il guard generico delle figlie, non E_PROFILO_ULTIMO_SUPER_ADMIN (misurato 2026-09-23)'
+);
+
 SELECT throws_ok(
     format(
         $sql$ UPDATE anagrafiche.identita_digitali SET attivo = false WHERE id = %s $sql$,
         (SELECT id_id FROM _t_c3)
     ),
+    'P0001',
     NULL,
-    NULL,
-    '3. Scenario lockout identita: UPDATE attivo=false sull''ultima identita con SUPER_ADMIN -> raise E_PROFILO_ULTIMO_SUPER_ADMIN'
+    '3. Scenario lockout identita: disattivare l''ultima identita'' con SUPER_ADMIN e'' rifiutato con un errore di dominio'
 );
 
 SELECT * FROM finish();

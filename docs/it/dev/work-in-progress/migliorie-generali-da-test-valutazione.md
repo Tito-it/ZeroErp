@@ -17,19 +17,29 @@
 > come si è arrivati a chiuderle sta nei brief citati e nella storia git di
 > questo file: qui avrebbe fatto sembrare il documento vecchio. Le voci aperte
 > restano com'erano al 2026-09-08, con i numeri aggiornati dove il registro sta
-> nel repo (e allora con la data).>
+> nel repo (e allora con la data).
+>
 > ✅ **Riordinato il 2026-09-20.** Le voci **chiuse** sono uscite da §3 e sono
 > tutte in fondo, in **§7 «Attività svolte»** — comprese le parti chiuse delle
 > voci che ne hanno ancora una aperta: quando succede, il numero compare
 > **due volte**, in alto il lavoro che resta e in fondo quello fatto (`D6`,
-> `D7`, `D11`, `D12`, `D14`). §3 oggi contiene **solo ciò che è da fare**, e §6 è
+> `D7`, `D11`, `D12`). §3 oggi contiene **solo ciò che è da fare**, e §6 è
 > la check-list delle stesse voci: `[ ]` in cima, `[x]` con il loro dettaglio in
 > §7.
 >
+> ✅ **Riordinato il 2026-09-22.** **D14 è chiusa** (otto giri, sette applicati,
+> l'ottavo ritirato; brief in `work-done/`, tutto committato fino a
+> `8d7f14829`/PR #1646) ed è passata **per intero** in §7. Al suo posto in §3 è
+> entrata **D15**, che la sua chiusura ha scoperto: in `vendite` 82 tabelle su 87
+> non hanno mai avuto un `ANALYZE`, quindi **ogni misura di piano di questo
+> documento è stata presa su stime di default**. ⛔ Non è un residuo di quel
+> cantiere: è la condizione in cui si è misurato finora.
+>
 > ✅ **Numeri rimisurati il 2026-09-20.** I registri che stanno nel repo o nel
 > catalogo del database si **rimisurano**, non si citano: `baseline-rossi-ci.tsv`
-> è a **362** righe (403 al 12-09; **296 attesi** dopo il 21-09, misura sullo
-> scratch da certificare in CI), `SOGLIA_THROWS_SENZA_DISCRIMINANTE` a **123**
+> è a **361** file al 22-09 (403 al 12-09, 362 al 20-09: col giro 6 di D14 è
+> uscita la riga del pgTAP della vista ritirata; **295 attesi** dopo il 21-09,
+> misura sullo scratch da certificare in CI), `SOGLIA_THROWS_SENZA_DISCRIMINANTE` a **123**
 > (129, e 131 quando questa valutazione è stata scritta), `rls_perimetro_debito`
 > a **7**, e `vw_codici_errore_da_dichiarare` a **545** — **salito**, non calato.
 > Dove un numero è rimasto quello del giorno in cui è stato preso, la data è
@@ -209,14 +219,18 @@ PostgreSQL 18, Liquibase 5, `daterange`/`tstzrange` nativi su 18 tabelle (con
 
 > ✅ **Le voci chiuse non stanno qui**: sono tutte in **§7 «Attività svolte»**,
 > con la data e il rimando al brief. E sono di due tipi: quelle chiuse **per
-> intero** — D1, D2, D3, D4, D5, D10, D13 — e le **parti** chiuse di voci che
-> hanno ancora un lavoro vivo: `D6` (i pin del `search_path`), `D7` (il triage
-> del perimetro), `D11` (registri calati, e uno cresciuto), `D12` (la quantità), `D14` (la
-> vista e i due pgTAP lenti). Quegli ultimi cinque numeri compaiono **in tutti e
-> due i posti**, e non è una ripetizione: in alto c'è il lavoro che resta, in
-> fondo quello fatto.
+> intero** — D1, D2, D3, D4, D5, D10, D13 e, dal 2026-09-22, **D14** — e le
+> **parti** chiuse di voci che hanno ancora un lavoro vivo: `D6` (i pin del
+> `search_path`), `D7` (il triage del perimetro), `D11` (registri calati, e uno
+> cresciuto), `D12` (la quantità). Quegli ultimi quattro numeri compaiono **in
+> tutti e due i posti**, e non è una ripetizione: in alto c'è il lavoro che
+> resta, in fondo quello fatto.
 >
-> Qui sotto, **solo il lavoro che resta**: D6, D7, D8, D9, D11, D12, D14.
+> ⭐ **D15 è nata dalla chiusura di D14** (2026-09-22): le statistiche che non
+> esistono non erano un residuo di quel cantiere, erano la **condizione** in cui
+> ogni sua misura è stata presa.
+>
+> Qui sotto, **solo il lavoro che resta**: D6, D7, D8, D9, D11, D12, D15.
 
 ### 🟠 D6 — Tre `SECURITY DEFINER` di `postgres`, eseguibili da chiunque, senza `search_path` — pin chiusi il 12-09 (§7), resta il registro
 
@@ -346,7 +360,9 @@ Su un database **ricostruito da zero** — cioè quello di cui si ha bisogno il
 giorno in cui si prepara un'installazione nuova — la prima misura della CI
 (2026-09-09) ha dato **407 rossi su 601**. Il registro
 `db/pgtap/baseline-rossi-ci.tsv` al **2026-09-20** è a **362 righe** (293
-`ERRORE_FIXTURE`, 69 `ASSERZIONE`), su **671** file di test nel repo:
+`ERRORE_FIXTURE`, 69 `ASSERZIONE`), su **671** file di test nel repo — e a
+**361** dal 22-09, quando il giro 6 di D14 ha ritirato `vw_contatore_merce` e con
+lei il suo pgTAP:
 
 | Schema        | Rossi |     | Schema        | Rossi   |
 | ------------- | ----- | --- | ------------- | ------- |
@@ -604,6 +620,22 @@ pulizia, da lanciare da Tid.
 > si vede solo su dbdev: in CI è lavoro invisibile finché la fixture non li fa
 > partire.
 
+⭐ **Dal 22-09 il pezzo che resta ha un brief suo**,
+[brief-db-fixture-che-costruiscono-giro-2.md](brief-db-fixture-che-costruiscono-giro-2.md),
+con il censimento della **forma** invece che delle cause: dei 361 file a
+registro, **205** costruiscono una tabella di riferimenti **pescando** (150
+pescano il billing account, 170 lo pescano da qualche parte nel file) e **tre**
+usano un builder. ⛔ Il fatto che cambia l'unità di lavoro: la causa misurata è
+la **prima** che il file incontra, quindi curarla non chiude il file — un file
+che *cerca* va portato a *costruire* tutto insieme. La forma proposta è un **BB
+di composizione** (`dbops.fn_pgtap_crea_mondo_cliente()`): i cinque builder
+atomici esistono già, e ciò che manca è proprio il pezzo che porta la **regola
+d'ordine** fra mondo, legame del BA e contesto — oggi riscritta a mano in ogni
+file. ✏️ **Il BB è scritto e provato il 22-09** (`20260922-17`, più il presidio
+`dbops/test-fn-pgtap-crea-mondo-cliente-v1.sql`, 9/9 sullo scratch da zero):
+decisioni di forma prese, apply a Tid, e i lotti — 43 file su sei schemi che
+escono interi dal registro — partono da lì.
+
 ---
 
 ### 🟠 D8 — `acquisti` e `magazzino`: modellati, non scritti
@@ -678,7 +710,7 @@ al 2026-09-08, salvo dove è scritta un'altra data:
 | Registro                                   | Oggi                                                                                       |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------ |
 | `dbops.vw_codici_errore_da_dichiarare`     | **545** su 897 codici                                                                      |
-| `db/pgtap/baseline-rossi-ci.tsv`           | **362** file al 2026-09-20 (293 `ERRORE_FIXTURE`, 69 `ASSERZIONE`) — nato il 09-09 con 407; **296 attesi** dal 21-09 (66 rientrati sullo scratch, D7) |
+| `db/pgtap/baseline-rossi-ci.tsv`           | **361** file al 2026-09-22 (362 al 20-09, 293 `ERRORE_FIXTURE` + 69 `ASSERZIONE`; una riga uscita col ritiro di `vw_contatore_merce`) — nato il 09-09 con 407; **295 attesi** dal 21-09 (66 rientrati sullo scratch, D7) |
 | `SOGLIA_THROWS_SENZA_DISCRIMINANTE`        | **123**                                                                                    |
 | `dbops.vw_fk_con_indice_missing_policy`    | **57**                                                                                     |
 | `db/pgtap/baseline-rossi.tsv`              | **16** file al 2026-09-12 (9 `ERRORE_FIXTURE`, 7 `ASSERZIONE`) — erano 19                  |
@@ -722,227 +754,35 @@ il gap di febbraio è chiuso. Restano due cose:
 
 ---
 
-### 🟠 D14 — La capability di UN DDT paga le partite di TUTTI i DDT, e sotto RLS le paga venti volte
+### 🔴 D15 — Nessuno analizza le tabelle: ogni piano nasce da stime di default
 
-Trovato il 2026-09-17 inseguendo un pgTAP lento
-(`script/test-capability-motivi-e-nessuna-azione-v1.sql`, oltre i 90 s a cui
-`pgtap-baseline.sh` uccide un file). Il test aveva un difetto suo — richiamava
-le stesse funzioni `STABLE` fino a quattro volte per documento — ed è stato
-riscritto perché il blob si calcoli una volta (36 s). Ma il grosso del tempo
-era del **prodotto**, e resta:
+> Emerso il 2026-09-22 chiudendo D14 (brief §15.2 e §16.6). ⛔ Non è un residuo
+> di quel cantiere: è la **condizione** in cui sono state prese tutte le misure
+> di piano di questo progetto, compresa ogni riga di D14.
 
-* `script.fn_available_actions_ddt(id)` chiama `vendite.fn_list_ddt_da_pushare(p_ddt_id)`
-  **e**, nel ramo dei motivi, `vendite.fn_ddt_push_diagnosi(p_ddt_id)`. Entrambe
-  fanno `JOIN vendite.vw_partite_merce`, e la vista è a CTE **materializzate**
-  (`riga` è letta due volte, `alloc` e `migra` sono finestre sulla popolazione):
-  il predicato sul documento **non entra**, quindi ogni chiamata ricalcola le
-  partite di tutti i DDT. È strutturale, non un caso del planner: la partita di
-  una riga dipende dalle spedizioni **precedenti** della stessa riga d'ordine
-  (greedy di `alloc`), quindi filtrare `riga` per DDT darebbe un numero
-  sbagliato. ⇒ Una funzione «per documento» — quella che alimenta il drawer del
-  DDT a ogni apertura — ha il costo della lista;
-* sotto RLS quel costo si moltiplica: la CTE `sospetto` (`sospetto_duplicato_ordine`)
-  è un `EXISTS` correlato a quattro tabelle che il planner esegue **riga per
-  riga**, e ogni riga scandita paga la sua policy (`fn_scope_ef_whitelist_via_ddt`,
-  `…_via_ordine_riga`, `…_via_ordine`): ~3.500 valutazioni per una lettura.
+In `vendite` **82 tabelle su 87 non hanno mai avuto un `ANALYZE`** — né a mano né
+dall'autovacuum. Con le soglie di default (50 righe più il 10%) una tabella
+piccola non ci arriva mai da sé, e nello scheduler non c'è nessun job che le
+analizzi.
 
-**Misurato il 2026-09-17 su dbdev** (51 DDT, 36 partite), come `zeroerp_app` con
-contesto operatore, salvo dove scritto: `vw_partite_merce` intera **18 ms da
-owner, 396 ms da app** (di cui 322 nella sola `sospetto`);
-`fn_available_actions_ddt` **33 ms da owner, ~850 ms da app**. Per confronto
-`fn_available_actions_preventivo` ~10 ms e `_ordine` ~29 ms.
+⛔ **La conseguenza non è «dbdev è lento»**: è che il planner sceglie su stime di
+default, e il piano **si ribalta da solo**. Fatto datato del 22-09: lo stesso
+corpo, senza nessuna modifica in mezzo, misurava 63 ms alle 16:12 e **95–104 ms
+alle 17:19**, con lo stesso piano storto. ⇒ Una misura di piano, in qualunque
+cantiere, è **rumore** finché le statistiche non ci sono — e un cantiere che
+promette un guadagno in millisecondi dichiara un numero che non può difendere.
 
-⭐ **La leva provata, ancora da decidere.** `sospetto` riscritta *set-based* —
-prima l'insieme delle coppie `(ddt_id, articolo_id)` coperte da un ordine
-collegato al DDT (`DISTINCT`, quindi una riga per coppia e nessuna
-moltiplicazione), poi il `JOIN` delle righe senza fulfillment su quella coppia —
-con **`AS MATERIALIZED`** su entrambe le CTE (senza, il planner la inlina e
-torna al ciclo per riga; la forma è già in uso in tre changeSet). Provata come
-`SELECT` in transazione ritirata: **375 ms → 88 ms**, e `EXCEPT ALL` nei due
-versi a **zero righe**. È equivalente per costruzione, non solo sui dati di
-oggi: l'`EXISTS` vecchio è esattamente «la coppia della riga sta in
-quell'insieme». Il presidio esiste già (`test-vw-partite-merce-v1.sql`, test 11,
-costruisce il caso). Con questa sola mossa la capability del DDT scende a
-~200 ms.
+⭐ Ciò che regge, ed è il modo in cui D14 è stata portata a casa, sono le **forme**
+del piano — `loops=1`, `Index Cond`, una lettura invece di N — non i millisecondi
+confrontati fra due momenti.
 
-⚠️ **La seconda leva è più profonda**: la capability legge la vista **due
-volte** (lister + diagnosi), e la diagnosi da sola risponde a entrambe le
-domande (`motivo IS NULL` = eleggibile). Va guardata insieme al contratto di
-equivalenza fra le due funzioni, «blindato a pgTAP» — non è una riga da
-cambiare di straforo.
-
-⛔ Non è un problema del solo test: **ogni pgTAP che itera i DDT vivi paga lo
-stesso conto** (`test-capability-annulla-aspetto-e-stato-leggibile-v1.sql`
-chiamava la capability su tutti gli otto domini una volta: ~49 s, di cui 43
-sui 51 DDT — senza chiamate duplicate) e lo paga il drawer.
-✅ **Applicato il 2026-09-17 alle 12:39**: capability DDT 850 → **230 ms**,
-quel file 49 → 11 s. ⭐ E poi, decisione di Tid lo stesso giorno, quel file è
-passato da «tutti i documenti» a **un documento per (dominio, stato)** — non un
-campionamento sui dati ma il perimetro giusto per una misura sulla **forma**
-delle azioni: le transizioni le produce `t.stato_da_id`, quindi il secondo
-documento nello stesso stato ripete il ramo del primo; le azioni applicative
-sono oggetti costanti nel codice, coperti se il rappresentante le esercita
-(e non era garantito nemmeno prima). Risultato: 8/8 in **2 s**, 35 stati
-attraversati, dichiarati nel messaggio del test 8.
-
-✅ **Prima leva scritta il 2026-09-17 (decisione di Tid, stesso giorno):
-`20_code/vendite/20260917-01-update-vw-partite-merce-sospetto-set-based`**,
-`security_invoker=on` ri-specificato, COMMENT della vista con la rev, manuale
-aggiornato. Provato con l'**SQL estratto** dallo YAML in transazione ritirata
-(owner): `reloptions` intatte, `EXCEPT ALL` con la definizione viva a zero nei
-due versi, e nella stessa transazione **verdi** `test-vw-partite-merce-v1`
-(11/11, compreso il test 11 che costruisce il caso — il dato vivo ha zero
-sospetti, quindi l'equivalenza sulle righe da sola non proverebbe il ramo),
-`test-vw-partite-merce-riconsegna-dopo-nc-v1` (8/8),
-`test-fn-list-ddt-da-pushare-contatore-v1` (7/7),
-`test-fn-available-actions-ddt-reason-catch-all-v1` (8/8);
-`test-vw-situazione-merce-ordine-v1` 16/17 con il solo test 11 rosso, che è
-l'asserzione di **scope** e come owner è rossa anche senza il changeSet. Cancelli
-statici della CI verdi. ✅ Applicato il 17-09 alle 12:39 (vista 375 → 88 ms
-da app, capability 850 → 230 ms).
-
-✅ **Terza leva scritta il 2026-09-21: `20_code/vendite/20260921-20-update-vw-partite-merce-af-condivisa`.**
-Fatto datato di partenza (dbdev, come app, DDT 131): vista intera ~90–130 ms,
-lister 112, diagnosi 93, capability ~290; la vista filtrata su un DDT costa
-quanto intera (120 ms). L'EXPLAIN dice dove va il tempo: `vw_af_merce_per_riga`
-— un `GROUP BY` su `attivita_fatturabili ⋈ commesse_attivita`, sotto la policy
-di `commesse_attivita` — è ricalcolata **quattro volte** dentro la vista
-(`acc_origine`, `alloc`, `fd`, `fr`: 16+15+20+17 ≈ 68 ms su 130), perché il
-planner non condivide un sottoalbero fra quattro `JOIN`. Sul modello è la stessa
-relazione derivata letta quattro volte: va in una CTE `af AS MATERIALIZED` in
-testa, proiezione senza filtro, con i quattro `JOIN` identici nei predicati —
-così l'equivalenza non ha bisogno di argomenti. Provata come sola `SELECT` in
-transazione ritirata: **~90 → ~56 ms**, `EXCEPT ALL` a zero nei due versi. Poi
-con l'**SQL estratto** dallo YAML (owner, transazione ritirata): `reloptions`
-intatte, `EXCEPT ALL` con la definizione viva a zero, COMMENT con la rev, una
-sola lettura di `vw_af_merce_per_riga` in `pg_get_viewdef`; nella stessa
-transazione **verdi** `test-vw-partite-merce-v1` (11/11),
-`test-vw-partite-merce-riconsegna-dopo-nc-v1` (8/8),
-`test-fn-list-ddt-da-pushare-contatore-v1` (7/7), `test-vw-contatore-merce-v1`
-(11/11), `test-fn-available-actions-ddt-reason-catch-all-v1` (8/8). Cancelli
-statici verdi. Manuale della vista aggiornato. ✅ **Applicato il 21-09 alle
-12:41** (`databasechangelog`, `EXECUTED`); la corsa come app è la misura
-«prima» della quarta leva (brief §5).
-
-⛔ **Le prime tre leve abbassano la costante; il titolo di D14 resta vero.** La
-vista non ha un parametro, e il modello non ha retention: la lettura di *un*
-documento paga le partite di *tutti*, e quel conto cresce con la storia. Sul
-modello però la dipendenza fra partite è **bounded**: le due finestre sono
-partizionate per `ordine_riga_id` (`alloc`) e per `ddt_riga_origine` (`migra`),
-quindi la chiusura di un DDT è a due salti. È la **quarta leva** — la partita
-per chiusura del documento — e insieme alla seconda (una lettura invece di due
-nella capability, che è una scelta di contratto: `push_ok` per costruzione dal
-lister o per pgTAP dalla diagnosi, e la precedenza dei rami
-`GIA_INVIATO`/`GIA_FATTURATO`) sta nel brief aperto il 21-09:
-`work-done/brief-db-partita-merce-per-documento.md`. ⚠️ La rilettura
-del pomeriggio (§2-bis del brief) ha corretto la forma prima di scrivere una
-riga: corpo `BEGIN ATOMIC` (altrimenti riferimenti morti e catena RLS
-invisibili nel catalogo — `test-rls-viste-security-invoker` va allargato di un
-anello), vista con le colonne per nome (un `SELECT *` perde `numeric(18,6)`
-in silenzio), semi in `UNION ALL` e mai `p IS NULL OR …` (provato in piano
-generico: seq scan sotto policy), due FK senza indice sul cammino della
-chiusura, e la seconda leva riformulata come **una sola implementazione**
-dell'eleggibilità (lister derivato dalla diagnosi), non «una lettura invece
-di due». ✅ **D1–D5 decise da Tid il 21-09 sera**, e il **giro 1 è
-SCRITTO** la sera stessa: `20_code/vendite/20260921-21` (`fn_partite_merce`,
-`BEGIN ATOMIC`, semi per DDT e per ordine, chiusura R0/R1/O), `-22` (la vista
-come proiezione per nome, `consegnato::numeric(18,6)`), `-23` e `-24` (lister e
-diagnosi sul seme `ARRAY[p_ddt_id]`), `80_data/20260921-25` (le due FK
-`resi_righe(ddt_riga_id)` e `resi_righe_riconsegne(ddt_riga_id)` a
-`consentito=true`), `test-fn-partite-merce-chiusura-v1` (14 test a casi
-costruiti: ordine su tre DDT, accredito parziale con due ri-spedizioni, riga
-MULTIPLA) e `test-rls-viste-security-invoker` allargato all'anello funzione (5
-→ 7; la controprova: il file di HEAD sopra i changeSet segnala la vista uscita
-dal perimetro). Provato con l'SQL estratto in transazione ritirata: equivalenza
-a zero per ogni DDT e ogni ordine, piano generico con `Index Cond` +
-`One-Time Filter`, sei presidi esistenti verdi, guardrail riferimenti morti
-OK, sette cancelli statici OK, e il driver pgjdbc provato col jar di Liquibase
-(un `BEGIN ATOMIC` va **da solo** nel suo `sql:`). ✅ **Applicato da Tid il
-21-09 alle 14:46, pgTAP senza regressioni.** Misura «dopo» come app (brief
-§8.6): la partita di UN DDT **120 → 24 ms**, lister 112 → 52, diagnosi 93 →
-25, capability del DDT **~290 → 175 ms**; la vista intera resta 88 (stesse
-scansioni). Dentro i 24 ms, ~12 sono `af` letta intera — il pavimento di D5,
-che cresce con le fatture — e ~100 ms della capability stanno fuori dalla
-partita (check di emissione, segmenti): il prossimo bersaglio da misurare.
-Committato (`c60f39eaa`, PR #1634). ✏️ **Giro 2 (D3) SCRITTO la sera del
-21-09** (brief §9): `20260921-26 → -31` — `fn_situazione_merce_ordine` e
-`fn_resi_da_accreditare` (`BEGIN ATOMIC`, gli stessi due semi di
-`fn_partite_merce`), `vw_situazione_merce_ordine` e `vw_resi_da_accreditare`
-come loro proiezioni, `fn_accredita_riga_reso` e `fn_resi_riga_tetti_accredito`
-sul seme del DDT della riga resa; due pgTAP a casi costruiti (il DDT di mezzo
-con la situazione intera, le sorelle con capienza parziale, la riga `MULTIPLA`
-nella coda di entrambi gli ordini); diciassette presidi esistenti a esito
-identico sull'SQL estratto, piano generico con `Index Cond` e rami «tutti»
-mai eseguiti, guardrail e cancelli OK. ⚠️ Il censimento dal catalogo ha
-corretto il brief: i lettori per riga erano **due**, non sei, e
-`vw_contatore_merce` **non ha più lettori** (D6, decisione a Tid). ✅
-**Applicato da Tid il 21-09 alle 18:43**, pgTAP verdi (i due nuovi 12/12 come
-app). Misura come app (brief §9.7): situazione per ordine **187 → 20 ms**, per
-DDT 187 → 41, coda accrediti per DDT **115 → 36**, il guard dei tetti a ogni
-riga di ponte **→ 1.3 ms**; le viste intere invariate. Committato
-(`559dbf351`, PR #1635). ✏️ **Giro 3 (D4, forma B2) SCRITTO la sera del
-21-09** (brief §10): `20260921-32` — `fn_ddt_push_diagnosi` rigenerata
-`BEGIN ATOMIC` come **fonte unica** dell'eleggibilità, con quattro colonne in
-più (`billing_account_id`, `ordine_riga_id`, `segment`, `quantita_push`) e il
-documento come seme in `UNION ALL` (la rev del giro 1 aveva lasciato un
-`p IS NULL OR` su `vendite.ddt`); `-33` — il lister **deriva** dalla diagnosi
-(`WHERE motivo IS NULL` + filtri di chiamata + proiezione, contratto verso la
-pipeline invariato); `-34` — la capability legge la diagnosi **una** volta
-(flag per costruzione, precedenza `GIA_INVIATO`/`GIA_FATTURATO` dal `segment`,
-poi il motivo). `test-fn-available-actions-ddt-reason-catch-all-v1` riscritto
-a casi costruiti coi builder (8 → 16: l'eleggibile a tre voci, ALLOCATA,
-EMESSA, la precedenza del segmento sul documento annullato, pin di forma).
-Provato sull'SQL estratto: blob della capability **identico per tutti i 51
-DDT** (che esercitano tutte e sette le reason), lister identico per ogni DDT,
-piano generico con `Index Cond` + `One-Time Filter`, venti presidi a esito
-identico, guardrail e cancelli OK. ✅ **Applicato da Tid la sera stessa,
-pgTAP senza regressioni.** Misura come app (brief §10.7): capability del DDT
-**175 → 50 ms**. ⚠️ **Regressione dichiarata**: il lister SENZA documento
-(cockpit, lista push) **214 → 663 ms** — la diagnosi classifica il segmento
-di ogni riga attiva e `fn_get_stato_push_segment` è una scansione di
-`commesse_attivita` sotto policy per riga (7.6 ms × 54; `textlike` non è
-leakproof, la policy va prima). È il pavimento di D5, con un perimetro in più:
-**D8** — l'indice `text_pattern_ops` su `segment_key` (lo stesso di D5, i
-`text_pattern_*` sono leakproof) e/o il classificatore set-based con la
-scalare come proiezione. ⚠️ Decisione nuova **D7**: `ddt_righe.attivo` non ha
-un guard fuori da `DRAFT` — il modello ammette di disattivare una riga già
-instradata. Committato (`acaaab569`). ✏️ **Giro 4 (D5 + D8) SCRITTO la notte
-del 21-09** (brief §11): `90_end/20260921-50` — l'indice su `segment_key`
-ricreato in `varchar_pattern_ops` al posto dell'ordinario (in `90_end` perché
-deve seguire il `-58` di luglio che lo creava); `-51` — `fn_af_merce_per_riga`,
-il contatore delle attività fatturabili **per chiave di segmento**
-(`BEGIN ATOMIC`, chiavi normalizzate, NULL = tutte); `-52` — la vista come
-proiezione per nome; `-53`/`-54` — partita e situazione leggono `af`/`ord`
-per le chiavi della chiusura; `-55` — il classificatore riscritto nella forma
-a **range** (`~>=~`/`~<~`). ⛔ **Una correzione al paragrafo qui sopra,
-provata come app** su una `TEMP TABLE` con `FORCE ROW LEVEL SECURITY`: l'indice
-da solo non avrebbe curato nulla, perché sotto una policy un `LIKE` **non
-diventa mai** `Index Cond` — nemmeno a costante: la clausola non è leakproof e
-viene scartata prima che il planner ne derivi il range. Salgono solo `=`,
-`= ANY` e il range scritto **a mano** con gli operatori del pattern, coi bordi
-precalcolati (in una CTE `MATERIALIZED`, o sul parametro); un `OR` con dentro
-una funzione leaky spegne i path parametrizzati. Regola scritta in
-linee-guida-sql §8.5-bis. Provato sull'SQL estratto: corpi non stantii (md5
-dal `-21`/`-26`/`-42` identici al vivo), equivalenza a zero per le cinque
-viste, il classificatore su 287 chiavi, ogni DDT e ogni ordine; piani con
-`BitmapOr` di `Index Cond`; 39 presidi esistenti a esito identico; due pgTAP
-nuovi (13 + 12, coi builder); cancelli, guardrail SQL e `updateSQL` offline
-OK. ⚠️ `force_generic_plan` è pessimista sulla forma set-based (stima 100
-chiavi × 0,5 %): nella forma reale la plancache tiene i custom (10 chiamate
-a ~0,35 ms contro 17 in generico, sulla tabella temporanea da 20k). ✅
-**Applicato da Tid il 21-09 alle 23:24, pgTAP verdi, doc auto-gen
-rigenerata.** Misura come app (brief §11.7): il classificatore su tutte le 54
-righe **401 → 6 ms** (2027 → 6 buffer: `BitmapOr` di `Index Cond` sopra la
-policy, letto dal piano come app), il cockpit **663 → 227**, situazione per
-ordine 20 → 4, `af` per le chiavi di un DDT 0,8 ms. ⚠️ **Ma la partita di un
-DDT non scende (24 → 28) e la diagnosi senza documento resta a ~350–460**:
-il piano come app (brief §11.8) mostra che il `SELECT` finale della partita
-inlinata viene ri-eseguito **per riga** in un nested loop (`loops=54`, 449 ms
-su 461) — CTE senza statistiche, join filter senza hash. Il passo da una riga
-è la partita in una CTE `MATERIALIZED` dentro la diagnosi (fuori dalla
-diagnosi il planner sceglie l'hash da solo: 127 → 98 ms in prova); viene
-**prima** di D8(b), decisione a Tid. Da committare. Restano D6, D7, D8(b) e
-il residuo dei tre `LIKE` di `fn_accredita_riga_reso`.
+⚠️ **Il perimetro non è `vendite`**: la domanda sul modello è se esista **un**
+posto che tiene aggiornate le statistiche del database, e oggi non esiste. Sede
+`dbops`/`maintenance`, non un dominio: soglie di autovacuum per le tabelle
+piccole, un job nello scheduler, o entrambi — con il presidio che dice quando
+l'ultimo `ANALYZE` è più vecchio di quanto si è dichiarato. ⭐ È un
+**prerequisito**, non una miglioria: chiunque riapra una famiglia di funzioni per
+prestazioni lo trova davanti.
 
 ---
 
@@ -1079,10 +919,33 @@ D6 e il registro dei rossi in CI.
       forme, e la radice in una riga di preambolo. ✅ 21-09: `20260920-01`
       applicato (il BB costruisce il mondo se il DB è vuoto) + il rimedio
       da zero su `tipi_ruoli.entita_tabella` (CSV + mirror): **66 file da
-      rosso a verde** sullo scratch, 362 → **296 attesi** in CI, da
-      certificare con la corsa e `pgtap-baseline-ci-rientrati.sh`. Restano
-      la ricetta per file (BA, registro, utente hard-codato, articolo) e la
-      decisione sui 5 file che COMMITTANO / 6 col contesto in autocommit.
+      rosso a verde** sullo scratch, 362 → **295 attesi** in CI, da
+      certificare con la corsa e `pgtap-baseline-ci-rientrati.sh`. ⚠️ **Al
+      2026-09-22 il registro è ancora a 361 file** (l'unica riga uscita è quella
+      del pgTAP ritirato con `vw_contatore_merce`): la corsa del 21-09 ha
+      misurato **293 rossi su 674**, ma i RIENTRATI non sono stati tolti —
+      `pgtap-baseline-ci-rientrati.sh` legge il log della corsa e va lanciato
+      **quel giorno**, perché il log scade. ⭐ 22-09: il pezzo che resta ha un
+      brief suo — `work-in-progress/brief-db-fixture-che-costruiscono-giro-2.md`
+      — e parte dal **BB di composizione** (`fn_pgtap_crea_mondo_cliente`), non
+      dalla ricetta per file: 205 file su 361 compongono il mondo a mano, e la
+      regola d'ordine fra mondo, legame del BA e contesto non sta in nessun
+      oggetto. ✏️ BB **scritto e provato** il 22-09 (`20260922-17` +
+      `dbops/test-fn-pgtap-crea-mondo-cliente-v1.sql`, 9/9 su `zeroerp_ci`,
+      riferimenti morti e rubinetto verdi, cancelli statici verdi): da
+      applicare. Poi i lotti del brief §5, dai sei schemi piccoli (43 file, che
+      escono interi dal registro). ✅ **Lotto 1 in corso, 23-09**: dei 43 file
+      **16 erano già verdi** (il `20260920-01` ha fatto effetto, il registro non
+      è stato aggiornato), **12 riscritti e verdi** su entrambi i database (114
+      asserzioni), `20260923-01` scritto (il builder degli articoli sceglie la
+      UoM) e la soglia `throws_ok` scesa **123 → 121**. ⛔ Due findings: un test
+      era **verde per l'errore sbagliato** (super admin) e due sono rossi per un
+      **difetto del DB da zero** — `storico.parameters` ha `parameter_id` mentre
+      il trigger passa `parameters_id`, quindi su un'installazione nuova ogni
+      UPDATE su `config.parameters` fallisce. Restano i 9 di `pagamenti`, che
+      chiedono tutti una fattura: decisione su un secondo BB nel brief §7.
+      🔵 Rinviata da Tid la decisione sui 4 file che COMMITTANO / 6 col contesto
+      in autocommit: prima la forma.
 * [x] **D13** — ✅ chiuso il 2026-09-13: changeSet `20260913-01/02/03`
       applicati, baseline di sviluppo senza regressioni, brief
       `brief-db-ba-riserva-emittente-operatore-d13.md`. ✅ Le tre copie
@@ -1098,103 +961,25 @@ D6 e il registro dei rossi in CI.
 * [ ] **D11-bis** — scrivere il messaggio dei sei `W_` che non ce l'hanno
       (append al CSV dei messaggi, mai un loader nuovo), oppure dichiarare che
       quei codici non raggiungono mai un operatore — e scriverlo nel `note`.
-* [~] **D14** — (aperto il 2026-09-17) ✅ changeSet `20260917-01` **applicato**
-      lo stesso giorno (`sospetto` set-based + `AS MATERIALIZED`, vista
-      375 → 88 ms da app, capability DDT 850 → 230 ms). ✅ I due pgTAP lenti:
-      `capability-motivi` >90 s → 36 s (blob una volta per documento),
-      `annulla-aspetto` 49 → 11 → **2 s** (un documento per stato, decisione
-      di Tid). ✅ Terza leva **scritta il 21-09** (`20260921-20`,
-      `vw_af_merce_per_riga` letta una volta in una CTE `af` materializzata
-      invece di quattro: vista ~90 → ~56 ms da app, SQL estratto + cinque
-      pgTAP verdi in transazione ritirata), ✅ **applicata** il 21-09 alle 12:41. ⏳ Seconda
-      leva (una lettura invece di due nella capability: scelta di contratto)
-      e **quarta leva** (la partita per chiusura del documento, quella che
-      chiude il titolo) nel brief
-      `work-done/brief-db-partita-merce-per-documento.md`, aperto il
-      21-09 — ✅ D1–D5 decise, giro 1 **applicato** il 21-09 (120 → 24 ms
-      per la partita di un DDT, come app), ✏️ giro 2 (D3: situazione ordine,
-      coda accrediti e i due verbi per documento) **applicato** la sera
-      stessa (situazione per ordine 187 → 20 ms, coda per DDT 115 → 36, come
-      app), committato; ✏️ giro 3 (D4, forma B2: la diagnosi fonte unica,
-      il lister che ne deriva, la capability a una lettura) **scritto** la
-      sera stessa e **applicato** (capability 175 → 50 ms come app; ⚠️ il
-      lister senza documento 214 → 663: il classificatore del segmento per
-      riga, D8 — stesso indice di D5), committato; ✏️ **giro 4 (D5 + D8a)
-      SCRITTO** la notte del 21-09 (`90_end/20260921-50` l'indice in
-      `varchar_pattern_ops`; `-51…-55`: `fn_af_merce_per_riga` per chiave,
-      la vista come proiezione, partita e situazione sulle chiavi della
-      chiusura, il classificatore a range leakproof — perché sotto una
-      policy un `LIKE` non usa MAI l'indice, provato come app), ✅
-      **applicato** alle 23:24 (classificatore 401 → 6 ms su 54 righe, cockpit
-      663 → 227 come app; ⚠️ la partita di un DDT e la diagnosi «tutte» NON
-      scendono: la partita inlinata è ri-eseguita per riga nella diagnosi,
-      brief §11.8 — una CTE `MATERIALIZED` è il passo prima di D8(b)),
-      **committato** (`e05e3b1e5`, PR #1639); ✏️ **giro
-      5 (D7) SCRITTO il 22-09** (brief §12): Tid ha scelto «B come BB
-      generico» — `vendite.trgfn_doc_righe_lock_fuori_bozza`, «le righe di un
-      documento si toccano solo in bozza», fascia `_a05_`, su `ddt_righe`,
-      `ordini_righe` (solo DELETE) e `contratti_righe`, con le due copie a DB
-      ritirate (lock dedicato dei contratti droppato, ramo 1 del traduttore
-      dei legami tolto); `20260922-01 → -06`, 75 pgTAP con/senza a esiti
-      identici, cinque fixture riordinate; ✅ **APPLICATO il 22-09 alle 08:39,
-      pgTAP senza regressioni, committato** (`b40d9de24`, PR #1640; BE
-      allineato con `57482c830`, PR #1641). ✏️ **giro 6 SCRITTO il 22-09**
-      (brief §13; decisioni di Tid del mattino): la partita dentro la
-      diagnosi in una CTE `MATERIALIZED` (`20260922-07`) e **D6 chiusa** —
-      `vw_contatore_merce` ritirata (`-08`, DROP senza CASCADE, censimento
-      come preCondition), i due COMMENT che la nominavano corretti
-      (`-09`/`-10`); un pgTAP ritirato coi due scenari orfani migrati sulla
-      partita e sulla situazione. 38 pgTAP con/senza a esiti identici;
-      prova di forma come app: tutte 205 → 162 ms, un DDT 47 → 31, e il
-      prossimo collo è dentro `fn_partite_merce` (CTE `riga`, `dr_in` ×
-      `ddt` in nested loop sotto policy). ✅ **APPLICATO il 22-09 alle
-      11:01**, doc auto-gen rigenerata; misura come app (§13.7): diagnosi
-      «tutte» **346 → 132 ms**, lister senza documento **227 → 148**; il
-      piano indica il passo dopo — la policy di `billing_account` rivalutata
-      per BA per riga nella diagnosi (44% dei buffer): i BA visibili si
-      leggono una volta. ✅ pgTAP come app verdi (Tid, 22-09), committato
-      (`660bbac59`; BE `77fecbe50`). ✏️ **giro 7 SCRITTO il 22-09**
-      (brief §14): `20260922-14`, i billing account letti **per chiave**
-      (`ba_vis` seminata) — ⛔ non era l'artefatto di una tabella piccola
-      (nemmeno forzando l'indice diventa un `Index Cond`), e la forma
-      «tutti i BA visibili» è stata **scartata** perché farebbe pagare
-      l'anagrafica intera alla capability di un DDT; come app 161 → 96 ms
-      su tutte, 32 → 25,8 su un documento. ⚠️ Il presidio di quel ramo era
-      verde a vuoto (nessuna riga viva è `DDT_SENZA_BA`): test costruito
-      nuovo, rosso per mutazione. ✅ **APPLICATO il 22-09 alle 15:57, pgTAP
-      come app senza regressioni**; misura §14.7: diagnosi «tutte» **132 →
-      63 ms**, cockpit **148 → 73**, nodo dei BA da 13 398 buffer a 30. ⏳
-      Commit. **Bilancio dei sette giri** (§15): capability di un DDT
-      290 → 39 ms, cockpit 214 → 73, diagnosi di tutti 348 → 63, partita di
-      un DDT 120 → 27. 🔵 Restano, dichiarate: la CTE `riga` dentro
-      `fn_partite_merce` (il 71% di ciò che costa ora — terza occorrenza
-      della stessa forma) e **D8(b)**, che resta sul modello perché nessuna
-      misura la reclama. ✏️ **giro 8 SCRITTO il 22-09** (brief §16):
-      `20260922-15` — la catena del **sospetto** (`sospetto_duplicato_ordine`,
-      un avviso per una persona che nessuna macchina legge) si semina dalle
-      righe che ESCONO invece di leggere tutte le righe attive dei DDT in
-      gioco; `ddt_in` tolta. ⛔ Col recinto `MATERIALIZED` tenuto: toglierlo
-      fa potare la catena a chi non legge la colonna ma la fa ri-eseguire
-      PER RIGA a chi la legge. ⛔ E corregge il bersaglio indicato in §14.7,
-      che era un artefatto del banco di prova (dentro la funzione quel punto
-      è un `Index Scan`, ~5 ms su 46). ⛔ **APPLICATO il 22-09 alle 16:47 e
-      RITIRATO lo stesso giorno** (`20260922-16`): la misura come app dice
-      63 → 90 ms sulla diagnosi «tutte» e 47 → 78 sulla vista intera —
-      referenziare `riga` da altre due CTE le ha cambiato il piano (§16.6).
-      ⭐ La lezione vale più del giro: **il corpo eseguito come query non
-      predice il piano dentro la funzione** — in questo cantiere ha nascosto
-      un difetto vero, ne ha inventato uno e ha promesso un guadagno che era
-      una perdita — ⛔ **ma nemmeno la regressione era dimostrata**: dopo il
-      ritiro (`20260922-16`, applicato alle 17:19) lo **stesso corpo** che
-      alle 16:12 misurava 63 ms ne misura 95-104, con lo stesso piano storto.
-      In `vendite` **82 tabelle su 87 non sono mai state analizzate**: ogni
-      piano è costruito su stime di default e si ribalta da solo (§16.6).
-      ⭐ Ciò che regge sono le **forme** (`loops=1`, `Index Cond`), non i
-      millisecondi confrontati fra momenti diversi. ✅ **D14 CHIUSA il 22-09**
-      e il brief è archiviato in `work-done/`: due decisioni non prese
-      (§15.1), residui con destinazione (§15.2), fra cui 🔴 le statistiche
-      assenti → cantiere `dbops`/`maintenance`. ⏳ Restano da committare gli
-      ultimi tre changeSet.
+* [x] **D14** — ✅ chiusa il 2026-09-22, brief archiviato in
+      `work-done/brief-db-partita-merce-per-documento.md`: otto giri fra il 17 e
+      il 22-09, **sette applicati** e l'ottavo provato e **ritirato** lo stesso
+      giorno. La partita di merce si legge **per documento**, l'eleggibilità ha
+      **una** implementazione e il classificatore, `af` e i billing account si
+      leggono **per chiave** (§7). Residui dichiarati, ciascuno con la sua sede:
+      due decisioni **non prese** (la catena del `sospetto`, raccomandato
+      lasciar stare; **D8(b)**, che nessuna misura reclama), i tre `LIKE` di
+      `fn_accredita_riga_reso` — un changeSet suo —, i preventivi come quarto
+      adottante del BB «righe solo in bozza» (dopo il censimento
+      dell'approvazione prezzo) e tre voci BE (due commenti che nominano oggetti
+      ritirati, la decisione sui pre-check `_STATI_RIGHE_MODIFICABILI`).
+      ⛔ La statistica assente **non** è un residuo di questo cantiere: è **D15**.
+* [ ] **D15** — dare al database **un** posto che tiene aggiornate le
+      statistiche (`dbops`/`maintenance`): in `vendite` 82 tabelle su 87 non
+      hanno mai avuto un `ANALYZE`, quindi ogni piano nasce da stime di default
+      e si ribalta da solo. ⛔ È un **prerequisito** di qualunque cantiere che
+      misuri un piano, non una miglioria — e finché non c'è, un guadagno
+      dichiarato in millisecondi non è difendibile.
 
 ### 🟡 Struttura
 
@@ -1211,8 +996,11 @@ D6 e il registro dei rossi in CI.
 
 > Questa sezione è il **rovescio di §3**: qui sta ciò che era un difetto e non lo
 > è più. Un numero che compare in **tutti e due** i posti (D4, D5, D6, D7, D11,
-> D12, D14) non è una ripetizione: in §3 c'è **il lavoro che resta**, qui **quello
-> fatto**. Le date sono quelle dichiarate nei brief, e i brief restano la sede del
+> D12) non è una ripetizione: in §3 c'è **il lavoro che resta**, qui **quello
+> fatto**. ⭐ **D14 non è più in §3**: è chiusa, e ciò che la sua chiusura ha
+> scoperto è una voce nuova: **D15**, le statistiche che non esistono.
+>
+> Le date sono quelle dichiarate nei brief, e i brief restano la sede del
 > dettaglio: qui si dice **che cosa è cambiato nel sistema**, non come ci si è
 > arrivati.
 
@@ -1390,17 +1178,78 @@ l'operatore del secondo emittente e prova l'`INSERT … RETURNING` **come
 lo guardi — dato anomalo che il modello ammette.
 Brief `brief-db-ba-riserva-emittente-operatore-d13.md`.
 
-### ✅ D14 — La vista del DDT e i due pgTAP lenti — chiusa la parte misurata
+### ✅ D14 — La partita di merce si legge per documento — chiusa il 2026-09-22
 
-Il difetto di prodotto resta aperto (§3 D14), ma il pezzo che aveva **una
-misura** è chiuso: i due file che `pgtap-baseline.sh` uccideva oltre i 90 s ora
-girano (`capability-motivi` **36 s**, `annulla-aspetto` 49 → **2 s**), e la vista
-è passata a **`AS MATERIALIZED`** con `sospetto` set-based — **375 → 88 ms** da
-applicazione, capability DDT **850 → 230 ms**. Il 21-09 la terza leva —
-`vw_af_merce_per_riga` letta una volta, `20260921-20`, vista ~90 → ~56 ms —
-è scritta e provata, da applicare. Restano la seconda leva (derivare `push_ok`
-dalla diagnosi) e la quarta (la partita per chiusura del documento), nel brief
-`brief-db-partita-merce-per-documento.md`.
+Era: `script.fn_available_actions_ddt(id)` — la funzione che alimenta il drawer di
+**un** DDT a ogni apertura — ricalcolava le partite di **tutti** i DDT, e sotto
+RLS ogni riga scandita pagava la propria policy (~3.500 valutazioni per una
+lettura). ⭐ Il difetto era **strutturale, non del planner**: la partita di una
+riga dipende dalle spedizioni precedenti della stessa riga d'ordine, quindi
+filtrare la CTE per documento avrebbe dato un numero **sbagliato**. La cura non
+era un indice: era dare alla partita un **seme**, dopo aver mostrato sul modello
+che la dipendenza è *bounded* (le due finestre sono partizionate per
+`ordine_riga_id` e `ddt_riga_origine`: la chiusura di un documento è a due salti).
+
+Otto giri fra il 17 e il 22 settembre, **sette applicati** e l'ottavo provato e
+**ritirato lo stesso giorno**. Brief
+`work-done/brief-db-partita-merce-per-documento.md`; changeSet `20260917-01`,
+`20260921-20 → -34`, `20260921-50 → -55`, `20260922-01 → -16`; committato in
+`c60f39eaa`, `559dbf351`, `acaaab569`, `e05e3b1e5`, `b40d9de24`, `660bbac59` e
+`8d7f14829` (PR #1634, #1635, #1639, #1640, #1646).
+
+**Che cosa è cambiato nel sistema** — le forme, non i millisecondi:
+
+* `vendite.fn_partite_merce` (`BEGIN ATOMIC`) **semina** la partita con il
+  documento o con l'ordine e ne calcola la chiusura; le viste diventano sue
+  **proiezioni per nome** (un `SELECT *` perdeva `numeric(18,6)` e faceva uscire
+  la vista dal presidio `security_invoker`);
+* la stessa forma per `fn_situazione_merce_ordine`, `fn_resi_da_accreditare` e i
+  due verbi degli accrediti: un seme, non un filtro su una popolazione intera;
+* l'**eleggibilità ha una sola implementazione**: `fn_ddt_push_diagnosi` è la
+  fonte, il lister ne deriva (`WHERE motivo IS NULL`) e la capability la legge
+  **una** volta — prima erano due letture e due regole che potevano dissentire;
+* ciò che è un insieme si legge **per chiave**: `vw_af_merce_per_riga` in una CTE
+  `af AS MATERIALIZED` invece di quattro volte, il classificatore di segmento in
+  forma a **range leakproof** (`~>=~`/`~<~`) con l'indice `varchar_pattern_ops`,
+  i billing account seminati;
+* `vw_contatore_merce` **ritirata** (censimento dal catalogo: nessun lettore), e
+  nasce un BB generico — `trgfn_doc_righe_lock_fuori_bozza`, «le righe di un
+  documento si toccano solo in bozza» — su `ddt_righe`, `ordini_righe` (solo
+  DELETE) e `contratti_righe`, con le **due copie a DB ritirate** nello stesso
+  giro.
+
+| Lettura, come `zeroerp_app` | 17-09 | 22-09 sera |
+| --------------------------- | ----- | ---------- |
+| capability di un DDT (il drawer) | 290 ms | **39 ms** |
+| partita di un DDT                | 120 ms | **27 ms**  |
+| lista push senza documento (cockpit) | 214 ms | 73–94 ms |
+| diagnosi di tutti i documenti    | 348 ms | 63–104 ms |
+
+⚠️ **Le forcelle non sono un refuso**: sono lo stesso corpo misurato a un'ora di
+distanza, ed è il motivo per cui è nata **D15**.
+
+⭐ **Tre lezioni che valgono oltre il cantiere:**
+
+1. *Ciò che è un insieme si legge una volta, e si semina con le chiavi in gioco.*
+   ⛔ Col corollario che il giro 7 ha pagato: «una volta sola» **non basta** —
+   leggere l'insieme intero è una volta sola, e fa pagare tutta la storia a chi
+   chiede **un** documento. Le due forme si somigliano e non sono la stessa cosa.
+2. ⛔ **Il banco di prova prova le righe, non il piano.** Il corpo eseguito come
+   `SELECT` non predice il piano **dentro** la funzione: qui ha nascosto un
+   difetto vero, ne ha **inventato** uno (la «terza occorrenza» che non esisteva)
+   e ha promesso un guadagno che era una perdita. ⇒ L'equivalenza si prova sul
+   banco, e il confronto **per seme** ha trovato un errore che il confronto
+   globale dichiarava equivalente; il **piano** si misura dopo l'apply, sulla
+   funzione, come applicazione.
+3. ⚠️ **Un presidio verde a vuoto non è un presidio**: il ramo `DDT_SENZA_BA` non
+   era esercitato da nessuna riga viva: caso costruito, e rosso per mutazione.
+
+⛔ **Ciò che resta non è lavoro sospeso**, e sta in §6: due decisioni **non prese**
+(la catena del `sospetto` — un avviso per una persona che nessuna macchina legge,
+17,6 ms su 46, raccomandato lasciar stare; e **D8(b)**, che nessuna misura
+reclama), i tre `LIKE` di `fn_accredita_riga_reso`, i preventivi come quarto
+adottante del BB delle righe in bozza, e tre voci BE.
+
 
 ---
 
@@ -1410,4 +1259,6 @@ branch `dev/db-tid`. La valutazione di febbraio 2026 resta in §1 come fatto
 datato. Sfoltito il 2026-09-12: le voci chiuse sono ridotte a data e rimando; la
 versione integrale è nella storia git del file. **Riordinato il 2026-09-20**: §3
 contiene solo i difetti aperti, e le attività svolte stanno in §7 — con lo stesso
-numero in entrambe le sezioni quando una voce ha due facce.*
+numero in entrambe le sezioni quando una voce ha due facce. **Riordinato il
+2026-09-22**: D14 è chiusa e passata per intero in §7, e al suo posto in §3 è
+entrata D15 — le statistiche assenti, che la sua chiusura ha scoperto.*

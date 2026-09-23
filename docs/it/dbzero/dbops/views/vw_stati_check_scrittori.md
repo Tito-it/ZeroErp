@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> La misura del presidio C1: per ogni valore ammesso dal CHECK di una colonna di stato (una colonna, forma = ANY(ARRAY[...]) in entrambe le scritture del cast, nome ^stato(_|$) | status | esito | severity — il filtro sul nome e' il confine dichiarato fra stato e classificazione), chi lo scrive: il DEFAULT di colonna, una funzione che scrive la tabella col letterale nel corpo (scrittori_fn), una funzione che chiama uno scrittore passandogli il letterale nella chiamata (scrittori_indiretti). Esito: SCRITTO, SCRITTO_DA_DEFAULT, DICHIARATO_APPLICAZIONE e ESENTE (dal registro dbops.stati_check_dichiarazioni), DEBITO_ESTINTO (riga di registro il cui valore ha trovato uno scrittore o e' uscito dal CHECK: da togliere), NON_DICHIARATO (allarme). ⛔ L'invariante NON e' «vuota»: e' «nessuna NON_DICHIARATO e nessuna DEBITO_ESTINTO». ⚠️ Limiti: nominare non e' scrivere (un letterale in un WHERE dentro uno scrittore conta); due salti e non tre; una copia colonna→colonna e un valore in variabile fuori dallo scrittore restano invisibili (si dichiarano ESENTE); un repository Python il database non lo vede (si dichiara APPLICAZIONE, lo verifica il backend). Sorgenti letti senza commenti. Presidio: db/pgtap/dbops/test-stati-check-scrittori-v1.sql. Brief: brief-db-presidio-stati-mai-scritti §2 e §3-bis.
+> PRESIDIO C1 — uno stato previsto dal modello (nel CHECK a lista di una colonna di stato) e mai scritto. Una riga per (colonna, valore) con il suo esito: SCRITTO (una funzione scrive la tabella e nomina il letterale, oppure lo passa a uno scrittore posizionale: il secondo salto), SCRITTO_DA_DEFAULT, DICHIARATO_APPLICAZIONE / ESENTE (sta in dbops.stati_check_dichiarazioni), NON_DICHIARATO (il debito da sanare) e DEBITO_ESTINTO nei due versi. ⚠️ Il criterio e' TESTUALE e ha due limiti, dichiarati nel suo pgTAP: nominare non e' scrivere (test 6) e a tre salti il letterale non si segue piu' (test 9). ⭐ Rev 2026-09-22: stessa misura, estratta UNA volta invece che provata per coppia — i nomi scritti da ogni funzione e i letterali citati si ricavano con un passaggio solo, poi si confrontano per uguaglianza. Output identico riga per riga (EXCEPT nei due versi su dbdev), costo per chiamata da ~535 ms a ~230 ms. Brief: brief-db-presidio-stati-mai-scritti §3-bis.
 
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_stati_check_scrittori AS
@@ -40,17 +40,36 @@ WITH colonne AS (
              JOIN pg_namespace pn ON ((pn.oid = p.pronamespace)))
              JOIN pg_language l ON ((l.oid = p.prolang)))
           WHERE ((pn.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) AND (l.lanname = ANY (ARRAY['plpgsql'::name, 'sql'::name])))
-        ), scrittori AS MATERIALIZED (
-         SELECT t.schema_tabella,
-            t.nome_tabella,
-            f.oid,
+        ), scritture AS MATERIALIZED (
+         SELECT f.oid,
             f.proname,
             f.funzione,
-            f.sorgente
+            f.sorgente,
+            lower(m.m[3]) AS tabella_scritta
+           FROM funzioni f,
+            LATERAL regexp_matches(f.sorgente, '(?i)(update|insert\s+into|merge\s+into)\s+(only\s+)?([a-z_][a-z0-9_$]*\.[a-z_][a-z0-9_$]*)'::text, 'g'::text) m(m)
+        ), scrittori AS MATERIALIZED (
+         SELECT DISTINCT t.schema_tabella,
+            t.nome_tabella,
+            s.oid,
+            s.proname,
+            s.funzione,
+            s.sorgente
            FROM (( SELECT DISTINCT colonne.schema_tabella,
                     colonne.nome_tabella
                    FROM colonne) t
-             JOIN funzioni f ON (((strpos(lower(f.sorgente), ((t.schema_tabella || '.'::text) || t.nome_tabella)) > 0) AND (f.sorgente ~* (((('(UPDATE|INSERT\s+INTO|MERGE\s+INTO)\s+(ONLY\s+)?'::text || t.schema_tabella) || '\.'::text) || t.nome_tabella) || '\M'::text)))))
+             JOIN scritture s ON ((s.tabella_scritta = ((t.schema_tabella || '.'::text) || t.nome_tabella))))
+        ), letterali AS (
+         SELECT (('''('::text || string_agg(DISTINCT regexp_replace(v.valore, '([.^$|()\[\]{}*+?\\-])'::text, '\\\&'::text, 'g'::text), '|'::text)) || ')'''::text) AS rx
+           FROM valori v
+        ), funzioni_citanti AS MATERIALIZED (
+         SELECT f.oid,
+            f.proname,
+            f.funzione,
+            f.sorgente
+           FROM funzioni f,
+            letterali l
+          WHERE (f.sorgente ~ l.rx)
         ), diretti AS (
          SELECT v.con_oid,
             v.valore,
@@ -62,8 +81,8 @@ WITH colonne AS (
             v.valore,
             c.funzione
            FROM ((valori v
-             JOIN funzioni c ON ((strpos(c.sorgente, v.letterale) > 0)))
-             JOIN scrittori s ON (((s.schema_tabella = v.schema_tabella) AND (s.nome_tabella = v.nome_tabella) AND (s.oid <> c.oid) AND (strpos(c.sorgente, s.proname) > 0) AND (c.sorgente ~ ((('\m'::text || s.proname) || '\s*\([^;]*'::text) || v.letterale)))))
+             JOIN scrittori s ON (((s.schema_tabella = v.schema_tabella) AND (s.nome_tabella = v.nome_tabella))))
+             JOIN funzioni_citanti c ON (((c.oid <> s.oid) AND (strpos(c.sorgente, v.letterale) > 0) AND (strpos(c.sorgente, s.proname) > 0) AND (c.sorgente ~ ((('\m'::text || s.proname) || '\s*\([^;]*'::text) || v.letterale)))))
         ), misura AS (
          SELECT v.schema_tabella,
             v.nome_tabella,

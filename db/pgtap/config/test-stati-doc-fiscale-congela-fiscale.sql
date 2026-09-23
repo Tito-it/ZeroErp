@@ -66,28 +66,38 @@ SELECT plan(7);
 CREATE TEMP TABLE tmp_cf_costanti AS
 SELECT 'pgtap_congela_fiscale'::text AS test_scope;
 
+-- ⛔ LA COPPIA (EMITTENTE, UTILITY) SI COSTRUISCE (2026-09-23). Cercarne una
+--   gia' configurata e' lo stesso criterio, ma su un database ricostruito
+--   `anagrafiche` e' a zero: la CTE tornava vuota, tutte le colonne
+--   uscivano NULL e l'INSERT della fattura moriva su
+--   `emittente_soggetto_ruolo_id` NOT NULL — un errore che non nomina ne' la
+--   fixture ne' la coppia mancante. Il BB costruisce azienda, operatore e
+--   cliente; la riga di configurazione la scrive qui la fixture, perche' e'
+--   cio' che un documento fiscale pretende.
+-- ⚠️ Tipo documento, stato DRAFT e valuta restano PESCATI: sono seed di
+--   `80_data`, ci sono anche da zero — e ognuno ha il suo `ORDER BY`.
+CREATE TEMP TABLE tmp_cf_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('congela fiscale');
+
+-- ⚠️ `arrotondamento_importi_dec` e `metodo_arrotondamento_importi` sono
+--   NOT NULL senza default: la configurazione di una coppia non ha una forma
+--   «minima» implicita, la si dichiara. Due decimali HALF_UP e' cio' che
+--   portano le righe vive.
+INSERT INTO anagrafiche.emittenti_fiscali_utilities
+    (emittente_soggetto_ruolo_id, utility_id,
+     arrotondamento_importi_dec, metodo_arrotondamento_importi, attivo)
+SELECT emittente_soggetto_ruolo_id, utility_id, 2, 'HALF_UP', TRUE FROM tmp_cf_mondo;
+
 CREATE TEMP TABLE tmp_cf_refs AS
-WITH cfg AS (
-  SELECT efu.emittente_soggetto_ruolo_id, efu.utility_id
-    FROM anagrafiche.emittenti_fiscali_utilities efu
-   WHERE efu.attivo IS TRUE
-     AND EXISTS (SELECT 1 FROM anagrafiche.billing_account ba
-                  WHERE ba.utility_id = efu.utility_id)
-   ORDER BY efu.emittente_soggetto_ruolo_id, efu.utility_id
-   LIMIT 1
-)
-SELECT (SELECT emittente_soggetto_ruolo_id FROM cfg) AS emittente_soggetto_ruolo_id,
-       (SELECT utility_id FROM cfg)                  AS utility_id,
-       (SELECT ba.id
-          FROM anagrafiche.billing_account ba
-         WHERE ba.utility_id = (SELECT utility_id FROM cfg)
-         ORDER BY ba.data_insert DESC NULLS LAST, ba.id DESC
-         LIMIT 1)                                    AS billing_account_id,
+SELECT m.emittente_soggetto_ruolo_id,
+       m.utility_id,
+       m.billing_account_id,
        (SELECT id FROM config.tipi_doc_fiscale
          WHERE attivo IS TRUE ORDER BY id LIMIT 1)   AS tipo_doc_fiscale_id,
        (SELECT id FROM config.stati_doc_fiscale
          WHERE codice_interno = 'DRAFT' ORDER BY id LIMIT 1) AS stato_draft_id,
-       (SELECT id FROM config.valute ORDER BY id LIMIT 1)    AS valuta_id;
+       (SELECT id FROM config.valute ORDER BY id LIMIT 1)    AS valuta_id
+  FROM tmp_cf_mondo m;
 
 SELECT ok(
     (SELECT emittente_soggetto_ruolo_id IS NOT NULL

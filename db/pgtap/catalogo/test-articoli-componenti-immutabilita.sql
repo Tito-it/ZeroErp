@@ -68,21 +68,17 @@ SELECT plan(18);
 -- =========================================================
 -- Setup: riga BoM di partenza
 -- =========================================================
+-- ⛔ Gli articoli si COSTRUISCONO (2026-09-23). Fino a oggi questo file
+--   pescava `ART_TEST_BASE` / `ART_TEST_FALLBACK`, che non stanno in nessun
+--   changelog: sono due righe messe a mano su questa macchina (UUID …101 e
+--   …102). Su un database ricostruito non esistono, e il file moriva nella
+--   fixture — copertura zero, non parziale.
 CREATE TEMP TABLE _t_bom AS
 SELECT
-    (SELECT id FROM catalogo.articoli WHERE codice = 'ART_TEST_BASE')     AS prodotto_id,
-    (SELECT id FROM catalogo.articoli WHERE codice = 'ART_TEST_FALLBACK') AS componente_id,
+    dbops.fn_pgtap_crea_articolo('PGT-BOM-IMM-PRODOTTO')   AS prodotto_id,
+    dbops.fn_pgtap_crea_articolo('PGT-BOM-IMM-COMPONENTE') AS componente_id,
     (CURRENT_DATE - INTERVAL '30 days')::date  AS v_dal,
     (CURRENT_DATE + INTERVAL '30 days')::date  AS v_al;
-
--- Guard seed
-DO $pgtap$
-BEGIN
-    IF (SELECT prodotto_id IS NULL OR componente_id IS NULL FROM _t_bom) THEN
-        RAISE EXCEPTION 'Seed articoli ART_TEST_BASE / ART_TEST_FALLBACK mancante; impossibile eseguire test.';
-    END IF;
-END
-$pgtap$;
 
 -- Prerequisito: il prodotto deve avere is_composito=true perche' il
 -- trigger trgfn_articoli_componenti_guard_is_composito accetti l'INSERT.

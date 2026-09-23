@@ -129,11 +129,16 @@ CREATE FUNCTION pg_temp.fx_nc(p_prezzo numeric) RETURNS bigint LANGUAGE plpgsql 
 DECLARE
   v_id bigint;
 BEGIN
+  -- ⛔ La data e' current_date, MAI un letterale (rev 2026-09-23): il test 6
+  --   NUMERA la nota, e la numerazione applica la finestra di emissione del
+  --   registro («non piu' di N giorni fa»). Con DATE '2026-09-10' il test e'
+  --   diventato rosso da solo il 23-09, a codice invariato. Il registro e'
+  --   vergine, quindi oggi e' sempre una data ammessa.
   INSERT INTO vendite.fatture (registro_id, data, emittente_soggetto_ruolo_id,
                                billing_account_id, utility_id, stato_doc_fiscale_id,
                                tipo_doc_fiscale_id, valuta_id, termine_pagamento_id,
                                natura_doc_id, meta)
-  SELECT (SELECT id FROM tmp_reg_nc), DATE '2026-09-10',
+  SELECT (SELECT id FROM tmp_reg_nc), current_date,
          r.emittente_soggetto_ruolo_id, r.billing_account_id, r.utility_id,
          r.stato_draft_id, r.tipo_doc_fiscale_id, r.valuta_id, r.termine_2r_id,
          r.natura_nc_id, jsonb_build_object('test_scope', 'pgtap_nc_rata_unica')
@@ -175,7 +180,7 @@ SELECT ok(
 SELECT is(
   (SELECT s.data_scadenza FROM vendite.fatture_scadenze s
     WHERE s.fattura_id = (SELECT id FROM tmp_nc WHERE ruolo = 'A')),
-  (date_trunc('month', (DATE '2026-09-10' + 30)::timestamp) + interval '1 month - 1 day')::date,
+  (date_trunc('month', (current_date + 30)::timestamp) + interval '1 month - 1 day')::date,
   '3) ...alla PRIMA data del termine: fine mese di data + 30 (Q-C: la rata resta figlia del termine)'
 );
 

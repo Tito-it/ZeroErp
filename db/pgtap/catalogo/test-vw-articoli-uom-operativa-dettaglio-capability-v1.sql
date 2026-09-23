@@ -52,44 +52,44 @@ SELECT has_view(
 );
 
 -- =========================================================
--- Setup fixture: ART_TEST_BASE + 2 UoM (1 base + 1 secondaria)
--- Le UoM seed: id 1 (base esistente nel csv), id 2 (secondaria).
--- Per indipendenza dal seed (che potrebbe gia' avere riga is_base
--- per ART_TEST_BASE), creiamo righe ad-hoc su una UoM "vuota" e
--- forziamo il pulizia preventiva.
+-- Setup fixture: un articolo COSTRUITO + 2 UoM del seed
 -- =========================================================
+-- ⛔ L'articolo si costruisce (2026-09-23). Fino a oggi il file pescava
+--   `ART_TEST_BASE`, che non sta in nessun changelog — e' una riga messa a
+--   mano su questa macchina — e su un database ricostruito moriva in fixture.
+-- ⭐ Su un articolo NUOVO cade anche la «pulizia preventiva» che serviva a
+--   togliere di mezzo le righe del seed: un articolo appena costruito non ha
+--   nessuna riga operativa, quindi le due che seguono sono le sue uniche —
+--   che e' esattamente la precondizione che il file voleva.
+-- ⚠️ Le UoM invece si SCELGONO: sono seed di 80_data, ci sono anche su un
+--   database ricostruito. `ORDER BY` esplicito, e la coppia si sceglie una
+--   volta sola.
 CREATE TEMP TABLE _t_ctx AS
 SELECT
-    (SELECT id FROM catalogo.articoli WHERE codice = 'ART_TEST_BASE') AS art_id,
-    (SELECT id FROM catalogo.unita_misura ORDER BY id LIMIT 1)        AS uom_a_id,
+    dbops.fn_pgtap_crea_articolo('PGT-UOMOP-CAP')                       AS art_id,
+    (SELECT id FROM catalogo.unita_misura ORDER BY id LIMIT 1)          AS uom_a_id,
     (SELECT id FROM catalogo.unita_misura ORDER BY id OFFSET 1 LIMIT 1) AS uom_b_id;
 
 DO $pgtap$
 BEGIN
-    IF (SELECT art_id IS NULL OR uom_a_id IS NULL OR uom_b_id IS NULL FROM _t_ctx) THEN
-        RAISE EXCEPTION 'Seed mancante: ART_TEST_BASE o 2+ UoM in catalogo.unita_misura.';
+    IF (SELECT uom_a_id IS NULL OR uom_b_id IS NULL FROM _t_ctx) THEN
+        RAISE EXCEPTION 'Seed mancante: servono almeno 2 UoM in catalogo.unita_misura';
     END IF;
 END
 $pgtap$;
 
--- Pulizia preventiva: rimuovi eventuali righe gia' presenti per
--- ART_TEST_BASE che usano uom_a_id o uom_b_id (es. seed
--- articoli_uom_operativa.csv id 9002).
-DELETE FROM catalogo.articoli_uom_operativa
- WHERE articolo_id = (SELECT art_id FROM _t_ctx)
-   AND uom_id IN ((SELECT uom_a_id FROM _t_ctx), (SELECT uom_b_id FROM _t_ctx));
-
 CREATE TEMP TABLE _t_uom_riga (kind text, uom_op_id bigint);
 
--- Riga BASE (uom_a)
-WITH ins AS (
-    INSERT INTO catalogo.articoli_uom_operativa (
-        articolo_id, uom_id, is_base, factor_to_base, attivo
-    )
-    SELECT art_id, uom_a_id, true, 1, true FROM _t_ctx
-    RETURNING id
-)
-INSERT INTO _t_uom_riga (kind, uom_op_id) SELECT 'base', id FROM ins;
+-- Riga BASE: non si scrive, C'E' GIA'. Un articolo nasce con la sua riga
+-- operativa di base (`is_base = true`, fattore 1) sulla UoM dell'articolo:
+-- la scrive un trigger. Scriverla di nuovo violerebbe
+-- `uq_artuomop_articolo_uom` — ed e' il motivo per cui la vecchia fixture
+-- doveva fare una «pulizia preventiva» prima di inserirla.
+INSERT INTO _t_uom_riga (kind, uom_op_id)
+SELECT 'base', auo.id
+  FROM catalogo.articoli_uom_operativa auo
+  JOIN _t_ctx c ON c.art_id = auo.articolo_id
+ WHERE auo.is_base;
 
 -- Riga SECONDARIA (uom_b)
 WITH ins AS (
@@ -141,10 +141,12 @@ SELECT is(
 -- 6) Denormalizzazione: articolo_codice e uom_codice valorizzati
 -- =========================================================
 SELECT ok(
-    (SELECT articolo_codice = 'ART_TEST_BASE'
-        AND uom_codice IS NOT NULL
-       FROM catalogo.vw_articoli_uom_operativa_dettaglio
-      WHERE id = (SELECT uom_op_id FROM _t_uom_riga WHERE kind = 'base')),
+    -- ⚠️ Il codice atteso e' quello dell'articolo COSTRUITO, non una stringa
+    --   scritta a mano: la vista deve denormalizzare cio' che c'e'.
+    (SELECT v.articolo_codice = 'PGT-UOMOP-CAP'
+        AND v.uom_codice IS NOT NULL
+       FROM catalogo.vw_articoli_uom_operativa_dettaglio v
+      WHERE v.id = (SELECT uom_op_id FROM _t_uom_riga WHERE kind = 'base')),
     '6) Denormalizzazione: articolo_codice e uom_codice valorizzati per la riga BASE'
 );
 

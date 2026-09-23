@@ -17,11 +17,15 @@ AS $function$
 --   causale del piano attraverso la primitiva; poi porta la testata a
 --   POSTED. Una transazione: se una riga fallisce non resta niente e il
 --   documento resta CONFIRM. Ritorna, riga per riga, il movimento scritto.
+-- Rev 2026-09-22 (Lotto 2-bis, R-1): le condizioni di registrabilita' non
+--   sono piu' scritte qui — le dice
+--   script.fn_check_documento_interno_registrabile, la stessa funzione da
+--   cui la capability del drawer accende o spegne «Registra». Codici e
+--   valori invariati: le frasi sono quelle di prima.
 DECLARE
     v_magazzino_id magazzino.inventari.magazzino_id%TYPE;
     v_data         magazzino.inventari.data%TYPE;
     v_stato        magazzino.inventari.stato_mag_inventario%TYPE;
-    v_n_righe      bigint;
     v_sorgente_id  config.sorgenti.id%TYPE;
     v_costo        magazzino.inventari_righe.costo_unitario%TYPE;
     v_motivi       jsonb;
@@ -36,6 +40,8 @@ BEGIN
     END IF;
 
     -- 2. La testata, FOR UPDATE, sotto RLS: fuori perimetro NON C'E'.
+    --    Il lock viene PRIMA di ogni domanda: e' cio' che serializza due
+    --    posting dello stesso documento (la check e' STABLE e non lo prende).
     SELECT i.magazzino_id, i.data, i.stato_mag_inventario
       INTO v_magazzino_id, v_data, v_stato
       FROM magazzino.inventari i
@@ -47,22 +53,14 @@ BEGIN
             jsonb_build_object('inventario_id', p_inventario_id),
             NULL::uuid, p_inventario_id::text);
     END IF;
-    IF v_stato <> 'CONFIRM' THEN
-        PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_inventario',
-            'E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA',
-            jsonb_build_object('detail', 'il posting parte da CONFIRM',
-                               'inventario_id', p_inventario_id, 'stato', v_stato),
-            NULL::uuid, v_stato, 'POSTED');
-    END IF;
 
-    -- 3. Almeno una riga.
-    SELECT count(*) INTO v_n_righe FROM magazzino.inventari_righe r WHERE r.inventario_id = p_inventario_id;
-    IF v_n_righe = 0 THEN
-        PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_inventario',
-            'E_MAG_DOCUMENTO_SENZA_RIGHE',
-            jsonb_build_object('inventario_id', p_inventario_id),
-            NULL::uuid, p_inventario_id::text);
-    END IF;
+    -- 3. Si puo' registrare? Lo dice la check CONDIVISA con la capability:
+    --    stato non CONFIRM, nessuna riga, una riga non postabile — in
+    --    quest'ordine. Il codice lo LEGGO dall'array, quindi l'helper.
+    v_motivi := script.fn_check_documento_interno_registrabile('INVENTARIO', p_inventario_id);
+    PERFORM script.fn_raise_primo_motivo_se_presente(
+        'magazzino', 'magazzino.fn_posta_inventario', v_motivi, NULL, NULL::uuid,
+        jsonb_build_object('inventario_id', p_inventario_id));
 
     SELECT s.id INTO v_sorgente_id FROM config.sorgenti s WHERE s.codice_interno = 'INVENTARIO_RIGA' AND s.attivo;
     IF NOT FOUND THEN
@@ -89,7 +87,8 @@ BEGIN
          WHERE r.id = v_piano.riga_id;
 
         IF v_piano.esito = 'NON_POSTABILE' THEN
-            -- Il primo motivo della STESSA check: il piano l'aveva gia' detto.
+            -- La RETE: la check del passo 3 l'ha gia' detto, ma se un giorno
+            -- i due percorsi divergessero il ledger non deve pagarlo.
             v_motivi := script.fn_check_riga_magazzino(v_magazzino_id, v_piano.articolo_id,
                                                        v_piano.lotto_id, v_piano.asset_id, v_piano.ubicazione_id);
             PERFORM script.fn_raise_primo_motivo_se_presente(

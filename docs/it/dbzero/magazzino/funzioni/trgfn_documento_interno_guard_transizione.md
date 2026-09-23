@@ -22,12 +22,13 @@ DECLARE
     v_ammessa    boolean;
     v_guc_valore text;
 BEGIN
-    -- Scopo: la matrice degli stati dei documenti interni (D-L2-h), una per
-    --   inventari e rettifiche (TG_ARGV: colonna di stato, nome della GUC):
-    --   DRAFT -> CONFIRM | CANCEL; CONFIRM -> POSTED (solo se la GUC
-    --   transazionale dell'operazione porta NEW.id) | CANCEL | DRAFT (riapri,
-    --   C13); POSTED e CANCEL terminali. DELETE ammesso solo in DRAFT (C3): le
-    --   righe cascano, e una POSTED lascerebbe orfani sul ledger.
+    -- Scopo: far rispettare la matrice degli stati dei documenti interni
+    --   (D-L2-h), una per inventari e rettifiche (TG_ARGV: colonna di stato,
+    --   nome della GUC). La matrice NON sta piu' qui: la dice
+    --   magazzino.fn_documento_interno_transizioni, che la capability del
+    --   drawer legge per disegnare i pulsanti (R-1 del Lotto 2-bis). Qui
+    --   restano il DELETE ammesso solo in DRAFT (C3) e la porta POSTED, che
+    --   si apre solo per l'operazione firmata con la GUC transazionale.
     IF TG_OP = 'DELETE' THEN
         v_old := to_jsonb(OLD) ->> v_col_stato;
         IF v_old <> 'DRAFT' THEN
@@ -49,12 +50,10 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    -- La matrice, in una variabile: un solo punto di sollevamento.
-    v_ammessa := CASE v_old
-                     WHEN 'DRAFT'   THEN v_new IN ('CONFIRM', 'CANCEL')
-                     WHEN 'CONFIRM' THEN v_new IN ('POSTED', 'CANCEL', 'DRAFT')
-                     ELSE false                    -- POSTED, CANCEL: terminali
-                 END;
+    -- La matrice, da UNA sede: qui si fa rispettare, li' si legge anche per
+    -- accendere i pulsanti. Uno stato terminale (o sconosciuto) torna {},
+    -- quindi nessuna destinazione e' ammessa.
+    v_ammessa := v_new = ANY (magazzino.fn_documento_interno_transizioni(v_old));
     IF NOT v_ammessa THEN
         PERFORM script.fn_log_and_raise_error(
             'magazzino', 'magazzino.trgfn_documento_interno_guard_transizione',
@@ -87,7 +86,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION magazzino.trgfn_documento_interno_guard_transizione()
-IS 'Guard di famiglia dei documenti interni di magazzino (inventari, rettifiche; TG_ARGV = colonna di stato, nome della GUC), BEFORE UPDATE OF <stato> OR DELETE. La MATRICE (D-L2-h, la stessa per le due famiglie, COUNTING escluso): DRAFT -> CONFIRM | CANCEL; CONFIRM -> POSTED | CANCEL | DRAFT (riapri: il piano si legge in CONFIRM e le righe si correggono in DRAFT, C13); POSTED e CANCEL terminali (E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA). POSTED SOLO se current_setting(<GUC>, true) = NEW.id::text — la GUC transazionale che fn_posta_inventario / fn_posta_rettifica impostano e azzerano (E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE, TECNICO: un documento «registrato» senza movimenti dietro direbbe il falso). DELETE solo in DRAFT (C3, decisione del 2026-09-18): le righe cascano, una POSTED lascerebbe orfani (E_MAG_DOCUMENTO_NON_ELIMINABILE). Brief: brief-db-magazzino-lotto-2-motore, sezione 3 (D-L2-h), 6-ter C3/C13.';
+IS 'Guard di famiglia dei documenti interni di magazzino (inventari, rettifiche): fa rispettare la matrice degli stati, che dal 2026-09-22 LEGGE da magazzino.fn_documento_interno_transizioni invece di contenerla — la stessa sede da cui la capability del drawer disegna i pulsanti (R-1 del Lotto 2-bis, linee-guida-sql §12.2 punto 1). Monta su BEFORE UPDATE OF <colonna stato> e BEFORE DELETE con TG_ARGV = (colonna di stato, nome della GUC di posting). Tre rifiuti: E_MAG_DOCUMENTO_NON_ELIMINABILE (DELETE fuori da DRAFT, C3), E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA (fuori matrice), E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE (POSTED senza la GUC transazionale che l''operazione scrive: la porta del ledger passa di li''). Brief: brief-db-magazzino-lotto-2-motore sezione 3 (D-L2-h), 6-ter C3/C13; brief-db-magazzino-lotto-2-bis-be-fe R-1.';
 ```
 
 ---

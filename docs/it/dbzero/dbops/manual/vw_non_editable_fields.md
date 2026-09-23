@@ -48,7 +48,7 @@ single source of truth.
 | `target_schema` | `text` | schema della tabella che contiene la colonna lockata |
 | `target_table` | `text` | nome della tabella |
 | `column_name` | `text` | colonna lockata |
-| `error_code` | `text` | codice errore sollevato dal trigger di lock (default `'CODICE_NON_MODIFICABILE'`); il backend puo' usarlo per messaggio user-friendly mappato in `config.messaggi_errore` |
+| `error_code` | `text` | codice errore sollevato dal trigger di lock (default `'E_CODICE_NON_MODIFICABILE'`); il backend puo' usarlo per messaggio user-friendly mappato in `config.messaggi_errore` |
 | `exec_mode` | `text` | modalita' di applicazione del lock (es. `'AUTO'`); riservato all'orchestrator dei trigger automation |
 | `note` | `text` | descrizione testuale (tipicamente nome del trigger che applica il lock) |
 
@@ -97,7 +97,7 @@ SELECT column_name, error_code, note
    AND target_table  = 'fornitori';
 -- column_name | error_code               | note
 -- ------------+--------------------------+--------------------------------------
--- codice      | CODICE_NON_MODIFICABILE  | da trigger trg_fornitori_a10_protect_account_code_upd ...
+-- codice      | E_CODICE_NON_MODIFICABILE | da trigger trg_fornitori_a10_protect_account_code_upd ...
 ```
 
 **2) Tutti i lock per uno schema (es. mappa UI di un dominio):**

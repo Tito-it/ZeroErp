@@ -14,7 +14,16 @@ Guide: brief `brief-db-magazzino-lotto-2-motore` (§3 D-L2-h, §6-ter C3, C13)
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-09-18 — Lotto 2 del magazzino)
+(rev 2026-09-22 — R-1 del Lotto 2-bis: la matrice **esce dal corpo**)
+
+⭐ **Dal 22-09-2026 il guard non CONTIENE più la matrice: la LEGGE** da
+[magazzino.fn_documento_interno_transizioni](/dbzero/magazzino/funzioni/fn_documento_interno_transizioni),
+la stessa sede da cui la capability del drawer disegna i pulsanti. Cambia dove
+sta la regola, non chi la fa rispettare — e cambia perché adesso i lettori sono
+**due**: un `CASE` nel corpo avrebbe costretto il frontend a scriverne una
+seconda copia (linee-guida-sql §12.2 punto 1). Comportamento, codici e frasi
+sono invariati. Il DELETE solo in bozza e la porta `POSTED` restano qui: sono
+regole di questo guard, non della matrice.
 
 **La matrice degli stati** dei documenti interni — una funzione per le due famiglie
 (`TG_ARGV`: la colonna di stato, il nome della GUC), montata `BEFORE UPDATE OF <stato> OR

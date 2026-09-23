@@ -50,10 +50,27 @@ SELECT plan(18);
 -- 0. Raccolta riferimenti
 -- ============================================================
 
+-- ⛔ L'UTENTE SI COSTRUISCE (2026-09-23). Prendere «il primo utente attivo»
+--   funzionava finche' quel posto era occupato da un utente qualunque: su un
+--   database ricostruito il primo attivo e' l'operatore TECNICO del contesto,
+--   che una riga in `config.user_emittenti_fiscali` ce l'ha gia' — e il caso
+--   16, che vuole inserirne una, moriva su `uq_user_emittenti_fiscali_auth_user`
+--   invece di misurare l'INSERT. Il soggetto di questo file sono le tabelle di
+--   override: l'utente giusto e' uno NUOVO, senza override e senza emittente.
+CREATE TEMP TABLE tmp_uo_user AS
+WITH ins AS (
+    INSERT INTO django.auth_user (
+        username, password, is_active, is_staff, is_superuser,
+        first_name, last_name, email, date_joined)
+    VALUES ('_pgtap_uo_' || substr(md5(clock_timestamp()::text), 1, 8),
+            '!', TRUE, FALSE, FALSE, '', '', '', now())
+    RETURNING id
+)
+SELECT id AS user_id FROM ins;
+
 CREATE TEMP TABLE tmp_refs_uo AS
 SELECT
-    (SELECT id FROM django.auth_user
-     WHERE is_active = true ORDER BY id LIMIT 1)       AS user_id,
+    (SELECT user_id FROM tmp_uo_user)                   AS user_id,
     (SELECT id FROM config.aree_funzionali
      WHERE codice = 'vendite')                          AS area_vendite_id,
     (SELECT id FROM config.aree_funzionali

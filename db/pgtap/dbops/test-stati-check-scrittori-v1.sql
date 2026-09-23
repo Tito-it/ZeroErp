@@ -100,6 +100,25 @@ SET CONSTRAINTS ALL IMMEDIATE;
 SELECT plan(14);
 
 -- ============================================================
+-- ⭐ LA MISURA SI PRENDE UNA VOLTA, NON QUATTORDICI
+-- ============================================================
+-- La vista scandisce il sorgente di OGNI funzione del database: costa (misurato
+-- il 2026-09-22 su dbdev, dopo la rev 20260922-23: ~230 ms a chiamata) e questo
+-- file la interrogava DICIASSETTE volte, sempre sullo stesso mondo — 8,3 s di
+-- suite per un criterio che non cambia fra un'asserzione e l'altra.
+-- ⇒ Due fotografie in TEMP TABLE, una per ciascuno dei due momenti che questo
+--   file ha davvero: PRIMA dei casi costruiti (invariante sul database vero) e
+--   DOPO (i casi che il test si fabbrica). Fra le asserzioni di uno stesso
+--   momento non si crea, non si scrive e non si cancella niente: la fotografia
+--   dice esattamente quello che direbbe la vista.
+-- ⛔ Non si riscrive qui il FILTRO di vw_stati_check_da_sanare: sarebbe una
+--   seconda copia del criterio, cioe' il difetto che questo presidio esiste per
+--   trovare. Si fotografa anche quella vista, com'e'.
+CREATE TEMP TABLE _misura_0 AS SELECT * FROM dbops.vw_stati_check_scrittori;
+CREATE TEMP TABLE _sanare_0 AS SELECT * FROM dbops.vw_stati_check_da_sanare;
+
+
+-- ============================================================
 -- 1. ⭐ IL PERIMETRO NON SI E' RISTRETTO
 -- ============================================================
 -- ⛔ Le trentadue colonne che la misura ha trovato il 2026-09-21. Restano
@@ -160,7 +179,7 @@ SELECT is_empty(
       )
       SELECT v.sch || '.' || v.tab || '.' || v.col
         FROM ancora_vincolate v
-       WHERE NOT EXISTS (SELECT 1 FROM dbops.vw_stati_check_scrittori w
+       WHERE NOT EXISTS (SELECT 1 FROM _misura_0 w
                           WHERE w.schema_tabella = v.sch
                             AND w.nome_tabella   = v.tab
                             AND w.colonna        = v.col)$$,
@@ -175,7 +194,7 @@ SELECT is_empty(
 SELECT is(
     (SELECT string_agg(v.schema_tabella || '.' || v.nome_tabella || '.' || v.colonna || ' = ' || v.valore,
                        ', ' ORDER BY v.schema_tabella, v.nome_tabella, v.colonna, v.valore)
-       FROM dbops.vw_stati_check_da_sanare v
+       FROM _sanare_0 v
       WHERE v.esito = 'NON_DICHIARATO'),
     NULL,
     '2. nessun valore di una colonna di stato che nessuno scrive e nessuno ha dichiarato'
@@ -184,7 +203,7 @@ SELECT is(
 SELECT is(
     (SELECT string_agg(v.schema_tabella || '.' || v.nome_tabella || '.' || v.colonna || ' = ' || v.valore || ' (' || v.canale || ')',
                        ', ' ORDER BY v.schema_tabella, v.nome_tabella, v.colonna, v.valore)
-       FROM dbops.vw_stati_check_da_sanare v
+       FROM _sanare_0 v
       WHERE v.esito = 'DEBITO_ESTINTO'),
     NULL,
     '3. nessuna riga di registro senza piu'' la sua ragione: il valore ha trovato uno scrittore, o e'' uscito dal CHECK'
@@ -283,6 +302,12 @@ VALUES
     ('dbops', 'pgtap_stati_prova', 'stato', 'OTTO', 'ESENTE',
      'Riga di prova del pgTAP: dichiara un valore che nel CHECK non esiste, per provare il verso DEBITO_ESTINTO fuori dal perimetro.');
 
+
+-- La SECONDA fotografia: da qui in giu' si asserisce sui casi costruiti, e il
+-- mondo non cambia piu' fino al cleanup (vedi la nota sopra la prima).
+CREATE TEMP TABLE _misura_1 AS SELECT * FROM dbops.vw_stati_check_scrittori;
+CREATE TEMP TABLE _sanare_1 AS SELECT * FROM dbops.vw_stati_check_da_sanare;
+
 -- ============================================================
 -- 4. ⭐ I CANALI DEL REGISTRO CONTRO I RAMI DELLA VISTA
 -- ============================================================
@@ -306,7 +331,7 @@ SELECT is(
             WHERE c.conrelid = 'dbops.stati_check_dichiarazioni'::regclass
               AND c.conname  = 'chk_stati_check_dichiarazioni_canale'
        ) v
-      WHERE NOT EXISTS (SELECT 1 FROM dbops.vw_stati_check_scrittori w
+      WHERE NOT EXISTS (SELECT 1 FROM _misura_1 w
                          WHERE w.canale = v.canale
                            AND w.esito <> 'DEBITO_ESTINTO')),
     0,
@@ -317,9 +342,9 @@ SELECT is(
 -- 5..14. I casi costruiti, uno per proprieta'
 -- ============================================================
 SELECT is(
-    (SELECT w.esito || ' / ' || (EXISTS (SELECT 1 FROM dbops.vw_stati_check_da_sanare s
+    (SELECT w.esito || ' / ' || (EXISTS (SELECT 1 FROM _sanare_1 s
                                           WHERE s.nome_tabella = 'pgtap_stati_prova' AND s.valore = 'NOVE'))::text
-       FROM dbops.vw_stati_check_scrittori w
+       FROM _misura_1 w
       WHERE w.schema_tabella = 'dbops' AND w.nome_tabella = 'pgtap_stati_prova' AND w.valore = 'NOVE'),
     'NON_DICHIARATO / true',
     '5. un valore nuovo che nessuno scrive esce NON_DICHIARATO ed e'' nella lista di lavoro: la classificazione e'' un gesto, non l''impostazione di fabbrica'
@@ -327,7 +352,7 @@ SELECT is(
 
 SELECT is(
     (SELECT w.esito || ' / fn=' || w.scrittori_fn || ' / ind=' || w.scrittori_indiretti
-       FROM dbops.vw_stati_check_scrittori w
+       FROM _misura_1 w
       WHERE w.schema_tabella = 'dbops' AND w.nome_tabella = 'pgtap_stati_prova' AND w.valore = 'DUE'),
     'NON_DICHIARATO / fn=0 / ind=0',
     '6. una funzione che NOMINA il valore in un WHERE senza scrivere la tabella non lo rende SCRITTO (trappola 1: nominare non e'' scrivere)'
@@ -335,7 +360,7 @@ SELECT is(
 
 SELECT is(
     (SELECT string_agg(w.valore || ':' || w.esito || ':' || w.ha_default, ', ' ORDER BY w.valore)
-       FROM dbops.vw_stati_check_scrittori w
+       FROM _misura_1 w
       WHERE w.schema_tabella = 'dbops' AND w.nome_tabella = 'pgtap_stati_prova'
         AND w.valore IN ('UNO', 'NOVE')),
     'NOVE:NON_DICHIARATO:false, UNO:SCRITTO_DA_DEFAULT:true',
@@ -344,14 +369,14 @@ SELECT is(
 
 SELECT is(
     (SELECT w.esito || ' / fn=' || w.scrittori_fn || ' / ind=' || w.scrittori_indiretti || ' / ' || w.scrittori_nomi
-       FROM dbops.vw_stati_check_scrittori w
+       FROM _misura_1 w
       WHERE w.schema_tabella = 'dbops' AND w.nome_tabella = 'pgtap_stati_prova' AND w.valore = 'TRE'),
     'SCRITTO / fn=0 / ind=1 / dbops.fn_pgtap_stati_chiama',
     '8. scrittore POSIZIONALE (INSERT … VALUES (…, p_stato, …)) piu'' un chiamante che passa il letterale: SCRITTO per il secondo salto, e il nome e'' quello del chiamante'
 );
 
 SELECT is(
-    (SELECT w.esito FROM dbops.vw_stati_check_scrittori w
+    (SELECT w.esito FROM _misura_1 w
       WHERE w.schema_tabella = 'dbops' AND w.nome_tabella = 'pgtap_stati_prova' AND w.valore = 'QUATTRO'),
     'NON_DICHIARATO',
     '9. IL LIMITE: a tre salti il letterale resta NON_DICHIARATO — il punto cieco e'' scritto, non nascosto'
@@ -359,7 +384,7 @@ SELECT is(
 
 SELECT is(
     (SELECT string_agg(w.valore || ':' || w.esito, ', ' ORDER BY w.valore)
-       FROM dbops.vw_stati_check_scrittori w
+       FROM _misura_1 w
       WHERE w.schema_tabella = 'dbops' AND w.nome_tabella = 'pgtap_stati_prova'
         AND w.valore IN ('CINQUE', 'SEI')),
     'CINQUE:DICHIARATO_APPLICAZIONE, SEI:ESENTE',
@@ -368,8 +393,8 @@ SELECT is(
 
 SELECT is(
     (SELECT string_agg(w.valore || ':' || w.esito || ':' || coalesce(w.vincolo, '-'), ', ' ORDER BY w.valore)
-       FROM dbops.vw_stati_check_da_sanare s
-       JOIN dbops.vw_stati_check_scrittori w USING (schema_tabella, nome_tabella, colonna, valore)
+       FROM _sanare_1 s
+       JOIN _misura_1 w USING (schema_tabella, nome_tabella, colonna, valore)
       WHERE s.schema_tabella = 'dbops' AND s.nome_tabella = 'pgtap_stati_prova'
         AND s.valore IN ('SETTE', 'OTTO')),
     'OTTO:DEBITO_ESTINTO:-, SETTE:DEBITO_ESTINTO:chk_pgtap_stati_prova_stato',
@@ -378,21 +403,21 @@ SELECT is(
 
 SELECT is(
     (SELECT string_agg(w.valore || ':' || w.esito, ', ' ORDER BY w.valore)
-       FROM dbops.vw_stati_check_scrittori w
+       FROM _misura_1 w
       WHERE w.schema_tabella = 'dbops' AND w.nome_tabella = 'pgtap_stati_prova_vc'),
     'VA:NON_DICHIARATO, VB:NON_DICHIARATO',
     '12. la forma VARCHAR del CHECK ((col)::text = ANY ((ARRAY[…])::text[])) entra nel perimetro: la regex del 19-09 ne vedeva una sola'
 );
 
 SELECT is_empty(
-    $$SELECT colonna FROM dbops.vw_stati_check_scrittori
+    $$SELECT colonna FROM _misura_1
        WHERE schema_tabella = 'dbops' AND nome_tabella = 'pgtap_stati_fuori'$$,
     '13. tipo_stato ed esito_richiesto restano fuori PER COSTRUZIONE (forma positiva del nome), senza nessun ramo di esclusione'
 );
 
 SELECT is(
     (SELECT string_agg(s.nome_tabella || '.' || s.valore || ':' || s.esito, ', ' ORDER BY s.nome_tabella, s.valore)
-       FROM dbops.vw_stati_check_da_sanare s
+       FROM _sanare_1 s
       WHERE s.schema_tabella = 'dbops' AND s.nome_tabella LIKE 'pgtap_stati_%'),
     'pgtap_stati_prova.DUE:NON_DICHIARATO, pgtap_stati_prova.NOVE:NON_DICHIARATO, pgtap_stati_prova.OTTO:DEBITO_ESTINTO, pgtap_stati_prova.QUATTRO:NON_DICHIARATO, pgtap_stati_prova.SETTE:DEBITO_ESTINTO, pgtap_stati_prova_vc.VA:NON_DICHIARATO, pgtap_stati_prova_vc.VB:NON_DICHIARATO',
     '14. la lista di lavoro e'' esattamente la misura filtrata sui due esiti: le sette righe di prova, ne'' una in piu'' ne'' una in meno'

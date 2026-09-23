@@ -1,0 +1,147 @@
+{% include-markdown "it/dbzero/script/manual/fn_available_actions_documento_interno.md" %}
+# ⚙️ Funzione `fn_available_actions_documento_interno`
+
+```sql
+CREATE FUNCTION fn_available_actions_documento_interno(p_famiglia text, p_documento_id bigint)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION script.fn_available_actions_documento_interno(p_famiglia text, p_documento_id bigint)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+-- Scopo: la capability di un documento interno di magazzino — inventario
+--   o rettifica — per il detail API: quali azioni proporre, quali
+--   spegnere e perche', che cosa si puo' ancora modificare.
+-- ⭐ Non decide niente da sola, ed e' il punto: le azioni vengono dalla
+--   matrice che il guard fa rispettare
+--   (magazzino.fn_documento_interno_transizioni) e la terna di
+--   «registra» dal primo motivo della check che le madri del posting
+--   chiamano (script.fn_check_documento_interno_registrabile). Una
+--   regola, una sede, due lettori: il pulsante non puo' promettere cio'
+--   che il database rifiutera' (linee-guida-sql §12.1).
+-- ⚠️ POSTED e' nella matrice ma NON e' un'azione richiedibile: quella
+--   porta la apre solo l'operazione con la sua GUC transazionale. Esce
+--   dalle available_actions e rientra come can_registra.
+-- Ritorna: il blob della capability, oppure NULL se il documento non si
+--   legge (fuori perimetro RLS o inesistente: il 404 lo da' il BE sulla
+--   testata, convenzione no-leak).
+-- Brief: brief-db-magazzino-lotto-2-bis-be-fe R-1.
+DECLARE
+    v_stato          text;
+    v_destinazioni   text[];
+    v_actions        jsonb;
+    v_can_change     boolean := false;
+    v_motivi         jsonb;
+    v_primo          jsonb;
+    v_registra_ok    boolean;
+    v_stato_info_key text;
+BEGIN
+    -- ⛔ Guard di PARAMETRO: chiamante rotto, non dato di una persona.
+    IF p_famiglia IS NULL
+       OR p_famiglia NOT IN ('INVENTARIO', 'RETTIFICA')
+       OR p_documento_id IS NULL OR p_documento_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'script.fn_available_actions_documento_interno',
+            'E_MAG_CHIAMATA_NON_VALIDA',
+            jsonb_build_object('detail', 'famiglia INVENTARIO o RETTIFICA, documento maggiore di zero',
+                               'p_famiglia', p_famiglia,
+                               'p_documento_id', p_documento_id),
+            NULL::uuid,
+            'script.fn_available_actions_documento_interno',
+            'p_famiglia (INVENTARIO | RETTIFICA), p_documento_id (obbligatorio, maggiore di zero)');
+    END IF;
+
+    -- La testata, sotto RLS. Si guarda PRIMA della check, che su un
+    -- documento non visibile solleverebbe: una capability non solleva.
+    IF p_famiglia = 'INVENTARIO' THEN
+        SELECT i.stato_mag_inventario INTO v_stato
+          FROM magazzino.inventari i WHERE i.id = p_documento_id;
+    ELSE
+        SELECT t.stato_mag_rettifiche INTO v_stato
+          FROM magazzino.rettifiche t WHERE t.id = p_documento_id;
+    END IF;
+
+    IF v_stato IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    -- Le destinazioni ammesse: la stessa matrice del guard.
+    v_destinazioni := magazzino.fn_documento_interno_transizioni(v_stato);
+
+    -- Una voce per destinazione RICHIEDIBILE. L'elenco (chiave, etichetta,
+    -- icona, severita') e' il vestito dell'azione e sta qui; QUALI
+    -- compaiano lo decide la matrice, non questa tabella di valori.
+    SELECT COALESCE(jsonb_agg(
+               jsonb_build_object(
+                   'key',              a.key,
+                   'target_state',     a.target_state,
+                   'label_key',        a.label_key,
+                   'icon',             a.icon,
+                   'severity',         a.severity,
+                   'requires_confirm', a.requires_confirm,
+                   -- Nessuna delle tre ha precondizioni oltre allo stato:
+                   -- il guard le ammette tutte da qui, quindi sono accese e
+                   -- senza motivo. Il giorno in cui una ne avesse una, il
+                   -- motivo arriva da una check, come per «registra».
+                   'enabled',          true,
+                   'reason',           NULL,
+                   'reason_key',       NULL,
+                   'manuale',          true)
+               ORDER BY a.ordine), '[]'::jsonb)
+      INTO v_actions
+      FROM (VALUES
+              ('CONFIRM', 'conferma', 'magazzino.documenti_interni.azione.conferma',
+               'pi pi-check', 'success', false, 1),
+              ('DRAFT',    'riapri',   'magazzino.documenti_interni.azione.riapri',
+               'pi pi-undo',  'secondary', false, 2),
+              -- ⚠️ Solo l'annullamento chiede conferma: e' l'uscita che non
+              --    si torna indietro (CANCEL e' terminale).
+              ('CANCEL',   'annulla',  'magazzino.documenti_interni.azione.annulla',
+               'pi pi-times', 'danger', true, 3)
+           ) AS a(target_state, key, label_key, icon, severity, requires_confirm, ordine)
+     WHERE a.target_state = ANY (v_destinazioni);
+
+    -- can_change_state conta ANCHE le azioni disabilitate (§12.2 punto 2):
+    -- la barra deve comparire proprio per mostrare il pulsante grigio col
+    -- suo motivo. Qui coincide con «ce n'e' almeno una».
+    v_can_change := jsonb_array_length(v_actions) > 0;
+
+    -- La terna di «registra», dal primo motivo della check condivisa.
+    v_motivi      := script.fn_check_documento_interno_registrabile(p_famiglia, p_documento_id);
+    v_primo       := v_motivi -> 0;
+    v_registra_ok := v_primo IS NULL;
+
+    -- La nota dello stato chiuso: dice che cosa e' successo e qual e' la
+    -- strada, invece di lasciare un drawer senza pulsanti e senza parole
+    -- (brief vie d'uscita R3). NULL dove ci sono ancora azioni.
+    v_stato_info_key := CASE v_stato
+                            WHEN 'POSTED' THEN 'magazzino.documenti_interni.stato_info.posted'
+                            WHEN 'CANCEL' THEN 'magazzino.documenti_interni.stato_info.cancel'
+                        END;
+
+    RETURN jsonb_build_object(
+        'stato_codice',               v_stato,
+        'available_actions',          v_actions,
+        'can_change_state',           v_can_change,
+        -- Lo STESSO predicato del guard delle righe e del DELETE (C3):
+        -- si modifica e si cancella finche' e' una bozza.
+        'can_edit_testata',           (v_stato = 'DRAFT'),
+        'can_edit_righe',             (v_stato = 'DRAFT'),
+        'can_delete',                 (v_stato = 'DRAFT'),
+        'can_registra',               v_registra_ok,
+        'can_registra_reason',        v_primo ->> 'reason',
+        'can_registra_reason_key',    v_primo ->> 'reason_key',
+        'stato_info_key',             v_stato_info_key);
+END;
+$function$
+
+COMMENT ON FUNCTION script.fn_available_actions_documento_interno(p_famiglia text, p_documento_id bigint)
+IS 'Capability di un documento interno di magazzino (p_famiglia = INVENTARIO | RETTIFICA) per il detail API. Chiavi: stato_codice, available_actions[] (key conferma/riapri/annulla, target_state, label_key, icon, severity, requires_confirm, enabled, reason, reason_key, manuale), can_change_state, can_edit_testata, can_edit_righe, can_delete (tutti = stato DRAFT, lo stesso predicato dei guard), can_registra + _reason + _reason_key, stato_info_key. ⭐ Non contiene nessuna regola propria: le azioni vengono dalla matrice magazzino.fn_documento_interno_transizioni (quella che il guard fa rispettare) e la terna di registra dal primo motivo di script.fn_check_documento_interno_registrabile (quella che le madri del posting sollevano) — linee-guida-sql §12.1/§12.2. ⚠️ POSTED e'' nella matrice ma non e'' un''azione richiedibile (la porta la apre solo l''operazione con la GUC): esce dalle azioni ed e'' la terna can_registra. INVOKER: documento fuori perimetro o inesistente -> NULL, il 404 lo da'' il BE sulla testata. Chiavi i18n emesse: magazzino.documenti_interni.azione.{conferma,riapri,annulla}, ....registra_reason.{non_confermato,gia_registrato,annullato,senza_righe,righe_non_postabili}, ....stato_info.{posted,cancel}. Brief: brief-db-magazzino-lotto-2-bis-be-fe R-1.';
+```
+
+---
+{% include-markdown "signature-core.md" %}
