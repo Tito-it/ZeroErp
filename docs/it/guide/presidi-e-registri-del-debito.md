@@ -739,7 +739,7 @@ automatizzarne un'altra**: evita di costruire un presidio che mente.
 * `docs/it/dev/work-done/brief-db-codice-errore-strutturato.md` — perché il codice errore ha dovuto cambiare strada, e le due misure che lo presidiano (solo nel repository)
 * [Linee guida API](../dev/api.md) §Tassonomia errori — il contratto visto dal lato backend
 * [Automazione DB](automazione-db.md) — il framework che applica le regole strutturali
-* `.codex/AGENTS.md` §Test — l'uso quotidiano della baseline
+* [Come si scrive un test pgTAP](pgtap-come-si-scrive-un-test.md) — l'uso quotidiano della baseline
 * [Gestione dei messaggi di errore e generazione log](Messaggi-di-Errore-e-Generazione-Log.md) — il catalogo, la classe di un codice e il canale del campo, visti dal lato del dominio
 
 ---

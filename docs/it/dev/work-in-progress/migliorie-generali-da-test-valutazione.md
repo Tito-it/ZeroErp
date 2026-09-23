@@ -230,7 +230,11 @@ PostgreSQL 18, Liquibase 5, `daterange`/`tstzrange` nativi su 18 tabelle (con
 > esistono non erano un residuo di quel cantiere, erano la **condizione** in cui
 > ogni sua misura è stata presa.
 >
-> Qui sotto, **solo il lavoro che resta**: D6, D7, D8, D9, D11, D12, D15.
+> ⚠️ **D16 è nata il 2026-09-23** da un test diventato rosso da solo: una data
+> scritta a mano che il passare dei giorni ha portato fuori dalla finestra di
+> emissione.
+>
+> Qui sotto, **solo il lavoro che resta**: D6, D7, D8, D9, D11, D12, D15, D16.
 
 ### 🟠 D6 — Tre `SECURITY DEFINER` di `postgres`, eseguibili da chiunque, senza `search_path` — pin chiusi il 12-09 (§7), resta il registro
 
@@ -784,6 +788,47 @@ l'ultimo `ANALYZE` è più vecchio di quanto si è dichiarato. ⭐ È un
 **prerequisito**, non una miglioria: chiunque riapra una famiglia di funzioni per
 prestazioni lo trova davanti.
 
+### 🟡 D16 — Test con una data scritta a mano: diventano rossi da soli
+
+> Emerso il 2026-09-23: `vendite/test-nc-rata-unica-v1.sql`, test 6, rosso senza
+> che fosse cambiato il codice.
+
+Il test creava la nota di credito con `DATE '2026-09-10'` e poi le assegnava il
+numero. La numerazione applica la **finestra di emissione** del registro: un
+documento non può essere datato più indietro di N giorni. Quando il test è stato
+scritto (17-18 settembre) il 10-09 era dentro la finestra. Il 23-09 la prima data
+ammessa era l'11-09, e il test è morto con «la data del documento è troppo
+vecchia perché sia ancora emettibile».
+
+⛔ **Non è un caso isolato, è una classe.** Ogni volta che il database applica una
+regola che dipende da **oggi** (finestra di emissione, scadenze, congelamenti,
+competenze chiuse), un test che scrive a mano una data è una bomba a tempo:
+verde il giorno in cui nasce, rosso qualche settimana dopo, senza che nessuno
+abbia toccato niente. E il rosso arriva sempre nel momento peggiore, mentre si
+sta lavorando ad altro, e sembra una regressione.
+
+**La regola:** in un test, una data che passa da una regola temporale si scrive
+**relativa a oggi** (`current_date`, `current_date - 5`, il primo del mese
+corrente…), mai come letterale. Le date assolute vanno bene solo quando la regola
+non guarda il calendario (per esempio una competenza passata a una funzione pura).
+
+**Sanato:** il test 6 (fixture a `current_date`, e l'atteso del test 3 calcolato
+dalla stessa data), con un commento sul perché.
+
+**Che cosa resta:**
+
+* ⏳ **Censimento.** Oggi nei pgTAP ci sono decine di date scritte a mano. Quasi
+  tutte sono competenze, attività, ordini o preventivi, e non passano dalla
+  finestra di emissione (se ci passassero, sarebbero già rosse). Il censimento
+  vero va fatto per **regola temporale** — quali regole del DB leggono
+  `current_date` — e poi per test che le attraversano, non per ricerca testuale
+  delle date.
+* 💡 **Presidio possibile**: un guardrail statico come
+  `scripts/guardrail_pgtap_preambolo.py`, che segnali un letterale `DATE '…'`
+  nella colonna `data` di un documento fiscale che il test poi numera. Da
+  valutare dopo il censimento: senza sapere quali regole sono temporali, il
+  presidio sarebbe una ricerca testuale, cioè il criterio sbagliato.
+
 ---
 
 ## 4. Cosa NON è un difetto
@@ -942,8 +987,14 @@ D6 e il registro dei rossi in CI.
       era **verde per l'errore sbagliato** (super admin) e due sono rossi per un
       **difetto del DB da zero** — `storico.parameters` ha `parameter_id` mentre
       il trigger passa `parameters_id`, quindi su un'installazione nuova ogni
-      UPDATE su `config.parameters` fallisce. Restano i 9 di `pagamenti`, che
-      chiedono tutti una fattura: decisione su un secondo BB nel brief §7.
+      UPDATE su `config.parameters` fallisce. ✅ **Lotto 1 CHIUSO il 23-09**:
+      i 9 di `pagamenti` chiedevano tutti una fattura, e la decisione è stata
+      **un BB, non nove copie** — `20260923-04` (`fn_pgtap_crea_fattura`:
+      mondo, coppia emittente/utility, registro coerente, stato alla nascita,
+      e il terzo parametro per la seconda fattura dello stesso cliente) e
+      `20260923-05` (`fn_pgtap_crea_filiale_bancaria`, perché
+      `bank_branches` è dato di macchina). **21 file riscritti** in tutto,
+      235 asserzioni verdi sul database da zero.
       🔵 Rinviata da Tid la decisione sui 4 file che COMMITTANO / 6 col contesto
       in autocommit: prima la forma.
 * [x] **D13** — ✅ chiuso il 2026-09-13: changeSet `20260913-01/02/03`
@@ -989,6 +1040,9 @@ D6 e il registro dei rossi in CI.
 * [ ] **D9-bis** — portare la fase (`_a10_`/`_z90_`) sul 34% di trigger che non
       ce l'ha, o dichiarare che per quelli l'ordine è indifferente.
 * [ ] **D12** — nessuna azione: la documentazione seguirà il dominio.
+* [ ] **D16** — censire le regole del DB che leggono `current_date` e i pgTAP
+      che le attraversano con una data scritta a mano; poi decidere se serve un
+      guardrail statico.
 
 ---
 

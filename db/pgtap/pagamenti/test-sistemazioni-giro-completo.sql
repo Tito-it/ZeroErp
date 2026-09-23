@@ -55,27 +55,40 @@ SELECT plan(14);
 CREATE TEMP TABLE tmp_costanti AS
 SELECT 'pgtap_sistemazioni_giro'::text AS test_scope;
 
+-- ⛔ LE DUE FATTURE E LA FILIALE SI COSTRUISCONO (2026-09-23). La fixture
+--   CERCAVA «un cliente con almeno due fatture» e «una filiale bancaria»: su
+--   un database ricostruito `vendite.fatture` e `anagrafiche.bank_branches`
+--   sono a zero — la prima e' vuota per costruzione, la seconda perche' e'
+--   dato di macchina — e il file moriva sulla RLS di `vendite_movimenti` con
+--   una fattura che non esisteva.
+-- ⭐ E le due fatture sono dello STESSO cliente per COSTRUZIONE (terzo
+--   parametro del BB), non per una GROUP BY che spera di trovarlo.
+CREATE TEMP TABLE tmp_fatt_a AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura('sistemazioni giro A');
+
+CREATE TEMP TABLE tmp_fatt_b AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura(
+                 'sistemazioni giro B', 'DRAFT',
+                 (SELECT billing_account_id FROM tmp_fatt_a));
+
+CREATE TEMP TABLE tmp_banca AS
+SELECT * FROM dbops.fn_pgtap_crea_filiale_bancaria('sistemazioni giro');
+
+-- Il totale e' il caso del test: cento euro, e la prima sara' sovra-incassata.
+UPDATE vendite.fatture SET totale_a_pagare = 100.00
+ WHERE id IN ((SELECT fattura_id FROM tmp_fatt_a), (SELECT fattura_id FROM tmp_fatt_b));
+
 CREATE TEMP TABLE tmp_ref AS
-WITH visibili AS (
-  SELECT f.id, f.totale_a_pagare, f.emittente_soggetto_ruolo_id, f.billing_account_id,
-         ba.soggetto_ruolo_id AS cliente_sr
-    FROM vendite.fatture f
-    JOIN anagrafiche.billing_account ba ON ba.id = f.billing_account_id
-   WHERE f.totale_a_pagare IS NOT NULL AND f.totale_a_pagare > 0
-), coppia AS (
-  SELECT cliente_sr, emittente_soggetto_ruolo_id
-    FROM visibili GROUP BY 1, 2 HAVING count(*) >= 2
-   ORDER BY 1, 2 LIMIT 1
-)
-SELECT (SELECT v.id FROM visibili v JOIN coppia c USING (cliente_sr) ORDER BY v.id LIMIT 1) AS fattura_a,
-       (SELECT v.id FROM visibili v JOIN coppia c USING (cliente_sr) ORDER BY v.id OFFSET 1 LIMIT 1) AS fattura_b,
-       (SELECT v.totale_a_pagare FROM visibili v JOIN coppia c USING (cliente_sr) ORDER BY v.id LIMIT 1) AS totale_a,
-       (SELECT v.billing_account_id FROM visibili v JOIN coppia c USING (cliente_sr) ORDER BY v.id LIMIT 1) AS ba_a,
-       (SELECT cliente_sr FROM coppia)                  AS cliente_sr,
-       (SELECT emittente_soggetto_ruolo_id FROM coppia) AS emittente_sr,
-       (SELECT b.id FROM anagrafiche.bank_branches b WHERE b.attivo IS TRUE ORDER BY b.id LIMIT 1) AS bank_branch,
+SELECT a.fattura_id                  AS fattura_a,
+       b.fattura_id                  AS fattura_b,
+       100.00::numeric               AS totale_a,
+       a.billing_account_id          AS ba_a,
+       a.cliente_soggetto_ruolo_id   AS cliente_sr,
+       a.emittente_soggetto_ruolo_id AS emittente_sr,
+       (SELECT bank_branch_id FROM tmp_banca) AS bank_branch,
        (SELECT c.id FROM pagamenti.centri_riscossione c
-         WHERE c.attivo IS TRUE AND c.codice = 'BANCA' ORDER BY c.id LIMIT 1) AS centro_banca;
+         WHERE c.attivo IS TRUE AND c.codice = 'BANCA' ORDER BY c.id LIMIT 1) AS centro_banca
+  FROM tmp_fatt_a a, tmp_fatt_b b;
 
 -- ⭐ Il sovra-incasso: cento euro piu' del totale. Da qui in poi la fattura
 --   compare nell'elenco delle eccedenze.

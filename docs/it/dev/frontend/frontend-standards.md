@@ -39,6 +39,15 @@
 | Axios      | Client HTTP (⛔ importato in **un solo file**: `src/core/api.js`) |
 | Node.js    | Runtime di sviluppo (via nvm) |
 
+* **Build**: `./node_modules/.bin/vite build` (serve nvm per caricare Node).
+* **Dipendenze npm**: non se ne aggiungono senza conferma dell'utente.
+* **Header di licenza sui file nuovi** (decisione di Tid, 2026-08-26):
+  `templates/javascript-header.txt` per i `.js`, `templates/vue-header.txt` per
+  i `.vue`. Lo presidia `scripts/check_license.py` (pre-commit), che guarda i
+  file **aggiunti** e legge le prime 10 righe. In un `.vue` l'header va **prima
+  di `<script setup>`**, in commento HTML (l'unica forma valida in cima a un
+  Single File Component); lo `// Scopo: ...` resta dentro `<script setup>`.
+
 ---
 
 ## Struttura del progetto

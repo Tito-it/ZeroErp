@@ -41,7 +41,7 @@
 | trg_tipi_doc_fiscale_a10_fatture_arrotondamenti_scope_bl_26b655 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture_arrotondamenti_scope', 'tipo_doc_fiscale_id', 'id', 'attivo')` |
 | trg_tipi_doc_fiscale_a10_fatture_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture', 'tipo_doc_fiscale_id', 'id', 'attivo')` |
 | trg_tipi_doc_fiscale_a10_fatture_fondi_fattura_source_bl_f0cf31 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture_fondi_fattura_source', 'tipo_doc_fiscale_id', 'id', 'attivo')` |
-| trg_tipi_doc_fiscale_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
+| trg_tipi_doc_fiscale_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
 | trg_tipi_doc_fiscale_a10_sorgenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'sorgenti', 'tipo_doc_fiscale_id', 'id', 'attivo')` |
 | trg_tipi_doc_fiscale_a10_tipi_doc_fiscale_registri_block_482259 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'tipi_doc_fiscale_registri', 'tipo_doc_fiscale_id', 'id', 'attivo')` |
 

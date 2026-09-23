@@ -53,7 +53,7 @@
 | trg_pdp_a10_guard_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_pdp_a10_guard()` |
 | trg_pdp_a10_indirizzi_dettaglio_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'indirizzi_dettaglio', 'attivo', 'indirizzo_dettaglio_id', 'id')` |
 | trg_pdp_a10_indirizzi_dettaglio_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'indirizzi_dettaglio', 'attivo', 'indirizzo_dettaglio_id', 'id')` |
-| trg_pdp_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('pdp', 'CODICE_NON_MODIFICABILE')` |
+| trg_pdp_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('pdp', 'E_CODICE_NON_MODIFICABILE')` |
 | trg_pdp_a10_set_default_stato_ins | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_pdp_set_default_stato()` |
 | trg_pdp_a10_stati_pdp_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_pdp', 'attivo', 'stato_pdp_id', 'id')` |
 | trg_pdp_a10_stati_pdp_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_pdp', 'attivo', 'stato_pdp_id', 'id')` |

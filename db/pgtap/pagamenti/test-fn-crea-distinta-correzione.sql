@@ -56,25 +56,31 @@ SELECT plan(15);
 CREATE TEMP TABLE tmp_costanti AS
 SELECT 'pgtap_correzione_guidata'::text AS test_scope;
 
+-- ⛔ IL MONDO SI COSTRUISCE (2026-09-23). Questo blocco pescava il billing
+--   account «piu' recente» e poi ne DERIVAVA l'emittente con un `OR
+--   is_default IS TRUE` di ripiego: su un database ricostruito non c'e' nessun
+--   BA, tutto usciva NULL e la fattura non si scriveva — il file moriva sulla
+--   RLS di `fatture_scadenze`, che e' il sintomo, non la causa.
+-- ⚠️ E il ripiego sul DEFAULT era una trappola anche con i dati: un BA senza
+--   legame rispondeva l'emittente di un'altra azienda (il difetto di D13).
+--   Il BB costruisce la catena intera — mondo, coppia (emittente, utility),
+--   registro, testata — e il legame lo verifica.
+CREATE TEMP TABLE tmp_fattura_bb AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura('correzione guidata');
+
 CREATE TEMP TABLE tmp_refs AS
-WITH ba AS (
-  SELECT b.id, b.utility_id FROM anagrafiche.billing_account b
-   ORDER BY b.data_insert DESC NULLS LAST, b.id DESC LIMIT 1
-)
-SELECT script.fn_pgtap_registro_fattura(anagrafiche.fn_get_emittente_fiscale_id(ba.id)) AS registro_id,
-       ba.id AS billing_account_id, ba.utility_id,
-       (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
-       (SELECT id FROM config.valute ORDER BY id LIMIT 1) AS valuta_id,
-       (SELECT m.emittente_soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali_billing_account m
-         WHERE (m.billing_account_id = ba.id OR m.is_default IS TRUE)
-         ORDER BY CASE WHEN m.billing_account_id = ba.id THEN 0 ELSE 1 END, m.id LIMIT 1) AS emittente_soggetto_ruolo_id,
+SELECT f.registro_id,
+       f.billing_account_id, f.utility_id,
+       f.tipo_doc_fiscale_id,
+       f.valuta_id,
+       f.emittente_soggetto_ruolo_id,
        (SELECT c.id FROM pagamenti.centri_riscossione c
          WHERE c.attivo IS TRUE AND c.codice_interno = 'BANCA' ORDER BY c.id LIMIT 1) AS centro_banca_id,
        (SELECT s.id FROM pagamenti.vendite_contabili_righe_stati s WHERE s.codice_interno='ABBINATA') AS stato_abbinata_id,
        (SELECT s.id FROM pagamenti.vendite_contabili_righe_stati s WHERE s.codice_interno='SOSPESA') AS stato_sospesa_id,
        (SELECT s.id FROM pagamenti.vendite_contabili_stati s WHERE s.codice_interno='BOZZA') AS stato_bozza_id,
        (SELECT s.id FROM pagamenti.vendite_contabili_stati s WHERE s.codice_interno='VALIDATA') AS stato_validata_id
-  FROM ba;
+  FROM tmp_fattura_bb f;
 
 SELECT ok(
   (SELECT registro_id IS NOT NULL AND billing_account_id IS NOT NULL
@@ -87,16 +93,15 @@ SELECT ok(
 );
 
 -- La fattura e la sua rata.
+-- La testata l'ha gia' scritta il BB: qui si mette solo l'importo, che e' il
+-- caso del test.
+UPDATE vendite.fatture
+   SET totale_a_pagare = 300.00,
+       meta = meta || jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
+ WHERE id = (SELECT fattura_id FROM tmp_fattura_bb);
+
 CREATE TEMP TABLE tmp_fattura AS
-WITH ins AS (
-  INSERT INTO vendite.fatture (registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-                               tipo_doc_fiscale_id, valuta_id, utility_id, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, 300.00,
-         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
-    FROM tmp_refs r
-  RETURNING id
-) SELECT * FROM ins;
+SELECT fattura_id AS id FROM tmp_fattura_bb;
 
 CREATE TEMP TABLE tmp_rata AS
 WITH ins AS (

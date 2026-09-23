@@ -7,11 +7,13 @@
 > (giro 1, chiuso il 12-09) e della rev `20260920-01`, che ha insegnato alla riga
 > di contesto a **costruire** il mondo quando non lo trova.
 >
-> ✏️ **Stato 2026-09-22: il BB è SCRITTO e PROVATO, da applicare.**
-> `20_code/dbops/20260922-17-create-fn-pgtap-crea-mondo-cliente-mctit.yaml` più il
-> presidio `db/pgtap/dbops/test-fn-pgtap-crea-mondo-cliente-v1.sql` (9 casi).
-> Le quattro decisioni di forma sono **prese** (§7, Tid il 22-09); i lotti di §5
-> partono dopo l'apply.
+> ✏️ **Stato 2026-09-23: il lotto 1 è CHIUSO, da applicare.**
+> Tre changeSet scritti e provati — `20260922-17` (`fn_pgtap_crea_mondo_cliente`,
+> **applicato** il 22-09), `20260923-01` (il builder degli articoli sceglie la
+> UoM), `20260923-04` (`fn_pgtap_crea_fattura`) e `20260923-05`
+> (`fn_pgtap_crea_filiale_bancaria`) — più tre presidi nuovi e **21 file
+> riscritti**. Dettaglio in §10.
+> 🔵 A Tid: l'apply dei tre changeSet, poi la corsa CI che certifica i rientrati.
 >
 > ⛔ **Fuori perimetro**: i 4 file che chiudono in `COMMIT` e i 6 che chiamano la
 > riga di contesto in autocommit. Decisione rinviata da Tid il 22-09 — *prima la
@@ -228,7 +230,7 @@ di non vederle** — nel messaggio, non in un commento.
 | 3 | Da quale **lotto** si parte? | ✅ **lotto 1**, 43 file su sei schemi che escono interi dal registro |
 | 4 | Il **cancello** di §6 adesso o dopo il primo lotto? | ✅ **dopo**: la soglia si prende su un perimetro già sanato, altrimenti nasce grande e nessuno la guarda |
 | 5 | I 4 file che **committano** / i 6 col contesto in autocommit | 🔵 rinviata il 22-09 («prima la forma»), resta in `migliorie-generali` §6 D7 |
-| 6 | I **9 file di `pagamenti`** chiedono tutti una **fattura** (scadenza, movimenti, conti): un secondo BB di composizione, o nove copie della stessa catena? | ✅ **un BB**, con lo stesso criterio del primo: la catena fattura → registro → scadenza ha un ordine obbligato (il registro dipende dall'emittente di chi agisce) ed è già copiata in due file fuori da `pagamenti`. ⚠️ Decisione aperta: se non si fa, i nove file si riscrivono lo stesso, ma la catena resta copiata nove volte |
+| 6 | I **9 file di `pagamenti`** chiedono tutti una **fattura** (scadenza, movimenti, conti): un secondo BB di composizione, o nove copie della stessa catena? | ✅ **deciso il 23-09: un BB** — anzi due, perché la filiale bancaria è la stessa storia (`20260923-04` e `-05`). I nove file sono chiusi, §10 |
 | 7 | Il ramo specifico «ultimo SUPER_ADMIN» sull'**identità** è raggiungibile, o è codice morto? (§10, punto 1) | 🔵 da guardare: oggi a rifiutare è sempre il guard generico delle figlie, che scatta prima |
 | 8 | `storico.parameters` da zero ha `parameter_id`, il trigger passa `parameters_id` (§10, punto 2) | 🔵 changeSet, non fixture: su un'installazione nuova ogni UPDATE su `config.parameters` fallisce |
 
@@ -347,14 +349,43 @@ dalla corsa del 21-09, e sono candidati RIENTRATI da togliere con
    della CI nasconde dietro l'etichetta. Fuori dal lotto 1: va guardato per
    quello che è.
 
-### ⏳ Cosa resta del lotto 1
+### ✅ `pagamenti` — chiuso il 2026-09-23 con due BB nuovi
 
-* **`pagamenti`, 9 file**: tutti chiedono la stessa cosa — una **fattura** con
-  la sua scadenza, i suoi movimenti contabili, i suoi conti. Oggi la pescano, e
-  in CI non c'è. ⇒ È la **regola del 2** un'altra volta: prima di riscriverli
-  uno a uno serve la decisione su un secondo BB di composizione (una fattura del
-  mondo), oppure si accetta che nove file ne ripetano la catena. 🔵 Decisione a
-  Tid, §7 #6.
+Decisione presa (§7 #6): **un BB**, non nove copie. I nove file sono riscritti e
+verdi sul database da zero.
+
+| ChangeSet | Che cosa compone | Perché un oggetto e non una copia |
+| --------- | ---------------- | --------------------------------- |
+| `20260923-04` `fn_pgtap_crea_fattura` | mondo → coppia (emittente, utility) → registro coerente → testata nello stato scelto | **quattro anelli d'ordine**: il cliente si lega a chi agisce, la coppia va configurata, il registro dipende dall'azienda, la valuta si risolve lungo «cliente → azienda → gestore». Il terzo parametro è il BA di una fattura già fatta: la **seconda fattura dello stesso cliente**, che tre file volevano e nessuno poteva scrivere |
+| `20260923-05` `fn_pgtap_crea_filiale_bancaria` | soggetto della banca → ruolo BANK_B → filiale | `anagrafiche.bank_branches` è **dato di macchina**: da zero è vuota. Tre file morivano sul NOT NULL di `bank_branch_id`, e la catena è una saga con la sua finestra differita |
+
+| File | Era | È |
+| ---- | --- | -- |
+| `test-vendite-contabili-stato-obbligatorio` | «la prima fattura con un BA» → NULL | fattura costruita (7/7) |
+| `test-vendite-movimenti-contabile-riga` | costruiva la fattura ma **pescava i mattoni**: il ramo `ins` inseriva zero righe per via dei suoi stessi `IS NOT NULL` | il BB (8/8) |
+| `test-righe-contabili-guard-dati` | il caso «riga ABBINATA **con** fattura e cliente» sbatteva contro il guard che pretende quei due dati: il rosso diceva il vero sul prodotto e il falso su se stesso | fattura costruita (7/7) |
+| `test-fn-crea-distinta-correzione` | derivava l'emittente con un `OR is_default IS TRUE` — il ripiego che su un BA senza legame risponde **un'altra azienda** (difetto di D13) | il BB, che il legame lo verifica (15/15) |
+| `test-sistemazione-annullo-riporto` | due fatture scritte a mano su mattoni pescati | due fatture, la seconda col terzo parametro (13/13) |
+| `test-sistemazioni-registro` | cercava «un cliente con almeno due fatture» con una `GROUP BY … HAVING count(*) >= 2` | tre fatture costruite: la coppia è tale **per costruzione** (12/12) |
+| `test-sistemazioni-giro-completo` | idem, più la filiale pescata | due fatture + filiale costruite (14/14) |
+| `test-enti-incasso-conto-incasso` | filiale pescata, e un soggetto-ruolo «qualunque» che da zero era **proprio quello dell'azienda del contesto**: il caso negativo diventava positivo in silenzio | filiale costruita, e il ruolo è quello della banca (7/7) |
+| `test-enti-incasso-psp` | filiale pescata, titolare = «il primo emittente attivo» | filiale costruita, titolare = l'emittente di chi agisce (12/12) |
+
+⛔ **E i due database si migrano SEPARATAMENTE** (misurato il 23-09): con
+`20260923-04/-05` applicati su dbdev e lo scratch fermo al `-03` delle 09:36,
+i nove file più il presidio della fattura sono rossi **solo su `zeroerp_ci`**,
+con «la funzione `dbops.fn_pgtap_crea_fattura(unknown)` non esiste». Non è un
+difetto delle fixture: è il database indietro. ⚠️ E ha una conseguenza sul
+registro: una baseline lanciata sullo scratch **prima** del suo migrate
+scriverebbe quei dieci in `baseline-rossi-ci.tsv` come debito nuovo — debito che
+non è. Oggi nel registro non ci sono, ed è giusto così.
+
+⚠️ **Questi nove girano solo dopo l'apply.** Le prove sono in transazione
+ritirata su `zeroerp_ci` con l'SQL estratto dei tre changeSet in testa, **da
+owner**: su dbdev lo schema `dbops` è di `titodb` e la funzione, dentro una
+transazione, non esiste per nessun'altra sessione. Il verso dev si misura dopo.
+
+### ⏳ Cosa resta del lotto 1
 * `ui/test-lista-competenza-gruppi-colonna-emittente-v1`: **eccezione
   dichiarata**. Il suo t.7 è il guard «il t.6 non è verde per sottrazione», e su
   un database senza documenti dice il vero: il file non ha materia da

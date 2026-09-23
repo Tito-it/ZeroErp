@@ -153,6 +153,10 @@ Mescolare i nomi a caso:
 
   Diventa impossibile capire dal nome se la funzione lancia o verifica soltanto.
 
+**Parametri ID numerici:** guard di validazione esplicita, errore se `NULL` o
+`<= 0`. Non si normalizza in silenzio (un `COALESCE` o un `GREATEST` che
+trasforma un id rotto in un valore plausibile nasconde il chiamante sbagliato).
+
 **Che cosa passare a `fn_log_and_raise_error`** — tre canali, tre destinatari
 diversi, e confonderli è il difetto più facile da non vedere:
 

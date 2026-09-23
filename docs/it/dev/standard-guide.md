@@ -6,7 +6,7 @@
 >
 > **Vedi anche** — regole:
 >
-> * `.codex/AGENTS.md`, sezione «Regole Documentazione» — la regola in forma normativa
+> * `.codex/AGENTS.md`, sezione «Documentazione» — la regola in forma breve; il dettaglio è qui
 > * [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni) — esempio di guida che possiede il dettaglio di una materia
 
 ---
@@ -131,6 +131,27 @@ non si eseguono.
   trovarli: `grep -rn "views/<nome_ritirato>" docs/`.
 * **La pagina del successore.** Quando un oggetto viene ritirato, la spiegazione del ritiro va nel
   `manual/` dell'oggetto che lo ha sostituito, non in un blocco in testa alla guida.
+
+## Le altre pagine: `manual/` e doc auto-generata
+
+* Le pagine sotto `/dbzero/<schema>/tabelle`, `/views`, `/funzioni` sono **auto-generate**
+  (`scripts/gen_db_docs.py`): si leggono, non si modificano. Si scrive solo in
+  `<schema>/manual`.
+* Le pagine `manual/` del **backend** (Django) seguono una struttura fissa: Scopo, Contesto,
+  Input, Output, Regole, Dipendenze DB, Note di migrazione (se applicabile). Template:
+  `docs/it/backend/_templates/manual-standard.md`.
+
+## Build e anteprima
+
+* Stack: `zensical` (con `deepmerge`), versioni in `requirements.txt`. `mkdocs build` non è
+  più il comando di progetto.
+* Build: `python scripts/build_docs_zensical.py` — preprocessa `docs/` in `.tmp/zensical_docs`,
+  espande gli `{% include-markdown %}`, riscrive i link `](/dbzero/...)` in `](/it/dbzero/...)`,
+  genera `mkdocs.zensical.yml` e produce `site-zensical/`.
+* Anteprima: `bash scripts/serve_docs.sh` — build più server statico su `127.0.0.1:8010`,
+  scrive solo in `/tmp/zeroerp-docs-preview`.
+* Se un markdown documenta la sintassi di include come esempio, il segnaposto va in un blocco
+  di codice, o il preprocess emette un warning.
 
 ## Verifica finale
 

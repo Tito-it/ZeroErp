@@ -26,12 +26,16 @@
 > giro è applicato**: migrate delle 00:05 del 23-09, mirror `20260614-08` e
 > `20260110-15` `RERAN`, i tre codici (msg 1114-1116) e le due righe di lock a
 > catalogo — letti sul catalogo vivo, non dedotti dai file.
-> ⏳ **Restano due gesti**: far girare l'**automazione dei lock**
-> (`CALL maintenance.proc_automations_lock_columns_job()`) — il registro
-> dichiara le due colonne ma i trigger **non ci sono ancora**, e finché non ci
-> sono il test 17 del guard fa `skip` — e il **commit**.
-> ⇒ Per il resto, ciò che tiene aperto questo brief è **la metà BE/FE** di R-1,
-> R-2, R-3, R-5, R-6 e R-7, elencata in coda.
+> ✅ **E il lucchetto di R-4 è ARMATO** dal 23-09: i due trigger
+> `trg_inventari_a10_lock_columns_upd` e `trg_rettifiche_a10_lock_columns_upd`
+> esistono e portano `magazzino_id → E_MAG_DOCUMENTO_MAGAZZINO_IMMUTABILE`
+> (letti su `pg_trigger`). ⇒ Il **test 17 del guard non fa più `skip`**: adesso
+> misura davvero. A generarli è stata l'automazione chiamata da
+> `90_end/20260923-02`, il changeSet di un cantiere nato da una riga di questo
+> brief — [brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](brief-db-codici-ritirati-negli-argomenti-dei-trigger.md).
+> ✅ **pgTAP rilanciati da Tid, nessuna regressione; commit fatto** (`7d67d6d9d`).
+> ⇒ **Sul DB non resta niente di questo brief.** Ciò che lo tiene aperto è
+> **solo la metà BE/FE** di R-1, R-2, R-3, R-5, R-6 e R-7, elencata in coda.
 > ✅ Le cinque domande del piano (Q-1 … Q-5) erano decise da Tid il 2026-09-18:
 > lato BE/FE non restava niente in sospeso. Bloccavano parti **diverse** del
 > piano: R-1 il drawer (Pezzo 3), R-2 le righe (Pezzo 2), R-3 il gate di
@@ -407,7 +411,7 @@ catalogo vivo, **zero righe di differenza** (114 per parte); il pgTAP **14/14**;
 e una **prova per mutazione** — tolte le dichiarazioni dentro la transazione, il
 test 2 torna rosso e nomina le righe giuste: la fotografia non lo ha reso cieco.
 
-### Che cosa resta a Tid — 🔴 un'automazione da far girare, poi il commit
+### Che cosa resta a Tid — ✅ sul DB non resta niente
 
 1. ✅ **Migrate**: i cinque changeSet `20260922-18 … -22` `EXECUTED` alle 19:06
    del 22-09, i **seed** alle 23:00 (mirror `20260921-19` `RERAN`: le
@@ -416,8 +420,9 @@ test 2 torna rosso e nomina le righe giuste: la fotografia non lo ha reso cieco.
    `registra_magazzino` — verificati a catalogo), e **`20260922-23`** (la rev
    della vista del presidio C1) applicato in serata. ⇒ Del **primo** giro sul
    database non resta niente.
-2. ✅ **pgTAP**: rilanciati da Tid il 22-09 sera, **verdi**.
-3. ⏳ **commit** (non autonomo): i sei changeSet (`-18 … -23`), i **cinque** CSV
+2. ✅ **pgTAP**: rilanciati da Tid il 22-09 sera e di nuovo il 23-09 dopo il
+   lucchetto, **verdi, nessuna regressione**.
+3. ✅ **commit** fatto (`ce91eb2d1` + `7d67d6d9d`): i sei changeSet (`-18 … -23`), i **cinque** CSV
    (`codici_errore`, `messaggi_errore`, `azioni_processo`,
    `stati_check_dichiarazioni`, `automation_lock_columns`), il pgTAP nuovo
    `magazzino/test-capability-documenti-interni-v1`, i due toccati
@@ -440,17 +445,22 @@ test 2 torna rosso e nomina le righe giuste: la fotografia non lo ha reso cieco.
    magazzino non valida.»*, senza il segnaposto che nessuno avrebbe riempito —,
    e `dbops.automation_lock_columns` ha le **due** righe nuove, `enabled`.
 
-5. 🔴 **Il lucchetto è DICHIARATO ma non ancora ARMATO**, ed è l'unico gesto DB
-   che resta. Su `magazzino.inventari` e `magazzino.rettifiche` non c'è nessun
-   trigger su `script.trgfn_lock_columns`: il gemello ce l'ha
-   (`trg_ubicazioni_a10_lock_columns_upd`), loro no. ⇒ `CALL
-   maintenance.proc_automations_lock_columns_job()` su dev — su dev
-   `db-ci-apply` **non** rilancia le automazioni, e il migrate non le ha
-   toccate. ⚠️ **Fino ad allora il registro racconta una regola che non è in
-   vigore**: un `UPDATE` diretto sposta ancora un documento su un altro
-   magazzino, e il **test 17 del guard fa `skip`** — cioè il pgTAP è verde
-   *senza aver misurato niente*. Il verde che conta è 17/17 **senza skip**.
-   Poi il **commit**.
+5. ✅ **Il lucchetto è ARMATO** (23-09). Su `magazzino.inventari` e
+   `magazzino.rettifiche` ci sono `trg_inventari_a10_lock_columns_upd` e
+   `trg_rettifiche_a10_lock_columns_upd`, entrambi con
+   `magazzino_id → E_MAG_DOCUMENTO_MAGAZZINO_IMMUTABILE`. ⇒ Il **test 17 del
+   guard non fa più `skip`**: il 17/17 adesso vale.
+   ⭐ **Non l'ha armato una chiamata a mano**, ed è la parte che vale la pena
+   leggere: l'automazione è stata richiamata da `90_end/20260923-02`, il
+   changeSet di un cantiere nato da una riga di questo brief — la nota di R-4
+   *«non si è riusato `CODICE_NON_MODIFICABILE`: è obsoleto»*. Guardando il
+   registro dei lock per quella riga si è scoperto che **26 righe su 38**
+   nominavano un codice ritirato o inesistente e che **69 trigger vivi** lo
+   sollevavano con il presidio verde. La bonifica ha chiamato l'automazione una
+   volta, e nello stesso gesto ha armato anche questi due:
+   [brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](brief-db-codici-ritirati-negli-argomenti-dei-trigger.md).
+6. ✅ **pgTAP e commit**: rilanciati da Tid il 23-09, **nessuna regressione**;
+   commit `7d67d6d9d`. ⇒ Sul database non resta niente di questo brief.
 
 ### Il secondo giro — le quattro decisioni, scritte (22-09 sera)
 
@@ -495,8 +505,11 @@ generato, quest'ultimo con `skip` finché l'automazione non l'ha scritto (stampo
 di `test-ubicazioni-guard-parent-v1`). ⚠️ Lo skip è stato **provato**: montando
 a mano il trigger nella transazione di prova, il test 17 diventa verde e la
 frase combacia — cioè lo skip non sta nascondendo un messaggio sbagliato.
-⏳ **Al 23-09 il test 17 è ancora in skip**, perché l'automazione non ha ancora
-girato: il file dà 17/17, ma una di quelle diciassette non ha misurato niente.
+✅ **Dal 23-09 il test 17 NON è più in skip**: l'automazione ha generato i due
+trigger e l'asserzione misura davvero. ⭐ Vale la pena tenerlo a mente come
+forma: fino a quel momento il file dava **17/17 con una asserzione che non
+aveva misurato niente** — uno `skip` motivato è onesto, ma non è una prova, e
+il numero verde da solo non distingue i due casi.
 
 #### ⚠️ Rilettura del 22-09 a fine serata: la frase di R-6 era l'unica col `%s`
 

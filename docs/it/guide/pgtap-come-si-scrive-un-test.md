@@ -102,6 +102,8 @@ Costruire i casi significa costruire anche **l'azienda e chi ci lavora**:
 | Serve | Helper |
 | --- | --- |
 | **il mondo di un test di dominio**: azienda + operatore + contesto aperto + un cliente fatturabile legato a quell'azienda | `dbops.fn_pgtap_crea_mondo_cliente('<etichetta>')` |
+| **una fattura** del mondo (registro coerente, coppia emittente/utility configurata, stato scelto alla nascita) | `dbops.fn_pgtap_crea_fattura('<etichetta>'[, '<stato>'[, <ba_id>]])` |
+| una **filiale bancaria** su cui agganciare un conto | `dbops.fn_pgtap_crea_filiale_bancaria('<etichetta>')` |
 | un'azienda con il suo operatore (e identità) | `dbops.fn_pgtap_crea_emittente_operatore()` |
 | l'utente tecnico di un processo, a roster | `dbops.fn_pgtap_crea_roster_processo('<processo>')` |
 | un cliente fatturabile (soggetto → CL → istanza → BA) | `dbops.fn_pgtap_crea_cliente_ba('<etichetta>'[, utility, emittente_sr])` |
@@ -133,6 +135,19 @@ chi agisce**, e non è un risparmio: un'azienda nuova lascerebbe il cliente lega
 a quella vecchia, invisibile sotto RLS. ⛔ Non comprende registro, articolo né i
 cataloghi di `80_data`: entra ciò che ha una **trappola d'ordine**, non ciò che
 serve spesso.
+
+⭐ **Una FATTURA e' una catena, non un INSERT** (rev `20260923-04`): il cliente
+va legato all'azienda di chi agisce, la coppia (emittente, utility) va
+configurata, il registro dipende da quell'azienda e la valuta si risolve lungo
+la catena «cliente → azienda → gestore». `dbops.fn_pgtap_crea_fattura()` li mette
+tutti e quattro; lo **stato si sceglie alla nascita** (la testata ha un guard di
+transizione), e il **terzo parametro** e' il billing account di una fattura gia'
+costruita, per la seconda dello stesso cliente. ⛔ Righe, scadenze, contabili e
+movimenti restano al test: sono il suo caso.
+
+⚠️ E `anagrafiche.bank_branches` e' **dato di macchina**, non seed: da zero e'
+vuota, e un conto bancario ci sbatte sul NOT NULL. La filiale si costruisce con
+`dbops.fn_pgtap_crea_filiale_bancaria()`.
 
 ⚠️ Gli helper escono con i vincoli **IMMEDIATE**: un file che li vuole
 differiti fino a un punto suo (`pgtap-differiti`, «fattura + atto») li riapre

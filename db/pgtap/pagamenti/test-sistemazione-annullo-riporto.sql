@@ -65,68 +65,59 @@ SELECT plan(13);
 CREATE TEMP TABLE tmp_costanti AS
 SELECT 'pgtap_sistemazione_annullo'::text AS test_scope;
 
+-- ⛔ E IL MONDO SOTTO DI LORO SI COSTRUISCE (2026-09-23). Le due fatture le
+--   scriveva gia' questo file — il commento qui sopra lo dice — ma i mattoni
+--   li pescava: il billing account «piu' recente», e l'emittente per ripiego
+--   con un `OR is_default IS TRUE` che su un BA senza legame risponde
+--   un'ALTRA azienda (il difetto di D13). Su un database ricostruito non c'e'
+--   nessun BA, e il file moriva su «p_fattura_id obbligatorio».
+-- ⭐ Le due fatture stanno sullo STESSO cliente, ed e' il motivo per cui il
+--   BB ha un terzo parametro: la seconda si chiede sul billing account della
+--   prima invece di costruirne un altro.
+CREATE TEMP TABLE tmp_origine_bb AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura('sistemazione annullo', 'DEFINITIVA');
+
+CREATE TEMP TABLE tmp_dest_bb AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura(
+                 'sistemazione annullo destinazione', 'DRAFT',
+                 (SELECT billing_account_id FROM tmp_origine_bb));
+
 CREATE TEMP TABLE tmp_refs AS
-WITH ba AS (
-  SELECT b.id, b.utility_id, b.soggetto_ruolo_id
-    FROM anagrafiche.billing_account b
-   ORDER BY b.data_insert DESC NULLS LAST, b.id DESC
-   LIMIT 1
-)
-SELECT script.fn_pgtap_registro_fattura(anagrafiche.fn_get_emittente_fiscale_id(ba.id)) AS registro_id,
-       ba.id                AS billing_account_id,
-       ba.utility_id        AS utility_id,
-       ba.soggetto_ruolo_id AS cliente_sr,
-       (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
-       (SELECT id FROM config.valute ORDER BY id LIMIT 1)                           AS valuta_id,
-       (SELECT m.emittente_soggetto_ruolo_id
-          FROM anagrafiche.emittenti_fiscali_billing_account m
-         WHERE (m.billing_account_id = ba.id OR m.is_default IS TRUE)
-         ORDER BY CASE WHEN m.billing_account_id = ba.id THEN 0 ELSE 1 END, m.id
-         LIMIT 1)                                                                   AS emittente_sr,
-       (SELECT s.id FROM config.stati_doc_fiscale s
-         WHERE s.codice_interno = 'DEFINITIVA' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_definitiva_id,
-       (SELECT s.id FROM config.stati_doc_fiscale s
-         WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)      AS stato_draft_id,
+SELECT o.registro_id,
+       o.billing_account_id,
+       o.utility_id,
+       o.cliente_soggetto_ruolo_id   AS cliente_sr,
+       o.tipo_doc_fiscale_id,
+       o.valuta_id,
+       o.emittente_soggetto_ruolo_id AS emittente_sr,
+       o.stato_doc_fiscale_id        AS stato_definitiva_id,
+       d.stato_doc_fiscale_id        AS stato_draft_id,
        -- ⚠️ Il centro della compensazione NON si fabbrica: e' seminato ed e'
        --   garantito unico da un indice parziale. Un test che se lo crea non
        --   verifica il seed, lo nasconde.
        (SELECT c.id FROM pagamenti.centri_riscossione c
          WHERE c.attivo IS TRUE AND c.is_compensazione IS TRUE ORDER BY c.id LIMIT 1) AS centro_compensazione_id
-  FROM ba;
+  FROM tmp_origine_bb o, tmp_dest_bb d;
 
--- La fattura di PARTENZA: definitiva, totale 100, e poi sovra-incassata.
+-- Gli importi sono il caso del test, non del builder: la fattura di PARTENZA
+-- e' definitiva con totale 100 (poi sovra-incassata), quella di DESTINAZIONE
+-- e' DRAFT — cioe' ancora lavorabile: se fosse congelata il fondo non sarebbe
+-- cancellabile e i test 7/8 direbbero un'altra cosa.
+UPDATE vendite.fatture
+   SET minimo = false, totale_a_pagare = 100.00,
+       meta = meta || jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
+ WHERE id = (SELECT fattura_id FROM tmp_origine_bb);
+
+UPDATE vendite.fatture
+   SET minimo = false, totale_a_pagare = 500.00,
+       meta = meta || jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
+ WHERE id = (SELECT fattura_id FROM tmp_dest_bb);
+
 CREATE TEMP TABLE tmp_origine AS
-WITH ins AS (
-  INSERT INTO vendite.fatture (
-      registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
-      minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_sr, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
-         false, 100.00,
-         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
-    FROM tmp_refs r
-  RETURNING id
-)
-SELECT * FROM ins;
+SELECT fattura_id AS id FROM tmp_origine_bb;
 
--- La fattura di DESTINAZIONE del riporto: DRAFT, cioe' ancora lavorabile —
--- se fosse congelata il fondo non sarebbe cancellabile e i test 7/8 direbbero
--- una cosa diversa da quella che vogliono dire.
 CREATE TEMP TABLE tmp_destinazione AS
-WITH ins AS (
-  INSERT INTO vendite.fatture (
-      registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
-      minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_sr, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_draft_id,
-         false, 500.00,
-         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
-    FROM tmp_refs r
-  RETURNING id
-)
-SELECT * FROM ins;
+SELECT fattura_id AS id FROM tmp_dest_bb;
 
 -- ⭐ Il sovra-incasso: duecento su una fattura da cento. Da qui l'eccedenza e'
 --   di cento, e le sistemazioni hanno di che confermarsi.
