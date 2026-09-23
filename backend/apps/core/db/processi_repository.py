@@ -30,6 +30,8 @@ from django.db import connection
 
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
     fetch_paged_with_total,
     row_to_dict,
     rows_to_list,
@@ -73,6 +75,9 @@ _ORDER_COLS_PROCESSI: dict[str, str] = {
     "attivo": "p.attivo",
     "ultimo_run": "ur.ultimo_run",
 }
+
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+_RICERCA_PROCESSI = RicercaFull("amm.processi", ("codice", "descrizione"))
 
 # ⛔ LA TUPLA DEI PRESIDI NON STA PIU' QUI (2026-09-10), ed e' il punto del
 #    cantiere «un destinatario per i presidi». Erano dieci nomi scritti a mano,
@@ -233,9 +238,8 @@ class ProcessiRepository:
         if attivo is not None:
             conditions.append("p.attivo = %s")
             params.append(attivo)
-        if search:
-            conditions.append("(p.codice ILIKE %s OR p.descrizione ILIKE %s)")
-            params.extend([f"%{search}%"] * 2)
+        # Tabella di configurazione: la ricerca parte da un carattere (Tid, 2026-09-23).
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_PROCESSI, alias="p", min_caratteri=1)
 
         ordinamento = sql_order_clause(
             order_by, order_dir,

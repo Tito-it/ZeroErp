@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from apps.ai_assistant.tools.base import AITool
+from apps.core.db._helpers import RICERCA_MIN_CARATTERI
 
 
 class CercaSoggettiTool(AITool):
@@ -31,7 +32,7 @@ class CercaSoggettiTool(AITool):
                 "properties": {
                     "search": {
                         "type": "string",
-                        "description": "Ricerca libera su ragione sociale, cognome, nome, codice fiscale o partita IVA",
+                        "description": f"Ricerca libera su ragione sociale, cognome, nome, codice fiscale o partita IVA (min {RICERCA_MIN_CARATTERI} caratteri).",
                     },
                     "natura": {
                         "type": "string",
@@ -61,7 +62,7 @@ class CercaSoggettiTool(AITool):
         svc = SoggettiService()
 
         items, total = svc.list_soggetti(
-            search=params.get("search"),
+            search=self.termine_ricerca(params),
             limit=self.safe_page_size(params),
             offset=0,
             order_by="ragione_sociale_completa",

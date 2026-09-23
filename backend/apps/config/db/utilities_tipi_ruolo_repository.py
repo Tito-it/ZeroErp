@@ -14,7 +14,21 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list, sql_order_clause
+from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
+    row_to_dict,
+    rows_to_list,
+    sql_order_clause,
+)
+
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+_RICERCA = RicercaFull("config.utilities_tipi_ruolo", {
+    "utility_codice": "u.codice",
+    "utility_descrizione": "u.descrizione",
+    "tipo_ruolo_codice": "tr.codice",
+    "tipo_ruolo_descrizione": "tr.descrizione",
+})
 
 
 # Whitelist colonne ammesse per ORDER BY: protegge da SQL injection sul
@@ -102,14 +116,8 @@ class UtilitiesTipiRuoloRepository:
         if tipo_ruolo_id is not None:
             conditions.append("utr.tipo_ruolo_id = %s")
             params.append(tipo_ruolo_id)
-        if search:
-            # Ricerca ILIKE su codice/descrizione di utility e tipo ruolo.
-            conditions.append(
-                "(u.codice ILIKE %s OR u.descrizione ILIKE %s "
-                "OR tr.codice ILIKE %s OR tr.descrizione ILIKE %s)"
-            )
-            like = f"%{search.strip()}%"
-            params.extend([like, like, like, like])
+        # Tabella di configurazione: la ricerca parte da un carattere (Tid, 2026-09-23).
+        add_ricerca_full_condition(conditions, params, search, _RICERCA, min_caratteri=1)
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 

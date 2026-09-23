@@ -41,6 +41,7 @@ from apps.vendite.services.vendite_service import (
     get_fattura_giornale,
     list_fatture_rows,
 )
+from apps.core.api.openapi_params import param_ricerca_full
 
 
 class ApiFatturaDetail(DomainAPIView):
@@ -224,7 +225,7 @@ def _filtri_lista_fatture(qp) -> dict[str, object]:
 
 
 _PARAMETRI_LISTA_FATTURE = [
-    OpenApiParameter(name="search", type=str, required=False),
+    param_ricerca_full(),
     OpenApiParameter(name="stato_codice_interno", type=str, required=False),
     OpenApiParameter(name="natura_doc_codice", type=str, required=False,
                      description="FATTURA | NOTA_CREDITO | NOTA_DEBITO"),

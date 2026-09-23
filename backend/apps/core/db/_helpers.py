@@ -196,7 +196,11 @@ class RicercaFull:
 #    ogni riga come una tupla in un campo solo (brief-db-ricerca-full-colonne-
 #    permessi §6). Lista assente o spenta → `E_UI_LISTA_NON_TROVATA`, che si
 #    propaga: e' un errore di dichiarazione nel repository, non un ripiego.
-def _colonne_ricerca_accese(lista_codice: str) -> list[str]:
+# ⭐ Pubblica dal 2026-09-23: la legge anche la configurazione risolta della
+#    lista (`ui_service.get_lista_config`, chiave `ricerca_full`), perche' la
+#    casella di ricerca si mostra solo se c'e' dove cercare (Tid). Una sola sede
+#    della lettura: il BB e la configurazione non possono dire cose diverse.
+def colonne_ricerca_accese(lista_codice: str) -> list[str]:
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT campo_sorgente FROM ui.fn_lista_colonne_ricerca_full(%s)",
@@ -261,7 +265,7 @@ def add_ricerca_full_condition(
     if len(termine) < min_caratteri:
         return
     espressioni = ricerca.espressioni(alias)
-    accese = set(_colonne_ricerca_accese(ricerca.lista_codice))
+    accese = set(colonne_ricerca_accese(ricerca.lista_codice))
     ignote = sorted(accese - espressioni.keys())
     if ignote:
         logger.warning(

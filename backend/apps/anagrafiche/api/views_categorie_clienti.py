@@ -26,6 +26,7 @@ from apps.core.api.payload_validators import (
     qp_bool_optional,
 )
 from apps.core.api.success_responses import success_response
+from apps.core.api.openapi_params import param_ricerca_full
 
 
 # =================================================================
@@ -40,8 +41,7 @@ class CategorieClientiView(AdminAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False,
-                             description="Ricerca su codice/descrizione."),
+            param_ricerca_full(min_caratteri=1),
             OpenApiParameter(name="attivo", type=bool, required=False),
             OpenApiParameter(name="partecipa_promo", type=bool, required=False),
             OpenApiParameter(name="limit", type=int, required=False),

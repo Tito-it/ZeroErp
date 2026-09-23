@@ -47,6 +47,7 @@ from apps.pagamenti.services import (
 )
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.core.api.openapi_params import param_ricerca_full
 
 AREA = "pagamenti"
 
@@ -76,6 +77,11 @@ def _escludi_riga_id(request: Request) -> int | None:
 # ⭐ `scartate` — l'interruttore «Mostra scartate (N)» delle righe di una
 #    distinta (BE-2, D20-c): UNA dichiarazione per la lista e per il suo export,
 #    come `escludi_riga_id` sui due livelli del saldo.
+# La ricerca libera delle liste (dal 2026-09-23, brief-be-ricerca-full-liste-
+# residue §5.3): nessun 400 sotto soglia (la soglia delle liste non di
+# configurazione e' la decisione aperta di §6).
+_PARAM_SEARCH = param_ricerca_full()
+
 _PARAM_SCARTATE = OpenApiParameter(
     name="scartate", type=bool, location=OpenApiParameter.QUERY, required=False,
     description=(
@@ -125,6 +131,7 @@ class ApiDistinteList(DomainAPIView):
     @extend_schema(
         operation_id="pagamenti_distinte_list",
         parameters=[
+            _PARAM_SEARCH,
             OpenApiParameter(
                 name="stato", type=str, location=OpenApiParameter.QUERY, required=False,
                 description=(
@@ -194,6 +201,7 @@ class ApiDistinteList(DomainAPIView):
             ente_incasso_id=qp_int_optional(qp.get("ente_incasso_id"), "ente_incasso_id"),
             data_da=qp_iso_date_optional(qp.get("data_da"), "data_da"),
             data_a=qp_iso_date_optional(qp.get("data_a"), "data_a"),
+            search=qp_str(qp.get("search")),
             order_by=qp_str(qp.get("order_by")),
             order_dir=qp_str(qp.get("order_dir")),
             page=qp_int_strict(qp.get("page"), "page", 1),
@@ -322,6 +330,7 @@ class ApiDistintaRighe(DomainAPIView):
     """GET/POST /api/v1/pagamenti/distinte/<id>/righe/ — le righe della distinta."""
 
     area_funzionale = AREA
+    is_search_endpoint = True
     # ⭐ Lista configurabile dal 2026-09-18 (`pagamenti.distinta_righe`, id 69):
     #    il cancello di perimetro emittente vale come su ogni altra lista.
     lista_codice = "pagamenti.distinta_righe"
@@ -329,6 +338,7 @@ class ApiDistintaRighe(DomainAPIView):
     @extend_schema(
         operation_id="pagamenti_distinta_righe_list",
         parameters=[
+            _PARAM_SEARCH,
             *_PARAMS_ORDINAMENTO_DISTINTA_RIGHE,
             _PARAM_SCARTATE,
             OpenApiParameter(
@@ -354,6 +364,7 @@ class ApiDistintaRighe(DomainAPIView):
         return success_response(
             pagamenti_service.list_righe(
                 contabile_id,
+                search=qp_str(qp.get("search")),
                 limit=p["limit"],
                 offset=p["offset"],
                 order_by=qp_str(qp.get("order_by")),
@@ -413,6 +424,7 @@ class ApiDistintaRigheExport(DomainAPIView):
     @extend_schema(
         operation_id="pagamenti_distinta_righe_export",
         parameters=[
+            _PARAM_SEARCH,
             OpenApiParameter(
                 name="formato", type=str, location=OpenApiParameter.QUERY,
                 required=True, description="csv | xlsx.",
@@ -438,6 +450,7 @@ class ApiDistintaRigheExport(DomainAPIView):
         scartate = _scartate(request)
         dati = pagamenti_service.list_righe(
             contabile_id,
+            search=qp_str(qp.get("search")),
             limit=EXPORT_MAX_ROWS + 1,
             offset=0,
             order_by=qp_str(qp.get("order_by")),
@@ -781,6 +794,7 @@ class ApiRigheCoda(DomainAPIView):
     @extend_schema(
         operation_id="pagamenti_righe_coda",
         parameters=[
+            _PARAM_SEARCH,
             OpenApiParameter(
                 name="coda", type=str, location=OpenApiParameter.QUERY,
                 required=False,
@@ -836,6 +850,7 @@ class ApiRigheCoda(DomainAPIView):
             ),
             data_da=qp_iso_date_optional(qp.get("data_da"), "data_da"),
             data_a=qp_iso_date_optional(qp.get("data_a"), "data_a"),
+            search=qp_str(qp.get("search")),
             order_by=qp_str(qp.get("order_by")),
             order_dir=qp_str(qp.get("order_dir")),
             page=qp_int_strict(qp.get("page"), "page", 1),
@@ -987,6 +1002,7 @@ class ApiRateFuoriCapienza(DomainAPIView):
     @extend_schema(
         operation_id="pagamenti_rate_fuori_capienza",
         parameters=[
+            _PARAM_SEARCH,
             OpenApiParameter(
                 name="motivo", type=str, location=OpenApiParameter.QUERY,
                 required=False,
@@ -1033,6 +1049,7 @@ class ApiRateFuoriCapienza(DomainAPIView):
             billing_account_id=qp_int_optional(
                 qp.get("billing_account_id"), "billing_account_id"
             ),
+            search=qp_str(qp.get("search")),
             order_by=qp_str(qp.get("order_by")),
             order_dir=qp_str(qp.get("order_dir")),
             page=qp_int_strict(qp.get("page"), "page", 1),
@@ -1132,6 +1149,7 @@ class ApiEccedenze(DomainAPIView):
     @extend_schema(
         operation_id="pagamenti_eccedenze",
         parameters=[
+            _PARAM_SEARCH,
             OpenApiParameter(
                 name="chi_e_in_credito", type=str, location=OpenApiParameter.QUERY,
                 required=False,
@@ -1180,6 +1198,7 @@ class ApiEccedenze(DomainAPIView):
             billing_account_id=qp_int_optional(
                 qp.get("billing_account_id"), "billing_account_id"
             ),
+            search=qp_str(qp.get("search")),
             order_by=qp_str(qp.get("order_by")),
             order_dir=qp_str(qp.get("order_dir")),
             page=qp_int_strict(qp.get("page"), "page", 1),

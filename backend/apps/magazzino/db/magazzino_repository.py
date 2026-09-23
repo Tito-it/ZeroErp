@@ -38,6 +38,8 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
     call_jsonb_fn,
     fetchone_scalar,
     jsonb_out,
@@ -48,7 +50,7 @@ from apps.core.db._helpers import (
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.magazzino.db._helpers import guard_canale_sistema, lista_paginata
-from apps.magazzino.db.famiglie import INVENTARI, RETTIFICHE, FamigliaDocumentoInterno
+from apps.magazzino.db.famiglie import FAMIGLIE, INVENTARI, RETTIFICHE, FamigliaDocumentoInterno
 from apps.magazzino.types import (
     BloccoRow,
     DisponibilitaArticoloRow,
@@ -266,6 +268,43 @@ _PIANO_SELECT = f"""
       {_DECODIFICA_POSIZIONE_JOIN.format(alias='p')}
 """
 
+# Cosa si PUO' cercare in ogni lista; cosa si cerca lo dice il catalogo
+# (`add_ricerca_full_condition`, brief-be-ricerca-full-liste-residue §2).
+# ⭐ Mappe `campo_sorgente → espressione`: il valore e' la STESSA espressione che
+#    la `SELECT` proietta con quel nome — si cerca su cio' che si mostra.
+# ⭐ Testate e righe: una dichiarazione per famiglia, DERIVATA dal registro
+#    `FAMIGLIE` coi flag che la famiglia gia' porta (`ha_descrizione`,
+#    `con_motivo`) — le stesse che decidono la `SELECT`. ⛔ Non una voce scritta
+#    a mano per famiglia: una terza famiglia «e' una riga in `famiglie.py`»
+#    (il contratto del registro), e una mappa cablata le darebbe un `KeyError`
+#    su ogni apertura di lista, anche senza cercare.
+_RICERCA_ARTICOLO: dict[str, str] = {
+    "articolo_codice": "a.codice",
+    "articolo_descrizione": "a.descrizione",
+}
+_RICERCA_DOCUMENTI: dict[str, RicercaFull] = {
+    f.lista_codice: RicercaFull(f.lista_codice, {
+        "magazzino_codice": "m.codice",
+        "magazzino_descrizione": "m.descrizione",
+        **({"descrizione": "t.descrizione"} if f.ha_descrizione else {}),
+    })
+    for f in FAMIGLIE.values()
+}
+_RICERCA_RIGHE: dict[str, RicercaFull] = {
+    f.lista_righe_codice: RicercaFull(f.lista_righe_codice, {
+        **_RICERCA_ARTICOLO,
+        **({"motivo": "r.motivo"} if f.con_motivo else {}),
+    })
+    for f in FAMIGLIE.values()
+}
+_RICERCA_PIANO = RicercaFull("magazzino.inventario_piano", _RICERCA_ARTICOLO)
+_RICERCA_MOVIMENTI = RicercaFull("magazzino.movimenti", _RICERCA_ARTICOLO)
+_RICERCA_DISPONIBILITA = RicercaFull("magazzino.disponibilita", {
+    **_RICERCA_ARTICOLO,
+    "magazzino_codice": "m.codice",
+})
+_RICERCA_DISPONIBILITA_ARTICOLI = RicercaFull("magazzino.disponibilita_articoli", _RICERCA_ARTICOLO)
+
 _DISPONIBILITA_SELECT = f"""
     SELECT
         concat(d.articolo_id, '|', d.magazzino_id) AS chiave_riga,
@@ -431,14 +470,7 @@ class MagazzinoRepository:
         if data_a is not None:
             conditions.append("t.data <= %s")
             params.append(data_a)
-        # La ricerca libera: la descrizione (dove c'e') e il codice del
-        # magazzino — i due testi che una testata porta.
-        if search:
-            campi = ["m.codice", "m.descrizione"]
-            if f.ha_descrizione:
-                campi.append("t.descrizione")
-            conditions.append("(" + " OR ".join(f"{c} ILIKE %s" for c in campi) + ")")
-            params.extend([f"%{search}%"] * len(campi))
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_DOCUMENTI[f.lista_codice])
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         ordinamento = sql_order_clause(
@@ -511,16 +543,21 @@ class MagazzinoRepository:
         self,
         inventario_id: int,
         *,
+        search: str | None = None,
         order_by: str | None = None,
         order_dir: str | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[PianoRigaRow], int]:
+        conditions: list[str] = []
+        params: list[Any] = [int(inventario_id)]
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_PIANO)
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         colonna = PIANO_SORT_COLUMNS.get(order_by or "", "articolo_codice")
         direzione = sql_order_direction(order_dir)
         rows, total = lista_paginata(
-            select_sql=_PIANO_SELECT,
-            params=[int(inventario_id)],
+            select_sql=f"{_PIANO_SELECT} {where}",
+            params=params,
             order_clause=(
                 f"{colonna} {direzione}, articolo_id, ubicazione_id, lotto_id, asset_id"
             ),
@@ -630,6 +667,7 @@ class MagazzinoRepository:
         f: FamigliaDocumentoInterno,
         doc_id: int,
         *,
+        search: str | None = None,
         order_by: str | None = None,
         order_dir: str | None = None,
         limit: int,
@@ -641,9 +679,12 @@ class MagazzinoRepository:
             default="id",
             tiebreak="id",
         )
+        conditions: list[str] = [f"r.{f.fk_riga} = %s"]
+        params: list[Any] = [int(doc_id)]
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_RIGHE[f.lista_righe_codice])
         rows, total = lista_paginata(
-            select_sql=f"{_righe_select(f)} WHERE r.{f.fk_riga} = %s",
-            params=[int(doc_id)],
+            select_sql=f"{_righe_select(f)} WHERE {' AND '.join(conditions)}",
+            params=params,
             order_clause=ordinamento,
             limit=limit,
             offset=offset,
@@ -839,9 +880,7 @@ class MagazzinoRepository:
             conditions.append("d.disponibile < 0")
         if solo_con_giacenza:
             conditions.append("d.giacenza <> 0")
-        if search:
-            conditions.append("(a.codice ILIKE %s OR a.descrizione ILIKE %s)")
-            params.extend([f"%{search}%"] * 2)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_DISPONIBILITA)
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         colonna = DISPONIBILITA_SORT_COLUMNS.get(order_by or "", "articolo_codice")
@@ -884,9 +923,7 @@ class MagazzinoRepository:
             conditions.append("d.disponibile < 0")
         if solo_con_giacenza:
             conditions.append("d.giacenza <> 0")
-        if search:
-            conditions.append("(a.codice ILIKE %s OR a.descrizione ILIKE %s)")
-            params.extend([f"%{search}%"] * 2)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_DISPONIBILITA_ARTICOLI)
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         ordinamento = sql_order_clause(
             order_by, order_dir,
@@ -927,6 +964,7 @@ class MagazzinoRepository:
         data_a: date | None = None,
         sorgente_codice_interno: str | None = None,
         documento_sorgente: tuple[FamigliaDocumentoInterno, int] | None = None,
+        search: str | None = None,
         order_by: str | None = None,
         order_dir: str | None = None,
         limit: int,
@@ -965,6 +1003,7 @@ class MagazzinoRepository:
                 )"""
             )
             params.extend([f.sorgente_codice_interno, int(doc_id)])
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_MOVIMENTI)
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         ordinamento = sql_order_clause(

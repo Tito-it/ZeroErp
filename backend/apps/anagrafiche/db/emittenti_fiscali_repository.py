@@ -15,6 +15,8 @@ from django.db import connection
 
 from apps.anagrafiche.db._helpers import get_or_create_soggetto_ruolo
 from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
     sql_lateral_primo_motivo,
     sql_order_clause,
     sql_order_direction,
@@ -51,6 +53,24 @@ _EMITTENTI_ORDER_COLS: dict[str, str] = {
 # Colonna d'ordinamento di default: allineata all'`ordinamento_default` del
 # preset `emittenti_fiscali_default` (seed `lista_preset`, riga 18).
 _EMITTENTI_ORDER_DEFAULT = "ragione_sociale_completa"
+
+
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+# ⭐ Emittenti: si cerca per id fiscale univoco, per uniformita' con le altre
+#    anagrafiche (Tid, 2026-09-23). ⏳ `partita_iva` resta dichiarata finche'
+#    il seed la accende: si toglie DOPO che il team DB l'ha spenta (brief DB
+#    §3.1), o il presidio vedrebbe una colonna accesa sconosciuta.
+_RICERCA_EMITTENTI = RicercaFull("anagrafiche.emittenti_fiscali", {
+    "codice": "ef.codice",
+    "ragione_sociale_completa": "s.ragione_sociale_completa",
+    "id_fiscale_univoco_cf_piva": "s.id_fiscale_univoco_cf_piva",
+    "partita_iva": "s.partita_iva",
+})
+_RICERCA_EMITTENTE_BA = RicercaFull("anagrafiche.emittente_billing_account", {
+    "billing_account_codice": "ba.codice",
+    "billing_account_ragione_sociale": "s.ragione_sociale_completa",
+    "id_fiscale_univoco": "s.id_fiscale_univoco_cf_piva",
+})
 
 
 class EmittentiFiscaliRepository:
@@ -148,7 +168,9 @@ class EmittentiFiscaliRepository:
             default=_EMITTENTI_ORDER_COLS[_EMITTENTI_ORDER_DEFAULT],
             tiebreak="ef.id",
         )
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        conditions: list[str] = ["(%s::boolean IS NULL OR ef.attivo = %s)"]
+        params: list[Any] = [attivo, attivo]
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_EMITTENTI)
         sql = f"""
             SELECT ef.id,
                    ef.uid,
@@ -165,6 +187,7 @@ class EmittentiFiscaliRepository:
                    s.ragione_sociale_completa,
                    s.codice_fiscale,
                    s.partita_iva,
+                   s.id_fiscale_univoco_cf_piva,
                    ef.data_insert,
                    ef.data_update,
                    COUNT(*) OVER () AS total_count
@@ -172,22 +195,11 @@ class EmittentiFiscaliRepository:
               JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ef.soggetto_ruolo_id
               JOIN anagrafiche.soggetti s        ON s.id  = sr.soggetto_id
               LEFT JOIN config.valute v          ON v.id  = ef.valuta_id
-             WHERE (%s::text IS NULL OR (
-                       ef.codice ILIKE %s
-                    OR s.ragione_sociale_completa ILIKE %s
-                    OR s.codice_fiscale ILIKE %s
-                    OR s.partita_iva ILIKE %s
-                   ))
-               AND (%s::boolean IS NULL OR ef.attivo = %s)
+             WHERE {" AND ".join(conditions)}
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
-        params: list[Any] = [
-            search_pattern, search_pattern, search_pattern,
-            search_pattern, search_pattern,
-            attivo, attivo,
-            limit, offset,
-        ]
+        params.extend([limit, offset])
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return extract_paginated(cursor)
@@ -347,7 +359,9 @@ class EmittentiFiscaliBillingAccountRepository:
         # prefisso vincerebbe sempre sulla direzione scelta (freccia che non
         # ordina): in quel caso l'unica chiave e' la sua, con la sua direzione.
         order_prefix = "" if order_col == "m.is_default" else "m.is_default DESC, "
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        conditions: list[str] = ["m.emittente_soggetto_ruolo_id = %s"]
+        params: list[Any] = [emittente_soggetto_ruolo_id]
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_EMITTENTE_BA)
         # ⭐ Il frammento e' il BB `sql_lateral_primo_motivo` (core/db): il
         #    «dopo» passato alla check e' l'emittente della riga `is_default`
         #    ESCLUSA questa — lo specchio esatto di
@@ -428,20 +442,11 @@ class EmittentiFiscaliBillingAccountRepository:
               --    la risposta e' impaginare PRIMA di arricchire, e riguarda
               --    tutta la query: non questo pezzo.
               {lateral_blocco}
-             WHERE m.emittente_soggetto_ruolo_id = %s
-               AND (%s::text IS NULL OR (
-                       ba.codice ILIKE %s
-                    OR s.ragione_sociale_completa ILIKE %s
-                    OR s.id_fiscale_univoco_cf_piva ILIKE %s
-                   ))
+             WHERE {" AND ".join(conditions)}
              ORDER BY {order_prefix}{order_col} {direction}, m.id {tiebreak_dir}
              LIMIT %s OFFSET %s
         """  # noqa: S608
-        params: list[Any] = [
-            emittente_soggetto_ruolo_id,
-            search_pattern, search_pattern, search_pattern, search_pattern,
-            limit, offset,
-        ]
+        params.extend([limit, offset])
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             rows, total = extract_paginated(cursor)

@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from apps.ai_assistant.tools.base import AITool
+from apps.core.db._helpers import RICERCA_MIN_CARATTERI
 
 
 class CercaContrattiTool(AITool):
@@ -42,7 +43,7 @@ class CercaContrattiTool(AITool):
                 "properties": {
                     "search": {
                         "type": "string",
-                        "description": "Ricerca libera su numero contratto o ragione sociale cliente (min 2 caratteri).",
+                        "description": f"Ricerca libera su numero contratto o ragione sociale cliente (min {RICERCA_MIN_CARATTERI} caratteri).",
                     },
                     "billing_account_id": {
                         "type": "integer",
@@ -114,7 +115,7 @@ class CercaContrattiTool(AITool):
 
         svc = ContrattiService()
         items, total = svc.list_contratti(
-            search=params.get("search"),
+            search=self.termine_ricerca(params),
             billing_account_id=params.get("billing_account_id"),
             stato_doc_contratto_id=params.get("stato_doc_contratto_id"),
             utility_id=params.get("utility_id"),
@@ -243,7 +244,7 @@ class CercaPreventiviTool(AITool):
                 "properties": {
                     "search": {
                         "type": "string",
-                        "description": "Ricerca libera su numero preventivo o ragione sociale cliente (min 3 caratteri).",
+                        "description": f"Ricerca libera su numero preventivo o ragione sociale cliente (min {RICERCA_MIN_CARATTERI} caratteri).",
                     },
                     "stato_codice": {
                         "type": "string",
@@ -311,7 +312,7 @@ class CercaPreventiviTool(AITool):
             utility_id=params.get("utility_id"),
             data_da=params.get("data_da"),
             data_al=params.get("data_al"),
-            search=params.get("search"),
+            search=self.termine_ricerca(params),
             solo_ultima_revisione=params.get("solo_ultima_revisione", True),
             auth_user_id=auth_user_id,
             page=1,
@@ -409,7 +410,7 @@ class CercaPromoArticoliTool(AITool):
                 "properties": {
                     "search": {
                         "type": "string",
-                        "description": "Ricerca libera su codice promo o codice/descrizione articolo (min 2 caratteri).",
+                        "description": f"Ricerca libera su codice promo o codice/descrizione articolo (min {RICERCA_MIN_CARATTERI} caratteri).",
                     },
                     "articolo_id": {
                         "type": "string",
@@ -466,7 +467,7 @@ class CercaPromoArticoliTool(AITool):
         from apps.vendite.services.promo_articoli_service import PromoArticoliService
 
         items, total = PromoArticoliService().list_promo(
-            search=params.get("search"),
+            search=self.termine_ricerca(params),
             attivo=params.get("attivo"),
             articolo_id=params.get("articolo_id"),
             uom_id=params.get("uom_id"),
@@ -506,7 +507,7 @@ class CercaListiniTool(AITool):
                 "properties": {
                     "search": {
                         "type": "string",
-                        "description": "Ricerca libera su codice o descrizione listino.",
+                        "description": f"Ricerca libera su codice o descrizione listino (min {RICERCA_MIN_CARATTERI} caratteri).",
                     },
                     "utility_id": {
                         "type": "integer",
@@ -551,7 +552,7 @@ class CercaListiniTool(AITool):
         from apps.vendite.services.listini_service import fn_list_listini
 
         items, total = fn_list_listini(
-            search=params.get("search"),
+            search=self.termine_ricerca(params),
             utility_id=params.get("utility_id"),
             tipologia_id=params.get("tipologia_id"),
             attivo=params.get("attivo"),

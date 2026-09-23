@@ -397,6 +397,7 @@ def list_piano(
     codice_famiglia: str,
     doc_id: int,
     *,
+    search: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
     limit: int,
@@ -416,7 +417,7 @@ def list_piano(
     repository = MagazzinoRepository()
     _documento_o_404(repository, f, doc_id)
     results, total = repository.list_piano(
-        doc_id, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
+        doc_id, search=search, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
     )
     return _risposta(results, total)
 
@@ -430,6 +431,7 @@ def list_righe(
     codice_famiglia: str,
     doc_id: int,
     *,
+    search: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
     limit: int,
@@ -443,7 +445,7 @@ def list_righe(
     repository = MagazzinoRepository()
     _documento_o_404(repository, f, doc_id)
     results, total = repository.list_righe(
-        f, doc_id, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
+        f, doc_id, search=search, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
     )
     return _risposta(results, total)
 

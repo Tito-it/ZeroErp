@@ -12,6 +12,8 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
     coerce_jsonb_dict,
     resolve_config_id_by_codice_interno,
     row_to_dict,
@@ -98,6 +100,17 @@ def _doc_sorgente_lateral(anchor_cond: str) -> str:
             LIMIT 1
         ) ds ON true
     """
+
+
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+# ⚠️ La stessa query serve `vendite.approvazioni_prezzo`, che non accende
+#    colonne e non passa mai `search` (`lista_coda`): il giorno in cui
+#    cercasse, la dichiarazione va passata dal chiamante, per lista.
+_RICERCA_PRATICHE = RicercaFull("pratiche.pratiche", {
+    "codice": "p.codice",
+    "descrizione": "p.descrizione",
+    "soggetto_display": "s.ragione_sociale_completa",
+})
 
 
 class PraticheRepository:
@@ -238,14 +251,7 @@ class PraticheRepository:
         if data_a:
             conditions.append("p.data_insert < (%s::date + INTERVAL '1 day')")
             params.append(data_a)
-        if search:
-            conditions.append("""(
-                p.codice ILIKE %s
-                OR p.descrizione ILIKE %s
-                OR s.ragione_sociale_completa ILIKE %s
-            )""")
-            pattern = f"%{search.strip()}%"
-            params.extend([pattern, pattern, pattern])
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_PRATICHE)
 
         where_clause = "WHERE " + " AND ".join(conditions)
 

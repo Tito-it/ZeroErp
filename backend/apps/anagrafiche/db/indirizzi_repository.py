@@ -11,6 +11,8 @@ from __future__ import annotations
 from typing import Any
 
 from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
     colonne_identita,
     dynamic_update,
     sql_order_clause,
@@ -33,6 +35,9 @@ _ORDER_COLS = colonne_identita(
     "indirizzo_normalizzato", "civico", "descrizione_comune", "cap",
     "provincia", "attivo", "data_insert",
 )
+
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+_RICERCA = RicercaFull("anagrafiche.indirizzi", ("indirizzo_normalizzato", "descrizione_comune"))
 
 
 class IndirizziRepository:
@@ -59,7 +64,9 @@ class IndirizziRepository:
             default="indirizzo_normalizzato",
             tiebreak="vid.indirizzo_dettaglio_id",
         )
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        conditions: list[str] = ["(%s::integer IS NULL OR vid.comune_id = %s)"]
+        params: list[Any] = [comune_id, comune_id]
+        add_ricerca_full_condition(conditions, params, search, _RICERCA, alias="vid")
 
         sql = f"""
             SELECT vid.indirizzo_dettaglio_id,
@@ -74,18 +81,12 @@ class IndirizziRepository:
                    vid.data_insert,
                    COUNT(*) OVER () AS total_count
               FROM anagrafiche.vw_indirizzi_dettaglio vid
-             WHERE (%s::text IS NULL OR vid.indirizzo_normalizzato ILIKE %s
-                    OR vid.descrizione_comune ILIKE %s)
-               AND (%s::integer IS NULL OR vid.comune_id = %s)
+             WHERE {" AND ".join(conditions)}
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         with connection.cursor() as cursor:
-            cursor.execute(sql, [
-                search_pattern, search_pattern, search_pattern,
-                comune_id, comune_id,
-                limit, offset,
-            ])
+            cursor.execute(sql, [*params, limit, offset])
             return extract_paginated(cursor)
 
     # Scopo: Dettaglio singolo indirizzo per form edit.

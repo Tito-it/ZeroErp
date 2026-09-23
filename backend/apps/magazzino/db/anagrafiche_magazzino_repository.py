@@ -37,7 +37,8 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
-    escape_ilike,
+    RicercaFull,
+    add_ricerca_full_condition,
     fetchone_scalar,
     jsonb_out,
     rows_to_list,
@@ -98,6 +99,12 @@ LOTTI_SORT_COLUMNS: dict[str, str] = {
 }
 # Le date: verso naturale DESC (regola di Tid del 2026-09-02).
 LOTTI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_arrivo", "data_scadenza", "data_insert"})
+
+# Cosa si PUO' cercare in ogni lista; cosa si cerca lo dice il catalogo
+# (`add_ricerca_full_condition`, brief-be-ricerca-full-liste-residue §2).
+_RICERCA_MAGAZZINI = RicercaFull("magazzino.magazzini", ("codice", "descrizione"))
+_RICERCA_UBICAZIONI = RicercaFull("magazzino.ubicazioni", ("codice", "descrizione"))
+_RICERCA_LOTTI = RicercaFull("magazzino.lotti", ("codice",))
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -179,19 +186,6 @@ _LOTTI_SELECT = """
            l.data_insert, l.user_insert, l.data_update, l.user_update
       FROM magazzino.lotti l
 """
-
-
-# Scopo: La condizione di ricerca libera su codice e descrizione dell'alias.
-def _ricerca(conditions: list[str], params: list[Any], alias: str, search: str | None, *, con_descrizione: bool = True) -> None:
-    if not search:
-        return
-    pattern = f"%{escape_ilike(search)}%"
-    if con_descrizione:
-        conditions.append(f"({alias}.codice ILIKE %s OR {alias}.descrizione ILIKE %s)")
-        params.extend([pattern, pattern])
-    else:
-        conditions.append(f"{alias}.codice ILIKE %s")
-        params.append(pattern)
 
 
 # Scopo: Il filtro `attivo`: `None` = tutti.
@@ -276,7 +270,7 @@ class AnagraficheMagazzinoRepository:
         add_emittente_scope_condition(
             conditions, params, auth_user_id=auth_user_id, column="m.emittente_fiscale_id",
         )
-        _ricerca(conditions, params, "m", search)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_MAGAZZINI, alias="m")
         _filtro_attivo(conditions, params, "m", attivo)
         ordinamento = sql_order_clause(
             order_by, order_dir,
@@ -330,7 +324,7 @@ class AnagraficheMagazzinoRepository:
         guard_canale_sistema(f"{_FN}.list_ubicazioni")
         conditions: list[str] = ["u.magazzino_id = %s"]
         params: list[Any] = [int(magazzino_id)]
-        _ricerca(conditions, params, "u", search)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_UBICAZIONI, alias="u")
         _filtro_attivo(conditions, params, "u", attivo)
         if parent_id is not None:
             conditions.append("u.parent_id = %s")
@@ -396,7 +390,7 @@ class AnagraficheMagazzinoRepository:
     ) -> tuple[list[LottoRow], int]:
         conditions: list[str] = ["l.articolo_id = %s::uuid"]
         params: list[Any] = [str(articolo_id)]
-        _ricerca(conditions, params, "l", search, con_descrizione=False)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_LOTTI, alias="l")
         _filtro_attivo(conditions, params, "l", attivo)
         ordinamento = sql_order_clause(
             order_by, order_dir,

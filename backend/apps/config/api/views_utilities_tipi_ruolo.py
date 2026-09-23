@@ -27,6 +27,7 @@ from apps.core.api.payload_validators import (
     qp_int_optional,
 )
 from apps.core.api.success_responses import success_response
+from apps.core.api.openapi_params import param_ricerca_full
 
 
 # =================================================================
@@ -41,8 +42,7 @@ class UtilitiesTipiRuoloView(AdminAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False,
-                             description="Ricerca su codice/descrizione utility e tipo_ruolo."),
+            param_ricerca_full(min_caratteri=1),
             OpenApiParameter(name="attivo", type=bool, required=False),
             OpenApiParameter(name="utility_id", type=int, required=False),
             OpenApiParameter(name="tipo_ruolo_id", type=int, required=False),

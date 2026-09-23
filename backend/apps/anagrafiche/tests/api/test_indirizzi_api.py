@@ -100,9 +100,17 @@ class TestListIndirizziDettaglio(TestCase):
 
         from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
 
-        IndirizziRepository().list_indirizzi_dettaglio(search="Roma")
-        params = mc.execute.call_args[0][1]
-        self.assertEqual(params[0], "%Roma%")
+        # La lettura del catalogo e' del BB (`add_ricerca_full_condition`): qui
+        # si fissa cosa accende, e si guarda che il pattern arrivi alla SQL.
+        with patch(
+            "apps.core.db._helpers.colonne_ricerca_accese",
+            return_value=["indirizzo_normalizzato", "descrizione_comune"],
+        ):
+            IndirizziRepository().list_indirizzi_dettaglio(search="Roma")
+        sql, params = mc.execute.call_args[0]
+        self.assertIn("(vid.indirizzo_normalizzato)::text ILIKE %s", sql)
+        self.assertIn("(vid.descrizione_comune)::text ILIKE %s", sql)
+        self.assertEqual(params.count("%Roma%"), 2)
 
 
 class TestGetIndirizzoDettaglio(TestCase):

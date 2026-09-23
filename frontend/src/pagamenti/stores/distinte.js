@@ -24,10 +24,11 @@ import { listDistinte } from '../api/pagamenti'
 import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
 
 // Scopo: filtri dello store -> query param dell'endpoint.
-// Note: ⚠️ La `search` NON si inoltra: questa lista non ha ricerca testuale a
-//       contratto. Passarla sarebbe un parametro ignorato in silenzio —
-//       l'operatore digiterebbe e vedrebbe la lista intera, convinto di aver
-//       cercato. Per la stessa ragione il campo non e' montato nella pagina.
+// Note: ⚠️ La `search` NON si inoltra ANCORA: il backend la accetta dal
+//       2026-09-23 (brief-be-ricerca-full-liste-residue §5.3), ma il campo non
+//       e' montato nella pagina — arriva col pezzo condiviso che legge
+//       `ricerca_full` dalla configurazione della lista (passo 6), e allora
+//       si inoltra anche qui, nello stesso giro.
 function buildParams(f) {
   const p = paramsPagina(f)
   if (f.stato) p.stato = f.stato
@@ -61,8 +62,10 @@ export const useDistinteStore = defineStore(
 
     const filters = ref({
       ...FILTRI_DEFAULT,
-      // ⚠️ NON si inoltra al backend (questa lista non ha ricerca testuale), ma
-      // la chiave si DICHIARA: fa parte del contratto di `useSearchTable`, che
+      // ⚠️ NON si inoltra ANCORA al backend: l'endpoint cerca dal 2026-09-23
+      // (brief-be-ricerca-full-liste-residue §5.3), ma la casella si monta
+      // solo col pezzo condiviso che legge `ricerca_full` (passo 6). Fino ad
+      // allora la chiave si DICHIARA: fa parte del contratto di `useSearchTable`, che
       // la scrive su ricerca universale / deep-link `?search=` — e una chiave
       // che nasce per assegnazione e' una chiave che nessuno ha deciso.
       search: '',

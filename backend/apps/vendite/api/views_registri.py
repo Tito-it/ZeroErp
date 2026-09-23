@@ -49,6 +49,7 @@ from apps.vendite.services.registri_service import (
     E_VENDITE_VALIDATION,
     RegistriService,
 )
+from apps.core.api.openapi_params import param_ricerca_full
 
 _LISTA_CODICE = "vendite.registri_numerazione"
 
@@ -96,9 +97,7 @@ class ApiRegistriList(DomainAPIView):
                     "spiegano un rifiuto in creazione."
                 ),
             ),
-            OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY,
-                             required=False,
-                             description="Ricerca su codice, descrizione, prefisso."),
+            param_ricerca_full(min_caratteri=1),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY,
                              required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY,

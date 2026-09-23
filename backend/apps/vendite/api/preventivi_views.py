@@ -32,6 +32,7 @@ from apps.vendite.api.indirizzi_documento_views import (
 )
 from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import preventivi_service
+from apps.core.api.openapi_params import param_ricerca_full
 
 # Codice lista configurabile (catalogo ui.lista_definizione id=5). Usato
 # dall'export per risolvere colonne visibili/ordine/permessi dell'utente.
@@ -73,7 +74,7 @@ class ApiPreventiviList(DomainAPIView):
             OpenApiParameter(name="utility_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False, description="ISO date"),
             OpenApiParameter(name="data_al", type=str, required=False, description="ISO date"),
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(
                 name="solo_ultima_revisione", type=bool, required=False,
                 description="Default true: mostra solo l'ultima revisione per numero. "
@@ -177,7 +178,7 @@ class ApiPreventiviExportView(DomainAPIView):
         parameters=[
             OpenApiParameter(name="formato", type=str, required=False,
                              description="csv (default) | xlsx"),
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="stato", type=str, required=False),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="utility_id", type=int, required=False),

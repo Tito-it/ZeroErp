@@ -13,6 +13,7 @@ from typing import Any
 
 from apps.ai_assistant.services.user_context import get_emittente_fiscale_id
 from apps.ai_assistant.tools.base import AITool
+from apps.core.db._helpers import RICERCA_MIN_CARATTERI
 
 
 class CercaPraticheTool(AITool):
@@ -36,7 +37,7 @@ class CercaPraticheTool(AITool):
                 "properties": {
                     "search": {
                         "type": "string",
-                        "description": "Ricerca libera su codice, descrizione o nominativo soggetto",
+                        "description": f"Ricerca libera su codice, descrizione o nominativo soggetto (min {RICERCA_MIN_CARATTERI} caratteri).",
                     },
                     "stato": {
                         "type": "string",
@@ -87,7 +88,7 @@ class CercaPraticheTool(AITool):
         items, total = pratiche_service.cerca_pratiche(
             emittente_fiscale_id=get_emittente_fiscale_id(request),
             stato_codice_interno=params.get("stato"),
-            search=params.get("search"),
+            search=self.termine_ricerca(params),
             data_da=params.get("data_da"),
             data_a=params.get("data_a"),
             limit=self.safe_page_size(params),

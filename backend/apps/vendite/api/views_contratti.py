@@ -35,6 +35,7 @@ from apps.vendite.api.indirizzi_documento_views import (
 )
 from apps.vendite.services import contratti_service
 from apps.vendite.services.contratti_service import ContrattiService
+from apps.core.api.openapi_params import param_ricerca_full
 
 # Codice lista configurabile (ui.lista_definizione) per contratti.
 _LISTA_CODICE_CONTRATTI = "vendite.contratti"
@@ -115,7 +116,7 @@ class ApiContrattiExportView(DomainAPIView):
         parameters=[
             OpenApiParameter(name="formato", type=str, required=False,
                              description="csv (default) | xlsx"),
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="stato_doc_contratto_id", type=int, required=False),
             OpenApiParameter(name="utility_id", type=int, required=False),
@@ -193,8 +194,7 @@ class ApiContrattiList(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False,
-                             description="Ricerca su numero contratto e ragione sociale BA."),
+            param_ricerca_full(),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="stato_doc_contratto_id", type=int, required=False),
             OpenApiParameter(name="utility_id", type=int, required=False),

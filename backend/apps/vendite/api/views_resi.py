@@ -35,6 +35,7 @@ from apps.ui.api.export_helpers import build_export_response, parse_export_forma
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.api._list_filters_helpers import extract_doc_list_filters
 from apps.vendite.services import resi_service
+from apps.core.api.openapi_params import param_ricerca_full
 
 # Codici lista config (ui.lista_definizione) delle liste resi: guidano la
 # risoluzione colonne visibili/ordine/permessi dell'export (DEF-1).
@@ -81,7 +82,7 @@ class ApiResiList(DomainAPIView):
     @extend_schema(
         operation_id="vendite_resi_list",
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="stato_codice_interno", type=str, required=False,
                              description="codice_interno stato (DRAFT | CONFERMATO | ANNULLATO)"),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
@@ -139,7 +140,7 @@ class ApiResiExport(DomainAPIView):
         parameters=[
             OpenApiParameter(name="formato", type=str, required=False,
                              description="csv (default) | xlsx"),
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="stato_codice_interno", type=str, required=False),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False),
@@ -200,7 +201,7 @@ class ApiResiDaAccreditare(DomainAPIView):
     @extend_schema(
         operation_id="vendite_resi_da_accreditare",
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False),
             OpenApiParameter(name="data_a", type=str, required=False),
@@ -262,7 +263,7 @@ class ApiResiDaAccreditareExport(DomainAPIView):
         parameters=[
             OpenApiParameter(name="formato", type=str, required=False,
                              description="csv (default) | xlsx"),
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False),
             OpenApiParameter(name="data_a", type=str, required=False),
@@ -332,7 +333,7 @@ class ApiResiDaRiconsegnare(DomainAPIView):
     @extend_schema(
         operation_id="vendite_resi_da_riconsegnare",
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False),
             OpenApiParameter(name="data_a", type=str, required=False),
@@ -391,7 +392,7 @@ class ApiResiDaRiconsegnareExport(DomainAPIView):
         parameters=[
             OpenApiParameter(name="formato", type=str, required=False,
                              description="csv (default) | xlsx"),
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False),
             OpenApiParameter(name="data_a", type=str, required=False),

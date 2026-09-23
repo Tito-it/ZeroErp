@@ -143,10 +143,12 @@ class TestDistintaRigheExportApi(JwtMockedApiTest):
         mock_list.return_value = {"results": [{"importo": "500.00"}], "count": 1}
         self._mock_ui(mock_ui_svc, mock_ui_repo, mock_render_cls)
 
-        self.client.get(f"{_URL}?formato=csv&order_by=importo&order_dir=desc")
+        self.client.get(f"{_URL}?formato=csv&order_by=importo&order_dir=desc&search=rossi")
 
+        # La ricerca a video vale anche per il file: il file segue la videata.
         mock_list.assert_called_once_with(
             7,
+            search="rossi",
             limit=EXPORT_MAX_ROWS + 1,
             offset=0,
             order_by="importo",
@@ -161,11 +163,11 @@ class TestDistintaRigheExportApi(JwtMockedApiTest):
     def test_lista_passa_pagina_e_ordinamento_grezzi(self, mock_list, _auth) -> None:
         mock_list.return_value = {"results": [], "count": 0}
         resp = self.client.get(
-            f"{_URL_LISTA}?limit=10&offset=20&order_by=data_pagamento&order_dir=desc"
+            f"{_URL_LISTA}?limit=10&offset=20&order_by=data_pagamento&order_dir=desc&search=rossi"
         )
         self.assertEqual(resp.status_code, 200)
         mock_list.assert_called_once_with(
-            7, limit=10, offset=20, order_by="data_pagamento", order_dir="desc",
+            7, search="rossi", limit=10, offset=20, order_by="data_pagamento", order_dir="desc",
             scartate=False,
         )
 

@@ -86,7 +86,8 @@ sistema o sul catalogo grezzo.
     "ordinamento": [{"col": "ragione_sociale", "dir": "asc"}],
     "filtri": {"attivo": true},
     "pagina_dimensione": 25,
-    "colonne_nuove": 0
+    "colonne_nuove": 0,
+    "ricerca_full": true
   },
   "meta": {"request_id": "..."}
 }
@@ -116,6 +117,15 @@ Campi top-level:
 - `ordinamento` / `filtri` / `pagina_dimensione` — stato derivato dalla
   cascata (preferenza > preset di ruolo > preset di emittente > preset
   di sistema > default `pagina_dimensione=25`)
+- `ricerca_full` — `true` se la lista ha, **per l'utente corrente**, almeno
+  una colonna in cui la ricerca libera cerca (`ricercabile_full = t`,
+  attiva, non `BLOCCATO` per i permessi di colonna). Il frontend mostra la
+  casella di ricerca **solo** se e' vera: una casella senza colonne accese non
+  troverebbe niente. Letta da `ui.fn_lista_colonne_ricerca_full`, la stessa
+  sede del BB `add_ricerca_full_condition` (dal 2026-09-23,
+  brief-be-ricerca-full-liste-residue §7-bis). ⚠️ Solo in questo endpoint
+  (`UiService.get_lista_config_per_video`): la configurazione che leggono
+  l'export e la modale di personalizzazione non la porta, e non paga la query
 
 Errori:
 

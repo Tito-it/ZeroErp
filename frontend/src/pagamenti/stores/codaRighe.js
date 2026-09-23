@@ -54,8 +54,10 @@ export const useCodaRigheStore = defineStore(
 
     const filters = ref({
       ...FILTRI_DEFAULT,
-      // ⚠️ NON si inoltra al backend (questa lista non ha ricerca testuale), ma
-      // la chiave si DICHIARA: fa parte del contratto di `useSearchTable`, che
+      // ⚠️ NON si inoltra ANCORA al backend: l'endpoint cerca dal 2026-09-23
+      // (brief-be-ricerca-full-liste-residue §5.3), ma la casella si monta
+      // solo col pezzo condiviso che legge `ricerca_full` (passo 6). Fino ad
+      // allora la chiave si DICHIARA: fa parte del contratto di `useSearchTable`, che
       // la scrive su ricerca universale / deep-link `?search=` — e una chiave
       // che nasce per assegnazione e' una chiave che nessuno ha deciso.
       search: '',

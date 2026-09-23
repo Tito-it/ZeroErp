@@ -13,6 +13,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serial
 from rest_framework import serializers
 from rest_framework.request import Request
 
+from apps.core.api.openapi_params import param_ricerca_full
 from apps.amm_software.constants import DEFAULT_LIMIT, MAX_LIMIT
 
 from apps.core.api.base_views import AdminAPIView
@@ -341,7 +342,7 @@ class ProcessiListView(AdminAPIView):
             OpenApiParameter(name="classe", type=str, required=False),
             OpenApiParameter(name="canale", type=str, required=False),
             OpenApiParameter(name="attivo", type=bool, required=False),
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(min_caratteri=1),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
             OpenApiParameter(name="order_by", type=str, required=False),

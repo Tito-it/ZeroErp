@@ -38,6 +38,7 @@ from apps.vendite.api.indirizzi_documento_views import (
 )
 from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import ddt_service
+from apps.core.api.openapi_params import param_ricerca_full
 
 # Codice lista (ui.lista_definizione) usato dall'export per risolvere
 # colonne visibili/ordine/permessi dell'utente.
@@ -54,7 +55,7 @@ class ApiDdtList(DomainAPIView):
     @extend_schema(
         operation_id="vendite_ddt_list",
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="stato_codice_interno", type=str, required=False,
                              description="codice_interno stato (DRAFT | EMESSO | SPEDITO | ...)"),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
@@ -112,7 +113,7 @@ class ApiDdtExportView(DomainAPIView):
         parameters=[
             OpenApiParameter(name="formato", type=str, required=False,
                              description="csv (default) | xlsx"),
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="stato_codice_interno", type=str, required=False),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="utility_id", type=int, required=False),

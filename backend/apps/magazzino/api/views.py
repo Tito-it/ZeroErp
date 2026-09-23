@@ -60,6 +60,7 @@ from apps.magazzino.db.magazzino_repository import (
 from apps.magazzino.services import consultazione_service, magazzino_service
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.core.api.openapi_params import param_ricerca_full
 
 # `AREA`, `RISPOSTA_GENERICA`, `params_lista`, `PARAM_FORMATO`, `RISPOSTE_EXPORT`
 # e `filtri_label` vivono in `api/_comuni.py` dal 2026-09-21 (seconda
@@ -74,6 +75,14 @@ from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 # ⭐ Una sola azione per la famiglia (inventari e rettifiche): il verbo e'
 #    lo stesso e la matrice e' la stessa.
 PERMESSO_REGISTRA = "registra_magazzino"
+
+
+# La ricerca libera delle liste di riga, del piano e del registro (dal
+# 2026-09-23, brief-be-ricerca-full-liste-residue §5.3): nessun 400 sotto soglia
+# (la soglia delle liste non di configurazione e' la decisione aperta di §6).
+# Testate e disponibilita' rispondono invece 400 (`require_min_search_length`).
+_PARAM_SEARCH = param_ricerca_full()
+_PARAM_SEARCH_MIN = param_ricerca_full(rifiuta_sotto_soglia=True)
 
 
 # Scopo: i filtri della lista delle testate, letti dalla query string.
@@ -118,10 +127,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
                 ),
                 OpenApiParameter(name="data_da", type=str, location=OpenApiParameter.QUERY, required=False),
                 OpenApiParameter(name="data_a", type=str, location=OpenApiParameter.QUERY, required=False),
-                OpenApiParameter(
-                    name="search", type=str, location=OpenApiParameter.QUERY, required=False,
-                    description="Ricerca libera (min 3) su descrizione e magazzino.",
-                ),
+                _PARAM_SEARCH_MIN,
                 *params_lista(DOCUMENTI_SORT_COLUMNS, "Senza: data DESC, id DESC."),
             ],
             responses={200: RISPOSTA_GENERICA},
@@ -286,11 +292,12 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
 
     class _Righe(DomainAPIView):
         area_funzionale = AREA
+        is_search_endpoint = True
         lista_codice = f.lista_righe_codice
 
         @extend_schema(
             operation_id=f"magazzino_{op}_righe_list",
-            parameters=params_lista(righe_sort_columns(f), "Senza: id ASC (l'ordine di digitazione)."),
+            parameters=[_PARAM_SEARCH, *params_lista(righe_sort_columns(f), "Senza: id ASC (l'ordine di digitazione).")],
             responses={200: RISPOSTA_GENERICA},
         )
         # Scopo: Le righe della testata, paginate.
@@ -299,6 +306,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
             p = parse_list_params(qp)
             return success_response(magazzino_service.list_righe(
                 codice, doc_id,
+                search=qp_str(qp.get("search")),
                 order_by=qp_str(qp.get("order_by")),
                 order_dir=qp_str(qp.get("order_dir")),
                 limit=p["limit"], offset=p["offset"],
@@ -335,7 +343,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
 
         @extend_schema(
             operation_id=f"magazzino_{op}_righe_export",
-            parameters=[PARAM_FORMATO, *params_lista(righe_sort_columns(f), "")],
+            parameters=[PARAM_FORMATO, _PARAM_SEARCH, *params_lista(righe_sort_columns(f), "")],
             responses=RISPOSTE_EXPORT,
         )
         # Scopo: Il file delle righe di UN documento.
@@ -344,6 +352,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
             qp = request.query_params
             dati = magazzino_service.list_righe(
                 codice, doc_id,
+                search=qp_str(qp.get("search")),
                 order_by=qp_str(qp.get("order_by")),
                 order_dir=qp_str(qp.get("order_dir")),
                 limit=EXPORT_MAX_ROWS + 1, offset=0,
@@ -409,11 +418,12 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
     if f.ha_piano:
         class _Piano(DomainAPIView):
             area_funzionale = AREA
+            is_search_endpoint = True
             lista_codice = "magazzino.inventario_piano"
 
             @extend_schema(
                 operation_id=f"magazzino_{op}_piano",
-                parameters=params_lista(PIANO_SORT_COLUMNS, "Senza: articolo, poi la posizione."),
+                parameters=[_PARAM_SEARCH, *params_lista(PIANO_SORT_COLUMNS, "Senza: articolo, poi la posizione.")],
                 responses={200: RISPOSTA_GENERICA},
             )
             # Scopo: Il piano dell'inventario: che cosa il posting scrivera'.
@@ -422,6 +432,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
                 p = parse_list_params(qp)
                 return success_response(magazzino_service.list_piano(
                     codice, doc_id,
+                    search=qp_str(qp.get("search")),
                     order_by=qp_str(qp.get("order_by")),
                     order_dir=qp_str(qp.get("order_dir")),
                     limit=p["limit"], offset=p["offset"],
@@ -433,7 +444,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
 
             @extend_schema(
                 operation_id=f"magazzino_{op}_piano_export",
-                parameters=[PARAM_FORMATO, *params_lista(PIANO_SORT_COLUMNS, "")],
+                parameters=[PARAM_FORMATO, _PARAM_SEARCH, *params_lista(PIANO_SORT_COLUMNS, "")],
                 responses=RISPOSTE_EXPORT,
             )
             # Scopo: Il file del piano.
@@ -442,6 +453,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
                 qp = request.query_params
                 dati = magazzino_service.list_piano(
                     codice, doc_id,
+                    search=qp_str(qp.get("search")),
                     order_by=qp_str(qp.get("order_by")),
                     order_dir=qp_str(qp.get("order_dir")),
                     limit=EXPORT_MAX_ROWS + 1, offset=0,
@@ -628,10 +640,7 @@ _PARAMS_DISPONIBILITA = [
         description="Solo disponibile < 0: le promesse non piu' mantenibili (D-L2-d).",
     ),
     OpenApiParameter(name="solo_con_giacenza", type=bool, location=OpenApiParameter.QUERY, required=False),
-    OpenApiParameter(
-        name="search", type=str, location=OpenApiParameter.QUERY, required=False,
-        description="Ricerca libera (min 3) su codice e descrizione dell'articolo.",
-    ),
+    _PARAM_SEARCH_MIN,
 ]
 
 
@@ -777,6 +786,7 @@ def _filtri_movimenti(qp) -> dict:
         "sorgente_codice_interno": qp_str_upper(qp.get("sorgente_tipo")),
         "inventario_id": qp_int_optional(qp.get("inventario_id"), "inventario_id"),
         "rettifica_id": qp_int_optional(qp.get("rettifica_id"), "rettifica_id"),
+        "search": qp_str(qp.get("search")),
     }
 
 
@@ -798,6 +808,7 @@ _PARAMS_MOVIMENTI = [
         description="I movimenti nati dalle righe di QUESTO inventario (deep-link dal documento POSTED).",
     ),
     OpenApiParameter(name="rettifica_id", type=int, location=OpenApiParameter.QUERY, required=False),
+    _PARAM_SEARCH,
 ]
 
 

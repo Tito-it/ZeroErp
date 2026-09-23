@@ -256,3 +256,50 @@ def valori_check(tabella: str, conname: str) -> set[str]:
     valori = set(_CHECK_LITERAL_RE.findall(blocco.group(1)))
     assert valori, f"CHECK {conname} senza letterali interpretabili: {definizione}"
     return valori
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  LA RICERCA LIBERA — ogni colonna accesa trova la sua riga
+# ══════════════════════════════════════════════════════════════════════
+#
+# ⭐ Regola del 2 (ok di Tid, 2026-09-23): nato nel test delle anagrafiche di
+#    magazzino, alla seconda lista che voleva la stessa prova. E' la prova di
+#    brief-be-ricerca-full-liste-residue §5.4 p.3, resa permanente: i test di
+#    servizio mockano il repository e non vedono la SQL, `EXPLAIN` dice che la
+#    SQL parte ma non che TROVA.
+#
+# ⚠️ Le colonne si leggono dal CATALOGO per l'operatore corrente
+#    (`ui.fn_lista_colonne_ricerca_full`), non dal test: una colonna accesa
+#    domani senza un valore qui fa rosso, invece di restare non provata.
+
+# Scopo: per ogni colonna che il catalogo accende nella lista, `cerca(valore)`
+#        deve restituire la riga `riga_id`; un termine che non c'e' da nessuna
+#        parte non restituisce niente.
+# Param: `valori` = `campo_sorgente -> termine` che sta in quella colonna della
+#        riga; `cerca(termine)` torna le righe della lista (dict); `chiave` e' il
+#        campo della riga che porta l'id.
+# ⚠️ Va chiamata DENTRO la transazione del contesto: senza, il catalogo si legge
+#    senza operatore e i permessi di colonna non si applicano.
+def verifica_ricerca_colonna_per_colonna(
+    test: unittest.TestCase,
+    cur,
+    lista: str,
+    riga_id: object,
+    valori: dict[str, str],
+    cerca,
+    *,
+    chiave: str = "id",
+) -> None:
+    cur.execute("SELECT campo_sorgente FROM ui.fn_lista_colonne_ricerca_full(%s)", [lista])
+    accese = {r[0] for r in cur.fetchall()}
+    test.assertTrue(accese, f"{lista}: nessuna colonna accesa per l'operatore")
+    test.assertFalse(
+        accese - valori.keys(),
+        f"{lista}: colonne accese senza un valore da cercare: {sorted(accese - valori.keys())}",
+    )
+    for col in sorted(accese):
+        with test.subTest(lista=lista, colonna=col):
+            ids = [r[chiave] for r in cerca(valori[col])]
+            test.assertIn(riga_id, ids)
+    with test.subTest(lista=lista, colonna=None):
+        test.assertEqual(list(cerca("zzznessunoqui")), [])

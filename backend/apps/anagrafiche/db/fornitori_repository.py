@@ -14,7 +14,13 @@ from typing import Any
 from django.db import connection
 
 from apps.anagrafiche.db._helpers import get_or_create_soggetto_ruolo
-from apps.core.db._helpers import sql_order_clause, extract_paginated, row_to_dict
+from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
+    extract_paginated,
+    row_to_dict,
+    sql_order_clause,
+)
 
 
 # Whitelist colonne ammesse per ORDER BY: chiave = `campo_sorgente` del catalogo
@@ -35,6 +41,14 @@ _FORNITORI_ORDER_COLS: dict[str, str] = {
     "data_insert": "v.data_insert",
     "data_update": "v.data_update",
 }
+
+
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+# ⭐ L'id fiscale univoco e non CF e P.IVA separati (Tid, 2026-09-23): come le
+#    liste di vendite.
+_RICERCA_FORNITORI = RicercaFull(
+    "anagrafiche.fornitori", ("codice", "ragione_sociale_completa", "id_fiscale_univoco_cf_piva"),
+)
 
 
 class FornitoriRepository:
@@ -107,7 +121,12 @@ class FornitoriRepository:
             default=_FORNITORI_ORDER_COLS["ragione_sociale_completa"],
             tiebreak="v.id",
         )
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        conditions: list[str] = [
+            "(%s::integer IS NULL OR v.stato_fornitore_id = %s)",
+            "(%s::boolean IS NULL OR v.attivo = %s)",
+        ]
+        params: list[Any] = [stato_fornitore_id, stato_fornitore_id, attivo, attivo]
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_FORNITORI, alias="v")
         sql = f"""
             SELECT v.id,
                    v.soggetto_ruolo_id,
@@ -139,24 +158,11 @@ class FornitoriRepository:
                    v.data_update,
                    COUNT(*) OVER () AS total_count
               FROM anagrafiche.vw_fornitori_dettaglio v
-             WHERE (%s::text IS NULL OR (
-                       v.ragione_sociale_completa ILIKE %s
-                    OR v.codice_fiscale ILIKE %s
-                    OR v.partita_iva ILIKE %s
-                    OR v.codice ILIKE %s
-                   ))
-               AND (%s::integer IS NULL OR v.stato_fornitore_id = %s)
-               AND (%s::boolean IS NULL OR v.attivo = %s)
+             WHERE {" AND ".join(conditions)}
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
-        params: list[Any] = [
-            search_pattern, search_pattern, search_pattern,
-            search_pattern, search_pattern,
-            stato_fornitore_id, stato_fornitore_id,
-            attivo, attivo,
-            limit, offset,
-        ]
+        params.extend([limit, offset])
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return extract_paginated(cursor)

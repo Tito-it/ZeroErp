@@ -7,6 +7,8 @@
 #          con derivazione automatica `emittente_fiscale_id` (1:1
 #          operatore->emittente via PermissionResolver) e traduzione
 #          DatabaseError P0001 in ServiceError.
+#        - get_lista_config_per_video(): la stessa, piu' cio' che serve
+#          solo alla schermata (`ricerca_full`, la casella di ricerca).
 #        - get_catalogo(): catalogo colonne per la modale di
 #          personalizzazione (filtra colonne BLOCCATE riusando
 #          get_lista_config — single source of truth permessi).
@@ -122,6 +124,31 @@ class UiService:
             cache=self._perm_cache,
         )
 
+        return config
+
+    # Scopo: La configurazione della lista per la SCHERMATA che la mostra
+    #        (`GET /ui/liste/<codice>/config`): quella di `get_lista_config`
+    #        piu' cio' che serve solo a video.
+    # ⭐ `ricerca_full` (chiave ADDITIVA): la lista ha, per QUESTO utente,
+    #    almeno una colonna in cui la ricerca libera cerca. Il frontend mostra
+    #    la casella di ricerca solo se e' vera (Tid, 2026-09-23 — brief-be-
+    #    ricerca-full-liste-residue §7-bis): una casella senza colonne accese
+    #    non trova niente per costruzione (il BB mette `FALSE`). La lettura e'
+    #    la stessa del BB (`colonne_ricerca_accese`): una seconda sede della
+    #    stessa verita' sarebbe la duplicazione che poi diverge.
+    # ⚠️ Qui e NON in `get_lista_config` (Tid, 2026-09-24): quella la leggono
+    #    anche l'export (`export_helpers`) e la modale (`get_catalogo`), che
+    #    la casella non la mostrano e pagherebbero una query per niente.
+    def get_lista_config_per_video(
+        self,
+        user: Any,
+        lista_codice: str,
+        emittente_esplicito: Any = None,
+    ) -> dict[str, Any]:
+        config = self.get_lista_config(
+            user, lista_codice, emittente_esplicito=emittente_esplicito,
+        )
+        config["ricerca_full"] = self._repo.ha_ricerca_full(lista_codice)
         return config
 
     # Scopo: Catalogo colonne per la modale di personalizzazione.
