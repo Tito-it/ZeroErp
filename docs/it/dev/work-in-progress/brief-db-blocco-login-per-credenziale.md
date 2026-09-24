@@ -15,7 +15,14 @@
 >   `identita_digitali`;
 > - **D-2** — un **reset password riuscito sblocca** la credenziale;
 > - **D-7** — il **cambio password obbligatorio** (`deve_cambiare_password`) è
->   della credenziale, nella stessa sede.
+>   della credenziale, nella stessa sede;
+> - **D-6** — **una persona, una credenziale**: la creazione dell'operatore
+>   riusa la credenziale esistente per email, come già fa l'invito portale/shop;
+> - **D-9** — portale e shop si entra con l'**email** (l'operatore col nome
+>   utente): l'email diventa una chiave, quindi **unica senza distinguere
+>   maiuscole e minuscole**;
+> - **D-10** — `totp_obbligatorio` esce dalla veste (nessuno lo legge); il
+>   TOTP, quando si farà, sarà della credenziale.
 >
 > Il perché, sul modello: la password è **una** e vive su `auth_user`, vale per
 > tutte le porte (operatore, portale, shop). Chi prova password la sta provando
@@ -72,8 +79,9 @@ forma chiede anche di chiudere la seconda strada (o un trigger su
 trattare l'assenza. Qualunque sia la scelta, il valore dell'assenza va
 dichiarato in un posto solo.
 
-**Nello stesso giro**: `tentativi_falliti`, `bloccato_fino_a` e
-`deve_cambiare_password` **escono** da `anagrafiche.identita_digitali` (non c'è
+**Nello stesso giro**: `tentativi_falliti`, `bloccato_fino_a`,
+`deve_cambiare_password` **e `totp_obbligatorio`** (D-10) **escono** da
+`anagrafiche.identita_digitali` (non c'è
 produzione; nessuna doppia sede nemmeno per un giorno).
 
 Migrazione dei valori (dati di sviluppo): `deve_cambiare_password` della
@@ -106,6 +114,26 @@ tentativo di login, e il nome mentirebbe nel giornale.
 `script.fn_get_user_profile` e `script.fn_get_operatore_detail` leggono
 `deve_cambiare_password` dalla nuova sede (nome del campo in uscita invariato).
 
+### 2.5 L'email della credenziale è unica (D-9, D-6)
+
+Un vincolo su `django.auth_user`: **nessuna coppia di credenziali con la stessa
+email, a meno delle maiuscole** (`lower(email)`), per le email valorizzate.
+L'email diventa la chiave d'ingresso di portale e shop: due credenziali con la
+stessa email renderebbero ambiguo il login e il reset. ⚠️ Prima del vincolo, un
+controllo sui dati di sviluppo per le eventuali coppie esistenti (da sistemare a
+mano, non con codice).
+
+### 2.6 La creazione dell'operatore riusa la credenziale (D-6)
+
+Oggi `anagrafiche.fn_crea_auth_user` rifiuta un'email già presente
+(`E_ADMIN_EMAIL_DUPLICATA`) **con un confronto che distingue le maiuscole**,
+mentre l'invito portale/shop cerca la credenziale con `LOWER(email)` e la
+riusa. ⇒ Una persona che è prima cliente e poi operatore oggi finisce con due
+credenziali. Si chiede che la strada di creazione dell'operatore (la madre
+che la chiama) **riusi** la credenziale esistente per email, senza toccarne la
+password, e aggiunga la veste OPERATORE **non attiva** — la accende l'invito
+(regola unica, analisi §4.2). La forma della madre la sceglie il team DB.
+
 ---
 
 ## 3. Test (pgTAP) — casi costruiti, non popolazione
@@ -119,7 +147,11 @@ tentativo di login, e il nome mentirebbe nel giornale.
 5. successo → contatore azzerato;
 6. verbo di sblocco (D-2) → contatore e blocco azzerati;
 7. `deve_cambiare_password` letto da `fn_get_user_profile` dalla nuova sede;
-8. le tre colonne **non** esistono più su `identita_digitali`.
+8. le quattro colonne **non** esistono più su `identita_digitali`;
+9. due credenziali con `Mario@x.it` e `mario@x.it`: la seconda è rifiutata;
+10. creazione di un operatore su un'email che ha già una credenziale (cliente
+    portale): nessuna credenziale nuova, password invariata, veste OPERATORE
+    aggiunta non attiva.
 
 ---
 
