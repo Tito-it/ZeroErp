@@ -517,7 +517,7 @@ Nessun fallback silenzioso. Ogni scenario non risolvibile produce un errore stru
 | `E_PREZZO_OVERRIDE_NON_AUTORIZZATO`       | L1: override prezzo non autorizzato                                                                                                        |
 | `E_VENDITE_PRICING_FAILED`                | Errore generico pricing (envelope, dettaglio in `detail`)                                                                                  |
 | `E_BOM_MODIFICA_VIETATA`                  | Tentata modifica/eliminazione campo struttura BoM. Risolvere con pattern chiudi+inserisci nuova versione (vedi §5.3)                       |
-| `E_BOM_VALIDO_AL_INVALIDO`                | Tentata chiusura riga BoM con `valido_al < valido_dal`                                                                                     |
+| `E_DATA_AL_MINORE_DAL`                    | Tentata chiusura riga BoM con `valido_al < valido_dal` (guard comune delle date, come su ogni periodo di validità)                        |
 | `E_PREVENTIVO_RIGHE_PRICING_PENDENTI`     | Tentata accettazione preventivo con righe in attesa di approvazione (L3)                                                                   |
 | `E_RIGA_PREZZO_PENDENTE`                  | Tentata modifica struttura riga in stato `stato_approvazione_prezzo='PENDING'`                                                             |
 | `E_APPROVAZIONE_PREZZO_NON_AMMESSA`       | Tentata approva/rifiuta su riga non PENDING o senza pratica collegata; oppure coda approvazioni richiesta da admin globale senza emittente |

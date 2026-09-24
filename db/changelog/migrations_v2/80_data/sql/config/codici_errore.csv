@@ -75,11 +75,11 @@ E_BA_ADMIN_GLOBALE_VIETATO,NON_PERMESSO,NULL,NULL
 E_BA_SOGGETTO_INCOERENTE_ISTANZA,DATO_ERRATO,NULL,NULL
 E_BILLING_ACCOUNT_UTILITY_NULL,DATO_ERRATO,NULL,NULL
 E_BOM_IVA_DISCORDANTE,DATO_ERRATO,NULL,NULL
-E_BOM_MODIFICA_VIETATA,CONFLITTO_STATO,NULL,E_BOM_MODIFICA_VIETATA e E_BOM_VALIDO_AL_INVALIDO sono sollevati · dal trigger catalogo.trgfn_articoli_componenti_block_modifica_struttura · come defense-in-depth oltre lo schema (pattern chiudi+inserisci).
+E_BOM_MODIFICA_VIETATA,CONFLITTO_STATO,NULL,E_BOM_MODIFICA_VIETATA è sollevato · dal trigger catalogo.trgfn_articoli_componenti_block_modifica_struttura · come defense-in-depth oltre lo schema (pattern chiudi+inserisci). L'ordine delle date lo giudica il guard comune (E_DATA_AL_MINORE_DAL).
 E_BOM_PRODOTTO_MISMATCH,DATO_ERRATO,2026-08-07,NULL
 E_BOM_RIGA_NOT_FOUND,NON_TROVATO,2026-08-07,"Due punti: parametro NULL e IF NOT FOUND. Denominatore sicuro NON_TROVATO: il ramo NULL e un guard sul chiamante, non arriva da chi usa il programma."
 E_BOM_SORGENTE_GIA_CHIUSA,CONFLITTO_STATO,2026-08-07,NULL
-E_BOM_VALIDO_AL_INVALIDO,DATO_ERRATO,NULL,NULL
+E_BOM_VALIDO_AL_INVALIDO,DATO_ERRATO,2026-09-24,"Ritirato il 2026-09-24 (brief-db-guard-date-validita §13, 20260924-01): lo sollevava solo catalogo.trgfn_articoli_componenti_block_modifica_struttura, su UPDATE di valido_al, ed era una copia della regola del periodo (valido_dal su quella tabella è immutabile). La regola ha una sede sola, script.trgfn_guard_date_validita, con E_DATA_AL_MINORE_DAL."
 E_BOM_VERSIONE_OVERLAP,CONFLITTO_STATO,2026-08-07,NULL
 E_CANALE_ORIGINE_IMMUTABILE,CONFLITTO_STATO,NULL,NULL
 E_CATALOGO_ARTICOLO_NOT_FOUND,NON_TROVATO,NULL,NULL

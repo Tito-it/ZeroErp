@@ -18,7 +18,10 @@ AS $function$
 -- Regole:
 --   - la versione target deve esistere ed essere BOZZA;
 --   - p_valido_dal e' obbligatorio;
---   - p_valido_al, se valorizzato, non puo' precedere p_valido_dal;
+--   - l'ordine delle date (p_valido_al non precede p_valido_dal) NON si
+--     giudica qui: lo giudica il guard comune script.trgfn_guard_date_validita
+--     sull'UPDATE della versione (rev 20260924-02: ritirata la copia sui
+--     parametri, che rispondeva con E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO);
 --   - prima della pubblicazione vengono rese OBSOLETE e chiuse a
 --     p_valido_dal - 1 le versioni PUBBLICATE attive dello stesso
 --     template con valido_dal < p_valido_dal e intervallo sovrapposto;
@@ -27,7 +30,9 @@ AS $function$
 DECLARE
     v_template_id  documenti.template_documenti_versioni.template_documento_id%TYPE;
     v_stato        documenti.template_documenti_versioni.stato%TYPE;
+    -- id di documenti.template_documenti_versioni: %TYPE[] non e' sintassi valida
     v_closed_ids   bigint[] := ARRAY[]::bigint[];
+    -- un conteggio: nessuna colonna di cui sia il riflesso
     v_closed_count integer  := 0;
 BEGIN
     IF p_versione_id IS NULL OR p_versione_id <= 0 THEN
@@ -49,22 +54,6 @@ BEGIN
             jsonb_build_object('campo', 'valido_dal', 'versione_id', p_versione_id),
             NULL::uuid,
             'valido_dal e'' obbligatorio'
-        );
-    END IF;
-
-    IF p_valido_al IS NOT NULL AND p_valido_al < p_valido_dal THEN
-        PERFORM script.fn_log_and_raise_error(
-            'documenti',
-            'fn_pubblica_template_documento_versione',
-            'E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO',
-            jsonb_build_object(
-                'campo', 'valido_al',
-                'versione_id', p_versione_id,
-                'valido_dal',  p_valido_dal,
-                'valido_al',   p_valido_al
-            ),
-            NULL::uuid,
-            'valido_al non puo'' precedere valido_dal'
         );
     END IF;
 
@@ -117,11 +106,14 @@ BEGIN
              AND v.stato = 'PUBBLICATA'
              AND v.attivo IS TRUE
              AND v.valido_dal < p_valido_dal
-             AND v.validita && daterange(
-                     p_valido_dal,
-                     COALESCE(p_valido_al, 'infinity'::date),
-                     '[]'
-                 )
+             -- ⚠️ rev 20260924-02: la finestra nuova e' [p_valido_dal, oltre).
+             --   Una versione che parte PRIMA di p_valido_dal si sovrappone
+             --   alla nuova se e solo se e' ancora aperta a p_valido_dal:
+             --   p_valido_al non conta. Prima qui si costruiva
+             --   daterange(p_valido_dal, p_valido_al): con le date invertite
+             --   sollevava 22000 (limite inferiore > superiore) PRIMA che
+             --   l'UPDATE incontrasse il guard comune delle date.
+             AND v.validita && daterange(p_valido_dal, NULL, '[)')
            ORDER BY v.valido_dal, v.id
            FOR UPDATE
       ) c;
@@ -171,7 +163,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION documenti.fn_pubblica_template_documento_versione(p_versione_id bigint, p_valido_dal date, p_valido_al date)
-IS 'Pubblica una versione template documento con auto-close atomico delle versioni PUBBLICATE precedenti sovrapposte.';
+IS 'Pubblica una versione template documento con auto-close atomico delle versioni PUBBLICATE precedenti sovrapposte. Rev 20260924-02: l''ordine delle date non e'' piu'' giudicato sui parametri: lo giudica il guard comune script.trgfn_guard_date_validita sull''UPDATE della versione (E_DATA_AL_MINORE_DAL).';
 ```
 
 ---

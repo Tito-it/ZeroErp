@@ -68,7 +68,7 @@ RADICE = pathlib.Path(__file__).resolve().parent.parent / "db" / "pgtap"
 #   discriminante con uno impossibile e leggere dal messaggio di pgTAP lo
 #   SQLSTATE vero. Dettaglio in D11 di
 #   docs/it/dev/work-in-progress/migliorie-generali-da-test-valutazione.md.
-SOGLIA_THROWS_SENZA_DISCRIMINANTE = 119
+SOGLIA_THROWS_SENZA_DISCRIMINANTE = 118
 
 RX_BEGIN = re.compile(r"^\s*BEGIN\s*;", re.M)
 RX_SETC = re.compile(r"SET\s+CONSTRAINTS\s+ALL\s+IMMEDIATE", re.I)

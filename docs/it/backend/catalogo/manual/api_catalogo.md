@@ -804,9 +804,9 @@ permesso di **livello oggetto** sui rispettivi modelli.
 ### Codici errore (400 VALIDATION)
 
 - `E_CATALOGO_VALIDATION` (catch-all dominio)
-- `E_BOM_VALIDO_AL_INVALIDO` (Fase 3 — propagato dal trigger
-  `trgfn_articoli_componenti_block_modifica_struttura` quando
-  `chiudi_al < valido_dal`)
+- `E_DATA_AL_MINORE_DAL` (propagato dal guard comune delle date
+  `script.trgfn_guard_date_validita` quando `chiudi_al < valido_dal`;
+  fino al 2026-09-24 rispondeva `E_BOM_VALIDO_AL_INVALIDO`, ora ritirato)
 - `E_BOM_PRODOTTO_MISMATCH` (Fase 3 — la riga sorgente non appartiene
   all'articolo target: FE stale)
 
