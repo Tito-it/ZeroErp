@@ -38,7 +38,7 @@
 > `9100` (`-10`, ✅ applicato). Il `CHECK` sulle date che oggi non parla (§11 —
 > non è inutile, il difetto è la frase che legge l'operatore) ha ora un brief
 > suo, in riflessione:
-> [brief-db-guard-date-validita.md](../work-in-progress/brief-db-guard-date-validita.md).
+> [brief-db-guard-date-validita.md](brief-db-guard-date-validita.md).
 >
 > ✅ **23-09 sera — seconda ondata della maschera caduta, sanata**: nove file
 > che contavano sulla finestra differita di default (otto senza nessun
@@ -794,7 +794,7 @@ sede è un indice unico parziale su `tipo`: decisione a parte.
 ### ⛔ La maschera caduta, seconda ondata: nove file contavano sulla finestra di default
 
 **Il fatto (2026-09-23 sera).** Dopo l'apply del giro delle date
-([brief-db-guard-date-validita.md](../work-in-progress/brief-db-guard-date-validita.md)) la corsa
+([brief-db-guard-date-validita.md](brief-db-guard-date-validita.md)) la corsa
 sullo scratch `zeroerp_ci` **ricostruito alle 17:06** ha dato nove rossi che la
 CI non conosce. ⚠️ **Non vengono dal giro delle date**: il guard `a10` non può
 sollevare nessuna delle tre frasi, e nessuno dei nove file è stato toccato

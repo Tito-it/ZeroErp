@@ -19,7 +19,7 @@
 > la domanda del §10.
 >
 > 🔢 **Progressivi riservati: `20260924-20` … `-39`.** `-01…-19` restano al
-> §13 di [brief-db-guard-date-validita.md](brief-db-guard-date-validita.md)
+> §13 di [brief-db-guard-date-validita.md](../work-done/brief-db-guard-date-validita.md)
 > (due copie da ritirare, ancora da numerare). Il numero si riverifica con
 > `find` prima di salvare ogni file.
 >
