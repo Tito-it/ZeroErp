@@ -225,6 +225,17 @@ I codici nuovi entrano in `codici_errore.csv` e `messaggi_errore.csv`, con la
 categoria scelta sulla tassonomia esistente (per l'attesa, se c'è, quella del
 «troppe richieste»).
 
+⚠️ **Nota del backend (2026-09-24): per l'attesa NON un 429.** Due fatti,
+verificati: (1) fra le dieci classi del catalogo **non ce n'è una** «troppe
+richieste» (`error_policies.py`: 400, 409, 404, 500, 403, 422, 501, 401, 502 e
+`AVVISO`); (2) il login del frontend (`LoginView.resolveLoginError`) intercetta
+il **429 prima di leggere il codice** — è il throttle per IP — e mostrerebbe
+«troppi tentativi» perdendo i secondi d'attesa. È la stessa trappola per cui
+`E_UTENTE_BLOCCATO` è passato da 423 a **403** e non a 429 (api.md, «I tre
+status con un solo uso»). ⇒ **`E_LOGIN_ATTESA` e `E_CREDENZIALE_BLOCCATA` con
+la classe di `E_UTENTE_BLOCCATO`, `NON_PERMESSO` (403)**; il frontend li
+riconosce per codice.
+
 ### 2.5 Retention delle provenienze
 
 Ogni provenienza che sbaglia crea una riga, e quelle di chi non riprova più
@@ -582,6 +593,7 @@ il test se li fabbrica.
 | 2026-09-24 | Tid | D-B1…D-B5 decise come proposto. D-B5: l'indice sull'email è una migration Django, quindi lavoro del backend (§7); il DB fa il guard di `fn_crea_auth_user` e i test |
 | 2026-09-24 | Tid | ⚠️ D-B5 **corretta**: nessuna migration Django nel progetto, il DDL è Liquibase → `90_end` con `onFail: CONTINUE`, team DB. D-B1 riaperta: l'area indicata (`amm_software`) non è un'area del catalogo |
 | 2026-09-24 | Tid | D-B1 decisa: blocco e sblocco solo da SUPER_ADMIN (la regola di `amm_software`); building block `fn_guard_super_admin`, per regola del 2 (due verbi) |
+| 2026-09-24 | BE | §2.4: classe dei due codici nuovi `NON_PERMESSO` (403), non 429 — la classe non esiste e il login FE intercetta il 429 prima del codice |
 
 ---
 {% include-markdown "signature-core.md" %}
