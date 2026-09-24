@@ -92,7 +92,7 @@ e rettifica postati dalla porta, `vw_disponibilita`, quattro spie in
 pgTAP come applicazione, CI da zero, commit; `requires_lotto` nel drawer
 articolo e le operazioni BE/FE. Vedi
 [brief-db-magazzino-lotto-1-terreno-vuoto.md](work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md),
-[brief-db-magazzino-lotto-2-motore.md](work-in-progress/brief-db-magazzino-lotto-2-motore.md).
+[brief-db-magazzino-lotto-2-motore.md](work-done/brief-db-magazzino-lotto-2-motore.md).
 
 **Anello 0 — Quando nasce un building block, le copie si ritirano nello stesso
 giro.** L'emittente di default diventa **una funzione sola** in `script`

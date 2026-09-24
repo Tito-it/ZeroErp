@@ -12,19 +12,28 @@
 > ancora da applicare (§1). Qui sono raccolti; il resto dei residui è in
 > PROJECT_CONTEXT § «Aperto — Media priorità».
 >
-> **Stato 2026-09-24 sera:** ⏳ tocca al **team DB**: §1 (pronta, tre righe di
-> seed) e §4 (colonna, seed, lettura, pgTAP). BE e FE aspettano §4. La
-> decisione di §6 a resta aperta per Tid e non blocca niente.
->
-> **Da leggere per primo: §1**, perché tiene rossa la suite BE.
+> **Stato 2026-09-24 sera:** §1 ✅ **scritta** dal team DB (seed, tre righe),
+> da applicare. ⏳ Resta al **team DB** §4 (colonna, seed, lettura, pgTAP). BE
+> e FE aspettano §4. La decisione di §6 a resta aperta per Tid e non blocca
+> niente.
 
 ---
 
-## 1. Richiesta al team DB — tre frecce di ordinamento
+## 1. Richiesta al team DB — tre frecce di ordinamento ✅ scritta
 
 > Ex brief DB `ricerca-full-colonne-da-accendere` §8 (2026-09-24 sera). ⚠️ Da
 > applicare per prima: finché manca, la suite BE ha **due rossi**, ed è il
 > segnale voluto, non un difetto del BE.
+>
+> ✅ **Fatto 2026-09-24 (team DB)**: `ordinabile = t` sulle righe 932, 933 e
+> 934 di `80_data/sql/ui/lista_colonna.csv`. Nessun changeSet nuovo: il CSV lo
+> ricaricano i due `loadUpdateData` con `runOnChange: true` già esistenti (il
+> loader `20260507-07` e il mirror `20260806-15`). Controllato prima di
+> scrivere: nessun UPDATE nei changelog riscrive `ordinabile`, nessun pgTAP
+> fissa il valore di queste righe, e i tre `campo_sorgente` sono chiavi delle
+> due `_ORDER_COLS`. ⏳ **Da applicare** (`db-migrate`), poi la suite BE deve
+> tornare verde su
+> `test_seed_offre_tutto_cio_che_il_backend_sa_ordinare`.
 
 Convertite le liste al catalogo, la suite BE ha un rosso che viene dal seed:
 `test_liste_configurabili_seed.test_seed_offre_tutto_cio_che_il_backend_sa_ordinare`
@@ -171,7 +180,7 @@ decidere se legge `RICERCA_MIN_CARATTERI` (e il FE `RICERCA.MIN_CARATTERI`) o se
 
 ## 7. Ordine
 
-1. ⏳ **Team DB**: §1 (subito) e §4, coi pgTAP.
+1. ⏳ **Team DB**: §4, coi pgTAP. (§1 ✅ scritta il 2026-09-24, da applicare.)
 2. ⏳ **BE + FE**: §5, nello stesso giro, dopo l'apply.
 3. ⏳ **Tid**: §6 a e b, quando vuole: non bloccano.
 

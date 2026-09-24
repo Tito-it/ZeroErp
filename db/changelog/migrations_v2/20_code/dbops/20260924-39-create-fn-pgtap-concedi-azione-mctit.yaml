@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 (fixture) — dbops.fn_pgtap_concedi_azione(p_auth_user_id, p_permission_codename)
+#   Brief: brief-db-magazzino-verbi-con-permesso, sezione 3.2
+#
+# -- PERCHE' ------------------------------------------------------------------------------------
+#   Dal momento in cui i verbi di magazzino applicano registra_magazzino
+#   (script.fn_guard_azione), l'operatore di dbops.fn_pgtap_crea_emittente_operatore
+#   — tecnico, NON super admin, senza azioni — viene rifiutato. Il permesso
+#   si COSTRUISCE nel test (regola zero, corollario sui test): un override
+#   utente, la forma che il pannello di amministrazione scrive.
+#
+# -- UN HELPER E NON CINQUE COPIE (regola del 2) ----------------------------------------------------
+#   Cinque pgTAP lo usano dal primo giorno (sezione 3.2 del brief). Stampo:
+#   dbops.fn_pgtap_crea_magazzino (20260918-26).
+#
+# -- COME SCRIVE ----------------------------------------------------------------------------------
+#   INVOKER: scrive come l'app, che ha INSERT su config.user_override_azioni
+#   (tabella senza RLS). Idempotente sulla UNIQUE (auth_user_id, azione_id): se
+#   l'override c'e' gia', lo riabilita e lo riapre. Azione inesistente ->
+#   RAISE: e' la fixture che sbaglia, non il dominio.
+#   ⚠️ Il trigger require_attivo dell'azione rifiuta un'azione disattivata: e'
+#   voluto, il test lo deve vedere.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260924-39-create-fn-pgtap-concedi-azione-mctit.yaml
+
+  - changeSet:
+      id: 20260924-39-create-fn-pgtap-concedi-azione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_concedi_azione(p_auth_user_id, p_permission_codename): fixture pgTAP che
+        concede un'azione di processo a un utente con un override (config.user_override_azioni),
+        idempotente. Serve ai pgTAP dei verbi che applicano un'azione (script.fn_guard_azione).
+        Brief: brief-db-magazzino-verbi-con-permesso, sezione 3.2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_constraint
+               WHERE conrelid = 'config.user_override_azioni'::regclass
+                 AND conname = 'uq_user_override_azioni_user_azione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_concedi_azione(
+                  p_auth_user_id        config.user_override_azioni.auth_user_id%TYPE,
+                  p_permission_codename config.azioni_processo.permission_codename%TYPE
+              )
+              RETURNS config.user_override_azioni.id%TYPE
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: concedere a un utente di fixture un'azione di processo, con un
+              --   override utente valido da oggi e senza scadenza. Solo per i pgTAP.
+              -- Uso: PERFORM dbops.fn_pgtap_concedi_azione(
+              --          (SELECT auth_user_id FROM _mondo), 'registra_magazzino');
+              DECLARE
+                  v_azione_id   config.azioni_processo.id%TYPE;
+                  v_override_id config.user_override_azioni.id%TYPE;
+              BEGIN
+                  SELECT ap.id
+                    INTO v_azione_id
+                    FROM config.azioni_processo ap
+                   WHERE ap.permission_codename = p_permission_codename;
+
+                  IF v_azione_id IS NULL THEN
+                      RAISE EXCEPTION 'fn_pgtap_concedi_azione: azione di processo % inesistente', p_permission_codename;
+                  END IF;
+
+                  INSERT INTO config.user_override_azioni
+                         (auth_user_id, azione_id, abilitata, motivo, valido_dal, valido_al)
+                  VALUES (p_auth_user_id, v_azione_id, true, 'Fixture pgTAP', CURRENT_DATE, NULL)
+                  ON CONFLICT ON CONSTRAINT uq_user_override_azioni_user_azione
+                  DO UPDATE SET abilitata  = true,
+                                valido_dal = CURRENT_DATE,
+                                valido_al  = NULL
+                  RETURNING id INTO v_override_id;
+
+                  RETURN v_override_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_concedi_azione(integer, character varying) IS
+                  'Fixture pgTAP: concede un''azione di processo a un utente con un override '
+                  '(config.user_override_azioni, abilitata, valido da oggi senza scadenza), '
+                  'idempotente sulla UNIQUE (utente, azione). Serve ai pgTAP dei verbi che applicano '
+                  'un''azione con script.fn_guard_azione: l''operatore di '
+                  'fn_pgtap_crea_emittente_operatore non ne ha. Azione inesistente -> RAISE. Solo per '
+                  'i pgTAP (brief-db-magazzino-verbi-con-permesso §3.2).';
+
+              GRANT EXECUTE ON FUNCTION dbops.fn_pgtap_concedi_azione(integer, character varying) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_concedi_azione(integer, character varying);

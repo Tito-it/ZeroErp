@@ -234,8 +234,8 @@ mergiato il 15-09 (PR #1593), le richieste BE/FE chiuse lo stesso giorno
 `_REL_CONSENTITE`/`CONFIG_TABLES`), CI verde. Il **Lotto 2** («il motore»: primitiva DEFINER + porta sul
 ledger, check di disponibilità condivisa, inventario e rettifica,
 `vw_disponibilita`, orfani, presidio di prontezza, `requires_lotto` in UI) ha
-il suo brief dal **17-09** — `work-in-progress/brief-db-magazzino-lotto-2-motore.md`,
-✅ **quattordici D-L2 tutte decise da Tid il 17-09** (fra cui `magazzini.usa_ubicazioni`, `trasferimenti` = trasferimento interno, via `COUNTING`), 🔵 **nessun changeSet: si parte da P-0** — e parte da
+il suo brief dal **17-09** — `work-done/brief-db-magazzino-lotto-2-motore.md`,
+✅ **quattordici D-L2 tutte decise da Tid il 17-09** (fra cui `magazzini.usa_ubicazioni`, `trasferimenti` = trasferimento interno, via `COUNTING`), ✅ **CONSEGNATO il 22-09 e ARCHIVIATO il 24-09**, dopo che la porta è stata completata coi verbi (paragrafo sotto) — era partito da
 `analisi-db-magazzino-carico-e-scarico.md` §8 e dalle sei lezioni in coda a §5
 del brief del Lotto 1. Il prerequisito deciso da Tid il 15-09 —
 `brief-db-emittente-di-default-un-bb-solo.md`, l'emittente di default come
@@ -247,6 +247,21 @@ commit `e98cf2469` + PR #1598, BE allineato con `E_EMITTENTE_NON_RISOLTO`).
 ⭐ La regola che ne discende, e vale per ogni cantiere: *quando
 emerge un BB generico, i duplicati esistenti si ritirano subito — non c'è
 produzione, non c'è niente da aspettare.*
+
+⭐ **I domini nuovi nascono con il permesso applicato dal DB** (decisioni D-1 →
+D-5 di Tid, 2026-09-24, in `work-in-progress/brief-db-permesso-nel-verbo-di-scrittura.md`).
+Fino a quel giorno il DB **calcolava** i permessi ma li **applicava** solo il
+backend. Il modello è «una scrittura = un verbo»: una funzione DB che nella prima
+riga chiama il guard `script.fn_guard_azione` (azione di processo) — o la forma
+sul livello d'oggetto, che nascerà col verbo generico del pannello di
+configurazione (D-3) — e l'app che perde la scrittura diretta sulle tabelle che il
+verbo protegge. `magazzino` e `acquisti` nascono così; gli altri domini ci passano
+quando un cantiere tocca le loro scritture, senza data. ✅ **Primo caso chiuso il
+2026-09-24** (`work-in-progress/brief-db-magazzino-verbi-con-permesso.md`,
+`20260924-38` → `-42`): `fn_posta_inventario` e `fn_posta_rettifica` applicano
+`registra_magazzino`, l'app non esegue più la primitiva del registro. Il limite è
+scritto: il modello protegge da un backend che **sbaglia**, non da uno
+**manomesso** (l'identità la dichiara il backend).
 
 ### Aperto — Media priorità
 - **Il `codice` delle sei famiglie di documento di seed si perde al migrate**

@@ -5,7 +5,7 @@
 > §7 — scrivendo il piano del drawer e delle righe sono emerse **tre** cose che
 > il BE non può fare da sé senza riscrivere una regola del DB, più **due**
 > difese opzionali. Nessuna ridiscute il Lotto 2: ogni riga cita la decisione
-> da cui discende (D-L2-* del [brief del motore](brief-db-magazzino-lotto-2-motore.md)).
+> da cui discende (D-L2-* del [brief del motore](../work-done/brief-db-magazzino-lotto-2-motore.md)).
 > **Stato:** ✅ **LE TRE BLOCCANTI SONO FATTE, APPLICATE E VERDI — 2026-09-22.**
 > Sei changeSet `EXECUTED` su dbdev (i cinque del disegno alle 19:06, la rev
 > della vista del presidio C1 in serata), i quattro seed a catalogo, i pgTAP
