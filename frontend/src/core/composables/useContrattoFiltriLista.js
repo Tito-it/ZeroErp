@@ -33,7 +33,7 @@
 //        e negli store a mano arriva da `useListaEmptyStateFetch`, che si
 //        destruttura prima.
 //
-//       Brief: docs/it/dev/work-in-progress/brief-fe-filtri-lista-su-schermo-compatto.md
+//       Brief: docs/it/dev/work-done/brief-fe-filtri-lista-su-schermo-compatto.md
 // ------------------------------------------------------------
 
 import { clonaFiltri, clonaValore, congelaProfondo } from '../utils/clonaFiltri'

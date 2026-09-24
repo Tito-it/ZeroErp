@@ -21,6 +21,7 @@
 import { computed } from 'vue'
 import { useGlobalLookup } from '../composables/useGlobalLookup'
 import { LOOKUP_CODICI_PAGE_SIZE, useLookupCodici } from '../composables/useLookupCodici'
+import { etichettaVoce } from '../utils/etichettaSelezionata'
 import Select from 'primevue/select'
 
 const props = defineProps({
@@ -126,6 +127,15 @@ const selectedItem = computed(() =>
   visibleOptions.value.find(i => i[props.valueField] === props.modelValue) || null
 )
 
+// Il testo intero del valore nel `title`: la combo stretta (taglia `md` dei
+// filtri) lo taglia coi puntini. Stesso testo di `formatOption`, cioe' cio' che
+// si legge a video. Nessuna selezione ⇒ niente attributo. (A4, 2026-09-24)
+// ⛔ NON MODIFICARE (decisione di Tid, 2026-09-24): il `title` deriva da
+//    `selectedItem`, la voce selezionata si cerca UNA volta sola. Non passare
+//    a `etichettaSelezionata(visibleOptions, ...)`: rifarebbe la stessa
+//    ricerca, e due ricerche dello stesso valore prima o poi divergono.
+const titolo = computed(() => etichettaVoce(selectedItem.value, formatOption))
+
 function onChange(event) {
   emit('update:modelValue', event.value)
   emit('change', event.value)
@@ -144,6 +154,7 @@ function onChange(event) {
     :showClear="showClear"
     :filter="filter"
     :disabled="disabled"
+    :title="titolo"
     @change="onChange"
   >
     <template v-if="showCode" #option="{ option }">

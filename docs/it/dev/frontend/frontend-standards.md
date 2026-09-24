@@ -321,7 +321,7 @@ Se il numero **sale** dopo il tuo lavoro, hai aggiunto una lista fuori standard.
 > nessuna larghezza di filtro sta in un tag. I tre registri di
 > `npm run guard:filtri` sono a **zero** e da qui in avanti dicono una cosa
 > sola: *una lista nuova fuori standard li fa risalire*.
-> Decisioni e cronaca: [brief-fe-filtri-lista-su-schermo-compatto.md](../work-in-progress/brief-fe-filtri-lista-su-schermo-compatto.md).
+> Decisioni e cronaca: [brief-fe-filtri-lista-su-schermo-compatto.md](../work-done/brief-fe-filtri-lista-su-schermo-compatto.md).
 
 **La regola**: un filtro è **stato della lista**, non decorazione della view.
 Ne discende che *dove* i filtri si rendono — e il segno che sono attivi —
@@ -547,10 +547,15 @@ mostra descrizioni?») e ne ha una precisa, che sta nel comportamento di PrimeVu
 volta: `--app-filtro-unita: 8rem` ≈ 13 caratteri al font della toolbar — cioè
 `31/12/2026` intero più l'icona, e per una combo il punto in cui
 «Energia el…» si legge ancora e «Ene…» no.
-⚠️ **Il limite dichiarato**: una selezione troncata non si può rileggere senza
-riaprire il pannello (PrimeVue non mette il testo intero nel `title`, come fa
-invece `.app-lista-cella` per le celle). Su touch non c'è comunque hover; per il
-desktop è una decisione aperta nel brief.
+✅ **Il testo intero sta nel `title`** (A4 del brief, 2026-09-24): PrimeVue non
+lo fa da sé, e fino a quel giorno una selezione troncata non si rileggeva senza
+riaprire il pannello. Lo fanno le due combo `md` dei filtri — `LookupSelect` e
+`UtilityPerRuoloSelect` — con il BB `etichettaSelezionata`, come fa
+`.app-lista-cella` per le celle: il `title` dice **ciò che si legge a video**
+(anche `descrizione (codice)` con `show-code`), e senza selezione l'attributo
+non c'è. ⚠️ Serve solo al desktop: su touch non c'è hover. ⛔ Le `Select` con
+opzioni scritte in pagina (`sm`) non lo portano, e non per dimenticanza: le
+loro etichette sono corte per costruzione, lo stesso criterio che le fa `sm`.
 
 #### Come si verifica
 
@@ -2518,7 +2523,7 @@ intercettare i dispositivi touch indipendentemente dalla larghezza del viewport
 (es. iPad Pro in landscape rende comunque il kebab perche' manca l'hover).
 
 > ✅ **Una sola definizione di «modalità compatta» — `ui.isCompatto`, dal
-> 2026-09-22** ([brief](../work-in-progress/brief-fe-filtri-lista-su-schermo-compatto.md) §3.3):
+> 2026-09-22** ([brief](../work-done/brief-fe-filtri-lista-su-schermo-compatto.md) §3.3):
 > larghezza sotto `BREAKPOINTS.TABLET` **oppure** `matchMedia('(hover: none)')`.
 > La legge chi cambia **forma** e non solo dimensione — oggi `FiltriLista`.
 > ⛔ **La larghezza da sola non basta**: un iPad Pro in orizzontale è largo
