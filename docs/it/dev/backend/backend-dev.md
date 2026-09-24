@@ -178,6 +178,8 @@ DJANGO_DEBUG=1
 # Swagger (/api/docs/, /api/schema/): segue DEBUG; con DEBUG=0 serve =1
 DJANGO_API_DOCS_ENABLED=1
 DJANGO_ALLOWED_HOSTS=backend-dev,backend-dev.tailXXXX.ts.net,localhost,127.0.0.1
+# Proxy fidati davanti al backend (Nginx = 1). Obbligatorio.
+DJANGO_TRUSTED_PROXY_COUNT=1
 
 DB_NAME=⚠️_nome_db
 DB_USER=zeroerp_app

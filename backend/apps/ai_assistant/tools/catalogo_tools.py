@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from apps.ai_assistant.tools.base import AITool
+from apps.ai_assistant.tools.base import AITool, EndpointGemello
+from apps.catalogo.api.views import ApiArticoliLookup
 
 
 class CercaArticoliTool(AITool):
@@ -57,8 +58,7 @@ class CercaArticoliTool(AITool):
                 },
                 "required": [],
             },
-            required_area="catalogo",
-            required_level="LETTURA",
+            endpoint=EndpointGemello(ApiArticoliLookup, "GET"),
             # Naviga alla lista articoli con filtro search pre-impostato
             route_template={
                 "name": "catalogo-articoli",

@@ -91,6 +91,9 @@ jobs:
       DJANGO_SECRET_KEY: ci-placeholder
       DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
       DJANGO_DEBUG: "0"
+      # Nessun proxy davanti al client di test: vale REMOTE_ADDR (settings.py,
+      # «Quanti proxy fidati»). Obbligatorio, senza il backend non parte.
+      DJANGO_TRUSTED_PROXY_COUNT: "0"
       CACHE_BACKEND: locmem
 
     steps:

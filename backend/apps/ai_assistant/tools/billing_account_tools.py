@@ -12,7 +12,8 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from apps.ai_assistant.tools.base import AITool
+from apps.ai_assistant.tools.base import AITool, EndpointGemello
+from apps.anagrafiche.api.views_billing_account import BillingAccountLookupView
 
 
 class CercaBillingAccountTool(AITool):
@@ -58,8 +59,7 @@ class CercaBillingAccountTool(AITool):
                 },
                 "required": ["q"],
             },
-            required_area="anagrafiche",
-            required_level="LETTURA",
+            endpoint=EndpointGemello(BillingAccountLookupView, "GET"),
             # Nessun route_template per ora: la lista BA non ha una rotta
             # frontend dedicata "filtra per search". In futuro, se verra'
             # aggiunta, basta popolare route_template qui.
@@ -76,9 +76,15 @@ class CercaBillingAccountTool(AITool):
         valid_at: date | None = date.today() if solo_validi else None
 
         # Scope emittente fiscale: None per superuser, lista bigint[] per operatori.
-        # Coerente con la view REST: permette all'utente normale di vedere solo
-        # i BA degli emittenti su cui e' autorizzato.
-        emittente_ids = PermissionResolver.get_emittenti_pk_ids(request.user, cache={})
+        # ⛔ SOGGETTO-RUOLO, non PK: la query confronta con
+        #    `script.fn_check_ba_visible_for_emittenti`, che vuole i
+        #    soggetto_ruolo_id degli emittenti — come li passa il gemello
+        #    `BillingAccountLookupView`. Fino al 2026-09-24 qui c'erano le PK
+        #    (`get_emittenti_pk_ids`): si confrontavano numeri di due tabelle
+        #    diverse, e un operatore non vedeva i BA che la UI gli mostra.
+        #    Presidio: `test_billing_account_tool_scope`, che fa passare tool e
+        #    view dallo stesso resolver e pretende lo stesso scope.
+        emittente_ids = PermissionResolver.get_emittenti_sr_ids(request.user, cache={})
 
         svc = BillingAccountService()
         response = svc.search_lookup(

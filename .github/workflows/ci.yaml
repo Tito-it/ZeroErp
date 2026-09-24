@@ -387,6 +387,7 @@ jobs:
               docker run -d --name zeroerp_test -p 8000:8000 \
                 -e DJANGO_SECRET_KEY=ci-smoke-secret \
                 -e DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1 \
+                -e DJANGO_TRUSTED_PROXY_COUNT=0 \
                 -e DB_NAME=zeroerp \
                 -e DB_USER=zeroerp \
                 -e DB_PASSWORD=secret \

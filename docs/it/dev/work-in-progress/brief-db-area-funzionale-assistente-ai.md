@@ -16,6 +16,9 @@
 > raggiungibile **solo da un `SUPER_ADMIN`**: a nessun altro il permesso si può
 > concedere, perché manca la riga a cui appenderlo.
 >
+> ⭐ **Stato al 2026-09-24:** §5.2 fatto (backend). §4 (DB) da fare; §5.3 lo
+> aspetta.
+>
 > ⇒ **Al DB: una riga di catalogo** (§4).
 > ⇒ **Al backend: una sola regola dei permessi per UI e AI, e un significato per
 > i tre livelli dell'area `ai_assistant`** (§5). Senza questa parte, la riga del
@@ -231,6 +234,73 @@ unica).
 
 ⭐ Questa parte **non dipende dal DB**: si può fare subito.
 
+#### 5.2.1 ✅ Fatto il 2026-09-24 (backend, `dev/backend-tid`)
+
+* **La regola estratta.** `ZeroERPPermission.valuta` e `IsAdminZeroERP.valuta`
+  decidono senza richiesta HTTP; `has_permission` le chiama e registra il
+  diniego (log di sicurezza e messaggio del 403 invariati).
+  `valuta_accesso_endpoint(user, view, method=…)` applica le
+  `permission_classes` della view in AND come DRF, ed è **fail-closed** su una
+  classe senza `valuta`. Registrata nel catalogo BB backend.
+* **I tool legati al gemello.** `AITool` riceve `endpoint=EndpointGemello(view,
+  metodo)`; `required_area`, `required_level` e `required_action` non esistono
+  più. `is_tool_allowed_for_user` tiene la blacklist e poi chiama la regola
+  unica: offer-time, execution-time e conferma passano tutti di lì.
+* **I 18 gemelli**:
+
+| Tool | Gemello |
+| --- | --- |
+| `cerca_pratiche` · `crea_pratica` | `ApiPraticheList` GET · POST |
+| `dettaglio_pratica` | `ApiPraticaDetail` GET |
+| `cerca_flussi_pratica` | `ApiPraticaFlussiList` GET |
+| `cambia_stato_pratica` | `ApiPraticaStato` POST (`post_permission`) |
+| `aggiungi_nota_pratica` | `ApiPraticaNoteList` POST |
+| `cerca_soggetti` · `dettaglio_soggetto` | `SoggettiView` · `SoggettiDetailView` GET |
+| `cerca_billing_account` | `BillingAccountLookupView` GET |
+| `cerca_articoli` | `ApiArticoliLookup` GET |
+| `cerca_operatori` | `OperatoriListView` GET (`AdminAPIView`) |
+| `cerca_contratti` · `dettaglio_contratto` | `ApiContrattiList` · `ApiContrattoDetail` GET |
+| `cerca_preventivi` · `dettaglio_preventivo` | `ApiPreventiviList` · `ApiPreventivoDetail` GET |
+| `cerca_promo_articoli` | `PromoArticoliView` GET |
+| `cerca_listini` | `ApiListiniList` GET |
+| `cerca_documenti_generati` | `ApiPreventivoDocumentiList` GET |
+
+* **Cosa cambia per l'operatore** — ogni riga è l'AI che si allinea alla UI, non
+  una scelta nuova:
+  * `cambia_stato_pratica`: prima area `TUTTO` **e** azione, ora **solo
+    l'azione**, come `ApiPraticaStato`;
+  * `cerca_articoli`, `cerca_billing_account`: prima `LETTURA` su
+    `catalogo`/`anagrafiche`, ora i gemelli sono i **lookup cross-dominio**
+    (`skip_area_check`): li usa ogni operatore attivo, come li usa ogni drawer
+    della UI. ⚠️ **È un allargamento**: se per l'AI si vuole di più del lookup,
+    il gemello giusto è la lista del dominio, e va deciso;
+  * `cerca_documenti_generati`: prima area `documenti`, ora `vendite`, l'area
+    in cui è montata la lista documenti del preventivo;
+  * `cerca_soggetti`, `dettaglio_soggetto`, `cerca_promo_articoli`: ora
+    contano anche gli **override per oggetto** (`model_permission` del gemello);
+  * `cerca_operatori`: sempre «solo `SUPER_ADMIN`», ora perché lo è
+    l'endpoint. `amm_software` sparisce dal codice;
+  * il superuser Django passa, come passa dalla UI.
+* **Eccezioni senza gemello:** nessuna. `AITool` pretende un `endpoint`; un tool
+  che non ne ha uno va deciso e scritto per nome in `_SENZA_GEMELLO`
+  (`test_tool_endpoint_gemello.py`).
+* **Presidio 2 del §5.4: ✅** — `test_tool_endpoint_gemello.py`: per ogni tool
+  registrato, il gemello è una `APIView` che implementa il metodo, il metodo è
+  traducibile, ogni permission class ha `valuta`, e la conferma dichiarata
+  coincide con un gemello di scrittura.
+
+✅ **Emerso e corretto il 2026-09-24 (su richiesta di Tid).** `cerca_billing_account`
+passava al service le PK degli emittenti (`get_emittenti_pk_ids`), mentre il
+gemello `BillingAccountLookupView` passa i soggetto-ruolo
+(`get_emittenti_sr_ids`). È questo che vuole
+`script.fn_check_ba_visible_for_emittenti`
+(`fn_get_ba_emittente_sr_id(...) = ANY(p_emittente_ids)`): dall'AI un BA
+legittimo spariva. Fuori perimetro non si usciva, perché la policy RLS `via_efba`
+filtra comunque. Ora il tool usa i soggetto-ruolo. Il presidio
+`test_billing_account_tool_scope.py` fa passare tool e view dallo stesso
+resolver e pretende che arrivi al service lo **stesso** scope: con le PK è
+rosso.
+
 ### 5.3 Parte B — cosa significano i tre livelli dell'area `ai_assistant`
 
 Con la regola unica, ciò che l'AI può fare su un dominio è già quello che può
@@ -381,3 +451,4 @@ query più l'area «Assistente AI» fra quelle assegnabili nel pannello dei prof
 | 2026-09-24 | DB (rilettura critica) | Corretti: la chiave è `schema_db` (§1.1), il messaggio del 403 (§1.2), la seconda area fuori catalogo nei tool (§1.3), «ogni tool dichiara la sua azione» (§4.2), effetto a flag spento e reversibilità (§7), testo del `COMMENT` senza elenco (§4.1). Aggiunta la terza strada (§3.1) |
 | 2026-09-24 | Tid | «L'AI assume solo i privilegi con cui l'operatore è attivo». ⇒ Aggiunto il §5 (parti A e B) come richiesta al backend; l'imposizione del livello a DB rinviata a un approfondimento (§8) |
 | 2026-09-24 | Tid | Dopo l'approfondimento: le letture dei tool in transazione di sola lettura entrano qui (§5.3 punto 3, §5.4 punto 4); la stessa garanzia per tutte le `GET` e il permesso nel verbo vanno in due brief propri (§8), il primo fra le prime cose da fare |
+| 2026-09-24 | backend | **§5.2 (parte A) fatta**, su decisione di Tid di procedere solo con quella: regola estratta (`valuta_accesso_endpoint`), 18 tool legati al gemello, `required_*` e `amm_software` ritirati, presidio 2 del §5.4. Resoconto e cambi di comportamento nel §5.2.1. Il DB **non** ha ancora eseguito il §4 (riga assente dal CSV su `dev/db-tid` e `main`): §5.3 e presìdi 1, 3, 4 restano in attesa |

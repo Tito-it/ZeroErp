@@ -42,7 +42,15 @@ def register_tools(tools: list[AITool]) -> None:
 #        Fonte di verita' condivisa dal filtro catalogo (offer-time) E dal
 #        ri-check a execution-time nel service (preview/confirm), per chiudere
 #        il gap TOCTOU: senza questo, l'unico gate sarebbe il catalogo all'offer-time.
-#        Applica gli stessi tre filtri: blacklist, area BLOCCATO, livello minimo.
+#        Due filtri: la blacklist dell'installazione, poi il permesso
+#        dell'endpoint gemello del tool.
+# ⭐ Il permesso NON e' calcolato qui: lo decide `valuta_accesso_endpoint`, la
+#    stessa regola di `ZeroERPPermission` per la UI (brief-db-area-funzionale-
+#    assistente-ai §5.2). Fino al 2026-09-24 questa funzione ne era una seconda
+#    copia, alimentata da valori scritti a mano su ogni tool. Ora l'AI puo'
+#    fare cio' che l'operatore puo' fare dalla UI, e niente di piu': area dal
+#    model o da `area_funzionale`, `<metodo>_permission`, SUPER_ADMIN, ruolo
+#    disabilitato, override per oggetto, `skip_area_check`.
 def is_tool_allowed_for_user(
     user: Any,
     tool: AITool,
@@ -50,7 +58,7 @@ def is_tool_allowed_for_user(
     perm_cache: dict[str, Any] | None = None,
     disabled: set[str] | None = None,
 ) -> bool:
-    from apps.core.services.permissions_resolver import PermissionResolver
+    from apps.core.api.permissions import valuta_accesso_endpoint
 
     if perm_cache is None:
         perm_cache = {}
@@ -61,28 +69,13 @@ def is_tool_allowed_for_user(
     if tool.name in disabled:
         return False
 
-    # Filtro 2: area funzionale (None = disponibile a tutti)
-    if tool.required_area is not None:
-        area_level = PermissionResolver.get_livello_area(
-            user, tool.required_area, cache=perm_cache
-        )
-        if area_level == "BLOCCATO":
-            return False
-
-        # Filtro 3: livello accesso minimo
-        if tool.required_level == "TUTTO" and area_level != "TUTTO":
-            return False
-
-    # Filtro 4: azione di processo fine (stessa granularita' della UI).
-    # Speculare al `<action>_permission` dell'endpoint: se il tool dichiara
-    # required_action, l'utente deve avere anche quell'azione abilitata.
-    if tool.required_action:
-        if not PermissionResolver.check_azione(
-            user, tool.required_action, cache=perm_cache
-        ):
-            return False
-
-    return True
+    # Filtro 2: la regola dell'endpoint gemello
+    return valuta_accesso_endpoint(
+        user,
+        tool.endpoint.view,
+        method=tool.endpoint.metodo,
+        cache=perm_cache,
+    ).consentito
 
 
 # Scopo: Restituisce i tool disponibili per un utente specifico.

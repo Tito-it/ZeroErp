@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from apps.ai_assistant.tools.base import AITool
+from apps.ai_assistant.tools.base import AITool, EndpointGemello
+from apps.anagrafiche.api.views_soggetti import SoggettiDetailView, SoggettiView
 from apps.core.db._helpers import RICERCA_MIN_CARATTERI
 
 
@@ -49,8 +50,7 @@ class CercaSoggettiTool(AITool):
                 },
                 "required": [],
             },
-            required_area="anagrafiche",
-            required_level="LETTURA",
+            endpoint=EndpointGemello(SoggettiView, "GET"),
             # Naviga alla lista soggetti con filtro search pre-impostato
             route_template={
                 "name": "anagrafiche-soggetti",
@@ -109,8 +109,7 @@ class DettaglioSoggettoTool(AITool):
                 },
                 "required": ["soggetto_id"],
             },
-            required_area="anagrafiche",
-            required_level="LETTURA",
+            endpoint=EndpointGemello(SoggettiDetailView, "GET"),
         )
 
     # Scopo: Recupera il dettaglio completo di un soggetto.

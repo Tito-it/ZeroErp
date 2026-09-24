@@ -413,6 +413,26 @@ MAILERS = {
 # --- Proxy HTTPS/Nginx + cookie sicuri ---
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")  # fidati dell'header di Nginx
 
+# Quanti proxy fidati stanno davanti al backend (Nginx = 1). Decide di quale
+# valore di `X-Forwarded-For` fidarsi: l'N-esimo DA DESTRA, quello scritto dal
+# primo proxy fidato; con 0 vale `REMOTE_ADDR` e l'header e' ignorato. La
+# regola la applica un solo BB, `core.services.request_context.get_client_ip`.
+# ⛔ Obbligatorio e senza default: il numero sbagliato e' un difetto MUTO nei
+# due versi — troppo basso, tutti hanno l'IP di Nginx (e il freno del login
+# per provenienza frena tutti insieme); troppo alto, si torna a fidarsi di un
+# valore scritto dal client. Se la catena davanti al backend cambia (un
+# secondo proxy, un bilanciatore), questo numero si aggiorna.
+_trusted_proxy_count_env = env("DJANGO_TRUSTED_PROXY_COUNT", required=True)
+try:
+    TRUSTED_PROXY_COUNT = int(_trusted_proxy_count_env)
+except ValueError:
+    TRUSTED_PROXY_COUNT = -1
+if TRUSTED_PROXY_COUNT < 0:
+    raise ImproperlyConfigured(
+        "DJANGO_TRUSTED_PROXY_COUNT deve essere un intero >= 0, "
+        f"ricevuto {_trusted_proxy_count_env!r}"
+    )
+
 if DEBUG:
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False

@@ -21,7 +21,7 @@ import json
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from django.test import RequestFactory
+from django.test import RequestFactory, override_settings
 
 
 _VIEWS_PATH = "apps.shop.api.views_attivazione"
@@ -75,6 +75,11 @@ class ValidateShopTests(TestCase):
 
 
 class AttivaShopTests(TestCase):
+
+    # Nessun proxy: l'IP atteso e' il REMOTE_ADDR della RequestFactory,
+    # qualunque sia DJANGO_TRUSTED_PROXY_COUNT della macchina.
+    def setUp(self):
+        self.enterContext(override_settings(TRUSTED_PROXY_COUNT=0))
 
     def _post(self, payload: dict):
         factory = RequestFactory()

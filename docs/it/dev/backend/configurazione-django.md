@@ -107,6 +107,9 @@ export DJANGO_DEBUG="1"
 export DJANGO_API_DOCS_ENABLED="1"
 # Host ammessi: LAN + Tailscale + hostname
 export DJANGO_ALLOWED_HOSTS="backend-dev,localhost,127.0.0.1,192.168.X.8,<ts-backend>"
+# Proxy fidati davanti al backend: 1 = Nginx. OBBLIGATORIO, senza il backend non parte.
+# Se la catena cambia (un secondo proxy, un bilanciatore), si aggiorna questo numero.
+export DJANGO_TRUSTED_PROXY_COUNT="1"
 # Database (dbdev)
 export DB_NAME="zeroerp"
 export DB_USER="zeroerp_user"

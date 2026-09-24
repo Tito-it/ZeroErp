@@ -100,6 +100,10 @@ DJANGO_SECRET_KEY=$(openssl rand -base64 48)
 DJANGO_DEBUG=1
 # Swagger (/api/docs/): segue DEBUG; con DEBUG=0 serve DJANGO_API_DOCS_ENABLED=1 (e il vhost aperto)
 DJANGO_ALLOWED_HOSTS=${HOSTNAME},${TAIL_NAME},localhost,127.0.0.1
+# Proxy fidati davanti al backend: 1 = il Nginx del §9. OBBLIGATORIO.
+# ⛔ Se cambia la catena davanti al backend (un secondo proxy, un bilanciatore),
+# si aggiorna questo numero: sbagliato e' un difetto muto (vedi settings.py).
+DJANGO_TRUSTED_PROXY_COUNT=1
 DB_NAME=${DB_NAME}
 DB_USER=${DB_USER}
 DB_PASSWORD='${DB_PASS}'

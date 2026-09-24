@@ -205,7 +205,9 @@ diverso da quello di invitare un cliente: è un diritto, non un ciclo di vita.
    `risorse_umane_auth_user`). ⚠️ **Fuori** da quel brief: le funzioni o i
    guard per la disattivazione per veste e la veste «revocata» (M-5, M-6, D-3,
    D-4), che avranno il loro.
-4. **Piano BE/FE**: invito e attivazione operatore sulla regola unica
+4. **Piano BE/FE** — ✅ scritto il 2026-09-24:
+   [piano-be-fe-accessi-credenziale-e-vesti.md](piano-be-fe-accessi-credenziale-e-vesti.md)
+   (lotti L-0…L-6, richieste DB R-1…R-6, domande Q-1…Q-3). In origine: invito e attivazione operatore sulla regola unica
    (A-1…A-4), disattivazione/riattivazione per veste (M-5, M-6, A-5),
    validità al login (A-7), cambio password obbligatorio che funzioni col JWT
    (A-8), guida `architettura-multi-face-auth` §3.1 riscritta.
