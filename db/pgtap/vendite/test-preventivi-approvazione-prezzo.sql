@@ -2,21 +2,31 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test: trigger guard Sprint E listini v5 §14.6
--- Riferimenti: migrations 20260422-06 (preventivi_guard_transizione_
--- approvazione) e 20260422-07 (preventivi_righe_guard_pending).
+-- Test: workflow approvazione prezzo sul preventivo (Sprint E listini v5
+-- §14.6): il guard PER RIGA e, dal 2026-09-24, la regola del documento.
+-- Riferimenti: 20260422-07 (preventivi_righe_guard_pending) e 20260924-20…-24
+-- (script.fn_check_prezzi_autorizzati, Regole 2 e 3 di
+-- trgfn_preventivi_guard_transizione).
 --
 -- Contesto:
 --   Workflow L3 approvazione prezzo out-of-policy. Righe preventivo in
 --   stato_approvazione_prezzo='PENDING' sono frozen nei campi struttura
---   finche' non transiscono ad APPROVED/REJECTED/NULL. Il preventivo
---   non puo' essere ACCETTATO se ha ancora righe PENDING pendenti.
+--   finche' non transiscono ad APPROVED/REJECTED/NULL.
+--   ⚠️ rev 2026-09-24 (brief-db-preventivi-congelamento-pricing): la regola
+--   del DOCUMENTO e' cambiata, e i test 1, 3 e 10 con lei. Prima il trigger
+--   a10 (ritirato) bloccava il solo PENDING e solo verso ACCETTATO; ora un
+--   prezzo non autorizzato — PENDING o REJECTED (D-1) — non esce dalla
+--   bozza (D-2), e l'annullamento resta sempre possibile. Il perimetro
+--   intero della regola sta in script/test-fn-check-prezzi-autorizzati-v1:
+--   qui resta il suo filo col workflow della riga.
+--   ⚠️ E dalla stessa revisione il mondo si COSTRUISCE (mondo cliente +
+--   articolo): prima pescava un billing account e ART_TEST_BASE dai dati,
+--   e in CI moriva nel fixture (ERRORE_FIXTURE in baseline-rossi-ci).
 --
 -- Indice test (1..10):
---    1. Transizione preventivo ad ACCETTATO con riga PENDING -> raise
---       E_PREVENTIVO_RIGHE_PRICING_PENDENTI
---    2. Transizione preventivo ad ACCETTATO con riga APPROVED -> OK
---    3. Transizione preventivo ad ACCETTATO con riga REJECTED -> OK
+--    1. DRAFT -> EMESSO con riga PENDING -> BLOCCA (prezzo in attesa)
+--    2. DRAFT -> EMESSO -> ACCETTATO con riga APPROVED -> OK
+--    3. DRAFT -> EMESSO con riga REJECTED -> BLOCCA (D-1: prima passava)
 --    4. UPDATE prezzo_unitario su riga PENDING -> raise E_RIGA_PREZZO_PENDENTE
 --    5. UPDATE quantita su riga PENDING -> raise E_RIGA_PREZZO_PENDENTE
 --    6. UPDATE simultaneo stato_approvazione=APPROVED + prezzo_unitario
@@ -25,12 +35,11 @@
 --    8. UPDATE stato_approvazione PENDING -> APPROVED (solo workflow) -> OK
 --    9. UPDATE prezzo_unitario su riga NON in approvazione (stato NULL)
 --       -> OK (trigger no-op per OLD != PENDING)
---   10. UPDATE stato_doc a DRAFT (non ACCETTATO) con riga PENDING
---       -> OK (fn_transizione early return, guard limitato a ACCETTATO)
+--   10. DRAFT -> ANNULLATO con riga PENDING -> OK (via d'uscita, D-2)
 --
--- Setup: 4 preventivi + righe con stati diversi pre-impostati.
--- Articolo fixture: ART_TEST_BASE (seed esistente). Utility: primo
--- utility attivo. BA: NULL (colonna nullable).
+-- Setup: 4 preventivi + righe con stati diversi pre-impostati, sul mondo
+-- costruito (dbops.fn_pgtap_crea_mondo_cliente) e un articolo costruito
+-- (dbops.fn_pgtap_crea_articolo).
 --
 -- Ordine test: i test che modificano persistente la riga PENDING sono
 -- in coda (test 8 cambia stato -> APPROVED). throws_ok rollbacka il
@@ -60,45 +69,29 @@ SELECT plan(10);
 -- =========================================================
 -- Setup fixture comuni
 -- =========================================================
-CREATE TEMP TABLE _t_ba AS
-SELECT ba.utility_id, ba.istanza_utility_id
-  FROM anagrafiche.billing_account ba
- WHERE ba.utility_id IS NOT NULL
-   AND ba.istanza_utility_id IS NOT NULL
- ORDER BY ba.id
- LIMIT 1;
+-- Il mondo si costruisce (rev 2026-09-24): azienda di chi agisce + cliente
+-- fatturabile legato a lei. Istanza e utility vengono dallo STESSO billing
+-- account, cosi' descrivono lo stesso rapporto.
+CREATE TEMP TABLE _t_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP approvazione prezzo');
+
+CREATE TEMP TABLE _t_art AS
+SELECT dbops.fn_pgtap_crea_articolo('PGT-APPR-ART', false) AS articolo_id;
 
 CREATE TEMP TABLE _t_ctx AS
 SELECT
-    (SELECT id     FROM catalogo.articoli WHERE codice = 'ART_TEST_BASE') AS articolo_id,
-    (SELECT uom_id FROM catalogo.articoli WHERE codice = 'ART_TEST_BASE') AS uom_id,
-    -- 🔴 ISTANZA + UTILITY DALLO STESSO BA, 2026-08-18.
-    --   `vendite.preventivi.istanza_utility_id` e' diventata NOT NULL dopo che
-    --   questa fixture era stata scritta: le cinque INSERT morivano sul vincolo
-    --   e il file non eseguiva NESSUNA asserzione (10 su 10 rosse).
-    --   ⚠️ Non basta aggiungere una istanza qualunque: istanza e utility devono
-    --   descrivere lo stesso rapporto, o si costruisce un preventivo incoerente
-    --   che i guard a valle rifiuteranno per un motivo diverso. Si prende quindi
-    --   la coppia da UN solo billing account — scelto una volta, non due volte
-    --   con due LIMIT 1 che potrebbero divergere.
-    (SELECT ba.utility_id FROM _t_ba ba) AS utility_id,
-    (SELECT ba.istanza_utility_id FROM _t_ba ba) AS istanza_utility_id,
-    -- ⚠️ E l'IVA: `iva_id` e' obbligatorio sulle righe di preventivo — il guard
-    --   risponde «Parametro non valido: p_iva_id obbligatorio e > 0». Era lo
-    --   strato successivo, comparso appena le INSERT di testata hanno smesso di
-    --   morire.
+    (SELECT articolo_id FROM _t_art) AS articolo_id,
+    (SELECT a.uom_id FROM catalogo.articoli a WHERE a.id = (SELECT articolo_id FROM _t_art)) AS uom_id,
+    (SELECT m.utility_id FROM _t_mondo m) AS utility_id,
+    (SELECT m.istanza_utility_id FROM _t_mondo m) AS istanza_utility_id,
+    (SELECT m.billing_account_id FROM _t_mondo m) AS billing_account_id,
+    -- ⚠️ E l'IVA: `iva_id` e' obbligatorio sulle righe di preventivo, e
+    --   dall'emissione in poi una riga con prezzo senza aliquota e' rifiutata.
     (SELECT i.id FROM config.iva i
       WHERE i.attivo IS TRUE AND i.aliquota_iva > 0
       ORDER BY i.id LIMIT 1) AS iva_id,
-    -- Emittente fiscale: il trigger BEFORE INSERT lo pretende quando la GUC
-    -- app.current_user_id e' vuota, cioe' sempre in contesto pgTAP. La sua
-    -- assenza teneva questo file a ERRORE_FIXTURE in baseline-rossi: falliva
-    -- alla prima INSERT e non eseguiva NESSUNA asserzione (2026-08-05).
-    (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
-      WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
+    (SELECT m.emittente_fiscale_id FROM _t_mondo m) AS emittente_fiscale_id,
     (SELECT id FROM config.stati_doc_preventivi WHERE codice_interno = 'DRAFT' LIMIT 1) AS stato_draft_id,
-    -- EMESSO serve come tappa intermedia: la matrice non ammette
-    -- DRAFT -> ACCETTATO, e dal 2026-08-05 il database la impone.
     (SELECT id FROM config.stati_doc_preventivi WHERE codice_interno = 'EMESSO' LIMIT 1) AS stato_emesso_id,
     (SELECT id FROM config.stati_doc_preventivi WHERE codice_interno = 'ACCETTATO' LIMIT 1) AS stato_accettato_id;
 
@@ -107,7 +100,7 @@ BEGIN
     IF (SELECT articolo_id IS NULL OR utility_id IS NULL OR stato_draft_id IS NULL
                OR stato_emesso_id IS NULL OR stato_accettato_id IS NULL
                OR emittente_fiscale_id IS NULL OR iva_id IS NULL FROM _t_ctx) THEN
-        RAISE EXCEPTION 'Seed fixture mancante (ART_TEST_BASE / billing account con istanza+utility / stati_doc_preventivi); impossibile eseguire test.';
+        RAISE EXCEPTION 'Fixture incompleta (mondo, articolo, IVA o stati_doc_preventivi): impossibile eseguire test.';
     END IF;
 END
 $pgtap$;
@@ -154,13 +147,13 @@ BEGIN
         -- 1) La testata.
         INSERT INTO vendite.preventivi (
             numero, stato_doc_preventivo_id, utility_id, istanza_utility_id,
-            data, emittente_fiscale_id
+            billing_account_id, data, emittente_fiscale_id
         )
         VALUES (
             'pgtap_appr_' || v_caso.sigla || '_'
                 || substring(md5(clock_timestamp()::text) from 1 for 6),
             c.stato_draft_id, c.utility_id, c.istanza_utility_id,
-            CURRENT_DATE, c.emittente_fiscale_id
+            c.billing_account_id, CURRENT_DATE, c.emittente_fiscale_id
         )
         RETURNING id INTO v_prev_id;
 
@@ -182,57 +175,51 @@ END
 $fixture$;
 
 -- =========================================================
--- I preventivi nascono in DRAFT, ma i test qui sotto verificano il guard
--- dell'APPROVAZIONE PREZZO, che scatta entrando in ACCETTATO. Serve quindi
--- portarli prima in EMESSO.
---
--- ⚠️ Perche' questo passo esiste (2026-08-05). Prima si saltava dritti da DRAFT
--- ad ACCETTATO: comodo, e fuori matrice — `DRAFT -> ACCETTATO` non e' in
--- config.transizioni_stati_preventivi. Funzionava solo perche' il preventivo
--- era l'unico documento la cui matrice non era imposta dal database. Da quando
--- c'e' vendite.trgfn_preventivi_guard_transizione (20260805-15) la scorciatoia
--- viene rifiutata, giustamente. Il significato dei test non cambia: cambia solo
--- che ci si arriva dalla porta invece che dalla finestra.
+-- 1-3) La regola del DOCUMENTO (rev 2026-09-24)
+-- ⚠️ Fino a questa revisione qui i quattro preventivi passavano TUTTI in
+--   EMESSO, e i test guardavano solo l'ingresso in ACCETTATO — il perimetro
+--   del trigger a10, ora ritirato. Da D-2 un prezzo non autorizzato non esce
+--   gia' dalla bozza: la porta che conta e' DRAFT -> EMESSO.
+-- ⚠️ throws_like sulla FRASE e non throws_ok(..., NULL, NULL): quella forma
+--   passava con QUALUNQUE errore, anche uno della fixture.
 -- =========================================================
-UPDATE vendite.preventivi
-   SET stato_doc_preventivo_id = (SELECT stato_emesso_id FROM _t_ctx)
- WHERE id IN (SELECT preventivo_id FROM _t_prev);
-
--- =========================================================
--- 1) Transizione ad ACCETTATO con riga PENDING -> raise
--- =========================================================
-SELECT throws_ok(
+SELECT throws_like(
     format(
         $sql$ UPDATE vendite.preventivi SET stato_doc_preventivo_id = %L::bigint WHERE id = %L::bigint $sql$,
-        (SELECT stato_accettato_id FROM _t_ctx),
+        (SELECT stato_emesso_id FROM _t_ctx),
         (SELECT preventivo_id FROM _t_prev WHERE tag = 'p_pending')
     ),
-    NULL, NULL,
-    '1. Transizione preventivo ad ACCETTATO con riga PENDING -> raise E_PREVENTIVO_RIGHE_PRICING_PENDENTI'
+    '%prezzi ancora in attesa di approvazione%',
+    '1. DRAFT -> EMESSO con riga PENDING -> BLOCCA (prezzo in attesa)'
 );
 
--- =========================================================
--- 2) Transizione ad ACCETTATO con riga APPROVED -> OK
--- =========================================================
+-- 2) Il controllo dell'1: coi prezzi approvati il preventivo esce dalla
+--    bozza ed e' accettabile. Prima l'emissione, poi la verifica sull'ultimo
+--    passo.
+UPDATE vendite.preventivi
+   SET stato_doc_preventivo_id = (SELECT stato_emesso_id FROM _t_ctx)
+ WHERE id = (SELECT preventivo_id FROM _t_prev WHERE tag = 'p_approved');
+
 SELECT lives_ok(
     format(
         $sql$ UPDATE vendite.preventivi SET stato_doc_preventivo_id = %L::bigint WHERE id = %L::bigint $sql$,
         (SELECT stato_accettato_id FROM _t_ctx),
         (SELECT preventivo_id FROM _t_prev WHERE tag = 'p_approved')
     ),
-    '2. Transizione ad ACCETTATO con riga APPROVED -> OK'
+    '2. DRAFT -> EMESSO -> ACCETTATO con riga APPROVED -> OK'
 );
 
--- =========================================================
--- 3) Transizione ad ACCETTATO con riga REJECTED -> OK
--- =========================================================
-SELECT lives_ok(
+-- 3) Il REJECTED ora BLOCCA (D-1). Fino al 2026-09-24 questo test diceva il
+--    contrario — «ad ACCETTATO con riga REJECTED -> OK» — e fissava proprio il
+--    buco: un prezzo rifiutato dal responsabile usciva col documento.
+SELECT throws_like(
     format(
         $sql$ UPDATE vendite.preventivi SET stato_doc_preventivo_id = %L::bigint WHERE id = %L::bigint $sql$,
-        (SELECT stato_accettato_id FROM _t_ctx),
+        (SELECT stato_emesso_id FROM _t_ctx),
         (SELECT preventivo_id FROM _t_prev WHERE tag = 'p_rejected')
     ),
-    '3. Transizione ad ACCETTATO con riga REJECTED -> OK'
+    '%prezzi rifiutati dal responsabile%',
+    '3. DRAFT -> EMESSO con riga REJECTED -> BLOCCA (D-1: prima passava)'
 );
 
 -- =========================================================
@@ -318,56 +305,20 @@ SELECT lives_ok(
 );
 
 -- =========================================================
--- 10) Transizione stato_doc ad uno stato != ACCETTATO con righe
--- PENDING presenti -> OK. Early return nella fn transizione:
--- il guard si applica SOLO alla transizione ACCETTATO, non alle
--- altre (es. passaggio a EMESSO, RIFIUTATO, ANNULLATO).
--- Uso un preventivo fresh per evitare interferenze con test 1.
+-- 10) La via d'uscita: un preventivo con una riga PENDING si ANNULLA sempre.
+-- ⚠️ rev 2026-09-24: fino a questa revisione il test diceva «ad EMESSO con
+--   riga PENDING -> OK (guard solo su ACCETTATO)», cioe' fissava il perimetro
+--   del trigger a10 ritirato. Da D-2 l'emissione e' bloccata (test 1): quello
+--   che deve restare aperto e' l'annullamento.
 -- =========================================================
--- ⛔ Anche qui due statement, e per la stessa ragione scritta sopra: una CTE
---   che inserisce testata e riga insieme non supera la policy della riga.
-CREATE TEMP TABLE _t_prev_draft2 (preventivo_id bigint);
-
-DO $draft2$
-DECLARE
-    c         record;
-    v_prev_id vendite.preventivi.id%TYPE;
-BEGIN
-    SELECT * INTO c FROM _t_ctx;
-
-    INSERT INTO vendite.preventivi (
-        numero, stato_doc_preventivo_id, utility_id, istanza_utility_id,
-        data, emittente_fiscale_id
-    )
-    VALUES (
-        'pgtap_appr_drt_' || substring(md5(clock_timestamp()::text) from 1 for 6),
-        c.stato_draft_id, c.utility_id, c.istanza_utility_id,
-        CURRENT_DATE, c.emittente_fiscale_id
-    )
-    RETURNING id INTO v_prev_id;
-
-    INSERT INTO vendite.preventivi_righe (
-        preventivo_id, articolo_id, quantita, qta_operativa, uom_operativa_id,
-        prezzo_unitario, iva_id, stato_approvazione_prezzo
-    )
-    VALUES (
-        v_prev_id, c.articolo_id, 1, 1, c.uom_id,
-        100, c.iva_id, 'PENDING'::config.stato_approvazione_prezzo
-    );
-
-    INSERT INTO _t_prev_draft2 VALUES (v_prev_id);
-END
-$draft2$;
-
--- Recupero un stato != ACCETTATO (EMESSO id=2 dal seed).
 SELECT lives_ok(
     format(
         $sql$ UPDATE vendite.preventivi SET stato_doc_preventivo_id = (
-                  SELECT id FROM config.stati_doc_preventivi WHERE codice_interno = 'EMESSO' LIMIT 1
+                  SELECT id FROM config.stati_doc_preventivi WHERE codice_interno = 'ANNULLATO' LIMIT 1
               ) WHERE id = %L::bigint $sql$,
-        (SELECT preventivo_id FROM _t_prev_draft2)
+        (SELECT preventivo_id FROM _t_prev WHERE tag = 'p_rejected')
     ),
-    '10. Transizione ad EMESSO con riga PENDING -> OK (guard solo su ACCETTATO)'
+    '10. DRAFT -> ANNULLATO con riga REJECTED -> OK (via d''uscita, D-2)'
 );
 
 SELECT * FROM finish();

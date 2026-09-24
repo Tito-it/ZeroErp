@@ -23,6 +23,11 @@ AS $function$
 --   rev 2026-08-29: Regola 2, l'aliquota sulle righe che entrano
 --   nel riepilogo IVA (brief-db-be-iva-risolutore-e-regime-cliente,
 --   I9).
+--   rev 2026-09-24: Regola 3, i prezzi non autorizzati entrando in
+--   ACCETTATO (brief-db-preventivi-congelamento-pricing, D-2). Verso
+--   EMESSO arrivano gia' dalla Regola 2, dentro
+--   fn_check_preventivo_emettibile. Assorbe e ritira il trigger a10
+--   trgfn_preventivi_guard_transizione_approvazione.
 --
 -- Cosa NON fa, per scelta:
 --   - l'annullamento ha il suo guard dedicato
@@ -118,12 +123,40 @@ BEGIN
                 'stato_a',       v_codice_a));
     END IF;
 
+    -- Regola 3 (rev 2026-09-24): un preventivo con un prezzo che nessuno
+    -- ha autorizzato — in attesa o rifiutato, su righe o componenti BoM
+    -- attivi — non diventa un impegno ACCETTATO (D-1, D-2).
+    --
+    -- ⭐ Il predicato e' il building block script.fn_check_prezzi_autorizzati,
+    --   lo STESSO che fn_available_actions_preventivo usa per spegnere
+    --   «Accetta»: qui si solleva soltanto.
+    -- ⚠️ Sulla DESTINAZIONE, come la Regola 2: oggi ci si arriva solo da
+    --   EMESSO, ma una strada nuova nasce gia' coperta. E il modello la
+    --   ammette anche da EMESSO: nessun guard vieta di scrivere lo stato
+    --   di approvazione sulle righe di un preventivo gia' emesso.
+    -- ⚠️ Fino al 2026-09-24 lo diceva il trigger a10
+    --   (trgfn_preventivi_guard_transizione_approvazione), che guardava il
+    --   solo PENDING e anche le righe disattivate: ritirato nello stesso
+    --   giro (20260924-24), era una seconda copia del predicato.
+    IF v_codice_a = 'ACCETTATO' THEN
+        PERFORM script.fn_raise_primo_motivo_se_presente(
+            'database', TG_NAME::text,
+            script.fn_check_prezzi_autorizzati('vendite.preventivi'::regclass, NEW.id),
+            NULL,
+            NEW.tx_id,
+            jsonb_build_object(
+                'preventivo_id', NEW.id,
+                'numero',        NEW.numero,
+                'stato_da',      v_codice_da,
+                'stato_a',       v_codice_a));
+    END IF;
+
     RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_preventivi_guard_transizione()
-IS 'Trigger function: enforcement del grafo transizioni del preventivo (matrice config.transizioni_stati_preventivi) e, dal 2026-08-29, controlli sull''EMISSIONE delegati a script.fn_check_preventivo_emettibile — la stessa funzione letta da fn_available_actions_preventivo, cosi'' bottone e guard non divergono. ⭐ rev 2026-08-29 (brief-db-be-iva-risolutore-e-regime-cliente, I9): Regola 2, una riga attiva con quantita e prezzo deve portare un''aliquota, altrimenti il preventivo non si emette. Chiude il difetto silenzioso gemello di DDT e ordine: fn_ricalcola_riepilogo_iva_preventivo aggrega le righe attive con quantita > 0 e calcola l''imposta con COALESCE(fn_get_aliquota_iva(iva_id, stato), 0), quindi la riga senza aliquota finisce in preventivi_riepiloghi_iva con imponibile pieno e imposta zero. ⭐ NEL TRIGGER e non nella porta: il commento di questo stesso corpo dichiara che la regola «documento senza righe» vive in vendite.fn_cambia_stato_preventivo e che un UPDATE diretto la aggira — e'' la descrizione di una debolezza, non un modello da imitare. Una regola che protegge un numero fiscale non puo'' dipendere da quale porta ha usato il chiamante. ⚠️ Il predicato e'' sulla DESTINAZIONE (v_codice_a = ''EMESSO'') e non su una coppia cablata: oggi la matrice ha solo DRAFT->EMESSO, ma e'' una lettura del seed, e una strada nuova verso EMESSO nasce gia'' coperta. ⛔ Nel VARIADIC va la DESCRIZIONE della riga: preventivi_righe non ha riga_nr e la colonna `ordine` ha default 0. ⛔ Non e'' un NOT NULL di colonna: preventivi_righe.iva_id e'' nullable e la bozza deve restare libera. ℹ️ Il guard dell''annullamento resta trgfn_preventivi_guard_annullamento.';
+IS 'Trigger function: enforcement del grafo transizioni del preventivo (matrice config.transizioni_stati_preventivi) e, dal 2026-08-29, controlli sull''EMISSIONE delegati a script.fn_check_preventivo_emettibile — la stessa funzione letta da fn_available_actions_preventivo, cosi'' bottone e guard non divergono. ⭐ rev 2026-08-29 (brief-db-be-iva-risolutore-e-regime-cliente, I9): Regola 2, una riga attiva con quantita e prezzo deve portare un''aliquota, altrimenti il preventivo non si emette. Chiude il difetto silenzioso gemello di DDT e ordine: fn_ricalcola_riepilogo_iva_preventivo aggrega le righe attive con quantita > 0 e calcola l''imposta con COALESCE(fn_get_aliquota_iva(iva_id, stato), 0), quindi la riga senza aliquota finisce in preventivi_riepiloghi_iva con imponibile pieno e imposta zero. ⭐ NEL TRIGGER e non nella porta: il commento di questo stesso corpo dichiara che la regola «documento senza righe» vive in vendite.fn_cambia_stato_preventivo e che un UPDATE diretto la aggira — e'' la descrizione di una debolezza, non un modello da imitare. Una regola che protegge un numero fiscale non puo'' dipendere da quale porta ha usato il chiamante. ⚠️ Il predicato e'' sulla DESTINAZIONE (v_codice_a = ''EMESSO'') e non su una coppia cablata: oggi la matrice ha solo DRAFT->EMESSO, ma e'' una lettura del seed, e una strada nuova verso EMESSO nasce gia'' coperta. ⛔ Nel VARIADIC va la DESCRIZIONE della riga: preventivi_righe non ha riga_nr e la colonna `ordine` ha default 0. ⛔ Non e'' un NOT NULL di colonna: preventivi_righe.iva_id e'' nullable e la bozza deve restare libera. ℹ️ Il guard dell''annullamento resta trgfn_preventivi_guard_annullamento. ⭐ rev 2026-09-24: Regola 3 — entrando in ACCETTATO solleva il primo motivo di script.fn_check_prezzi_autorizzati (prezzi PENDING o REJECTED su righe e componenti BoM attivi), la stessa funzione con cui la capability spegne «Accetta». Verso EMESSO gli stessi motivi arrivano dalla Regola 2, dentro fn_check_preventivo_emettibile. Assorbe il trigger a10 trgfn_preventivi_guard_transizione_approvazione (ritirato in 20260924-24), che guardava il solo PENDING. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-2).';
 ```
 
 ---

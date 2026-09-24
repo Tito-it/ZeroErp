@@ -49,6 +49,11 @@ AS $function$
 --   si applica: filtrare per presenza risponde vero per tutti i documenti,
 --   va guardato il valore.
 --   brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3.
+--   rev 2026-09-24: le azioni di stato passano alla forma dell'ARRAY DEI
+--   MOTIVI (come preventivo e ordine): verso EMESSA il motivo del listino
+--   e poi i prezzi non autorizzati, verso ACCETTATA i prezzi — dal
+--   building block script.fn_check_prezzi_autorizzati, lo stesso del
+--   guard di transizione (brief-db-preventivi-congelamento-pricing, D-4).
 DECLARE
     v_stato_id    vendite.offerte_commerciali.stato_doc_offerta_id%TYPE;
     v_stato_cod   config.stati_doc_offerte.codice_interno%TYPE;
@@ -60,6 +65,8 @@ DECLARE
     v_emit_ok             boolean := true;
     v_emit_reason         text := NULL;
     v_emit_reason_key     text := NULL;
+    v_mot_prezzi          jsonb := '[]'::jsonb;
+    v_mot_emetti          jsonb := '[]'::jsonb;
     v_actions     jsonb;
     v_can_edit    boolean;
     v_can_rev     boolean;
@@ -160,6 +167,26 @@ BEGIN
         END IF;
     END IF;
 
+    -- Motivi dei prezzi non autorizzati (rev 2026-09-24): lo stesso
+    -- building block con cui trgfn_offerte_commerciali_guard_transizione
+    -- solleva verso EMESSA e ACCETTATA, quindi pulsanti e guard non
+    -- possono divergere. Il rientro da SUPERATA non e' un'azione manuale:
+    -- non compare qui (filtro `manuale` sotto).
+    v_mot_prezzi := script.fn_check_prezzi_autorizzati('vendite.offerte_commerciali'::regclass,
+                                                       p_offerta_id);
+
+    -- Verso EMESSA: prima il listino (senza, l'offerta non ha prezzi da
+    -- autorizzare che reggano), poi i prezzi. Il motivo del listino e' lo
+    -- stesso di prima, scritto nella forma di un motivo.
+    IF NOT v_emit_ok THEN
+        v_mot_emetti := jsonb_build_array(jsonb_build_object(
+            'codice',     NULL,
+            'reason',     v_emit_reason,
+            'reason_key', v_emit_reason_key,
+            'dettaglio',  NULL));
+    END IF;
+    v_mot_emetti := v_mot_emetti || v_mot_prezzi;
+
     SELECT COALESCE(
         jsonb_agg(
             jsonb_build_object(
@@ -174,12 +201,12 @@ BEGIN
                 'requires_confirm',   COALESCE((t.meta->>'requires_confirm')::boolean, false),
                 'requires_motivazione', COALESCE((t.meta->>'requires_motivazione')::boolean, false),
                 'outlined',           COALESCE((t.meta->>'outlined')::boolean, false),
-                'enabled',            CASE WHEN sa.codice_interno = 'EMESSA'
-                                           THEN v_emit_ok ELSE true END,
-                'reason',             CASE WHEN sa.codice_interno = 'EMESSA'
-                                           THEN v_emit_reason END,
-                'reason_key',         CASE WHEN sa.codice_interno = 'EMESSA'
-                                           THEN v_emit_reason_key END
+                -- Tutto discende dall'array dei motivi: nessuna
+                -- regola puo' mascherarne un'altra (rev 2026-09-24).
+                'enabled',            jsonb_array_length(m.motivi) = 0,
+                'reason',             m.motivi -> 0 ->> 'reason',
+                'reason_key',         m.motivi -> 0 ->> 'reason_key',
+                'reasons',            m.motivi
             )
             ORDER BY sa.ordine
         ),
@@ -188,6 +215,12 @@ BEGIN
     INTO v_actions
     FROM config.stati_doc_offerte_transizioni t
     JOIN config.stati_doc_offerte sa ON sa.id = t.stato_a_id
+    CROSS JOIN LATERAL (
+        SELECT CASE WHEN sa.codice_interno = 'EMESSA'
+                    THEN v_mot_emetti ELSE '[]'::jsonb END
+            || CASE WHEN sa.codice_interno = 'ACCETTATA'
+                    THEN v_mot_prezzi ELSE '[]'::jsonb END AS motivi
+    ) m
     WHERE t.stato_da_id = v_stato_id
       AND t.attivo IS TRUE
       AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE
@@ -271,7 +304,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_offerta(p_offerta_id bigint)
-IS 'Capability offerta commerciale per detail API: available_actions + can_edit_* + push_contratto/genera_ordine (mutuamente esclusive) + create_revisione + non_editable_fields. rev 2026-07-11: + blocco pdf {mode, allow_allegati}. rev 2026-07-19: + enabled/reason/reason_key su ogni azione (uniformita'' 6 domini, brief-db-guard-righe-avanzamento-stato §1a) — la transizione verso EMESSA e'' disabled con reason LISTINO_VERSIONE_MANCANTE / LISTINO_VERSIONE_NON_ATTIVA, specchio del guard BOZZA->EMESSA (per le offerte il "vuoto" e'' la versione listino, non le righe: sono espanse dal listino). rev 2026-07-19 (bis): le 3 push_reason (gia_generato / ordine_gia_generato / non_accettata, usate sia da can_push_contratto_reason_key sia da can_genera_ordine_reason_key) passano al namespace i18n vendite.offerte.* — erano sotto offerte.*, radice inesistente nei locales, quindi il motivo non compariva mai in interfaccia; brief-db-i18n-reason-mancanti-offerte-preventivi. rev 2026-08-06: ogni azione espone outlined (dal meta della transizione, COALESCE a false) e target_state_descrizione (config.stati_doc_offerte.descrizione della destinazione). outlined mancava qui e sul preventivo: il seed lo portava ma la funzione non lo emetteva, quindi il pulsante distruttivo restava rosso pieno mentre negli altri sei domini era outlined. target_state_descrizione serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati; NULL sulle azioni applicative (crea_revisione / push_contratto / genera_ordine), che non cambiano stato. rev 2026-08-11: + stato_info_key, la nota di stato letta dal meta dello stato corrente ed emessa SEMPRE che lo stato la dichiari, anche accanto a un''azione ancora abilitata: la nota spiega lo STATO e non risponde a una barra vuota (decisione §5 di Tid, gia'' applicata a preventivo/ordine/DDT con 20260810-04/-05/-06). Questo dominio era fra i cinque che non emettevano affatto il campo mentre il drawer lo legge gia'': il cablaggio c''era ed era inerte. ⚠️ La PROPRIETA'' nel meta resta nessuna_azione_key mentre il campo del blob si chiama stato_info_key: scripts/check_i18n_keys.py trova le chiavi seminate per quel nome, e rinominarla senza toccare il guard lo renderebbe verde per cecita''. ⚠️ Il campo e'' SEMPRE presente nel blob, col valore a null quando non si applica: filtrare per presenza risponde vero per tutti i documenti, va guardato il valore. brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3.';
+IS 'Capability offerta commerciale per detail API: available_actions + can_edit_* + push_contratto/genera_ordine (mutuamente esclusive) + create_revisione + non_editable_fields. rev 2026-07-11: + blocco pdf {mode, allow_allegati}. rev 2026-07-19: + enabled/reason/reason_key su ogni azione (uniformita'' 6 domini, brief-db-guard-righe-avanzamento-stato §1a) — la transizione verso EMESSA e'' disabled con reason LISTINO_VERSIONE_MANCANTE / LISTINO_VERSIONE_NON_ATTIVA, specchio del guard BOZZA->EMESSA (per le offerte il "vuoto" e'' la versione listino, non le righe: sono espanse dal listino). rev 2026-07-19 (bis): le 3 push_reason (gia_generato / ordine_gia_generato / non_accettata, usate sia da can_push_contratto_reason_key sia da can_genera_ordine_reason_key) passano al namespace i18n vendite.offerte.* — erano sotto offerte.*, radice inesistente nei locales, quindi il motivo non compariva mai in interfaccia; brief-db-i18n-reason-mancanti-offerte-preventivi. rev 2026-08-06: ogni azione espone outlined (dal meta della transizione, COALESCE a false) e target_state_descrizione (config.stati_doc_offerte.descrizione della destinazione). outlined mancava qui e sul preventivo: il seed lo portava ma la funzione non lo emetteva, quindi il pulsante distruttivo restava rosso pieno mentre negli altri sei domini era outlined. target_state_descrizione serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati; NULL sulle azioni applicative (crea_revisione / push_contratto / genera_ordine), che non cambiano stato. rev 2026-08-11: + stato_info_key, la nota di stato letta dal meta dello stato corrente ed emessa SEMPRE che lo stato la dichiari, anche accanto a un''azione ancora abilitata: la nota spiega lo STATO e non risponde a una barra vuota (decisione §5 di Tid, gia'' applicata a preventivo/ordine/DDT con 20260810-04/-05/-06). Questo dominio era fra i cinque che non emettevano affatto il campo mentre il drawer lo legge gia'': il cablaggio c''era ed era inerte. ⚠️ La PROPRIETA'' nel meta resta nessuna_azione_key mentre il campo del blob si chiama stato_info_key: scripts/check_i18n_keys.py trova le chiavi seminate per quel nome, e rinominarla senza toccare il guard lo renderebbe verde per cecita''. ⚠️ Il campo e'' SEMPRE presente nel blob, col valore a null quando non si applica: filtrare per presenza risponde vero per tutti i documenti, va guardato il valore. brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3. rev 2026-09-24: le azioni di stato passano alla forma dell''''ARRAY DEI MOTIVI — enabled/reason/reason_key discendono da `reasons` (chiave nuova). Verso EMESSA: il motivo del listino (LISTINO_VERSIONE_MANCANTE / _NON_ATTIVA, invariato) e poi i prezzi non autorizzati; verso ACCETTATA: i prezzi. I prezzi (PENDING o REJECTED su eccezioni e loro componenti BoM attivi) vengono da script.fn_check_prezzi_autorizzati, lo stesso building block con cui trgfn_offerte_commerciali_guard_transizione solleva. ⚠️ Le reason_key common.azione_reason.prezzo_pendente / prezzo_rifiutato sono un debito verso il frontend. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-4, D-5).';
 ```
 
 ---

@@ -68,7 +68,12 @@ RADICE = pathlib.Path(__file__).resolve().parent.parent / "db" / "pgtap"
 #   discriminante con uno impossibile e leggere dal messaggio di pgTAP lo
 #   SQLSTATE vero. Dettaglio in D11 di
 #   docs/it/dev/work-in-progress/migliorie-generali-da-test-valutazione.md.
-SOGLIA_THROWS_SENZA_DISCRIMINANTE = 119
+# 2026-09-24: 118 -> 117. Il test 1 di
+#   db/pgtap/vendite/test-preventivi-approvazione-prezzo.sql era un
+#   `throws_ok(..., NULL, NULL)`: passava con qualunque errore, anche uno della
+#   fixture. Riscritto come throws_like sulla frase del prezzo in attesa
+#   (brief-db-preventivi-congelamento-pricing).
+SOGLIA_THROWS_SENZA_DISCRIMINANTE = 117
 
 RX_BEGIN = re.compile(r"^\s*BEGIN\s*;", re.M)
 RX_SETC = re.compile(r"SET\s+CONSTRAINTS\s+ALL\s+IMMEDIATE", re.I)

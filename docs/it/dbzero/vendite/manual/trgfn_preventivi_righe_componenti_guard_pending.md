@@ -10,7 +10,7 @@
 > Funzioni correlate:
 >
 > [vendite.trgfn_preventivi_righe_guard_pending](/dbzero/script/funzioni/trgfn_righe_guard_pending) — guard simmetrico sulla riga padre
-> [vendite.trgfn_preventivi_guard_transizione_approvazione](/dbzero/vendite/funzioni/trgfn_preventivi_guard_transizione_approvazione) — guard complementare: blocca ACCETTATO se componente PENDING
+> [script.fn_check_prezzi_autorizzati](/dbzero/script/funzioni/fn_check_prezzi_autorizzati) — controllo complementare di testata (dal 2026-09-24): un componente attivo PENDING o REJECTED blocca EMESSO e ACCETTATO
 > [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 >
 > Tipo ENUM:
@@ -28,7 +28,7 @@ La trigger function **`vendite.trgfn_preventivi_righe_componenti_guard_pending()
 ### 🎯 Scopo Principale
 
 - **Decisione L3 sul componente esatto** — quando un componente ha un prezzo out-of-policy in attesa di approvazione, l'approvatore L3 deve decidere sulla riga esatta che è stata proposta. Cambi a prezzo, quantita' o articolo durante la fase di approvazione renderebbero la decisione ambigua.
-- **Coerenza con il guard L3 esistente** — `trgfn_preventivi_guard_transizione_approvazione` blocca la transizione ad ACCETTATO se qualsiasi componente è PENDING. Insieme garantiscono che nessuna decisione commerciale avvenga con prezzi incerti sui componenti BoM CASO A.
+- **Coerenza con il controllo di testata** — [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati), chiesto dal guard di transizione del preventivo, blocca le transizioni verso EMESSO e ACCETTATO se un componente attivo è PENDING o REJECTED (dal 2026-09-24; prima lo faceva il trigger ritirato `trgfn_preventivi_guard_transizione_approvazione`, solo verso ACCETTATO e solo sul PENDING). Insieme garantiscono che nessuna decisione commerciale avvenga con prezzi incerti sui componenti BoM CASO A.
 - **Pattern denylist difensivo** — elenco esplicito dei campi struttura: se `preventivi_righe_componenti` viene estesa con nuove colonne struttura, il trigger va aggiornato.
 
 ---

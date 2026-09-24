@@ -68,7 +68,7 @@ Causa: componente in workflow L3, campi struttura frozen. Soluzione: attendere A
 | Tabella | `preventivi_righe_componenti` | `ddt_righe_componenti` |
 | FK col denylist | `riga_preventivo_id` | `riga_ddt_id` |
 | Context JSONB | `riga_preventivo_id` | `riga_ddt_id` |
-| Guard testata complementare | ✅ `trgfn_preventivi_guard_transizione_approvazione` | ❌ non implementato (DDT non ha guard transizione stato) |
+| Guard testata complementare (dal 2026-09-24) | ✅ `trgfn_preventivi_guard_transizione` / `fn_check_preventivo_emettibile` → [`fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati) | ✅ `fn_check_ddt_emittibile` punto 5 (solo se la causale vende), sollevato da `trgfn_ddt_guard_transizione_approvazione` → [`fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati) |
 
 ---
 

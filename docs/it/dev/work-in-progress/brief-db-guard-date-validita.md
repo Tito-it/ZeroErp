@@ -12,9 +12,17 @@
 > raccomandazioni del §8. Dieci pezzi, §10: nove changeSet (`20260923-40…-48`),
 > tre righe di CSV in `80_data`, un pgTAP nuovo e sei aggiornati. Prove in §11.
 > ✅ Richiesta al BE (§12) fatta il 23-09 sera, con il ritiro delle copie BE/FE.
-> ⏳ **Resta la richiesta al team DB (§13)**: una copia della regola in
-> `fn_pubblica_template_documento_versione` e una nel trigger della BoM
-> (`trgfn_articoli_componenti_block_modifica_struttura`), entrambe da ritirare.
+> ✅ **Richiesta al team DB (§13): CHIUSA il 24-09 — applicata, nessuna
+> regressione** (Tid: «migrazione applicata nessuna regressione»; dbdev 11:33,
+> `zeroerp_ci` 11:35). Le due copie rimaste (trigger della BoM, pubblicazione dei
+> template) sono ritirate in `20260924-01`/`-02`, con un CSV, un pgTAP nuovo e
+> due aggiornati: §14. ⭐ **Lato DB il brief è chiuso**: la regola del periodo ha
+> una sede sola, `script.trgfn_guard_date_validita`.
+> ⛔ Ritirare la copia della pubblicazione **non bastava**: la ricerca delle
+> versioni da chiudere costruiva un `daterange` dai due parametri, e con le date
+> invertite rispondeva `22000` prima del guard (§14.1).
+> ⏳ **Resta solo il BE** (§14.4): una riga di test e una rigenerazione di
+> `genera_error_policies`. Poi il brief va in `work-done/`.
 >
 > ✅ **Applicato il 23-09 sera** su dbdev (16:43) e sullo scratch `zeroerp_ci`
 > (17:06, ricostruito); corsa dei pgTAP verde (Tid). ⚠️ I nove rossi «che la CI non conosce» della corsa
@@ -345,14 +353,18 @@ contrario — che il service **passa** le date invertite al repository.
 
 ## 13. Richiesta al team DB — le copie rimaste nel database
 
+> 🔢 **Progressivi (2026-09-24):** i changeSet di questa richiesta, se cadono
+> il 24-09, stanno in `20260924-01` … `-19`. `-20…-39` sono riservati a
+> [brief-db-preventivi-congelamento-pricing.md](brief-db-preventivi-congelamento-pricing.md).
+
 La prova qui sopra ne ha trovata una che il censimento del §2 non poteva vedere
 (guardava i trigger, non le funzioni che validano i propri parametri). Letto
 poi sulla doc auto-generata, cercando il confronto fra le due date:
 
 | Funzione | Che cosa fa | Proposta |
 | --- | --- | --- |
-| `documenti.fn_pubblica_template_documento_versione` | `p_valido_al < p_valido_dal` → `E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO` (campo `valido_al`), prima dell'UPDATE | ⛔ **copia**: ritirare quel ramo — l'UPDATE incontra il guard comune. Il codice resta per gli altri rami (id, `valido_dal` nullo). Il test BE asserisce oggi il codice vecchio **dichiarandolo**, e va rosso il giorno del ritiro: si aggiorna togliendo `codice=` |
-| `catalogo.trgfn_articoli_componenti_block_modifica_struttura` | su UPDATE, `NEW.valido_al < OLD.valido_dal` → `E_BOM_VALIDO_AL_INVALIDO` (campo `valido_al`) | ⛔ **copia — da ritirare (Tid, 23-09: «va risolto»)**. Verificato su `pg_constraint`: `chk_articoli_componenti_valid_dates`, che il commento cita come `CHECK` stretto, **non esiste** (la tabella ha solo `coeff_qta_pos`, `no_selfref`, `note_target_tipo`): la regola è la stessa del guard comune, con un altro codice. ⚠️ E **non è codice morto**: `…_a10_block_modifica_struttura_…` precede in ordine alfabetico `…_a10_date_validita_…`, quindi oggi sulla BoM risponde lui. Da fare: togliere il ramo (e il suo commento), `E_BOM_VALIDO_AL_INVALIDO` → `obsoleto_dal` nel CSV (nessun'altra funzione lo solleva), aggiornare `catalogo/test-articoli-componenti-immutabilita` e `dbops/test-punti-canale-campo-v1` che lo nominano. Lato BE nessun lavoro: il codice sta solo nelle mappe, e ritirato ci resta per il diario |
+| `documenti.fn_pubblica_template_documento_versione` | `p_valido_al < p_valido_dal` → `E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO` (campo `valido_al`), prima dell'UPDATE | ✅ **applicato il 24-09, `20260924-02`** (§14). ⛔ **copia**: ritirare quel ramo — l'UPDATE incontra il guard comune. ⚠️ Non bastava: vedi §14.1. Il codice resta per gli altri rami (id, `valido_dal` nullo). Il test BE asserisce oggi il codice vecchio **dichiarandolo**, e va rosso il giorno del ritiro: si aggiorna togliendo `codice=` |
+| `catalogo.trgfn_articoli_componenti_block_modifica_struttura` | su UPDATE, `NEW.valido_al < OLD.valido_dal` → `E_BOM_VALIDO_AL_INVALIDO` (campo `valido_al`) | ✅ **applicato il 24-09, `20260924-01`** (§14). ⛔ **copia — da ritirare (Tid, 23-09: «va risolto»)**. Verificato su `pg_constraint`: `chk_articoli_componenti_valid_dates`, che il commento cita come `CHECK` stretto, **non esiste** (la tabella ha solo `coeff_qta_pos`, `no_selfref`, `note_target_tipo`): la regola è la stessa del guard comune, con un altro codice. ⚠️ E **non è codice morto**: `…_a10_block_modifica_struttura_…` precede in ordine alfabetico `…_a10_date_validita_…`, quindi oggi sulla BoM risponde lui. Da fare: togliere il ramo (e il suo commento), `E_BOM_VALIDO_AL_INVALIDO` → `obsoleto_dal` nel CSV (nessun'altra funzione lo solleva), aggiornare `catalogo/test-articoli-componenti-immutabilita` e `dbops/test-punti-canale-campo-v1` che lo nominano. Lato BE: il codice sta solo nelle mappe, e ritirato ci resta per il diario — ⚠️ ma le **note** del file generato cambiano, quindi serve la rigenerazione (§14.4) |
 | `vendite.fn_chiudi_contratto_per_successione` | `v_old.valido_dal > p_nuovo_valido_dal - 1` → `E_CONTRATTO_SUCCESSIONE_DATA_INVALIDA` | ✅ **non è una copia**: giudica una data CALCOLATA e parla della successione (col numero del contratto). Resta |
 
 ✅ Nota BE, non per il DB — **risolta il 23-09 sera (Tid: «vai con A»)**.
@@ -366,6 +378,87 @@ restano il ripiego dei `RAISE` diretti. Tolta la voce aggiunta ai contratti
 frase, e spegnendo la frase del DB nel BB i tre punti dei contratti vanno rossi.
 `pratiche_service._raise_known_db_error` non cambia: un codice non dichiarato lo
 rilancia nudo, e il middleware lo traduce già così.
+
+---
+
+## 14. Il giro del §13 — 2026-09-24
+
+### 14.1 ⛔ Togliere il ramo della pubblicazione non bastava
+
+La proposta del §13 diceva *«ritirare quel ramo — l'UPDATE incontra il guard
+comune»*. Letto il corpo vivo, **l'UPDATE non ci arrivava**: prima di pubblicare,
+la funzione cerca le versioni PUBBLICATE da chiudere con
+
+```text
+v.validita && daterange(p_valido_dal, COALESCE(p_valido_al, 'infinity'), '[]')
+```
+
+e con le date invertite quel costruttore solleva `22000` («il limite inferiore
+dell'intervallo …») — **la frase tecnica da cui è nato questo brief**. Il ramo
+tolto la stava coprendo. Provato: con il solo ramo tolto, il t.1 del pgTAP nuovo
+esce su quella frase.
+
+La correzione è sul **modello**, non un ripiego: le versioni candidate partono
+**prima** di `p_valido_dal`, quindi si sovrappongono alla finestra nuova se e
+solo se sono ancora aperte a `p_valido_dal`. `p_valido_al` non entra nel
+giudizio, e la condizione diventa `v.validita && daterange(p_valido_dal, NULL, '[)')`.
+Con date valide l'insieme chiuso è lo stesso (i t.4–7 del pgTAP nuovo lo fissano,
+verdi prima e dopo); con date invertite qui non si solleva niente, l'UPDATE
+finale incontra il guard, e le chiusure già fatte si annullano con la
+transazione (t.3).
+
+### 14.2 Cosa è stato scritto
+
+| Pezzo | File | Note |
+| --- | --- | --- |
+| il trigger della BoM | `20_code/catalogo/20260924-01-update-trgfn-articoli-componenti-block-modifica-struttura-date-al-guard-comune` | tolto il ramo `E_BOM_VALIDO_AL_INVALIDO` e il suo commento (citava un `chk_articoli_componenti_valid_dates` che non esiste). È una copia esatta: la stessa funzione vieta di cambiare `valido_dal`, quindi `OLD.valido_dal` = `NEW.valido_dal` |
+| la pubblicazione | `20_code/documenti/20260924-02-update-fn-pubblica-template-documento-versione-date-al-guard-comune` | tolto il ramo; ricerca riscritta (§14.1); `E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO` resta per `versione_id` e `valido_dal`. Firma, `RETURNS TABLE` e `COMMENT ON` ancorati con `%TYPE` (il corpo vivo li aveva a tipi nudi — rilievo di Tid, 24-09): identità della funzione invariata, verificato in transazione |
+| i codici | `codici_errore.csv`, `messaggi_errore.csv` | `E_BOM_VALIDO_AL_INVALIDO` → `obsoleto_dal = 2026-09-24`; nota di `E_BOM_MODIFICA_VIETATA` corretta; `causa`/`soluzione` di `E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO` senza più la regola sulle date |
+| il pgTAP nuovo | `db/pgtap/documenti/test-fn-pubblica-template-documento-versione-v1.sql` | 7 asserzioni; la funzione **non aveva nessun pgTAP** |
+| i pgTAP aggiornati | `catalogo/test-articoli-componenti-immutabilita` t.11, `dbops/test-punti-canale-campo-v1` t.1 | il t.11 era un `throws_ok(NULL, NULL)`: ora pretende la frase del guard comune. Nel t.1 esce la riga del codice ritirato; la pubblicazione **resta** (il codice vive sul ramo di `valido_dal`, con `campo`) |
+| il cancello | `scripts/guardrail_pgtap_preambolo.py` | debito `throws_ok` senza discriminante 119 → **118** |
+| doc | `manual/` di `trgfn_articoli_componenti_block_modifica_struttura`, `articoli_componenti`, `fn_pubblica_template_documento_versione`, `api_catalogo`; `guide/gestione-listini` | la manual della BoM diceva anche che `validita` la ricalcola «il trigger dedicato»: è una colonna generata (§7) |
+
+Entrambi i changeSet ancorano in `preCondition` l'md5 del `prosrc` letto il 24-09
+(uguale su dbdev e `zeroerp_ci`), come `20260921-44`/`-46`.
+
+### 14.3 Le prove — 2026-09-24
+
+SQL **estratto** dagli YAML, da owner, concatenato al corpo di ogni pgTAP in
+**una** transazione ritirata su `zeroerp_ci`. Corpi vivi riletti dopo: md5
+invariati sui due database.
+
+| Prova | Esito |
+| --- | --- |
+| `test-fn-pubblica-template-documento-versione-v1` | prima **5/7** (t.1 esce con la frase di `E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO`, t.2 con il suo codice), dopo ✅ **7/7** |
+| controprova: solo il ramo tolto, ricerca vecchia | t.1–2 rossi con `22000` — §14.1 |
+| `test-articoli-componenti-immutabilita` | prima 17/18 (t.11 esce con la frase del ramo BoM), dopo ✅ **18/18** |
+| `test-punti-canale-campo-v1` | ✅ 14/14 prima e dopo; controprova: col file di ieri, dopo l'apply il t.1 è rosso e nomina la riga della BoM |
+| prima/dopo su **38** pgTAP (tutto `documenti/`, tutti i file che nominano `articoli_componenti`, guard comune, codici ritirati) | **38 identici**; tre rossi preesistenti, invariati e non di questo giro (`documenti-generati-eventi`, `ddt-componenti-senza-prezzo-v1`, `fn-resolve-prezzo-composito-v1`) |
+| `plpgsql_check` sulle due funzioni | pulito |
+| `guardrail_codice_errore_strutturato.sql`, con la riga del CSV rispecchiata | ✅ nessun codice ritirato ancora sollevato |
+| cancelli statici (runOnChange, preCondition su 80_data, DDL su trigger generati, GRANT batch, letterali, timestamp, preambolo pgTAP) | ✅ |
+
+⛔ **Cosa non dicono**: il verso RLS (da owner) e il loader dei CSV (lo prova
+l'apply). Li dice la corsa dopo l'apply.
+
+✅ **La corsa dopo l'apply (Tid, 24-09): nessuna regressione.** Applicato su
+dbdev (11:33) e su `zeroerp_ci` (11:35), letto dal `databasechangelog` di
+entrambi. Con questo il verso RLS e il loader dei CSV sono provati.
+
+### 14.4 ⏳ Richiesta al BE — l'ultima cosa aperta
+
+Verificato il 24-09 dopo l'apply: nel repository **non è ancora fatta** (il
+test dichiara ancora il codice vecchio, il file generato porta ancora la nota
+vecchia di `E_BOM_MODIFICA_VIETATA`).
+`backend/apps/core/tests/db/test_date_validita_guard_comune_db.py`, punto
+`template_versioni.pubblica`: dichiara `codice="E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO"`
+e dall'apply è **rosso**. Si toglie `codice=` (torna il default,
+`E_DATA_AL_MINORE_DAL`) e il commento `⏳` sopra. E una rigenerazione:
+`genera_error_policies` (il file generato riporta le note dei codici, e
+cambiano quelle di `E_BOM_VALIDO_AL_INVALIDO` e `E_BOM_MODIFICA_VIETATA`:
+senza, il `--check` è rosso). Nessuna classe cambia. `E_BOM_VALIDO_AL_INVALIDO`
+resta nelle mappe per il diario, come `E_DATA_FINE_NON_MAGGIORE_DI_INIZIO`.
 
 ---
 {% include-markdown "signature-core.md" %}

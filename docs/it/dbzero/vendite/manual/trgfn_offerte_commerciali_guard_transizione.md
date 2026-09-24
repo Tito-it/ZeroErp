@@ -11,11 +11,13 @@ Approfondimento tabelle:
 Approfondimento funzioni:
 > • [vendite.trgfn_preventivi_guard_transizione](/dbzero/vendite/funzioni/trgfn_preventivi_guard_transizione)
 > • [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
+> • [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati) — i prezzi non autorizzati (dal 2026-09-24)
+> • [script.fn_available_actions_offerta](/dbzero/script/funzioni/fn_available_actions_offerta) — spegne i pulsanti con gli stessi motivi
 
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21 — funzione rev 2026-05-25)
+(rev 2026-09-24 — il prezzo non autorizzato; rev 2026-08-21 — funzione rev 2026-05-25)
 
 Governa il workflow dell'offerta commerciale, e fa **tre cose in un trigger solo**:
 
@@ -57,6 +59,13 @@ Il senso: un'offerta emessa è un impegno di prezzo verso il cliente, e un impeg
 senza un listino fissato e vigente non è verificabile. Una versione `CHIUSA` o in
 preparazione non basta.
 
+**Regola 2-bis — prezzi autorizzati (rev 2026-09-24), verso `EMESSA` e `ACCETTATA`.**
+Un'eccezione o un suo componente **attivi** con il prezzo in attesa di approvazione o
+rifiutato bloccano la transizione: solleva il primo motivo di [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati)
+(`E_DOC_PREZZO_PENDENTE` / `E_DOC_PREZZO_RIFIUTATO`). ⛔ Non sul **rientro** automatico
+`SUPERATA → EMESSA` (il padre che torna vivo quando si annulla la revisione): non manda niente
+al cliente, e bloccarlo fermerebbe un annullamento. Vedi la sezione in fondo.
+
 **Regola 3 — timestamp.** In base al codice dello stato di destinazione valorizza `now()`
 sulla colonna corrispondente. `ELSE NULL` per gli stati che non hanno un timestamp dedicato:
 non è un errore, semplicemente non c'è niente da marcare.
@@ -95,8 +104,31 @@ rende il caso irraggiungibile; resta il verso in cui il ramo cede, che è fail-o
 | `E_OFFERTA_TRANSIZIONE_NON_AMMESSA` | Coppia `(stato_da, stato_a)` assente o non attiva in matrice |
 | `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO` | `BOZZA → EMESSA` con `listino_versione_id` nullo |
 | `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA` | `BOZZA → EMESSA` con versione in stato diverso da `ATTIVA` |
+| `E_DOC_PREZZO_PENDENTE` | → `EMESSA` / `ACCETTATA` con un prezzo in attesa di approvazione (dal 2026-09-24) |
+| `E_DOC_PREZZO_RIFIUTATO` | → `EMESSA` / `ACCETTATA` con un prezzo rifiutato (dal 2026-09-24) |
 
-Tutti via `script.fn_log_and_raise_error` con `NEW.tx_id` propagato.
+Tutti via `script.fn_log_and_raise_error` con `NEW.tx_id` propagato (i due `E_DOC_PREZZO_*`
+attraverso `script.fn_raise_primo_motivo_se_presente`).
+
+---
+
+### Rev 2026-09-24 — un prezzo non autorizzato non esce
+
+Regola decisa da Tid: *un prezzo che nessuno ha autorizzato non esce dalla bozza*. Fino a
+questa revisione l'offerta **non guardava il prezzo per niente**: un'offerta con un'eccezione
+in attesa di approvazione, o rifiutata, si emetteva e si accettava.
+
+* Il predicato non è scritto qui: lo fa [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati), la sede unica per preventivi, contratti,
+  offerte, ordini e DDT. Per l'offerta guarda le eccezioni
+  (`offerte_commerciali_eccezioni`) e i loro componenti, solo se **attivi**, e sia il
+  prezzo **in attesa** (`PENDING`) sia quello **rifiutato** (`REJECTED`).
+* Vale verso `EMESSA` e verso `ACCETTATA`; non sul rientro da `SUPERATA` (letto dal flag
+  di superamento, non da un codice). L'annullamento resta sempre possibile.
+* Gli stessi motivi spengono «Emetti» e «Accetta» in
+  [`script.fn_available_actions_offerta`](/dbzero/script/funzioni/fn_available_actions_offerta):
+  pulsanti e database non possono dissentire.
+
+(changeSet `20260924-27`, brief `brief-db-preventivi-congelamento-pricing`.)
 
 ---
 

@@ -401,7 +401,12 @@ produzione, non c'è niente da aspettare.*
   `work-done/refactor-prezzi.md` §4.7, residuo differito dal 2026-06-01): dal
   2026-09-14 (`20260914-14`) riguarda anche i **preventivi** — la rev N+1
   ricopia `stato_approvazione_prezzo` e la pratica 1:1, e una riga `PENDING`
-  può trovarsi con la pratica già chiusa sulla rev N
+  può trovarsi con la pratica già chiusa sulla rev N. ⚠️ **Dal 2026-09-24 il
+  debito morde prima**: un prezzo non autorizzato blocca già l'**emissione**
+  (building block `script.fn_check_prezzi_autorizzati`, cinque documenti di
+  vendita), non più la sola accettazione — la revisione con quella riga non si
+  emette, e resta solo l'annullamento. Domanda a Tid nel §10 di
+  `work-in-progress/brief-db-preventivi-congelamento-pricing.md`
 
 **Residui della roadmap fatturazione** (archiviata il 2026-09-12 in
 `docs/it/dev/work-done/fatturazione-roadmap.md`, dove sta il *perché* di

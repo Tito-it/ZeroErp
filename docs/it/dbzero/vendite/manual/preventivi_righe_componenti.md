@@ -19,7 +19,7 @@
 > • [script.trgfn_componenti_calcola_quantita](/dbzero/script/funzioni/trgfn_componenti_calcola_quantita) — calcola quantita componente da coeff × qta padre
 > • [script.trgfn_componenti_propaga_qta](/dbzero/script/funzioni/trgfn_componenti_propaga_qta) — propaga cambio quantita padre ai figli
 > • [vendite.trgfn_preventivi_righe_componenti_guard_pending](/dbzero/vendite/funzioni/trgfn_preventivi_righe_componenti_guard_pending) — guard workflow L3 su componente
-> • [vendite.trgfn_preventivi_guard_transizione_approvazione](/dbzero/vendite/funzioni/trgfn_preventivi_guard_transizione_approvazione) — blocca ACCETTATO se componenti PENDING
+> • [script.fn_check_prezzi_autorizzati](/dbzero/script/funzioni/fn_check_prezzi_autorizzati) — blocca EMESSO e ACCETTATO se un componente attivo è PENDING o REJECTED (dal 2026-09-24)
 >
 > **Tipo ENUM:**
 >
@@ -93,7 +93,9 @@ I meccanismi di approvazione prezzo si applicano al **singolo componente**, non 
 - **L2 (limite sconto)**: parametri `VENDITE_MAX_SCONTO_PCT` / `VENDITE_MAX_MAGGIORAZIONE_PCT` applicati al componente.
 - **L3 (approvazione out-of-policy)**: se il prezzo viola L2, si crea una pratica `APPROVAZIONE_PREZZO` e il componente passa a `stato_approvazione_prezzo = 'PENDING'`. Il trigger `trgfn_preventivi_righe_componenti_guard_pending` congela i campi struttura del componente fino all'esito.
 
-Il guard `trgfn_preventivi_guard_transizione_approvazione` (lato testata preventivo) blocca la transizione ad ACCETTATO se qualsiasi componente è PENDING.
+Lato testata, il guard di transizione del preventivo ([`vendite.trgfn_preventivi_guard_transizione`](/dbzero/vendite/funzioni/trgfn_preventivi_guard_transizione), attraverso [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati)) blocca le transizioni verso EMESSO e ACCETTATO se un componente **attivo**, di una riga attiva, è PENDING o REJECTED (`E_DOC_PREZZO_PENDENTE` / `E_DOC_PREZZO_RIFIUTATO`). Un componente spento non conta: resterebbe `REJECTED` per sempre e bloccherebbe il documento senza rimedio.
+
+(Fino al 2026-09-24 lo faceva il trigger ritirato `trgfn_preventivi_guard_transizione_approvazione`, solo verso ACCETTATO e solo sul PENDING.)
 
 ---
 

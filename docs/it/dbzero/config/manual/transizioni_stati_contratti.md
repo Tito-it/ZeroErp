@@ -39,7 +39,7 @@ stessa struttura, stesso meccanismo di lettura nella capability function.
 
 | id | Da stato | A stato | Manuale | Descrizione |
 |----|----------|---------|:-------:|-------------|
-| 1 | DRAFT (1) | ATTIVO (2) | Sì | Attivazione contratto; il trigger blocca se componenti BoM in PENDING |
+| 1 | DRAFT (1) | ATTIVO (2) | Sì | Attivazione contratto; il trigger blocca se una riga o un componente BoM attivi hanno il prezzo PENDING o REJECTED ([`fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati), dal 2026-09-24) |
 | 2 | DRAFT (1) | ANNULLATO (8) | Sì | Ritiro bozza; ammessa sempre (nessuna fatturazione su DRAFT) |
 | 3 | ATTIVO (2) | CESSATO (5) | Sì | Cessazione; richiede data (`requires_date=true`) |
 

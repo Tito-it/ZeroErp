@@ -10,6 +10,8 @@ Approfondimento tabelle:
 Approfondimento funzioni:
 > [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 > [dbops.fn_apply_chiusura_scadenze](/dbzero/dbops/funzioni/fn_apply_chiusura_scadenze)
+> [script.fn_check_prezzi_autorizzati](/dbzero/script/funzioni/fn_check_prezzi_autorizzati) — prezzi non autorizzati, chiesto all'ingresso in ATTIVO (dal 2026-09-24)
+> [script.fn_available_actions_contratto](/dbzero/script/funzioni/fn_available_actions_contratto) — spegne «Attiva» con gli stessi motivi
 >
 Pattern correlato:
 > [vendite.trgfn_listini_versioni_guard_transizione_stato](/dbzero/vendite/funzioni/trgfn_listini_versioni_guard_transizione_stato)
@@ -19,7 +21,7 @@ Linee guida:
 
 ### 🎯 Scopo Principale
 
-(latest review 12-05-2026 — aggiunto check PENDING componenti BoM CASO A)
+(latest review 24-09-2026 — il prezzo non autorizzato dal building block; 12-05-2026 — aggiunto check PENDING componenti BoM CASO A)
 
 La trigger function **`vendite.trgfn_contratti_guard_transizione_stato()`**
 blocca le transizioni di stato non ammesse sul workflow contratti
@@ -27,10 +29,14 @@ blocca le transizioni di stato non ammesse sul workflow contratti
 sulla cessazione: `ATTIVO -> CESSATO` e' consentita **solo se**
 `valido_al < CURRENT_DATE`.
 
-**Aggiornamento 2026-05-12**: blocca anche la transizione `DRAFT -> ATTIVO`
-se qualsiasi componente BoM CASO A (`contratti_righe_componenti`) ha
-`stato_approvazione_prezzo = 'PENDING'`. Un contratto non deve diventare
-operativo con prezzi in attesa di approvazione L3.
+**Prezzo non autorizzato (rev 2026-09-24)**: blocca l'ingresso in `ATTIVO`
+se una riga **o** un componente BoM, **attivi**, hanno il prezzo in attesa di
+approvazione (`PENDING`) o **rifiutato** (`REJECTED`). Un contratto non diventa
+operativo con un prezzo che nessuno ha autorizzato. Vedi la sezione in fondo.
+
+> Storia: dal 2026-05-12 al 2026-09-24 il controllo guardava i **soli
+> componenti** BoM CASO A (`contratti_righe_componenti`) in `PENDING`: una riga
+> in attesa e ogni prezzo rifiutato passavano.
 
 E' applicata dal trigger
 `trg_contratti_a10_guard_transizione_stato_upd` (fase `_a10_`,
@@ -47,7 +53,7 @@ del codice business-visible (codice_interno e' immutabile per
 
 | Da | A | Ammessa | Condizione aggiuntiva |
 | --- | --- | --- | --- |
-| DRAFT | ATTIVO | si | Nessun componente BoM CASO A con PENDING (dal 12-05-2026) |
+| DRAFT | ATTIVO | si | Nessun prezzo non autorizzato (`PENDING`/`REJECTED`) su righe e componenti attivi (dal 24-09-2026; prima solo componenti `PENDING`) |
 | ATTIVO | CESSATO | si | `NEW.valido_al IS NOT NULL AND NEW.valido_al < CURRENT_DATE` |
 | (qualsiasi) | (stesso stato) | si | no-op (filtrato dal `WHEN` del trigger) |
 | DRAFT | CESSATO | **no** | la bozza si cancella, non si chiude |
@@ -75,6 +81,10 @@ del codice business-visible (codice_interno e' immutabile per
 3. Se non ammessa: `script.fn_log_and_raise_error` con codice
    `E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA` e contesto JSONB
    (`contratto_id`, `numero`, `stato_da`, `stato_a`, `valido_al`).
+4. Se la destinazione è `ATTIVO`: solleva il primo motivo di
+   [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati)
+   con `script.fn_raise_primo_motivo_se_presente` (contesto `contratto_id`,
+   `numero`, `stato_da`, `stato_a`).
 
 Il filtro `WHEN (OLD.stato_doc_contratto_id IS DISTINCT FROM NEW.stato_doc_contratto_id)`
 nel trigger garantisce che la funzione non venga invocata su no-op:
@@ -106,7 +116,12 @@ colonna generata `validita`, linee-guida-sql §7b). Implica che:
 | Codice | Quando | Contesto |
 | --- | --- | --- |
 | `E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA` | Transizione non ammessa | `contratto_id`, `numero`, `stato_da`, `stato_a`, `valido_al`. |
-| `E_COMPONENTE_PREZZO_PENDENTE` (id 439) | DRAFT→ATTIVO con componente PENDING | `contratto_id`, hint. Aggiunto 2026-05-12. |
+| `E_DOC_PREZZO_PENDENTE` | → ATTIVO con una riga o un componente attivi col prezzo in attesa | `contratto_id`, `numero`, `stato_da`, `stato_a`; conteggio in `valori`. Dal 2026-09-24. |
+| `E_DOC_PREZZO_RIFIUTATO` | → ATTIVO con una riga o un componente attivi col prezzo rifiutato | come sopra. Dal 2026-09-24. |
+
+Fino al 2026-09-24 qui usciva `E_COMPONENTE_PREZZO_PENDENTE` (id 439): quel codice
+resta vivo, ma solo per il guard **per riga** dei componenti (un componente in
+attesa non si modifica).
 
 ---
 
@@ -156,6 +171,29 @@ contratto.save()
 * Lookup `codice_interno` (immutabile, UNIQUE) e non `codice` (relabellabile).
 * Il guard scatta solo su UPDATE OF `stato_doc_contratto_id` (NON su INSERT). L'INSERT diretto in qualunque stato e' permesso (seed/import).
 * Il trigger e' in fase `_a10_` (guard pre-audit), priorita' lessicografica garantita.
+
+---
+
+### Rev 2026-09-24 — il prezzo non autorizzato dal building block
+
+Regola nuova, decisa da Tid: *un prezzo che nessuno ha autorizzato non esce dalla
+bozza*. Per il contratto vuol dire: non si attiva.
+
+* Il controllo non è più scritto qui: lo fa
+  [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati),
+  la sede unica per preventivi, contratti, offerte, ordini e DDT. Questa funzione
+  si limita a sollevare il primo motivo.
+* Guarda **righe e componenti**, e sia il prezzo **in attesa** sia quello
+  **rifiutato**. Prima guardava i soli componenti in attesa.
+* Contano solo righe e componenti **attivi**: un componente spento resterebbe
+  rifiutato per sempre e bloccherebbe il contratto senza rimedio.
+* I codici diventano `E_DOC_PREZZO_PENDENTE` / `E_DOC_PREZZO_RIFIUTATO`.
+* Il pulsante «Attiva» si spegne con gli stessi motivi:
+  [`script.fn_available_actions_contratto`](/dbzero/script/funzioni/fn_available_actions_contratto)
+  legge la stessa funzione, quindi pulsante e database non possono dissentire.
+* L'annullamento della bozza non cambia: resta sempre possibile.
+
+(changeSet `20260924-25`, brief `brief-db-preventivi-congelamento-pricing`.)
 
 ---
 

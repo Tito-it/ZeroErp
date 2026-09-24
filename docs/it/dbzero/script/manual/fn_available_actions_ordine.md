@@ -185,3 +185,22 @@ da DRAFT è bloccata tutta la testata, allineata a `_UPDATE_KEYS_ORDINE` di
   transizione all'esecuzione è garantita dal guard
   [`trgfn_ordini_guard_transizione`](/dbzero/vendite/funzioni/trgfn_ordini_guard_transizione),
   che legge la **stessa** matrice.
+
+## Rev 2026-09-24 — «Conferma» spento finché un prezzo non è autorizzato
+
+Regola decisa da Tid: *un prezzo che nessuno ha autorizzato non esce dalla bozza*. Un
+ordine con un componente BoM **attivo** in attesa di approvazione (`PENDING`) o
+**rifiutato** (`REJECTED`) non si conferma.
+
+* **Dalla bozza**, i motivi dell'azione verso `CONFERMATO` sommano a quelli di
+  [`script.fn_check_ordine_confermabile`](/dbzero/script/funzioni/fn_check_ordine_confermabile)
+  i motivi di [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati). `enabled`, `reason` e `reason_key` discendono dallo stesso array.
+* **Solo dalla bozza**, come la Regola 5 di
+  [`vendite.trgfn_ordini_guard_transizione`](/dbzero/vendite/funzioni/trgfn_ordini_guard_transizione)
+  che li solleva: il rientro in `CONFERMATO` da `EVASO` / `PARZIALMENTE_EVASO` è automatico
+  e non conferma niente di nuovo. Per questo il prezzo **non** sta in
+  `fn_check_ordine_confermabile`, che vale per ogni ingresso in `CONFERMATO`.
+
+Motivi nuovi: `PREZZO_PENDENTE` / `PREZZO_RIFIUTATO`, con `reason_key`
+`common.azione_reason.prezzo_pendente` / `common.azione_reason.prezzo_rifiutato`.
+(changeSet `20260924-30`, brief `brief-db-preventivi-congelamento-pricing`.)

@@ -18,6 +18,10 @@ AS $function$
 -- al momento dell'emissione (BOZZA->EMESSA).
 -- rev 2026-08-28: + regola del rientro da uno stato di superamento;
 -- data_emissione non si riscrive su un secondo ingresso in EMESSA.
+-- rev 2026-09-24: + i prezzi non autorizzati verso EMESSA e ACCETTATA,
+-- dal building block script.fn_check_prezzi_autorizzati; escluso il
+-- rientro da uno stato di superamento (brief-db-preventivi-congelamento-
+-- pricing, D-4/D-5).
 DECLARE
     v_codice_da config.stati_doc_offerte.codice_interno%TYPE;
     v_codice_a  config.stati_doc_offerte.codice_interno%TYPE;
@@ -145,6 +149,35 @@ BEGIN
 
     END IF;
 
+    -- Prezzi non autorizzati (rev 2026-09-24): un'offerta con un prezzo che
+    -- nessuno ha autorizzato — in attesa o rifiutato, su eccezioni o loro
+    -- componenti BoM attivi — non va al cliente (EMESSA) e non diventa un
+    -- impegno (ACCETTATA). D-1, D-4.
+    --
+    -- ⭐ Il predicato e' il building block script.fn_check_prezzi_autorizzati,
+    --   lo STESSO che fn_available_actions_offerta usa per spegnere i
+    --   pulsanti: qui si solleva soltanto.
+    -- ⛔ NON sul RIENTRO da uno stato di superamento (SUPERATA -> EMESSA):
+    --   e' l'automatismo «annullo la revisione, il padre torna vivo»
+    --   (trg_offerte_commerciali_z90_rientro_padre_upd), non un invio al
+    --   cliente — l'offerta era gia' stata mandata. Un prezzo rimasto non
+    --   autorizzato sul padre bloccherebbe l'ANNULLAMENTO della revisione,
+    --   cioe' una via d'uscita (D-2). Letto dal flag is_superato, non da un
+    --   codice.
+    IF v_codice_a IN ('EMESSA', 'ACCETTATA')
+       AND NOT COALESCE(v_superato_da, false) THEN
+        PERFORM script.fn_raise_primo_motivo_se_presente(
+            'database', TG_NAME::text,
+            script.fn_check_prezzi_autorizzati('vendite.offerte_commerciali'::regclass, NEW.id),
+            NULL,
+            NEW.tx_id,
+            jsonb_build_object(
+                'offerta_id', NEW.id,
+                'codice',     NEW.codice,
+                'stato_da',   v_codice_da,
+                'stato_a',    v_codice_a));
+    END IF;
+
     -- Valorizza il timestamp corrispondente al passaggio stato.
     -- ⚠️ data_emissione con COALESCE: un rientro SUPERATA->EMESSA e' un
     -- SECONDO ingresso in EMESSA, e riscrivere la data cancellerebbe il
@@ -163,7 +196,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_offerte_commerciali_guard_transizione()
-IS 'BEFORE UPDATE OF stato_doc_offerta_id: blocca transizioni non ammesse (config-driven via config.stati_doc_offerte_transizioni). Guard BOZZA->EMESSA: listino_versione_id NOT NULL + stato ATTIVA. Regola del RIENTRO (rev 2026-08-28): si esce da uno stato con is_superato solo se non esiste piu'' una revisione figlia non abortita, altrimenti E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA — la condizione vale per chiunque scriva, non solo per il trigger di rientro. Valorizza data_accettazione|data_rifiuto|data_annullamento, e data_emissione solo se ancora NULL (un rientro non riscrive la data di emissione reale).';
+IS 'BEFORE UPDATE OF stato_doc_offerta_id: blocca transizioni non ammesse (config-driven via config.stati_doc_offerte_transizioni). Guard BOZZA->EMESSA: listino_versione_id NOT NULL + stato ATTIVA. Regola del RIENTRO (rev 2026-08-28): si esce da uno stato con is_superato solo se non esiste piu'' una revisione figlia non abortita, altrimenti E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA — la condizione vale per chiunque scriva, non solo per il trigger di rientro. Valorizza data_accettazione|data_rifiuto|data_annullamento, e data_emissione solo se ancora NULL (un rientro non riscrive la data di emissione reale). rev 2026-09-24: verso EMESSA e ACCETTATA solleva il primo motivo di script.fn_check_prezzi_autorizzati (prezzi PENDING o REJECTED su eccezioni e loro componenti BoM attivi, E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO) — prima nessun controllo sul prezzo. ⛔ Non sul rientro da uno stato di superamento (flag is_superato): e'''' l''''automatismo del padre che torna vivo, e bloccarlo fermerebbe l''''annullamento della revisione. La capability fn_available_actions_offerta legge la stessa funzione. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-4, D-5).';
 ```
 
 ---

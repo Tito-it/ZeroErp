@@ -467,22 +467,36 @@ snapshot sopravvive a future modifiche del listino e permette di ricostruire
 
 ### 6.4 Preventivo congelato da pricing pendente
 
-Quando una o più righe (o componenti BoM) sono in stato di approvazione **PENDING**
-o **REJECTED** (gate L3, §6.2), l'intero preventivo è **congelato** a livello
-documento, non solo la singola riga:
+**La regola (database, dal 2026-09-24):** un prezzo che nessuno ha autorizzato non
+esce dalla bozza. Se almeno una riga **attiva** o un componente BoM **attivo** ha
+il prezzo in attesa di approvazione (**PENDING**) o **rifiutato** (**REJECTED**),
+il preventivo:
 
-- il backend **svuota le azioni disponibili** e mette la testata in **sola lettura**
-  (`can_edit_testata = false`): il frontend disabilita i pulsanti di avanzamento
-  (Emetti / Accetta) e l'editing della testata;
-- con sole righe **REJECTED** l'editing delle righe resta abilitato
-  (`can_edit_righe = true`), per permettere all'operatore di correggere o eliminare
-  la riga rifiutata (riportando il prezzo a un valore accettabile il flag si resetta
-  e il preventivo torna lavorabile);
-- con almeno una riga **PENDING** anche l'editing riga è bloccato, in attesa
-  dell'esito.
+- **non può essere emesso** (DRAFT → EMESSO);
+- **non può essere accettato** (→ ACCETTATO);
+- **può sempre essere annullato**: l'annullamento è la via d'uscita dell'operatore.
 
-A ulteriore difesa, il tentativo di passare ad ACCETTATO con righe/componenti
-PENDING è rifiutato dal trigger DB con `E_PREVENTIVO_RIGHE_PRICING_PENDENTI`.
+Il database solleva `E_DOC_PREZZO_PENDENTE` (prezzi in attesa) o
+`E_DOC_PREZZO_RIFIUTATO` (prezzi rifiutati); se ci sono entrambi, esce prima
+l'attesa. Gli stessi motivi spengono i pulsanti **Emetti** e **Accetta** con il
+loro tooltip, perché bottone e database leggono la stessa funzione:
+[script.fn_check_prezzi_autorizzati](/dbzero/script/funzioni/fn_check_prezzi_autorizzati),
+chiamata da [script.fn_check_preventivo_emettibile](/dbzero/script/funzioni/fn_check_preventivo_emettibile)
+per l'emissione e da [vendite.trgfn_preventivi_guard_transizione](/dbzero/vendite/funzioni/trgfn_preventivi_guard_transizione)
+per l'accettazione.
+
+Per rimediare, l'operatore attende l'esito della pratica oppure corregge o
+toglie la riga: riportando il prezzo a un valore accettabile lo stato di
+approvazione si azzera e il preventivo torna emettibile.
+
+La singola riga **PENDING** resta non modificabile finché la pratica è aperta
+(guard per riga); la testata e le altre righe restano modificabili in DRAFT.
+
+> ⚠️ **Il backend, oggi, spegne di più.** Fino al ritiro del debito dichiarato in
+> `preventivi_service.get_preventivo` (richiesta al team backend del brief
+> `brief-db-preventivi-congelamento-pricing`, §6), il backend riscrive ancora a video
+> le azioni e mette la testata in sola lettura quando c'è un prezzo in attesa o
+> rifiutato. La regola vera è quella del database, descritta sopra.
 
 ---
 
@@ -668,8 +682,12 @@ Codici lanciati dal dominio preventivi (registrati in `error_policies`):
 | `E_PREZZO_LISTINO_NON_TROVATO`              | 400  | Resolver non trova listino applicabile                                                |
 | `E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C`   | 400  | Modalità C: articolo non in contratto                                                 |
 | `E_PREV_UTILITY_ISTANZA_INCOERENTE`         | 400  | Creazione: utility non coerente con l'istanza selezionata                             |
-| `E_PREVENTIVO_RIGHE_PRICING_PENDENTI`       | 400  | Accettazione con righe/componenti in approvazione PENDING (§6.4)                      |
+| `E_DOC_PREZZO_PENDENTE`                     | 409  | Emissione o accettazione con un prezzo in attesa di approvazione (§6.4)               |
+| `E_DOC_PREZZO_RIFIUTATO`                    | 409  | Emissione o accettazione con un prezzo rifiutato (§6.4)                               |
 | `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA`     | 400  | Riga con natura ricorrente (destinazione CONTRATTO): usa l'offerta commerciale (§2.2) |
+
+`E_PREVENTIVO_RIGHE_PRICING_PENDENTI` è **ritirato** dal 2026-09-24: bloccava solo
+l'accettazione e solo per i prezzi in attesa. Lo sostituiscono i due `E_DOC_PREZZO_*`.
 
 Codici dello **smistamento / orchestratore `CONFERMA_VENDITA`** (vedi §8 e
 [API Preventivi](/backend/vendite/manual/api_preventivi)):

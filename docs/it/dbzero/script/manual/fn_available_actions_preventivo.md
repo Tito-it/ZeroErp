@@ -185,3 +185,27 @@ fatturazione, push commessa).
   punto perché siamo già nella branch `manuale IS TRUE` (COALESCE sopra),
   quindi le transizioni automatiche (es. EMESSO→SCADUTO con `manuale=false`)
   sono già escluse prima di questo check.
+
+## Rev 2026-09-24 — «Accetta» spento finché un prezzo non è autorizzato
+
+Regola decisa da Tid: *un prezzo che nessuno ha autorizzato non esce dalla bozza*. Un
+preventivo con una riga o un componente BoM **attivi** in attesa di approvazione
+(`PENDING`) o **rifiutati** (`REJECTED`) non si emette e non si accetta.
+
+* Sulle azioni verso `ACCETTATO` la funzione somma i motivi di [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati), nello stesso array
+  `reasons` da cui discendono `enabled`, `reason` e `reason_key`. È lo stesso building block
+  che la Regola 3 di [`vendite.trgfn_preventivi_guard_transizione`](/dbzero/vendite/funzioni/trgfn_preventivi_guard_transizione)
+  usa per sollevare: «Accetta» e database non possono dissentire.
+* Verso `EMESSO` i motivi arrivano già da
+  [`script.fn_check_preventivo_emettibile`](/dbzero/script/funzioni/fn_check_preventivo_emettibile),
+  che dalla stessa data li contiene (MOTIVO 2).
+* **Annulla non cambia**: è la via d'uscita dell'operatore.
+* `can_edit_testata` / `can_edit_righe` restano quelli di prima (`DRAFT`): il blocco sta
+  sulla sola riga in attesa, dal suo guard per riga.
+
+Motivi possibili: `PREZZO_PENDENTE` / `PREZZO_RIFIUTATO`, con `reason_key`
+`common.azione_reason.prezzo_pendente` / `common.azione_reason.prezzo_rifiutato`.
+
+⭐ Con questo il backend può togliere la sua riscrittura di `available_actions` e
+`can_edit_*` in `preventivi_service.get_preventivo` (richiesta al team backend, brief
+`brief-db-preventivi-congelamento-pricing` §6). (changeSet `20260924-23`.)

@@ -44,7 +44,8 @@
 - [fn_check_ordine_confermabile](manual/fn_check_ordine_confermabile.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
 - [fn_check_parameter_fk_surrogate](manual/fn_check_parameter_fk_surrogate.md) — (latest review 02-05-2026)
 - [fn_check_preventivo_annullabile](manual/fn_check_preventivo_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-08-10)
-- [fn_check_preventivo_emettibile](manual/fn_check_preventivo_emettibile.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
+- [fn_check_preventivo_emettibile](manual/fn_check_preventivo_emettibile.md) — (rev 2026-09-24 — MOTIVO 2, i prezzi non autorizzati; funzione nata il 2026-08-29)
+- [fn_check_prezzi_autorizzati](manual/fn_check_prezzi_autorizzati.md) — (nata il 2026-09-24 — `20260924-20`)
 - [fn_check_registro_forma_modificabile](manual/fn_check_registro_forma_modificabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_check_riga_contabile_eliminabile](manual/fn_check_riga_contabile_eliminabile.md) — (scritta il 14-09-2026)
 - [fn_check_riga_magazzino](manual/fn_check_riga_magazzino.md) — (rev 2026-09-18 — Lotto 2 del magazzino)

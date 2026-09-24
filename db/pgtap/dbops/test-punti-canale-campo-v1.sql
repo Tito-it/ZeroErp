@@ -105,7 +105,6 @@ SELECT is(
             ('anagrafiche.trgfn_dati_societari_guard_forma_giuridica',            'E_FORMA_GIURIDICA_PAESE'),
             ('anagrafiche.trgfn_risorse_umane_guard_ruolo',                       'E_RISORSA_UMANA_SOGGETTO_MISMATCH'),
             ('anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo',       'E_TIPO_INDIRIZZO_NON_PERMESSO'),
-            ('catalogo.trgfn_articoli_componenti_block_modifica_struttura',       'E_BOM_VALIDO_AL_INVALIDO'),
             ('config.trgfn_iva_guard_conti_iva',                                  'E_IVA_CONTO_ACQ_ERR'),
             ('config.trgfn_iva_guard_conti_iva',                                  'E_IVA_CONTO_VEN_ERR'),
             ('config.trgfn_toponomastica_normalize',                              'E_NAZIONE_NON_TROVATA'),
@@ -141,6 +140,9 @@ SELECT is(
             --   qui (billing_account e i due legami ai conti bancari) sono stati
             --   ritirati (20260923-43..-45): la regola ha UNA sede, il guard
             --   comune. Il canale si pretende ora su di lui.
+            --   2026-09-24: stessa sorte per E_BOM_VALIDO_AL_INVALIDO nel trigger
+            --   della BoM (20260924-01, codice ritirato). La pubblicazione dei
+            --   template (sopra) resta: il suo codice vive sul ramo di valido_dal.
             ('script.trgfn_guard_date_validita',                                  'E_DATA_AL_MINORE_DAL'),
             ('script.fn_disdetta_cliente',                                        'E_DATA_CESSAZIONE_INVALIDA'),
             ('script.fn_guard_soggetto_pf_pura',                                  'E_AUTH_USER_SOGGETTO_CON_PIVA'),

@@ -8,7 +8,8 @@
 -- Contesto:
 --   BoM immutabile. DELETE vietato. UPDATE dei campi di struttura
 --   vietato. Ammessi solo:
---     - UPDATE valido_al (con check >= valido_dal)
+--     - UPDATE valido_al (l'ordine delle date lo giudica il guard comune
+--       script.trgfn_guard_date_validita, non questo trigger: 20260924-01)
 --     - UPDATE campi note, meta, attivo
 --     - UPDATE campi audit (gestiti da altri trigger)
 --   Pattern admin: chiudi riga + inserisci nuova con valido_dal
@@ -26,7 +27,8 @@
 --    8. UPDATE valido_dal -> raise
 --    9. UPDATE validita (daterange nativo) -> raise
 --   10. UPDATE valido_al in avanti (chiusura) -> OK
---   11. UPDATE valido_al < valido_dal -> raise E_BOM_VALIDO_AL_INVALIDO
+--   11. UPDATE valido_al < valido_dal -> parla il guard comune
+--       (E_DATA_AL_MINORE_DAL), non piu' E_BOM_VALIDO_AL_INVALIDO
 --   12. UPDATE note_id -> OK
 --   13. UPDATE meta -> OK
 --   14. UPDATE attivo -> OK
@@ -234,18 +236,25 @@ SELECT lives_ok(
 );
 
 -- =========================================================
--- 11) UPDATE valido_al < valido_dal -> raise E_BOM_VALIDO_AL_INVALIDO
+-- 11) UPDATE valido_al < valido_dal -> parla il guard comune
 -- valido_dal e' oggi-30; provo valido_al = oggi-60.
+-- ⭐ rev 20260924-01 (brief-db-guard-date-validita §13): fino al 23-09 qui
+--   rispondeva il ramo E_BOM_VALIDO_AL_INVALIDO di questo trigger, che in
+--   ordine alfabetico (`…_a10_block_…` < `…_a10_date_validita_…`) precedeva il
+--   guard comune. Il ramo era una copia della regola del periodo ed e'
+--   ritirato: ora parla script.trgfn_guard_date_validita, come sulle altre
+--   tabelle con la coppia di date. ⚠️ Prima era un throws_ok(NULL, NULL):
+--   verde con QUALSIASI errore. Ora pretende la frase del guard comune.
 -- =========================================================
-SELECT throws_ok(
+SELECT throws_like(
     format(
         $sql$ UPDATE catalogo.articoli_componenti
                  SET valido_al = (CURRENT_DATE - INTERVAL '60 days')::date
                WHERE id = %L::uuid $sql$,
         (SELECT riga_id FROM _t_bom_riga)
     ),
-    NULL, NULL,
-    '11. UPDATE valido_al < valido_dal -> raise E_BOM_VALIDO_AL_INVALIDO'
+    '%è inferiore alla data dal%',
+    '11. UPDATE valido_al < valido_dal -> parla il guard comune (E_DATA_AL_MINORE_DAL)'
 );
 
 -- =========================================================

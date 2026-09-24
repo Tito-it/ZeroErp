@@ -13,7 +13,7 @@
 >
 • [script.trgfn_qta_from_operativa](/dbzero/script/funzioni/trgfn_qta_from_operativa)  
 • [vendite.trgfn_preventivi_righe_guard_pending](/dbzero/script/funzioni/trgfn_righe_guard_pending) — guard workflow L3 approvazione prezzo (dal 22-04-2026)  
-• [vendite.trgfn_preventivi_guard_transizione_approvazione](/dbzero/vendite/funzioni/trgfn_preventivi_guard_transizione_approvazione) — guard complementare sul preventivo (blocca ACCETTATO con righe PENDING)  
+• [script.fn_check_prezzi_autorizzati](/dbzero/script/funzioni/fn_check_prezzi_autorizzati) — controllo complementare sul preventivo (dal 2026-09-24): una riga attiva PENDING o REJECTED blocca EMESSO e ACCETTATO  
 
 **Tipi ENUM correlati:**
 >
