@@ -35,7 +35,9 @@ sullo stesso `auth_user`, senza email/token.
 ### POST `/api/v1/anagrafiche/clienti/{cliente_id}/invita-portale/`
 
 Invita il cliente come `CLIENTE_PORTALE`. Auth: JWT operatore con livello
-area `anagrafiche` ≥ `LETTURA`.
+area `anagrafiche` = `TUTTO` (POST senza `post_permission`: vale
+`METHOD_REQUIRES['POST'] = 'add'`). Lo stesso vale per tutti gli inviti e le
+disattivazioni qui sotto.
 
 **Body**:
 
@@ -48,6 +50,12 @@ area `anagrafiche` ≥ `LETTURA`.
 
 `reinvio=true`: invalida i token portale precedenti per quell'auth_user
 e genera il nuovo invito.
+
+⚠️ Difetto noto (M-3): con un'email **nuova** il primo invito crea l'`auth_user` e
+l'identita' gia' `attivo=true`. Il reinvio ritrova quell'utente, passa al flow
+CROSS e viene rifiutato con `E_INVITO_PORTALE` («ha gia' accesso a questa
+veste»): oggi a chi non ha mai attivato **non si puo' rinviare** l'invito. Vedi
+[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 
 **Semantica transazionale del reinvio (fix analisi-fix-transazioni #17, 2026-07-08).**
 L'invalidazione dei token precedenti e la ri-emissione identita/token avvengono nella
@@ -76,6 +84,9 @@ lo shop aveva ancora l'invalidazione fuori-atomic).
 `is_cross=true` quando l'email matcha un `auth_user` gia' esistente:
 nessun nuovo `auth_user` creato, viene aggiunta una **2a identita**
 `attivo=false` in attesa di attivazione cross.
+Con `is_cross=false` (email nuova) l'identita' nasce invece **`attivo=true`**,
+con password temporanea casuale e `deve_cambiare_password=true`: l'attivazione
+fa scegliere la password, non accende l'identita'.
 
 ---
 
@@ -116,6 +127,8 @@ anagrafiche ≥ LETTURA.
       "stato": "ATTIVO",
       "identita_id": 500,
       "auth_user_id": 10,
+      "username": "mario.rossi",
+      "email": "mario.rossi@example.com",
       "invito_inviato_at": "2026-04-20T14:30:00Z",
       "token_scade_at": null
     },
@@ -123,6 +136,8 @@ anagrafiche ≥ LETTURA.
       "stato": "NESSUNO",
       "identita_id": null,
       "auth_user_id": null,
+      "username": null,
+      "email": null,
       "invito_inviato_at": null,
       "token_scade_at": null
     }
@@ -139,8 +154,14 @@ anagrafiche ≥ LETTURA.
 | `ATTIVO` | identita `attivo=true` |
 | `DISATTIVO` | identita `attivo=false`, nessun token pending (revocata o invito scaduto) |
 
-`token_scade_at` valorizzato solo per `PENDING` — usato dalla UI per
-mostrare "scade tra N ore".
+`token_scade_at` e' la scadenza piu' lontana fra i token vivi della veste (invito
++ cross) — usato dalla UI per mostrare "scade tra N ore". E' valorizzato ogni
+volta che un token vivo esiste, quindi anche su `ATTIVO`.
+
+⚠️ Difetto noto (M-3): siccome l'invito con email nuova crea l'identita' gia'
+`attivo=true`, quel cliente risulta **`ATTIVO` subito dopo l'invito**, prima di
+aver scelto la password; `PENDING` compare solo nel flow CROSS. Vedi
+[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 
 ---
 
@@ -203,13 +224,18 @@ ambiguita. Per rimettere in linea un accesso disattivato, l'admin
 auth_user): il service riattiva automaticamente l'identita esistente se
 compatibile (vedi `PortaleRepository.riattiva_identita`).
 
+⚠️ Difetto noto (M-3): dopo una disattivazione l'`auth_user` esiste gia', quindi il
+reinvio segue **sempre** il flow CROSS (token senza scelta password) — anche per
+chi aveva solo la password temporanea del primo invito e non ha mai attivato.
+Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+
 ---
 
 ## Endpoint pubblici (attivazione)
 
 I 4 endpoint seguenti **non richiedono JWT** (`AllowAny`,
-`authentication_classes = []`). Sono throttled tramite
-`PasswordResetRateThrottle`.
+`authentication_classes = []`). I due `conferma` sono throttled tramite
+`PasswordResetRateThrottle`; i due `validate` non hanno throttling dedicato.
 
 ### Portale
 
@@ -343,6 +369,9 @@ credenziali del portale (stesso `auth_user`).
 | Codice | HTTP | Quando |
 | --- | --- | --- |
 | `E_INVITO_PORTALE` | 400 | Validazione lato admin (email assente, cliente/fornitore inesistente, identita gia' attiva, identita gia' su altro auth_user, veste non supportata) |
+
+⚠️ Difetto noto (E-4): «cliente/fornitore inesistente» esce 400 con
+`E_INVITO_PORTALE`, non 404 — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 | `E_ATTIVAZIONE_PORTALE` | 400 | Token portale assente/invalido/scaduto, password mismatch, meta senza identita_id, riga identita rimossa tra invio e conferma |
 | `E_ATTIVAZIONE_SHOP` | 400 | Stesso perimetro di `E_ATTIVAZIONE_PORTALE` per i 2 endpoint shop |
 | `E_ATTIVAZIONE_SHOP_CROSS` | 400 | Cross-veste self-service: ruolo non CLIENTE_PORTALE, GUC vuota, identita su altro auth_user |
@@ -368,7 +397,7 @@ ammesso.
 
 ## Mappa `_VESTE_CONFIG` (single source of truth)
 
-In [invito_portale_service.py](../../../../backend/apps/portale/services/invito_portale_service.py)
+In [invito_portale_service.py](../../../../../backend/apps/portale/services/invito_portale_service.py)
 una mappa `dict[str, _VesteConfig]` (TypedDict) parametrizza il flow
 comune `_invia_invito_common` su 5 dimensioni:
 
@@ -388,9 +417,9 @@ equivalente). Nessun'altra modifica al service necessaria.
 
 ## Test di riferimento
 
-- **Service unit**: [test_invito_portale_service.py](../../../../backend/apps/portale/tests/services/test_invito_portale_service.py) — 14 test (11 portale + 3 shop)
-- **API portale**: [test_attivazione_portale_view.py](../../../../backend/apps/portale/tests/api/test_attivazione_portale_view.py) — 15 test (12 attivazione + 3 ProfileActivateShop)
-- **API shop**: [test_attivazione_shop_view.py](../../../../backend/apps/shop/tests/api/test_attivazione_shop_view.py) — 6 test (3 validate + 3 conferma)
+- **Service unit**: [test_invito_portale_service.py](../../../../../backend/apps/portale/tests/services/test_invito_portale_service.py)
+- **API portale**: [test_attivazione_portale_view.py](../../../../../backend/apps/portale/tests/api/test_attivazione_portale_view.py) — attivazione e `ProfileActivateShop`
+- **API shop**: [test_attivazione_shop_view.py](../../../../../backend/apps/shop/tests/api/test_attivazione_shop_view.py) — validate e conferma
 
 ---
 
@@ -398,7 +427,7 @@ equivalente). Nessun'altra modifica al service necessaria.
 
 Il template email `INVITO_SHOP` deve essere seedato in
 `config.email_template`. Proposta SQL idempotente disponibile in
-[backend/scripts/db-proposals/PROPOSTA_seed_email_invito_shop.sql](../../../../backend/scripts/db-proposals/PROPOSTA_seed_email_invito_shop.sql)
+[backend/scripts/db-proposals/PROPOSTA_seed_email_invito_shop.sql](../../../../../backend/scripts/db-proposals/PROPOSTA_seed_email_invito_shop.sql)
 — da applicare su `dev/db-tid` aggiungendo la riga al file CSV
 `email_template.csv` (changelog `runOnChange` + UPSERT).
 

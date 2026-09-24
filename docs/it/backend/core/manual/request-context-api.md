@@ -22,8 +22,11 @@ Componenti:
   - `meta.idempotency_key` (se presente)
 
 ## Regole
-- Se `X-Request-ID` manca, viene generato UUID.
-- Idempotency key viene propagata per tracing (policy retry/write).
+- Se `X-Request-ID` manca (o è vuoto), viene generato un UUID; se il client lo invia, il valore è accettato così com'è, senza controlli di formato né di lunghezza, ed è rimandato in risposta.
+  - ⚠️ Difetto noto ([S-1](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)): un `X-Request-ID` che non è un UUID fa fallire in silenzio le INSERT di `dbops.request_log` e `dbops.sessioni_utente`, che lo scrivono in colonne `uuid`.
+- Idempotency key: si legge `Idempotency-Key`, in alternativa `X-Idempotency-Key`; il valore viene ripulito dagli spazi e una chiave vuota o più lunga di 128 caratteri è **ignorata** (nessun header in risposta, nessun `meta.idempotency_key`).
+- La chiave valida viene propagata per tracing (policy retry/write).
+- Il contesto (`contextvars`) è azzerato a fine risposta e in caso di eccezione.
 
 ## Dipendenze DB
 - Nessuna

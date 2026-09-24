@@ -9,7 +9,8 @@ Definire un contratto errore uniforme per tutte le API backend Django.
 La logica condivisa e` centralizzata in:
 
 - `apps/core/services/error_manager.py`
-- `apps/core/services/error_policies.py`
+- `apps/core/services/error_policies.py` — `ErrorPolicyRegistry`, mappe classe → HTTP e classe → `ui_action`
+- `apps/core/services/error_policies_generated.py` — `CLASSE_PER_CODICE` (codice → classe, generato dal catalogo)
 - `apps/core/services/service_errors.py`
 - `apps/core/services/error_translator.py`
 - `apps/core/api/error_responses.py` — envelope errori + DRF exception handler
@@ -23,20 +24,28 @@ La logica condivisa e` centralizzata in:
 
 ## Output
 
-- Envelope JSON coerente:
+- Envelope JSON coerente (le chiavi con valore `None` vengono omesse):
   - `error.code`
   - `error.message`
   - `error.detail` (opzionale)
-  - `error.hint` (opzionale)
+  - `error.technical_message` (solo con `DJANGO_API_EXPOSE_TECHNICAL_DETAILS=1` e codice tecnico)
+  - `error.hint` (opzionale; mai sui codici tecnici)
   - `error.tx_id` (opzionale)
   - `error.retryable`
+  - `error.ui_action` (dalla classe del codice)
+  - `error.fields` (opzionale: campi del form da correggere, dal `context={"field": ...}` del `ServiceError`)
+  - `error.targets` (opzionale: bersaglio dell'errore; mai sui codici tecnici ne' su HTTP >= 500)
+- `meta.request_id` / `meta.idempotency_key`, ciascuno solo se disponibile
 
 ## Regole
 
-- Mapping centralizzato `code -> HTTP status -> ui_action` in `ErrorPolicyRegistry`.
+- Mapping centralizzato in `ErrorPolicyRegistry`: codice → classe (`CLASSE_PER_CODICE` in `error_policies_generated.py`), classe → HTTP status e `ui_action` (`error_policies.py`).
+- Traduzione delle eccezioni (`ErrorTranslator.to_api_error`): `ServiceError` → suo codice; `ValueError`/`TypeError` → `E_VALIDATION_INPUT`; `DatabaseError` → codice applicativo estratto dal DB, altrimenti `E_DATABASE` (`E_DATABASE_RETRYABLE` se ritentabile); altro → `E_GENERICO`.
+- Eccezione: dentro `handle_post_json` un `ValueError` produce `400 {"error": "invalid_payload"}` (e il JSON non valido `{"error": "invalid_json"}`), con `error` stringa e non oggetto.
+  > ⚠️ Difetto noto (E-6): envelope incoerente, codice e messaggio del `ValueError` si perdono. Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 - I domini devono usare `ErrorManager.require(...)` / `ErrorManager.raise_error(...)`.
 - Le view API dominio **non devono** usare `try/except Exception` generici: il middleware globale gestisce il fallback.
-- Middleware globale intercetta eccezioni non gestite solo su path `/api/*`, lasciando invariato il comportamento Django su pagine non API e su eccezioni `Http404`/`PermissionDenied`.
+- Middleware globale intercetta eccezioni non gestite solo su path `/api/*`, lasciando invariato il comportamento Django su pagine non API e su eccezioni `Http404`/`PermissionDenied`/`SuspiciousOperation`.
 - Flag attivazione middleware: `DJANGO_API_EXCEPTION_MIDDLEWARE_ENABLED` (`1` default, `0` disabilita).
 - Errori `retryable` includono header `Retry-After` (default 3s, configurabile via `DJANGO_API_RETRY_AFTER_SECONDS`).
 - Sanitizzazione detail tecnico verso client:
@@ -50,7 +59,12 @@ La logica condivisa e` centralizzata in:
 ## DRF exception handler
 
 Un custom exception handler (`drf_exception_handler`) e` registrato in `settings.REST_FRAMEWORK["EXCEPTION_HANDLER"]`.
-Converte le eccezioni DRF auth/permessi nell'envelope standard del progetto:
+Converte le eccezioni DRF auth/permessi nell'envelope standard del progetto.
+Il codice si sceglie cosi':
+
+1. se l'eccezione ha un `default_code` che inizia per `E_` (es. `VesteNonAttivaError` →
+   `E_VESTE_NON_ATTIVA`, `JwtSenzaIdentitaError` → `E_JWT_SENZA_IDENTITA`), vince quello;
+2. altrimenti si usa la mappa sul **nome esatto** della classe:
 
 | Eccezione DRF          | Codice errore              |
 | ---------------------- | -------------------------- |
@@ -58,8 +72,17 @@ Converte le eccezioni DRF auth/permessi nell'envelope standard del progetto:
 | `AuthenticationFailed` | `E_AUTHENTICATION_FAILED`  |
 | `PermissionDenied`     | `E_PERMISSION_DENIED`      |
 
-La risposta include sempre `meta.request_id` (e `meta.idempotency_key` se presente).
-Le eccezioni DRF non mappate passano invariate al handler default DRF.
+L'envelope porta `code`, il `message` della policy del codice (non il testo
+dell'eccezione) e `ui_action`; lo status HTTP resta quello dell'eccezione DRF.
+`meta.request_id` / `meta.idempotency_key` compaiono solo se disponibili.
+Le eccezioni che non producono un codice passano invariate nel formato default DRF.
+
+> ⚠️ Difetto noto (E-3): `InvalidToken` di SimpleJWT (token scaduto o invalido) ha
+> `default_code = "token_not_valid"` e un nome che non e' nella mappa: il 401 esce
+> nel formato grezzo di DRF. Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+>
+> ⚠️ Difetto noto (E-5): i messaggi mirati impostati da `ZeroERPPermission` vengono
+> sostituiti dalla frase di `E_PERMISSION_DENIED`. Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 
 ## Dipendenze DB
 
@@ -74,7 +97,6 @@ Le eccezioni DRF non mappate passano invariate al handler default DRF.
 - Endpoint diagnostico (canonico versionato) disponibile per test rapido envelope:
   - `GET /api/v1/core/diagnostics/error-envelope/`
   - varianti: `?kind=generic|retryable|not_found`
-- Compatibilita` temporanea mantenuta anche su `/api/core/diagnostics/error-envelope/`.
 
 ## Modalita` debug dettaglio tecnico
 
@@ -102,7 +124,8 @@ Esempio:
 ### Modalita` debug tecnico (solo temporanea)
 
 - `DJANGO_API_EXPOSE_TECHNICAL_DETAILS=1`
-- `error.message` puo` contenere testo tecnico
+- `error.message` resta il messaggio business/safe della policy
+- `error.detail` resta sanitizzato con `request_id`
 - `error.technical_message` presente con dettaglio tecnico completo
 
 Uso consigliato:

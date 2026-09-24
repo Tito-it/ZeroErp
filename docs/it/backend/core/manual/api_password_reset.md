@@ -135,13 +135,26 @@ POST /api/v1/auth/password-reset-confirm/
 5. `new_password` passa i 4 validators Django
 6. **Solo dopo la validazione password**: il token viene consumato
 
-#### Azioni (atomiche)
+#### Azioni
 
-1. `user.set_password(new_password)` + save
-2. Reset flag `deve_cambiare_password = false`
-3. Blacklist tutti i refresh token precedenti
-4. Invia email conferma con template `CAMBIO_PASSWORD_CONFERMA`
-5. Log audit: `password_reset_confirmed`
+In un'unica transazione:
+
+1. Consumo del token (registra l'IP)
+2. `user.set_password(new_password)` + save
+3. Reset flag `deve_cambiare_password = false` su tutte le identita' attive dell'utente
+4. Blacklist di tutti i refresh token precedenti
+
+Dopo il commit, fuori transazione:
+
+5. Invio email conferma con template `CAMBIO_PASSWORD_CONFERMA` (un errore di invio
+   viene solo loggato, la risposta resta 200)
+6. Log audit: `password_reset_confirmed`
+
+`token`, `new_password` e `new_password_confirm` vengono ripuliti dagli spazi
+iniziali e finali prima delle validazioni.
+
+> ⚠️ Difetto noto (S-5): la password salvata e' quella senza spazi ai bordi, che
+> puo' differire da quella digitata — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 
 #### Output
 
@@ -160,8 +173,8 @@ POST /api/v1/auth/password-reset-confirm/
 
 | Codice | HTTP | Causa |
 | --- | --- | --- |
-| `E_TOKEN` | 400 | Token non valido, scaduto o gia' usato |
-| `E_RESET_PASSWORD` | 400 | Password vuota, mismatch, troppo semplice |
+| `E_RESET_PASSWORD` | 400 | Token vuoto, non valido, scaduto o gia' usato; password vuota, mismatch, troppo semplice |
+| `E_TOKEN` | 400 | Token consumato da un'altra richiesta fra la validazione e il consumo (concorrenza) |
 
 ---
 
@@ -181,7 +194,7 @@ per parsing rate custom (`"3/15m"`).
 - **Invalidazione**: alla creazione di un nuovo token, i precedenti vengono invalidati
 - **IP tracking**: il consumo del token registra l'IP di chi lo usa
 - **Validate-before-consume**: la password viene validata PRIMA di consumare il token — se la password e' troppo debole, il token resta valido e l'operatore puo' riprovare
-- **Blacklist JWT**: al reset, tutti i token JWT dell'utente vengono invalidati
+- **Blacklist JWT**: al reset, tutti i refresh token dell'utente vanno in blacklist; gli access token gia' emessi restano validi fino alla loro scadenza
 - **Rate limiting**: 3/15min per IP su request e confirm
 - **Email conferma**: l'operatore riceve notifica del cambio avvenuto
 

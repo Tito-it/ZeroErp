@@ -1732,11 +1732,8 @@ class TestPreventiviService(unittest.TestCase):
             "stato_codice": "ACCETTATO", "stato_codice_interno": "ACCETTATO",
             "billing_account_id": 10, "utility_id": 3,
         }
-        # get_preventivo ora usa count_righe_per_stato_approvazione per
-        # derivare righe_count + freeze pricing senza caricare l'elenco.
-        self.mock_repo.count_righe_per_stato_approvazione.return_value = {
-            "PENDING": 0, "APPROVED": 0, "REJECTED": 0, "TOTAL": 2,
-        }
+        # righe_count da una COUNT sulle righe attive, senza caricare l'elenco.
+        self.mock_repo.count_righe_attive.return_value = 2
         self.mock_repo.list_indirizzi.return_value = []
         self.mock_repo.get_capabilities.return_value = {
             "stato_codice": "ACCETTATO",
@@ -2367,93 +2364,88 @@ class TestPreventiviService(unittest.TestCase):
         self.assertIsNone(call["quantita"])
 
     # ===========================================================
-    # Sprint E (autorizzazioni prezzi L3): freeze preventivo
-    # quando ci sono righe PENDING o REJECTED.
+    # Prezzi non autorizzati: il blob si consegna COM'E'.
+    # Fino al 2026-09-24 get_preventivo riscriveva available_actions e
+    # can_edit_* in Python quando c'erano righe PENDING/REJECTED; la regola
+    # ora sta a DB (script.fn_check_prezzi_autorizzati, letto da guard e
+    # capability) — brief-db-preventivi-congelamento-pricing §6.1.
     # ===========================================================
 
-    def _setup_get_preventivo_mocks(self, counts):
-        """Helper per i 4 test sotto: mock minimi per get_preventivo() che
-        prende testata + indirizzi + capabilities + count righe per stato."""
+    # Scopo: DRAFT con un prezzo in attesa e uno rifiutato, come lo emette
+    #        fn_available_actions_preventivo: «Emetti» spento coi due motivi,
+    #        «Annulla» acceso (D-2), testata e righe modificabili (D-3).
+    def _blob_draft_prezzi_non_autorizzati(self):
+        motivi = [
+            {"codice": "E_DOC_PREZZO_PENDENTE", "reason": "PREZZO_PENDENTE",
+             "reason_key": "common.azione_reason.prezzo_pendente",
+             "dettaglio": {"n_prezzi": 1, "riga_id": 7, "componente_id": None},
+             "valori": ["1"]},
+            {"codice": "E_DOC_PREZZO_RIFIUTATO", "reason": "PREZZO_RIFIUTATO",
+             "reason_key": "common.azione_reason.prezzo_rifiutato",
+             "dettaglio": {"n_prezzi": 2, "riga_id": 8, "componente_id": None},
+             "valori": ["2"]},
+        ]
+        return {
+            "stato_codice": "DRAFT",
+            "available_actions": [
+                {"key": "emetti", "target_state": "EMESSO", "enabled": False,
+                 "reason": "PREZZO_PENDENTE",
+                 "reason_key": "common.azione_reason.prezzo_pendente",
+                 "reasons": motivi},
+                {"key": "annulla", "target_state": "ANNULLATO", "enabled": True,
+                 "reason": None, "reason_key": None, "reasons": []},
+            ],
+            "can_edit_testata": True,
+            "can_edit_righe": True,
+            "non_editable_fields": [],
+        }
+
+    def test_get_preventivo_consegna_il_blob_senza_riscriverlo(self):
+        """Prezzi PENDING e REJECTED: il BE non tocca il blob — azioni,
+        motivi e flag di modifica sono quelli del database."""
+        from apps.vendite.services.preventivi_service import get_preventivo
         self.mock_repo.get_preventivo.return_value = {
             "id": 42, "uid": "abc", "numero": "P-0042",
             "stato_codice": "DRAFT", "stato_codice_interno": "DRAFT",
             "billing_account_id": 10, "utility_id": 3,
         }
         self.mock_repo.list_indirizzi.return_value = []
-        self.mock_repo.get_capabilities.return_value = {
-            "stato_codice": "DRAFT",
-            "available_actions": [{"key": "emetti", "target_state": "EMESSO"}],
-            "can_edit_testata": True,
-            "can_edit_righe": True,
-            "non_editable_fields": [],
+        self.mock_repo.count_righe_attive.return_value = 5
+        blob = self._blob_draft_prezzi_non_autorizzati()
+        self.mock_repo.get_capabilities.return_value = blob
+
+        out = get_preventivo(42)
+        caps = out["capabilities"]
+
+        self.assertEqual(caps, self._blob_draft_prezzi_non_autorizzati())
+        azioni = {a["key"]: a for a in caps["available_actions"]}
+        self.assertFalse(azioni["emetti"]["enabled"])
+        self.assertEqual(azioni["emetti"]["reason_key"], "common.azione_reason.prezzo_pendente")
+        self.assertTrue(azioni["annulla"]["enabled"])
+        self.assertTrue(caps["can_edit_testata"])
+        self.assertTrue(caps["can_edit_righe"])
+        self.assertEqual(out["righe_count"], 5)
+
+    def test_get_preventivo_non_emette_riepiloghi_del_congelamento(self):
+        """I quattro riepiloghi Python (frozen_for_*, *_pricing_count) sono
+        ritirati: contavano solo le righe, il database conta anche i
+        componenti attivi. Il perche' (col conteggio) sta nelle `reasons`
+        delle azioni del blob."""
+        from apps.vendite.services.preventivi_service import get_preventivo
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 42, "stato_codice_interno": "DRAFT",
+            "billing_account_id": 10, "utility_id": 3,
         }
-        self.mock_repo.count_righe_per_stato_approvazione.return_value = counts
+        self.mock_repo.list_indirizzi.return_value = []
+        self.mock_repo.count_righe_attive.return_value = 5
+        self.mock_repo.get_capabilities.return_value = self._blob_draft_prezzi_non_autorizzati()
 
-    def test_get_preventivo_frozen_pending_blocca_tutto(self):
-        """Riga PENDING → can_edit_testata + can_edit_righe = false, no actions."""
-        from apps.vendite.services.preventivi_service import get_preventivo
-        self._setup_get_preventivo_mocks(
-            {"PENDING": 1, "APPROVED": 0, "REJECTED": 0, "TOTAL": 5},
-        )
         out = get_preventivo(42)
-        caps = out["capabilities"]
-        self.assertEqual(caps["available_actions"], [])
-        self.assertFalse(caps["can_edit_testata"])
-        self.assertFalse(caps["can_edit_righe"])
-        # Il riepilogo del congelamento sta sulla TESTATA: nessuna
-        # capability lo emette (brief-be-fe-capability-annidata §5).
-        self.assertNotIn("frozen_for_pending_pricing", caps)
-        self.assertTrue(out["frozen_for_pending_pricing"])
-        self.assertFalse(out["frozen_for_rejected_pricing"])
-        self.assertEqual(out["pending_pricing_count"], 1)
-        self.assertEqual(out["rejected_pricing_count"], 0)
 
-    def test_get_preventivo_frozen_rejected_only_lascia_edit_righe(self):
-        """Solo REJECTED → operatore deve poter correggere la riga,
-        quindi can_edit_righe=true (testata bloccata, no transitions)."""
-        from apps.vendite.services.preventivi_service import get_preventivo
-        self._setup_get_preventivo_mocks(
-            {"PENDING": 0, "APPROVED": 0, "REJECTED": 2, "TOTAL": 4},
-        )
-        out = get_preventivo(42)
-        caps = out["capabilities"]
-        self.assertEqual(caps["available_actions"], [])
-        self.assertFalse(caps["can_edit_testata"])
-        self.assertTrue(caps["can_edit_righe"])  # ← chiave del fix
-        self.assertFalse(out["frozen_for_pending_pricing"])
-        self.assertTrue(out["frozen_for_rejected_pricing"])
-
-    def test_get_preventivo_frozen_rejected_non_accende_edit_righe_spento_dal_db(self):
-        """Solo REJECTED ma il DB dice can_edit_righe=false → resta false:
-        il congelamento restringe il blob, non lo allarga."""
-        from apps.vendite.services.preventivi_service import get_preventivo
-        self._setup_get_preventivo_mocks(
-            {"PENDING": 0, "APPROVED": 0, "REJECTED": 2, "TOTAL": 4},
-        )
-        self.mock_repo.get_capabilities.return_value["can_edit_righe"] = False
-        out = get_preventivo(42)
-        self.assertFalse(out["capabilities"]["can_edit_righe"])
-
-    def test_get_preventivo_frozen_mixed_pending_vince(self):
-        """PENDING + REJECTED → can_edit_righe=false (PENDING ha priorita')."""
-        from apps.vendite.services.preventivi_service import get_preventivo
-        self._setup_get_preventivo_mocks(
-            {"PENDING": 1, "APPROVED": 0, "REJECTED": 1, "TOTAL": 6},
-        )
-        out = get_preventivo(42)
-        self.assertFalse(out["capabilities"]["can_edit_righe"])
-
-    def test_get_preventivo_no_freeze_quando_solo_approved(self):
-        """APPROVED non congela: il prezzo override e' stato approvato."""
-        from apps.vendite.services.preventivi_service import get_preventivo
-        self._setup_get_preventivo_mocks(
-            {"PENDING": 0, "APPROVED": 3, "REJECTED": 0, "TOTAL": 3},
-        )
-        out = get_preventivo(42)
-        # Capabilities originali preservate (no override BE).
-        self.assertEqual(out["capabilities"], self.mock_repo.get_capabilities.return_value)
-        self.assertFalse(out["frozen_for_pending_pricing"])
-        self.assertFalse(out["frozen_for_rejected_pricing"])
+        for chiave in ("frozen_for_pending_pricing", "frozen_for_rejected_pricing",
+                       "pending_pricing_count", "rejected_pricing_count"):
+            self.assertNotIn(chiave, out)
+            self.assertNotIn(chiave, out["capabilities"])
 
     # ===========================================================
     # aggiorna_riga: auto-reset stato approvazione su correzione

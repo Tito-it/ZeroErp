@@ -12,7 +12,7 @@ Il sistema di tracciamento Zero ERP opera su tre livelli distinti (vedi [Guida T
 2. **Task registry** (`dbops.domini_task`, `pipeline_task_registry`, `pipeline_task_registry_impl`) -- catalogo task multi-dominio
 3. **Job run log** (`maintenance.job_run_log`) -- esecuzioni job pgAgent
 
-Il backend espone 6 endpoint GET paginati in `apps/core/api/views_tracciamento.py`, orchestrati dal service `apps/core/services/tracciamento_service.py` che delega a due repository:
+Questo documento copre 6 endpoint GET paginati in `apps/core/api/views_tracciamento.py`, orchestrati dal service `apps/core/services/tracciamento_service.py` che delega a due repository:
 
 - `DbopsRepository` (esteso) -- audit log + task registry
 - `MaintenanceRepository` (nuovo) -- job run log
@@ -21,7 +21,12 @@ Architettura a strati: View -> Service (validazione) -> Repository (SQL) -> DB.
 
 ## Endpoint
 
-Tutti gli endpoint richiedono autenticazione JWT e sono sotto `/api/v1/core/tracciamento/`.
+I 6 endpoint sono sotto `/api/v1/core/tracciamento/` e richiedono autenticazione JWT e
+permesso sull'area funzionale `core` (`area_funzionale = "core"`).
+
+Lo stesso prefisso ospita anche la gestione delle code (conteggi, coda lavori, coda
+stampa, con le azioni POST annulla/requeue/archivia/ripristina, area `strumenti`):
+sono documentate in [api_gestione_code.md](api_gestione_code.md).
 
 ### Audit Log
 
@@ -134,9 +139,11 @@ Tutti gli endpoint restituiscono l'envelope paginato standard:
 
 ## Regole
 
-- Tutti gli endpoint sono in sola lettura (GET).
+- I 6 endpoint di questo documento sono in sola lettura (GET).
 - Il parametro `status` per audit-log e` validato server-side: solo `SUCCESS`, `FAILED`, `WARNING`.
-- La paginazione e` validata: `page >= 1`, `page_size` tra 1 e 200.
+- Paginazione: `page < 1` o `page_size < 1` danno `E_CORE_VALIDATION`. Un `page_size`
+  oltre 200 viene ridotto a 200 senza errore; un valore non numerico di `page` o
+  `page_size` ripiega sul default senza errore.
 - I filtri date usano `>=` per date_from e `<= date_to + 1 giorno` per includere l'intero giorno.
 - Gli endpoint search hanno throttling `SearchBurstRateThrottle`.
 - Nessun dato viene modificato: il tracciamento runtime (INSERT/UPDATE task_runs) resta nei service di dominio (es. `VenditePipelineRepository`).
@@ -168,7 +175,7 @@ Tutti gli endpoint restituiscono l'envelope paginato standard:
 
 | Codice              | HTTP | Causa                                          |
 |---------------------|------|------------------------------------------------|
-| `E_CORE_VALIDATION` | 400  | Parametri non validi (status, page, page_size) |
+| `E_CORE_VALIDATION` | 400  | `status` fuori elenco, `page` < 1, `page_size` < 1 |
 | `E_GENERICO`        | 500  | Errore imprevisto                              |
 
 ## Note

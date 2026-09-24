@@ -150,14 +150,18 @@ permessi — colonne nascoste escluse, ordine utente rispettato).
 
 Il frontend (`PreventiviDrawer.vue`) consuma questi metadata direttamente: niente `if (stato === 'DRAFT')` cablato.
 
-⚠️ **Il blob non arriva intatto**: con righe `PENDING`/`REJECTED` il service
-azzera `available_actions` e riscrive `can_edit_testata`/`can_edit_righe` in
-Python — debito dichiarato (una seconda sede di una regola del database,
-[brief-be-fe-capability-annidata §5](../../../dev/work-in-progress/brief-be-fe-capability-annidata.md)).
-I quattro campi del congelamento — `frozen_for_pending_pricing`,
-`frozen_for_rejected_pricing`, `pending_pricing_count`, `rejected_pricing_count`
-— stanno sulla **testata**, non in `capabilities`: sono un riepilogo delle righe,
-e nessuna capability li emette.
+⭐ **Il blob arriva intatto** (dal 2026-09-24). Un prezzo non autorizzato —
+riga o componente BoM attivo `PENDING` o `REJECTED` — spegne «Emetti» e
+«Accetta» **a DB**: l'azione ha `enabled: false` e i motivi in `reasons[]`
+(`PREZZO_PENDENTE` / `PREZZO_RIFIUTATO`, `dettaglio.n_prezzi`), dallo stesso
+building block con cui il guard solleva (`script.fn_check_prezzi_autorizzati`).
+«Annulla» resta acceso e testata e righe restano modificabili in BOZZA: il
+blocco sta sulla sola riga in attesa, dal suo guard per riga. Il drawer mostra
+i motivi nel tooltip del pulsante spento, col conteggio (`valori`). ⛔ Fino a quella data il service riscriveva
+`available_actions`/`can_edit_*` in Python e aggiungeva sulla testata quattro
+riepiloghi (`frozen_for_*`, `*_pricing_count`) che contavano le sole righe:
+tutti ritirati
+([brief-db-preventivi-congelamento-pricing §6.1](../../../dev/work-in-progress/brief-db-preventivi-congelamento-pricing.md)).
 
 ---
 
@@ -180,8 +184,8 @@ e nessuna capability li emette.
 - Regole: delega a `vendite.fn_cambia_stato_preventivo()` che valida transizioni e prerequisiti
 - Transizioni: EMESSO→ACCETTATO/RIFIUTATO/SCADUTO/ANNULLATO, BOZZA→ANNULLATO
 - **Transizione BOZZA→EMESSO non ammessa da questo endpoint** (refactor 2026-05-28): il service fail-fast con `E_PREV_VALIDAZIONE` (400) e indirizza all'endpoint dedicato `POST /<id>/emetti/` (§5b). Motivo: l'emissione deve orchestrare atomicamente cambio stato + generazione documento + allegati per garantire l'invariante "stato EMESSO ⇒ esiste un documento PDF persistito".
-- **Guard L3 verso ACCETTATO (Sprint E)**: il trigger DB `trg_preventivi_a10_guard_transizione_approvazione_upd` blocca la transizione verso ACCETTATO se esiste almeno una riga con `stato_approvazione_prezzo='PENDING'`. Errore `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` (409). L'admin deve attendere esito approvazione (vedi `api_approvazioni_prezzo.md`) o annullare la richiesta prima di accettare.
-- Errori: `E_PREV_STATO_TRANSIZIONE` (409), `E_PREV_NESSUNA_RIGA` (400), `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` (409), `E_PREV_VALIDAZIONE` (400 se `nuovo_stato="EMESSO"`)
+- **Prezzi non autorizzati verso ACCETTATO**: la Regola 3 di `vendite.trgfn_preventivi_guard_transizione` rifiuta la transizione se una riga o un componente BoM attivo ha il prezzo `PENDING` o `REJECTED` (building block `script.fn_check_prezzi_autorizzati`, vedi `api_approvazioni_prezzo.md`): si attende l'esito, si corregge il prezzo o si toglie la riga. Annulla resta sempre ammesso.
+- Errori: `E_PREV_STATO_TRANSIZIONE` (409), `E_PREV_NESSUNA_RIGA` (400), `E_DOC_PREZZO_PENDENTE` (409), `E_DOC_PREZZO_RIFIUTATO` (409), `E_PREV_VALIDAZIONE` (400 se `nuovo_stato="EMESSO"`)
 
 ---
 
@@ -220,12 +224,13 @@ Nuovo endpoint multipart 2026-05-28. Mirror del flusso offerta `POST /api/v1/ven
 - Semantica transazionale: la view apre `transaction.atomic()` che racchiude (in ordine): `preventivi_service.emetti(preventivo_id)` (cambio stato + valorizza `data_emissione = now()`) → `_resolve_contesto_preventivo` (entity + sorgente_tipo) → `DocumentGenerationService.genera_documento(allegati=...)` (render + persist su `documenti.documenti_generati` + evento `GENERATO`). Se il render fallisce o uno qualsiasi degli allegati viola MIME/size, l'eccezione propaga e l'`atomic` esterno fa rollback completo → il preventivo resta BOZZA, nessun record orfano. **Invariante di dominio**: `stato='EMESSO'` ⇒ esiste almeno un record `documenti_generati` con `sorgente_tipo=PREVENTIVO, sorgente_id=preventivo.id`.
 - Regole pre-emissione (validate dal service + trigger DB):
   - Preventivo in stato BOZZA con almeno una riga attiva
-  - Righe senza prezzo `PENDING` (Guard L3, vedi §5)
+  - Nessun prezzo non autorizzato (`PENDING` o `REJECTED`, righe e componenti BoM attivi): motivo 2 di `script.fn_check_preventivo_emettibile`, vedi §5
   - Template documento applicabile (`PUBBLICATA` valido alla data)
 - Errori:
   - `E_PREV_NOT_FOUND` (404) — preventivo inesistente
   - `E_PREV_STATO_TRANSIZIONE` (409) — preventivo non in BOZZA
   - `E_PREV_NESSUNA_RIGA` (400) — nessuna riga attiva
+  - `E_DOC_PREZZO_PENDENTE` / `E_DOC_PREZZO_RIFIUTATO` (409) — prezzi in attesa di approvazione o rifiutati
   - `E_DOCUMENTI_VALIDATION` (400/422) — emittente non risolto / sorgente PREVENTIVO non attiva / template non trovato / MIME allegato non ammesso / size oltre limite
   - `E_DOCUMENTI_NOT_FOUND` (404) — entity attesa non trovata dal resolver di contesto
 

@@ -31,7 +31,7 @@ Il workflow è composto da:
 
 **Trigger DB di guardia** (defense-in-depth):
 
-- `trgfn_preventivi_guard_transizione_approvazione`: blocca transizione preventivo → ACCETTATO se esistono righe PENDING (`E_PREVENTIVO_RIGHE_PRICING_PENDENTI`)
+- `script.fn_check_prezzi_autorizzati` (building block, dal 2026-09-24): un prezzo **non autorizzato** — riga o componente BoM attivo in `PENDING` o `REJECTED` — non lascia uscire il documento dalla bozza né lo lascia accettare (`E_DOC_PREZZO_PENDENTE` / `E_DOC_PREZZO_RIFIUTATO`). Vale per preventivi, contratti, offerte, ordini e DDT; lo leggono sia i guard di transizione sia le `fn_available_actions_*`, quindi il pulsante spento e il rifiuto non divergono. **Annulla resta sempre acceso**. Sul preventivo: Regola 2 (`fn_check_preventivo_emettibile`, verso EMESSO) e Regola 3 (`trgfn_preventivi_guard_transizione`, verso ACCETTATO)
 - `trgfn_preventivi_righe_guard_pending`: allowlist su righe PENDING (ammessi solo `stato_approvazione_prezzo`, `pratica_approvazione_prezzo_id`, `meta`); modifica struttura -> `E_RIGA_PREZZO_PENDENTE`
 
 ## Sorgenti e routing (preventivo / contratto / offerta)
@@ -188,7 +188,8 @@ offerta sono speculari (cambiano tabella riga e codice not-found,
 
 | Codice                                | HTTP | Contesto                                                                  |
 | ------------------------------------- | ---- | ------------------------------------------------------------------------- |
-| `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` | 409  | Trigger DB su transizione preventivo → ACCETTATO con righe PENDING        |
+| `E_DOC_PREZZO_PENDENTE`               | 409  | Guard DB: documento verso emissione/accettazione con prezzi PENDING       |
+| `E_DOC_PREZZO_RIFIUTATO`              | 409  | Guard DB: documento verso emissione/accettazione con prezzi REJECTED      |
 | `E_RIGA_PREZZO_PENDENTE`              | 409  | Trigger DB su modifica struttura riga PENDING                             |
 | `E_APPROVAZIONE_PREZZO_NON_AMMESSA`   | 409  | Service: riga non PENDING, senza pratica, oppure approver senza emittente |
 | `E_PRICING_OVERRIDE_NON_AUTORIZZATO`  | 403  | Auth: utente non autenticato o senza `approva_prezzo_override`            |

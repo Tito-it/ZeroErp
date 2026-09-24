@@ -473,7 +473,8 @@ def cambia_stato(ddt_id: int, stato_codice: str) -> dict[str, Any]:
     assert stato_id is not None
     # La transizione (stato_prec -> target) e' validata dal trigger guard DB;
     # eventuale errore tradotto da _db_errors (E_STATO_DDT_TRANSIZIONE_NON_VALIDA
-    # / E_COMPONENTE_PREZZO_PENDENTE alla transizione a EMESSO).
+    # / E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO alla transizione a
+    # EMESSO, dal 2026-09-24 via script.fn_check_prezzi_autorizzati).
     with _db_errors("cambia_stato"):
         repo.update_stato(ddt_id, int(stato_id))
     return {"ddt_id": ddt_id, "stato_precedente": stato_prec, "stato": target}

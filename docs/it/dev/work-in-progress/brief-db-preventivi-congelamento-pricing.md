@@ -11,15 +11,30 @@
 > (D-1…D-6, §3 e §7). Tredici changeSet `20260924-20…-32`, due righe nuove e
 > due ritocchi nel catalogo dei codici, un pgTAP nuovo (38 test) e due
 > aggiornati: §8. Prove prima dell'apply: §9.
-> ⏳ **Restano**: le richieste al FE e al BE del §6 — ⚠️ quella al FE è
-> **bloccante per la CI** (due `reason_key` nuove, `check_i18n_keys.py`, alla
-> prossima rigenerazione della doc auto-gen); la riga di
-> `test-preventivi-approvazione-prezzo.sql` in `baseline-rossi-ci.tsv`
-> (`ERRORE_FIXTURE`) da togliere, ora che il file costruisce il suo mondo;
-> la domanda del §10.
+> ✅ **BE + FE del §6 consegnati il 2026-09-24** (dettaglio §6, storia §11),
+> non committati al momento della scrittura:
+> * **BE** — il blob del preventivo arriva **intatto**: tolti la riscrittura
+>   Python e i quattro riepiloghi `frozen_for_*` / `*_pricing_count`; codici
+>   rigenerati, ripiego allineato, doc API corretta;
+> * **FE** — il perché di un pulsante spento sta **solo nel tooltip**, uguale
+>   per i cinque documenti e per ogni motivo, **col numero**
+>   (*«Ci sono prezzi in attesa di approvazione (2).»*): banner del preventivo
+>   ritirato invece che copiato sugli altri quattro (decisione di Tid), i
+>   `valori` del motivo passano alla frase, la resa dei motivi ha una sede sola
+>   (`testoMotivi`, regola del 2, ok Tid);
+> * verifica: BE `vendite` + `core` verdi (3323), FE `npm run verify` verde
+>   (322), `check_i18n_keys.py` e `guard:capability` puliti; il caso
+>   `REJECTED` provato sul DB di sviluppo in una transazione annullata.
+>
+> ⏳ **Restano:**
+> 1. il **collaudo a video** (§6.3) — nessun test di componente monta un drawer;
+> 2. la riga di `test-preventivi-approvazione-prezzo.sql` in
+>    `baseline-rossi-ci.tsv` (`ERRORE_FIXTURE`) da togliere, ora che il file
+>    costruisce il suo mondo (team DB);
+> 3. la domanda del §10 (la revisione che ricopia un «in attesa»).
 >
 > 🔢 **Progressivi riservati: `20260924-20` … `-39`.** `-01…-19` restano al
-> §13 di [brief-db-guard-date-validita.md](brief-db-guard-date-validita.md)
+> §13 di [brief-db-guard-date-validita.md](../work-done/brief-db-guard-date-validita.md)
 > (due copie da ritirare, ancora da numerare). Il numero si riverifica con
 > `find` prima di salvare ogni file.
 >
@@ -172,49 +187,50 @@ trigger (censimento prima del `DROP`).
 ⚠️ La `reason_key` `vendite.ddt.azione_reason.componenti_prezzo_pendente` non la
 emette più nessuno.
 
-## 6. Richieste al BE / FE (dopo l'apply)
+## 6. Richieste al BE / FE (dopo l'apply) — ✅ consegnate il 2026-09-24
 
-### 6.1 FE — ⚠️ bloccante per la CI
+> Ogni voce porta la richiesta e l'esito. Dove l'esito si discosta dalla
+> richiesta c'è il perché; la cronaca sta nel registro (§11).
 
-* Le due chiavi `common.azione_reason.prezzo_pendente` e
-  `common.azione_reason.prezzo_rifiutato` in `it.json` e `en.json`: senza,
-  `scripts/check_i18n_keys.py` (controllo 4) fallisce e i pulsanti spenti hanno
-  il tooltip vuoto. Proposta di testo: *«Ci sono prezzi in attesa di
-  approvazione»* / *«Ci sono prezzi rifiutati dal responsabile: correggili o
-  togli le righe»*.
-* `vendite.ddt.azione_reason.componenti_prezzo_pendente` non la emette più
-  nessuno: si può togliere dai locales.
-* **Collaudo a video**: preventivo con una riga in attesa («Emetti» spento col
-  motivo, «Annulla» acceso); contratto con una riga rifiutata («Attiva»
-  spento); offerta con un'eccezione in attesa; ordine con un componente
-  rifiutato («Conferma» spento); DDT di vendita con un componente in attesa.
+### 6.1 BE
 
-### 6.2 BE
+| Richiesta | Esito |
+| --- | --- |
+| `preventivi_service.get_preventivo`: togliere la riscrittura di `available_actions` / `can_edit_*` e il 🔴 DEBITO DICHIARATO | ✅ Il blob si consegna com'è |
+| I quattro riepiloghi (`frozen_for_*`, `*_pricing_count`) restano sulla testata — «da decidere col BE» se contare anche i componenti attivi | ⭐ **Ritirati**, non estesi. Contare righe **e** componenti attivi in Python sarebbe stata una seconda copia del predicato di `fn_check_prezzi_autorizzati`; il motivo, col conteggio (`dettaglio.n_prezzi`, `valori`), è già nelle `reasons` delle azioni che il prezzo spegne. Il repository conta ora solo le righe attive (`count_righe_attive`, per `righe_count`) |
+| Test BE che pinnano il congelamento Python: riscriverli sul comportamento del DB | ✅ Blob intatto: «Emetti» spento col motivo, «Annulla» acceso, testata e righe modificabili in `DRAFT`; nessun riepilogo sulla testata |
+| `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` fuori da ripiego e commenti; policy rigenerate | ✅ Rigenerate dal catalogo (DB allineato al CSV committato; il diff porta anche il ritiro di `E_BOM_VALIDO_AL_INVALIDO`, del cantiere date di validità). Ripiego: dentro `E_DOC_PREZZO_PENDENTE` / `_RIFIUTATO` senza `%s`, fuori il ritirato. Commento stantio anche in `ddt_service.cambia_stato` |
+| Forma del blob: `reasons` nuove su contratto e offerta | ✅ `guard:capability` verde, nessun intervento |
+| Doc BE diventata falsa | ✅ `api_preventivi.md`, `api_approvazioni_prezzo.md`, `api_ordini.md` |
 
-* **`preventivi_service.get_preventivo`**: togliere la riscrittura di
-  `available_actions` / `can_edit_testata` / `can_edit_righe` e il commento del
-  🔴 DEBITO DICHIARATO: il blob si consegna com'è. Restano sulla testata i
-  quattro riepiloghi (`frozen_for_*`, `*_pricing_count`). ⚠️ Oggi contano solo
-  le righe: se il banner deve dire la stessa cosa del pulsante devono contare
-  anche i componenti **attivi** — da decidere col BE (la fonte può essere il
-  `dettaglio.n_prezzi` dei motivi, che la capability già porta).
-* **Test BE** che pinnano il congelamento Python: vanno riscritti sul
-  comportamento del database — pulsante spento **con motivo**, «Annulla»
-  acceso, testata modificabile in `DRAFT` con una riga in attesa (D-3).
-* **Codice ritirato** `E_PREVENTIVO_RIGHE_PRICING_PENDENTI`: fuori da
-  `error_messages_fallback.py` e dai commenti; `error_policies_generated.py` si
-  rigenera. I due codici nuovi entrano con la rigenerazione.
-* **Forma del blob**: contratto e offerta portano ora `reasons` sulle azioni di
-  stato (chiave nuova, nessuna tolta). Se `guard:capability` pinna le chiavi
-  lette dalla doc auto-gen, le riconosce dopo la rigenerazione della doc.
-* **Documentazione BE** diventata falsa (censimento del 24-09):
-  `api_approvazioni_prezzo.md` :34 e :191 (trigger a10 e codice ritirato);
-  `api_preventivi.md` :183-184 (trigger a10, codice ritirato, mancano i due
-  `E_DOC_PREZZO_*`, che valgono anche verso `EMESSO`) e :157-158 (i quattro
-  riepiloghi, da rivedere col ritiro della riscrittura); `api_ordini.md` :64 e
-  :456 (citano `trgfn_ordini_guard_transizione_approvazione`, ritirato dal
-  20260512-28: oggi è la Regola 5 di `trgfn_ordini_guard_transizione`). Tutti
-  in `docs/it/backend/vendite/manual/`.
+### 6.2 FE
+
+| Richiesta | Esito |
+| --- | --- |
+| `common.azione_reason.prezzo_pendente` / `prezzo_rifiutato` in it/en (bloccante CI) | ✅ Col conteggio: *«Ci sono prezzi in attesa di approvazione ({0}).»* / *«Ci sono prezzi rifiutati dal responsabile ({0}): correggili o togli le righe.»* |
+| Togliere `vendite.ddt.azione_reason.componenti_prezzo_pendente` | ✅ Tolta (la emettevano solo YAML superati) |
+| *(non chiesto)* Il banner del `PreventiviDrawer` diceva «transizioni ed edit bloccati», falso dopo D-2/D-3, e leggeva i riepiloghi ritirati | ⭐ **Ritirato, non copiato sugli altri quattro documenti** (decisione di Tid). L'asimmetria vera era fra **motivi**, non fra documenti: «IVA mancante», «senza righe», «listino mancante» bloccano come un prezzo e nessuno ha un banner. Il perché di un pulsante spento ha un canale solo — il tooltip, con **tutti** i motivi — come già deciso nella Decisione D di `work-done/brief-db-ddt-reason-push-catch-all.md`. Il tag di stato sulla riga resta: è dove l'operatore agisce |
+| *(conseguenza)* Il numero dei prezzi, che il banner mostrava | ✅ Recuperato **per tutti i motivi**: i `valori` del motivo passano alla traduzione come `{0}` (`labelOrCode` con `params` opzionale). Un testo senza `{0}` non cambia |
+| *(regola del 2, ok Tid)* `useLottoAzioni.motiviTesto` era una seconda copia della resa dei motivi, senza `valori` | ✅ Estratta `testoMotivi(t, te, azione)` in `useDrawerActions.js`, usata dal mapper e dal lotto; copia ritirata. Sul lotto, un'azione spenta col solo motivo singolo ora mostra quel motivo invece dell'avviso generico |
+| Presidi | `useDrawerActions.spec.js` 11 → 15 test (12 provato rosso per mutazione); catalogo BB FE aggiornato |
+
+### 6.3 Collaudo a video — ⏳ da fare
+
+Per ciascun documento: il pulsante che fa avanzare è **spento** e il tooltip
+dice il motivo **col numero**; «Annulla» resta **acceso**; testata e righe non
+bloccate restano modificabili in bozza.
+
+- [ ] **Preventivo** in bozza con una riga in attesa → «Emetti» spento; in emesso → «Accetta» spento
+- [ ] **Preventivo** con una riga rifiutata e una in attesa → il tooltip porta **due** righe
+- [ ] **Contratto** con una riga rifiutata → «Attiva» spento
+- [ ] **Offerta** con un'eccezione in attesa → «Emetti» e «Accetta» spenti
+- [ ] **Ordine** in bozza con un componente rifiutato → «Conferma» spento
+- [ ] **DDT** di vendita con un componente in attesa → «Emetti» spento; con causale che non vende → acceso
+- [ ] **Lotto**: un'azione spenta dal kebab di lista mostra il suo motivo
+
+⚠️ Sul DB di sviluppo, al 2026-09-24, nessun preventivo in bozza o emesso ha un
+prezzo in approvazione: il caso va **costruito** (una richiesta di approvazione
+da una riga fuori listino), non cercato.
 
 ## 7. Domande aperte
 
@@ -368,3 +384,5 @@ un'eccezione alla regola. **Da decidere se aprirlo adesso.**
 | 2026-09-24 | **Nascita**, dal §5 del brief capability annidata dopo la consegna BE/FE. Confronto delle due sedi sul corpo delle funzioni (§2). Decisioni di Tid: D-1 (strada A: il `REJECTED` è regola, a DB), D-2 e D-3 sulla raccomandazione. D-4 aperta |
 | 2026-09-24 (sera) | **DB scritto.** D-4 (contratti e offerte), D-5 (un building block solo) e D-6 (ordini e DDT) decise da Tid. Tredici changeSet `20260924-20…-32` (fascia `-20…-39`, per non incrociare il §13 del brief delle date di validità), catalogo dei codici, un pgTAP nuovo e due aggiornati, doc. ⚠️ Scelta nuova rispetto alla prima stesura: i **rientri automatici** (ordine da `EVASO`, offerta da `SUPERATA`) non chiedono il prezzo, o un prezzo rimasto non autorizzato fermerebbe un annullamento (§4.2). Correzione di Tid in corso d'opera: firme ancorate con `%TYPE` (l'auto-gen le perde). Prove in transazione ritirata: §9. Aperta la domanda del §10 |
 | 2026-09-24 (sera, dopo) | **Applicato** da Tid, corsa pgTAP senza regressioni. Restano le richieste FE (bloccante per la CI) e BE del §6, la riga in `baseline-rossi-ci.tsv` e la domanda del §10 |
+| 2026-09-24 (BE/FE) | **§6 consegnato** su `dev/backend-tid`. **BE**: `get_preventivo` consegna il blob **com'è** — tolti la riscrittura di `available_actions`/`can_edit_*` e il 🔴 DEBITO DICHIARATO. ⭐ **Decisione sui quattro riepiloghi** (lasciata al BE dal §6.1): **ritirati anch'essi**, non estesi ai componenti. Contare righe **e** componenti attivi in Python sarebbe stata una seconda copia del predicato di `fn_check_prezzi_autorizzati`; il motivo, col conteggio (`dettaglio.n_prezzi`), è già nelle `reasons` delle azioni che il prezzo spegne. Il repository conta ora solo le righe attive (`count_righe_attive`, per `righe_count`); `count_righe_per_stato_approvazione` tolto, senza altri lettori. Test riscritti sul contratto del DB (blob intatto: «Emetti» spento col motivo, «Annulla» acceso, testata e righe modificabili; nessun riepilogo sulla testata). Policy rigenerate (i due `E_DOC_PREZZO_*` e il ritiro di `E_PREVENTIVO_RIGHE_PRICING_PENDENTI`; il diff porta anche il ritiro di `E_BOM_VALIDO_AL_INVALIDO` del cantiere date di validità, già nel CSV committato); ripiego: dentro i due codici nuovi senza `%s`, fuori il ritirato. Commento stantio in `ddt_service.cambia_stato`. Doc: `api_preventivi.md`, `api_approvazioni_prezzo.md`, `api_ordini.md`. **FE**: `common.azione_reason.prezzo_pendente` / `prezzo_rifiutato` in it/en; tolta `vendite.ddt.azione_reason.componenti_prezzo_pendente`; il banner del `PreventiviDrawer` legge i motivi `PREZZO_PENDENTE`/`PREZZO_RIFIUTATO` dalle `reasons` delle azioni (compare solo quando il prezzo blocca davvero un'azione) e il suo testo dice la regola nuova (chiavi `banner_prezzi_pendenti`/`_rifiutati`: la vecchia prometteva «transizioni ed edit bloccati», falso dopo D-2/D-3). **Verifica**: BE `apps.vendite` + `apps.core` verdi (3323 test, 43 skip); FE `npm run verify` verde; `check_i18n_keys.py` pulito; `guard:capability` verde. Sul DB di sviluppo nessuna bozza o emesso ha oggi un prezzo in approvazione: il caso si è **costruito** in una transazione annullata (una riga della bozza 32865 portata a `REJECTED`) → «Emetti» `enabled: false`, `reason_key` `common.azione_reason.prezzo_rifiutato`, `n_prezzi = 1`; «Annulla» acceso; `can_edit_*` veri; nessun campo extra. **Resta**: collaudo a video (§6.3); la riga di `baseline-rossi-ci.tsv` (team DB); la domanda del §10. ⚠️ Banner solo sul preventivo: asimmetria dichiarata, chiusa nella riga sotto |
+| 2026-09-24 (FE, simmetria) | **Il banner del preventivo ritirato, non copiato** (decisione di Tid). L'asimmetria vera non era fra documenti ma fra **motivi**: il perché di un pulsante spento ha un canale solo, il tooltip di `mapAvailableActionsToDrawerActions` (tutti i motivi, non solo il primo), uguale in ogni drawer; «IVA mancante», «senza righe», «listino mancante» sono temporanei e azionabili come un prezzo in attesa, e nessuno ha un banner. Un banner su cinque documenti avrebbe lasciato i prezzi l'unico motivo col canale suo — ed è la stessa scelta della Decisione D di `work-done/brief-db-ddt-reason-push-catch-all.md` («tooltip discreto, non banner»). L'unica perdita, il **numero**, si recupera per tutti: il mapper passa i `valori` del motivo alla traduzione come `{0}` (`labelOrCode` con `params` opzionale), e le due chiavi dicono *«Ci sono prezzi in attesa di approvazione (2).»*. Un testo senza `{0}` non cambia. Presidi: `useDrawerActions.spec.js` 11 → 13 test (il 12 provato rosso per mutazione). Tolte le chiavi `banner_prezzi_*`. Il tag di stato sulla riga (preventivo, pannello componenti) resta: è dove l'operatore agisce. ⚠️ `useLottoAzioni.motiviTesto` era una seconda copia della resa dei motivi e **non** passava i `valori` → ✅ **regola del 2 applicata lo stesso giorno (ok Tid)**: `testoMotivi(t, te, azione)` in `useDrawerActions.js`, usata dal mapper e dal lotto, copia ritirata. Unica differenza di comportamento, voluta: sul lotto, un'azione spenta senza `reasons` ma col motivo singolo ora mostra quel motivo invece dell'avviso generico. Spec 15 test, FE `npm run verify` verde (322) |

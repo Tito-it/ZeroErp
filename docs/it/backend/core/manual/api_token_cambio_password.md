@@ -95,7 +95,7 @@ Authorization: Bearer {access_token}
 | Campo | Tipo | Obbligatorio | Note |
 | --- | --- | :---: | --- |
 | `old_password` | string | Si | Password corrente |
-| `new_password` | string | Si | Deve superare i 4 validators Django |
+| `new_password` | string | Si | Deve superare i 5 validators configurati |
 | `new_password_confirm` | string | Si | Deve coincidere con `new_password` |
 
 #### Validazioni
@@ -105,19 +105,28 @@ Authorization: Bearer {access_token}
 3. `new_password == new_password_confirm`
 4. `new_password != old_password` (deve essere diversa)
 5. `old_password` corretta (check hash Django)
-6. `new_password` passa i 4 validators Django:
+6. `new_password` passa i 5 validators di `AUTH_PASSWORD_VALIDATORS`:
    - `UserAttributeSimilarityValidator` — non simile a username/email
    - `MinimumLengthValidator` — lunghezza minima
    - `CommonPasswordValidator` — non nella lista password comuni
    - `NumericPasswordValidator` — non solo numeri
+   - `apps.core.password_validators.ComplexityValidator` — complessita' minima
+
+I tre campi vengono ripuliti dagli spazi iniziali e finali (`.strip()`) prima dei controlli.
 
 #### Azioni (atomiche)
 
 1. `user.set_password(new_password)` + `user.save()`
 2. Reset flag `deve_cambiare_password = false`
 3. Blacklist tutti i refresh token precedenti dell'utente
-4. Genera nuova coppia JWT (access + refresh)
-5. Audit: evento login con nuovo sid/jti
+4. Genera nuova coppia JWT (access + refresh) con `RefreshToken.for_user(user)`
+5. Audit: evento LOGIN con il `sid` del nuovo refresh, o il suo `jti` se il `sid` manca
+
+> ⚠️ Difetto noto ([M-2](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)): `RefreshToken.for_user` non inietta i claim
+> `identita_id`, `ruolo_applicativo` e `sid` che il login mette nel token. Il frontend
+> installa la nuova coppia e la richiesta successiva esce 401 `E_JWT_SENZA_IDENTITA`
+> (`JwtAuditAuthentication`). Per lo stesso motivo l'audit LOGIN registra il `jti`
+> al posto del `sid`.
 
 #### Output (successo)
 
@@ -168,7 +177,7 @@ con 403 se il flag e' attivo. Endpoint consentiti:
 - `POST /api/v1/auth/logout/`
 - `GET /api/v1/core/me/`
 
-Qualsiasi altro endpoint ritorna:
+Qualsiasi altro endpoint ritorna 403:
 
 ```json
 {
@@ -206,6 +215,16 @@ Se la query per il flag fallisce (DB irraggiungibile), il middleware **blocca pe
 
 Superuser bypassa completamente il middleware.
 
+> ⚠️ Difetto noto ([E-1](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)): `E_CAMBIO_PASSWORD_RICHIESTO` ed
+> `E_CAMBIO_PASSWORD_CHECK_FALLITO` sono scritti a mano dal middleware e non sono a
+> catalogo codici: niente classe, `ui_action` ne' ripiego. La risposta 503 esce anche
+> senza `meta`.
+>
+> ⚠️ Difetto da verificare ([S-2](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)): il blocco gira in `process_view`,
+> dove per le richieste con JWT Bearer `request.user` e' ancora anonimo
+> (l'autenticazione DRF avviene dopo, nel dispatch della view): il controllo potrebbe
+> non scattare per i client Bearer.
+
 ---
 
 ## Dipendenze DB
@@ -236,9 +255,10 @@ SessionMiddleware
 CommonMiddleware
 RequestContextMiddleware
 ApiExceptionMiddleware
+UserLanguageMiddleware
 CsrfViewMiddleware
 AuthenticationMiddleware
-JwtAuditMiddleware              ← autentica utente, carica permessi
+JwtAuditMiddleware              ← reset GUC, precarica cache permessi (non autentica)
 PasswordChangeRequiredMiddleware ← blocca se deve cambiare password
 RequestLogMiddleware
 MessageMiddleware

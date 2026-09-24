@@ -29,7 +29,7 @@ voce della whitelist, ordinate per `rel`.
 ### 2. `GET /api/v1/core/config/tables/{rel}/metadata/`
 
 Le **colonne** della tabella (tipo, nullabilita', default…), lette
-dall'introspezione. E' quello che permette al FE di generare il form senza
+dall'introspezione, nella risposta `{"columns": [...]}`. E' quello che permette al FE di generare il form senza
 sapere in anticipo che tabella sia.
 
 ⭐ **Dal 2026-09-21 il metadata legge anche le chiavi esterne**: ogni colonna
@@ -73,7 +73,9 @@ limita a tradurne il rifiuto.
 
 ### 5. `GET` e `PATCH` `/api/v1/core/config/tables/{rel}/{id}/`
 
-Dettaglio e aggiornamento parziale di un record.
+Dettaglio e aggiornamento parziale di un record. Il `GET` restituisce il
+record; il `PATCH` risponde `{"updated": true}`, **non** il record aggiornato:
+chi deve mostrare i valori scritti li rilegge col `GET`.
 
 ## Codici errore
 
@@ -82,7 +84,7 @@ Dettaglio e aggiornamento parziale di un record.
 | `E_CORE_VALIDATION` | `rel` fuori whitelist; oppure il DB rifiuta il record per un **CHECK**, una **FK** o un **NOT NULL** — con `fields` che nomina la colonna (dal vincolo, se e' a una colonna; su un NOT NULL dal `column_name` di PostgreSQL) |
 | `E_ANAG_NOT_FOUND` | record inesistente |
 | `E_ANAG_DUPLICATO` | violazione di **unicita'**, con `fields` = la colonna se il vincolo e' a una colonna |
-| il codice del **trigger** (`CODICE_NON_MODIFICABILE`, `E_ATTIVO_BLOCK_CHILDREN_EXIST`, …) | un `P0001` del DB passa **com'e'**: il codice lo dichiara il DB (`translate_db_errors`) |
+| il codice del **trigger** (`E_CODICE_NON_MODIFICABILE`, `E_ATTIVO_BLOCK_CHILDREN_EXIST`, …) | un `P0001` del DB passa **com'e'**: il codice lo dichiara il DB (`translate_db_errors`) |
 
 ⚠️ **Fino al 2026-09-21 OGNI `IntegrityError` era «Record gia' esistente»**: un
 `CHECK` violato, una FK sbagliata, un NOT NULL — tutti «duplicato», senza

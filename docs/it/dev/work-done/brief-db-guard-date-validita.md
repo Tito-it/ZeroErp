@@ -21,8 +21,9 @@
 > ⛔ Ritirare la copia della pubblicazione **non bastava**: la ricerca delle
 > versioni da chiudere costruiva un `daterange` dai due parametri, e con le date
 > invertite rispondeva `22000` prima del guard (§14.1).
-> ⏳ **Resta solo il BE** (§14.4): una riga di test e una rigenerazione di
-> `genera_error_policies`. Poi il brief va in `work-done/`.
+> ✅ **BE chiuso il 24-09** (§14.4): test della pubblicazione sul codice
+> comune, `genera_error_policies` rigenerato e `--check` pulito. ⭐ **Brief
+> chiuso**, in `work-done/`.
 >
 > ✅ **Applicato il 23-09 sera** su dbdev (16:43) e sullo scratch `zeroerp_ci`
 > (17:06, ricostruito); corsa dei pgTAP verde (Tid). ⚠️ I nove rossi «che la CI non conosce» della corsa
@@ -355,7 +356,7 @@ contrario — che il service **passa** le date invertite al repository.
 
 > 🔢 **Progressivi (2026-09-24):** i changeSet di questa richiesta, se cadono
 > il 24-09, stanno in `20260924-01` … `-19`. `-20…-39` sono riservati a
-> [brief-db-preventivi-congelamento-pricing.md](brief-db-preventivi-congelamento-pricing.md).
+> [brief-db-preventivi-congelamento-pricing.md](../work-in-progress/brief-db-preventivi-congelamento-pricing.md).
 
 La prova qui sopra ne ha trovata una che il censimento del §2 non poteva vedere
 (guardava i trigger, non le funzioni che validano i propri parametri). Letto
@@ -446,7 +447,7 @@ l'apply). Li dice la corsa dopo l'apply.
 dbdev (11:33) e su `zeroerp_ci` (11:35), letto dal `databasechangelog` di
 entrambi. Con questo il verso RLS e il loader dei CSV sono provati.
 
-### 14.4 ⏳ Richiesta al BE — l'ultima cosa aperta
+### 14.4 ✅ Richiesta al BE — l'ultima cosa aperta
 
 Verificato il 24-09 dopo l'apply: nel repository **non è ancora fatta** (il
 test dichiara ancora il codice vecchio, il file generato porta ancora la nota
@@ -459,6 +460,22 @@ e dall'apply è **rosso**. Si toglie `codice=` (torna il default,
 cambiano quelle di `E_BOM_VALIDO_AL_INVALIDO` e `E_BOM_MODIFICA_VIETATA`:
 senza, il `--check` è rosso). Nessuna classe cambia. `E_BOM_VALIDO_AL_INVALIDO`
 resta nelle mappe per il diario, come `E_DATA_FINE_NON_MAGGIORE_DI_INIZIO`.
+
+✅ **Fatto lato BE, 2026-09-24.** Nel punto `template_versioni.pubblica` tolti
+`codice=` e il commento `⏳`: ora la pubblicazione pretende `E_DATA_AL_MINORE_DAL`
+come gli altri 14 punti, **con le due date nella frase** (prima quel ramo la
+saltava). ⭐ Tolto anche il parametro `codice` dall'helper `_rifiuto_del_periodo`:
+serviva solo a dichiarare una copia a DB, e le copie non ci sono più. Lasciarlo
+avrebbe tenuto aperta la strada per rimetterne una. **6 test, 15 punti, verdi**
+con `ZEROERP_TEST_DB_E2E=1`. `genera_error_policies` riporta «già allineato»,
+`--check` è pulito, e nessuna classe di un codice esistente è cambiata. Il file
+generato porta anche le voci di
+[brief-db-preventivi-congelamento-pricing.md](../work-in-progress/brief-db-preventivi-congelamento-pricing.md)
+(`E_DOC_PREZZO_*` nuovi, `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` ritirato): stesso
+catalogo, già in git. I loro ripieghi toccano a quel brief (§6.2). Cancelli dei
+codici (`test_error_policies_classi`, `test_error_policies_divergenza_db`,
+`test_error_codes_declared_guardrail`, `test_ui_action_e_canale_campi`): 26
+verdi, uno saltato.
 
 ---
 {% include-markdown "signature-core.md" %}
