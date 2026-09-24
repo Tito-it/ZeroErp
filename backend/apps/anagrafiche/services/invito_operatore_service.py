@@ -101,7 +101,7 @@ class InvitoOperatoreService:
         uo_id = self._auth_repo.get_unita_organizzativa_id(auth_user_id)
 
         # 6. Costruisci link frontend
-        frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:5173")
+        frontend_url = settings.FRONTEND_URL
         link = f"{frontend_url}/attivazione/{token_plain}"
 
         # 7. Recupera nome invitante

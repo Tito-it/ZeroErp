@@ -39,7 +39,7 @@ class InvitoTests(TestCase):
     @patch(_TOKEN_SVC)
     @patch(_AUTH_REPO)
     def test_invia_invito_happy_path(self, MockAuth, MockToken, MockEmail, mock_conn, mock_settings):
-        mock_settings.FRONTEND_URL = "http://localhost:5173"
+        mock_settings.FRONTEND_URL = "https://localhost"
         auth = MockAuth.return_value
         token = MockToken.return_value
         email = MockEmail.return_value
@@ -106,7 +106,7 @@ class InvitoTests(TestCase):
     @patch(_TOKEN_SVC)
     @patch(_AUTH_REPO)
     def test_reinvia_invalida_precedente(self, MockAuth, MockToken, MockEmail, mock_conn, mock_settings):
-        mock_settings.FRONTEND_URL = "http://localhost:5173"
+        mock_settings.FRONTEND_URL = "https://localhost"
         token = MockToken.return_value
         auth = MockAuth.return_value
         email = MockEmail.return_value

@@ -82,7 +82,7 @@ class PasswordResetRequestView(APIView):
 
                 # Costruisci link frontend
                 from django.conf import settings
-                frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:5173")
+                frontend_url = settings.FRONTEND_URL
                 link = f"{frontend_url}/reset-password/{token_plain}"
 
                 # Invia email (console mode in DEBUG)

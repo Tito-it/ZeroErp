@@ -373,7 +373,11 @@ DOCUMENTI_STORAGE_ROOT = env(
 )
 
 # --- Frontend URL (per link in email: reset password, invito, ecc.) ---
-FRONTEND_URL = env("FRONTEND_URL", "http://localhost:5173")
+# ⛔ Obbligatorio, senza default: e' l'indirizzo da cui si entra (Nginx), e un
+# default sbagliato non da' errore — manda nelle email link che aprono una
+# pagina con le API rotte. Il vecchio default `http://localhost:5173` era Vite
+# raggiunto direttamente, strada chiusa dal 2026-09-25 (vite.config.js).
+FRONTEND_URL = env("FRONTEND_URL", required=True).rstrip("/")
 
 # --- Digest dei presidi: a chi arriva ---
 # ⭐ A CHI ARRIVA LA POSTA E' UN FATTO DI QUESTA INSTALLAZIONE, non del software

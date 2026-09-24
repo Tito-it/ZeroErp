@@ -80,12 +80,16 @@ fra tre; header malformato.
 - Test: `apps/core/tests/services/test_request_context.py` (0, 1, 2 proxy;
   forgiato, assente, malformato, IPv6; ident dei tre throttle). I due test di
   `test_session_audit_service` che fissavano il «primo valore» sono ritirati lì.
-- ⚠️ **Per L-1**: il server di sviluppo Vite (`frontend/vite.config.*`, proxy
-  `/api` → `localhost:8000`) arriva **senza** Nginx e senza `X-Forwarded-For`:
-  con `1` l'IP è `None`, e il login fail-closed di L-1 lo rifiuterebbe. Oggi
-  vale solo per audit (IP vuoto) e throttle (contatore comune). Da decidere
-  all'apertura di L-1: `xfwd: true` nel proxy Vite (la catena resta di 1 hop),
-  o lo sviluppo passa sempre da Nginx.
+- ✅ **Una sola catena anche in sviluppo** (Tid, 2026-09-25): il dev server
+  Vite era in ascolto su tutte le interfacce e passava `/api` direttamente a
+  Django, cioè una seconda strada senza Nginx (IP `None` con `1`: il login di
+  L-1 l'avrebbe rifiutato). Scelto di **passare sempre da Nginx** invece di
+  `xfwd: true` in Vite: con `xfwd`, lo stesso `1` avrebbe voluto dire «Vite» in
+  sviluppo e «Nginx» in produzione, una coincidenza che si rompe in silenzio.
+  Vite su `127.0.0.1`, senza proxy `/api`, HMR su 443; vhost: `/api/` a Gunicorn,
+  `/` a Vite (configurazione-django.md, «Nginx (vhost finale)»).
+  `FRONTEND_URL` diventa **obbligatorio** (il default `localhost:5173` puntava
+  alla strada chiusa, e ripetuto con `getattr` in tre servizi: ritirati).
 
 ---
 

@@ -180,6 +180,8 @@ DJANGO_API_DOCS_ENABLED=1
 DJANGO_ALLOWED_HOSTS=backend-dev,backend-dev.tailXXXX.ts.net,localhost,127.0.0.1
 # Proxy fidati davanti al backend (Nginx = 1). Obbligatorio.
 DJANGO_TRUSTED_PROXY_COUNT=1
+# Base dei link nelle email: l'ingresso Nginx. Obbligatorio.
+FRONTEND_URL=https://backend-dev.tailXXXX.ts.net
 
 DB_NAME=⚠️_nome_db
 DB_USER=zeroerp_app
@@ -334,36 +336,11 @@ openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
   -subj "/CN=backend-dev.tailXXXX.ts.net"
 ```
 
-**Virtual host** `/etc/nginx/sites-available/zeroerp`:
-
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name backend-dev.tailXXXX.ts.net backend-dev;
-
-    ssl_certificate     /etc/ssl/certs/backend-dev.crt;
-    ssl_certificate_key /etc/ssl/private/backend-dev.key;
-
-    # STATIC & MEDIA
-    location /static/ { alias /var/www/zeroerp/static/; expires 7d; }
-    location /media/  { alias /var/www/zeroerp/media/;  expires off; }
-
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host              $host;
-        proxy_set_header X-Real-IP         $remote_addr;
-        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-
-# redirect permanente HTTP→HTTPS (usa 308 per preservare metodo)
-server {
-    listen 80;
-    server_name backend-dev.tailXXXX.ts.net backend-dev;
-    return 308 https://$host$request_uri;
-}
-```
+**Virtual host** `/etc/nginx/sites-available/zeroerp`: la versione corrente sta
+**solo** in [configurazione-django.md](configurazione-django.md), «Nginx (vhost
+finale)» — `/api/` a Gunicorn con rate limiting, il resto al dev server Vite su
+loopback. Una copia qui invecchiava in silenzio (era rimasta senza rate limit
+né cintura).
 
 ```bash
 ln -s /etc/nginx/sites-available/zeroerp /etc/nginx/sites-enabled/zeroerp

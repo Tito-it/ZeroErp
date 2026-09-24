@@ -535,7 +535,7 @@ class InvitoPortaleService:
         # (/attivazione-portale o /attivazione-shop). Il FE distingue l'UX
         # (set-password vs attiva-veste) in base al token_type restituito
         # dall'endpoint validate (§8.4.2 portale, §13.7 shop).
-        frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:5173")
+        frontend_url = settings.FRONTEND_URL
         link = f"{frontend_url}{cfg['link_path']}/{token_plain}"
 
         invitato_da_nome = self._get_display_name_of(invitato_da_user_id)
