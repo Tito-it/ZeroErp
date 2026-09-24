@@ -202,7 +202,7 @@ per parsing rate custom (`"3/15m"`).
 
 | Setting | Default | Scopo |
 | --- | --- | --- |
-| `FRONTEND_URL` | `http://localhost:5173` | Base URL per link nelle email |
+| `FRONTEND_URL` | obbligatoria, nessun default (l'ingresso Nginx, es. `https://backend-dev.tailXXXX.ts.net`) | Base URL per link nelle email |
 
 ## Dipendenze
 

@@ -67,7 +67,7 @@ class InvitoPortaleTests(TestCase):
     def test_invia_invito_cliente_happy_path(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
     ):
-        mock_settings.FRONTEND_URL = "http://localhost:5173"
+        mock_settings.FRONTEND_URL = "https://localhost"
         repo = MockRepo.return_value
         repo.get_cliente_info.return_value = {
             "billing_account_id": 42,
@@ -148,7 +148,7 @@ class InvitoPortaleTests(TestCase):
     def test_invia_invito_fornitore_happy_path(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
     ):
-        mock_settings.FRONTEND_URL = "http://localhost:5173"
+        mock_settings.FRONTEND_URL = "https://localhost"
         repo = MockRepo.return_value
         repo.get_fornitore_info.return_value = {
             "fornitore_id": 77,
@@ -220,7 +220,7 @@ class InvitoPortaleTests(TestCase):
     def test_reinvia_invalida_precedente(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
     ):
-        mock_settings.FRONTEND_URL = "http://localhost:5173"
+        mock_settings.FRONTEND_URL = "https://localhost"
         repo = MockRepo.return_value
         repo.get_cliente_info.return_value = {
             "billing_account_id": 42,
@@ -279,7 +279,7 @@ class InvitoPortaleTests(TestCase):
     def test_reinvio_a_chi_non_ha_mai_attivato_resta_invito(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
     ):
-        mock_settings.FRONTEND_URL = "http://localhost:5173"
+        mock_settings.FRONTEND_URL = "https://localhost"
         repo = MockRepo.return_value
         repo.get_cliente_info.return_value = {
             "billing_account_id": 42,
@@ -342,7 +342,7 @@ class InvitoPortaleTests(TestCase):
     def test_invia_invito_riusa_auth_user_esistente_flow_cross(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
     ):
-        mock_settings.FRONTEND_URL = "http://localhost:5173"
+        mock_settings.FRONTEND_URL = "https://localhost"
         repo = MockRepo.return_value
         repo.get_cliente_info.return_value = {
             "billing_account_id": 42,
@@ -411,7 +411,7 @@ class InvitoPortaleTests(TestCase):
     def test_cross_non_riattiva_identita_disattivata(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
     ):
-        mock_settings.FRONTEND_URL = "http://localhost:5173"
+        mock_settings.FRONTEND_URL = "https://localhost"
         repo = MockRepo.return_value
         repo.get_cliente_info.return_value = {
             "billing_account_id": 42,
@@ -466,7 +466,7 @@ class InvitoPortaleTests(TestCase):
     def test_identita_gia_attiva_solleva(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
     ):
-        mock_settings.FRONTEND_URL = "http://localhost:5173"
+        mock_settings.FRONTEND_URL = "https://localhost"
         repo = MockRepo.return_value
         repo.get_cliente_info.return_value = {
             "billing_account_id": 42,
@@ -514,7 +514,7 @@ class InvitoPortaleTests(TestCase):
     def test_identita_collegata_altro_auth_user_solleva(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
     ):
-        mock_settings.FRONTEND_URL = "http://localhost:5173"
+        mock_settings.FRONTEND_URL = "https://localhost"
         repo = MockRepo.return_value
         repo.get_cliente_info.return_value = {
             "billing_account_id": 42,
@@ -593,7 +593,7 @@ class InvitoShopCustomerTests(TestCase):
     def test_invia_invito_shop_happy_path_invito(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
     ):
-        mock_settings.FRONTEND_URL = "http://localhost:5173"
+        mock_settings.FRONTEND_URL = "https://localhost"
         repo = MockRepo.return_value
         repo.get_cliente_info.return_value = {
             "billing_account_id": 42,
@@ -656,7 +656,7 @@ class InvitoShopCustomerTests(TestCase):
     def test_invia_invito_shop_cross_path(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
     ):
-        mock_settings.FRONTEND_URL = "http://localhost:5173"
+        mock_settings.FRONTEND_URL = "https://localhost"
         repo = MockRepo.return_value
         repo.get_cliente_info.return_value = {
             "billing_account_id": 42,
@@ -714,7 +714,7 @@ class InvitoShopCustomerTests(TestCase):
     def test_reinvia_invito_shop_invalida_entrambi_token(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
     ):
-        mock_settings.FRONTEND_URL = "http://localhost:5173"
+        mock_settings.FRONTEND_URL = "https://localhost"
         repo = MockRepo.return_value
         info = {
             "billing_account_id": 42, "ba_codice": "BA-X",

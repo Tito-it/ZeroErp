@@ -2106,7 +2106,7 @@ accendere un cancello, non nella peggiore.
 
   ```bash
   DB_HOST=localhost DB_PORT=5432 DB_NAME=zeroerp DB_USER=zeroerp_app DB_PASSWORD=secret-app \
-  DJANGO_SECRET_KEY=ci-placeholder DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1" DJANGO_DEBUG=0 DJANGO_TRUSTED_PROXY_COUNT=0 \
+  DJANGO_SECRET_KEY=ci-placeholder DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1" DJANGO_DEBUG=0 DJANGO_TRUSTED_PROXY_COUNT=0 FRONTEND_URL=https://localhost \
   .venv/bin/python manage.py test -v 2
   ```
 

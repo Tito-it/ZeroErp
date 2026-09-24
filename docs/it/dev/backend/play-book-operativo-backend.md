@@ -104,6 +104,8 @@ DJANGO_ALLOWED_HOSTS=${HOSTNAME},${TAIL_NAME},localhost,127.0.0.1
 # ⛔ Se cambia la catena davanti al backend (un secondo proxy, un bilanciatore),
 # si aggiorna questo numero: sbagliato e' un difetto muto (vedi settings.py).
 DJANGO_TRUSTED_PROXY_COUNT=1
+# Base dei link nelle email: l'ingresso Nginx. OBBLIGATORIO.
+FRONTEND_URL=https://${TAIL_NAME}
 DB_NAME=${DB_NAME}
 DB_USER=${DB_USER}
 DB_PASSWORD='${DB_PASS}'
@@ -238,13 +240,28 @@ server {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
   }
-  location / {
+  location /api/ {
     limit_req zone=zeroerp_api burst=100 nodelay;
     proxy_pass http://127.0.0.1:8000;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+  }
+  location = /health {
+    proxy_pass http://127.0.0.1:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
+  # Frontend: Vite su loopback in sviluppo (HMR compreso), la build statica in
+  # produzione. Perche' e come: configurazione-django.md, «Nginx (vhost finale)».
+  location / {
+    proxy_pass http://127.0.0.1:5173;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host localhost;
+    proxy_read_timeout 1h;
   }
 }
 server { listen 80; server_name ${TAIL_NAME} ${HOSTNAME}; return 308 https://$host$request_uri; }

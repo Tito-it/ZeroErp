@@ -410,7 +410,7 @@ pratiche ZeroErp via API bidirezionale.
 | `EMAIL_ATTACHMENTS_ROOT` | `{BASE_DIR}/email_attachments` | Root storage allegati |
 | `EMAIL_ATTACHMENT_MAX_SIZE_MB` | `10` | Dimensione massima allegato in MB |
 | `EMAIL_ATTACHMENT_MAX_COUNT` | `10` | Numero massimo allegati per email |
-| `FRONTEND_URL` | `http://localhost:5173` | Base URL per link nelle email (reset, invito, attivazione) |
+| `FRONTEND_URL` | obbligatoria, nessun default (l'ingresso Nginx, es. `https://backend-dev.tailXXXX.ts.net`) | Base URL per link nelle email (reset, invito, attivazione) |
 
 ---
 

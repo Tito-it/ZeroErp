@@ -94,6 +94,8 @@ jobs:
       # Nessun proxy davanti al client di test: vale REMOTE_ADDR (settings.py,
       # «Quanti proxy fidati»). Obbligatorio, senza il backend non parte.
       DJANGO_TRUSTED_PROXY_COUNT: "0"
+      # Base dei link nelle email; obbligatorio (settings.py).
+      FRONTEND_URL: "https://localhost"
       CACHE_BACKEND: locmem
 
     steps:

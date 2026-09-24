@@ -35,7 +35,7 @@ Client → (HTTP/HTTPS) → Nginx → (HTTP 127.0.0.1:8000) → Gunicorn → Dja
 
 | # | Regola | Dove sta il presidio | Come si verifica |
 | --- | --- | --- | --- |
-| 1 | **Django non e' mai raggiungibile direttamente.** Gunicorn ascolta **solo su loopback** (`127.0.0.1:8000`); la porta 8000 **non si apre mai** in UFW ne' in Proxmox. L'unico ingresso e' Nginx | `bin/start-gunicorn.sh` (`ZEROERP_GUNICORN_BIND`, default loopback), UFW (`80/443` soltanto) | `ss -ltnp \| grep :8000` → **solo** `127.0.0.1:8000`; da un altro host `curl http://<IP>:8000/health` **deve fallire** |
+| 1 | **Django e Vite non sono mai raggiungibili direttamente.** Gunicorn ascolta **solo su loopback** (`127.0.0.1:8000`), e cosi' il dev server Vite (`127.0.0.1:5173`); le porte 8000 e 5173 **non si aprono mai** in UFW ne' in Proxmox. L'unico ingresso e' Nginx, anche in sviluppo: il browser apre `https://<host>/`. ⛔ Niente `npm run dev -- --host` e niente `proxy` `/api` in Vite: era una seconda strada verso Django che scavalcava Nginx (rate limit, HTTPS, IP del client), chiusa il 2026-09-25 | `bin/start-gunicorn.sh` (`ZEROERP_GUNICORN_BIND`, default loopback), `frontend/vite.config.js` (`server.host`), UFW (`80/443` soltanto) | `ss -ltnp \| grep -E ':8000\|:5173'` → **solo** `127.0.0.1`; da un altro host `curl http://<IP>:8000/health` e `curl http://<IP>:5173/` **devono fallire** |
 | 2 | **Nginx fa rate limiting**, piu' stretto sugli endpoint di autenticazione (token, reset password, attivazione): sono anonimi per natura e sono il bersaglio del brute-force | `/etc/nginx/conf.d/zeroerp-ratelimit.conf` + `limit_req` nel vhost (sotto) | 15 `curl` in fila su `/api/v1/admin/token/` → dal 6°/7° in poi **429** |
 | 3 | **L'admin Django non esiste.** `django.contrib.admin` non e' in `INSTALLED_APPS`: zero `ModelAdmin`, il FE non lo usa, l'autenticazione e' JWT. Era una form di login a sessione aperta a chiunque | `settings.py` («Superficie pubblica»), `urls.py`; test `apps/core/tests/api/test_superficie_pubblica.py` | `/admin/login/` → **404**; `/` → **404** |
 | 4 | **Swagger/OpenAPI e' uno strumento di sviluppo**: `/api/docs/` e `/api/schema/` elencano l'intera superficie API senza token. Esistono solo con `API_DOCS_ENABLED` (default = `DEBUG`), altrove **404** | `settings.API_DOCS_ENABLED`, `apps/core/api/api_docs_gate.py`; stesso test | `/api/docs/` → **404** con flag spento |
@@ -105,11 +105,15 @@ export DJANGO_SECRET_KEY="<generare>"
 export DJANGO_DEBUG="1"
 # Swagger/OpenAPI (/api/docs/, /api/schema/): segue DEBUG; "1" per averlo con DEBUG=0
 export DJANGO_API_DOCS_ENABLED="1"
-# Host ammessi: LAN + Tailscale + hostname
-export DJANGO_ALLOWED_HOSTS="backend-dev,localhost,127.0.0.1,192.168.X.8,<ts-backend>"
+# Host ammessi: LAN + Tailscale (IP E nome MagicDNS: Nginx passa a Django il nome
+# che il browser ha usato) + hostname
+export DJANGO_ALLOWED_HOSTS="backend-dev,backend-dev.tailXXXX.ts.net,localhost,127.0.0.1,192.168.X.8,<ts-backend>"
 # Proxy fidati davanti al backend: 1 = Nginx. OBBLIGATORIO, senza il backend non parte.
 # Se la catena cambia (un secondo proxy, un bilanciatore), si aggiorna questo numero.
 export DJANGO_TRUSTED_PROXY_COUNT="1"
+# Base dei link nelle email (invito, reset, attivazione): l'ingresso Nginx.
+# OBBLIGATORIO: un valore sbagliato non da' errore, manda link che non funzionano.
+export FRONTEND_URL="https://backend-dev.tailXXXX.ts.net"
 # Database (dbdev)
 export DB_NAME="zeroerp"
 export DB_USER="zeroerp_user"
@@ -181,7 +185,7 @@ sudo systemctl status zeroerp-gunicorn --no-pager
 **File:** `/etc/nginx/sites-available/zeroerp` → link in `sites-enabled`
 
 ```nginx
-# HTTPS (proxy a Gunicorn)
+# HTTPS: /api/ a Gunicorn, il resto al frontend (Vite in sviluppo)
 server {
     listen 443 ssl http2;
     server_name backend-dev.tailXXXX.ts.net backend-dev 192.168.X.8 <ts-backend>;
@@ -214,14 +218,33 @@ server {
         proxy_pass http://127.0.0.1:8000;
     }
 
-    location / {
+    location /api/ {
         limit_req zone=zeroerp_api burst=100 nodelay;
         include proxy_params;
-        proxy_set_header Host              $host;
-        proxy_set_header X-Real-IP         $remote_addr;
-        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_pass http://127.0.0.1:8000;
+    }
+    location = /health {
+        include proxy_params;
+        proxy_pass http://127.0.0.1:8000;
+    }
+
+    # Frontend. SVILUPPO: il dev server Vite su loopback (`npm run dev`),
+    # websocket dell'HMR compreso (il client lo apre sulla porta della pagina,
+    # cioe' questa: nessuna porta scritta in vite.config.js).
+    # Niente limit_req: al primo caricamento Vite serve centinaia di moduli.
+    # PRODUZIONE: al posto di questo blocco, la build statica —
+    #   location / { root /var/www/zeroerp/frontend; try_files $uri $uri/ /index.html; }
+    # La catena davanti a Django (/api/) e' la stessa nei due casi: Nginx, 1 proxy.
+    location / {
+        proxy_pass http://127.0.0.1:5173;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        # Vite accetta solo host noti (difesa dal DNS rebinding): gli ci si
+        # presenta come localhost, il browser resta sull'host di Nginx.
+        proxy_set_header Host localhost;
+        proxy_read_timeout 1h;   # il websocket HMR resta aperto a lungo
     }
 }
 

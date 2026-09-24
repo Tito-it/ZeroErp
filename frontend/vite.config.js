@@ -48,13 +48,21 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     },
   },
+  // ⭐ In sviluppo si entra SOLO da Nginx, come in produzione (2026-09-25,
+  //    piano-be-fe-accessi-credenziale-e-vesti §2): il browser apre
+  //    `https://<host>/`, Nginx passa `/api/` a Gunicorn e il resto a Vite.
+  //    Cosi' la catena davanti al backend e' una sola (Nginx = 1 proxy fidato,
+  //    `DJANGO_TRUSTED_PROXY_COUNT`), e in sviluppo si provano davvero rate
+  //    limit, HTTPS e l'IP del client.
+  //    ⛔ Niente `proxy` per `/api` e niente `--host`: una seconda strada
+  //    Vite → Django scavalcherebbe Nginx (e Django vedrebbe una catena che in
+  //    produzione non esiste). Una chiamata API arrivata a Vite deve fallire.
   server: {
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true
-      }
-    }
+    host: '127.0.0.1',
+    strictPort: true,
+    // Niente `ws.clientPort`: senza, il client HMR apre il websocket sull'host
+    // E sulla porta della pagina, cioe' quella di Nginx. La porta d'ingresso
+    // resta scritta in un posto solo, il vhost.
   },
   build: {
     rollupOptions: {

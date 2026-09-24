@@ -29,7 +29,8 @@ pip install -r requirements.txt
 ##  Vue3 + Vite
 cd frontend
 npm install
-npm run dev
+npm run dev        # Vite su 127.0.0.1:5173: si apre da Nginx, https://<host>/
+                   # (docs/it/dev/backend/configurazione-django.md). Mai --host.
 
 
 ## Avvia la doc locale
