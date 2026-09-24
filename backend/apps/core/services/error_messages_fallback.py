@@ -310,6 +310,8 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO": "Componente obbligatorio: il prezzo deve essere diverso da zero.",
     "E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE": "Impossibile emettere: componenti senza prezzo valorizzato.",
     "E_DOC_COMPOSITO_BOM_VUOTA": "Articolo composito senza componenti validi alla data: distinta scaduta o assente.",
+    "E_DOC_PREZZO_PENDENTE": "Il documento non puo' avanzare: ci sono prezzi ancora in attesa di approvazione.",
+    "E_DOC_PREZZO_RIFIUTATO": "Il documento non puo' avanzare: ci sono prezzi rifiutati dal responsabile.",
     "E_DOC_RIGA_NON_COMPOSITO": "L'articolo della riga non e' composito: impossibile aggiungere componenti.",
     "E_DOC_RIGHE_LOCK_MONTAGGIO": "Il controllo sulle righe del documento e' configurato male nel database: segnalalo, non e' una situazione che dipende dai tuoi dati.",
     "E_DOC_TIPO_NON_GESTITO": "Tipo di documento non gestito dal controllo di cancellazione: segnalalo, non e' una situazione che dipende dai tuoi dati.",
@@ -861,7 +863,6 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     #    mostrare in un caso gia' tecnico.
     "E_PRESIDIO_NON_A_CATALOGO": "Vista di presidio non dichiarata nel catalogo dbops.presidi, oppure spenta o ritirata. Non e' un errore di dati: segnalalo a chi mantiene il catalogo.",
     "E_PREVENTIVO_RIGA_NON_TROVATA": "Riga preventivo non trovata.",
-    "E_PREVENTIVO_RIGHE_PRICING_PENDENTI": "Esistono righe con prezzo in attesa di approvazione. Attendi esito o annulla la richiesta prima di accettare il preventivo.",
     "E_PREV_ANNULLA_COMMESSA_EMESSA": "Righe del preventivo gia' fatturate in commessa: l'annullamento non e' ammesso. Storna le attivita' emesse dal lato fatturazione, oppure crea una revisione del preventivo.",
     "E_PREV_COMPONENTE_NOT_FOUND": "Componente preventivo non trovato.",
     "E_PREV_EMITTENTE_BA_INCOERENTE": "Emittente fiscale non coerente col cliente selezionato.",

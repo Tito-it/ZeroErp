@@ -11,14 +11,14 @@
 
 ## Scopo
 
-Esporre via HTTP la gestione dei parametri di sistema con risoluzione override multi-livello (user, group, emittente fiscale) e CRUD override personale operatore.
+Esporre via HTTP la gestione dei parametri di sistema con risoluzione override multi-livello (user, categoria cliente, group, emittente fiscale) e CRUD override (personale, emittente, categoria cliente).
 
 ## Contesto
 
 I parametri di sistema (`config.parameters`) definiscono valori di configurazione globali (es. `DEFAULT_IVA`, `UI_THEME`). Ogni parametro puo' essere sovrascritto a piu' livelli tramite `config.parameter_overrides`, con catena di priorita':
 
 ```
-utente > gruppo > emittente fiscale > sessione > funzione > default
+utente > categoria cliente > gruppo > emittente fiscale > sessione > funzione > default
 ```
 
 La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La lista completa con tutti i livelli e' fornita da `script.fn_list_parameters_for_user()`.
@@ -27,9 +27,9 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
 
 | Profilo | Cosa puo' fare |
 |---------|----------------|
-| Operatore | Vede tutti i parametri, crea/modifica/elimina solo i propri override (`django_user_id = self`) |
-| Responsabile emittente | Come operatore + override a livello emittente (futuro, richiede permesso Django) |
-| Admin (superuser) | Vede i default globali senza filtro scope |
+| Utente | Vede tutti i parametri, crea/modifica/elimina solo i propri override (`scope=user`, `django_user_id = self`) |
+| Amministratore (`IsAdminZeroERP`: superuser o binding SUPER_ADMIN) | Come utente + override `scope=emittente` e `scope=categoria_cliente` |
+| Superuser | Nessun trattamento speciale nella risoluzione: vede i propri override, gruppi ed emittente reali come ogni altro utente |
 
 ---
 
@@ -41,7 +41,7 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
 - Path: `/api/v1/core/parameters/defaults/`
 - Auth: JWT, `skip_area_check = True`
 - Query param:
-  - `codes` (string, **obbligatorio**) — codici separati da virgola (es. `DEFAULT_IVA,DEFAULT_CURRENCY`), max 20
+  - `codes` (string) — codici separati da virgola (es. `DEFAULT_IVA,DEFAULT_CURRENCY`). Se assente o vuoto la risposta e' `200` con `data: {}`. Oltre 20 codici l'eccedenza viene scartata in silenzio
 - Output `200`:
 ```json
 {
@@ -53,10 +53,9 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
 }
 ```
 - Regole:
-  - Superuser: nessun filtro scope (riceve i default globali)
-  - Operatore: risoluzione con override user → group → emittente → default
+  - Risoluzione con override user → categoria cliente → group → emittente → default, identica per ogni utente (superuser compreso); la categoria cliente qui non viene passata, quindi quel livello non scatta
   - Codici non trovati vengono esclusi dal risultato (nessun errore)
-  - Limite massimo 20 codici per richiesta (protezione DOS)
+  - Limite massimo 20 codici per richiesta (protezione DOS): i successivi vengono ignorati
 
 ---
 
@@ -77,6 +76,7 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
       "description": "Aliquota IVA predefinita per documenti",
       "default_value": "22",
       "emittente_value": "10",
+      "emittente_override_id": 7,
       "group_value": null,
       "categoria_cliente_value": null,
       "categoria_cliente_override_id": null,
@@ -89,6 +89,7 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
       "description": "Sconto massimo percentuale ammesso senza approvazione",
       "default_value": "10",
       "emittente_value": "12",
+      "emittente_override_id": 8,
       "group_value": "20",
       "categoria_cliente_value": "5",
       "categoria_cliente_override_id": 314,
@@ -104,8 +105,10 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
   - Restituisce **tutti** i parametri di `config.parameters`
   - Per ogni parametro: valore a ciascun livello di scope + valore risolto finale
   - Cascata di risoluzione (post brief DB 2026-05-19, migration `20260519-01-recreate-fn-list-parameters-for-user-categoria-cliente-mctit`): `user > categoria_cliente > group > emittente > default`
-  - `user_override_id` / `categoria_cliente_override_id`: ID dei rispettivi override (null se assente). `categoria_cliente_override_id` è **bigint** (non integer) per coerenza con `config.parameter_overrides.id` (derivato via `%TYPE`).
-  - `emittente_fiscale_id` risolto automaticamente dal bridge HR dell'utente
+  - `user_override_id` / `emittente_override_id` / `categoria_cliente_override_id`: ID dei rispettivi override (null se assente), da usare nel DELETE con lo `scope` corrispondente. `categoria_cliente_override_id` è **bigint** (non integer) per coerenza con `config.parameter_overrides.id` (derivato via `%TYPE`).
+  - `emittente_fiscale_id` risolto automaticamente: whitelist personale `config.user_emittenti_fiscali`, altrimenti gestore globale da `anagrafiche.emittenti_fiscali_billing_account` (riga con `billing_account_id` NULL e `is_default`)
+  - `billing_account_id` inesistente: la categoria resta NULL senza errore, e sul BA non c'e' controllo di scope
+    > ⚠️ Difetto noto (F-6) — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
   - `categoria_cliente_value` / `categoria_cliente_override_id` sono SEMPRE presenti come chiavi nello shape della risposta; restano `null` se la richiesta non ha passato né `categoria_cliente_id` né `billing_account_id`
   - Delega a `script.fn_list_parameters_for_user(p_django_user_id, p_group_ids, p_emittente_fiscale_id, p_categoria_cliente_id)` (firma 4-arg)
 
@@ -136,14 +139,17 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
 ```
 - Regole:
   - Esegue UPSERT su `config.parameter_overrides` con il filtro scope corretto:
-    - `user` → `django_user_id = utente corrente`, tutti gli altri scope NULL
-    - `emittente` → `emittente_fiscale_id = EF utente`, tutti gli altri scope NULL
+    - `user` → `django_user_id = utente corrente`; cerca la riga esistente con `emittente_fiscale_id`, `django_group_id`, `session_key`, `function_name` NULL (non guarda `categoria_cliente_id`)
+    - `emittente` → `emittente_fiscale_id = EF utente`; cerca la riga con `django_user_id`, `django_group_id`, `session_key`, `function_name` NULL (non guarda `categoria_cliente_id`)
     - `categoria_cliente` → `categoria_cliente_id = <id>`, tutti gli altri scope NULL
+    > ⚠️ Difetto noto (F-5): user ed emittente non richiedono `categoria_cliente_id` NULL — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
   - Se l'override esiste gia' (stessa tupla `(parameter_id, scope-key)`), aggiorna il valore e `data_update`
-  - Se il `parameter_code` non esiste in `config.parameters`, il DB lancia errore (NOT NULL su parameter_id)
+  - Se il `parameter_code` non esiste in `config.parameters`, l'INSERT viola il NOT NULL su `parameter_id` e l'errore esce come `E_DATABASE` (400)
+    > ⚠️ Difetto noto (E-9): dovrebbe essere `E_PARAMETER_NOT_FOUND` (404) — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 - Errori:
-  - `E_PARAMETER_VALIDATION` (400) — codice parametro vuoto, `categoria_cliente_id` mancante/non-positivo per scope categoria
+  - `E_PARAMETER_VALIDATION` (400) — codice parametro vuoto, `scope` non ammesso, `categoria_cliente_id` mancante/non-positivo per scope categoria, emittente non risolvibile per scope emittente
   - `E_PERMISSION_DENIED` (403) — scope `emittente` o `categoria_cliente` da non-admin
+  - `E_DATABASE` (400) — `parameter_code` inesistente (vedi sopra)
 
 ---
 
@@ -169,11 +175,11 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
 ```
 - Regole:
   - `user` → verifica `django_user_id = self`
-  - `emittente` → verifica `emittente_fiscale_id = EF utente` (admin-only)
+  - `emittente` → verifica `emittente_fiscale_id = EF utente` + `django_user_id` e `django_group_id` NULL (admin-only; non guarda `categoria_cliente_id`, difetto F-5)
   - `categoria_cliente` → verifica `categoria_cliente_id = <id query param>` + tutti gli altri scope NULL (admin-only). Difesa anti-tampering: niente cancellazione cross-categoria.
 - Errori:
   - `E_PARAMETER_NOT_FOUND` (404) — override non trovato o non appartenente allo scope
-  - `E_PARAMETER_VALIDATION` (400) — ID override non valido o `categoria_cliente_id` mancante/non-positivo
+  - `E_PARAMETER_VALIDATION` (400) — ID override non valido, `scope` non ammesso o `categoria_cliente_id` mancante/non-positivo
   - `E_PERMISSION_DENIED` (403) — scope `emittente` o `categoria_cliente` da non-admin
 
 ---
@@ -186,6 +192,7 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
 | `config.parameter_overrides` | Tabella | Override per scope (user, group, emittente, session, function) |
 | `script.fn_get_parameter_full()` | Funzione | Risoluzione singolo parametro con catena di priorita' |
 | `script.fn_list_parameters_for_user()` | Funzione | Lista completa parametri con valori a ogni livello per l'utente |
+| `anagrafiche.emittenti_fiscali_billing_account` | Tabella | Ripiego della risoluzione `emittente_fiscale_id`: gestore globale (`billing_account_id` NULL, `is_default`) |
 | `config.user_emittenti_fiscali` | Tabella | Risoluzione `emittente_fiscale_id` dell'utente (`get_emittente_fiscale_id_for_user`; ⚠️ fino al 2026-09-12 questa riga nominava la vista `risorse_umane_auth_user`, nome vecchio del ponte in ritiro (analisi-software-per-dati-morti §2.1), e `risorse_umane` non ha una colonna `emittente_fiscale_id`) |
 
 ## Codici errore
@@ -200,7 +207,7 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
 ```
 views_parameters.py (4 APIView)
     |
-    ├── _get_user_context(request, svc) — helper condiviso estrazione contesto
+    ├── get_user_context(request, svc) — helper condiviso estrazione contesto
     |
     v
 parameter_service.py (ParameterService)
@@ -211,9 +218,9 @@ parameter_repository.py (ParameterRepository)
     ├── get_parameter()       → fn_get_parameter_full()
     ├── get_parameters()      → fn_get_parameter_full() x N
     ├── list_for_user()       → fn_list_parameters_for_user()
-    ├── upsert_user_override()→ INSERT ON CONFLICT (upsert)
-    ├── delete_user_override()→ DELETE con verifica ownership
-    └── get_emittente_fiscale_id_for_user() → query bridge HR
+    ├── upsert_{user,emittente,categoria_cliente}_override() → CTE UPDATE-poi-INSERT (ON CONFLICT non regge i NULL degli scope)
+    ├── delete_{user,emittente,categoria_cliente}_override() → DELETE con verifica di appartenenza allo scope
+    └── get_emittente_fiscale_id_for_user() → whitelist personale, poi gestore globale
 ```
 
 ## Frontend

@@ -2,9 +2,12 @@
 
 ## Scopo
 
-Subclass DRF di `rest_framework_simplejwt.authentication.JWTAuthentication` che propaga
-l'identita' utente JWT come GUC PostgreSQL (`app.jwt_user`, `app.current_user_id`) subito
-dopo `authenticate()` di successo, prima che il view body inizi a fare INSERT/UPDATE.
+Subclass DRF di `rest_framework_simplejwt.authentication.JWTAuthentication` che, subito
+dopo un `authenticate()` di successo e prima che il view body inizi a scrivere:
+
+* verifica i claim obbligatori del JWT interno (`identita_id`, `sid`);
+* valida che l'identita del claim sia ancora attiva per quell'`auth_user`;
+* propaga utente, veste ed emittente attivo come **6 GUC PostgreSQL** session-scoped.
 
 E' il punto del flusso DRF in cui:
 
@@ -13,124 +16,142 @@ E' il punto del flusso DRF in cui:
 * il view body **non e' ancora partito** (perform_authentication gira in `initial()`,
   prima del view method)
 
-→ i trigger DB di audit (`script.trgfn_audit_data_user_generic`) e di scope
+→ i trigger DB di audit (`script.trgfn_audit_data_user_generic`), di scope
 (`anagrafiche.trgfn_billing_account_link_ef`,
 `anagrafiche.trgfn_billing_account_guard_admin_globale`,
-`script.trgfn_guard_emittente_scope`) vedono finalmente le GUC durante le scritture.
+`script.trgfn_guard_emittente_scope`) e le funzioni di permesso/RLS vedono le GUC
+durante le scritture.
 
-> **Sostituisce il pattern di setting GUC nel middleware**, che era inerte per le request
-> JWT perche' Django middleware `process_view` gira **prima** della DRF authentication.
-> Vedi guida [Risorse umane e accessi](/guide/risorse-umane-e-accessi) sezione
-> "Propagazione identita utente al database (GUC)" per il razionale completo.
+> Il setting delle GUC non avviene nel middleware: Django `process_view` gira **prima**
+> della DRF authentication, quando `request.user` e' ancora anonimo per le request JWT.
+> Il middleware compagno [`JwtAuditMiddleware`](jwt_audit_middleware.md) si occupa del
+> reset di inizio richiesta. Vedi guida [Risorse umane e accessi](/guide/risorse-umane-e-accessi)
+> sezione "Propagazione identita utente al database (GUC `app.*`)".
 
 ## Contesto
 
-Classe in `apps/core/api/jwt_audit_authentication.py`. Registrata in:
+File `apps/core/api/jwt_audit_authentication.py`. Contiene:
+
+* `JWT_IDENTITY_GUCS` — la tupla dei 6 GUC d'identita, unica fonte di verita'
+* `JWT_GUC_RESET_SQL` — SQL di azzeramento derivato dalla tupla (usato dal middleware)
+* `set_jwt_gucs(...)` — helper che valida l'identita e popola i GUC
+* `JwtAuditAuthentication` — la classe di autenticazione
+* le eccezioni `JwtSenzaIdentitaError`, `JwtSenzaSidError`, `IdentitaNonAttivaError`
+
+La classe e' registrata in:
 
 * `settings.REST_FRAMEWORK["DEFAULT_AUTHENTICATION_CLASSES"]` (default per ogni view DRF)
-* `apps.core.api.base_views.DomainAPIView.authentication_classes` (esplicito)
-* `apps.core.api.base_views.AdminAPIView.authentication_classes` (esplicito)
+* `authentication_classes` esplicito di `DomainAPIView`, `AdminAPIView`, `PortaleAPIView`,
+  `ShopAPIView` (`apps/core/api/base_views.py`)
 * `apps.ai_assistant.api.views.AIStatusView.authentication_classes` (esplicito)
+
+## I 6 GUC
+
+| GUC | Valore |
+| --- | --- |
+| `app.jwt_user` | username Django |
+| `app.current_user_id` | `auth_user.id` |
+| `app.current_identita_id` | `identita_digitali.id` (vuoto se l'identita non e' attiva) |
+| `app.ruolo_applicativo` | `ruolo_applicativo` dell'identita |
+| `app.soggetto_ruolo_id` | `soggetto_ruolo_id` dell'identita |
+| `app.current_emittente_id` | emittente attivo del claim, se ancora attivo (altrimenti vuoto) |
+
+Il contratto completo dei GUC e' nella guida [Contratto GUC `app.*`](/guide/contratto-guc-app).
 
 ## Funzionalita'
 
+### `set_jwt_gucs(*, username, user_id, identita_id=None, emittente_attivo_id=None, request=None) -> bool`
+
+Helper riusato da `JwtAuditAuthentication` e dalle view di login/refresh
+([auth_views_audit.md](auth_views_audit.md)), che non passano dalla catena di
+autenticazione DRF.
+
+* Se `identita_id` e' `None` → ritorna `False` senza query: nel modello 1:N un
+  `auth_user` puo' avere piu' identita attive e non se ne risolve una implicita.
+* Altrimenti esegue **una sola** query CTE che:
+  * cerca l'identita `id = identita_id AND auth_user_id = user_id AND attivo = true`;
+  * cerca l'emittente del claim tra gli `emittenti_fiscali` attivi;
+  * imposta i 6 GUC con `set_config(..., false)`: `app.jwt_user` e
+    `app.current_user_id` sempre, i 3 GUC d'identita tutti insieme o tutti vuoti,
+    `app.current_emittente_id` vuoto se il claim manca o l'emittente non e' attivo;
+  * ritorna il numero di identita trovate.
+* Ritorna `True` se l'identita e' attiva, `False` altrimenti.
+* `DatabaseError` → log warning `jwt_audit_authentication.set_gucs_failed`, ritorna `False`.
+* Se l'identita e' trovata e `request` e' fornito, imposta
+  `request._zeroerp_jwt_guc_set = True`.
+
+Lo scope emittente non si rivalida qui: se ne occupa il DB a ogni chiamata.
+
 ### `authenticate(request)`
 
-1. Chiama `super().authenticate(request)` (logica JWT invariata: verifica token,
-   carica user dal DB)
-2. Se `super` ritorna `None` (no token / token invalido) → ritorna `None` invariato,
-   nessun side effect
-3. Se `super` ritorna `(user, validated_token)`:
-   * Estrae `user_id = getattr(user, "id", None)`
-   * Se `user_id is None` (caso difensivo, es. mock di test mal configurato) → ritorna
-     comunque il risultato senza side effect
-   * Altrimenti chiama `_set_gucs(request, user, user_id)` e ritorna `(user, validated_token)`
+1. Chiama `super().authenticate(request)` (verifica token, carica user dal DB).
+2. `super` ritorna `None` (nessun token) → ritorna `None`, nessun side effect.
+3. `user` senza `.id` o `validated_token` `None` (casi difensivi dei test) → ritorna
+   il risultato senza side effect.
+4. Claim `identita_id` assente → `JwtSenzaIdentitaError` (401 `E_JWT_SENZA_IDENTITA`).
+5. Claim `sid` assente o vuoto → `JwtSenzaSidError` (401 `E_JWT_SENZA_SID`).
+6. Chiama `_set_gucs(request, user, user_id, int(identita_id), emittente_attivo_id=...)`;
+   il claim `emittente_attivo_id` e' opzionale (assente = «Tutti gli emittenti»).
+7. `_set_gucs` ritorna `False` → `IdentitaNonAttivaError` (401 `E_IDENTITA_NON_ATTIVA`).
+8. Ritorna `(user, validated_token)`.
 
-### `_set_gucs(request, user, user_id)`
+`_set_gucs(request, user, user_id, identita_id, *, emittente_attivo_id=None) -> bool` e'
+un metodo separato, mockabile dai test, che delega a `set_jwt_gucs`.
 
-Metodo separato (mockabile dai test) che propaga l'identita':
+### Codici errore
 
-* Apre `connection.cursor()` ed esegue **una sola** query:
+| Eccezione | Codice | HTTP | Quando |
+| --- | --- | --- | --- |
+| `JwtSenzaIdentitaError` | `E_JWT_SENZA_IDENTITA` | 401 | claim `identita_id` mancante |
+| `JwtSenzaSidError` | `E_JWT_SENZA_SID` | 401 | claim `sid` mancante o vuoto |
+| `IdentitaNonAttivaError` | `E_IDENTITA_NON_ATTIVA` | 401 | identita non attiva / non dell'utente, **oppure** query GUC fallita |
 
-  ```sql
-  SELECT set_config('app.jwt_user',        %s, false),
-         set_config('app.current_user_id', %s, false)
-  ```
-
-  Parametri: `[str(user), str(user_id)]`.
-
-* `is_local = false` → **GUC session-scoped**: persiste sulla connessione PG per tutta
-  la durata della request, anche fuori dalle `transaction.atomic()` aperte successivamente
-  dal view body.
-
-* Se la query fallisce con `DatabaseError` (es. DB down) → log warning, ritorna senza
-  sollevare. La request prosegue (i trigger faranno fail-open senza GUC, comportamento
-  documentato sui trigger stessi).
-
-* Se la query va a buon fine → setta `request._zeroerp_jwt_guc_set = True`. Questo marker
-  viene letto da `JwtAuditMiddleware.process_response` per fare il **reset simmetrico**
-  delle GUC a fine request.
+Classe `NON_AUTENTICATO` in `error_policies_generated.py` (`CLASSE_PER_CODICE`). Con il
+DB non raggiungibile durante la query GUC la request non prosegue: esce 401
+`E_IDENTITA_NON_ATTIVA`.
 
 ## Perche' session-scoped (`set_config(.., false)`) invece di SET LOCAL
 
 A `authenticate()` time la connessione e' in **autocommit Django** (il view body non ha
 ancora aperto la sua `transaction.atomic()`). Un `SET LOCAL` o `set_config(.., true)`
 verrebbe perso al COMMIT immediato dell'autocommit, e i trigger DB nelle transazioni
-successive del service troverebbero le GUC vuote (fail-open silenzioso).
+successive del service troverebbero le GUC vuote.
 
-`set_config(.., false)` invece persiste sulla connessione fino al **reset esplicito**
-operato da `JwtAuditMiddleware.process_response` o alla **chiusura connessione**
-(`CONN_MAX_AGE = 0` di default chiude a fine request, quindi nessun rischio di leak fra
-request).
+`set_config(.., false)` invece persiste sulla connessione.
 
 ## Sicurezza contro leak fra request
 
-Oggi `CONN_MAX_AGE = 0` (default Django) chiude la connessione al termine di ogni request,
-quindi non c'e' rischio di leak.
-
-Per blindare la cosa anche in scenari futuri (`CONN_MAX_AGE > 0`, connection pooling
-esterno in transaction-mode), `JwtAuditMiddleware.process_response` resetta esplicitamente
-le GUC a stringa vuota, **solo se il marker `_zeroerp_jwt_guc_set` e' settato**.
-Questo garantisce simmetria perfetta set/reset e mantiene compatibilita' con i
-`SimpleTestCase` API che girano con request anonime a livello middleware.
+Il progetto usa connessioni persistenti (`CONN_MAX_AGE`, default `600` in `settings.py`):
+una connessione serve piu' request in sequenza. Il leak dei GUC fra request e' chiuso
+da `JwtAuditMiddleware.process_request`, che azzera tutti i `JWT_IDENTITY_GUCS` (via
+`JWT_GUC_RESET_SQL`) **all'inizio** di ogni richiesta `/api/`, prima di questa auth class.
+Dettagli in [jwt_audit_middleware.md](jwt_audit_middleware.md).
 
 ## Test
 
-`apps/core/tests/api/test_jwt_audit_authentication.py` — 6 test unitari:
-
-| Test | Verifica |
-|---|---|
-| `test_authenticate_returns_none_passthrough` | Auth fallita (super → None) → no GUC, no flag |
-| `test_authenticate_success_sets_gucs` | Auth ok → 1 execute combinata + flag su request |
-| `test_set_gucs_uses_session_scope_not_local` | SQL contiene `set_config` + `false`, NO `SET LOCAL` |
-| `test_set_gucs_passes_str_user_and_user_id` | Params nell'ordine `[str(user), str(user.id)]` |
-| `test_set_gucs_database_error_swallowed` | DB down → log warning, ritorna senza raise, flag NON settato |
-| `test_user_without_id_skipped` | User senza `.id` (caso difensivo) → no GUC |
+`apps/core/tests/api/test_jwt_audit_authentication.py` — unitari con `connection`
+mockata: passthrough senza token, popolamento GUC in una sola execute session-scoped,
+parametri della CTE, claim emittente propagato o assente, DB giu' → 401
+`E_IDENTITA_NON_ATTIVA`, i tre 401 sui claim e sull'identita.
 
 I test API che usano `Django test client` + `SimpleTestCase` mockano `_set_gucs` via la
-base class [`JwtMockedApiTest`](../../../../backend/apps/core/tests/_helpers/jwt_mock.py)
+base class [`JwtMockedApiTest`](../../../../../backend/apps/core/tests/_helpers/jwt_mock.py)
 (in `apps/core/tests/_helpers/jwt_mock.py`) per evitare `cursor.execute` durante l'auth
 in test (vietato in `SimpleTestCase` da `DatabaseOperationForbidden`).
 
-## Pattern complementare per entry point non-HTTP
+## Entry point non-HTTP
 
 `JwtAuditAuthentication` copre **automaticamente** tutte le request HTTP JWT, ma per
-definizione non vede:
-
-* `manage.py` command (import batch, migrazione dati)
-* Cron job / task pgAgent
-* Worker background / signal handlers
-* Test di integrazione che chiamano i service direttamente
-
-Per questi casi futuri il pattern raccomandato e' un helper `app_atomic(auth_user_id=...)`
-a livello service, **da implementare quando servira'** (oggi non esistono entry point
-non-HTTP che scrivono entita' audited). Vedi guida
+definizione non vede management command, job schedulati, worker di background e test
+di integrazione che chiamano i service direttamente. Vedi guida
 [Risorse umane e accessi](/guide/risorse-umane-e-accessi) sezione
-"Pattern complementare per entry point non-HTTP (futuro)".
+"Per gli entry point non-HTTP".
 
 ## Riferimenti
 
-* [JwtAuditMiddleware](jwt_audit_middleware.md) — middleware compagno (cache + DISABILITATO + reset GUC)
+* [JwtAuditMiddleware](jwt_audit_middleware.md) — middleware compagno (reset GUC, guard BYPASSRLS, DISABILITATO)
+* [Auth Views Audit](auth_views_audit.md) — login/refresh che chiamano `set_jwt_gucs` direttamente
 * [Risorse umane e accessi — Propagazione identita utente al database (GUC)](/guide/risorse-umane-e-accessi)
+* [Contratto GUC `app.*`](/guide/contratto-guc-app)
 * [Parametri Personalizzati GUC](/postgresql/parametri-personalizzati-(GUC)) — semantica session-scoped vs transaction-scoped
 * [Architettura permessi e autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)

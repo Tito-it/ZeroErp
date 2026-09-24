@@ -6,7 +6,9 @@
     "pulisci_filtri": "Clear filters",
     "azione_reason": {
       "senza_righe": "The document has no rows: add at least one to proceed.",
-      "indirizzi_mancanti": "Required document addresses are missing: fill them in the Addresses section."
+      "indirizzi_mancanti": "Required document addresses are missing: fill them in the Addresses section.",
+      "prezzo_pendente": "Some prices are waiting for approval ({0}).",
+      "prezzo_rifiutato": "Some prices were rejected by the manager ({0}): correct them or remove the lines."
     },
     "refine_hint_troncato": "Showing the first {shown}. Refine your search to see the others.",
     "save": "Save",
@@ -2710,7 +2712,6 @@
         "causale_mancante": "Transport reason is missing: required to issue the DDT.",
         "prezzo_non_risolvibile": "One or more rows have no resolvable price (own or inherited from the order) with an invoiceable reason.",
         "iva_mancante": "One or more rows have a price but no VAT rate. The rate is not chosen on the document: set it on the item, and the row picks it up. Otherwise remove the price, if the goods are not valued.",
-        "componenti_prezzo_pendente": "Components with price pending valuation.",
         "componenti_non_valorizzati": "Document components not yet valued."
       }
     },
@@ -3685,8 +3686,6 @@
       "richiesta_approvazione_inviata": "Approval request sent. Line waiting for outcome.",
       "prezzo_non_risolto": "Price not resolved from price list: enter manually.",
       "banner_no_contratto_attivo": "The customer has no active contract for this utility at the quote date. Line prices will be proposed from the category price list (category → price list matrix), if configured.",
-      "banner_frozen_pending_pricing": "Quote frozen: {count} line(s) waiting for price approval. State transitions and editing are blocked until all requests are resolved (approved or rejected by the manager).",
-      "banner_frozen_rejected_pricing": "Quote blocked: {count} line(s) with price rejected by the manager. Adjust the price (reset to list price or request new approval) or delete the line to proceed with issuance.",
       "badge_approvazione_pending": "Pending approval",
       "badge_approvazione_approved": "Approved",
       "badge_approvazione_rejected": "Rejected",

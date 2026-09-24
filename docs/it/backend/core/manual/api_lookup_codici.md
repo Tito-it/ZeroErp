@@ -44,14 +44,17 @@ Query string:
 Prima di invocare il repository DB, il service layer (`apps/core/services/lookup_service.py`)
 valida i seguenti parametri con `ErrorManager.require`:
 
-- **`rel`**: deve essere presente nella whitelist `REL_CONSENTITE` (frozenset nel repository).
 - **`order_col`**: deve appartenere al set `{"codice", "descrizione"}`.
 - **`order_dir`**: deve appartenere al set `{"asc", "desc"}`.
 - **`page`**: deve essere >= 1.
 - **`page_size`**: deve essere compreso tra 1 e 200.
 
+La whitelist di **`rel`** (`REL_CONSENTITE`) la controlla invece il repository
+(`DbopsRepository.list_lookup_codici`), prima di qualunque query.
+
 Qualsiasi valore fuori range genera errore `E_CORE_VALIDATION` (HTTP 400) prima che la query
-raggiunga il database.
+raggiunga il database. Un `page` o `page_size` **non numerico** e' rifiutato gia' dalla view,
+con `E_VALIDATION_INPUT` (HTTP 400).
 
 ## Output
 
@@ -85,6 +88,10 @@ raggiunga il database.
 
 Per le relazioni **specializzate** (vedi sotto) il payload include **una colonna
 in piu`** oltre al contratto generico.
+
+⚠️ Difetto noto (F-8): una pagina oltre l'ultima risponde `results: []` con
+`count: 0` e `total_pages: 0` — il totale si legge dalle righe della pagina, e
+una pagina vuota non ne ha. Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 
 ## Lookup specializzati (colonna extra)
 
@@ -241,11 +248,11 @@ documenti.render_engine_documento  documenti.tipi_documento_output
 documenti.tipi_asset_documento     documenti.tipi_file_documento
 ```
 
-### magazzino (4)
+### magazzino (3)
 
 ```text
-magazzino.ambito_causale  magazzino.magazzini
-magazzino.causali         magazzino.ubicazioni
+magazzino.causali  magazzino.magazzini
+magazzino.ubicazioni
 ```
 
 ### pagamenti (4)
@@ -290,4 +297,7 @@ in `backend/apps/core/db/dbops_repository.py`.
 | Codice              | HTTP | Causa                                          |
 |---------------------|------|------------------------------------------------|
 | `E_CORE_VALIDATION` | 400  | `rel` fuori whitelist, parametri non validi    |
-| `E_GENERICO`        | 500  | Errore imprevisto (anche da funzione DB)       |
+| `E_VALIDATION_INPUT` | 400 | `page` / `page_size` non numerici              |
+| `E_LOOKUP_STRUTTURA_TABELLA_INVALIDA` | 500 | `fn_get_lookup_codici` rifiuta la struttura della tabella (colonne mancanti) |
+| codice del DB / `E_DATABASE` | secondo il catalogo | altri rifiuti della funzione DB: passa il codice applicativo se il DB lo dichiara, altrimenti `E_DATABASE` (400) o `E_DATABASE_RETRYABLE` (409) |
+| `E_GENERICO`        | 500  | Errore imprevisto non di database              |

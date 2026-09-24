@@ -22,7 +22,7 @@ Asimmetria di scope (regge il design):
 
 | | Coda lavori | Coda stampa |
 | --- | --- | --- |
-| Proprietario | per-UTENTE via `scope->>'scope_key'` (whitelist emittenti) | per-EMITTENTE via JOIN a `vendite.fatture` |
+| Proprietario | per-UTENTE via `scope->>'scope_key'` (whitelist emittenti) | per-OPERATORE via `user_insert` (chi ha innescato la stampa); perimetro emittente dalla RLS e, nei conteggi, via JOIN a `vendite.fatture` |
 | Azioni di esecuzione | annulla / requeue (solo propri, o `code_manage`) | nessuna (il drainer ritenta da solo) |
 | Archiviazione | archivia / ripristina (`code_manage`, effetto globale) | identica: le due code sono simmetriche |
 
@@ -46,11 +46,12 @@ area `core`. I POST richiedono `Idempotency-Key` (header).
 - Conteggi vivi (PENDING/IN_CORSO) delle due code, **scoped** al chiamante, +
   liveness worker (`ultimo run entro la tolleranza dichiarata` = attivo).
   Pollato dal FE a 60s.
-- ⭐ **La soglia non è più un numero nel backend** (dal 2026-09-06): arriva dal
-  **dichiarato di deploy**, `backend/deploy/sveglie.json`, campo
-  `tolleranza_minuti` della sveglia del worker, letto via
-  `apps.core.services.sveglie`. Oggi vale 10 minuti per entrambi i drainer, che
-  è il valore che c'era prima — **il numero non cambia, cambia chi lo dice**.
+- ⭐ **La soglia non è un numero nel backend**: è il **contratto del processo**,
+  `dbops.processi.tolleranza_minuti`, letto via
+  `ProcessiRepository.contratti_liveness` — lo stesso numero con cui il database
+  dichiara un processo `MUTO`. Non sta in `backend/deploy/sveglie.json`, che
+  descrive solo come il deploy sveglia il processo: se il campo
+  `tolleranza_minuti` ricompare lì, `carica_sveglie()` rifiuta il file.
 - ⛔ Prima era `WORKER_ATTIVO_SOGLIA_MINUTI = 10` in `gestione_service.py`, con
   il commento «i timer girano a 1-2 minuti»: per sapere se 10 fosse ancora
   giusto bisognava aprire l'`OnCalendar` in un altro file, che nessuno
@@ -67,14 +68,17 @@ area `core`. I POST richiedono `Idempotency-Key` (header).
   mai stata chiusa; `ok` può essere `null`: la colonna è nullable e nessun
   CHECK la lega a `ended_at`). Il badge rende solo `attivo` e `last_run_at`;
   il digest dei presidi e il pannello degli esiti rendono anche il resto.
-- ⚠️ Se un worker arrivasse senza tolleranza dichiarata il service ripiega su 10
-  minuti per non spegnere il badge, ma è una configurazione incompleta e la CI
-  la rifiuta (`test_worker_del_badge_hanno_una_tolleranza`).
+- ⚠️ Se un worker arrivasse senza contratto (processo non a catalogo, o
+  tolleranza `NULL`) il service ripiega su 10 minuti per non spegnere il badge,
+  ma è una configurazione incompleta e la CI la rifiuta
+  (`test_worker_del_badge_hanno_un_contratto`).
 
 ### 2. Lista coda lavori (BE-5, sola lettura)
 
 - `GET /api/v1/core/tracciamento/coda-lavori/`
-- Query: `ambito` (`miei` default | `tutti` — richiede `code_manage`/SUPER_ADMIN),
+- Query: `ambito` (`miei` default | `tutti` — **visibilità aperta a ogni
+  operatore**: la coda è una risorsa condivisa; `code_manage` serve solo per
+  azioni e dettaglio sui job altrui),
   `stato`, `tipo` (job_type), `solo_vivi`, `data_da`/`data_a` (YYYY-MM-DD,
   inclusiva), `archiviate` (bool, default `false` — vedi §6), `limit` (max
   200)/`offset`, `sort_by`/`sort_dir`.
@@ -128,7 +132,10 @@ e questa riga esiste perché la prossima persona non creda il contrario.
 ### 3. Lista coda stampa (BE-6, sola lettura)
 
 - `GET /api/v1/core/tracciamento/coda-stampa/`
-- Query: come sopra + `lotto_id`; niente `is_mio` (la coda è per-emittente).
+- Query: come sopra + `lotto_id`. `ambito=miei` = righe innescate dal
+  chiamante (`user_insert`); `tutti` = tutte quelle del suo perimetro emittente
+  (RLS). Ogni riga porta `is_mio` e `operatore` (`user_insert`), come la coda
+  lavori.
 - Righe: fattura (numero/anno/serie), emittente, lotto, stato, tentativi,
   ultimo_errore, documento_id, `data_insert`/`data_update`,
   `archiviato`/`archiviato_il`/`archiviato_da`.
@@ -262,7 +269,8 @@ bandiera smentisce.
 `vendite.fatture_stampa_coda`. Dal 2026-09-04 la difende la policy RLS
 `rls_fatture_stampa_coda_ef_whitelist`, **e il filtro applicativo di emittente
 resta**: la RLS si somma ai filtri, non li sostituisce. Fuori perimetro → 0
-righe → **404**, indistinguibile da inesistente.
+righe → la riga finisce in `falliti` con `E_JOB_NON_TROVATO` (risposta 200),
+indistinguibile da inesistente.
 
 ⛔ **Chi NON legge la bandiera, ed è il contratto del cantiere**: claim,
 drainer, reaper, `mark_*`/`marca_*`, `count_per_stato`,
@@ -309,8 +317,8 @@ sono incluse (lì non c'è niente di nascosto da dichiarare).
   da inesistente (no leak). Whitelist emittenti `None` (admin globale) = vede
   tutto.
 - **`code_manage`** (azione di processo, area `strumenti` — seed §6 del brief,
-  id atteso 28): sblocca `?ambito=tutti` e le azioni su job altrui. SUPER_ADMIN
-  bypassa. ⚠️ Fino all'apply dei seed (area + azione), tutto il layer è
+  id atteso 28): sblocca il dettaglio e le azioni su job altrui, e
+  l'archiviazione. `?ambito=tutti` **non** lo richiede. SUPER_ADMIN bypassa. ⚠️ Fino all'apply dei seed (area + azione), tutto il layer è
   fail-closed: solo SUPER_ADMIN.
 - **Niente race col worker**: annulla/requeue ri-verificano stato E scope
   nell'UPDATE (0 righe = 409 parlante) — un claim concorrente vince sempre.
@@ -321,7 +329,6 @@ sono incluse (lì non c'è niente di nascosto da dichiarare).
 
 | Codice | HTTP | Quando |
 | --- | --- | --- |
-| `E_PERMESSO_NEGATO` | 403 | `?ambito=tutti` senza `code_manage`/SUPER_ADMIN |
 | `E_JOB_NON_TROVATO` | 404 | job inesistente o di altro scope (dettaglio/azioni) |
 | `E_JOB_NON_ANNULLABILE` | 409 | annulla su job non più PENDING |
 | `E_JOB_NON_RIACCODABILE` | 409 | requeue su job non riaccodabile (né ERRORE né IN_CORSO stantio) |
@@ -329,7 +336,8 @@ sono incluse (lì non c'è niente di nascosto da dichiarare).
 | `E_PERMESSO_NEGATO` | 403 | archivia/ripristina senza `code_manage`/SUPER_ADMIN |
 | `E_VALIDATION_INPUT` | 400 | `ids` assente/vuoto, non interi positivi, o oltre 200 |
 | `E_CODA_ARCHIVIAZIONE_NON_AMMESSA` | **riga fallita** nel giro (409 se fosse sola) | archiviazione di una riga ancora VIVA (`PENDING`/`IN_CORSO`). Lo solleva il **trigger**, con la sua frase a catalogo |
-| `E_VALIDATION_INPUT` | 400 | `extra_tentativi` fuori range 1..10 |
+| `E_VALIDATION_INPUT` | 400 | `extra_tentativi` fuori range 1..10; `data_da`/`data_a` non `YYYY-MM-DD`, `solo_vivi`/`archiviate` non booleani, `lotto_id` non intero |
+| `E_SEARCH_VALIDATION` | 400 | `sort_by` fuori dalla whitelist della coda, o `sort_dir` diverso da `asc`/`desc` |
 | `E_IDEMPOTENCY_KEY_REQUIRED` | 400 | POST senza header `Idempotency-Key` |
 
 ## Dipendenze DB
@@ -346,8 +354,10 @@ sono incluse (lì non c'è niente di nascosto da dichiarare).
   il kebab della coda stampa non avrebbe dove attaccarsi), **713**/**714**
   (`archiviato_il` sulle liste 34/35, accese dal BE nello stesso commit in cui
   la colonna entra nella proiezione).
-- `vendite.fatture_stampa_coda` + JOIN `vendite.fatture` (scope emittente via
-  `add_emittente_scope_condition`, convenzione SR) + `anagrafiche.emittenti_fiscali`.
+- `vendite.fatture_stampa_coda` + JOIN `vendite.fatture` e
+  `anagrafiche.emittenti_fiscali`. Scope emittente applicativo (convenzione SR)
+  nei conteggi e nell'archiviazione; la lista filtra per `user_insert` e per il
+  resto si affida alla RLS.
 - `maintenance.job_run_log` (liveness worker, jobname
   `draina_coda_lavori`/`draina_coda_stampa`).
   ⚠️ I due jobname **non sono letterali** in `gestione_service.py`: sono le
@@ -356,8 +366,9 @@ sono incluse (lì non c'è niente di nascosto da dichiarare).
   tolleranza nel dichiarato. Due stringhe uguali in due file si sarebbero
   sfilate al primo rename **senza che niente fallisse**: la tolleranza non si
   sarebbe più trovata e il badge avrebbe continuato con il ripiego.
-- `backend/deploy/sveglie.json` — **non è una dipendenza DB ma di deploy**, ed è
-  la sede della `tolleranza_minuti`. Vedi
+- `dbops.processi.tolleranza_minuti` — il contratto di liveness dei due
+  drainer (via `ProcessiRepository.contratti_liveness`). La cadenza dei timer
+  sta invece in `backend/deploy/sveglie.json`: vedi
   [sveglie_processi.md](sveglie_processi.md).
 - Seed `config.aree_funzionali` area `strumenti` + azione
   `config.azioni_processo` `code_manage` su quell'area (team DB, brief §6).

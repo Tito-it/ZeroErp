@@ -2,7 +2,7 @@
 
 ## Scopo
 
-Registrare ogni request API autenticata nella tabella `dbops.request_log` con metodo, path, status, durata e utente.
+Registrare ogni request API (`/api/*`, anonime comprese) nella tabella `dbops.request_log` con metodo, path, status, durata e utente.
 
 ## Contesto
 
@@ -19,8 +19,8 @@ Nessun valore restituito. Effetto: INSERT in `dbops.request_log` con i seguenti 
 | Campo | Origine |
 |-------|---------|
 | `auth_user_id` | `request.user.id` (NULL se anonimo) |
-| `username` | `str(request.user)` |
-| `request_id` | Da `RequestContextMiddleware` |
+| `username` | `str(request.user)` se autenticato, altrimenti NULL |
+| `request_id` | Da `RequestContextMiddleware` (⚠️ Difetto noto [S-1](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md): un `X-Request-ID` non UUID fa fallire l'INSERT) |
 | `method` | `request.method` (GET, POST, ...) |
 | `path` | `request.path` (troncato a 500 char) |
 | `query_string` | `request.META["QUERY_STRING"]` (troncato a 1000 char) |
@@ -28,11 +28,13 @@ Nessun valore restituito. Effetto: INSERT in `dbops.request_log` con i seguenti 
 | `duration_ms` | Calcolato tra `process_request` e `process_response` |
 | `ip_address` | `X-Forwarded-For` o `REMOTE_ADDR` |
 | `user_agent` | `HTTP_USER_AGENT` (troncato a 500 char) |
-| `error_code` | Estratto da `response.content` JSON se status >= 400 |
+| `error_code` | Estratto da `response.content` JSON (`error.code`) se status >= 400 |
+| `idempotency_key` | Da `RequestContextMiddleware` (chiave idempotenza della request, se valida) |
+| `emittente_attivo_id` | GUC di sessione `app.current_emittente_id`, scritta da `JwtAuditAuthentication` (NULL se assente) |
 
 ## Regole
 
-- Logga solo request su path `/api/*`.
+- Logga solo request su path `/api/*`, autenticate o anonime.
 - NON logga body request/response (sicurezza + volume).
 - Path esclusi di default: `/health`, `/api/docs/`, `/api/schema/`, `/static/`, `/media/`.
 - Path esclusi configurabili via `settings.REQUEST_LOG_EXCLUDE_PATHS`.

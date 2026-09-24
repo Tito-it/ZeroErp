@@ -61,8 +61,10 @@ Rispetto a preventivi/offerte l'ordine **non ha revisioni** né listino in testa
 Il flusso utente innesca la transizione via `/emetti/` (conferma + generazione
 documento, vedi sezione Emetti); `/conferma/` resta come API di sola transizione,
 riusata internamente da `emetti`. La transizione è **autoritativa lato DB** (trigger
-`trgfn_ordini_guard_transizione_approvazione` sull'UPDATE di
-`stato_doc_ordine_id`): il service applica solo il guard applicativo «origine
+`trgfn_ordini_guard_transizione` sull'UPDATE di `stato_doc_ordine_id`; dal
+2026-09-24 la sua Regola 5 rifiuta `DRAFT → CONFERMATO` con componenti BoM attivi
+a prezzo `PENDING` o `REJECTED` — `E_DOC_PREZZO_PENDENTE` / `E_DOC_PREZZO_RIFIUTATO`,
+building block `script.fn_check_prezzi_autorizzati`): il service applica solo il guard applicativo «origine
 DRAFT + almeno una riga». I codici `E_ORDINE_*` sollevati dai trigger sono
 **estratti dal MESSAGE** via regex (`_DB_ERROR_CODE_RE`) e propagati come
 `ServiceError.code` originale (routing UI specifico), con fallback
@@ -453,7 +455,8 @@ preesistono; gli `E_ORD_*` aggiunti con questo scheletro).
 - Trigger testata: `trgfn_ordini_gen_numero`, `trgfn_ordini_normalize`,
   `script.trgfn_default_emittente_fiscale` (dal 2026-09-15 al posto di
   `trgfn_ordini_default_emittente`), `trgfn_ordini_guard_emittente_ba`,
-  `trgfn_ordini_guard_transizione_approvazione`, lock numero, immutabilità
+  `trgfn_ordini_guard_transizione` (la vecchia
+  `trgfn_ordini_guard_transizione_approvazione` è ritirata dal `20260512-28`), lock numero, immutabilità
   `canale_origine`.
 - Modello esteso: `agente_soggetto_ruolo_id` (`20260603-12`),
   `documento_origine_tipo`/`_id` (`20260603-13`), fix `chk_ordini_v_r_qta_pos`

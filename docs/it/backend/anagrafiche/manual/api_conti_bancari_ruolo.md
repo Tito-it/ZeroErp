@@ -115,18 +115,26 @@ Associa un conto al ruolo. Se l'IBAN non esiste nel registro, viene creato
 | Campo | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
 | `iban` | string | Si`* | IBAN (15-34 char alfanumerici, normalizzato uppercase) |
-| `bic_swift` | string | No | BIC/SWIFT |
+| `bic_swift` | string | No | BIC/SWIFT (solo se l'IBAN entra nuovo nel registro) |
+| `intestatario_predefinito` | string | No | Intestatario del conto nel registro (solo se l'IBAN entra nuovo) |
 | `bank_branch_id` | int | Si`* | ID filiale bancaria |
 | `conto_bancario_id` | int | No* | ID diretto dal registro (bypass IBAN resolution) |
-| `uso` | string | No | `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO` (default) |
+| `uso` | string | No | `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO` (default DB); case-insensitive |
 | `predefinito` | bool | No | Se predefinito per questo uso |
 | `istanza_utility_id` | int | No | Se presente, legame specifico per istanza |
 | `valido_dal` | date | No | Data inizio validita` |
-| `valido_al` | date | No | Data fine validita` |
+| `valido_al` | date | No | Data fine validita`: non deve precedere `valido_dal` (vedi Errori) |
+| `intestazione_dichiarata` | string | No | Intestazione dichiarata |
+| `verificato` | bool | No | Flag verifica |
+| `bloccato` | bool | No | Flag blocco (incompatibile con `predefinito=true`) |
 
-*`iban` + `bank_branch_id` oppure `conto_bancario_id` (mutualmente esclusivi).
+\*`conto_bancario_id` **vince**: se c'e', `iban`, `bic_swift`, `bank_branch_id` e
+`intestatario_predefinito` sono ignorati. Senza, servono `iban` +
+`bank_branch_id`.
 
 ### Risposta (200)
+
+La riga del legame appena creato:
 
 ```json
 {
@@ -135,6 +143,11 @@ Associa un conto al ruolo. Se l'IBAN non esiste nel registro, viene creato
     "conto_bancario_id": 10,
     "uso": "INCASSO",
     "predefinito": true,
+    "valido_dal": "2026-01-01",
+    "valido_al": null,
+    "intestazione_dichiarata": null,
+    "verificato": false,
+    "bloccato": false,
     "istanza_utility_id": 100
   }
 }
@@ -145,6 +158,9 @@ Associa un conto al ruolo. Se l'IBAN non esiste nel registro, viene creato
 - Vincolo UNIQUE parziale: un solo legame per `(soggetto_ruolo_id, istanza_utility_id, conto_bancario_id, uso)`
 - Un solo predefinito per `(soggetto_ruolo_id, istanza_utility_id, uso)`
 - `istanza_utility_id = NULL` crea un legame generico del ruolo
+- Il get_or_create del registro IBAN e la creazione del legame stanno in una
+  sola transazione: se il legame fallisce, l'IBAN nuovo non resta nel registro
+- Il conto del registro deve essere attivo (guard DB)
 
 ---
 
@@ -162,11 +178,16 @@ Associa un conto al ruolo. Se l'IBAN non esiste nel registro, viene creato
 | `uso` | string | Cambia tipo d'uso |
 | `predefinito` | bool | Segna/rimuovi come predefinito |
 | `istanza_utility_id` | int/null | Assegna/cambia/rimuovi istanza |
-| `valido_dal` | date | Inizio validita` |
-| `valido_al` | date | Fine validita` |
+| `valido_dal` | date/null | Inizio validita` |
+| `valido_al` | date/null | Fine validita`: non deve precedere `valido_dal` |
 | `intestazione_dichiarata` | string | Intestazione dichiarata |
 | `verificato` | bool | Flag verifica |
 | `bloccato` | bool | Flag blocco |
+
+Stringa vuota su `valido_dal`, `valido_al`, `intestazione_dichiarata`,
+`istanza_utility_id` = `NULL`. Le chiavi fuori da questa tabella sono ignorate.
+⚠️ A differenza del POST, qui `uso` **non** è validato né portato in maiuscolo
+dal service: un valore fuori elenco lo rifiuta il `CHECK` del DB (vedi Errori).
 
 ### Risposta (200)
 
@@ -188,6 +209,31 @@ Associa un conto al ruolo. Se l'IBAN non esiste nel registro, viene creato
 ```json
 { "data": { "deleted": true } }
 ```
+
+---
+
+## Errori
+
+| Codice | HTTP | Quando | Sede |
+|---|---|---|---|
+| `E_ANAG_VALIDAZIONE` | 400 | IBAN mancante o fuori formato; `bank_branch_id` mancante; `uso` fuori elenco (solo POST); `predefinito` e `bloccato` entrambi veri (anche sommando payload e stato corrente, in PATCH) | service |
+| `E_DATA_AL_MINORE_DAL` | 400, campo `valido_al` | `valido_al < valido_dal`, in POST e PATCH. Il service non lo anticipa (dal 2026-09-23) | guard comune `script.trgfn_guard_date_validita` |
+| `E_CONTO_BANCARIO` | 400, campo `conto_bancario_id` | il conto del registro non è attivo | `anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard` |
+| `E_ANAG_DUPLICATO` | 409 | legame già presente per lo stesso ruolo/istanza/conto/uso, o secondo predefinito per lo stesso uso. ⚠️ Vedi nota sotto | service (qualunque `IntegrityError`) |
+| `E_ANAG_CONTO_NOT_FOUND` | ⚠️ 400 | `conto_bancario_id` non esiste nel registro | service |
+| `E_ANAG_NOT_FOUND` | 404 | PATCH: legame inesistente o di un altro ruolo. ⚠️ Anche PATCH senza nessun campo ammesso | service |
+| `E_ANAG_CONTO_SOGGETTO_NOT_FOUND` | ⚠️ 400 | DELETE: legame inesistente o di un altro ruolo | service |
+
+⚠️ **Difetti noti (2026-09-24), non ancora corretti** — E-1 ed E-7 di [analisi-be-difetti-emersi-verifica-doc-api-core.md](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md):
+
+- `E_ANAG_CONTO_NOT_FOUND` e `E_ANAG_CONTO_SOGGETTO_NOT_FOUND` **non sono a
+  catalogo**: il traduttore li tratta come codici sconosciuti e risponde
+  **400** «Errore di validazione.» invece di un 404;
+- in POST e PATCH ogni `IntegrityError` esce come `E_ANAG_DUPLICATO` («già
+  associato»): anche un `uso` fuori elenco in PATCH (`CHECK`) o un
+  `istanza_utility_id` inesistente (FK);
+- una PATCH senza nessun campo ammesso risponde 404 «Associazione non
+  trovata», anche quando il legame esiste.
 
 ---
 

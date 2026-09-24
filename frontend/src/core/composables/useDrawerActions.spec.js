@@ -35,11 +35,15 @@
 //   9) `onAction` riceve l'azione INTERA (il chiamante decide conferme/dialog)
 //  10) un'azione senza `enabled` degrada ad ABILITATA (domini piu' vecchi)
 //  11) un motivo SENZA `reason_key` usa il codice grezzo (trovato per mutazione)
+//  12) i `valori` del motivo arrivano alla frase come segnaposto posizionali
+//  13) un motivo senza `valori` si traduce SENZA parametri (come prima)
+//  14) `testoMotivi` — la sede unica usata anche dal lotto: tutti i motivi
+//  15) `testoMotivi` senza motivi leggibili -> '' (il chiamante ripiega)
 // ------------------------------------------------------------
 
 import { describe, it, expect, vi } from 'vitest'
 import { ref } from 'vue'
-import { mapAvailableActionsToDrawerActions } from './useDrawerActions'
+import { mapAvailableActionsToDrawerActions, testoMotivi } from './useDrawerActions'
 
 // `t` rende la chiave stessa: le asserzioni parlano di chiavi, non di frasi.
 const t = (k) => k
@@ -199,5 +203,64 @@ describe('mapAvailableActionsToDrawerActions', () => {
       t, te: teCon(),
     })
     expect(a.tooltip).toBe('STATO_NON_AMMESSO')
+  })
+
+  it('12) i `valori` del motivo arrivano alla frase come segnaposto `{0}`', () => {
+    // Il conteggio dei prezzi non autorizzati viaggia nei `valori`
+    // (script.fn_check_prezzi_autorizzati): senza, il tooltip direbbe «ci
+    // sono prezzi in attesa» e non quanti. `t` qui rende chiave + parametri.
+    const tp = vi.fn((k, p) => (p ? `${k}|${p.join(',')}` : k))
+    const [a] = mapAvailableActionsToDrawerActions({
+      availableActions: [voceDb({
+        key: 'emetti', enabled: false,
+        reason: 'PREZZO_PENDENTE', reason_key: 'common.azione_reason.prezzo_pendente',
+        reasons: [
+          { reason: 'PREZZO_PENDENTE', reason_key: 'common.azione_reason.prezzo_pendente', valori: ['2'] },
+          { reason: 'PREZZO_RIFIUTATO', reason_key: 'common.azione_reason.prezzo_rifiutato', valori: ['1'] },
+        ],
+      })],
+      t: tp, te: teCon(),
+    })
+    expect(a.tooltip).toBe(
+      'common.azione_reason.prezzo_pendente|2\ncommon.azione_reason.prezzo_rifiutato|1',
+    )
+    expect(tp).toHaveBeenCalledWith('common.azione_reason.prezzo_pendente', ['2'])
+  })
+
+  it('13) un motivo senza `valori` si traduce senza parametri', () => {
+    // I motivi che non portano valori (o li portano vuoti) restano la
+    // chiamata di sempre `t(key)`: la modifica non tocca i testi esistenti.
+    const tp = vi.fn((k) => k)
+    mapAvailableActionsToDrawerActions({
+      availableActions: [voceDb({
+        enabled: false, reason: 'SENZA_RIGHE', reason_key: 'common.azione_reason.senza_righe',
+        reasons: [{ reason: 'SENZA_RIGHE', reason_key: 'common.azione_reason.senza_righe', valori: [] }],
+      })],
+      t: tp, te: teCon(),
+    })
+    const chiamata = tp.mock.calls.find(([k]) => k === 'common.azione_reason.senza_righe')
+    expect(chiamata).toEqual(['common.azione_reason.senza_righe'])
+  })
+
+  it('14) `testoMotivi` rende tutti i motivi, col ripiego sul motivo singolo', () => {
+    // Estratta il 2026-09-24 (regola del 2): la usa anche `useLottoAzioni`
+    // per l'avviso del kebab di lista, che aveva la sua copia senza `valori`.
+    const tp = (k, p) => (p ? `${k}|${p.join(',')}` : k)
+    expect(testoMotivi(tp, teCon(), {
+      reasons: [
+        { reason: 'A', reason_key: 'k.a', valori: ['3'] },
+        { reason: 'B', reason_key: 'k.b' },
+      ],
+    })).toBe('k.a|3\nk.b')
+    // Senza `reasons` vale il motivo dell'azione stessa; chiave assente dai
+    // locales -> il codice, mai il path.
+    expect(testoMotivi(tp, teCon(['k.x']), { reason: 'X', reason_key: 'k.x' })).toBe('X')
+  })
+
+  it('15) `testoMotivi` senza motivi leggibili torna stringa vuota', () => {
+    // Il lotto ripiega su «azione non più disponibile» con `||`: una stringa
+    // vuota deve restare falsy, non diventare un avviso senza testo.
+    expect(testoMotivi(t, teCon(), { enabled: false, reason: null, reason_key: null })).toBe('')
+    expect(testoMotivi(t, teCon(), undefined)).toBe('')
   })
 })

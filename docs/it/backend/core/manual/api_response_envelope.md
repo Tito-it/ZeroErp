@@ -15,8 +15,20 @@ Gli helper sono in:
 
 ## Output
 - Successo: `{ "data": {...}, "meta": {...} }`
-- Errore: `{ "error": {...}, "meta": {...} }`
-- `meta` include `request_id` e, se presente, `idempotency_key`.
+- Errore da service/DB (`exception_to_error_response`):
+  `{ "error": {code, message, ui_action, ...}, "meta": {...} }`, dove `error` porta
+  anche `detail`, `technical_message`, `hint`, `tx_id`, `retryable`, `fields`,
+  `targets` quando valorizzati (le chiavi `null` vengono omesse).
+- Errore da eccezione DRF di autenticazione/permessi (`drf_exception_handler`):
+  `error` ridotto a `{code, message, ui_action}`.
+- JSON o payload non validi (`invalid_json_response` / `invalid_payload_response`):
+  `{ "error": "invalid_json" }` / `{ "error": "invalid_payload" }` — `error` e' una
+  **stringa**, non un oggetto.
+- `meta` include `request_id` e, se presente, `idempotency_key`; manca se entrambi
+  sono assenti.
+
+> ⚠️ Difetto noto (E-6): l'envelope di JSON/payload non validi non rispetta la
+> forma `error: {code, message}` — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 
 ## Regole
 - Contratto stabile: `message` resta business/safe per codici tecnici.

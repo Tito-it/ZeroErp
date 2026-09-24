@@ -7,8 +7,12 @@
 //        `te(key) ? t(key) : code` sparsi in dashboard/pratiche/catalogo.
 //        t/te vengono iniettati dal chiamante (useI18n del componente) per
 //        restare reattivi al cambio locale.
-export function labelOrCode(t, te, key, fallback) {
-  return te(key) ? t(key) : fallback
+//        `params` (opzionale, 2026-09-24): i parametri della frase — lista
+//        per i segnaposto posizionali `{0}`, oggetto per quelli con nome.
+//        Omesso = `t(key)` come prima.
+export function labelOrCode(t, te, key, fallback, params) {
+  if (!te(key)) return fallback
+  return params === undefined ? t(key) : t(key, params)
 }
 
 // Scopo: ⭐ L'INTESTAZIONE DI UNA COLONNA DI LISTA, tradotta. Il catalogo

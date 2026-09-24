@@ -67,8 +67,9 @@ Body vuoto. L'endpoint verifica automaticamente se l'operatore e' invitabile.
 1. `auth_user` esiste e `is_active = true`
 2. `identita_digitali` con veste OPERATORE esiste e `attivo = true`
 3. `ruolo_applicativo <> 'DISABILITATO'`
-4. L'utente ha un indirizzo email configurato
-5. `last_login IS NULL` (non ha mai effettuato login)
+4. L'identita' e' nella sua finestra di validita' (`valido_dal`/`valido_al` rispetto a oggi)
+5. L'utente ha un indirizzo email configurato
+6. `last_login IS NULL` (non ha mai effettuato login)
 
 #### Output (successo)
 
@@ -78,11 +79,20 @@ Body vuoto. L'endpoint verifica automaticamente se l'operatore e' invitabile.
 
 L'email e' mascherata per sicurezza (solo primo carattere + `***@dominio`).
 
+La risposta e' `inviato: true` anche se l'invio dell'email fallisce: l'errore viene
+solo loggato, il token resta valido e l'invito e' recuperabile col reinvio.
+⚠️ Difetto noto (F-3): `inviato: true` non dice se l'email e' partita, e `invita`
+(a differenza di `reinvia-invito`) non invalida i token di un invito precedente —
+possono restarne validi piu' d'uno. Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+
 #### Errori
 
 | Codice | HTTP | Causa |
 | --- | --- | --- |
-| `E_INVITO_OPERATORE` | 400 | Operatore non invitabile (motivo specifico nel messaggio) |
+| `E_INVITO_OPERATORE` | 400 | Operatore non invitabile (motivo specifico nel messaggio), anche quando l'utente non esiste |
+
+⚠️ Difetto noto (E-4): anche un `auth_user_id` inesistente esce 400 e non 404 — vedi
+[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 
 ### Reinvia invito
 
@@ -139,14 +149,18 @@ POST /api/v1/auth/attivazione/
 ### Validazioni (ordine critico)
 
 1. `token` non vuoto
-2. `new_password` non vuota
+2. `new_password` non vuota (dopo aver tolto gli spazi iniziali e finali)
 3. `new_password == new_password_confirm`
 4. Token valido tipo `INVITO_OPERATORE` — **validato senza consumare**
-5. Password passa i 4 validators Django
+5. Password passa i validators configurati in `AUTH_PASSWORD_VALIDATORS` (i 4 di Django piu' `ComplexityValidator`)
 6. **Solo dopo validazione password**: il token viene consumato
 
 > Se la password e' troppo debole (es. "12345678"), il token resta valido
 > e l'operatore puo' riprovare con una password piu' forte.
+
+⚠️ Difetto noto (S-5): `new_password` e `new_password_confirm` vengono ripulite
+dagli spazi iniziali e finali (`.strip()`) prima di essere salvate — la password
+registrata puo' differire da quella digitata. Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 
 ### Azioni (atomiche)
 
@@ -169,8 +183,8 @@ POST /api/v1/auth/attivazione/
 
 | Codice | HTTP | Causa |
 | --- | --- | --- |
-| `E_TOKEN` | 400 | Token non valido, scaduto o gia' usato |
-| `E_ATTIVAZIONE` | 400 | Password vuota, mismatch, troppo semplice |
+| `E_ATTIVAZIONE` | 400 | Token assente, non valido, scaduto o gia' usato; utente inesistente; password vuota, mismatch, troppo semplice |
+| `E_TOKEN` | 400 | Il token era valido alla verifica ma il consumo non riesce (es. consumato in parallelo) |
 
 ---
 
@@ -190,7 +204,7 @@ POST /api/v1/auth/attivazione/
 
 | Oggetto | Scopo |
 | --- | --- |
-| `script.fn_check_operatore_invitabile(auth_user_id)` | Verifica 5 condizioni invitabilita' |
+| `script.fn_check_operatore_invitabile(auth_user_id)` | Verifica 6 condizioni invitabilita' |
 | `config.token_monouso` | Token invito con scadenza 72h |
 | `anagrafiche.identita_digitali.invito_inviato_at` | Timestamp ultimo invito |
 | `anagrafiche.identita_digitali.deve_cambiare_password` | Flag cambio password (⚠️ fino al 2026-09-12 questa riga nominava la vista `risorse_umane_auth_user`, nome vecchio del ponte in ritiro (analisi-software-per-dati-morti §2.1)) |

@@ -13,11 +13,13 @@ Fornire una checklist operativa pronta per nuovi endpoint write (`POST/PUT/PATCH
    - caso KO senza `Idempotency-Key` (`E_IDEMPOTENCY_KEY_REQUIRED`)
 6. **Test retryable**: se applicabile, verificare header `Retry-After`.
 7. **Doc endpoint**: aggiungere in Input l’header richiesto `Idempotency-Key`.
-8. **Contratto risposta**: verificare envelope `{data,error}` + `meta.request_id`.
+8. **Contratto risposta**: verificare envelope `{data, meta}` in successo e `{error, meta}` in errore, con `meta.request_id`.
 9. **Idempotenza forte (opzionale ma consigliata)**:
    - abilitare `DJANGO_API_STRONG_IDEMPOTENCY_ENABLED=1`
    - usare tabella `dbops.idempotency_keys` per `in_progress/completed/failed`
-   - replay automatico della stessa risposta su duplicate key.
+   - replay automatico della stessa risposta su duplicate key: 200 con header `X-Idempotency-Replayed: 1`
+   - chiave gia` in corso: `E_IDEMPOTENCY_IN_PROGRESS` (409, retryable → `Retry-After`)
+   - lo strong mode scatta solo con `require_idempotency_key=True` e header presente.
 
 ## Note
 - Per endpoint read-only (`GET` senza side effect), non richiedere `Idempotency-Key`.

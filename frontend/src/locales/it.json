@@ -6,7 +6,9 @@
     "pulisci_filtri": "Pulisci filtri",
     "azione_reason": {
       "senza_righe": "Il documento non ha righe: aggiungine almeno una per procedere.",
-      "indirizzi_mancanti": "Mancano gli indirizzi obbligatori del documento: compilali dalla sezione Indirizzi."
+      "indirizzi_mancanti": "Mancano gli indirizzi obbligatori del documento: compilali dalla sezione Indirizzi.",
+      "prezzo_pendente": "Ci sono prezzi in attesa di approvazione ({0}).",
+      "prezzo_rifiutato": "Ci sono prezzi rifiutati dal responsabile ({0}): correggili o togli le righe."
     },
     "refine_hint_troncato": "Mostrati i primi {shown}. Affina la ricerca per vedere gli altri.",
     "save": "Salva",
@@ -2710,7 +2712,6 @@
         "causale_mancante": "Manca la causale di trasporto: obbligatoria per emettere il DDT.",
         "prezzo_non_risolvibile": "Una o più righe non hanno un prezzo risolvibile (proprio o ereditato dall'ordine) con causale fatturabile.",
         "iva_mancante": "Una o più righe hanno un prezzo ma nessuna aliquota IVA. L'aliquota non si sceglie sul documento: si imposta sull'articolo, e la riga la riprende. In alternativa togli il prezzo, se la merce non si valorizza.",
-        "componenti_prezzo_pendente": "Componenti con prezzo in attesa di valorizzazione.",
         "componenti_non_valorizzati": "Componenti del documento non ancora valorizzati."
       }
     },
@@ -3685,8 +3686,6 @@
       "richiesta_approvazione_inviata": "Richiesta approvazione inviata. Riga in attesa di esito.",
       "prezzo_non_risolto": "Prezzo non risolto dal listino: inserisci manualmente.",
       "banner_no_contratto_attivo": "Il cliente non ha un contratto attivo per questa utility alla data del preventivo. I prezzi delle righe verranno proposti dal listino di categoria (matrice categoria → listino), se configurata.",
-      "banner_frozen_pending_pricing": "Preventivo congelato: {count} riga/righe in attesa di approvazione prezzo. Le transizioni di stato e l'edit sono bloccati finche' tutte le richieste non hanno esito (approvate o rifiutate dal responsabile).",
-      "banner_frozen_rejected_pricing": "Preventivo bloccato: {count} riga/righe con prezzo rifiutato dal responsabile. Correggi il prezzo (riallineandolo al listino o richiedendo nuova approvazione) oppure elimina la riga per poter procedere all'emissione.",
       "badge_approvazione_pending": "In approvazione",
       "badge_approvazione_approved": "Approvato",
       "badge_approvazione_rejected": "Rifiutato",
