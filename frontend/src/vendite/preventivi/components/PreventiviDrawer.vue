@@ -977,19 +977,6 @@ const drawerActions = computed(() => {
         {{ t('vendite.preventivi.banner_revisione_superseded') }}
       </Message>
 
-      <!-- Sprint E (autorizzazioni prezzi L3): preventivo "congelato" se ha
-           righe PENDING (in attesa esito) o REJECTED (da correggere). I 2
-           messaggi sono distinti per dare azioni diverse all'operatore:
-           - PENDING → "attendi esito"
-           - REJECTED → "correggi la riga o eliminala". -->
-      <Message v-if="hasDetail && detail.frozen_for_pending_pricing"
-        severity="warn" :closable="false" class="mt-1">
-        {{ t('vendite.preventivi.banner_frozen_pending_pricing', { count: detail.pending_pricing_count }) }}
-      </Message>
-      <Message v-if="hasDetail && detail.frozen_for_rejected_pricing"
-        severity="error" :closable="false" class="mt-1">
-        {{ t('vendite.preventivi.banner_frozen_rejected_pricing', { count: detail.rejected_pricing_count }) }}
-      </Message>
       <!-- Area banner informativi non bloccanti: tenere qui i messaggi di
            contesto del preventivo, evitando banner sparsi in fondo al drawer. -->
       <Message v-if="hasDetail && detail.ba_ha_contratto_attivo === false"

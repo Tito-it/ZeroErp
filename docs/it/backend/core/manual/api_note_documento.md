@@ -28,7 +28,7 @@ Sostituire `<dominio>` e `{id}` con la riga giusta:
 | dominio | path | `target_tipo` | partizione | righe ancorabili |
 |---|---|---|---|---|
 | preventivo | `/api/v1/vendite/preventivi/{preventivo_id}/note/` | `PREVENTIVO` | `vendite.note_preventivo` | righe preventivo |
-| offerta | `/api/v1/vendite/offerte/{offerta_id}/note/` | `OFFERTA` | `vendite.note_offerte_commerciali` | righe offerta |
+| offerta | `/api/v1/vendite/offerte/{offerta_id}/note/` | `OFFERTA` | `vendite.note_offerte_commerciali` | eccezioni offerta (`vendite.offerte_commerciali_eccezioni`) |
 | contratto | `/api/v1/vendite/contratti/{contratto_id}/note/` | `CONTRATTO` | `vendite.note_contratto` | righe contratto |
 | ordine | `/api/v1/vendite/ordini/{ordine_id}/note/` | `ORDINE` | `vendite.note_ordini` | righe ordine |
 | DDT | `/api/v1/vendite/ddt/{ddt_id}/note/` | `DDT` | `vendite.note_ddt` | righe DDT |
@@ -47,7 +47,11 @@ Ogni dominio espone **due** rotte:
 | `target_riga_id` | — | filtra le note **di una riga**; vuoto = tutte |
 | `include_invisible` | `true` | `false` esclude le note con `visibile = false` |
 | `page` | 1 | |
-| `page_size` | 50 | |
+| `page_size` | 50 | il service lo riporta in silenzio fra 1 e 200 |
+
+Risposta: `data: {count, page, page_size, results}`. `page` e `page_size`
+sono quelli **richiesti**, non quelli effettivamente applicati dopo il
+contenimento.
 
 ⭐ **`include_invisible` sta a `true` di default, ed e' la scelta giusta**:
 l'endpoint serve il drawer dell'operatore, che le note nascoste **deve** vederle
@@ -100,16 +104,26 @@ solo in stampa, tardi.
 
 ## 6. Codici errore
 
-| codice | quando |
-|---|---|
-| `E_NOTA_VALIDATION` | payload fuori whitelist o non valido |
-| `E_NOTA_PARENT_NOT_FOUND` | il documento padre non esiste |
-| `E_NOTA_CHECK_VIOLATION` | vincolo `chk_note_*` violato — tipicamente coerenza `anchor_tipo` / `target_riga_id` |
-| `E_NOTA_FK` | riferimento inesistente (stile, lingua, riga) |
+| codice | HTTP | quando |
+|---|---|---|
+| `E_NOTA_VALIDATION` | 400 | payload fuori whitelist o non valido; ripiego per i vincoli non mappati |
+| `E_NOTA_PARENT_NOT_FOUND` | 404 | il documento padre non esiste (lista, creazione) |
+| `E_NOTA_NOT_FOUND` | 404 | nota inesistente, o appartenente a un altro documento (dettaglio, PATCH, DELETE) |
+| `E_NOTA_RIGA_INCOERENTE` | 400 | `target_riga_id` di una riga che non appartiene al documento |
+| `E_NOTA_CHECK_VIOLATION` | 400 | vincolo `chk_note_*` violato — tipicamente coerenza `anchor_tipo` / `target_riga_id` |
+| `E_NOTA_FK` | 400 | riferimento inesistente (stile, lingua, riga) |
 
-I codici nascono dalla traduzione degli `IntegrityError` di PostgreSQL: i nomi
-dei vincoli sono **ereditati dalla parent table**, quindi la mappa vale
-identica per tutte e sei le partizioni.
+`E_NOTA_CHECK_VIOLATION` ed `E_NOTA_FK` nascono dalla traduzione degli
+`IntegrityError` di PostgreSQL. Solo i vincoli **ereditati dalla parent
+table** (`chk_note_*`, `fk_vendite_note_id_stile`, `fk_vendite_note_id_lingua`)
+valgono identici per tutte e sei le partizioni; i vincoli di coerenza, testata
+e riga sono **locali** a ogni partizione, con nomi propri, e la mappa del
+service copre solo quelli di preventivo e contratto (`chk_prevnote_*`,
+`fk_prevnote_*`, `chk_contnote_*`, `fk_contnote_*`).
+
+> ⚠️ Difetto noto (F-7): per offerta, ordine, DDT e fattura i vincoli locali
+> cadono sul ripiego `E_NOTA_VALIDATION` (400) invece del codice mappato — vedi
+> [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 
 ## 7. Permessi
 

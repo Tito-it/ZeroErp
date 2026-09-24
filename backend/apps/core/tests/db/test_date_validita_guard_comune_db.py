@@ -102,9 +102,10 @@ class DateValiditaGuardComuneDbTests(unittest.TestCase):
     #        savepoint, e il rifiuto — qualunque strada abbia fatto nel service,
     #        ServiceError tradotto o DatabaseError nudo — deve uscire dal
     #        traduttore del middleware come il guard comune lo ha sollevato.
-    #        `codice` si passa solo dove il DB ha ancora una copia sua della
-    #        regola: e' un'eccezione DICHIARATA, non un secondo verde.
-    def _rifiuto_del_periodo(self, punto: str, fn, *, codice: str = "E_DATA_AL_MINORE_DAL") -> None:
+    #        ⚠️ Niente eccezioni per codice: dal 2026-09-24 il DB non ha piu'
+    #        copie della regola (brief-db-guard-date-validita §14), e un
+    #        parametro per dichiararne una sarebbe la porta per rimetterla.
+    def _rifiuto_del_periodo(self, punto: str, fn) -> None:
         try:
             with transaction.atomic():
                 fn()
@@ -112,18 +113,17 @@ class DateValiditaGuardComuneDbTests(unittest.TestCase):
             api = ErrorTranslator.to_api_error(exc)
             with self.subTest(punto=punto):
                 self.assertEqual(
-                    api.code, codice,
+                    api.code, "E_DATA_AL_MINORE_DAL",
                     f"{punto}: rifiutato con {api.code} ({api.message}) — {exc!r}",
                 )
                 self.assertIn("valido_al", api.fields or (), f"{punto}: campo assente")
                 self.assertEqual(ErrorTranslator.get_http_status(api), 400, punto)
                 self.assertEqual(api.ui_action, "highlight_form_fields", punto)
-                if codice == "E_DATA_AL_MINORE_DAL":
-                    # La frase e' quella del catalogo, con le DUE date — non
-                    # quella del service (i contratti, fino alla decisione A
-                    # del 2026-09-23, dicevano «Violazione vincolo contrattuale.»).
-                    for data in (_AL_PRIMA, _DAL):
-                        self.assertIn(data.isoformat(), api.message, f"{punto}: {api.message!r}")
+                # La frase e' quella del catalogo, con le DUE date — non
+                # quella del service (i contratti, fino alla decisione A
+                # del 2026-09-23, dicevano «Violazione vincolo contrattuale.»).
+                for data in (_AL_PRIMA, _DAL):
+                    self.assertIn(data.isoformat(), api.message, f"{punto}: {api.message!r}")
             return
         self.fail(f"{punto}: date invertite accettate")
 
@@ -289,16 +289,9 @@ class DateValiditaGuardComuneDbTests(unittest.TestCase):
                 "template_versioni.update",
                 lambda: svc.update_versione(m.user, tid, versione["id"], dict(date_invertite)),
             )
-            # ⏳ La pubblicazione passa da `documenti.fn_pubblica_template_documento_versione`,
-            #    che la regola la ripete sui PARAMETRI prima dell'UPDATE, col
-            #    suo codice. Il trasporto e' giusto (400, campo `valido_al`);
-            #    la seconda sede e' chiesta in ritiro al team DB
-            #    (brief-db-guard-date-validita §13). Ritirata la copia, qui
-            #    torna il codice di default e il test lo dira'.
             self._rifiuto_del_periodo(
                 "template_versioni.pubblica",
                 lambda: svc.pubblica_versione(m.user, tid, versione["id"], dict(date_invertite)),
-                codice="E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO",
             )
         self._nel_mondo(_prova)
 

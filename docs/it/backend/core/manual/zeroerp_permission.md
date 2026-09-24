@@ -18,24 +18,32 @@ REST_FRAMEWORK = {
 }
 ```
 
-Le view che necessitano accesso pubblico (schema, docs, auth) dichiarano esplicitamente
-`permission_classes = [AllowAny]` per sovrascrivere il default.
+`DomainAPIView` (`apps/core/api/base_views.py`) la dichiara anche esplicitamente, insieme a
+`JwtAuditAuthentication`. Le view che necessitano accesso pubblico (schema, docs, auth)
+dichiarano esplicitamente `permission_classes = [AllowAny]` per sovrascrivere il default.
+Nello stesso file stanno altre tre permission class, descritte in fondo
+(`IsAdminZeroERP`, `PortaleBasePermission`, `ShopBasePermission`).
 
 ## Flusso di risoluzione
 
 ```text
-1. Utente non autenticato?          → 403
-2. is_superuser?                    → OK
-3. ruolo_sistema = DISABILITATO?    → 403 "Utente disabilitato"
-4. ruolo_sistema = ADMIN?           → OK
-5. Azione custom dichiarata?        → check_azione() via PermissionResolver
-6. CRUD standard:
+1. Utente non autenticato?                  → nega (DRF: 401 E_NOT_AUTHENTICATED)
+2. is_superuser?                            → OK
+3. ruolo applicativo = DISABILITATO?        → nega
+4. PermissionResolver.is_super_admin()?     → OK (binding SUPER_ADMIN)
+5. ViewSet con <action>_permission?         → check_azione() via PermissionResolver
+6. APIView (nessuna action) con <method>_permission? → check_azione()
+7. CRUD standard:
    a. Determina required (view/add/change/delete)
-   b. Azione sconosciuta (required = None)? → 403 fail-closed
+   b. Azione sconosciuta (required = None)? → nega (fail-closed)
    c. Risolvi area funzionale
-   d. Risolvi livello (oggetto o area)
-   e. Verifica required ∈ LIVELLO_MAP[livello]
+   d. Nessuna area? → OK solo se la view dichiara skip_area_check = True, altrimenti nega
+   e. Risolvi livello (oggetto se c'e' un model, altrimenti area)
+   f. Verifica required ∈ LIVELLO_MAP[livello]
 ```
+
+Ogni diniego dopo l'autenticazione diventa un `PermissionDenied` DRF → **403**
+`E_PERMISSION_DENIED`.
 
 ## Mapping azioni
 
@@ -69,31 +77,38 @@ Le view che necessitano accesso pubblico (schema, docs, auth) dichiarano esplici
 | `area_funzionale`          | string | Area forzata quando la view non ha queryset         |
 | `<action>_permission`      | string | Codename azione processo per azione ViewSet         |
 | `<method>_permission`      | string | Codename azione processo per metodo HTTP (APIView)  |
+| `skip_area_check`          | bool   | `True` = ammessa anche senza area funzionale (endpoint utility); senza, una view senza area e' negata |
+| `model_permission`         | tuple  | `(app_label, model_name)` per il livello per-oggetto quando la view non ha `queryset` (DomainAPIView con SQL raw) |
 
 Esempio:
 
 ```python
-class ApiRunLottoPipeline(ApiRunLottoPipeline):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+class ApiRunLottoPipeline(DomainAPIView):  # JwtAuditAuthentication + ZeroERPPermission
     area_funzionale = "vendite"
     post_permission = "genera_fatture_lotti"
 ```
 
 ## Messaggi di errore specifici
 
-La permission class imposta `self.message` con messaggi differenziati:
+La permission class imposta `self.message` con messaggi differenziati.
+
+⚠️ Difetto noto ([E-5](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)): questi messaggi **non arrivano al client**.
+`drf_exception_handler` (`apps/core/api/error_responses.py`) sostituisce il messaggio del
+`PermissionDenied` con quello della policy di `E_PERMISSION_DENIED` («Permesso negato.»).
+I messaggi restano solo nel codice:
 
 | Causa                              | Messaggio                                                       |
 |-------------------------------------|-----------------------------------------------------------------|
 | `ruolo_sistema = DISABILITATO`     | "Utente disabilitato. Contattare l'amministratore."             |
 | Azione processo negata              | "Non hai i permessi per questa operazione."                     |
 | Azione sconosciuta (fail-closed)    | "Non hai i permessi per questa operazione."                     |
-| BLOCCATO con profilo reparto        | "Non hai i permessi per questa operazione."                     |
-| BLOCCATO senza profilo reparto      | "Il reparto non ha ancora un profilo permessi configurato."     |
+| Area non definita (fail-closed)     | "Non hai i permessi per questa operazione."                     |
+| Livello insufficiente, con profilo  | "Non hai i permessi per questa operazione."                     |
+| Livello insufficiente, OPERATORE senza profilo per l'area | "Il reparto non ha ancora un profilo permessi configurato." |
 
-La distinzione "senza profilo" usa `PermissionResolver.has_profilo_reparto_area()` per guidare
-l'utente verso la configurazione corretta del reparto.
+La distinzione "senza profilo" vale solo per il ruolo applicativo OPERATORE (utenti portale e
+shop hanno profili legati al ruolo applicativo, non al reparto) e usa
+`PermissionResolver.has_profilo_applicabile_per_area()`.
 
 ## Fail-closed per azioni sconosciute
 
@@ -105,21 +120,32 @@ l'attributo `<action>_permission`, l'accesso e' negato con log di sicurezza.
 
 1. Se la view ha un `queryset` con model Django → `PermissionResolver.get_area_schema_db(app_label, model_name)`
 2. Altrimenti → attributo `area_funzionale` della view
-3. Se nessuna area trovata → accesso consentito (endpoint utility senza area)
+3. Se nessuna area trovata → **accesso negato** (fail-closed, reason `area_non_definita`),
+   salvo che la view dichiari `skip_area_check = True`: solo allora l'endpoint utility senza
+   area e' ammesso
+
+Il livello si risolve poi per oggetto (`get_livello_oggetto`) se c'e' un model — dal
+`queryset` o, in mancanza, dall'attributo `model_permission` — altrimenti per area
+(`get_livello_area`).
 
 ## Cache per-request
 
 La cache viene creata/letta su `request._zeroerp_perms_cache` (dict).
-Il middleware `JwtAuditMiddleware` pre-popola questa cache da Redis (L2) se disponibile;
-`ZeroERPPermission._get_cache()` la riusa senza query aggiuntive.
-Al termine della request, la cache viene persistita su Redis per le request successive.
+Se non esiste ancora, `ZeroERPPermission._get_cache()` la crea caricandola da Redis (L2),
+se disponibile, e le chiamate successive nella stessa request la riusano senza query aggiuntive.
+Il middleware `JwtAuditMiddleware` prova a pre-popolarla in `process_view`.
+⚠️ Difetto noto ([S-2](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)): per i client con token Bearer, in `process_view`
+`request.user` e' ancora anonimo, quindi il pre-caricamento (e il rifiuto dei DISABILITATO) del
+middleware non scatta. Il caricamento avviene di fatto in `_get_cache()`.
+Alla fine di ogni `has_permission` (blocco `finally`, anche in caso di diniego) la cache, se
+non vuota, viene salvata su Redis per le request successive.
 
 ## Security logging
 
 Ogni negazione genera un log `logger.warning("security.permission_denied ...")` con:
 
 - `user_id` — ID utente
-- `reason` — tipo di negazione (`DISABILITATO`, `azione_negata`, `livello_insufficiente`, `azione_sconosciuta`)
+- `reason` — tipo di negazione (`DISABILITATO`, `azione_negata`, `livello_insufficiente`, `azione_sconosciuta`, `area_non_definita`)
 - `path` — endpoint richiesto
 - campi aggiuntivi specifici per caso (es. `azione`, `area`, `livello`, `required`)
 
@@ -130,6 +156,18 @@ Le eccezioni non gestite vengono intercettate da `ApiExceptionMiddleware`
 (`apps/core/middleware/api_exception_middleware.py`) che le converte nell'envelope
 standard del progetto. I service usano `ServiceError` per errori applicativi.
 
+## Altre permission class (`apps/core/api/permissions.py`)
+
+Condividono con `ZeroERPPermission` la cache per-request (`_get_cache`) e il salvataggio su
+Redis nel `finally`. Un utente non autenticato e' negato da `IsAdminZeroERP` e
+`PortaleBasePermission` (DRF: 401). Anche qui `self.message` non arriva al client (E-5).
+
+| Classe | Usata da | Regola | Diniego |
+|---|---|---|---|
+| `IsAdminZeroERP` | `AdminAPIView` | superuser Django o `PermissionResolver.is_super_admin()` (binding SUPER_ADMIN, senza passare da profili area/override) | log `security.admin_denied`, messaggio "Accesso riservato agli amministratori." |
+| `PortaleBasePermission` | `PortaleAPIView` (`/api/portale/*`) | ruolo applicativo in `RUOLI_PORTALE` (cliente e fornitore portale); nessun controllo di area o livello, lo scope dati e' di RLS + `script.fn_scope_*` | log `security.portale_denied`, messaggio "Accesso riservato agli utenti portale." |
+| `ShopBasePermission` | `ShopAPIView` (`/api/shop/*`) | utente anonimo **ammesso** (catalogo pubblico); se autenticato, ruolo applicativo in `RUOLI_SHOP` (`SHOP_CUSTOMER`). Le view che richiedono login verificano `request.user.is_authenticated` da sole | DISABILITATO: messaggio "Utente disabilitato."; altri ruoli: log `security.shop_denied`, messaggio "Accesso riservato ai clienti shop." |
+
 ## Dipendenze
 
 - `PermissionResolver` — risoluzione effettiva permessi
@@ -137,4 +175,4 @@ standard del progetto. I service usano `ServiceError` per errori applicativi.
 
 ## Test
 
-`apps/core/tests/api/test_permissions.py` — 18 test unitari con mock del resolver.
+`apps/core/tests/api/test_permissions.py` — test unitari con mock del resolver.

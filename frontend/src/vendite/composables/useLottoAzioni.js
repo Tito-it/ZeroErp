@@ -26,7 +26,7 @@ import { estraiBersagli } from '../../core/bersagli'
 import { azioniDaBersagli } from '../../core/bersaglioGesto'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useNotify } from '../../core/composables/useNotify'
-import { labelOrCode } from '../../core/utils/i18nLabel'
+import { testoMotivi } from '../../core/composables/useDrawerActions'
 import {
   getLotto,
   numeraLotto,
@@ -188,16 +188,6 @@ export function useLottoAzioni({ onDone } = {}) {
     },
   }
 
-  // Scopo: i motivi ostativi del DB in testo leggibile. `reason_key` mancante a
-  //   catalogo → si mostra il codice macchina, mai il path della chiave
-  //   (fail-visible, stessa regola di mapAvailableActionsToDrawerActions).
-  function motiviTesto(action) {
-    return (action?.reasons ?? [])
-      .map((r) => (r.reason_key ? labelOrCode(t, te, r.reason_key, r.reason || '') : r.reason || ''))
-      .filter(Boolean)
-      .join('\n')
-  }
-
 // I motivi di arresto del driver pipeline (`_drive_lotto_until_done`) che sono
 // un ESITO BUONO. Tutto il resto — `ERRORE`, `BLOCCATO_CRITICITA`,
 // `GUARD_MAX_ITER` — è un fallimento.
@@ -353,7 +343,7 @@ function verdettoRunner(res) {
     // per i verbi del blob — sui tre di pipeline `azione` è `undefined`, e
     // `undefined === false` è falso: si prosegue, che è corretto.
     if (azione?.enabled === false) {
-      notify.warn(motiviTesto(azione) || t('vendite.lotti.azione_non_piu_disponibile'))
+      notify.warn(testoMotivi(t, te, azione) || t('vendite.lotti.azione_non_piu_disponibile'))
       return
     }
     esegui(lottoId, key)
@@ -470,6 +460,5 @@ function verdettoRunner(res) {
     verbiPipeline,
     verbiPlausibili,
     azioniRiga,
-    motiviTesto,
   }
 }

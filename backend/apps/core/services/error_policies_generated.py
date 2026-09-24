@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 911, di cui 96 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 913, di cui 98 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -171,7 +171,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_BATCH_ARRAY_DISALLINEATI": "TECNICO",
     "E_BILLING_ACCOUNT_UTILITY_NULL": "DATO_ERRATO",
     "E_BOM_IVA_DISCORDANTE": "DATO_ERRATO",
-    # E_BOM_MODIFICA_VIETATA e E_BOM_VALIDO_AL_INVALIDO sono sollevati · dal trigger catalogo.trgfn_articoli_componenti_block_modifica_struttura · come defense-in-depth oltre lo schema (pattern chiudi+inserisci).
+    # E_BOM_MODIFICA_VIETATA è sollevato · dal trigger catalogo.trgfn_articoli_componenti_block_modifica_struttura · come defense-in-depth oltre lo schema (pattern chiudi+inserisci). L'ordine delle date lo giudica il guard comune (E_DATA_AL_MINORE_DAL).
     "E_BOM_MODIFICA_VIETATA": "CONFLITTO_STATO",
     # ⚠️ RITIRATO il 2026-08-07
     "E_BOM_PRODOTTO_MISMATCH": "DATO_ERRATO",
@@ -180,6 +180,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_BOM_RIGA_NOT_FOUND": "NON_TROVATO",
     # ⚠️ RITIRATO il 2026-08-07
     "E_BOM_SORGENTE_GIA_CHIUSA": "CONFLITTO_STATO",
+    # Ritirato il 2026-09-24 (brief-db-guard-date-validita §13, 20260924-01): lo sollevava solo catalogo.trgfn_articoli_componenti_block_modifica_struttura, su UPDATE di valido_al, ed era una copia della regola del periodo (valido_dal su quella tabella è immutabile). La regola ha una sede sola, script.trgfn_guard_date_validita, con E_DATA_AL_MINORE_DAL.
+    # ⚠️ RITIRATO il 2026-09-24
     "E_BOM_VALIDO_AL_INVALIDO": "DATO_ERRATO",
     # ⚠️ RITIRATO il 2026-08-07
     "E_BOM_VERSIONE_OVERLAP": "CONFLITTO_STATO",
@@ -255,7 +257,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_COMPETENZA": "DATO_ERRATO",
     # ⚠️ RITIRATO il 2026-08-07
     "E_COMPETENZA_SUPERATA": "DATO_ERRATO",
-    # Gate emissione documento (trigger guard approvazione componenti BoM, · trgfn_*_guard_transizione_approvazione — DDT/ordini/preventivi): · transizione a EMESSO/CONFERMATO bloccata da componenti CASO A con · approvazione prezzo PENDING o prezzo non valorizzato. Conflitto di · stato → 409 (coerente con E_STATO_DDT_TRANSIZIONE_NON_VALIDA).
+    # Guard PER RIGA dei componenti BoM CASO A (script.trgfn_componenti_guard_pending e i trgfn_*_righe_componenti_guard_pending): si modifica un campo di struttura di un componente il cui prezzo e' in attesa di approvazione (PENDING). Conflitto di stato → 409. ⚠️ Dal 2026-09-24 NON e' piu' il codice del gate di emissione/attivazione dei documenti (DDT, contratti): quel controllo sta nel building block script.fn_check_prezzi_autorizzati, coi codici E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO (brief-db-preventivi-congelamento-pricing).
     "E_COMPONENTE_PREZZO_PENDENTE": "CONFLITTO_STATO",
     "E_CONFIG_MANCANTE": "TECNICO",
     "E_CONFIG_MATRICE_DUPLICATA": "CONFLITTO_STATO",
@@ -429,6 +431,10 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE": "CONFLITTO_STATO",
     # Gemello di `E_LISTINO_VERSIONE_NON_ATTIVA`: l'articolo composito · c'e', la sua distinta non ha componenti validi ALLA DATA. Non e' · un «non trovato», e' una configurazione che non regge quel giorno.
     "E_DOC_COMPOSITO_BOM_VUOTA": "NON_ESEGUIBILE",
+    # Un documento di vendita (preventivo, contratto, offerta, ordine, DDT) contiene prezzi in attesa di approvazione (stato_approvazione_prezzo = PENDING) su righe o componenti BoM attivi, e si chiede di farlo uscire dalla bozza o di accettarlo. Motivo emesso dal building block script.fn_check_prezzi_autorizzati; sollevato dai guard di transizione dei cinque documenti (via fn_raise_primo_motivo_se_presente, o dal LOOP del guard di emissione del DDT). CONFLITTO_STATO: non c'e' un campo della richiesta da correggere, si aspetta l'esito del responsabile — quindi niente chiave `campo`. Nella frase il CONTEGGIO dei prezzi; riga e componente nel contesto. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-2, D-5).
+    "E_DOC_PREZZO_PENDENTE": "CONFLITTO_STATO",
+    # Un documento di vendita (preventivo, contratto, offerta, ordine, DDT) contiene prezzi RIFIUTATI dal responsabile (stato_approvazione_prezzo = REJECTED) su righe o componenti BoM attivi, e si chiede di farlo uscire dalla bozza o di accettarlo. Decisione di Tid del 2026-09-24 (D-1): un prezzo rifiutato e uno in attesa sono entrambi prezzi che nessuno ha autorizzato — fino a quel giorno il REJECTED non lo guardava nessun guard, e un prezzo rifiutato usciva col documento. Stesso building block e stessi siti di E_DOC_PREZZO_PENDENTE. CONFLITTO_STATO: il rimedio e' correggere il prezzo o togliere la riga, non un campo della richiesta. Brief: brief-db-preventivi-congelamento-pricing.
+    "E_DOC_PREZZO_RIFIUTATO": "CONFLITTO_STATO",
     "E_DOC_RIGA_NON_COMPOSITO": "DATO_ERRATO",
     # vendite.trgfn_doc_righe_lock_fuori_bozza: il building block e' stato montato senza i due argomenti obbligatori (tipo documento, colonna FK della riga) o con una colonna che sulla riga non esiste. Nasce il 2026-09-22. · TECNICO e non DATO_ERRATO perche' nessuna persona sceglie quel valore: e' un CREATE TRIGGER scritto male, e chi ha fatto la richiesta non puo' farci niente. Fratello di E_ATTIVO_BLOCK_ARGS (stesso ruolo nel framework ATTIVO). · ⛔ NON si e' riusato E_PARAMETRO_INVALIDO: quel codice e' un debito, non una sede (D11 di brief-db-be-classe-codici-errore). · ⚠️ Su un TECNICO la chiave `campo` NON esce dal contesto: su un 500 non c'e' nessun campo da accendere.
     "E_DOC_RIGHE_LOCK_MONTAGGIO": "TECNICO",
@@ -941,7 +947,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # ⚠️ RITIRATO il 2026-09-15
     "E_PREV_EMITTENTE_NON_RISOLTO": "DATO_ERRATO",
     "E_PREVENTIVO_RIGA_NON_TROVATA": "NON_TROVATO",
-    # L3 Sprint E (sviluppo-listini-v5 §14.6) — workflow approvazione · prezzo out-of-policy. Codici sollevati da preventivi_service + · approvazioni_prezzo_service e dai trigger DB DB-E-4/E-5.
+    # Ritirato il 2026-09-24 (brief-db-preventivi-congelamento-pricing, 20260924-24): lo sollevava solo il trigger a10 vendite.trgfn_preventivi_guard_transizione_approvazione, ritirato. Il controllo dei prezzi entrando in ACCETTATO sta ora nella Regola 3 di vendite.trgfn_preventivi_guard_transizione, col building block script.fn_check_prezzi_autorizzati e i codici E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO comuni ai cinque documenti di vendita. Nasceva in L3 Sprint E (sviluppo-listini-v5 §14.6). La riga resta per le occorrenze storiche in dbops.error_log.
+    # ⚠️ RITIRATO il 2026-09-24
     "E_PREVENTIVO_RIGHE_PRICING_PENDENTI": "CONFLITTO_STATO",
     # NULL · ⛔ RITIRATO il 2026-08-26 (cantiere «il lavoro che non torna indietro», Q-9). Vietava di annullare un preventivo gia' entrato in commessa «anche se nulla e' ancora uscito», e il motivo era UNO: non c'era modo di disfare il push. Adesso c'e' — alla chiusura il documento ritira da se' le righe non ancora emesse (trg_preventivi_z90_ritira_commessa_attivita_upd). ⭐ Resta invece E_PREV_ANNULLA_COMMESSA_EMESSA, che e' una condizione vera: le righe gia' EMESSA sono in volo verso una fattura. Il suo conteggio ora si delega a script.fn_check_sorgente_chiudibile e il codice si limita a rietichettare — una implementazione, due superfici. ⚠️ Il codice NON si cancella: resta a catalogo e smette di essere sollevato. ⚠️ Si ritira INSIEME a E_ORD_ANNULLA_IN_COMMESSA.
     # ⚠️ RITIRATO il 2026-08-26
@@ -1292,7 +1299,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_UI_GENERIC_FAILED": "DATO_ERRATO",
     # Cancello applicativo del flag ui.lista_definizione.multi_emittente (P-2b): una lista che NON sa dire da quale emittente arriva ogni riga viene aperta da chi ha in scope piu' di un emittente. Lo solleva il BACKEND (apps/core/services/perimetro_emittente.guard_lista), non una funzione PL/pgSQL: il catalogo lo registra perche' ogni codice che l'applicazione nomina deve avere la sua classe, e il cancello del terzo lato non distingue fra codici nati nel DB e codici nati nel backend. Classe NON_ESEGUIBILE (422) e NON NON_PERMESSO (403), ed e' di merito: il diritto C'E', manca una precondizione che l'utente scioglie da se' scegliendo un emittente dalla combo di topbar. Un 403 racconterebbe una bugia sul motivo, e fra sei mesi qualcuno cercherebbe un diritto da concedere a qualcuno. Richiesta R-1 del perimetro BE, 2026-08-18.
     "E_UI_LISTA_EMITTENTE_DA_SCEGLIERE": "NON_ESEGUIBILE",
-    # E_UI_LISTA_NON_TROVATA: sollevato da fn_resolve_lista_config quando il codice · lista non esiste o e' attivo=false (seedato in messaggi_errore.csv id 427). · Gli E_UI_VISTA_SQL_NON_TROVATA / E_UI_CAMPO_SORGENTE_NON_TROVATO sono guard · admin-only dei trigger B1/B2: l'utente finale non li vede in flussi normali.
+    # E_UI_LISTA_NON_TROVATA: sollevato da fn_resolve_lista_config e (dal 2026-09-23) da fn_lista_colonne_ricerca_full quando il codice · lista non esiste o e' attivo=false (seedato in messaggi_errore.csv id 427). · Gli E_UI_VISTA_SQL_NON_TROVATA / E_UI_CAMPO_SORGENTE_NON_TROVATO sono guard · admin-only dei trigger B1/B2: l'utente finale non li vede in flussi normali.
     "E_UI_LISTA_NON_TROVATA": "NON_TROVATO",
     # Guard ui.trgfn_lista_definizione_guard_multi_emittente: tentativo di scrivere ui.lista_definizione.multi_emittente da un ruolo diverso dal proprietario della tabella (cioe' dall'applicazione). Il flag dichiara una CAPACITA' DEL SOFTWARE — «questa lista sa dire da quale emittente arriva ogni riga» — non una preferenza dell'utente, e una capacita' non si dichiara per stanchezza. Si accende SOLO dal seed lista_definizione.csv, insieme (o dopo) al lavoro di P-4 che la rende vera. ⚠️ Il presidio e' un TRIGGER e non un permesso di colonna: il GRANT verrebbe ri-concesso a ogni passata di ci_apply dal giro dei grant runtime, che cicla su tutti gli schemi. Piano: brief-db-perimetro-emittente-liste-e-gerarchia-ba Q1 e §11.5.
     "E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE": "NON_PERMESSO",
@@ -1497,6 +1504,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_BOM_PRODOTTO_MISMATCH",
         "E_BOM_RIGA_NOT_FOUND",
         "E_BOM_SORGENTE_GIA_CHIUSA",
+        "E_BOM_VALIDO_AL_INVALIDO",
         "E_BOM_VERSIONE_OVERLAP",
         "E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI",
         "E_COMPETENZA",
@@ -1524,6 +1532,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_PERC_IVA_NO_MOD",
         "E_PIPELINE_MARK_ERROR",
         "E_PREV_EMITTENTE_NON_RISOLTO",
+        "E_PREVENTIVO_RIGHE_PRICING_PENDENTI",
         "E_PREV_GIA_IN_COMMESSA",
         "E_PREZZO_LISTINO_NON_TROVATO",
         "E_PULL_COMMESSA_ALL_FAILED",

@@ -59,6 +59,8 @@ in questa tabella.
 from apps.core.services.sveglie import (
     carica_sveglie,        # tuple[Sveglia, ...] — tutto il dichiarato, validato
     sveglie_di_processo,   # (processo_codice) -> tuple[Sveglia, ...]
+    sveglia_di_processo,   # (processo_codice, unit) -> Sveglia | None — la unit
+                           # cercata FRA quelle del processo («Esegui ora»)
     DEPLOY_DIR,            # backend/deploy/
     TEMPLATE_DIR,          # backend/deploy/systemd/
     RUN_COMMAND,           # backend/bin/run-command.sh — il wrapper che systemd
@@ -115,7 +117,8 @@ piano [piano-be-fe-avvio-manuale-di-un-processo](../../../dev/work-done/piano-be
   - **Una lista di token, mai una stringa**: systemd spezza l'`ExecStart`
     sugli spazi, `subprocess` passa ogni token intero — «come si spezza»
     sarebbe una regola scritta due volte.
-  - **Whitelist stretta sui token** (`_ARGOMENTO_AMMESSO`): niente spazi,
+  - **Whitelist stretta sui token** (`_COMANDO_AMMESSO` per il primo,
+    `_ARGOMENTO_AMMESSO` per gli altri): niente spazi,
     quote, `%` (specifier systemd), `$` (ambiente), `|`/`&`/`\` (il `sed`
     dell'installer). Si allarga quando un comando *vero* ne ha bisogno: un
     cancello che boccia un carattere di troppo si vede in CI, uno che ne
@@ -159,10 +162,10 @@ piano [piano-be-fe-avvio-manuale-di-un-processo](../../../dev/work-done/piano-be
 | `test_worker_del_badge_hanno_un_contratto` | che il ripiego da 10 minuti diventi la strada normale in silenzio (legge il seed `processi.csv`) |
 | `test_comando_obbligatorio_lista_non_vuota` · `test_comando_con_spazi_o_metacaratteri_e_rifiutato` | un `comando` assente, stringa, o con token che systemd e `subprocess` leggerebbero in due modi |
 | `test_il_comando_dichiarato_esiste_nel_backend` | ⭐ un `comando` che nomina un management command inesistente: fallirebbe sull'host, non in CI |
-| `test_avvio_manuale_obbligatorio_e_bool` · `test_un_servizio_non_si_avvia_a_mano` · `test_il_drenatore_non_e_candidato_e_almeno_un_timer_si` (`test_sveglie.py` 14-16) | «Esegui ora» dal drenatore, o su un servizio, nato da una dimenticanza: `avvio_manuale` si dichiara, e la unit del drenatore si legge da `sveglie_di_processo`, non ricopiata |
+| `test_avvio_manuale_omesso_o_non_booleano_solleva` · `test_servizio_avviabile_a_mano_solleva` · `test_il_drenatore_non_e_candidato_e_almeno_un_timer_lo_e` (`test_sveglie.py` 14-16) | «Esegui ora» dal drenatore, o su un servizio, nato da una dimenticanza: `avvio_manuale` si dichiara, e la unit del drenatore si legge da `sveglie_di_processo`, non ricopiata |
 | `test_avvio_manuale_tetto` | un tetto del sottoprocesso più largo della metà della tolleranza del drenatore o della soglia del reaper: `MUTO` a video, o un lavoro in `ERRORE` mentre il comando sta finendo |
-| `scripts/tests/test-install-timers.sh` (test 0-5) | che si accendano unit diversi da quelli dichiarati (vedi sotto) |
-| `scripts/tests/test-install-timers.sh` (test 6-7) | una **seconda sede** del comando: un template con `ExecStart` cablato, o un unit reso che non porta l'argv del JSON |
+| `backend/scripts/tests/test-install-timers.sh` (test 0-5) | che si accendano unit diversi da quelli dichiarati (vedi sotto) |
+| `backend/scripts/tests/test-install-timers.sh` (test 6-7) | una **seconda sede** del comando: un template con `ExecStart` cablato, o un unit reso che non porta l'argv del JSON |
 | `systemd-analyze verify` (CI) | un unit sintatticamente invalido |
 
 ⭐ **Le ultime due sono due metà distinte**: `systemd-analyze verify` dice che

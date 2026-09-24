@@ -20,6 +20,7 @@ from apps.core.db._helpers import (
     add_ricerca_full_condition,
     sql_order_clause,
     call_jsonb_fn,
+    fetchone_scalar,
     row_to_dict,
     rows_to_list,
 )
@@ -455,31 +456,22 @@ class PreventiviRepository(
             cursor.execute(sql, [preventivo_id])
             return rows_to_list(cursor)
 
-    # Scopo: Conta righe attive per stato_approvazione_prezzo. Single SELECT
-    #        ottimizzata: serve a `get_preventivo` per derivare il flag
-    #        "frozen_for_pending/rejected_pricing" senza caricare l'intero
-    #        elenco righe (ognuna con N JOIN). Ritorna sempre tutte le chiavi
-    #        rilevanti — chiavi mancanti = 0.
-    def count_righe_per_stato_approvazione(
-        self, preventivo_id: int,
-    ) -> dict[str, int]:
+    # Scopo: Conta le righe attive del preventivo: il `righe_count` del
+    #        dettaglio (badge UX), senza caricare l'intero elenco righe
+    #        (ognuna con N JOIN).
+    # ⛔ Non conta per stato di approvazione del prezzo: quella domanda ha una
+    #    sede sola, script.fn_check_prezzi_autorizzati, e arriva nel blob
+    #    delle capability (brief-db-preventivi-congelamento-pricing §6.1).
+    def count_righe_attive(self, preventivo_id: int) -> int:
         sql = """
-            SELECT stato_approvazione_prezzo, COUNT(*) AS n
+            SELECT COUNT(*)
               FROM vendite.preventivi_righe
              WHERE preventivo_id = %s
                AND attivo IS TRUE
-             GROUP BY stato_approvazione_prezzo
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [preventivo_id])
-            rows = cursor.fetchall()
-        out = {"PENDING": 0, "APPROVED": 0, "REJECTED": 0, "TOTAL": 0}
-        for stato, n in rows:
-            n = int(n)
-            out["TOTAL"] += n
-            if stato in out:
-                out[stato] = n
-        return out
+            return int(fetchone_scalar(cursor))
 
     # Scopo: Carica una singola riga preventivo via lookup mirato per id.
     #        Replica la stessa proiezione di list_righe (denormalizzazioni

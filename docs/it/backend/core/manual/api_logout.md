@@ -3,7 +3,8 @@
 ## Scopo
 
 Invalida il refresh token corrente (blacklist) e registra l'evento LOGOUT
-nella tabella `dbops.sessioni_utente`, chiudendo la sessione associata al JTI.
+nella tabella `dbops.sessioni_utente`, chiudendo la sessione associata al suo
+identificativo di sessione (claim `sid` del token).
 
 ## Contesto
 
@@ -39,9 +40,11 @@ malformato, l'endpoint restituisce comunque 204 senza errore.
 
 ## Regole
 
-- Se il campo `refresh` e' assente o vuoto, l'endpoint solleva `E_LOGOUT_NO_TOKEN` (400)
+- Se il campo `refresh` e' assente, vuoto o non stringa, l'endpoint solleva `E_LOGOUT_NO_TOKEN` (400)
 - Se il token e' malformato, scaduto o gia' blacklistato (`TokenError`), l'endpoint restituisce 204 senza propagare errore — logout idempotente
-- Dopo il blacklist, viene registrato l'evento LOGOUT in `dbops.sessioni_utente` con il JTI del token
+- Il claim `sid` viene letto dal token **senza** verificarne firma e scadenza, cosi' il logout si registra anche con un token scaduto
+- Dopo il blacklist, viene registrato l'evento LOGOUT in `dbops.sessioni_utente` con quel `sid` (nella colonna `jti`). Se il `sid` non si legge (token malformato o senza claim) **nessun evento** viene registrato: la risposta resta 204
+- ⚠️ Difetto noto (F-9): un body JSON che non e' un oggetto (es. una lista) produce un 500 invece di `E_LOGOUT_NO_TOKEN` — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)
 - L'evento LOGOUT chiude logicamente la sessione: la CTE `list_sessioni_attive` filtra sessioni il cui ultimo evento e' LOGIN o REFRESH
 
 ## Dipendenze DB
@@ -54,12 +57,12 @@ malformato, l'endpoint restituisce comunque 204 senza errore.
 
 | File | Ruolo |
 |---|---|
-| `apps/core/api/logout_view.py` | `LogoutView(APIView)` — POST con JWT + blacklist + audit |
+| `apps/core/api/logout_view.py` | `LogoutView(DomainAPIView)`, `skip_area_check = True` — POST con JWT + blacklist + audit |
 | `apps/core/services/session_audit_service.py` | `record_logout()` — delega INSERT al repository |
 | `apps/core/db/session_audit_repository.py` | `log_session_event()` — INSERT in `dbops.sessioni_utente` |
 | `zeroerp_backend/urls.py` | Rotta `api/v1/auth/logout/` registrata |
-| `apps/core/services/error_policies.py` | Policy `E_LOGOUT_NO_TOKEN` (HTTP 400) |
-| `apps/core/tests/api/test_sessioni_view.py` | 4 test: success, no_token, idempotente, chiude_sessione |
+| `apps/core/services/error_policies_generated.py` | `E_LOGOUT_NO_TOKEN` a catalogo, classe `DATO_ERRATO` (HTTP 400) |
+| `apps/core/tests/api/test_sessioni_view.py` | `LogoutViewTests`: success, no_token, token invalido idempotente, token scaduto, chiude_sessione |
 
 ## Errori
 

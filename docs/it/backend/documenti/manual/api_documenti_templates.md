@@ -390,12 +390,12 @@ nuovo template e disabilitare il precedente.
 
 - `200`: dettaglio della versione pubblicata (`stato='PUBBLICATA'`,
   `valido_dal` valorizzato).
-- `400` `E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO` (campo `valido_al`): `valido_al <
-  valido_dal`. Lo solleva `documenti.fn_pubblica_template_documento_versione`
-  sui parametri, prima dell'UPDATE. ⏳ È una seconda sede della regola del
-  periodo, chiesta in ritiro al team DB (brief-db-guard-date-validita §13):
-  ritirata, qui risponderà il guard comune con `E_DATA_AL_MINORE_DAL`, come
-  negli altri scritti delle versioni.
+- `400` `E_DATA_AL_MINORE_DAL` (campo `valido_al`): `valido_al < valido_dal`.
+  Lo solleva il guard comune `script.trgfn_guard_date_validita` sull'UPDATE
+  finale della funzione di pubblicazione, come negli altri scritti delle
+  versioni; le chiusure delle versioni precedenti già fatte si annullano con la
+  transazione. Dal 2026-09-24 la funzione non ripete più la regola sui
+  parametri (brief-db-guard-date-validita §14).
 - `400` `E_DOCUMENTI_VALIDATION`:
   - `valido_dal` mancante;
   - versione gia' in `PUBBLICATA` o `OBSOLETA` (idempotenza per design:
@@ -418,7 +418,8 @@ transazione la funzione:
 
 1. blocca le versioni dello stesso template;
 2. individua le versioni `PUBBLICATA + attivo` con `valido_dal < nuovo.valido_dal`
-   e intervallo sovrapposto;
+   ancora aperte a `nuovo.valido_dal` (`nuovo.valido_al` non entra nel
+   giudizio: con date valide è lo stesso insieme delle «sovrapposte»);
 3. le porta a `OBSOLETA`;
 4. imposta `valido_al = nuovo.valido_dal - 1`;
 5. pubblica la nuova `BOZZA`.
@@ -478,7 +479,7 @@ gestibili automaticamente.
 - **Pubblicazione e overlap**: il comando `pubblica/` delega alla funzione DB
   `documenti.fn_pubblica_template_documento_versione(...)`. La funzione blocca
   le versioni dello stesso template, chiude a `nuovo.valido_dal - 1` le
-  `PUBBLICATA` precedenti sovrapposte con decorrenza strettamente precedente,
+  `PUBBLICATA` con decorrenza strettamente precedente ancora aperte a quella data,
   le porta a `OBSOLETA` e pubblica la nuova `BOZZA`. Il vincolo GiST EXCLUDE
   `ex_template_documenti_versioni_no_overlap_pubblicata` resta guardrail finale
   contro sovrapposizioni residue o race concorrenti.
@@ -549,9 +550,9 @@ Vedi Decisione 75 in `sviluppo-documenti.md` §10.
 
 | Codice | HTTP | Quando |
 |---|---|---|
-| `E_DOCUMENTI_VALIDATION` | 400 | `stato` versione fuori whitelist; `template_id`/`versione_id` non interi positivi; in write: chiave non whitelisted, campo richiesto mancante, campo immutabile, `emittente_fiscale_id` fuori scope, margini non numerici/negativi, violazioni unique/partial-unique/FK del DDL; pubblicazione: `valido_dal` mancante, stato non BOZZA, overlap residuo con altra PUBBLICATA |
-| `E_DATA_AL_MINORE_DAL` | 400 | `valido_al < valido_dal` in create/clone/update di una versione e in upload/PATCH di un asset: guard comune `script.trgfn_guard_date_validita`, campo `valido_al`. Il service non lo anticipa (dal 2026-09-23) |
-| `E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO` | 400 | pubblicazione con `valido_al < valido_dal` (campo `valido_al`), dalla funzione di pubblicazione — ⏳ vedi sopra |
+| `E_DOCUMENTI_VALIDATION` | 400 | `stato` versione fuori whitelist; `template_id`/`versione_id` non interi positivi; in write: chiave non whitelisted, campo richiesto mancante, campo immutabile, `emittente_fiscale_id` fuori scope, margini non numerici/negativi, violazioni unique/partial-unique/FK del DDL; pubblicazione: `valido_dal` mancante, stato non BOZZA |
+| `E_DATA_AL_MINORE_DAL` | 400 | `valido_al < valido_dal` in create/clone/update/pubblicazione di una versione e in upload/PATCH di un asset: guard comune `script.trgfn_guard_date_validita`, campo `valido_al`. Il service non lo anticipa (dal 2026-09-23) |
+| `E_DOCUMENTI_VERSIONE_OVERLAP` | 409 | pubblicazione con overlap residuo verso un'altra versione `PUBBLICATA` attiva che l'auto-close non risolve (EXCLUDE `ex_template_documenti_versioni_no_overlap_pubblicata`) |
 | `E_DOCUMENTI_NOT_FOUND` | 404 | template/versione inesistente o fuori scope emittente (no leak) |
 | `E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE` | 409 | tentativo di modificare versione `PUBBLICATA` (Tranche F). Trigger DB A1 + service guard |
 | `E_DOCUMENTI_VERSIONE_DELETE_BLOCKED` | 409 | tentativo di eliminare versione non-BOZZA o gia' usata da documenti generati (Tranche F). Trigger DB A2 + service guard |

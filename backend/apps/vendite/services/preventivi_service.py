@@ -223,62 +223,21 @@ def get_preventivo(preventivo_id: int) -> dict[str, object]:
     repo = PreventiviRepository()
     testata = _get_testata_or_raise(repo, preventivo_id, op="get_preventivo")
     indirizzi = repo.list_indirizzi(preventivo_id)
+    # ⭐ Il blob si consegna COM'E' (api.md §Capability: «il backend trasporta,
+    #    non deduce»). I prezzi non autorizzati — righe o componenti BoM attivi
+    #    PENDING o REJECTED — spengono «Emetti» e «Accetta» col loro motivo
+    #    dentro `available_actions[].reasons`, dallo stesso building block con
+    #    cui il guard di transizione solleva (script.fn_check_prezzi_autorizzati);
+    #    «Annulla» e la modifica in BOZZA restano accesi (D-2, D-3). Fino al
+    #    2026-09-24 qui c'era una riscrittura Python del blob che scriveva
+    #    un'altra regola: ritirata, brief-db-preventivi-congelamento-pricing §6.1.
     capabilities = repo.get_capabilities(preventivo_id)
-    # Summary leggero: count per stato_approvazione_prezzo + totale, single
-    # SELECT GROUP BY (no scan dell'elenco righe completo). Le righe vere
-    # passano dall'endpoint /righe/ autonomo, evitando payload pesanti su
-    # lista detail e mismatch coi totali ricalcolati dai trigger DB.
-    counts = repo.count_righe_per_stato_approvazione(preventivo_id)
-    righe_count = counts["TOTAL"]
-    # Sprint E (autorizzazioni prezzi L3): se almeno una riga e' in stato
-    # PENDING o REJECTED, il preventivo e' "congelato" — niente transizioni
-    # di avanzamento (Emetti/Accetta) e niente edit testata. Razionale:
-    #  - PENDING → richiesta in attesa di esito, non si puo' avanzare
-    #  - REJECTED → il responsabile ha rifiutato il prezzo: il prezzo
-    #    proposto e' invalidato, l'operatore deve correggere la riga
-    #    (modificarne il prezzo o eliminarla) prima di poter procedere.
-    #    L'edit della singola riga resta abilitato (can_edit_righe=true)
-    #    proprio per permettere la correzione: l'aggiorna_riga al nuovo
-    #    prezzo accettabile resetta automaticamente il flag REJECTED → null
-    #    e il preventivo torna lavorabile.
-    # Defense-in-depth: cambia_stato_preventivo solleva
-    # E_PREVENTIVO_RIGHE_PRICING_PENDENTI; qui filtriamo le capability
-    # spedite al FE per disabilitare i pulsanti a monte (UX).
-    # 🔴 DEBITO DICHIARATO (brief-be-fe-capability-annidata §5): la
-    #    sovrascrittura di `available_actions`/`can_edit_*` qui sotto e' una
-    #    SECONDA sede di una regola del database — «il backend trasporta, non
-    #    deduce» (api.md §Capability). Se il trigger cambia, questo Python non
-    #    lo sa. La domanda vera (il predicato in una `fn_check_*` letta dalla
-    #    capability) e' di dominio e vuole un brief DB suo; finche' non c'e',
-    #    il blob annida come gli altri e questa riscrittura resta, con un nome.
-    pending_count = counts[STATO_APPROVAZIONE_PENDING]
-    rejected_count = counts[STATO_APPROVAZIONE_REJECTED]
-    if pending_count > 0 or rejected_count > 0:
-        capabilities = {
-            **capabilities,
-            "available_actions": [],
-            "can_edit_testata": False,
-            # can_edit_righe RESTA TRUE quando ci sono solo REJECTED:
-            # l'operatore deve poter correggere il prezzo o eliminare la
-            # riga rifiutata. Lo blocchiamo solo per PENDING (in attesa
-            # esito: defense-in-depth replica trgfn DB lato preventivi_righe).
-            # ⛔ Solo RESTRINGERE: il ramo REJECTED non puo' accendere un flag
-            #    che il database ha spento (es. preventivo fuori BOZZA).
-            "can_edit_righe": (
-                pending_count == 0 and capabilities.get("can_edit_righe") is True
-            ),
-        }
-    # ⚠️ I quattro campi del congelamento stanno sulla TESTATA, non nel blob:
-    #    sono un riepilogo delle righe (come `righe_count`), e nessuna
-    #    capability li emette — sotto `capabilities` sarebbero campi che il
-    #    contratto del database non conosce (`npm run guard:capability`).
+    # Summary leggero: una COUNT sulle righe attive (no scan dell'elenco
+    # completo). Le righe vere passano dall'endpoint /righe/ autonomo.
+    righe_count = repo.count_righe_attive(preventivo_id)
     return {
         **testata,
         "capabilities": capabilities,
-        "frozen_for_pending_pricing": pending_count > 0,
-        "frozen_for_rejected_pricing": rejected_count > 0,
-        "pending_pricing_count": pending_count,
-        "rejected_pricing_count": rejected_count,
         "indirizzi": indirizzi,
         "righe_count": righe_count,
     }
@@ -1191,9 +1150,9 @@ def aggiorna_riga(
             # e il nuovo valore non richiede approvazione (resolver applicabile
             # o override entro L2). Se la riga era REJECTED/APPROVED il flag
             # era riferito al prezzo precedente — non e' piu' valido. Il reset
-            # sblocca il preventivo (vedi get_preventivo `frozen_for_pending_pricing`,
-            # esteso al match REJECTED) e permette di emettere senza che il
-            # vecchio rifiuto resti come blocco fantasma.
+            # sblocca il preventivo (un REJECTED blocca Emetti/Accetta a DB,
+            # script.fn_check_prezzi_autorizzati) e permette di emettere senza
+            # che il vecchio rifiuto resti come blocco fantasma.
             #
             # Cleanup denormalizzato meta: rimuoviamo `approvazione_rifiuto`
             # (motivazione precedente irrilevante post-correzione).

@@ -34,9 +34,9 @@ binding a tre vie (reparto, identità singola, ruolo applicativo), più gli
 finestre di validità, default `BLOCCATO` — vive **nelle funzioni SQL**; qui non
 ne esiste una copia.
 
-Tutti i metodi accettano un dict `cache` opzionale (`request._zeroerp_perms_cache`
-quando disponibile): chiave stabile per metodo + argomenti, `None` non
-memorizzato.
+I metodi che interrogano l'utente accettano un dict `cache` opzionale
+(`request._zeroerp_perms_cache` quando disponibile): chiave stabile per metodo +
+argomenti; il risultato viene memorizzato sempre, `None` compreso.
 
 ## Costanti
 
@@ -53,7 +53,7 @@ LIVELLO_MAP = {
 | Metodo | Delega a | Ritorna | Cache key |
 | --- | --- | --- | --- |
 | `is_super_admin(user, cache=None)` | `script.fn_is_super_admin` | `bool` — binding `SUPER_ADMIN` attivo **sulla veste OPERATORE** (una identità portale/shop con lo stesso binding non attiva il bypass); fail-closed su identità inattiva o fuori finestra | `is_super_admin` |
-| `get_ruolo_applicativo(user, cache=None)` | GUC `app.ruolo_applicativo` (propagata da `JwtAuditAuthentication`), fallback `identita_digitali` attiva | `str \| None` — `OPERATORE`, `CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`, `API_CLIENT`, `DISABILITATO` | `ruolo_applicativo` |
+| `get_ruolo_applicativo(user, cache=None)` | GUC `app.ruolo_applicativo` (propagata da `JwtAuditAuthentication`), fallback su una qualsiasi `identita_digitali` attiva dell'utente (`LIMIT 1` senza ordinamento) | `str \| None` — `OPERATORE`, `CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`, `API_CLIENT`, `DISABILITATO` | `ruolo_applicativo` |
 | `get_livello_area(user, area_schema_db, *, cache=None)` | `script.fn_resolve_livello_area` | `"TUTTO" \| "LETTURA" \| "BLOCCATO"` (default `BLOCCATO`) | `area:{schema_db}` |
 | `get_livello_oggetto(user, app_label, model_name, area_schema_db, *, cache=None)` | `script.fn_resolve_livello_oggetto` | livello del singolo model, con ripiego sull'area | `oggetto:{app_label}.{model_name}` |
 | `check_azione(user, permission_codename, *, cache=None)` | `script.fn_check_azione_processo` | `bool` | `azione:{codename}` |
@@ -85,10 +85,17 @@ chiamanti — è stato **tolto il 2026-09-12** (analisi-software-per-dati-morti
   seconda sede della regola, e le due si sfilano in silenzio.
 - **Fail-closed per costruzione**: riga assente → `BLOCCATO` / `False` /
   `[]`, mai un permesso concesso per mancanza di un dato.
-- **La cache è per richiesta, non per processo**: vive in
-  `request._zeroerp_perms_cache` e muore con la richiesta. La cache **Redis**
-  dei permessi è un altro oggetto (`permissions_cache.md`), invalidata dai
-  writer (profili, override, reparto).
+- **La cache L1 vive in `request._zeroerp_perms_cache`, ma non muore con la
+  richiesta**: le permission class di `apps/core/api/permissions.py` la
+  pre-caricano da Redis e la salvano su Redis (chiave per `auth_user`, TTL
+  `PERMISSIONS_CACHE_TTL`), vedi [permissions_cache.md](permissions_cache.md).
+  L'invalidazione Redis la fanno i writer (profili, override, reparto).
+  > ⚠️ Difetto noto (M-1): i valori di `ruolo_applicativo`, `area:*` ed
+  > `emittenti_pk_ids` dipendono dai GUC di veste ed emittente attivo, ma la chiave
+  > Redis e' per `auth_user`. Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+- ⚠️ Difetto noto (S-4): il ripiego di `get_ruolo_applicativo` senza GUC prende
+  un'identita attiva qualsiasi: per un utente con piu' vesti il risultato non e'
+  deterministico. Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 - **I mock non provano il contratto DB.** Un test con `connection` finta prova
   la traduzione del risultato, non che la funzione esista o che la firma leghi:
   il contratto cross-veste di `fn_is_super_admin` è provato dai pgTAP in

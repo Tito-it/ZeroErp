@@ -3,7 +3,7 @@
 ## Scopo
 
 Restituisce il profilo completo dell'utente autenticato: dati anagrafici (soggetto),
-risorse umane, ruolo_sistema/ruolo_applicativo, dati emittente fiscale associato
+risorse umane, is_super_admin/ruolo_applicativo, dati emittente fiscale associato
 e **dettaglio dell'identita digitale del JWT corrente** (multi-face auth §8.3.6).
 
 ## Contesto
@@ -13,11 +13,12 @@ per popolare i dati utente visibili in topbar, sidebar e componenti profilo.
 
 Il payload e' prodotto principalmente dalla funzione DB `script.fn_get_user_profile(auth_user_id)`,
 che a sua volta riusa `script.fn_get_soggetto_dati_by_ruolo(soggetto_ruolo_id)` per i blocchi
-soggetto utente e soggetto emittente. Il backend arricchisce il payload con:
+soggetto utente e soggetto emittente. `is_super_admin` e `ruolo_applicativo` arrivano
+sempre dal top-level della funzione DB (GUC-aware), senza ripieghi lato Python. Il backend
+arricchisce il payload con:
 
 - `is_admin_globale` — derivato da regola Q1 refactor operatore-emittenti
-- `is_super_admin` — da `PermissionResolver.is_super_admin` (fallback se fn DB non lo popola)
-- `ruolo_applicativo` — da `PermissionResolver.get_ruolo_applicativo` (fallback)
+- `emittente_attivo` — l'emittente dentro cui lavora la sessione (dal claim JWT), da `EmittenteAttivoService.descrivi`
 - `identita` — dettaglio dell'identita specifica del JWT corrente (§8.3.6 multi-face).
   Post modello 1:N, un auth_user puo' avere piu' identita attive (es. OPERATORE +
   CLIENTE_PORTALE); il JWT indica quale "veste" stai usando, e /me/ deve riflettere
@@ -39,15 +40,18 @@ Il blocco `data` contiene il JSONB dalla funzione DB con le sezioni:
 | Sezione | Tipo | Contenuto |
 |---|---|---|
 | `utente` | object | auth_user_id, username, first_name, last_name, email |
-| `ruolo_sistema` | string/null | **LEGACY** — ADMIN, OPERATIVO, DISABILITATO o null. Ricostruito da `is_super_admin + ruolo_applicativo`. Nuovi consumer usino i due campi nativi |
-| `is_super_admin` | boolean | True se l'utente ha binding attivo al profilo SUPER_ADMIN (id 9100) **sulla veste OPERATORE** (§8.3.7 filtro DB). Letto via `PermissionResolver.is_super_admin` |
+| `is_super_admin` | boolean | True se l'utente ha binding attivo al profilo SUPER_ADMIN (id 9100) **sulla veste OPERATORE** (§8.3.7 filtro DB). Emesso da `fn_get_user_profile` |
 | `ruolo_applicativo` | string/null | Ruolo applicativo dell'identita attiva del JWT: `OPERATORE` \| `CLIENTE_PORTALE` \| `FORNITORE_PORTALE` \| `SHOP_CUSTOMER` \| `API_CLIENT` \| `DISABILITATO` \| null |
-| `risorse_umane` | object | risorsa_umana_id, qualifica, UO, validita', attivo |
+| `risorse_umane` | object | risorsa_umana_id, soggetto_ruolo_id, qualifica (id/codice/codice_interno/descrizione), UO (id/codice/codice_interno/descrizione), validita', attivo |
 | `soggetto` | object | Dati soggetto completi da `fn_get_soggetto_dati_by_ruolo` (identita', dati_societari) |
-| `emittente` | object/null | Dati emittente fiscale + soggetto ditta (null se non associato) |
-| `is_admin_globale` | boolean | True se l'utente e' admin globale (ruolo_sistema=ADMIN + nessuna riga in `user_emittenti_fiscali`). Refactor operatore-emittenti Q1 |
+| `emittente` | object/null | Dati emittente fiscale (`emittente_fiscale_id`, `emittente_codice`, `emittente_descrizione`, `user_emittente_fiscale_id`, ...) + soggetto ditta (null se non risolto) |
+| `is_admin_globale` | boolean | True se `is_super_admin` e `emittente.user_emittente_fiscale_id` e' NULL (nessuna riga in `user_emittenti_fiscali`). Calcolato in Python. Refactor operatore-emittenti Q1 |
+| `emittente_attivo` | object | Emittente di sessione: `emittente_fiscale_id` (dal claim JWT), `puo_scegliere`, `deve_scegliere`, `modalita_globale`, ... Vedi `/me/emittente-attivo/` sotto |
 | `identita` | object/null | **§8.3.6 multi-face** — dettaglio dell'identita digitale specifica del JWT corrente: `id`, `soggetto_ruolo_id`, `ruolo_applicativo`, `attivo`, `valido_dal`, `valido_al`, `invito_inviato_at`. `null` per token pre-refactor (JwtAuditAuthentication §8.3.4 li rifiuta gia' con 401; caso difensivo) |
 | `permessi_area` | object | Mappa livello accesso per area funzionale: `{schema_db: "TUTTO"\|"LETTURA"\|"BLOCCATO"}`. Prodotta da `fn_get_user_permissions_map` |
+| `azioni_abilitate` | object | Mappa azioni abilitate, da `fn_get_user_actions_map` |
+| `permessi_oggetto` | object | Mappa permessi per oggetto, da `fn_get_user_object_permissions_map` |
+| `deve_cambiare_password` | boolean | Flag dell'identita digitale (default false) |
 
 ### Esempio risposta
 
@@ -55,12 +59,11 @@ Il blocco `data` contiene il JSONB dalla funzione DB con le sezioni:
 {
   "data": {
     "utente": { "auth_user_id": 1, "username": "mtitini", "first_name": "Michele", "last_name": "Titini", "email": "m@example.com" },
-    "ruolo_sistema": "ADMIN",
     "is_super_admin": true,
     "ruolo_applicativo": "OPERATORE",
     "risorse_umane": { "risorsa_umana_id": 5, "qualifica_codice": "DEV", "unita_organizzativa_codice": "IT" },
     "soggetto": { "soggetto_id": "019...", "nome": "Michele", "cognome": "Titini" },
-    "emittente": { "emittente_fiscale_id": 1, "ragione_sociale_completa": "Azienda SRL" },
+    "emittente": { "emittente_fiscale_id": 1, "emittente_descrizione": "Azienda SRL", "user_emittente_fiscale_id": null },
     "is_admin_globale": true,
     "identita": {
       "id": 5,
@@ -105,10 +108,10 @@ Il FE usa `identita.ruolo_applicativo` per decidere la UI della veste attiva.
 ## Regole
 
 - L'endpoint restituisce sempre i dati dell'utente **autenticato** — non e' possibile consultare il profilo di altri utenti (per quello usare `/users/<id>/permessi-effettivi/`)
-- Se l'utente non ha un'identita' digitale OPERATORE (`identita_digitali`) associata, la funzione DB solleva eccezione e l'API restituisce 404
-- Se l'utente non ha emittenti associati, la sezione `emittente` e' `null`
-- Se l'utente ha piu' emittenti nella whitelist, viene restituito il primo attivo
-- Se la whitelist emittenti e' vuota e c'e' un solo emittente attivo, viene restituito quello
+- Se l'utente non ha un'identita' digitale OPERATORE (`identita_digitali`) associata, la funzione DB solleva `E_ADMIN_VALIDAZIONE` (400)
+- Identita' o risorsa umana disattivata, non ancora valida o scaduta: `E_UTENTE_DISABILITATO` / `E_UTENTE_NON_ATTIVO` / `E_UTENTE_SCADUTO` (403)
+- Emittente: si prende il primo emittente attivo della whitelist `user_emittenti_fiscali` (ordine per id); se la whitelist non ne da', il gestore globale (`emittenti_fiscali_billing_account` con billing account NULL e `is_default = true`), con `user_emittente_fiscale_id` NULL
+- Se nessuno dei due si risolve, la sezione `emittente` e' `null`
 
 ## Dipendenze DB
 
@@ -133,10 +136,10 @@ Il FE usa `identita.ruolo_applicativo` per decidere la UI della veste attiva.
 | `apps/core/api/me_view.py` | `UserProfileView(DomainAPIView)` — GET con JWT + `@extend_schema` + helper `_identita_del_jwt` per blocco `identita` |
 | `apps/core/db/core_repository.py` | `CoreRepository.get_user_profile()` — chiama la fn DB |
 | `apps/core/db/auth_repository.py` | `AuthRepository.get_identita_dettaglio(identita_id, auth_user_id)` — query identita con guard anti-tampering (filtra anche auth_user_id) |
-| `apps/core/services/permissions_resolver.py` | `PermissionResolver.is_super_admin` / `get_ruolo_applicativo` — fallback se `fn_get_user_profile` non popola |
+| `apps/core/services/emittente_attivo_service.py` | `EmittenteAttivoService` — blocco `emittente_attivo` e logica di `/me/emittente-attivo/` |
 | `apps/core/services/auth_constants.py` | `JWT_CLAIM_IDENTITA_ID = "identita_id"` — usato in `_identita_del_jwt` |
 | `apps/core/api/urls_v1.py` | Rotta `me/` registrata |
-| `apps/core/services/error_policies.py` | Policy `E_CORE_PROFILE_NOT_FOUND` (HTTP 404) |
+| `apps/core/services/error_policies_generated.py` | Classe di `E_CORE_PROFILE_NOT_FOUND` (NON_TROVATO, HTTP 404) |
 | `apps/core/tests/api/test_me_view.py` | Test unitari (mock DB + mock AuthRepository, incluso `IdentitaDelJwtTests` per §8.3.6) |
 
 ## GET / POST `/api/v1/core/me/emittente-attivo/` — l'emittente di sessione
@@ -146,8 +149,8 @@ lavorare** (impersonazione di scope).
 
 | metodo | fa |
 |---|---|
-| `GET` | le opzioni selezionabili per l'utente corrente |
-| `POST` | cambia l'emittente attivo **e riemette i token** — body: `emittente_fiscale_id` (opzionale: assente/null = torna alla vista completa) |
+| `GET` | le opzioni selezionabili per l'utente corrente: `{"data": {"opzioni": [...]}}` (per l'operatore al piu' una, per il super admin tutti gli attivi) |
+| `POST` | cambia l'emittente attivo **e riemette i token** — body: `emittente_fiscale_id` (opzionale: assente/null/"" = torna alla vista completa) e `refresh` (**obbligatorio**, il refresh token corrente). Risposta `{"data": {"emittente_attivo": {...}, "refresh": "...", "access": "..."}}` |
 
 ⭐ **Perche' il POST riemette i token invece di limitarsi a salvare la scelta.**
 La verita' della richiesta in corso e' il **claim JWT**, da cui nasce la GUC
@@ -155,14 +158,21 @@ La verita' della richiesta in corso e' il **claim JWT**, da cui nasce la GUC
 scelta avrebbe effetto solo al login successivo: la combo cambierebbe e i dati
 no — cioe' il difetto peggiore di tutti, **l'interfaccia che mente**.
 
-Errore specifico: `E_EMITTENTE_ATTIVO_TOKEN` se la riemissione del token
-fallisce.
+La scelta viene salvata **prima** della riemissione dei token: se il token fallisce,
+la preferenza resta comunque salvata.
+
+Errori specifici:
+
+- `E_EMITTENTE_ATTIVO_NON_VALIDO` (403) — emittente inesistente, disattivato o fuori dal perimetro dell'utente
+- `E_EMITTENTE_ATTIVO_TOKEN` (400) — `refresh` mancante, non valido/scaduto, o di un utente diverso da quello autenticato
 
 ## Errori
 
 | Codice | HTTP | Quando |
 |---|---|---|
-| `E_CORE_PROFILE_NOT_FOUND` | 404 | Utente senza identita' digitale OPERATORE o funzione DB restituisce NULL |
+| `E_CORE_PROFILE_NOT_FOUND` | 404 | La funzione DB restituisce NULL o nessuna riga |
+| `E_ADMIN_VALIDAZIONE` | 400 | Utente senza identita' digitale OPERATORE o senza risorsa umana (guard in `fn_get_user_profile`) |
+| `E_UTENTE_DISABILITATO` / `E_UTENTE_NON_ATTIVO` / `E_UTENTE_SCADUTO` | 403 | Identita' o risorsa umana disattivata, non ancora valida o scaduta |
 | `E_JWT_SENZA_IDENTITA` | 401 | JWT senza claim `identita_id` (token pre-§8.3.2) — intercettato da `JwtAuditAuthentication` a monte della view |
 | `E_IDENTITA_NON_ATTIVA` | 401 | Claim `identita_id` non corrisponde a identita attiva (revocata dopo emissione JWT) — intercettato a monte |
 | `E_AUTHENTICATION_FAILED` | 401 | JWT scaduto, invalido o non fornito |
@@ -180,5 +190,5 @@ fallisce.
   Post-cutover, i JWT senza `identita_id` sono gia' rifiutati a monte da
   `JwtAuditAuthentication.authenticate()` con `E_JWT_SENZA_IDENTITA` (401) —
   quindi il caso `identita: null` e' puramente difensivo.
-- `ruolo_sistema` resta esposto per retrocompat FE; nuovi consumer usino
+- `ruolo_sistema` non e' piu' emesso (rimosso dalla funzione DB in Fase 7): i consumer usano
   `is_super_admin` + `ruolo_applicativo` + `identita.ruolo_applicativo`.
