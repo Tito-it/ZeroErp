@@ -10,16 +10,16 @@
 > **Da leggere per primo: §1 — la regola. Il §4 è il perimetro misurato, cioè
 > il costo: non è la ragione di niente.**
 >
-> **Stato (2026-09-23, fine giornata): 🟢 TUTTO CONSEGNATO E MERGIATO TRANNE IL
-> COLLAUDO.** L1, L2, L3, L4, L5, il building block del periodo (A5), le
-> decisioni D7/D8/D9, i nove difetti della rilettura critica (§11), il primo
-> collaudo in-app (§11.9) e la sua riverifica (§11.10). **I tre registri del
-> cancello sono a ZERO**: nessuna view scrive più i filtri a mano, nessuna
-> coppia di date è scritta a mano, nessuna larghezza di filtro sta in un tag.
-> ⇒ **Resta solo L6**, il collaudo su dispositivi veri, che è di Tid. Delle
-> decisioni aperte, A3 è stata presa (**sì**) e A2 respinta (**no**) il 23-09;
-> resta la sola A4 (§8). Tre commit mergiati — `06b6a8742`, `d0ca2d850`,
-> `1d49b0aa2` (PR #1651) — più A3, ancora da committare.
+> **Stato (2026-09-24): ✅ CANTIERE CHIUSO.** L1, L2, L3, L4, L5, il building
+> block del periodo (A5), le decisioni D7/D8/D9, i nove difetti della rilettura
+> critica (§11), il primo collaudo in-app (§11.9) e la sua riverifica (§11.10).
+> **I tre registri del cancello sono a ZERO**: nessuna view scrive più i filtri
+> a mano, nessuna coppia di date è scritta a mano, nessuna larghezza di filtro
+> sta in un tag. ✅ **L6**, il collaudo su dispositivi veri, **fatto da Tid il
+> 2026-09-24**. Delle decisioni aperte, A3 presa (**sì**) e A2 respinta (**no**)
+> il 23-09; ✅ **A4 presa (sì) e fatta il 24-09** (§8, §9.6). Commit —
+> `06b6a8742`, `d0ca2d850`, `1d49b0aa2` (PR #1651), `3f106e9cd` (A3 e la spec
+> di `FiltriLista`) — più A4.
 > Inventario, numeri datati e registro dei collaudi in **§9**; ciò che
 > l'adozione ha *trovato* — e che il §4 non poteva sapere — in **§10**.
 >
@@ -441,19 +441,19 @@ verdi nello **stesso** commit (non nel successivo — l'hook gira sul solo
 | ~~**A1**~~ | ✅ **CHIUSA il 2026-09-23** attraversando le settanta liste. La taglia si decide dal **ruolo del filtro**, non dal numero che c'era prima: `lg` = ricerca e lookup ricchi (articolo, billing account, comune); `md` = combo con descrizioni che vengono da un **catalogo** (`LookupSelect` su un `rel`, `UtilityPerRuoloSelect`); `sm` = date, stati e liste di opzioni **scritte in pagina** (`attivo`, `sì/no`), che portano etichette corte. ⭐ Il criterio è riproducibile e sta negli standard: *da dove vengono le opzioni* dice quanto sono lunghe le etichette, il numero di ieri non diceva niente | ✅ decisa |
 | ~~**A2**~~ | ⛔ **CHIUSA il 2026-09-23: NON si fa.** Il segno su desktop non si aggiunge, e la ragione è la stessa che ha chiuso A3 al contrario: là i filtri **si vedono tutti**, quindi non manca l'informazione — mancava il **verbo**, ed è arrivato. ⚠️ E ci sarebbe un danno: quasi ogni lista nasce con un `data_da` al floor, quindi il numero sarebbe **permanente** su quasi tutte — *un segno sempre acceso smette di essere un segno* (§2.3), e dopo due giorni non lo guarderebbe più nessuno, nemmeno nei casi per cui è nato. ⭐ Il BB il conteggio lo calcola comunque: se un giorno servisse è una riga di template, e la si scriverà con un motivo | ⛔ decisa: no |
 | ~~**A3**~~ | ✅ **CHIUSA il 2026-09-23: sì.** «Pulisci filtri» compare anche nella toolbar desktop, **icona sola col tooltip** come ogni altro comando di quella riga (`ReloadButton`); l'etichetta per esteso resta nel drawer. ⭐ Il criterio che l'ha decisa, e che vale anche per A2: su desktop i filtri **si vedono tutti**, quindi ciò che manca non è l'informazione — è il **verbo**. Riportarli al default a mano costa un gesto per filtro, e su una lista con sei filtri l'operatore non ricorda nemmeno quali ha toccato. ⚠️ Stessa condizione del ramo compatto (`puoPulire` + `$slots.default`), non una seconda regola | ✅ decisa |
-| **A4** | Se il valore selezionato di una combo stretta debba portare il testo intero nel `title` (come `.app-lista-cella` per le celle di lista). PrimeVue non lo fa; `LookupSelect` è nostro e potrebbe. ⚠️ Su touch non c'è hover: servirebbe solo al desktop | Tid |
+| ~~**A4**~~ | ✅ **CHIUSA il 2026-09-24: sì, e fatta.** Il valore selezionato di una combo stretta porta il testo intero nel `title`, come `.app-lista-cella` per le celle. Lo fanno le due combo `md` del criterio di A1 — `LookupSelect` e `UtilityPerRuoloSelect` — attraverso un BB solo, `etichettaSelezionata` (regola del 2, ok Tid). ⛔ Le `Select` con opzioni scritte in pagina (`sm`) no: etichette corte per costruzione. ⚠️ Serve solo al desktop, sul touch non c'è hover. Dettaglio in §9.6 | ✅ decisa e fatta |
 
 ---
 
-## 9. Stato dei lavori — 2026-09-23 (aggiornato a fine giornata)
+## 9. Stato dei lavori — chiuso il 2026-09-24
 
-> **In una riga:** il cantiere è **finito e mergiato tranne il collaudo**. I due
+> **In una riga:** il cantiere è **chiuso** (24-09: L6 fatto da Tid, A4 fatta). I due
 > building block esistono e sono montati su **tutte e settanta** le liste, il
 > periodo ha l'invariante `da ≤ a` ovunque, il contratto dei filtri ha una sede
 > sola, il cancello ha sette controlli e i suoi tre registri sono a **zero**.
-> Resta **L6**, che è l'unica cosa che nessun presidio sa fare: guardare un
-> telefono. Delle decisioni aperte ne restano **una** (A4): A3 è stata presa e
-> A2 respinta il 23-09 (§8).
+> **L6**, l'unica cosa che nessun presidio sa fare — guardare un telefono —
+> l'ha fatta Tid il 24-09. Le decisioni: A3 presa e A2 respinta il 23-09, A4
+> presa e fatta il 24-09 (§8).
 
 | Lotto | Stato |
 | --- | --- |
@@ -468,7 +468,9 @@ verdi nello **stesso** commit (non nel successivo — l'hook gira sul solo
 | §11.10 **riverifica** — quattro neutri mancanti, «Pulisci» che spariva | ✅ chiusa il 23-09 |
 | **regola del 2** — la terna `Tutti / Attivo / Non attivo` | ✅ estratta il 23-09 (ok Tid), cinque sedi → una |
 | **`rate.solo_numerate`** — filtro senza gesto | ✅ chiuso il 23-09 (ok Tid): **non era un filtro, era un perimetro** → sceso nel backend |
-| **L6** collaudo su dispositivi veri | 🔵 **l'unica cosa aperta** — è di Tid |
+| **A3** «Pulisci filtri» nella toolbar desktop · spec di `FiltriLista` | ✅ 23-09, commit `3f106e9cd` |
+| **L6** collaudo su dispositivi veri | ✅ **fatto da Tid il 24-09** |
+| **A4** testo intero nel `title` delle combo `md` | ✅ fatta il 24-09 (§9.6) |
 
 > **Dove sta il lavoro**: tre commit sul ramo `dev/backend-tid`, tutti mergiati —
 > `06b6a8742` (L1+L4, 22-09), `d0ca2d850` (L2+L3+L5, adozione, §10 e §11) e
@@ -671,9 +673,11 @@ attraversano per view**, non uno dopo l'altro sul repo: convertire il wrapper
 lasciando il numero nel tag produce uno stato intermedio in cui il drawer esiste
 e i filtri dentro sono stretti.
 
-### 9.5 Quel che resta — **L6, e tre decisioni**
+### 9.5 Quel che restava — **L6, e tre decisioni** (✅ tutto chiuso il 24-09)
 
-* 🔵 **L6** collaudo su smartphone e tablet veri, compresi i casi annidati. È di
+* ✅ **L6 — FATTO da Tid il 2026-09-24.** *(Il testo che segue è quello del
+  23-09, lasciato com'era perché dice che cosa si è guardato.)*
+  Collaudo su smartphone e tablet veri, compresi i casi annidati. È di
   Tid, e resta **l'unica cosa aperta del cantiere**, perché è l'unica che
   nessun presidio sa fare: ✅ i sette controlli del cancello, ✅ `eslint`/
   `oxlint`, ✅ le spec e ✅ il `vite build` sono tutti verdi, e **nessuno di loro
@@ -694,9 +698,8 @@ e i filtri dentro sono stretti.
   il segno su desktop non si aggiunge. ⭐ Le due si sono decise insieme e con lo
   stesso criterio: *su desktop i filtri si vedono tutti, quindi non manca
   l'informazione — mancava il verbo*.
-* 🟡 **Resta aperta la sola A4** (il testo intero nel `title` di una combo
-  stretta): serve solo al desktop, dove c'è l'hover, ed è una domanda che il
-  collaudo chiude meglio di un ragionamento.
+* ✅ **A4 — decisa (sì) e fatta il 2026-09-24**, dopo il collaudo, come qui si
+  era previsto: il testo intero nel `title` di una combo stretta (§9.6).
 
 ✅ **Il componente ORA È MONTABILE, e la decisione è presa** (Tid, 2026-09-23):
 `@vue/test-utils` + `jsdom` sono entrati nel progetto — non per questo cantiere
@@ -741,6 +744,49 @@ convertendo — l'imbuto su una lista con la sola ricerca, e lo `<slot>` senza
 funzione pura può vedere. Sono usciti leggendo il codice, non da un presidio.
 ⇒ La decisione su `@vue/test-utils` + `jsdom` resta di Tid, ma ora ha un costo
 misurato: **due difetti in un giorno**, entrambi invisibili da desktop.
+
+### 9.6 A4 — il testo intero nel `title` (2026-09-24)
+
+**Il problema.** Da quando le larghezze sono classi (L3), una combo `md` con
+una descrizione di catalogo mostra il valore selezionato **troncato**
+(`.p-select-label` va in ellissi), e per rileggerlo bisognava riaprire la
+tendina. PrimeVue non mette il testo nel `title`.
+
+**La forma.** Le combo `md` del criterio di A1 sono **due**: `LookupSelect` (i
+filtri su un `rel`) e `UtilityPerRuoloSelect` (Clienti, Offerte, Fatture, Contratti, Listini).
+Stessa decisione, due sedi ⇒ **regola del 2** (dichiarata e approvata da Tid
+prima di scrivere): il BB puro `core/utils/etichettaSelezionata.js`, e nei due
+componenti un solo `:title` sul `Select`. PrimeVue lo inoltra alla radice.
+`LookupSelect` usa `etichettaVoce(selectedItem, formatOption)`: la voce
+selezionata la cerca già per lo slot `#value`, e ⛔ **non la si cerca una
+seconda volta** (decisione di Tid, 24-09, scritta nel componente come da non
+modificare). `UtilityPerRuoloSelect` usa `etichettaSelezionata`.
+
+* il `title` dice **ciò che si legge a video**: su `LookupSelect` passa per
+  `formatOption`, quindi con `show-code` è `descrizione (codice)`;
+* ⚠️ **nessuna selezione ⇒ nessun attributo**: il BB rende `undefined`, mai
+  `''`, che Vue stamperebbe come `title=""`. Lo stesso vale per una voce senza
+  testo;
+* la voce «Tutti» (`null`) è una selezione vera e ha il suo `title`;
+* un `title` passato dal chiamante vince, perché gli attributi ereditati si
+  applicano dopo.
+
+⛔ **Fuori, per scelta**: le `Select` con opzioni scritte in pagina (`sm`: stati,
+sì/no). Le loro etichette sono corte per costruzione, lo stesso criterio che le
+rende `sm`. ⚠️ Serve solo al desktop: sul touch non c'è hover.
+
+**I presidi, ed entrambi servono:**
+
+| Spec | Che cosa prova |
+| --- | --- |
+| `core/utils/etichettaSelezionata.spec.js` (9) | la **decisione**: quale testo, e quando nessuno. Provata contro **quattro mutazioni** (stringa vuota ammessa, `undefined` non guardato, confronto largo, testo `null`), ognuna rossa su un test solo |
+| `core/components/ComboTitolo.spec.js` (4, montati) | il **trasporto**: il `title` arriva davvero nel DOM del `Select`. Togliendo il `:title` da uno dei due componenti va rosso un test, mentre il BB resta verde. È il punto che la spec pura non vede |
+
+**Verifiche (24-09):** `vitest` **315 test su 33 file**, `eslint` + `oxlint`
+puliti, `npm run guards` verde (18 `[ok]`), `vite build` verde.
+Doc: riga nuova nel catalogo BB frontend e nelle righe di `LookupSelect` e
+`UtilityPerRuoloSelect`. In frontend-standards, il «limite dichiarato» sulla
+selezione troncata è diventato la regola.
 
 ---
 

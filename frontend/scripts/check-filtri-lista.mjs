@@ -6,7 +6,7 @@
 //        filtri, e le cose che, sbagliate, NON danno errore.
 //
 // 🔴 PERCHE' ESISTE (2026-09-22, lotto L4 del brief
-//    `work-in-progress/brief-fe-filtri-lista-su-schermo-compatto.md`). Sotto i
+//    `work-done/brief-fe-filtri-lista-su-schermo-compatto.md`). Sotto i
 //    1024px i filtri stanno in un drawer dal basso: da quel momento una lista
 //    RISTRETTA e una lista VUOTA si assomigliano, e l'unica cosa che le
 //    distingue e' il segno dei filtri attivi. Tutte le regole qui sotto
@@ -427,7 +427,7 @@ if (riscrive) {
         _regola:
           'docs/it/dev/frontend/frontend-standards.md §«Filtri della lista — FiltriLista»',
         _brief:
-          'docs/it/dev/work-in-progress/brief-fe-filtri-lista-su-schermo-compatto.md',
+          'docs/it/dev/work-done/brief-fe-filtri-lista-su-schermo-compatto.md',
         _lotti: {
           grezzi:
             'L2 CHIUSO il 2026-09-23: zero. Erano 76 blocchi in 70 file il 22-09, di cui '

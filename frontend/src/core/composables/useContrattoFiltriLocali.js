@@ -44,7 +44,7 @@
 //        variabile del widget direbbe «1 filtro attivo» proprio quando non ne
 //        e' attivo nessuno.
 //
-//       Brief: docs/it/dev/work-in-progress/brief-fe-filtri-lista-su-schermo-compatto.md
+//       Brief: docs/it/dev/work-done/brief-fe-filtri-lista-su-schermo-compatto.md
 // ------------------------------------------------------------
 
 import { computed } from 'vue'

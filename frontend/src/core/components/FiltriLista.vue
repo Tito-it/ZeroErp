@@ -49,7 +49,7 @@
 //    drawer aperto ogni cambio fa una fetch dietro le quinte: alla chiusura la
 //    lista e' gia' pronta.
 //
-// Brief: docs/it/dev/work-in-progress/brief-fe-filtri-lista-su-schermo-compatto.md
+// Brief: docs/it/dev/work-done/brief-fe-filtri-lista-su-schermo-compatto.md
 import { computed, getCurrentInstance, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'

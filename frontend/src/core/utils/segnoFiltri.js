@@ -45,7 +45,7 @@
 //       ⇒ Chi arriva qui per «sistemare» il caso `apply-default` si fermi: e'
 //       gia' stato deciso. Brief §2.3.
 //
-//       Brief: docs/it/dev/work-in-progress/brief-fe-filtri-lista-su-schermo-compatto.md
+//       Brief: docs/it/dev/work-done/brief-fe-filtri-lista-su-schermo-compatto.md
 // ------------------------------------------------------------
 
 export const SEGNO_VUOTO = 'vuoto'

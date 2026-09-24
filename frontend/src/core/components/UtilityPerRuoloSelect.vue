@@ -10,9 +10,11 @@
 //
 // Backend: GET /api/v1/core/lookup/utilities-per-emittente/?ruolo=CL
 // Filtra per: matrice utilities_tipi_ruolo + emittenti_fiscali_utilities per emittente utente.
-import { ref, watch, onMounted } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import { lookupUtilitiesPerEmittente } from '../apiCore'
+import { useFetchVersion } from '../composables/useFetchVersion'
 import { useUtilityDefaultId } from '../composables/useUtilityDefaultId'
+import { etichettaSelezionata } from '../utils/etichettaSelezionata'
 import Select from 'primevue/select'
 
 const props = defineProps({
@@ -34,6 +36,10 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'change'])
 
+// Il campo valore delle voci: lo leggono sia il `Select` sia il `title`. ⚠️ Se
+// divergessero il `title` sparirebbe senza errore — per questo sta in un posto.
+const CAMPO_VALORE = 'id'
+
 const items = ref([])
 const loading = ref(false)
 
@@ -41,18 +47,27 @@ const { id: defaultUtilityId, load: loadDefaultUtility } = useUtilityDefaultId({
   ruolo: props.tipoRuoloCodice || null
 })
 
+// ⚠️ Al cambio di `tipoRuoloCodice` la fetch riparte mentre la precedente e'
+// ancora in volo: senza il guard di versione una risposta lenta del ruolo
+// VECCHIO arriverebbe dopo e sovrascriverebbe le voci giuste, senza errore.
+const fetchVersion = useFetchVersion()
+
 // Scopo: Carica le utility configurate per l'emittente dell'utente corrente.
 // Se tipoRuoloCodice e' valorizzato, filtra per intersezione ruolo + EF.
+// Solo la chiamata piu' recente scrive `items` e spegne `loading`.
 async function load() {
+  const t = fetchVersion.tag()
   loading.value = true
+  let risultati
   try {
     const res = await lookupUtilitiesPerEmittente(props.tipoRuoloCodice || undefined)
-    items.value = res.data?.data?.results || []
+    risultati = res.data?.data?.results || []
   } catch {
-    items.value = []
-  } finally {
-    loading.value = false
+    risultati = []
   }
+  if (!fetchVersion.isCurrent(t)) return
+  items.value = risultati
+  loading.value = false
 }
 
 watch(() => props.tipoRuoloCodice, load, { immediate: true })
@@ -70,6 +85,15 @@ onMounted(async () => {
   }
 })
 
+// Il testo intero del valore nel `title`: in un filtro di lista la combo e'
+// `md` e taglia la descrizione coi puntini. (A4, 2026-09-24)
+const titolo = computed(() =>
+  etichettaSelezionata(items.value, props.modelValue, {
+    campoValore: CAMPO_VALORE,
+    etichetta: props.labelField,
+  })
+)
+
 function onChange(event) {
   emit('update:modelValue', event.value)
   emit('change', event.value)
@@ -83,11 +107,12 @@ function onChange(event) {
     :options="items"
     :loading="loading"
     :optionLabel="labelField"
-    optionValue="id"
+    :optionValue="CAMPO_VALORE"
     :placeholder="placeholder"
     :showClear="showClear"
     :filter="filter"
     :disabled="disabled"
+    :title="titolo"
     @change="onChange"
   />
 </template>

@@ -142,7 +142,7 @@ a {
 
 /* ===== Filtri della lista — building block `FiltriLista` =====
  * Decisione di Tid del 2026-09-22 (brief
- * `work-in-progress/brief-fe-filtri-lista-su-schermo-compatto.md`).
+ * `work-done/brief-fe-filtri-lista-su-schermo-compatto.md`).
  *
  * In modalita' COMPATTA (`ui.isCompatto`: sotto i 1024px oppure senza hover) i
  * filtri escono dalla toolbar ed entrano in un drawer dal basso; restano in
