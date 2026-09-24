@@ -5,7 +5,7 @@
 # Scopo: Endpoint POST /api/v1/auth/change-password/ — cambio password
 #        con validazione (vecchia password + 4 validators Django).
 #        Resetta flag deve_cambiare_password, blacklista token precedenti,
-#        genera nuova coppia JWT.
+#        riapre la sessione nella stessa veste (catena del login).
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -18,10 +18,11 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import JsonResponse
 from drf_spectacular.utils import extend_schema
 from rest_framework.request import Request
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.jwt_audit_authentication import E_IDENTITA_NON_ATTIVA
+from apps.core.api.multi_veste_token_serializer import emetti_refresh_veste
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services import session_audit_service
 from apps.core.services.auth_constants import JWT_CLAIM_SID
@@ -79,10 +80,25 @@ class ChangePasswordView(DomainAPIView):
             except DjangoValidationError as exc:
                 ErrorManager.require(False, code=E_CHANGE_PW, message=" ".join(exc.messages))
 
-            # Reset flag deve_cambiare_password puntato sulla veste del
-            # JWT corrente (§8.3.2+§8.4.1). None solo con token pre-refactor
-            # → fallback globale accettabile (blacklist invalida comunque).
+            # La veste della sessione corrente: e' su QUELLA che si resetta il
+            # flag deve_cambiare_password (§8.3.2+§8.4.1) ed e' in QUELLA che
+            # si riapre la sessione. L'autenticazione ha gia' preteso il claim
+            # e l'identita' attiva; la si rilegge qui per il ruolo, e PRIMA di
+            # toccare la password: se nel frattempo e' stata revocata, il
+            # cambio non avviene e la risposta e' quella di una sessione
+            # scaduta, non un token che la richiesta dopo rifiuterebbe.
             identita_id = extract_identita_id_from_request(request)
+            identita = (
+                _auth_repo.get_identita_dettaglio(identita_id, user.id)
+                if identita_id is not None
+                else None
+            )
+            ErrorManager.require(
+                identita is not None and bool(identita.get("attivo")),
+                code=E_IDENTITA_NON_ATTIVA,
+                message="Sessione non piu' valida: effettua nuovamente l'accesso.",
+            )
+            assert identita is not None
 
             # Operazioni atomiche: password + flag + blacklist
             apply_new_password(
@@ -93,14 +109,21 @@ class ChangePasswordView(DomainAPIView):
                 auth_repo=_auth_repo,
             )
 
-            # Genera nuova coppia JWT (fuori dalla transazione — non critico)
-            refresh = RefreshToken.for_user(user)
+            # Sessione nuova nella stessa veste, con la catena del login
+            # (sid nuovo, identita_id, ruolo_applicativo, emittente attivo):
+            # le sessioni precedenti sono appena state chiuse dalla blacklist.
+            # ⛔ Fino al 2026-09-24 era `RefreshToken.for_user(user)`: un token
+            # senza veste, che la richiesta dopo rifiutava con 401
+            # E_JWT_SENZA_IDENTITA — proprio nel cambio obbligatorio al primo
+            # accesso (M-2 dell'analisi difetti).
+            refresh = emetti_refresh_veste(user, identita)
 
-            # Audit
+            # Audit: la sessione nuova si identifica col suo `sid`, come al
+            # login (prima si registrava il `jti`, che cambia a ogni refresh).
             session_audit_service.record_login(
                 user_id=user.id,
                 request=request._request if hasattr(request, "_request") else request,
-                jti=str(refresh.get(JWT_CLAIM_SID, refresh.get("jti", ""))),
+                jti=str(refresh[JWT_CLAIM_SID]),
             )
             logger.info("security.password_changed user_id=%s", user.id)
 

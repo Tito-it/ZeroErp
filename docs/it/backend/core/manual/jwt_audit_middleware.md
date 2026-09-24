@@ -8,8 +8,13 @@ Middleware Django per le request `/api/*`. Responsabilita':
    `JWT_IDENTITY_GUCS` prima dell'autenticazione DRF e di ogni query della view.
 2. **Guard BYPASSRLS** (`process_request`): rifiuta le richieste se la connessione web
    gira su un ruolo PostgreSQL che bypassa la RLS.
-3. **Pre-load della cache permessi Redis L2** sulla request (`process_view`).
-4. **Rifiuto early degli utenti `DISABILITATO`** con HTTP 403 (`process_view`).
+3. **Rifiuto early degli utenti `DISABILITATO`** con HTTP 403 (`process_view`).
+
+> ⛔ **La cache permessi L2 non si precarica qui** (fino al 2026-09-24 si'). La sua chiave
+> e' il contesto di sessione (identita' + emittente effettivo), che nasce in
+> `set_jwt_gucs` durante l'autenticazione DRF, cioe' **dopo** questo middleware. La
+> carica una sede sola, `ZeroERPPermission._get_cache()`: vedi
+> [permissions_cache.md](permissions_cache.md).
 
 > **La propagazione delle GUC non avviene qui.** Il setting e' fatto da
 > [`JwtAuditAuthentication`](jwt_audit_authentication.md), registrata in
@@ -63,30 +68,21 @@ connessione web non bypassi la RLS:
 > (assenti da `CLASSE_PER_CODICE` in `error_policies_generated.py` e dai ripieghi). Vedi
 > [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 
-### 3. Pre-load cache permessi L2 (`process_view`)
-
-Per le richieste su path `/api/` con `request.user` autenticato, se
-`request._zeroerp_perms_cache` non esiste:
-
-- chiama `load_user_cache(user.id)` per caricare la cache L2 da Redis;
-- crea `request._zeroerp_perms_cache` (dict) e `request._zeroerp_perms_cache_loaded_from_redis` (bool).
-
-### 4. Rifiuto anticipato DISABILITATO (`process_view`)
+### 3. Rifiuto anticipato DISABILITATO (`process_view`)
 
 Per le stesse richieste:
 
-- legge `ruolo_applicativo` via `PermissionResolver.get_ruolo_applicativo()` con la cache
-  per-request (GUC-first);
+- legge `ruolo_applicativo` via `PermissionResolver.get_ruolo_applicativo()` (GUC-first);
 - se `DISABILITATO` → logga warning di sicurezza e restituisce 403 JSON con codice
   `E_USER_DISABILITATO`.
 
 > ⚠️ Difetto noto (S-2): `process_view` legge il `request.user` di Django, che per i
 > client Bearer JWT e' ancora `AnonymousUser` (l'autenticazione DRF gira dopo, nel
-> dispatch della view). Per queste richieste i passi 3 e 4 non scattano: il rifiuto dei
-> `DISABILITATO` e il caricamento L2 avvengono solo in `ZeroERPPermission`. Vedi
+> dispatch della view). Per queste richieste il passo 3 non scatta: il rifiuto dei
+> `DISABILITATO` avviene solo in `ZeroERPPermission`. Vedi
 > [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 
-### 5. Path non API
+### 4. Path non API
 
 Per i path che non iniziano con `/api/` il middleware non esegue alcuna operazione.
 
@@ -139,8 +135,7 @@ process_request(request)
 process_view(request, ...)
   │
   ├── path non /api/* o user anonimo → None (prosegui)
-  ├── Pre-load cache L2 da Redis (load_user_cache)
-  ├── ruolo = PermissionResolver.get_ruolo_applicativo(user, cache)
+  ├── ruolo = PermissionResolver.get_ruolo_applicativo(user)
   └── ruolo == DISABILITATO? → log warning + JsonResponse 403
 ```
 
@@ -149,7 +144,6 @@ process_view(request, ...)
 - `apps.core.api.jwt_audit_authentication.JWT_GUC_RESET_SQL` — SQL di reset derivato da `JWT_IDENTITY_GUCS`
 - `apps.core.services.system_context.connection_role_bypasses_rls()` — verifica del ruolo della connessione
 - `anagrafiche.identita_digitali` — `ruolo_applicativo` dell'identita' attiva (via `PermissionResolver`, GUC-first)
-- `apps.core.services.permissions_cache` — `load_user_cache()` per pre-caricamento L2
 - `apps.core.services.permissions_resolver` — `PermissionResolver.get_ruolo_applicativo()`
 - `apps.core.services.request_context` — `get_request_id()`, `get_idempotency_key()` per `meta`
 

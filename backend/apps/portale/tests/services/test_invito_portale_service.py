@@ -13,6 +13,7 @@ Indice test eseguiti:
 3)  InvitoPortaleTests.test_invia_invito_fornitore_happy_path
 4)  InvitoPortaleTests.test_email_vuota_solleva
 5)  InvitoPortaleTests.test_reinvia_invalida_precedente
+5b) InvitoPortaleTests.test_reinvio_a_chi_non_ha_mai_attivato_resta_invito (M-3)
 6)  InvitoPortaleTests.test_invia_invito_riusa_auth_user_esistente_flow_cross
 7)  InvitoPortaleTests.test_cross_non_riattiva_identita_disattivata
 8)  InvitoPortaleTests.test_identita_gia_attiva_solleva
@@ -55,8 +56,8 @@ def _mock_cursor_ctx(mock_conn):
 
 class InvitoPortaleTests(TestCase):
 
-    # Scopo: Flusso invito cliente: auth_user nuovo + identita creata +
-    # password temp + token + email inviata + timestamp aggiornato.
+    # Scopo: Flusso invito cliente: auth_user nuovo + identita creata
+    # disattivata + token INVITO + email inviata + timestamp aggiornato.
     @patch(_SETTINGS)
     @patch(_CONNECTION)
     @patch(_EMAIL_SVC)
@@ -80,6 +81,7 @@ class InvitoPortaleTests(TestCase):
         }
         repo.find_auth_user_by_email.return_value = None  # utente nuovo
         repo.create_auth_user_portale.return_value = 200
+        repo.auth_user_ha_password.return_value = False  # segnaposto `!`
         repo.find_identita_portale.return_value = None  # identita nuova
         repo.create_identita_portale.return_value = 500
 
@@ -111,18 +113,16 @@ class InvitoPortaleTests(TestCase):
         self.assertFalse(result["is_cross"])
         self.assertIn("***", result["email"])
         repo.create_auth_user_portale.assert_called_once()
-        # Flow INVITO (email nuova): identita creata attivo=true +
-        # deve_cambiare_password=true, token INVITO_PORTALE standard.
+        # Flow INVITO (email nuova): identita creata DISATTIVATA — si attiva
+        # al consumo del token (M-3) — e nessuna password temporanea.
         create_kwargs = repo.create_identita_portale.call_args.kwargs
-        self.assertTrue(create_kwargs["attivo"])
-        self.assertTrue(create_kwargs["deve_cambiare_password"])
+        self.assertFalse(create_kwargs["attivo"])
+        self.assertFalse(create_kwargs["deve_cambiare_password"])
         token_kwargs = token.create.call_args.kwargs
         self.assertEqual(token_kwargs["tipo"], "INVITO_PORTALE")
         self.assertEqual(token_kwargs["meta"]["identita_id"], 500)
         MockEmail.return_value.send_email.assert_called_once()
-        auth.set_deve_cambiare_password.assert_called_once_with(
-            200, True, identita_id=500
-        )
+        auth.set_deve_cambiare_password.assert_not_called()
         auth.set_invito_inviato_at.assert_called_once_with(200, identita_id=500)
 
     # Scopo: BA inesistente -> ServiceError E_INVITO_PORTALE, nessun side-effect.
@@ -162,6 +162,7 @@ class InvitoPortaleTests(TestCase):
         }
         repo.find_auth_user_by_email.return_value = None
         repo.create_auth_user_portale.return_value = 201
+        repo.auth_user_ha_password.return_value = False
         repo.find_identita_portale.return_value = None
         repo.create_identita_portale.return_value = 501
 
@@ -189,8 +190,8 @@ class InvitoPortaleTests(TestCase):
         # Verifica il ruolo_applicativo + attivo passati alla creazione identita.
         kwargs = repo.create_identita_portale.call_args.kwargs
         self.assertEqual(kwargs["ruolo_applicativo"], "FORNITORE_PORTALE")
-        self.assertTrue(kwargs["attivo"])
-        self.assertTrue(kwargs["deve_cambiare_password"])
+        self.assertFalse(kwargs["attivo"])
+        self.assertFalse(kwargs["deve_cambiare_password"])
 
     # Scopo: Email vuota -> errore immediato, nessuna query.
     @patch(_REPO)
@@ -263,6 +264,64 @@ class InvitoPortaleTests(TestCase):
         self.assertIn(("INVITO_PORTALE", 200), invalidate_calls)
         self.assertIn(("ATTIVAZIONE_PORTALE_CROSS", 200), invalidate_calls)
 
+    # Scopo: M-3 — reinvio a chi NON ha mai attivato: l'auth_user esiste
+    # (l'ha creato il primo invito) ma ha ancora il segnaposto, e l'identita'
+    # e' disattivata. Deve restare nel flow INVITO — token INVITO_PORTALE,
+    # scelta della password — e non cadere nel CROSS. Fino al 2026-09-24 il
+    # flusso si sceglieva da «l'auth_user e' stato appena creato» e questo
+    # reinvio era impossibile.
+    @patch(_SETTINGS)
+    @patch(_CONNECTION)
+    @patch(_EMAIL_SVC)
+    @patch(_TOKEN_SVC)
+    @patch(_AUTH_REPO)
+    @patch(_REPO)
+    def test_reinvio_a_chi_non_ha_mai_attivato_resta_invito(
+        self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
+    ):
+        mock_settings.FRONTEND_URL = "http://localhost:5173"
+        repo = MockRepo.return_value
+        repo.get_cliente_info.return_value = {
+            "billing_account_id": 42,
+            "ba_codice": "BA-42",
+            "soggetto_ruolo_id": 100,
+            "soggetto_id": "u",
+            "ragione_sociale": "ACME",
+        }
+        repo.find_auth_user_by_email.return_value = 200  # creato dal primo invito
+        repo.auth_user_ha_password.return_value = False  # mai attivato
+        repo.find_identita_portale.return_value = {
+            "identita_id": 500,
+            "auth_user_id": 200,
+            "attivo": False,
+            "invito_inviato_at": None,
+            "deve_cambiare_password": False,
+        }
+        MockAuth.return_value.set_invito_inviato_at.return_value = True
+        MockToken.return_value.create.return_value = "tk_re"
+        MockEmail.return_value.send_email.return_value = (1, True)
+        _mock_cursor_ctx(mock_conn)
+
+        from apps.portale.services.invito_portale_service import InvitoPortaleService
+        svc = InvitoPortaleService()
+        svc._get_display_name_of = MagicMock(return_value="Admin")
+
+        result = svc.reinvia_invito_cliente(
+            cliente_id=42,
+            email="admin@acme.test",
+            invitato_da_user_id=1,
+        )
+
+        self.assertFalse(result["is_cross"])
+        self.assertFalse(result["nuovo_utente"])
+        self.assertEqual(
+            MockToken.return_value.create.call_args.kwargs["tipo"], "INVITO_PORTALE"
+        )
+        repo.auth_user_ha_password.assert_called_once_with(200)
+        # L'identita' resta disattivata: la attiva il consumo del token.
+        repo.riattiva_identita.assert_not_called()
+        repo.create_auth_user_portale.assert_not_called()
+
     # Scopo: Se email esiste gia' in auth_user (operatore o altra veste
     # portale), il service entra nel flow CROSS §8.4.1:
     #  - NON crea un nuovo auth_user (l'utente ce l'ha gia')
@@ -293,6 +352,7 @@ class InvitoPortaleTests(TestCase):
             "ragione_sociale": "ACME",
         }
         repo.find_auth_user_by_email.return_value = 999  # auth_user gia' esistente
+        repo.auth_user_ha_password.return_value = True  # ... con una password vera
         repo.find_identita_portale.return_value = None  # ma identita CLIENTE_PORTALE nuova
         repo.create_identita_portale.return_value = 501
 
@@ -361,6 +421,7 @@ class InvitoPortaleTests(TestCase):
             "ragione_sociale": "ACME",
         }
         repo.find_auth_user_by_email.return_value = 999  # esistente → flow CROSS
+        repo.auth_user_ha_password.return_value = True
         # Identita CROSS gia' creata in passato ma disattivata (invito
         # scaduto o revoca admin): riattivazione deve avvenire SOLO con
         # consumo del token CROSS.
@@ -521,7 +582,7 @@ class InvitoShopCustomerTests(TestCase):
     di CLIENTE_PORTALE ma config veste diversa (token tipo, template,
     link path)."""
 
-    # Scopo: Flow INVITO email nuova -> identita SHOP_CUSTOMER attiva +
+    # Scopo: Flow INVITO email nuova -> identita SHOP_CUSTOMER disattivata +
     # token INVITO_SHOP + template INVITO_SHOP + link /attivazione-shop.
     @patch(_SETTINGS)
     @patch(_CONNECTION)
@@ -544,6 +605,7 @@ class InvitoShopCustomerTests(TestCase):
         }
         repo.find_auth_user_by_email.return_value = None
         repo.create_auth_user_portale.return_value = 300
+        repo.auth_user_ha_password.return_value = False
         repo.find_identita_portale.return_value = None
         repo.create_identita_portale.return_value = 600
 
@@ -569,11 +631,12 @@ class InvitoShopCustomerTests(TestCase):
         self.assertEqual(result["identita_id"], 600)
         self.assertTrue(result["nuovo_utente"])
         self.assertFalse(result["is_cross"])
-        # Veste creata con ruolo SHOP_CUSTOMER, attiva (flow INVITO).
+        # Veste creata con ruolo SHOP_CUSTOMER, DISATTIVATA (flow INVITO:
+        # la attiva il consumo del token, M-3).
         kwargs = repo.create_identita_portale.call_args.kwargs
         self.assertEqual(kwargs["ruolo_applicativo"], "SHOP_CUSTOMER")
-        self.assertTrue(kwargs["attivo"])
-        self.assertTrue(kwargs["deve_cambiare_password"])
+        self.assertFalse(kwargs["attivo"])
+        self.assertFalse(kwargs["deve_cambiare_password"])
         # Token tipo + template + link path mappati su veste shop.
         token_kwargs = MockToken.return_value.create.call_args.kwargs
         self.assertEqual(token_kwargs["tipo"], "INVITO_SHOP")
@@ -605,6 +668,7 @@ class InvitoShopCustomerTests(TestCase):
         }
         # Email gia' nota: l'auth_user esiste come operatore o altra veste.
         repo.find_auth_user_by_email.return_value = 999
+        repo.auth_user_ha_password.return_value = True
         repo.find_identita_portale.return_value = None  # nessuna SHOP ancora
         repo.create_identita_portale.return_value = 700
 
@@ -666,7 +730,9 @@ class InvitoShopCustomerTests(TestCase):
             "deve_cambiare_password": False,
         }
         repo.find_auth_user_by_email.return_value = 999
-        # Per il flow CROSS riprende identita gia' presente (non riattiva).
+        # Flow CROSS: la credenziale ha una password vera. Riprende l'identita
+        # gia' presente e la lascia disattivata (la attiva il token).
+        repo.auth_user_ha_password.return_value = True
         MockAuth.return_value.set_invito_inviato_at.return_value = True
         MockToken.return_value.create.return_value = "tk_re"
         MockEmail.return_value.send_email.return_value = (1, True)

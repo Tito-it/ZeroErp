@@ -265,6 +265,9 @@ class AttivazionePortaleView(APIView):
                 blacklist_tokens=False,
                 auth_repo=_auth_repo,
             )
+            # L'identita' nasce disattivata anche nel flow INVITO e si
+            # attiva QUI, nella stessa transazione del consumo (M-3).
+            self._attiva_identita_o_rifiuta(identita_id)
 
     # Scopo: Flow CROSS — l'utente ha gia' una password sulla veste
     # preesistente (operatore o altra veste portale). L'attivazione solo
@@ -286,27 +289,30 @@ class AttivazionePortaleView(APIView):
             _token_service.consume(
                 token, ATTIVAZIONE_PORTALE_CROSS_TOKEN_TIPO, ip=ip
             )
-            updated = _portale_repo.riattiva_identita(identita_id)
-            if not updated:
-                # Rowcount=0 significa identita rimossa / ruolo cambiato
-                # tra emissione invito e consume. Il token e' gia' marcato
-                # utilizzato DENTRO questa transazione: sollevare ServiceError
-                # fa rollback atomico (consume + UPDATE) lasciando il token
-                # ancora consumabile da un futuro retry — oppure, piu'
-                # realisticamente, l'admin ri-invitera' rigenerando token.
-                logger.warning(
-                    "security.cross_riattiva_fallita identita_id=%s — "
-                    "riga non trovata, rollback consume token",
-                    identita_id,
-                )
-                ErrorManager.require(
-                    False,
-                    code=E_ATTIVAZIONE_PORTALE,
-                    message=(
-                        "Identita portale non piu' disponibile. "
-                        "Contattare l'amministratore per un nuovo invito."
-                    ),
-                )
+            self._attiva_identita_o_rifiuta(identita_id)
+
+    # Scopo: Attiva l'identita' dell'invito, comune ai due flussi (INVITO e
+    # CROSS): la veste nasce disattivata e diventa un accesso solo qui, al
+    # consumo del token. Rowcount 0 = identita' rimossa fra l'invito e il
+    # consumo: il token e' gia' marcato utilizzato DENTRO la transazione del
+    # chiamante, quindi sollevare fa rollback di consumo e password insieme,
+    # e l'admin rigenera l'invito.
+    def _attiva_identita_o_rifiuta(self, identita_id: int) -> None:
+        if _portale_repo.riattiva_identita(identita_id):
+            return
+        logger.warning(
+            "security.portale_attiva_identita_fallita identita_id=%s — "
+            "riga non trovata, rollback consume token",
+            identita_id,
+        )
+        ErrorManager.require(
+            False,
+            code=E_ATTIVAZIONE_PORTALE,
+            message=(
+                "Identita portale non piu' disponibile. "
+                "Contattare l'amministratore per un nuovo invito."
+            ),
+        )
 
 
 class ProfileActivateShopView(PortaleAPIView):

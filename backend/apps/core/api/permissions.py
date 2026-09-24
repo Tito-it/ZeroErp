@@ -253,27 +253,50 @@ class ZeroERPPermission(BasePermission):
     @staticmethod
     def _get_cache(request: Request) -> dict[str, Any]:
         """Scopo: Restituisce o crea la cache permessi per-request.
-        Tenta di pre-popolare da Redis (L2) se la cache L1 non esiste."""
+        Tenta di pre-popolare da Redis (L2) se la cache L1 non esiste.
+
+        ⛔ La L2 si usa solo col contesto di sessione (identita' + emittente
+        effettivo) che `set_jwt_gucs` segna sulla richiesta: i valori
+        dipendono dalle GUC, e una voce per il solo utente servirebbe a una
+        veste o a un emittente i permessi dell'altro. Senza contesto si
+        lavora sulla sola L1."""
         if not hasattr(request, "_zeroerp_perms_cache"):
             user = request.user
-            redis_data = load_user_cache(user.id) if user and user.is_authenticated else None
-            request._zeroerp_perms_cache = redis_data or {}  # type: ignore[attr-defined]
-            request._zeroerp_perms_cache_loaded_from_redis = redis_data is not None  # type: ignore[attr-defined]
+            contesto = getattr(request, "_zeroerp_perms_contesto", None)
+            valori, generazioni = (
+                load_user_cache(user.id, contesto)
+                if isinstance(contesto, str) and user and user.is_authenticated
+                else (None, None)
+            )
+            request._zeroerp_perms_cache = valori or {}  # type: ignore[attr-defined]
+            # Il contesto si fissa QUI, con i valori che la L1 conterra': se
+            # la richiesta riaprisse le GUC in un altro contesto, il
+            # salvataggio non deve scrivere sotto la chiave nuova valori
+            # calcolati nella vecchia.
+            request._zeroerp_perms_cache_contesto = contesto  # type: ignore[attr-defined]
+            request._zeroerp_perms_cache_generazioni = generazioni  # type: ignore[attr-defined]
+            request._zeroerp_perms_cache_voci_iniziali = len(request._zeroerp_perms_cache)  # type: ignore[attr-defined]
         return request._zeroerp_perms_cache  # type: ignore[attr-defined]
 
     @staticmethod
     def _save_cache_to_redis(request: Request) -> None:
-        """Scopo: Persiste la cache per-request su Redis se e' stata arricchita."""
+        """Scopo: Persiste la cache per-request su Redis se e' stata arricchita.
+
+        ⚠️ Solo se la richiesta ha AGGIUNTO voci: riscrivere una voce letta e
+        invariata ne rinnoverebbe il TTL a ogni richiesta, e per un utente
+        attivo la voce non scadrebbe mai (era cosi' fino al 2026-09-24)."""
         user = request.user
         if not user or not user.is_authenticated:
             return
         cache_dict = getattr(request, "_zeroerp_perms_cache", None)
-        if not cache_dict:
+        contesto = getattr(request, "_zeroerp_perms_cache_contesto", None)
+        generazioni = getattr(request, "_zeroerp_perms_cache_generazioni", None)
+        if not cache_dict or not isinstance(contesto, str) or generazioni is None:
             return
-        # Salva solo se la cache non proveniva gia' da Redis invariata
-        already_from_redis = getattr(request, "_zeroerp_perms_cache_loaded_from_redis", False)
-        if not already_from_redis or len(cache_dict) > 0:
-            save_user_cache(user.id, cache_dict)
+        voci_iniziali = getattr(request, "_zeroerp_perms_cache_voci_iniziali", 0)
+        if len(cache_dict) > voci_iniziali:
+            save_user_cache(user.id, contesto, cache_dict, generazioni)
+            request._zeroerp_perms_cache_voci_iniziali = len(cache_dict)  # type: ignore[attr-defined]
 
     @staticmethod
     def _get_model_meta(view: Any) -> tuple[str | None, str | None]:
