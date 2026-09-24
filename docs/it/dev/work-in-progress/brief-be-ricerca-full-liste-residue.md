@@ -18,6 +18,13 @@
 > `anagrafiche.soggetti`, `pagamenti.rate`. Richiesta al team DB:
 > [brief-db-ricerca-full-colonne-da-accendere](brief-db-ricerca-full-colonne-da-accendere.md).
 >
+> ✅ **Aggiornamento DB del 2026-09-24 sera:** le **due** richieste al team DB
+> sono **applicate** su dbdev: il seed del brief DB (§3.1-§3.5, compreso il
+> `codice` di `vendite.famiglie_documento`, changeSet `20260924-03…-07`) e il
+> codice `E_UI_CHIAMATA_NON_VALIDA` (§12). **I passi 7 e 8 sono sbloccati.**
+> Cosa diventa rosso lato BE fino alla conversione, e perché, è in §6.6 del
+> brief DB (è il segnale voluto).
+>
 > | Passo | Stato | Dove |
 > | --- | --- | --- |
 > | 0 — lettura DB delle colonne ricercabili, filtrata dai permessi | ✅ `ui.fn_lista_colonne_ricerca_full(lista_codice)`, applicata sul DB di sviluppo, pgTAP del team DB | [brief-db-ricerca-full-colonne-permessi](../work-done/brief-db-ricerca-full-colonne-permessi.md), PR #1656 |
@@ -30,8 +37,8 @@
 > | 5-bis — la configurazione dice se la lista cerca | ✅ `ricerca_full` nella configurazione della schermata (`GET /ui/liste/<codice>/config`, `UiService.get_lista_config_per_video` dal 24-09) | §7-bis |
 > | 5-ter — revisione del 24-09 | ✅ correzioni di fragilità e duplicazioni, BB `param_ricerca_full`, soglia negli strumenti AI | §11 |
 > | 6 — FE: casella solo se `ricerca_full` | ⏳ da aprire — pezzo condiviso, poi le 9 liste di §5.3 | §9 |
-> | 7 — dopo il seed DB | ⏳ convertire clienti, soggetti, rate, le 12 liste di §7-bis; togliere `codice_interno` da `uom_tipi` e `partita_iva` dagli emittenti | §9 |
-> | 8 — guardia di contesto utente su `ricerca_full` | ⏳ **aspetta il codice DB** `E_UI_CHIAMATA_NON_VALIDA` | §12 |
+> | 7 — dopo il seed DB | ⏳ convertire clienti, soggetti, rate, le 12 liste di §7-bis; togliere `codice_interno` da `uom_tipi` e `partita_iva` dagli emittenti. ✅ Seed DB **applicato il 24-09** (brief DB §6): **sbloccato** | §9 |
+> | 8 — guardia di contesto utente su `ricerca_full` | ⏳ BE — codice DB `E_UI_CHIAMATA_NON_VALIDA` **applicato il 24-09** (brief DB §6.4): **sbloccato** | §12 |
 >
 > Passi 1-2 mergiati (PR #1660); passi 3-5, 5-bis e 5-ter **non ancora
 > committati** su `dev/backend-tid` (al 24-09). Resta aperta **una** decisione: §6, la
@@ -493,7 +500,14 @@ catalogo, `search` su righe e movimenti) e cinque file di pagamenti che
 dicevano «questa lista non ha ricerca testuale»: ora dicono che il BE cerca
 dal 23-09 e che la casella arriva al passo 6. Il codice FE non è cambiato.
 
-## 12. La guardia di contesto utente — ⏳ richiesta al team DB
+## 12. La guardia di contesto utente — ✅ codice DB applicato, ⏳ BE
+
+> ✅ **2026-09-24, team DB**: `E_UI_CHIAMATA_NON_VALIDA` è a catalogo su dbdev
+> (`codici_errore.csv`, classe `TECNICO`; `messaggi_errore.csv`, id **1121**),
+> frase chiusa senza `%s`: *«Chiamata non valida alla configurazione della
+> lista: il contesto della richiesta non corrisponde all'utente.»* Restano i tre
+> passi BE qui sotto (rigenerare le policy: il DB è allineato). Dettaglio:
+> brief DB §6.4.
 
 **Il problema.** `get_lista_config_per_video` mette insieme due letture con
 due fonti diverse per l'utente:

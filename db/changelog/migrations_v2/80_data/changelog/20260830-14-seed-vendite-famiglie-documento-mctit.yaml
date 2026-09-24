@@ -149,6 +149,12 @@ databaseChangeLog:
               - column: { name: user_insert, type: STRING }
               - column: { name: data_update, type: STRING }
               - column: { name: user_update, type: STRING }
+              # ⭐ Aggiunta il 2026-09-24 (brief-db-ricerca-full-colonne-da-accendere
+              #   §3.5): il `codice` MODIFICABILE accanto al codice_interno, nato in
+              #   20260924-03/-06. Nel seed vale il codice_interno; il mirror lo
+              #   riscrive a ogni migrate, come la `descrizione`: sulle famiglie
+              #   seminate il valore lo decide questo CSV.
+              - column: { name: codice, type: STRING }
 
         - sql:
             splitStatements: false

@@ -59,8 +59,33 @@ percorso compare comunque — è il verso dell'errore scelto apposta, perché un
 collegamento in più costa una riga da guardare, uno in meno costa un caso non
 visto.
 
+### 🔄 rev 2026-09-24 — un controllo che **passa la parola** a un altro
+
+Certi controlli non scrivono i propri motivi: restituiscono quelli di un altro
+controllo, tutti o una parte. «Si può creare una revisione?» chiede a
+«i prezzi sono autorizzati?» e ne tiene solo il prezzo **in attesa**. È la
+forma giusta — la regola sul prezzo sta in un posto solo — ma questa vista si
+fermava al primo controllo, che di motivi suoi non ne ha, e il presidio del
+canale campo dava le due revisioni come «senza codice».
+
+Da questo giorno la vista **segue il passaggio**, anche su più livelli:
+
+| Il controllo… | … e la vista |
+| --- | --- |
+| **accoda** i motivi dell'altro (`v_motivi \|\| …`) o li prende per rilanciarli (`v_m := …`) | eredita tutti i suoi codici |
+| li **filtra** (`jsonb_agg` sugli elementi, `WHERE … ->> 'codice' = 'E_…'` o `IN (…)`) | eredita **solo** i codici del filtro |
+| li **conta** o ci fa un `IF`, e poi scrive un motivo suo | non eredita niente: il codice è il suo |
+
+⚠️ La terza riga non è un dettaglio: la prima stesura trattava ogni chiamata
+come un passaggio di parola, e metteva nel perimetro del rubinetto due punti
+del controllo di annullamento del preventivo, che i motivi dell'altro li conta
+e basta. Il filtro si legge solo nell'istruzione della chiamata; un filtro per
+esclusione (`<>`, `NOT IN`) non è riconosciuto, e allora si eredita tutto — un
+collegamento in più, mai uno in meno. Presidio: `test-punti-canale-campo-v1`,
+casi 15 e 16.
+
 Origine: `docs/it/dev/work-done/brief-be-presidio-ui-action-e-canale-campi.md`
-(§4-bis.2).
+(§4-bis.2); la revisione: `brief-db-ricerca-full-colonne-da-accendere` §7.
 
 ---
 

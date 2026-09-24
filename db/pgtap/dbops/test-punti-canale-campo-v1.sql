@@ -5,7 +5,7 @@
 --   contesto operatore non cambierebbe una riga del risultato, e metterlo
 --   darebbe l'impressione che la RLS qui sia esercitata, che sarebbe falso.
 -- pgtap-runner: owner
--- pgtap-runner-motivo: i test 3..14 CREANO uno schema di prova e funzioni
+-- pgtap-runner-motivo: i test 3..16 CREANO uno schema di prova e funzioni
 --   plpgsql (in transazione, poi annullata) perche' un criterio si prova
 --   COSTRUENDO i casi. E' DDL piu' CREATE FUNCTION: il ruolo applicativo non
 --   ne fa e non ne deve fare. Stesso criterio del gemello
@@ -16,10 +16,11 @@
 --
 -- ChangeSet di riferimento: 20260921-40 (risalita condivisa), 20260921-42
 --                           (la misura), 20260921-43..49 (la sanatura, 30 A),
---                           20260922-11..13 (i 9 A del §4-ter.2)
+--                           20260922-11..13 (i 9 A del §4-ter.2),
+--                           20260924-08 (la delega fra check, t.15-16)
 -- Brief: brief-be-presidio-ui-action-e-canale-campi §2, §3-bis.4, §4, §4-bis, §4-ter
 --
--- Indice test (plan 14):
+-- Indice test (plan 16):
 --   1) ⛔ LA SANATURA NON SI DISFA: i 27 guard sanati il 21-09 e le 8 funzioni
 --      del 22-09 portano ancora il canale (IN_CHIAMATA, chiave campo) per i
 --      loro codici — un corpo riemesso da uno YAML stantio qui diventa rosso
@@ -48,6 +49,13 @@
 --      punto»), n_chiamate 3, n_con_canale 2 (COSTRUITO)
 --  14) ⚠️ IL LIMITE: la chiave dentro un letterale jsonb ('{"campo":…}') non
 --      si vede — NESSUNO (COSTRUITO — dichiara il punto cieco)
+--  15) ⭐ LA DELEGA (20260924-08): una check che RESTITUISCE i motivi di
+--      un'altra ne eredita i codici — tutti se li accoda, i soli del filtro
+--      (`->> 'codice' = …`) se li filtra (COSTRUITO — la forma di
+--      script.fn_check_prezzi_in_attesa, che il 24-09 faceva ramo cieco nel 2)
+--  16) ⛔ IL CONSUMO non e' delega: una check che CONTA i motivi di un'altra
+--      emette il suo, e non eredita ne' codici ne' `valori` (COSTRUITO — il
+--      falso che la prima stesura di -08 dava al rubinetto)
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⛔ IL PROBLEMA, E PERCHE' NON SI VEDE.
@@ -78,7 +86,7 @@ BEGIN;
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(14);
+SELECT plan(16);
 
 -- ============================================================
 -- 1. ⛔ LA SANATURA NON SI DISFA
@@ -337,6 +345,72 @@ END
 $f$;
 
 -- La vista si legge UNA volta sui casi di prova: e' una scansione di pg_proc,
+-- 15) ⭐ LA DELEGA (20260924-08): una check che restituisce i motivi di
+--     un'altra. Filtrata (la forma di script.fn_check_prezzi_in_attesa) e
+--     accodata (la forma di fn_check_ddt_emittibile).
+CREATE FUNCTION pgtap_c2.fn_check_pgtap_filtra(p_x int)
+RETURNS jsonb LANGUAGE plpgsql AS $f$
+BEGIN
+    RETURN (
+        SELECT COALESCE(jsonb_agg(m.motivo ORDER BY m.pos), '[]'::jsonb)
+          FROM jsonb_array_elements(pgtap_c2.fn_check_pgtap_canale(p_x))
+               WITH ORDINALITY AS m(motivo, pos)
+         WHERE m.motivo ->> 'codice' = 'E_PGTAP_MOTIVO_CON');
+END
+$f$;
+
+CREATE FUNCTION pgtap_c2.fn_check_pgtap_accoda(p_x int)
+RETURNS jsonb LANGUAGE plpgsql AS $f$
+DECLARE
+    v_motivi jsonb := '[]'::jsonb;
+BEGIN
+    v_motivi := v_motivi || pgtap_c2.fn_check_pgtap_canale(p_x);
+    RETURN v_motivi;
+END
+$f$;
+
+CREATE FUNCTION pgtap_c2.fn_delega_filtrata(p_x int) RETURNS void LANGUAGE plpgsql AS $f$
+BEGIN
+    PERFORM script.fn_raise_primo_motivo_se_presente('dbops', 'pgtap',
+        pgtap_c2.fn_check_pgtap_filtra(p_x), NULL, NULL::uuid);
+END
+$f$;
+
+CREATE FUNCTION pgtap_c2.fn_delega_accodata(p_x int) RETURNS void LANGUAGE plpgsql AS $f$
+BEGIN
+    PERFORM script.fn_raise_primo_motivo_se_presente('dbops', 'pgtap',
+        pgtap_c2.fn_check_pgtap_accoda(p_x), NULL, NULL::uuid);
+END
+$f$;
+
+-- 16) ⛔ IL CONSUMO non e' una delega (la forma di
+--     fn_check_preventivo_annullabile): la check CONTA i motivi dell'altra ed
+--     emette un motivo SUO, senza `valori`.
+CREATE FUNCTION pgtap_c2.fn_check_pgtap_conta(p_x int)
+RETURNS jsonb LANGUAGE plpgsql AS $f$
+DECLARE
+    v_motivi jsonb := '[]'::jsonb;
+    v_n      integer;
+BEGIN
+    SELECT count(*) INTO v_n
+      FROM jsonb_array_elements(pgtap_c2.fn_check_pgtap_canale(p_x)) AS m
+     WHERE m ->> 'codice' = 'E_PGTAP_MOTIVO_CON';
+    IF v_n > 0 THEN
+        v_motivi := v_motivi || jsonb_build_object(
+            'codice', 'E_PGTAP_CONTATO',
+            'reason', 'CONTATO');
+    END IF;
+    RETURN v_motivi;
+END
+$f$;
+
+CREATE FUNCTION pgtap_c2.fn_consumo(p_x int) RETURNS void LANGUAGE plpgsql AS $f$
+BEGIN
+    PERFORM script.fn_raise_primo_motivo_se_presente('dbops', 'pgtap',
+        pgtap_c2.fn_check_pgtap_conta(p_x), NULL, NULL::uuid);
+END
+$f$;
+
 -- non una riga per test.
 CREATE TEMP TABLE _c2 AS
 SELECT * FROM dbops.vw_punti_canale_campo WHERE funzione LIKE 'pgtap_c2.%';
@@ -426,6 +500,32 @@ SELECT is(
     (SELECT canale FROM _c2 WHERE codice = 'E_PGTAP_LIMITE'),
     'NESSUNO',
     '14. IL LIMITE: la chiave dentro un letterale jsonb non si vede — NESSUNO. Il punto cieco e'' scritto, non nascosto'
+);
+
+-- ⭐ Una stringa sola per i due siti: filtrata = il SOLO codice del filtro
+--   (non l'unione della delegata), accodata = tutti. Il canale viene dal
+--   motivo della delegata, come nel 10.
+SELECT is(
+    (SELECT string_agg(funzione || '>' || codice || ':' || canale, ', ' ORDER BY funzione, codice)
+       FROM _c2
+      WHERE funzione IN ('pgtap_c2.fn_delega_filtrata', 'pgtap_c2.fn_delega_accodata')
+        AND via = 'PRIMO_MOTIVO'),
+    'pgtap_c2.fn_delega_accodata>E_PGTAP_MOTIVO_CON:IN_CHIAMATA, '
+    || 'pgtap_c2.fn_delega_accodata>E_PGTAP_MOTIVO_SENZA:NESSUNO, '
+    || 'pgtap_c2.fn_delega_filtrata>E_PGTAP_MOTIVO_CON:IN_CHIAMATA',
+    '15. LA DELEGA: una check che restituisce i motivi di un''altra ne eredita i codici — tutti se li accoda, i soli del filtro se li filtra (->> ''codice'' = ...). Prima: ramo cieco'
+);
+
+-- ⛔ Il gemello negativo, ed e' quello che il rubinetto aveva visto: contare
+--   i motivi di un'altra check non e' restituirli. Il sito eredita solo il
+--   codice che la check emette da se', e NON entra nel perimetro dei
+--   `valori` (la delegata li emette, la check che la conta no).
+SELECT is(
+    (SELECT string_agg(codice || ':' || check_emette_valori, ', ' ORDER BY codice)
+       FROM dbops.vw_funzioni_check_codici
+      WHERE funzione = 'pgtap_c2.fn_consumo'),
+    'E_PGTAP_CONTATO:false',
+    '16. IL CONSUMO non e'' delega: una check che CONTA i motivi di un''altra emette il suo, non eredita codici ne'' `valori`'
 );
 
 DROP SCHEMA pgtap_c2 CASCADE;
