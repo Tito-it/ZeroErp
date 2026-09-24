@@ -365,6 +365,20 @@ conto giusto.*
 **La ricerca non è un filtro** e resta **sempre** a video (slot `#sempre`): è il
 gesto principale di una lista, gli altri filtri la restringono.
 
+⭐ **Ma solo se la lista cerca** (Tid, 2026-09-23 — brief-be-ricerca-full-liste-residue
+§7-bis). La configurazione della lista porta `ricerca_full`: vero se il catalogo
+accende almeno una colonna in cui l'operatore può cercare. Lo scaffolding
+(`useListaConfigurabilePage`, quindi anche `useDrawerTabLista`) lo scrive in
+`store.ricercaFull`, e `<FiltriLista>` **non rende `#sempre`** quando è `false`.
+La chiave la dichiara **`useListaEmptyStateFetch`** (dal 2026-09-24), quindi la
+ha ogni store-lista, anche quelli scritti a mano: nessuno store la dichiara per
+conto suo. Nessuna view lo scrive a mano: la casella e il catalogo non possono più dire due
+cose diverse. ⚠️ Solo `false` la toglie — `null` («non si sa ancora») la lascia,
+così non lampeggia a ogni apertura. ⛔ Le caselle **senza lista a catalogo**
+(`GeoSearchTable`, `ConfigTablePanel`, i drawer di BoM e righe del contratto) e la
+casella della dashboard gruppi, fuori da `FiltriLista`, restano come sono: non
+hanno un catalogo da leggere.
+
 **I filtri si applicano subito**, a ogni cambio, anche col drawer aperto:
 `useStoreFilterBindings` scrive diretto sullo store, che è la sede del filtro.
 
@@ -1037,18 +1051,25 @@ le opzioni del core (`ricercaCorta`, `orderDirDefault`, `paramNames`), non un
 `fetchList` riscritto. Le liste che partono vuote dichiarano `gateKeys`.
 
 Il blocco che segue è **la regola che il BB applica**, lasciato qui perché si
-legga cosa fa — non un modello da copiare in uno store:
+legga cosa fa — non un modello da copiare in uno store.
+
+⛔ **La soglia della ricerca non si scrive sul posto** (dal 2026-09-24, regola del
+2): il termine si manda con **`paramsRicerca(f)`** e il «sto ancora digitando»
+si chiede a **`termineCorto(termine)`**, entrambi in `core/utils/listParams.js`,
+sulla costante `RICERCA.MIN_CARATTERI` (specchio di `RICERCA_MIN_CARATTERI` del
+backend). Anche uno store scritto a mano su `useListaEmptyStateFetch` li usa nel
+proprio `buildParams`: prima lo stesso `trim` + `>= 3` stava in sei store.
 
 ```js
 const hasSearched = ref(false)
 
 async function fetchList() {
   const f = filters.value
-  const searchTerm = (f.search || '').trim()
+  const searchTerm = termineRicerca(f)
   const hasFilters = f.filtro_1 != null || f.filtro_2 != null // adattare ai filtri reali
 
-  // Search con meno di 3 caratteri e nessun filtro attivo → ignora
-  if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) return
+  // Search sotto soglia e nessun filtro attivo → ignora
+  if (termineCorto(searchTerm) && !hasFilters) return
   // Primo caricamento senza filtri → resta vuoto
   if (!searchTerm && !hasFilters && !hasSearched.value) return
   // Search svuotata senza filtri → torna a stato vuoto
@@ -1061,8 +1082,7 @@ async function fetchList() {
 
   loading.value = true
   try {
-    const params = {}
-    if (searchTerm.length >= 3) params.search = searchTerm
+    const params = { ...paramsRicerca(f) }
     // ... costruzione params ...
     const res = await listEntita(params)
     items.value = res.data.data.results

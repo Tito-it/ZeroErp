@@ -12,15 +12,15 @@
 //    si digitano le righe, si abbinano alle rate e infine si REGISTRA, che e'
 //    l'unico gesto irreversibile del cantiere.
 //
-// ⚠️ Niente campo di ricerca, per ora: l'endpoint cerca dal 2026-09-23
-//    (brief-be-ricerca-full-liste-residue §5.3), ma la casella arriva col
-//    pezzo condiviso che la mostra solo se la configurazione dice
-//    `ricerca_full` (passo 6) — insieme all'inoltro della `search` nello store.
+// ⭐ La ricerca (brief-be-ricerca-full-liste-residue §5.3): la casella sta nel
+//    `#sempre` di `FiltriLista`, che la rende solo se la configurazione dice
+//    `ricerca_full` — le colonne le decide il catalogo, non questo file.
 // ⚠️ Niente export: il backend non espone `/export/` per questo dominio, e dal
 //    2026-07-31 il BB il pulsante non lo mette se non gli passi `exportFn`. Un
 //    pulsante che apre un dialogo inerte e' peggio della sua assenza.
 import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
 import Select from 'primevue/select'
 
@@ -46,7 +46,7 @@ const store = useDistinteStore()
 const isBlocked = useInjectBlocked()
 
 const {
-  onPage, onSort, applyFilters, paginatorProps, tablePage,
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   // ⭐ «Apri distinta» e non «Nuovo»: il gesto ha un nome nel dominio, e non e'
@@ -98,6 +98,16 @@ onMounted(() => store.fetchList())
     <template v-else>
       <div class="app-page-toolbar">
         <FiltriLista :store="store" :inert="perimetroBloccato">
+          <!-- La ricerca: colonne dal catalogo (`ricerca_full`: senza colonne
+               accese la casella non si rende), sotto 3 caratteri il termine
+               non filtra. -->
+          <template #sempre>
+            <InputText
+              v-model="searchText"
+              class="app-filter-w-lg"
+              :placeholder="t('common.search')"
+            />
+          </template>
           <LookupSelect
             v-model="statoFilter"
             class="app-filter-w-md"

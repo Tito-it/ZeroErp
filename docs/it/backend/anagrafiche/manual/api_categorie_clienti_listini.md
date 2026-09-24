@@ -29,7 +29,7 @@ classe_utenza, listino) si popolano dai rispettivi lookup specifici.
 
 | Parametro | Tipo | Descrizione |
 |---|---|---|
-| `search` | string | Ricerca su `categoria.codice`, `categoria.descrizione`, `listino.codice`, `listino.descrizione` (ILIKE) |
+| `search` | string | Ricerca libera sulle colonne che il catalogo della lista `anagrafiche.categorie_clienti_listini` accende per l'operatore (le decide il catalogo, non il codice: `ricerca_full` nella configurazione della lista). Da un carattere, senza 400: matrice di configurazione (Tid, 2026-09-24). |
 | `attivo` | bool | `true`/`false`/assente |
 | `categoria_cliente_id` | int | Filtro dimensionale |
 | `utility_id` | int | Filtro dimensionale |

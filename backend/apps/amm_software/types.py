@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 
 class OperatoreRow(TypedDict):
@@ -19,6 +19,9 @@ class OperatoreRow(TypedDict):
     last_name: str
     soggetto_cognome: str | None
     soggetto_nome: str | None
+    # Solo nella lista (colonna del catalogo e della ricerca, 2026-09-24): il
+    # dettaglio lo compone `script.fn_get_operatore_detail`, che non la porta.
+    soggetto_ragione_sociale: NotRequired[str | None]
     is_super_admin: bool
     ruolo_applicativo: str | None
     is_active: bool

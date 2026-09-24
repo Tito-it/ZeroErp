@@ -19,6 +19,8 @@ from django.db import DatabaseError, connection, transaction
 
 from apps.core.db._helpers import (
     LIST_MAX_LIMIT,
+    RicercaFull,
+    add_ricerca_full_condition,
     call_jsonb_fn,
     conta_con_perimetro,
     fetch_paged_with_total,
@@ -250,11 +252,31 @@ DASH_APERTO_FASI: tuple[str, ...] = (
 # questo valore non esiste).
 TIPO_GRUPPO_ONERI = "ONERI_COMMESSA"
 
-# Minimo di caratteri della ricerca libera (Policy-ricerca-e-paginazione).
-# Vive QUI e non nel service perche' il repository lo applica anche quando la
-# chiamata arriva dall'export, che non passa dalla validazione della view: una
-# sola sede, mai un 3 scritto in due posti che poi divergono.
-SEARCH_MIN_LEN = 3
+# Colonne su cui la ricerca libera della lista GRUPPI (D-6) SA cercare; quali
+# cerca davvero, per questo operatore, lo dice il catalogo a ogni ricerca
+# (`add_ricerca_full_condition`, brief-be-ricerca-full-liste-residue §2).
+# Sono cinque perche' l'operatore fa due domande diverse — «dammi tutto di
+# questo cliente» e «dov'e' finito ORD0005174» — e la seconda non si risponde
+# con un filtro strutturato.
+# ⭐ 2026-09-24 (passo 7 del brief): la lista cercava senza che il catalogo lo
+#    dichiarasse (§7-bis); il seed del team DB ha acceso le cinque colonne e la
+#    ricerca e' passata dal BB. ⛔ Ritirati nello stesso giro
+#    `DASH_COMPETENZA_GRUPPI_SEARCH_COLUMNS` (l'elenco cablato) e
+#    `SEARCH_MIN_LEN` (un 3 scritto qui accanto a quello del BB, cioe' la
+#    seconda sede che il suo stesso commento diceva di non volere): la soglia e'
+#    quella del BB, che vale anche per l'export perche' sta nel repository.
+# ⚠️ Costo dichiarato, non scoperto dopo: quattro di queste hanno un indice
+#    trigram a monte (ragione sociale, id fiscale, codice BA, codice commessa),
+#    `riferimento` NO — e' un `COALESCE` il cui primo ramo si risolve per riga
+#    (`vendite.fn_get_sorgente_documento_ref`, una tabella), quindi va valutato
+#    per ogni gruppo del perimetro PRIMA di poter filtrare. Resta dentro perche'
+#    e' la domanda che l'operatore fa davvero; se un mese pieno non reggesse, il
+#    rimedio NON e' togliere il campo ma ancorare la ricerca alla sorgente del
+#    documento (DL-2 del brief, aperto).
+_RICERCA_DASH_COMPETENZA_GRUPPI = RicercaFull(
+    "vendite.dash_competenza_gruppi",
+    ("riferimento", "cliente_display", "commessa_codice", "ba_codice_fatturazione", "id_fiscale"),
+)
 
 # Vocabolario dell'esito di esecuzione dentro un lotto — specchio Python del
 # CHECK `chk_lotti_gruppi_stato_esecuzione` (e del gemello sulle fatture del
@@ -2092,34 +2114,6 @@ class VenditeRepository:
         "ultimo_lotto_codice": "ultimo_lotto_codice",
     }
 
-    # Scopo: colonne su cui lavora la ricerca libera della lista gruppi (D-6).
-    #        Sono cinque perche' l'operatore fa due domande diverse — «dammi
-    #        tutto di questo cliente» e «dov'e' finito ORD0005174» — e la seconda
-    #        non si risponde con un filtro strutturato.
-    # ⚠️ Costo dichiarato, non scoperto dopo: quattro di queste hanno un indice
-    #        trigram a monte (ragione sociale, id fiscale, codice BA, codice
-    #        commessa), `riferimento` NO — e' un `COALESCE` il cui primo ramo si
-    #        risolve per riga, quindi va valutato per ogni gruppo del perimetro
-    #        PRIMA di poter filtrare. Resta dentro perche' e' la domanda che
-    #        l'operatore fa davvero; se un mese pieno non reggesse, il rimedio
-    #        NON e' togliere il campo ma ancorare la ricerca alla sorgente del
-    #        documento (DL-2 del brief).
-    # ⚠️ Questo commento diceva «`COALESCE(doc.codice, …)` su una LEFT JOIN
-    #        LATERAL che unisce sei rami»: dal 2026-09-01 e' FALSO — la vista
-    #        risolve con `vendite.fn_get_sorgente_documento_ref`, che legge UNA
-    #        tabella (brief-db-riferimento-gruppi-lateral-costosa). Il costo per
-    #        riga resta, la sua natura no: chi progettasse intorno alle «sei
-    #        scansioni» ottimizzerebbe una cosa che non c'e' piu'. ⛔ E cio' che
-    #        NON cambia e' la conclusione: la ricerca resta **non indicizzata**,
-    #        quindi il DL-2 resta aperto.
-    DASH_COMPETENZA_GRUPPI_SEARCH_COLUMNS = (
-        "g.cliente_display",
-        "g.id_fiscale",
-        "g.ba_codice_fatturazione",
-        "g.commessa_codice",
-        "g.riferimento",
-    )
-
     # Scopo: Elenco dei GRUPPI FATTURABILI di un mese/stadio — l'unita' su cui
     #        l'operatore decide nella card «Da emettere»: un documento sorgente
     #        (PRV-0012, CTR-0007…) oppure gli oneri di una commessa, che
@@ -2142,9 +2136,9 @@ class VenditeRepository:
     #        e' l'assenza del primo. Rappresentarla con un id sentinella (0, -1)
     #        avrebbe messo un valore finto in un campo che porta chiavi vere —
     #        e prima o poi qualcuno lo confronta con una PK.
-    # ⚠️ La ricerca sotto i 3 caratteri viene IGNORATA (non svuota la lista):
-    #        policy ricerca e paginazione. Il gate vero e' nel service, qui c'e'
-    #        la rete perche' il repository e' chiamato anche dall'export.
+    # ⚠️ La ricerca sotto la soglia del BB viene IGNORATA (non svuota la
+    #        lista): policy ricerca e paginazione. La soglia sta nel BB, cioe'
+    #        nel repository, perche' il repository e' chiamato anche dall'export.
     # Scopo: il perimetro BASE — competenza e stadio, e nient'altro.
     # ⭐ Separato dagli altri filtri perche' i due insiemi rispondono a domande
     #    diverse: la lista e i totali seguono TUTTI i filtri, le tre facet solo
@@ -2222,18 +2216,23 @@ class VenditeRepository:
             conditions.append("%s = ANY(g.registri_ids)")
             params.append(registro_id)
             colonne.append("g.registri_ids")
-        termine = (search or "").strip()
-        if len(termine) >= SEARCH_MIN_LEN:
-            # OR fra le cinque colonne, in UN solo gruppo parentesizzato: senza
-            # le parentesi l'OR si legherebbe all'ultima AND della catena e il
-            # filtro mese/stadio smetterebbe di valere per i rami successivi —
-            # una ricerca che allarga il perimetro invece di restringerlo.
-            rami = " OR ".join(
-                f"{col} ILIKE %s" for col in VenditeRepository.DASH_COMPETENZA_GRUPPI_SEARCH_COLUMNS
-            )
-            conditions.append(f"({rami})")
-            params.extend([f"%{termine}%"] * len(VenditeRepository.DASH_COMPETENZA_GRUPPI_SEARCH_COLUMNS))
-            colonne.extend(VenditeRepository.DASH_COMPETENZA_GRUPPI_SEARCH_COLUMNS)
+        # ── Ricerca libera (BB) ───────────────────────────────────────────
+        # Il BB scrive l'OR in UN solo gruppo parentesizzato: senza le
+        # parentesi l'OR si legherebbe all'ultima AND della catena e il filtro
+        # mese/stadio smetterebbe di valere per i rami successivi — una
+        # ricerca che allarga il perimetro invece di restringerlo.
+        # ⭐ Le COLONNE da portarsi dietro solo se il BB ha davvero aggiunto
+        #    una condizione (termine sopra soglia): «solo quando l'operatore ha
+        #    digitato qualcosa», come prima. Si dichiarano TUTTE quelle che il
+        #    repository sa cercare, non le sole accese: il catalogo si legge
+        #    dentro il BB, e un superinsieme non puo' mai mancarne una. Sono le
+        #    stesse cinque che la CTE `base` si portava dietro prima del BB.
+        prima = len(conditions)
+        add_ricerca_full_condition(
+            conditions, params, search, _RICERCA_DASH_COMPETENZA_GRUPPI, alias="g",
+        )
+        if len(conditions) > prima:
+            colonne.extend(_RICERCA_DASH_COMPETENZA_GRUPPI.espressioni("g").values())
         return conditions, params, colonne
 
     # Scopo: il predicato COMPLETO (base + filtri), com'era prima della

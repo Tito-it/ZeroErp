@@ -40,7 +40,6 @@ from apps.vendite.db.vendite_repository import (
     DASH_FATTURAZIONE_AREE,
     DASH_FATTURAZIONE_AREE_EURO,
     FONDI_DA_DECIDERE_MOTIVI,
-    SEARCH_MIN_LEN,
     STATI_ESECUZIONE_DOCUMENTO,
     VenditeRepository,
 )
@@ -1411,11 +1410,11 @@ def fn_dash_competenza_gruppi(
     # lista. Il termine arriva mentre l'operatore sta ancora digitando — un 400
     # al secondo carattere sarebbe un errore per un'azione legittima, e una
     # lista vuota gli direbbe «non c'e' niente» quando la verita' e' «non ti ho
-    # ancora cercato». Il filtro entra al terzo carattere (SEARCH_MIN_LEN, la
-    # soglia sta nel repository perche' vale anche per l'export).
-    termine = (search or "").strip()
-    search_attiva = len(termine) >= SEARCH_MIN_LEN
-    search_param = termine if search_attiva else None
+    # ancora cercato».
+    # ⭐ Dal 2026-09-24 la soglia la applica SOLO il BB `add_ricerca_full_condition`
+    #    nel repository (vale anche per l'export): qui il termine passa com'e'.
+    #    Il gate che stava qui era una seconda sede dello stesso 3
+    #    (`SEARCH_MIN_LEN`, ritirato col passaggio al BB).
     limit, offset = _paging_o_export(
         page=page, page_size=page_size, max_rows=max_rows,
         function_name="vendite.vendite_service.fn_dash_competenza_gruppi",
@@ -1431,7 +1430,7 @@ def fn_dash_competenza_gruppi(
         ba_non_determinabile=ba_non_determinabile,
         registro_id=registro_id,
         registro_non_risolvibile=registro_non_risolvibile,
-        search=search_param,
+        search=search,
         order_by=order_by,
         order_dir=order_dir,
         limit=limit,
@@ -1479,7 +1478,7 @@ def fn_dash_competenza_gruppi(
             ba_non_determinabile=ba_non_determinabile,
             registro_id=registro_id,
             registro_non_risolvibile=registro_non_risolvibile,
-            search=search_param,
+            search=search,
         )
     )
     # ℹ️ `n_gruppi_perimetro` arriva dallo stesso blocco: e' il conteggio del

@@ -41,6 +41,11 @@
    accende almeno una colonna per l'operatore, falso altrimenti — e falso
    subito se l'amministratore le spegne tutte. E' il dato con cui il frontend
    mostra la casella di ricerca (brief §7-bis).
+
+6. test_la_configurazione_rifiuta_un_contesto_di_un_altro_utente
+   La guardia di contesto (brief §12) sul DB vero: la GUC `app.current_user_id`
+   di un altro utente, o vuota, e' `E_UI_CHIAMATA_NON_VALIDA` — la
+   configurazione e la ricerca risponderebbero per due persone diverse.
 """
 
 from __future__ import annotations
@@ -68,6 +73,10 @@ _QUI = "apps.core.tests.db.test_ricerca_full_db.RicercaFullDbTests."
 _DOC = "apps.magazzino.tests.db.test_documento_interno_db.DocumentoInternoDbTests."
 _PAG = "apps.pagamenti.tests.db.test_rate_lista_db.RicercaListeDbTests."
 _MAG = "apps.magazzino.tests.db.test_anagrafiche_magazzino_db.AnagraficheMagazzinoDbTests."
+_TPL = "apps.documenti.tests.db.test_ricerca_liste_db.RicercaListeDocumentiDbTests."
+_EML = "apps.core.tests.db.test_ricerca_email_db.RicercaEmailDbTests."
+_ANA = "apps.anagrafiche.tests.db.test_ricerca_liste_db.RicercaListeAnagraficheDbTests."
+_VEN = "apps.vendite.tests.db.test_ricerca_liste_db.RicercaListeVenditeDbTests."
 _ESERCITATE_DAL_REPOSITORY: dict[str, str] = {
     "magazzino.magazzini": _MAG + "test_la_ricerca_trova_ogni_colonna_accesa",
     "magazzino.ubicazioni": _MAG + "test_la_ricerca_trova_ogni_colonna_accesa",
@@ -94,6 +103,19 @@ _ESERCITATE_DAL_REPOSITORY: dict[str, str] = {
     "pagamenti.distinta_righe": _PAG + "test_la_ricerca_trova_ogni_colonna_accesa",
     "pagamenti.rate_fuori_capienza": _PAG + "test_la_ricerca_trova_ogni_colonna_accesa",
     "pagamenti.eccedenze": _PAG + "test_la_ricerca_trova_ogni_colonna_accesa",
+    "pagamenti.rate": _PAG + "test_la_ricerca_trova_ogni_colonna_accesa",
+    "documenti.template_documenti": _TPL + "test_la_ricerca_trova_ogni_colonna_accesa",
+    "documenti.template_asset": _TPL + "test_la_ricerca_trova_ogni_colonna_accesa",
+    "config.email_account": _EML + "test_la_ricerca_trova_ogni_colonna_accesa",
+    "config.email_template": _EML + "test_la_ricerca_trova_ogni_colonna_accesa",
+    "config.email_log": _EML + "test_la_ricerca_trova_ogni_colonna_accesa",
+    "anagrafiche.soggetti": _ANA + "test_soggetti_trova_ogni_colonna_accesa",
+    "anagrafiche.categorie_clienti_listini": _ANA + "test_categorie_clienti_listini_trova_ogni_colonna_accesa",
+    "anagrafiche.operatori": _ANA + "test_operatori_trova_ogni_colonna_accesa",
+    "vendite.listini": _VEN + "test_la_ricerca_trova_ogni_colonna_accesa",
+    "vendite.listini_righe": _VEN + "test_la_ricerca_trova_ogni_colonna_accesa",
+    "vendite.promo_articoli": _VEN + "test_la_ricerca_trova_ogni_colonna_accesa",
+    "vendite.dash_competenza_gruppi": _VEN + "test_la_ricerca_trova_ogni_colonna_accesa",
 }
 
 
@@ -287,13 +309,13 @@ class RicercaFullDbTests(unittest.TestCase):
                 )
                 utr = cur.fetchone()
                 cur.execute(
-                    "SELECT ef.codice, s.ragione_sociale_completa, s.partita_iva "
+                    "SELECT ef.codice, s.ragione_sociale_completa, s.id_fiscale_univoco_cf_piva "
                     "  FROM anagrafiche.emittenti_fiscali ef "
                     "  JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ef.soggetto_ruolo_id "
                     "  JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id WHERE ef.id = %s",
                     [mondo["emittente_fiscale_id"]],
                 )
-                ef_codice, ef_ragione, ef_piva = cur.fetchone()
+                ef_codice, ef_ragione, ef_id_fiscale = cur.fetchone()
                 cur.execute(
                     "SELECT ba.codice, s.ragione_sociale_completa, s.id_fiscale_univoco_cf_piva "
                     "  FROM anagrafiche.billing_account ba "
@@ -337,7 +359,7 @@ class RicercaFullDbTests(unittest.TestCase):
                 _uom = {"attivo": None, "order_by": "codice", "order_dir": "asc", "limit": 200, "offset": 0}
                 verifica_ricerca_colonna_per_colonna(
                     self, cur, "catalogo.uom_tipi", uom_tipo,
-                    {"codice": "riccodut", "codice_interno": "ricintut", "descrizione": "ricdescut"},
+                    {"codice": "riccodut", "descrizione": "ricdescut"},
                     lambda t: CatalogoRepository().list_uom_tipi(search=t, **_uom)[0],
                 )
                 verifica_ricerca_colonna_per_colonna(
@@ -378,7 +400,8 @@ class RicercaFullDbTests(unittest.TestCase):
                 )
                 verifica_ricerca_colonna_per_colonna(
                     self, cur, "anagrafiche.emittenti_fiscali", mondo["emittente_fiscale_id"],
-                    {"codice": ef_codice, "ragione_sociale_completa": ef_ragione, "partita_iva": ef_piva},
+                    {"codice": ef_codice, "ragione_sociale_completa": ef_ragione,
+                     "id_fiscale_univoco_cf_piva": ef_id_fiscale},
                     lambda t: EmittentiFiscaliRepository().list_emittenti_fiscali(search=t, limit=500)[0],
                 )
                 verifica_ricerca_colonna_per_colonna(
@@ -412,6 +435,31 @@ class RicercaFullDbTests(unittest.TestCase):
                     " WHERE ld.id = lc.lista_id AND ld.codice = 'vendite.preventivi'"
                 )
                 self.assertFalse(svc.get_lista_config_per_video(utente, "vendite.preventivi")["ricerca_full"])
+                raise _Annulla
+        except _Annulla:
+            pass
+
+    def test_la_configurazione_rifiuta_un_contesto_di_un_altro_utente(self):
+        from django.contrib.auth import get_user_model
+
+        from apps.core.services.service_errors import ServiceError
+        from apps.ui.services.ui_service import E_UI_CHIAMATA_NON_VALIDA, UiService
+
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                uid = apri_contesto_operatore(cur)
+                utente = get_user_model().objects.get(pk=uid)
+                # Il contesto di sessione nomina un ALTRO utente: l'id non deve
+                # esistere, basta che sia diverso (la guardia confronta, non cerca).
+                cur.execute("SET LOCAL app.current_user_id = %s", [str(uid + 1_000_000)])
+                with self.assertRaises(ServiceError) as ctx:
+                    UiService().get_lista_config_per_video(utente, "vendite.preventivi")
+                self.assertEqual(ctx.exception.code, E_UI_CHIAMATA_NON_VALIDA)
+                # E vuoto, come fuori da una richiesta.
+                cur.execute("SET LOCAL app.current_user_id = ''")
+                with self.assertRaises(ServiceError) as ctx:
+                    UiService().get_lista_config_per_video(utente, "vendite.preventivi")
+                self.assertEqual(ctx.exception.code, E_UI_CHIAMATA_NON_VALIDA)
                 raise _Annulla
         except _Annulla:
             pass

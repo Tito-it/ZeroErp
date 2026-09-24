@@ -16,6 +16,7 @@
 //    l'abbia deciso.
 import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
 import Select from 'primevue/select'
 
@@ -39,7 +40,7 @@ const store = useEccedenzeStore()
 const isBlocked = useInjectBlocked()
 
 const {
-  onPage, onSort, applyFilters, paginatorProps, tablePage,
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   searchTableOptions: { defaultSortField: 'eccedenza_cliente', defaultSortOrder: 'desc' },
@@ -76,6 +77,16 @@ onMounted(() => store.fetchList())
     <template v-else>
       <div class="app-page-toolbar">
         <FiltriLista :store="store" :inert="perimetroBloccato">
+          <!-- La ricerca: colonne dal catalogo (`ricerca_full`: senza colonne
+               accese la casella non si rende), sotto 3 caratteri il termine
+               non filtra. -->
+          <template #sempre>
+            <InputText
+              v-model="searchText"
+              class="app-filter-w-lg"
+              :placeholder="t('common.search')"
+            />
+          </template>
           <Select
             v-model="creditoFilter"
             class="app-filter-w-md"

@@ -79,9 +79,13 @@ class CercaOperatoriTool(AITool):
 
         simplified = self.simplify_results(items, self._FIELD_MAP)
         # Arricchisci con nome_completo (campo calcolato)
+        # ⚠️ `soggetto_ragione_sociale`, il nome che `list_operatori` proietta
+        #    (dal 2026-09-24): fino ad allora qui si leggeva
+        #    `ragione_sociale_completa`, una chiave che la lista non ha mai
+        #    restituito, e il ramo era sempre vuoto.
         for i, item in enumerate(items):
             simplified[i]["nome_completo"] = (
-                item.get("ragione_sociale_completa")
+                item.get("soggetto_ragione_sociale")
                 or f"{item.get('first_name', '')} {item.get('last_name', '')}".strip()
                 or item.get("username", "")
             )

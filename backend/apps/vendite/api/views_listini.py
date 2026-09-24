@@ -15,6 +15,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
+from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import paginated_envelope, parse_list_params, qp_bool_optional, qp_int_strict, qp_str
 from apps.core.api.search_validators import require_min_search_length
@@ -177,7 +178,10 @@ class ApiListiniList(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY, required=False),
+            # ⚠️ Il 400 sotto soglia RESTA (`require_min_search_length` nel
+            #    `get`): la regola unica per le liste non di configurazione e'
+            #    la decisione aperta di brief-be-ricerca-full-liste-residue §6.
+            param_ricerca_full(rifiuta_sotto_soglia=True),
             OpenApiParameter(name="utility_id", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="tipologia_id", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
@@ -393,7 +397,7 @@ class ApiListinoVersioneRigheList(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="billing_account_id", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="utility_id", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),

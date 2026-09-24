@@ -973,6 +973,7 @@
       "schema_tabella": "Schema",
       "nome_tabella": "Table",
       "codice_immutabile": "The code cannot be changed: it is the target of the registers' reference, and changing it would detach them all.",
+      "codice_nasce_dal_interno": "On creation the code shown in the list equals the internal code; it can be changed afterwards, when editing.",
       "serie_hint": "Empty = this family does not handle series. If you fill it in, that column must also tell numbers apart on the document itself.",
       "billing_account_hint": "Empty = this family has no billing account (for instance a purchase order, whose counterparty is a supplier).",
       "registri_totali": "Registers, across all issuers",

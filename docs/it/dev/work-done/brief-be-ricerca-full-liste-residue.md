@@ -8,14 +8,23 @@
 > dall'estrazione del BB `add_ricerca_full_condition`, che ha già ritirato le
 > copie scritte a mano di **dieci** liste di vendite.
 >
-> **Stato 2026-09-24:** 🟡 in corso — passi 0-5 lato BE chiusi, tranne
-> tre liste che **aspettano il seed del team DB**; passo 6 (FE) da aprire.
-> Il 24-09: revisione del diff non committato (§11), regola del 2 sul
-> parametro OpenAPI `search`, soglia negli strumenti AI, `ricerca_full` solo
-> sulla schermata (§7-bis), e **una richiesta nuova al team DB**: il codice
-> della guardia di contesto utente (§12), che il BE aspetta.
-> `_DEBITO_RICERCA_A_MANO` è sceso da 32 a **3**: `anagrafiche.clienti`,
-> `anagrafiche.soggetti`, `pagamenti.rate`. Richiesta al team DB:
+> ✅ **CHIUSO il 2026-09-24 sera** (Tid) e archiviato in `work-done/`. La
+> ricerca libera di tutte le liste legge il catalogo, `_DEBITO_RICERCA_A_MANO`
+> è vuoto, la casella segue `ricerca_full`. **I residui non stanno più qui**:
+> la soglia della ricerca (§6, §13.3 f, §13.6) nel
+> [brief-db-be-fe-ricerca-soglia-per-lista](../work-in-progress/brief-db-be-fe-ricerca-soglia-per-lista.md);
+> il mirror del `codice` delle famiglie (§13.5), la gamba bundle non provata
+> (§13.3 g) e il giornale in UTC (§10) in PROJECT_CONTEXT § «Aperto — Media
+> priorità»; il collaudo a video in
+> [collaudo-in-app-casella-ricerca-liste](../work-in-progress/collaudo-in-app-casella-ricerca-liste.md).
+>
+> **Stato 2026-09-24 sera (prima della chiusura):** 🟡 in corso — **BE chiuso** (passi 0-5, 7, 8;
+> §13), passo 6 FE fatto (§13.5, collaudo a video da fare), revisione del diff
+> e BB frontend della ricerca (§13.7). Restano **due** richieste al team DB
+> (tre frecce di ordinamento, brief DB §8; la soglia per lista in
+> `ui.lista_definizione`, brief DB §9 — decisa da Tid, §13.6) e la loro
+> ricaduta BE/FE. Diff dei passi 6-8 **non committato**.
+> `_DEBITO_RICERCA_A_MANO` è **vuoto** (partito da 32). Richiesta al team DB:
 > [brief-db-ricerca-full-colonne-da-accendere](brief-db-ricerca-full-colonne-da-accendere.md).
 >
 > ✅ **Aggiornamento DB del 2026-09-24 sera:** le **due** richieste al team DB
@@ -36,14 +45,13 @@
 > | 5 — le 9 senza ricerca | ✅ BE / ⏳ FE — **BE fatto il 23-09**: `search` nelle view (anche negli export), BB nei repository, prova colonna per colonna sul DB vero (magazzino: `test_documento_interno_db` test 13; pagamenti: `test_rate_lista_db.RicercaListeDbTests`). Nessuna delle 9 mostrava la casella: ⏳ **FE da fare** (la casella legge `ricerca_full`) | §5.3 |
 > | 5-bis — la configurazione dice se la lista cerca | ✅ `ricerca_full` nella configurazione della schermata (`GET /ui/liste/<codice>/config`, `UiService.get_lista_config_per_video` dal 24-09) | §7-bis |
 > | 5-ter — revisione del 24-09 | ✅ correzioni di fragilità e duplicazioni, BB `param_ricerca_full`, soglia negli strumenti AI | §11 |
-> | 6 — FE: casella solo se `ricerca_full` | ⏳ da aprire — pezzo condiviso, poi le 9 liste di §5.3 | §9 |
-> | 7 — dopo il seed DB | ⏳ convertire clienti, soggetti, rate, le 12 liste di §7-bis; togliere `codice_interno` da `uom_tipi` e `partita_iva` dagli emittenti. ✅ Seed DB **applicato il 24-09** (brief DB §6): **sbloccato** | §9 |
-> | 8 — guardia di contesto utente su `ricerca_full` | ⏳ BE — codice DB `E_UI_CHIAMATA_NON_VALIDA` **applicato il 24-09** (brief DB §6.4): **sbloccato** | §12 |
+> | 6 — FE: casella solo se `ricerca_full` | ✅ 24-09 sera: pezzo condiviso (`store.ricercaFull` + `FiltriLista`) e casella sulle 9 liste di §5.3 (collaudo a video da fare) | §13.4 |
+> | 7 — dopo il seed DB | ✅ **24-09 sera**: clienti, soggetti, rate e le 12 liste di §7-bis sul BB, ognuna provata sul DB vero colonna per colonna; `codice_interno` tolto da `uom_tipi` e dai template, `partita_iva` dagli emittenti, `codice` alle famiglie; ritirati i due `_append_ilike_search` e la forma inline. **`_DEBITO_RICERCA_A_MANO` vuoto**. Clienti legge ora la vista del catalogo | §13 |
+> | 8 — guardia di contesto utente su `ricerca_full` | ✅ **24-09 sera**: policy rigenerate, ripiego, BB `utente_di_sessione` (copia di pagamenti ritirata), guardia in `get_lista_config_per_video` | §12, §13 |
 >
-> Passi 1-2 mergiati (PR #1660); passi 3-5, 5-bis e 5-ter **non ancora
-> committati** su `dev/backend-tid` (al 24-09). Resta aperta **una** decisione: §6, la
-> soglia delle liste non di configurazione (400 o ignorato). Le domande di §7 e
-> §7-bis sono tutte chiuse da Tid il 23-09.
+> Passi 1-2 mergiati (PR #1660), 3-5 committati (`93e98da5b`), 7-8 no.
+> Restano aperte §6 (la soglia delle liste non di configurazione: 400 o
+> ignorato) e le decisioni di §13.3.
 >
 > **Decisione di Tid (2026-09-23):** la lettura del catalogo a runtime si fa
 > **per prima**, così ogni lista si modifica una volta sola.
@@ -562,3 +570,201 @@ utente», e copre solo il caso della GUC vuota.
 3. la guardia in `get_lista_config_per_video`, con i test: GUC vuota → errore;
    GUC di un altro utente → errore; GUC uguale → `ricerca_full` letta.
 
+## 13. Passi 7 e 8 — fatto il 2026-09-24 sera
+
+### 13.1 Le liste convertite (passo 7)
+
+Registro e prove: `_RICERCHE` di `test_ricerca_full_seed` (54 liste, la
+fonte); per le liste senza `vista_sql` il test che le cerca dal repository sta
+in `_ESERCITATE_DAL_REPOSITORY` di `test_ricerca_full_db`. Ogni prova
+**costruisce** la sua riga (regola zero), e le prove nuove sono state
+verificate con mutazione (tolta una colonna dalla dichiarazione → rosso su
+quella colonna).
+
+| Lista | Dove | Soglia prima → dopo |
+| --- | --- | --- |
+| `anagrafiche.clienti` | `clienti_repository` — ⭐ **legge `vw_clienti_lista`**, la vista che il catalogo dichiarava: la query era una sua copia (stessi cinque join). Tupla su `v` | 1 carattere → ignorato sotto 3 |
+| `anagrafiche.soggetti` | `soggetti_repository`, tupla su `s` | 1 → ignorato sotto 3 |
+| `anagrafiche.categorie_clienti_listini` | mappa (le due descrizioni nuove) | 1 → ignorato sotto 3 (§13.3 b) |
+| `anagrafiche.operatori` | `amm_software_repository`, mappa; `soggetto_ragione_sociale` aggiunta alla `SELECT`; cognome e nome sul `COALESCE` che la lista mostra | 1 → ignorato sotto 3 |
+| `pagamenti.rate` | BB dentro `_condizioni(alias)`, un punto per pagina e perimetro `solo_aperte`; si cerca **anche il documento** (test rovesciato: `test_la_ricerca_libera_trova_il_cliente_e_il_documento`). Il filtro `fattura_numero` esatto non cambia | 400 sotto 3, invariato |
+| `catalogo.articoli` | `catalogo_repository`, tupla su `a`; la lookup articoli cerca sul posto con `escape_ilike` + `strip` | 400, invariato |
+| `documenti.template_documenti` · `template_asset` | `documenti_repository`; il `codice_interno` non si cerca più | 400, invariato (§13.3 a) |
+| `config.email_account` · `email_template` | `email_repository` | da 1 carattere, invariato |
+| `config.email_log` | `email_repository` (anche `/core/email/log/`, stessa query) | 1 → ignorato sotto 3 |
+| `vendite.listini` | `listini_repository`, tupla su `l` | 400, invariato |
+| `vendite.listini_righe` | una condizione sulla CTE `unione`, non una per gamba della `UNION ALL`; `total_count` conta le trovate | 1 → ignorato sotto 3 |
+| `vendite.promo_articoli` | mappa, `articolo_descrizione` nuova | 1 → ignorato sotto 3 |
+| `vendite.dash_competenza_gruppi` | `vendite_repository`, tupla su `g`; ritirati `DASH_COMPETENZA_GRUPPI_SEARCH_COLUMNS` e `SEARCH_MIN_LEN` (un secondo «3») | ignorato sotto 3, invariato |
+| `vendite.famiglie_documento` | `("codice", "descrizione", "prefisso_default")`: `codice` dentro, `codice_interno` fuori | da 1 carattere |
+| `catalogo.uom_tipi` · `anagrafiche.emittenti_fiscali` | tolti `codice_interno` e `partita_iva` | invariata |
+
+Ritirati: `catalogo_repository._append_ilike_search`, il gemello dei listini
+(le «tre liste» di §8 erano due: le righe lo chiamavano una volta per gamba),
+la forma inline di clienti e soggetti. `param_ricerca_full` su tutte le view,
+export compresi. Strumenti AI: `CercaOperatoriTool` leggeva
+`ragione_sociale_completa`, una chiave che la lista non ha mai restituito; ora
+`soggetto_ragione_sociale`.
+
+⚠️ Effetto comune su tutte le liste passate al BB: `%` e `_` non fanno più da
+jolly e il termine si ripulisce dagli spazi.
+
+### 13.2 La guardia di contesto (passo 8)
+
+- `error_policies_generated.py` rigenerato col DB allineato: **una** voce in
+  più, `E_UI_CHIAMATA_NON_VALIDA` (TECNICO); ripiego in
+  `error_messages_fallback.py`, frase del catalogo;
+- BB `utente_di_sessione()` in `core/db/_helpers.py` (a catalogo); la copia di
+  `pagamenti_repository.emittente_nel_perimetro` ritirata;
+- guardia in `UiService.get_lista_config_per_video` (via
+  `UiRepository.utente_di_sessione`), errore a diario (`log_to_db`) con
+  `lista_codice`, `auth_user_id`, `utente_di_sessione`. Test: `test_ui_service`
+  14-16, `test_ricerca_full_db` test 6 (GUC di un altro utente e GUC vuota sul
+  DB vero). Doc: `api_ui_liste.md`.
+
+Suite intera col DB vero (`ZEROERP_TEST_DB_E2E=1`, 5271 test): tre rossi.
+Due sono il seed di §13.3 c; il terzo,
+`test_risorsa_umana_dalla_madre.test_invalidate_department_lega_sulla_madre`
+(cache permessi), non è toccato da questo diff: il codice che prova è cambiato
+l'ultima volta in `d7cd55ec9`. Da guardare a parte.
+
+### 13.3 Decisioni per Tid
+
+> ✅ **Risposte di Tid del 2026-09-24 sera**: a, b, d come proposto, e anche il
+> passo 6 (§13.4). **e: il `codice` si modifica dal CRUD.** Fatto lo stesso
+> giorno, dettaglio in §13.5.
+
+a. **Template di documenti e asset: configurazione?** Oggi 400 sotto 3. Se sì:
+   `min_caratteri=1` nel repository e il 400 tolto dalle due view.
+b. **Matrice categorie-listini: configurazione?** È la gemella di
+   `tipi_ruolo_tipi_indirizzo` e `categorie_clienti`, che cercano da un
+   carattere. Proposta: `min_caratteri=1`.
+c. **Tre frecce di ordinamento** — richiesta al team DB (brief DB §8): le righe
+   932, 933, 934 sono nate `ordinabile = f`, ma le whitelist di promo e matrice
+   quelle colonne le ordinano già. `test_seed_offre_tutto_cio_che_il_backend_sa_ordinare`
+   è rosso finché il seed non le accende.
+d. **Il 400 delle rate ha un secondo nome**: `saldi_service` risponde
+   `E_PAGAMENTI_VALIDATION`, lo schema OpenAPI (`param_ricerca_full`) promette
+   `E_SEARCH_VALIDATION`, come ogni altra view. Proposta: una regola, un codice
+   — il service passa a `E_SEARCH_VALIDATION`.
+e. **Famiglie di documento, il `codice`**: il CRUD non lo scrive né lo
+   modifica (vale il default del trigger), e una creazione il cui
+   `codice_interno` coincide col `codice` di un'altra famiglia urta
+   `uq_famiglie_documento_codice` senza traduzione (errore generico). Il lookup
+   espone ancora il solo `codice_interno` (è la chiave dei registri) e la lista
+   si ordina per `codice_interno`. Da decidere se il `codice` diventa
+   modificabile dal CRUD.
+f. **`MIN_SEARCH_LENGTH_SOGGETTI = 3`** in `soggetti_repository`, esposta dal
+   resolver al frontend: stesso valore di `RICERCA_MIN_CARATTERI`, seconda
+   sede. Candidata alla regola del 2.
+g. **Righe di listino: la gamba dei compositi bundle** non ha una riga
+   costruita nella prova sul DB (fixture BoM pesante). La condizione è una sola
+   sull'unione, ma su quella gamba non è provata.
+
+### 13.4 Passo 6 (FE) — la forma proposta, ⏳ ok di Tid
+
+Un pezzo condiviso, non 43 view toccate una per una:
+
+- `useListaConfigurabilePage.onConfigLoaded` (e quindi `useDrawerTabLista`)
+  scrive `store.ricercaFull = config.ricerca_full`, come già scrive
+  `fetchSospesa`; lo store-lista dichiara la chiave (`null` finché la
+  configurazione non c'è);
+- `<FiltriLista>`, che lo store lo ha già, **non rende `#sempre`** quando
+  `store.ricercaFull === false`; `null` → la casella resta (niente lampeggio a
+  ogni apertura, e le superfici senza catalogo non cambiano);
+- le 9 liste di §5.3 prendono la casella e l'inoltro della `search` nello store;
+- restano fuori, e si dichiarano: le caselle senza lista a catalogo
+  (`GeoSearchTable`, `ConfigTablePanel`, BoM, righe del contratto,
+  impostazioni) e la dashboard gruppi, che ha una casella sua fuori da
+  `FiltriLista`.
+
+### 13.5 Fatto dopo le risposte di Tid (2026-09-24 sera)
+
+- **a, b** — template di documenti, asset e matrice categorie-listini cercano
+  **da un carattere**: `min_caratteri=1` nel repository, `param_ricerca_full(min_caratteri=1)`,
+  e il 400 tolto dalle due view dei template. Prova sul DB vero: un termine di
+  un carattere filtra (con la soglia di default sarebbe ignorato).
+- **d** — il 400 delle rate è `E_SEARCH_VALIDATION`, col campo `search`, come
+  ogni altra lista; test e `api_pagamenti.md` allineati.
+- **e** — il `codice` delle famiglie è scrivibile in **modifica**
+  (`_CAMPI_UPDATE`, schema del PATCH): vuoto → 400 col campo; il vincolo
+  `uq_famiglie_documento_codice` si traduce in `E_VENDITE_DUPLICATO` col campo
+  `codice` in modifica e `codice_interno` in creazione (alla nascita il codice
+  lo copia il trigger dal codice interno, e la madre non ha il parametro). Nel
+  drawer il campo c'è in modifica, con la nota in creazione. Prova sul DB vero
+  (`vendite/tests/db/test_famiglie_codice_db`): il nome del vincolo è quello che
+  PostgreSQL solleva. ⚠️ Sulle sei famiglie di **seed** il mirror del CSV
+  riscrive il `codice` a ogni migrate, come già la `descrizione`: una modifica
+  dal CRUD dura fino al migrate successivo. Da decidere se il mirror debba
+  smettere di riscriverli (team DB).
+- **Passo 6** — il pezzo condiviso: `useListaStoreCore` espone `ricercaFull`,
+  `useListaConfigurabilePage.onConfigLoaded` la scrive (e svuota una `search`
+  arrivata da fuori se la lista non cerca), `FiltriLista` non rende `#sempre`
+  quando è `false` (spec test 13). Standard e catalogo FE aggiornati. Le 9
+  liste di §5.3 hanno la casella (placeholder `common.search`): righe di
+  inventario e rettifica e righe di distinta nel drawer, il piano nel dialog,
+  movimenti e le quattro liste di pagamenti in pagina. I quattro store di
+  pagamenti scritti a mano ora inoltrano `search` e dichiarano `ricercaFull`
+  (spec `pagamenti/stores/ricercaFull.spec.js`). vitest 335/335, `guards`,
+  build verdi. ⏳ Collaudo a video: la casella c'è solo se `ricerca_full` è
+  vero per l'operatore.
+
+### 13.6 ⛔ Trovato il 2026-09-24 sera — la soglia «da un carattere» non arriva a video
+
+Le liste di configurazione cercano da un carattere **nel backend** (decisione
+di Tid del 23-09, §6), ma il frontend il termine lo manda **da tre**:
+`useListaStoreCore.paramsFiltro` (`searchTerm.length >= 3`, tutti gli store sul
+core) e `resiCoda`. Quindi «KG» su unità di misura, «FT» sulle famiglie, un
+codice di due lettere sui processi: la casella lo accetta, la richiesta parte
+senza `search`, e la lista resta intera — senza nessun errore. È un contratto
+dichiarato che nessun client esercita.
+
+La soglia oggi vive in **più** sedi che non si conoscono: `min_caratteri` della
+chiamata al BB nel repository e, nel frontend, il `3` di
+`useListaStoreCore.paramsFiltro`, di `resiCoda` e — dal passo 6 — dei quattro
+store di pagamenti scritti a mano (sei copie della stessa riga
+`trim` + `>= 3`). Qualunque strada si scelga, nel frontend la riga diventa un
+BB (`paramsRicerca(f, minCaratteri)` in `core/utils/listParams.js`) nello stesso
+giro. Strade:
+
+1. la soglia entra nella **configurazione** della lista, come `ricerca_full`
+   (`ricerca_min_caratteri`), e lo store la legge da lì: una sede, ma il
+   backend deve poterla dire — oggi sta nella chiamata, non in una
+   dichiarazione che il service della configurazione possa leggere
+   (servirebbe portarla nella `RicercaFull` e un registro lista → dichiarazione
+   lato BE, o una colonna di `ui.lista_definizione` lato DB);
+2. un'opzione dello store FE (`ricercaMinCaratteri: 1`) sulle liste di
+   configurazione: rapida, ma è la seconda copia dello stesso fatto.
+
+Proposta: la 1, con la soglia in `ui.lista_definizione` (una colonna, seed per
+le liste di configurazione) letta **anche** dal BB al posto di `min_caratteri`:
+il catalogo diventa la sede unica, come per le colonne. ✅ **Decisione di Tid
+(2026-09-24 sera, «ok a procedere»): la 1.** Richiesta al team DB nel
+[brief DB §9](brief-db-ricerca-full-colonne-da-accendere.md); BE e FE
+aspettano la colonna.
+
+### 13.7 Fatto il 2026-09-24 sera — revisione del diff e BB frontend della ricerca
+
+Rilettura critica del diff non committato dei passi 6-8 (Tid). Corretto:
+
+| Cosa | Dove | Correzione |
+| --- | --- | --- |
+| `__init__.py` vuoto: il controllo licenza (`check_license.py`, file aggiunti) avrebbe fermato il commit | `anagrafiche/tests/db/` | header, come il gemello di documenti |
+| `require_min_search_length` aveva `min_length=3` cablato: seconda sede di `RICERCA_MIN_CARATTERI` | `core/api/search_validators.py` | default dalla costante; il 400 porta `context={"field": …}` (convenzione api.md) su **tutte** le view che lo usano |
+| il 400 delle rate riscriveva a mano la regola del BB | `saldi_service.list_rate` | `require_min_search_length(search, field_name="search")` |
+| il duplicato del `codice` sceglieva il campo da `"codice" in dati`: un client che in creazione lo mandasse (ignorato dal DB) spostava l'errore sul campo sbagliato | `famiglie_service._traduci` | decide il verbo (`in_modifica`); test 15 |
+
+**Regola del 2 nel frontend (ok Tid)** — la soglia della §13.6, lato FE, prima
+della colonna DB:
+
+- `RICERCA.MIN_CARATTERI` in `core/constants.js`, specchio del BE;
+- `paramsRicerca(f, {minCaratteri?})` e `termineCorto(termine, {minCaratteri?})`
+  in `core/utils/listParams.js`: ritirate le sei copie di `trim` + `>= 3`
+  (`useListaStoreCore.paramsFiltro`, `resiCoda`, i quattro store di pagamenti)
+  e i due `< 3` di `useListaEmptyStateFetch`;
+- `ricercaFull` la dichiara **`useListaEmptyStateFetch`**: la stessa
+  dichiarazione stava in `useListaStoreCore` e nei quattro store di pagamenti.
+
+Prove: suite BE senza DB (i due rossi di §13.3 c, invariati), test sul DB vero
+delle aree toccate 22/22, vitest 339/339 (`listParams.spec` 8-11 nuovi),
+`guards`, eslint, build. Standard e catalogo FE aggiornati.

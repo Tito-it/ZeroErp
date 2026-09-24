@@ -973,6 +973,7 @@
       "schema_tabella": "Schema",
       "nome_tabella": "Tabella",
       "codice_immutabile": "Il codice non si cambia: è il bersaglio del riferimento dei registri, e cambiarlo li staccherebbe tutti.",
+      "codice_nasce_dal_interno": "Alla creazione il codice mostrato in lista vale il codice interno; si cambia poi, in modifica.",
       "serie_hint": "Vuota = questa famiglia non gestisce le serie. Se la compili, quella colonna deve distinguere il numero anche sul documento.",
       "billing_account_hint": "Vuota = questa famiglia non ha un billing account (per esempio un ordine di acquisto, la cui controparte è un fornitore).",
       "registri_totali": "Registri, su tutti gli emittenti",

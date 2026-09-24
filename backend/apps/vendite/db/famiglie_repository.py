@@ -84,9 +84,16 @@ _ORDER_DEFAULT = "codice_interno"
 # Colonne che la ricerca libera SA cercare nella lista `vendite.famiglie_documento`. Quali cerca
 # davvero lo decide il catalogo a ogni ricerca (`add_ricerca_full_condition`);
 # `test_ricerca_full_seed` verifica che coprano le `ricercabile_full` del seed.
+# ⭐ `codice` e non `codice_interno` (Tid, 2026-09-23; changeSet DB
+#    `20260924-03…-07`, brief-db-ricerca-full-colonne-da-accendere §3.5): il
+#    `codice_interno` e' la chiave immutabile del sistema — quella su cui si
+#    agganciano i registri — e non il codice dell'operatore. Il catalogo accende
+#    `codice` (riga 938) e spegne `codice_interno` (riga 630).
+# ⭐ La proiezione non si tocca: `SELECT v.*` porta gia' `codice`, che la vista
+#    espone in coda.
 _RICERCA = RicercaFull(
     "vendite.famiglie_documento",
-    ("codice_interno", "descrizione", "prefisso_default"),
+    ("codice", "descrizione", "prefisso_default"),
 )
 
 # Colonne jsonb: il backend Django per psycopg 3 le consegna come `str`.
@@ -141,7 +148,13 @@ _CAMPI_CREATE: tuple[str, ...] = (
 #    verrebbe respinto dal NOT NULL con un messaggio generico, su un campo che
 #    l'operatore non ha mai visto. In CREATE resta, perche' e' un parametro
 #    della madre e ha il suo default.
+# ⭐ `codice` c'e' dal 2026-09-24 (Tid): e' il codice dell'OPERATORE — mutabile,
+#    `UNIQUE`, `NOT NULL` — accanto al `codice_interno` immutabile su cui si
+#    agganciano i registri (changeSet `20260924-03…-07`). ⚠️ In CREATE non c'e':
+#    la madre non ha il parametro, e alla nascita il trigger
+#    `trg_famiglie_documento_a10_default_codice_ins` lo copia dal `codice_interno`.
 _CAMPI_UPDATE: tuple[str, ...] = (
+    "codice",
     "descrizione",
     "schema_tabella",
     "nome_tabella",

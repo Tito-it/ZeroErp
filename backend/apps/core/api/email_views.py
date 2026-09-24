@@ -29,6 +29,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.payload_validators import optional_int
 from apps.core.api.success_responses import success_response
 from apps.core.db.email_repository import EmailRepository
@@ -403,7 +404,10 @@ class EmailLogOperatoreListView(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False),
+            # Stessa query della lista `config.email_log` (`list_logs`): le
+            # colonne e la soglia sono quelle della sua dichiarazione nel
+            # repository, lette dal catalogo della lista.
+            param_ricerca_full(),
             OpenApiParameter(name="stato", type=str, required=False),
             OpenApiParameter(name="pratica_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False, description="Data inizio (YYYY-MM-DD)"),

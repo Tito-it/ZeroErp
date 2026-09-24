@@ -51,6 +51,8 @@
 //  10) ⭐ senza store, «Pulisci» compare solo se qualcuno ascolta `@pulisci`
 //  11) uno store che non dichiara le chiavi lo GRIDA in console
 //  12) la ricerca resta a video anche in compatta (D2)
+//  13) ⭐ una lista che NON cerca (`ricercaFull === false`) non ha casella,
+//      su entrambe le rese; `null` (non si sa ancora) la lascia
 // ------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -269,5 +271,25 @@ describe('FiltriLista', () => {
     expect(w.find('.app-page-filters--compatta .finta-ricerca').exists()).toBe(true)
     // ...e i filtri no: quelli sono scesi nel drawer (teleportato fuori da qui).
     expect(w.find('.finto-filtro').exists()).toBe(false)
+  })
+
+  // ⭐ La casella dice la stessa cosa del catalogo (brief ricerca full §7-bis):
+  //    su una lista senza colonne accese la ricerca non troverebbe niente.
+  //    ⚠️ Solo `false` la toglie: `null` e' «configurazione non ancora
+  //    arrivata», e una casella che sparisce e ricompare a ogni apertura
+  //    sarebbe peggio di una che arriva un istante dopo.
+  it('13) una lista che non cerca non ha la casella; `null` la lascia', () => {
+    for (const larghezza of [DESKTOP, COMPATTO]) {
+      finestra(larghezza)
+      const non = monta(FiltriLista, { store: { ...storeFinto(), ricercaFull: false } },
+        { slots: { sempre: RICERCA, default: FILTRO } })
+      expect(non.find('.finta-ricerca').exists()).toBe(false)
+      const ignoto = monta(FiltriLista, { store: { ...storeFinto(), ricercaFull: null } },
+        { slots: { sempre: RICERCA } })
+      expect(ignoto.find('.finta-ricerca').exists()).toBe(true)
+      const si = monta(FiltriLista, { store: { ...storeFinto(), ricercaFull: true } },
+        { slots: { sempre: RICERCA } })
+      expect(si.find('.finta-ricerca').exists()).toBe(true)
+    }
   })
 })

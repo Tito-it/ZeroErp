@@ -23,6 +23,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+from apps.core.api.search_validators import require_min_search_length
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_order_params
 from apps.pagamenti.db.pagamenti_repository import (
@@ -223,13 +224,13 @@ def list_rate(
         function_name=f"{_FN}.list_rate",
         nullable=True,
     )
-    ErrorManager.require(
-        search is None or len(search) >= 3,
-        code=E_VALIDAZIONE,
-        message="La ricerca richiede almeno 3 caratteri.",
-        context={"field": "search"},
-        function_name=f"{_FN}.list_rate",
-    )
+    # ⚠️ Il 400 sotto soglia RESTA (brief-be-ricerca-full-liste-residue §6,
+    #    decisione aperta sulle liste non di configurazione), col BB delle altre
+    #    view: stessa soglia del repository (`RICERCA_MIN_CARATTERI`), stesso
+    #    codice `E_SEARCH_VALIDATION` (Tid, 2026-09-24: una regola, un nome —
+    #    fino ad allora qui era `E_PAGAMENTI_VALIDATION`, e lo schema OpenAPI
+    #    prometteva l'altro), col campo nel contesto.
+    require_min_search_length(search, field_name="search")
     repository = PagamentiRepository()
     results, total = repository.list_rate_paginata(
         auth_user_id=auth_user_id,

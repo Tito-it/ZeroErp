@@ -19,18 +19,17 @@ import { ref } from 'vue'
 
 import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
 import { PAGINATION } from '../../core/constants'
-import { paramsPagina } from '../../core/utils/listParams'
+import { paramsPagina, paramsRicerca } from '../../core/utils/listParams'
 import { listDistinte } from '../api/pagamenti'
 import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
 
 // Scopo: filtri dello store -> query param dell'endpoint.
-// Note: ⚠️ La `search` NON si inoltra ANCORA: il backend la accetta dal
-//       2026-09-23 (brief-be-ricerca-full-liste-residue §5.3), ma il campo non
-//       e' montato nella pagina — arriva col pezzo condiviso che legge
-//       `ricerca_full` dalla configurazione della lista (passo 6), e allora
-//       si inoltra anche qui, nello stesso giro.
+// Note: la `search` si inoltra con `paramsRicerca` (brief-be-ricerca-full-liste-
+//       residue §5.3): colonne dal catalogo, casella solo se `ricerca_full`.
 function buildParams(f) {
   const p = paramsPagina(f)
+  // La ricerca libera con la regola comune (`paramsRicerca`: trim, soglia unica).
+  Object.assign(p, paramsRicerca(f))
   if (f.stato) p.stato = f.stato
   if (f.origine) p.origine = f.origine
   if (f.centro_riscossione_id != null) p.centro_riscossione_id = f.centro_riscossione_id
@@ -62,12 +61,10 @@ export const useDistinteStore = defineStore(
 
     const filters = ref({
       ...FILTRI_DEFAULT,
-      // ⚠️ NON si inoltra ANCORA al backend: l'endpoint cerca dal 2026-09-23
-      // (brief-be-ricerca-full-liste-residue §5.3), ma la casella si monta
-      // solo col pezzo condiviso che legge `ricerca_full` (passo 6). Fino ad
-      // allora la chiave si DICHIARA: fa parte del contratto di `useSearchTable`, che
-      // la scrive su ricerca universale / deep-link `?search=` — e una chiave
-      // che nasce per assegnazione e' una chiave che nessuno ha deciso.
+      // La ricerca libera: la scrive `useSearchTable` (casella nel `#sempre`
+      // di `FiltriLista`, ricerca universale, deep-link `?search=`), la
+      // inoltra `buildParams` (`paramsRicerca`). Le colonne le decide il
+      // catalogo (brief-be-ricerca-full-liste-residue §5.3).
       search: '',
       limit: PAGINATION.DEFAULT_ROWS,
       offset: 0,
@@ -77,7 +74,8 @@ export const useDistinteStore = defineStore(
       order_dir: 'desc',
     })
 
-    const { items, totalRecords, loading, hasSearched, fetchList } =
+    // `ricercaFull` (la lista cerca?) la dichiara il BB di stato.
+    const { items, totalRecords, loading, hasSearched, ricercaFull, fetchList } =
       useListaEmptyStateFetch({
         filters,
         buildParams,
@@ -92,7 +90,7 @@ export const useDistinteStore = defineStore(
     })
 
     return {
-      items, totalRecords, loading, hasSearched, filters, fetchList,
+      items, totalRecords, loading, hasSearched, filters, fetchList, ricercaFull,
       chiaviFiltro, filtriDefault, azzeraFiltri,
     }
   },

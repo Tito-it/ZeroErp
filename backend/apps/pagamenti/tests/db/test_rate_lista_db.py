@@ -27,7 +27,7 @@ Indice test eseguiti:
 2) RateListaDbTests.test_i_saldi_arrivano_per_ogni_rata_della_pagina
 3) RateListaDbTests.test_solo_aperte_toglie_la_rata_esaurita
 4) RateListaDbTests.test_ogni_ordinamento_della_whitelist_esegue
-5) RateListaDbTests.test_la_ricerca_libera_trova_il_cliente_non_il_numero
+5) RateListaDbTests.test_la_ricerca_libera_trova_il_cliente_e_il_documento
 5-bis) RateListaDbTests.test_la_bozza_esce_dal_perimetro_in_entrambi_i_rami
 6) RigheDaRateDbTests.test_parziale_poi_il_secondo_tempo_per_riga
 7) RicercaListeDbTests.test_la_ricerca_trova_ogni_colonna_accesa
@@ -252,23 +252,47 @@ class RateListaDbTests(_MondoRateDbTests):
             return True
         self.assertTrue(self._nel_mondo(_prova))
 
-    # Scopo: la ricerca libera cerca il CLIENTE (ragione sociale, BA, id
-    #        fiscale), non il numero: «101» come `search` non trova per numero.
-    def test_la_ricerca_libera_trova_il_cliente_non_il_numero(self):
+    # Scopo: la ricerca libera cerca il CLIENTE **e il documento** (Tid,
+    #        2026-09-23, brief-be-ricerca-full-liste-residue §7) — e resta una
+    #        cosa DIVERSA dal filtro esatto `fattura_numero`: «101» come
+    #        `search` porta la 101 E la 1010 (e' un `ILIKE`), «101» come
+    #        `fattura_numero` porta la sola 101 (test 1).
+    # ⭐ Provata nei DUE rami, perche' il BB sta dentro `_condizioni(alias)`:
+    #    con `solo_aperte` la ricerca cade anche sul PERIMETRO (`p`) del
+    #    nucleo, e la 1010 — saldata — esce anche se il termine la trova.
+    # ⚠️ Fino al 24-09 questo test fissava il contrario («mai il numero»):
+    #    rovesciato col passaggio della lista al catalogo.
+    def test_la_ricerca_libera_trova_il_cliente_e_il_documento(self):
         def _prova(cur, rate, ba_id):
             cur.execute(
                 "SELECT ba.codice FROM anagrafiche.billing_account ba WHERE ba.id = %s", [ba_id]
             )
             row = cur.fetchone()
             assert row is not None
+
+            # Scopo: gli id delle rate che la ricerca porta, nel cliente del mondo.
+            def _ids(termine: str, **filtri) -> set[int]:
+                esito = saldi_service.list_rate(
+                    auth_user_id=None, limit=50, billing_account_id=ba_id,
+                    search=termine, **filtri,
+                )
+                return {int(r["scadenza_id"]) for r in esito["results"]}
+
             per_ba = saldi_service.list_rate(auth_user_id=None, limit=50, search=str(row[0]))
-            per_numero = saldi_service.list_rate(
-                auth_user_id=None, limit=50, billing_account_id=ba_id, search="1010",
+            return (
+                rate,
+                per_ba["count"],
+                _ids("101"),
+                _ids("1010"),
+                _ids("101", solo_aperte=True),
+                _ids("1010", solo_aperte=True),
             )
-            return per_ba["count"], per_numero["count"]
-        per_ba, per_numero = self._nel_mondo(_prova)
+        rate, per_ba, per_101, per_1010, aperte_101, aperte_1010 = self._nel_mondo(_prova)
         self.assertEqual(per_ba, 2)
-        self.assertEqual(per_numero, 0)
+        self.assertEqual(per_101, {rate[1], rate[2]})
+        self.assertEqual(per_1010, {rate[2]})
+        self.assertEqual(aperte_101, {rate[1]})
+        self.assertEqual(aperte_1010, set())
 
 
     # Scopo: ⛔ La rata della BOZZA resta fuori DA SOLA (rilievo di Tid, 18/09;
@@ -498,11 +522,12 @@ _FIXTURE_RICERCA: tuple[str, ...] = (
 
 
 class RicercaListeDbTests(_MondoRateDbTests):
-    """La ricerca libera delle cinque liste di pagamenti (brief-be-ricerca-full-
-    liste-residue §5.3): per ogni colonna che il CATALOGO accende, il valore di
-    una riga costruita la trova (`verifica_ricerca_colonna_per_colonna`). Le
-    liste non hanno `vista_sql`: questo e' il loro esercizio sul DB vero
-    (`test_ricerca_full_db` lo nomina)."""
+    """La ricerca libera delle sei liste di pagamenti (brief-be-ricerca-full-
+    liste-residue §5.3, e `pagamenti.rate` dal passo 7): per ogni colonna che
+    il CATALOGO accende, il valore di una riga costruita la trova
+    (`verifica_ricerca_colonna_per_colonna`). Le liste non hanno `vista_sql`:
+    questo e' il loro esercizio sul DB vero (`test_ricerca_full_db` lo
+    nomina)."""
 
     def test_la_ricerca_trova_ogni_colonna_accesa(self):
         def _prova(cur, rate, ba_id):
@@ -551,6 +576,30 @@ class RicercaListeDbTests(_MondoRateDbTests):
                 self, cur, "pagamenti.rate_fuori_capienza", rate[1],
                 {"fattura_numero": "101", "numero_documento": "101 - A"},
                 lambda t: pagamenti_service.list_rate_fuori_capienza(search=t, page_size=200)["results"],
+                chiave="scadenza_id",
+            )
+            # ⭐ Le rate (dal 24-09 sul catalogo): i valori si leggono dalla
+            #    VISTA che la lista mostra, sulla rata della 101 costruita qui —
+            #    si cerca su cio' che si mostra. ⚠️ Un valore NULL non sarebbe
+            #    una prova (un `ILIKE` su NULL non trova niente e il rosso
+            #    direbbe «ricerca rotta» per una fixture vuota): si pretende.
+            cur.execute(
+                "SELECT numero_documento, ragione_sociale_completa, ba_codice, "
+                "       id_fiscale_univoco_cf_piva "
+                "  FROM vendite.vw_fatture_scadenze_lista WHERE scadenza_id = %s",
+                [rate[1]],
+            )
+            valori_rata = dict(zip(
+                ("numero_documento", "ragione_sociale_completa", "ba_codice",
+                 "id_fiscale_univoco_cf_piva"),
+                cur.fetchone(),
+            ))
+            self.assertTrue(all(valori_rata.values()), f"rata della 101 senza un valore: {valori_rata}")
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "pagamenti.rate", rate[1], valori_rata,
+                lambda t: saldi_service.list_rate(
+                    auth_user_id=None, search=t, limit=200,
+                )["results"],
                 chiave="scadenza_id",
             )
             verifica_ricerca_colonna_per_colonna(

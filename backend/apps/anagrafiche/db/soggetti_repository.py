@@ -13,6 +13,8 @@ import json
 from typing import Any
 
 from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
     sql_order_clause,
     escape_ilike,
     extract_paginated,
@@ -43,6 +45,16 @@ _SOGGETTI_ORDER_COLS: dict[str, str] = {
     "tipo_descrizione": "tipo_descrizione",
     "data_insert": "s.data_insert",
 }
+
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+# ⭐ L'id fiscale univoco e non CF e P.IVA separati (Tid, 2026-09-23): come
+#    fornitori, clienti ed emittenti. Fino al 2026-09-24 la ricerca era scritta
+#    a mano qui e cercava `codice_fiscale` e `partita_iva` nudi.
+#    Nessun termine si perde: la colonna GENERATED porta `cf || ' ' || piva`
+#    quando i due differiscono, altrimenti quello che c'e'.
+_RICERCA_SOGGETTI = RicercaFull(
+    "anagrafiche.soggetti", ("ragione_sociale_completa", "id_fiscale_univoco_cf_piva"),
+)
 
 # Scopo: clausola scope emittente sul ruolo CL (regola del 2: usata da
 #        list_soggetti, get_soggetto_ruoli e search_ruoli_lookup). Un ruolo CL
@@ -123,8 +135,8 @@ class SoggettiRepository:
     # Lista e dettaglio soggetti
     # =================================================================
 
-    # Scopo: Lista paginata soggetti con search su ragione_sociale_completa,
-    #        codice_fiscale, partita_iva. Filtro per tipo_soggetto_dettaglio_id.
+    # Scopo: Lista paginata soggetti con la ricerca libera del catalogo
+    #        (`_RICERCA_SOGGETTI`) e filtro per tipo_soggetto_dettaglio_id.
     def list_soggetti(
         self, *, search: str | None = None,
         tipo_soggetto_dettaglio_id: int | None = None,
@@ -138,9 +150,14 @@ class SoggettiRepository:
             default=_SOGGETTI_ORDER_COLS["ragione_sociale_completa"],
             tiebreak="s.id",
         )
-        # escape_ilike: senza, una search contenente %/_ agisce da wildcard
-        # (stesso fix dei lookup BA/istanze/soggetti-ruoli).
-        search_pattern = f"%{escape_ilike(search.strip())}%" if search and search.strip() else None
+        # ⚠️ I due parametri dello scope dei ruoli stanno nella SELECT (la
+        #    subquery dei badge), quindi PRIMA di quelli del WHERE.
+        params: list[Any] = [emittente_ids, emittente_ids]
+        conditions: list[str] = ["(%s::bigint IS NULL OR s.tipo_soggetto_dettaglio_id = %s)"]
+        params.extend([tipo_soggetto_dettaglio_id, tipo_soggetto_dettaglio_id])
+        # ⚠️ Sotto `RICERCA_MIN_CARATTERI` (3) il termine non filtra: fino al
+        #    2026-09-24 la ricerca scritta a mano filtrava da un carattere.
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_SOGGETTI, alias="s")
         sql = f"""
             SELECT s.id, s.codice, s.ragione_sociale_completa, s.codice_fiscale,
                    s.partita_iva, s.id_fiscale_univoco_cf_piva,
@@ -162,21 +179,11 @@ class SoggettiRepository:
               FROM anagrafiche.soggetti s
               JOIN config.tipi_soggetto_dettaglio tsd ON tsd.id = s.tipo_soggetto_dettaglio_id
               JOIN config.tipi_soggetto ts ON ts.id = tsd.tipo_soggetto_id
-             WHERE (%s::text IS NULL OR (
-                       s.ragione_sociale_completa ILIKE %s
-                    OR s.codice_fiscale ILIKE %s
-                    OR s.partita_iva ILIKE %s
-                   ))
-               AND (%s::bigint IS NULL OR s.tipo_soggetto_dettaglio_id = %s)
+             WHERE {" AND ".join(conditions)}
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
-        params = [
-            emittente_ids, emittente_ids,
-            search_pattern, search_pattern, search_pattern, search_pattern,
-            tipo_soggetto_dettaglio_id, tipo_soggetto_dettaglio_id,
-            limit, offset,
-        ]
+        params.extend([limit, offset])
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             results, total_count = extract_paginated(cursor)

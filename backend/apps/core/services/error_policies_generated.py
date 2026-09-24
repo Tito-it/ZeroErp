@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 913, di cui 98 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 914, di cui 98 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1283,6 +1283,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_TXID_DBLINK_NULL": "AVVISO",
     "E_TXID_GENERATION": "TECNICO",
     "E_UI_CAMPO_SORGENTE_NON_TROVATO": "DATO_ERRATO",
+    # Guard di contesto delle liste configurabili su una condizione che NESSUNA interfaccia puo' produrre: il backend (apps/ui/services/ui_service.get_lista_config_per_video) legge la configurazione della lista per l'utente della chiamata (auth_user_id esplicito) e ricerca_full per l'utente del contesto di sessione (GUC app.current_user_id, impostata da JwtAuditMiddleware). Se la GUC e' vuota o nomina un altro utente, le due letture rispondono per due persone diverse: la casella di ricerca direbbe una cosa e la ricerca ne farebbe un'altra (le colonne sensibili senza grant), senza errore. Lo solleva il BACKEND, non una funzione PL/pgSQL: il catalogo lo registra perche' ogni codice che l'applicazione nomina deve avere la sua classe. Gemello di E_MAG_, E_PAGAMENTI_ ed E_VENDITE_CHIAMATA_NON_VALIDA, TECNICO per la stessa ragione: e' rotto il chiamante, l'operatore non ha niente da correggere. ⛔ Non E_UI_GENERIC_FAILED (DATO_ERRATO: direbbe «correggi e riprova» su un guasto di contesto) e non E_SCOPE_SENZA_UTENTE (copre solo la GUC vuota, e parla di scritture su tabelle con perimetro). ⛔ Frase CHIUSA, senza segnaposto: nessuna funzione PL/pgSQL la riempie, e un %s uscirebbe grezzo a video; lista_codice, auth_user_id e l'utente della GUC vanno nel contesto dell'errore. Nasce il 2026-09-24 (brief-be-ricerca-full-liste-residue, sezione 12).
+    "E_UI_CHIAMATA_NON_VALIDA": "TECNICO",
     "E_UI_COLONNA_IN_USO": "CONFLITTO_STATO",
     "E_UI_COLONNA_NON_TROVATA": "NON_TROVATO",
     "E_UI_COLONNA_VALIDAZIONE": "DATO_ERRATO",

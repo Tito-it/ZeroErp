@@ -81,6 +81,9 @@ def _escludi_riga_id(request: Request) -> int | None:
 # residue §5.3): nessun 400 sotto soglia (la soglia delle liste non di
 # configurazione e' la decisione aperta di §6).
 _PARAM_SEARCH = param_ricerca_full()
+# ⚠️ Le rate rifiutano il termine corto con un 400 (`saldi_service.list_rate`):
+#    la soglia che OpenAPI dichiara e' quella vera della view.
+_PARAM_SEARCH_RATE = param_ricerca_full(rifiuta_sotto_soglia=True)
 
 _PARAM_SCARTATE = OpenApiParameter(
     name="scartate", type=bool, location=OpenApiParameter.QUERY, required=False,
@@ -894,14 +897,10 @@ class ApiRateList(DomainAPIView):
             OpenApiParameter(
                 name="anno", type=int, location=OpenApiParameter.QUERY, required=False,
             ),
-            OpenApiParameter(
-                name="search", type=str, location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "Ricerca libera (min 3) su ragione sociale, codice BA, id "
-                    "fiscale del CLIENTE — non sul numero, che e' esatto."
-                ),
-            ),
+            # ⭐ Dal 2026-09-24 sul BB: le colonne le dice il catalogo (anche il
+            #    numero documento), e la soglia vera e' il 400 del service (§6).
+            #    ⚠️ Non confonderla con `fattura_numero`, il filtro ESATTO.
+            _PARAM_SEARCH_RATE,
             OpenApiParameter(
                 name="solo_aperte", type=bool, location=OpenApiParameter.QUERY,
                 required=False,

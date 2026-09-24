@@ -4,6 +4,19 @@
 >
 > **Da leggere per primo: §6.6 (cosa resta al BE).**
 >
+> ✅ **CHIUSO il 2026-09-24 sera** (Tid) e archiviato in `work-done/`: §3.1-§3.5
+> e il codice errore sono applicati su dbdev, e il BE ha convertito le liste.
+> **Le due richieste rimaste aperte sono passate** al
+> [brief-db-be-fe-ricerca-soglia-per-lista](../work-in-progress/brief-db-be-fe-ricerca-soglia-per-lista.md):
+> §8 (tre frecce di ordinamento) è la sua §1, §9 (la soglia per lista) la sua
+> §4. Qui restano per la storia: **non si eseguono da qui**.
+>
+> ⏳ **Aggiornamento BE del 2026-09-24 sera:** il BE ha convertito tutte le
+> liste (brief BE §13). **Due richieste nuove al team DB**: §8, tre righe del
+> seed nate `ordinabile = f` che il BE sa già ordinare; **§9, la soglia della
+> ricerca per lista in `ui.lista_definizione`** (decisione di Tid del
+> 2026-09-24, brief BE §13.6). Il brief si archivia dopo quelle.
+>
 > **Stato 2026-09-24 sera:** ✅ **lato DB CHIUSO** — applicato da Tid su dbdev
 > e sullo scratch (`20260924-03…-08`, seed, codice errore), pgTAP verdi col
 > runner; ⏳ resta da committare. Verificato sul vivo dopo l'apply: colonna
@@ -384,3 +397,84 @@ Ricontrollati gli altri pgTAP che creano revisioni: `test-date-consegna-ordine-v
 sono `ERRORE_FIXTURE` già in entrambe le baseline, per NOT NULL su
 `billing_account_id`/`istanza_utility_id`: debito vecchio, non legato al
 prezzo in attesa.
+
+## 8. Richiesta del BE (2026-09-24 sera) — tre frecce di ordinamento
+
+> ➡️ Passata al brief-db-be-fe-ricerca-soglia-per-lista §1.
+
+Convertite le liste, la suite BE ha un rosso che viene dal seed:
+`test_liste_configurabili_seed.test_seed_offre_tutto_cio_che_il_backend_sa_ordinare`.
+
+§6.1 aveva scelto `ordinabile = f` su tutte le righe nuove, perché «`ordinabile
+= t` pretende la colonna nella whitelist di ordinamento del repository». Per
+tre righe la whitelist **c'era già**, da prima di questo cantiere:
+
+| Riga | Lista · `campo_sorgente` | Whitelist BE che la ordina |
+| --- | --- | --- |
+| 932 | `vendite.promo_articoli` · `articolo_descrizione` | `promo_articoli_repository._ORDER_COLS` → `a.descrizione` |
+| 933 | `anagrafiche.categorie_clienti_listini` · `categoria_descrizione` | `categorie_clienti_listini_repository._ORDER_COLS` → `cc.descrizione` |
+| 934 | `anagrafiche.categorie_clienti_listini` · `listino_descrizione` | idem → `l.descrizione` |
+
+**Richiesta**: `ordinabile = t` sulle tre righe di `80_data/sql/ui/lista_colonna.csv`
+(dal CSV, §11.2 delle linee guida SQL). Togliere le colonne dalla whitelist
+significherebbe spegnere una capacità che il BE ha già: il test chiede
+esattamente di non farlo. Le altre righe nuove (930, 931, 935-938) restano
+`ordinabile = f`: le loro whitelist non le conoscono.
+
+## 9. Richiesta del BE (2026-09-24 sera) — la soglia della ricerca è un fatto della lista
+
+> ➡️ Passata al brief-db-be-fe-ricerca-soglia-per-lista §4.
+
+> Decisione di Tid del 2026-09-24 («ok a procedere»): la strada 1 del brief BE
+> §13.6. Il catalogo diventa la sede unica della soglia, come lo è già delle
+> colonne.
+
+**Il difetto.** Le liste di configurazione cercano da **un** carattere (Tid,
+23-09), ma la soglia oggi è un argomento della chiamata al BB nel repository
+(`add_ricerca_full_condition(…, min_caratteri=1)`, quattordici chiamate) e il
+frontend non la conosce: manda il termine da tre. «KG» su unità di misura, «FT»
+sulle famiglie: la casella lo accetta, la richiesta parte senza `search`, la
+lista resta intera — senza errore. Il contratto dichiarato non lo esercita
+nessun client. E la stessa soglia è scritta di nuovo nello schema OpenAPI della
+view (`param_ricerca_full(min_caratteri=1)`): tre sedi dello stesso fatto.
+
+**Sul modello:** quanti caratteri servono per cercare dipende da **cosa è la
+lista** (una tabella di configurazione a codici corti o un archivio che cresce),
+non da chi la chiama. È una proprietà della lista, e le proprietà della lista
+stanno in `ui.lista_definizione`.
+
+**Richiesta** (la forma la sceglie il team DB, come in brief BE §2.2):
+
+1. **colonna** in `ui.lista_definizione`, per esempio `ricerca_min_caratteri`
+   `smallint NOT NULL`, `CHECK (ricerca_min_caratteri >= 1)`. Il default è la
+   soglia di progetto, 3 (`RICERCA_MIN_CARATTERI` nel BE, `RICERCA.MIN_CARATTERI`
+   nel FE): ⚠️ scritto anche qui diventa la terza copia del numero — se il team
+   preferisce `NULL` = «default di progetto» e il numero solo nel codice, al BE
+   va bene uguale; basta che la scelta sia una;
+2. **seed** `80_data/sql/ui/lista_definizione.csv` (dal CSV, linee guida SQL
+   §11.2): **1** sulle liste di configurazione che oggi il BE chiama con
+   `min_caratteri=1` — `catalogo.uom_tipi`, `catalogo.unita_misura`,
+   `catalogo.conversioni_uom`, `config.tipi_ruolo_tipi_indirizzo`,
+   `config.utilities_tipi_ruolo`, `config.email_account`,
+   `config.email_template`, `anagrafiche.categorie_clienti`,
+   `anagrafiche.categorie_clienti_listini`, `documenti.template_documenti`,
+   `documenti.template_asset`, `vendite.registri_numerazione`,
+   `vendite.famiglie_documento`, `amm.processi`. Tutte le altre al default;
+3. **lettura**: il valore deve arrivare a **due** lettori, e con la stessa fonte:
+   - la **configurazione della schermata** — nel jsonb di
+     `ui.fn_resolve_lista_config`, accanto a `pagina_dimensione` (il FE la legge
+     da lì, come `ricerca_full`);
+   - il **BB di ricerca** del BE, che oggi legge solo
+     `ui.fn_lista_colonne_ricerca_full(lista_codice)`. O una colonna in più nel
+     suo risultato, o una funzione piccola (`STABLE`, grant `zeroerp_app`) —
+     scelta del team. ⚠️ Lista inesistente → lo stesso
+     `E_UI_LISTA_NON_TROVATA` delle altre letture;
+4. **pgTAP** col caso **costruito**: il `CHECK` rifiuta 0; la lista con 1 e
+   quella al default rispondono ciascuna col suo valore, in entrambe le letture.
+
+**Cosa fa il BE dopo** (brief BE §13.6): il BB legge la soglia dal catalogo al
+posto di `min_caratteri` e le quattordici chiamate perdono l'argomento; lo
+schema OpenAPI smette di dichiararla per view (dice «soglia dal catalogo della
+lista»); la configurazione della schermata la porta al FE, che la passa a
+`paramsRicerca` / `termineCorto` (i BB nati il 2026-09-24). Fino ad allora i
+quattordici `min_caratteri=1` restano dove sono: nessun passo a metà.

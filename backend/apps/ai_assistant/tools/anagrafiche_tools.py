@@ -32,7 +32,10 @@ class CercaSoggettiTool(AITool):
                 "properties": {
                     "search": {
                         "type": "string",
-                        "description": f"Ricerca libera su ragione sociale, cognome, nome, codice fiscale o partita IVA (min {RICERCA_MIN_CARATTERI} caratteri).",
+                        # ⚠️ Le colonne le decide il catalogo della lista
+                        #    `anagrafiche.soggetti` (dal 2026-09-24 sul BB): qui
+                        #    si nominano solo per orientare il modello.
+                        "description": f"Ricerca libera su ragione sociale (cognome e nome per le persone fisiche) o identificativo fiscale unico, che porta codice fiscale e partita IVA (min {RICERCA_MIN_CARATTERI} caratteri).",
                     },
                     "natura": {
                         "type": "string",

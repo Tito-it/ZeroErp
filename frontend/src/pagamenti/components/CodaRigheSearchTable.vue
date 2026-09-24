@@ -25,6 +25,7 @@
 import { computed, onActivated, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
 import Select from 'primevue/select'
 
@@ -65,7 +66,7 @@ const rigaDaAbbinare = ref(null)
 const modoAbbina = ref(MODO_ABBINA.ABBINA)
 
 const {
-  onPage, onSort, applyFilters, paginatorProps, tablePage,
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   searchTableOptions: { defaultSortField: 'data_pagamento', defaultSortOrder: 'desc' },
@@ -157,6 +158,16 @@ onActivated(() => sincronizzaConLaRotta())
     <template v-else>
       <div class="app-page-toolbar">
         <FiltriLista :store="store" :inert="perimetroBloccato">
+          <!-- La ricerca: colonne dal catalogo (`ricerca_full`: senza colonne
+               accese la casella non si rende), sotto 3 caratteri il termine
+               non filtra. -->
+          <template #sempre>
+            <InputText
+              v-model="searchText"
+              class="app-filter-w-lg"
+              :placeholder="t('common.search')"
+            />
+          </template>
           <Select
             v-model="codaCorrente"
             class="app-filter-w-md"

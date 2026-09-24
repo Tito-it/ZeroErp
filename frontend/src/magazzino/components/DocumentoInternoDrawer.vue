@@ -294,7 +294,7 @@ const azioniRighe = computed(() => [
 ])
 
 const {
-  onPage, onSort, paginatorProps, tablePage,
+  searchText, onPage, onSort, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
   exportDialogVisible, exportLoading, onExportConfirm, reloadAll,
 } = useDrawerTabLista(storeRighe, {
@@ -545,6 +545,18 @@ watch(
           @row-click="onRigaClick"
           @config-loaded="onConfigLoaded"
         >
+          <!-- La ricerca: le colonne le decide il catalogo della famiglia
+               (`ricerca_full`), il placeholder non le elenca. Sotto 3 caratteri
+               il termine non filtra; l'export porta la stessa `search`
+               (`paramsFiltro`). -->
+          <template #filtri-sempre>
+            <InputText
+              v-model="searchText"
+              class="app-filter-w-lg"
+              :placeholder="t('common.search')"
+            />
+          </template>
+
           <template #empty>
             <div v-if="!storeRighe.erroreCaricamento" class="app-empty-state">
               <i class="pi pi-list" />

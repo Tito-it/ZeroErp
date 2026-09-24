@@ -410,7 +410,7 @@ class CercaPromoArticoliTool(AITool):
                 "properties": {
                     "search": {
                         "type": "string",
-                        "description": f"Ricerca libera su codice promo o codice/descrizione articolo (min {RICERCA_MIN_CARATTERI} caratteri).",
+                        "description": f"Ricerca libera su codice/descrizione della promo o codice/descrizione articolo (min {RICERCA_MIN_CARATTERI} caratteri).",
                     },
                     "articolo_id": {
                         "type": "string",

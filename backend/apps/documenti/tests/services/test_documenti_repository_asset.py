@@ -6,7 +6,7 @@
 #        (Tranche G - debito test H1). Mocka `connection.cursor`
 #        per non richiedere DB reale (regola CI). Verifica:
 #        - list_asset: count + data + filtri (attivo, asset_tipo_id,
-#          emittente, search ILIKE 4 colonne) + scope ANY(%s) + paginazione
+#          emittente, ricerca libera dal catalogo della lista) + scope ANY(%s) + paginazione
 #          deterministica (id ASC tiebreaker) + cap LIMIT 200;
 #        - list_asset: order_by fuori whitelist -> E_DOCUMENTI_VALIDATION
 #          senza toccare il DB (defense-in-depth);
@@ -23,7 +23,7 @@
 #
 # Indice test (0..N):
 #   0. list_asset_basic_no_filters
-#   1. list_asset_applies_filters_and_search_4_colonne
+#   1. list_asset_applies_filters_and_search_dal_catalogo
 #   2. list_asset_applies_emittente_scope_anyarray
 #   3. list_asset_paginazione_deterministica_id_tiebreaker
 #   4. list_asset_invalid_order_by_raises_validation_no_db
@@ -132,10 +132,17 @@ class DocumentiRepositoryListAssetTests(TestCase):
         self.assertIn("AS emittente_ragione_sociale", data_sql)
         self.assertIn("LEFT JOIN anagrafiche.soggetti_ruoli sr_ef", data_sql)
 
-    # 1. filtri valorizzati e search ILIKE su 4 colonne (incluso file_name)
-    #    entrano nei params nell'ordine corretto.
+    # 1. filtri valorizzati e ricerca libera entrano nei params nell'ordine
+    #    corretto. Le colonne della ricerca le accende il catalogo della lista
+    #    (BB `add_ricerca_full_condition`, lettura mockata qui): codice,
+    #    descrizione e nome file. ⛔ Il `codice_interno` non si cerca (Tid,
+    #    2026-09-23): fino al 2026-09-24 la ricerca scritta a mano lo cercava.
+    @patch(
+        "apps.core.db._helpers.colonne_ricerca_accese",
+        return_value=["codice", "descrizione", "file_name"],
+    )
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
-    def test_list_asset_applies_filters_and_search_4_colonne(self, mocked_factory) -> None:
+    def test_list_asset_applies_filters_and_search_dal_catalogo(self, mocked_factory, _accese) -> None:
         cursor = _mk_cursor(
             fetchone_results=[(0,), None],
             descriptions=[[], _columns("id")],
@@ -156,11 +163,13 @@ class DocumentiRepositoryListAssetTests(TestCase):
         self.assertIn("a.attivo = %s", sql)
         self.assertIn("a.asset_tipo_id = %s", sql)
         self.assertIn("a.emittente_fiscale_id = %s", sql)
-        # search ILIKE su 4 colonne (codice, codice_interno, descrizione, file_name).
-        self.assertEqual(sql.count("ILIKE %s"), 4)
+        # Ricerca sulle 3 colonne accese a catalogo, mai sul codice interno.
+        self.assertEqual(sql.count("ILIKE %s"), 3)
+        self.assertIn("(a.file_name)::text ILIKE %s", sql)
+        self.assertNotIn("codice_interno", sql.split("WHERE", 1)[1])
         self.assertEqual(
             params,
-            [False, 4, 11, "%logo%", "%logo%", "%logo%", "%logo%"],
+            [False, 4, 11, "%logo%", "%logo%", "%logo%"],
         )
 
     # 2. scope emittente passa lista ANY(%s) con i soli id whitelisted.

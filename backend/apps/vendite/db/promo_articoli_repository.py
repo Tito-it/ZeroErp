@@ -16,6 +16,8 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
     sql_order_clause,
     call_jsonb_fn,
     row_to_dict,
@@ -40,6 +42,24 @@ _ORDER_COLS: dict[str, str] = {
     "data_insert": "p.data_insert",
     "data_update": "p.data_update",
 }
+
+
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+# ⭐ Forma a MAPPA: `articolo_*` sono nomi di USCITA della `_SELECT_COLS`, e il
+#    valore e' la STESSA espressione che la SELECT proietta con quel nome — si
+#    cerca su cio' che si mostra. `articolo_descrizione` e' la colonna nuova a
+#    catalogo (brief-db-ricerca-full-colonne-da-accendere §3.2-bis, Tid).
+# ⛔ Il `codice_interno` dell'articolo NON si cerca (Tid, 2026-09-23): e' la
+#    chiave del sistema, non il codice dell'operatore.
+_RICERCA_PROMO = RicercaFull(
+    "vendite.promo_articoli",
+    {
+        "codice": "p.codice",
+        "descrizione": "p.descrizione",
+        "articolo_codice": "a.codice",
+        "articolo_descrizione": "a.descrizione",
+    },
+)
 
 
 _SELECT_COLS = """
@@ -121,13 +141,10 @@ class PromoArticoliRepository:
         if valid_at is not None:
             conditions.append("p.validita @> %s::date")
             params.append(valid_at)
-        if search:
-            conditions.append(
-                "(p.codice ILIKE %s OR p.descrizione ILIKE %s "
-                "OR a.codice ILIKE %s OR a.descrizione ILIKE %s)"
-            )
-            like = f"%{search.strip()}%"
-            params.extend([like, like, like, like])
+        # ⚠️ Una condizione sola per conteggio e pagina (stessi `conditions`).
+        #    Lista non di configurazione: soglia di default del BB, sotto la
+        #    quale il termine si ignora (brief §6).
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_PROMO)
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 

@@ -46,7 +46,7 @@ import { useContrattoFiltriLista } from './useContrattoFiltriLista'
 import { clonaFiltri } from '../utils/clonaFiltri'
 import { useListaEmptyStateFetch } from './useListaEmptyStateFetch'
 import { PAGINATION } from '../constants'
-import { paramsOrdinamento } from '../utils/listParams'
+import { paramsOrdinamento, paramsRicerca } from '../utils/listParams'
 
 // Params:
 //   - fetchPage: (params) => Promise<response axios>. Con `parentField`, la
@@ -187,16 +187,15 @@ export function useListaStoreCore({
   //        se ne aggiunge uno, e nessuno se ne accorge finche' qualcuno non
   //        confronta il file con la schermata (la lezione di
   //        `famiglieDocumento`, che l'aveva gia' scritta nel proprio store).
-  // ⚠️ La ricerca parte da TRE caratteri, ed e' la policy di progetto
+  // ⚠️ La ricerca parte da `RICERCA.MIN_CARATTERI`, ed e' la policy di progetto
   //    (`api.md` §Ricerca): un termine piu' corto non si manda, e la lista
   //    fa cio' che `ricercaCorta` dice.
   // ⚠️ Il confronto e' `!= null`, non un truthy-check: `false` e `0` sono
   //    filtri legittimi («solo i disattivati»), e un `if (f.attivo)` li
   //    tratterebbe come «nessun filtro», mostrando anche gli attivi.
   function paramsFiltro(f = filters.value) {
-    const searchTerm = (f.search || '').trim()
-    const params = {}
-    if (searchTerm.length >= 3) params.search = searchTerm
+    // La ricerca con la regola comune (`paramsRicerca`): trim, soglia unica.
+    const params = { ...paramsRicerca(f) }
     // Ogni filtro di dominio valorizzato, anche quelli non-gate (es.
     // `attivo: true`: default valorizzato, inviato sempre). Sul filo va col
     // nome che l'endpoint si aspetta (`paramNames`), che di norma e' lo stesso.
@@ -212,6 +211,8 @@ export function useListaStoreCore({
 
   const {
     items, totalRecords, loading, hasSearched, sospesa: fetchSospesa,
+    // `ricercaFull`: la lista cerca? Dichiarata dal BB di stato (vedi li').
+    ricercaFull,
     fetchList: fetchListBase, svuota,
   } = useListaEmptyStateFetch({
     filters,
@@ -266,6 +267,7 @@ export function useListaStoreCore({
 
   const esposto = {
     items, totalRecords, loading, hasSearched, filters,
+    ricercaFull,
     // Alzata da chi conosce il motivo (oggi solo il cancello di perimetro
     // emittente, in `useListaConfigurabilePage`): finche' e' true la lista non
     // interroga il backend. Si scrive nei DUE versi, mai una volta sola.

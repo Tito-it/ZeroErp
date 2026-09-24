@@ -249,6 +249,26 @@ emerge un BB generico, i duplicati esistenti si ritirano subito — non c'è
 produzione, non c'è niente da aspettare.*
 
 ### Aperto — Media priorità
+- **Il `codice` delle sei famiglie di documento di seed si perde al migrate**
+  (DB, ereditata il 2026-09-24 dalla chiusura di
+  `work-done/brief-be-ricerca-full-liste-residue.md`, §13.5): dal 24-09 il
+  `codice` dell'operatore si modifica dal CRUD, ma il mirror del CSV
+  `vendite.famiglie_documento` lo riscrive a ogni migrate, come già la
+  `descrizione`. Una modifica dal CRUD dura fino al migrate successivo. Da
+  decidere col team DB se il mirror debba smettere di riscrivere le colonne che
+  l'operatore può cambiare
+- **Righe di listino: la gamba dei compositi bundle non è provata sul DB**
+  (BE, stessa origine, §13.3 g): la ricerca libera di `vendite.listini_righe`
+  è una condizione sola sulla CTE `unione`, ma
+  `vendite/tests/db/test_ricerca_liste_db` costruisce solo la riga standalone
+  (la fixture di una BoM con prezzo bundle è pesante). Su quella gamba la
+  ricerca non ha un rosso che la presidi
+- **Il giornale trasversale filtra la data nel fuso della connessione (UTC)**
+  (BE, stessa origine, §10): `vendite_repository.list_giornale_trasversale`
+  scrive `quando >= %s::date`, quindi un evento fra mezzanotte e le 2 ora
+  italiana finisce sotto il giorno prima, e
+  `test_il_giornale_mostra_solo_l_emittente_di_chi_legge` va rosso se gira in
+  quella fascia. Da decidere se e dove aprirlo
 - **La matrice di `stato_lotto` in due sedi che dissentono** (BE + DB,
   ereditata il 2026-09-23 dalla chiusura di
   `work-done/brief-db-annullamento-chiude-la-vita.md`, §9.3): il BE ammette

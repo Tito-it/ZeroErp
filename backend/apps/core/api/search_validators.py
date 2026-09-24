@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from apps.core.db._helpers import RICERCA_MIN_CARATTERI
 from apps.core.services.service_errors import ServiceError
 
 # Helper DRF: validazione search per evitare query troppo generiche.
@@ -18,7 +19,15 @@ ALLOWED_ORDER_DIRS = frozenset({"ASC", "DESC"})
 
 
 # Scopo: Valida il requisito `min_search_length` e solleva errore in caso di violazione.
-def require_min_search_length(term: str | None, *, min_length: int = 3, field_name: str = "term") -> None:
+# ⭐ Default = `RICERCA_MIN_CARATTERI`, la soglia del BB `add_ricerca_full_condition`
+#    (2026-09-24): il 400 della view e il «non filtra» del repository non devono
+#    poter parlare di due soglie diverse. Fino ad allora qui c'era un 3 scritto
+#    a mano, seconda sede dello stesso numero.
+# ⭐ `context={"field": …}`: la convenzione degli errori Python (api.md
+#    §Tassonomia errori), cosi' il 400 nomina il campo come ogni altro.
+def require_min_search_length(
+    term: str | None, *, min_length: int = RICERCA_MIN_CARATTERI, field_name: str = "term",
+) -> None:
     if term is None:
         return
     if len(term.strip()) >= min_length:
@@ -27,6 +36,7 @@ def require_min_search_length(term: str | None, *, min_length: int = 3, field_na
         code="E_SEARCH_VALIDATION",
         message="Parametri ricerca non validi.",
         detail=f"{field_name} troppo corto (min {min_length}).",
+        context={"field": field_name},
     )
 
 

@@ -43,7 +43,10 @@ documentati nelle API delle sorgenti funzionali che li espongono
 - Header sicurezza: `Authorization: Bearer <access_token>`
 - `is_search_endpoint = True` -> attiva `SearchBurstRateThrottle`
 - Query param (tutti opzionali; assente o vuoto = nessun filtro):
-  - `search` (string, min 3 char) — ILIKE su `codice`, `codice_interno`, `descrizione`
+  - `search` (string) — ricerca libera: le colonne le decide il catalogo della lista
+    `documenti.template_documenti` (`ricerca_full` nella sua configurazione). Da un
+    carattere, senza 400: tabella di configurazione (Tid, 2026-09-24). ⛔ Il `codice_interno` non si cerca (dal
+    2026-09-24, decisione di Tid)
   - `attivo` (bool) — `true`/`false` per filtrare solo attivi/disattivati
   - `tipo_documento_output_id` (int)
   - `sorgente_tipo_id` (int)
@@ -92,7 +95,7 @@ documentati nelle API delle sorgenti funzionali che li espongono
 }
 ```
 
-- `400`: parametri non validi (`search` < 3 char con `E_API_VALIDATION`; query param int malformato)
+- `400`: parametri non validi (query param int malformato)
 - `401`: JWT mancante o non valido
 - `403`: livello area `documenti` = BLOCCATO
 
@@ -440,9 +443,9 @@ gestibili automaticamente.
   *dentro* lo scope. Un operatore che chiede `?emittente_fiscale_id=999`
   fuori dal proprio scope ottiene comunque lista vuota (no
   `forbidden`/`leak`).
-- **Search ricerca testuale**: minimo 3 caratteri (regola
-  `require_min_search_length`). Search vuota o `< 3` -> `400`
-  `E_API_VALIDATION`.
+- **Search ricerca testuale**: le colonne le decide il catalogo della lista
+  (BB `add_ricerca_full_condition`, dal 2026-09-24). Da un carattere, senza
+  400 (tabella di configurazione, Tid 2026-09-24); search vuota = nessun filtro.
 - **Paginazione**: `page>=1`, `page_size` in `[1, 200]`. Ordinamento
   `id ASC` come tiebreaker garantisce paginazione deterministica anche
   con duplicati sulla colonna di sort.
@@ -556,7 +559,6 @@ Vedi Decisione 75 in `sviluppo-documenti.md` §10.
 | `E_DOCUMENTI_NOT_FOUND` | 404 | template/versione inesistente o fuori scope emittente (no leak) |
 | `E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE` | 409 | tentativo di modificare versione `PUBBLICATA` (Tranche F). Trigger DB A1 + service guard |
 | `E_DOCUMENTI_VERSIONE_DELETE_BLOCKED` | 409 | tentativo di eliminare versione non-BOZZA o gia' usata da documenti generati (Tranche F). Trigger DB A2 + service guard |
-| `E_API_VALIDATION` | 400 | search < 3 char (helper core) |
 
 Codici Fase A `E_DOCUMENTI_*` registrati in `apps.core.services.error_policies`
 (5 codici dominio + 2 guard timeline `E_EVENTO_DOCUMENTO_*`).
@@ -635,5 +637,7 @@ renderebbe **irriproducibile** ogni documento che lo incorporava — la
 riproducibilita' si difende impedendo la cancellazione, non sperando che
 nessuno la faccia.
 
-La lista e' `is_search_endpoint` (throttling di ricerca).
+La lista e' `is_search_endpoint` (throttling di ricerca). `search`: le colonne le
+decide il catalogo della lista `documenti.template_asset`; da un carattere, senza
+400 (tabella di configurazione, Tid 2026-09-24). ⛔ Il `codice_interno` non si cerca (dal 2026-09-24).
 
