@@ -18,12 +18,14 @@ import { ref } from 'vue'
 
 import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
 import { PAGINATION } from '../../core/constants'
-import { paramsPagina } from '../../core/utils/listParams'
+import { paramsPagina, paramsRicerca } from '../../core/utils/listParams'
 import { listRateFuoriCapienza } from '../api/pagamenti'
 import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
 
 function buildParams(f) {
   const p = paramsPagina(f)
+  // La ricerca libera con la regola comune (`paramsRicerca`: trim, soglia unica).
+  Object.assign(p, paramsRicerca(f))
   if (f.motivo) p.motivo = f.motivo
   if (f.billing_account_id != null) p.billing_account_id = f.billing_account_id
   return p
@@ -44,12 +46,10 @@ export const useRateFuoriCapienzaStore = defineStore(
 
     const filters = ref({
       ...FILTRI_DEFAULT,
-      // ⚠️ NON si inoltra ANCORA al backend: l'endpoint cerca dal 2026-09-23
-      // (brief-be-ricerca-full-liste-residue §5.3), ma la casella si monta
-      // solo col pezzo condiviso che legge `ricerca_full` (passo 6). Fino ad
-      // allora la chiave si DICHIARA: fa parte del contratto di `useSearchTable`, che
-      // la scrive su ricerca universale / deep-link `?search=` — e una chiave
-      // che nasce per assegnazione e' una chiave che nessuno ha deciso.
+      // La ricerca libera: la scrive `useSearchTable` (casella nel `#sempre`
+      // di `FiltriLista`, ricerca universale, deep-link `?search=`), la
+      // inoltra `buildParams` (`paramsRicerca`). Le colonne le decide il
+      // catalogo (brief-be-ricerca-full-liste-residue §5.3).
       search: '',
       limit: PAGINATION.DEFAULT_ROWS,
       offset: 0,
@@ -57,7 +57,8 @@ export const useRateFuoriCapienzaStore = defineStore(
       order_dir: 'desc',
     })
 
-    const { items, totalRecords, loading, hasSearched, fetchList } =
+    // `ricercaFull` (la lista cerca?) la dichiara il BB di stato.
+    const { items, totalRecords, loading, hasSearched, ricercaFull, fetchList } =
       useListaEmptyStateFetch({
         filters,
         buildParams,
@@ -72,7 +73,7 @@ export const useRateFuoriCapienzaStore = defineStore(
     })
 
     return {
-      items, totalRecords, loading, hasSearched, filters, fetchList,
+      items, totalRecords, loading, hasSearched, filters, fetchList, ricercaFull,
       chiaviFiltro, filtriDefault, azzeraFiltri,
     }
   },

@@ -864,7 +864,7 @@ incassato · has_movimenti` dalla base unica. La chiave della riga è
 | --- | --- | --- |
 | `billing_account_id` | int | il cliente — uno dei due criteri del picker |
 | `fattura_numero` | int | il numero del documento, confronto **ESATTO**: 101 non porta 1010 (nel lookup sì, ed è giusto lì). `serie` e `anno` per disambiguare |
-| `search` | str, min 3 | ragione sociale · codice BA · id fiscale del **cliente** — mai il numero |
+| `search` | str | ricerca libera sulle colonne che il **catalogo** della lista accende per l'operatore (`ricerca_full` nella configurazione; dichiarazione `_RICERCA_RATE`, BB `add_ricerca_full_condition`): le colonne non si elencano qui. Dal 24/09 cerca **anche il numero documento** (Tid), oltre al cliente. È un `ILIKE`: «101» porta anche la 1010 — il confronto esatto è `fattura_numero`, un filtro diverso. Sotto i 3 caratteri: **400** `E_SEARCH_VALIDATION` col campo (lo stesso codice delle altre liste, dal 24/09) (la soglia è `RICERCA_MIN_CARATTERI` del BB; 400 o ignorato è la decisione aperta del brief ricerca-full §6). Vale anche sul perimetro di `solo_aperte`: il BB sta nella funzione dell'alias |
 | `solo_aperte` | bool | solo le rate con `residuo <> 0` (Q-B). ⚠️ Il filtro sta nel `WHERE`, quindi chiede il saldo di **tutto il perimetro** — è il costo onesto di quel filtro, non della lista |
 | `solo_numerate` | bool | solo le rate di documenti **numerati** (`numero IS NOT NULL`; dal 18/09, rilievo in-app di Tid): una bozza non è un documento fiscale e la sua rata non è un credito su cui registrare un incasso. Il picker lo passa **sempre** (default dello store); vale anche sul perimetro di `solo_aperte`, perché sta nella stessa funzione dell'alias. ⏳ La regola di Tid è più stretta — «solo le definitive, inviate a SDI» — ed è un predicato di dominio che arriverà in **una** sede a DB, non come un secondo booleano (piano D19 §8) |
 | `data_scadenza_da` / `_a` | date ISO | |
@@ -917,7 +917,9 @@ mondo **costruito** (101 e 1010 nella stessa serie): il numero è un `=`, i sald
 arrivano per ogni rata della pagina, `solo_aperte` toglie la saldata, ogni
 colonna della whitelist ordina nei due versi e nei due rami, e `solo_numerate`
 toglie la **bozza** — costruita nel test, non nella fixture — in entrambi i
-rami (rosso alla controprova col filtro spento). Seed:
+rami (rosso alla controprova col filtro spento); la ricerca libera trova cliente
+**e** documento nei due rami, e ogni colonna che il catalogo accende trova la
+rata costruita (`RicercaListeDbTests`, `verifica_ricerca_colonna_per_colonna`). Seed:
 `gen_seed_lista.py --verifica-ordinamento pagamenti.rate` verde.
 
 ### `POST /api/v1/pagamenti/distinte/{contabile_id}/righe/da-rate/`
@@ -1324,7 +1326,7 @@ arrivano dai guard e dalle madri, e il backend li fa passare intatti.
 
 | Codice | HTTP | Chi lo solleva | Quando |
 | --- | --- | --- | --- |
-| `E_PAGAMENTI_VALIDATION` | 400 | backend | payload malformato, chiave fuori whitelist, vocabolario, importo non valido, dichiarazione a metà, motivo senza forzatura, rata/cliente/forzatura senza fattura alla nascita della riga, FK violata (tradotta con la frase del campo); su `da-rate/`: elenco vuoto, oltre 200, `scadenza_id` duplicato, **fatto comune** malformato — tutti **prima** del giro; su `rate/`: `order_by` fuori whitelist, `search` sotto i 3 caratteri |
+| `E_PAGAMENTI_VALIDATION` | 400 | backend | payload malformato, chiave fuori whitelist, vocabolario, importo non valido, dichiarazione a metà, motivo senza forzatura, rata/cliente/forzatura senza fattura alla nascita della riga, FK violata (tradotta con la frase del campo); su `da-rate/`: elenco vuoto, oltre 200, `scadenza_id` duplicato, **fatto comune** malformato — tutti **prima** del giro; su `rate/`: `order_by` fuori whitelist (`search` sotto i 3 caratteri: `E_SEARCH_VALIDATION`, dal 24/09) |
 | `E_CONTABILE_NON_TROVATA` · `E_RIGA_CONTABILE_NON_TROVATA` · `E_SISTEMAZIONE_NON_TROVATA` · `E_ENTE_INCASSO_NON_TROVATO` · `E_RATA_NON_TROVATA` · `E_FATTURA_NON_TROVATA` | 404 | backend (fattura: anche il DB) | l'oggetto non c'è, **o il perimetro non lo lascia vedere**. ⚠️ Su `da-rate/` la rata assente non è un 404 della richiesta: è l'errore di **quella riga** dentro `falliti[]`, con status 200 |
 | `E_CONTABILE_STATO_NON_CONFIGURATO` | 500 | backend | il codice di stato chiesto non risolve a catalogo: `UPDATE` a zero righe su un oggetto che esiste |
 | `E_PAGAMENTI_CHIAMATA_NON_VALIDA` | 500 | backend | la madre della conferma non ha risposto nessuna riga |

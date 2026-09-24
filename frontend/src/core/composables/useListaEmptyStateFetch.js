@@ -24,8 +24,8 @@
 //    ignorato da `buildParams`, quindi la lista resta piena mentre si digita
 //    (no flash vuoto). Usato dalla factory `createCrudStore` con startsEmpty:false.
 //
-// Ritorna lo stato reattivo (items/totalRecords/loading/hasSearched/sospesa) +
-// fetchList.
+// Ritorna lo stato reattivo (items/totalRecords/loading/hasSearched/sospesa/
+// ricercaFull) + fetchList.
 // Lo store espone questi ref nel proprio `return` insieme a `filters` e alle
 // azioni CRUD.
 
@@ -49,6 +49,7 @@
 // chiamata ancora in corso.
 import { ref } from 'vue'
 import { useFetchVersion } from './useFetchVersion'
+import { termineCorto, termineRicerca } from '../utils/listParams'
 
 // `ricercaCorta` (2026-08-10, migrazione delle 19 store che avevano il ciclo a
 // mano): cosa fa una lista `alwaysFetch` quando nel campo search ci sono 1-2
@@ -106,6 +107,21 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
   //    insieme alla config, cioe' prima che si sappia se il cancello e' su.
   //    Quella resta una richiesta rifiutata, ed e' l'unica.
   const sospesa = ref(false)
+  // ⭐ LA LISTA CERCA? Lo dice la configurazione risolta dal backend
+  //    (`ricerca_full`: almeno una colonna accesa a catalogo per questo
+  //    operatore — brief-be-ricerca-full-liste-residue §7-bis). La scrive
+  //    `useListaConfigurabilePage.onConfigLoaded`, la legge `FiltriLista` per
+  //    mostrare o no la casella: una casella su una lista senza colonne accese
+  //    non troverebbe niente, per costruzione (il BB del backend mette `FALSE`).
+  // ⚠️ `null` = «non si sa ancora» (configurazione non arrivata, o superficie
+  //    senza catalogo): la casella resta. Solo `false` la toglie.
+  // ⛔ NON e' un filtro e non sta in `filters`: `svuota()` non la tocca, perche'
+  //    e' un fatto della lista, non una scelta dell'operatore.
+  // ⭐ Vive QUI dal 2026-09-24 (regola del 2, ok Tid): la stessa dichiarazione,
+  //    con lo stesso commento, stava in `useListaStoreCore` e nei quattro store
+  //    di pagamenti scritti a mano. Qui la ricevono tutti gli store della lista,
+  //    compresi quelli che nasceranno scritti a mano.
+  const ricercaFull = ref(null)
   const fv = useFetchVersion()
 
   // Scopo: riporta la lista allo stato vuoto E scarta le risposte in volo.
@@ -137,11 +153,14 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
   async function fetchList({ silent = false } = {}) {
     if (sospesa.value) return false
     const f = filters.value
-    const searchTerm = (f.search || '').trim()
+    const searchTerm = termineRicerca(f)
+    // Soglia del termine in una sede sola (`listParams.termineCorto`), la
+    // stessa con cui `paramsRicerca` decide se mandarlo.
+    const corta = termineCorto(searchTerm)
 
     // Liste che partono piene: comportamento della ricerca corta secondo
     // `ricercaCorta` (vedi sopra). Il default 'fetch' prosegue e basta.
-    if (alwaysFetch && searchTerm.length > 0 && searchTerm.length < 3) {
+    if (alwaysFetch && corta) {
       if (ricercaCorta === 'svuota') {
         svuota()
         return false
@@ -154,7 +173,7 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
     if (!alwaysFetch) {
       const hasFilters = hasActiveFilters(f)
       // Search con meno di 3 caratteri e nessun filtro attivo → stato vuoto.
-      if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) {
+      if (corta && !hasFilters) {
         svuota()
         return false
       }
@@ -192,5 +211,5 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
     }
   }
 
-  return { items, totalRecords, loading, hasSearched, sospesa, fetchList, svuota }
+  return { items, totalRecords, loading, hasSearched, sospesa, ricercaFull, fetchList, svuota }
 }

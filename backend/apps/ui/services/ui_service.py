@@ -25,12 +25,18 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.ui.db.ui_repository import UiRepository
 
-__all__ = ["UiService", "E_UI_LISTA_NON_TROVATA", "E_UI_GENERIC_FAILED"]
+__all__ = [
+    "UiService",
+    "E_UI_LISTA_NON_TROVATA",
+    "E_UI_GENERIC_FAILED",
+    "E_UI_CHIAMATA_NON_VALIDA",
+]
 
 
 # Codici errore registrati in apps/core/services/error_policies.py.
 E_UI_LISTA_NON_TROVATA = "E_UI_LISTA_NON_TROVATA"
 E_UI_GENERIC_FAILED = "E_UI_GENERIC_FAILED"  # fallback per DatabaseError ignote
+E_UI_CHIAMATA_NON_VALIDA = "E_UI_CHIAMATA_NON_VALIDA"  # contesto di sessione != utente
 
 # Marker substring per riconoscere errori del DB. Stessa strategia di
 # `pricing_service._KNOWN_DB_ERROR_MARKERS`: il codice originale e'
@@ -139,6 +145,15 @@ class UiService:
     # ⚠️ Qui e NON in `get_lista_config` (Tid, 2026-09-24): quella la leggono
     #    anche l'export (`export_helpers`) e la modale (`get_catalogo`), che
     #    la casella non la mostrano e pagherebbero una query per niente.
+    # ⛔ La guardia di contesto (brief §12): la configurazione risponde per
+    #    `user.id`, passato esplicito; `ricerca_full` e la ricerca vera per
+    #    l'utente della GUC `app.current_user_id`. In una richiesta HTTP
+    #    coincidono, ma il modello ammette che non coincidano (GUC vuota fuori
+    #    da una richiesta, contesto aperto per un altro utente): allora la
+    #    casella direbbe una cosa e la ricerca ne farebbe un'altra — le colonne
+    #    sensibili, senza utente, non hanno grant — senza nessun errore. Non si
+    #    sceglie una delle due fonti: una differenza fa rumore, con un errore
+    #    TECNICO (l'operatore non ha niente da correggere).
     def get_lista_config_per_video(
         self,
         user: Any,
@@ -147,6 +162,22 @@ class UiService:
     ) -> dict[str, Any]:
         config = self.get_lista_config(
             user, lista_codice, emittente_esplicito=emittente_esplicito,
+        )
+        utente_guc = self._repo.utente_di_sessione()
+        ErrorManager.require(
+            utente_guc is not None and utente_guc == user.id,
+            code=E_UI_CHIAMATA_NON_VALIDA,
+            message=(
+                "Chiamata non valida alla configurazione della lista: il "
+                "contesto della richiesta non corrisponde all'utente."
+            ),
+            context={
+                "lista_codice": lista_codice,
+                "auth_user_id": user.id,
+                "utente_di_sessione": utente_guc,
+            },
+            function_name="ui_service.get_lista_config_per_video",
+            log_to_db=True,
         )
         config["ricerca_full"] = self._repo.ha_ricerca_full(lista_codice)
         return config

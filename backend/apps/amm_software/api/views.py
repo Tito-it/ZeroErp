@@ -59,7 +59,7 @@ class OperatoriListView(AdminAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="is_super_admin", type=bool, required=False),
             OpenApiParameter(name="unita_organizzativa_id", type=int, required=False),
             OpenApiParameter(name="is_active", type=bool, required=False),

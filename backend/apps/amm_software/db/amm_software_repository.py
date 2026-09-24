@@ -14,7 +14,13 @@ from typing import Any, ClassVar
 
 from django.db import DatabaseError, connection, transaction
 
-from apps.core.db._helpers import rows_to_list, sql_order_direction, sql_tiebreak_direction
+from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
+    rows_to_list,
+    sql_order_direction,
+    sql_tiebreak_direction,
+)
 
 from apps.core.services.auth_constants import TIPO_PROFILO_SUPER_ADMIN
 from apps.core.services.error_manager import ErrorManager
@@ -60,6 +66,29 @@ ALLOWED_ORDER_COLUMNS: dict[str, str] = {
     "valido_dal": "ru.valido_dal",
     "valido_al": "COALESCE(ru.valido_al, 'infinity'::date)",
 }
+
+
+# Cosa si PUO' cercare nella lista operatori; cosa si cerca lo dice il catalogo
+# (`add_ricerca_full_condition`). Mappa `campo_sorgente → espressione`: i nomi
+# del catalogo sono nomi di USCITA della SELECT di `list_operatori`, e ogni
+# valore e' la stessa espressione che la SELECT proietta con quel nome (si
+# cerca su cio' che si mostra).
+# ⭐ `soggetto_cognome`/`soggetto_nome` cercano il `COALESCE` col nome
+#    dell'utente, come li mostra la lista: fino al 2026-09-24 la ricerca scritta
+#    a mano cercava `s.cognome`/`s.nome` nudi, e un operatore senza soggetto non
+#    si trovava per il nome che la lista gli mostrava.
+# ⭐ `email`, `soggetto_nome` e `soggetto_ragione_sociale` sono colonne del
+#    catalogo dal 2026-09-24 (brief DB §3.2-bis); la terza e' proiettata apposta.
+_RICERCA_OPERATORI = RicercaFull(
+    "anagrafiche.operatori",
+    {
+        "soggetto_cognome": "COALESCE(s.cognome, au.last_name)",
+        "soggetto_nome": "COALESCE(s.nome, au.first_name)",
+        "username": "au.username",
+        "email": "au.email",
+        "soggetto_ragione_sociale": "s.ragione_sociale_completa",
+    },
+)
 
 
 # Whitelist ORDER BY del log di audit (`storico.audit_log`): chiave =
@@ -155,14 +184,10 @@ class AmmSoftwareRepository:
         conditions: list[str] = [ESCLUDI_UTENTI_TECNICI]
         params: list[Any] = []
 
-        if search:
-            conditions.append(
-                "(au.username ILIKE %s OR au.email ILIKE %s "
-                "OR s.cognome ILIKE %s OR s.nome ILIKE %s "
-                "OR s.ragione_sociale_completa ILIKE %s)"
-            )
-            like_term = f"%{search}%"
-            params.extend([like_term] * 5)
+        # ⚠️ Sotto `RICERCA_MIN_CARATTERI` (3) il termine non filtra: fino al
+        #    2026-09-24 la ricerca scritta a mano filtrava da un carattere, senza
+        #    `strip` ne' `escape_ilike`.
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_OPERATORI)
 
         if is_super_admin is not None:
             # Multi-face auth: filtro binario sul binding SUPER_ADMIN.
@@ -198,6 +223,7 @@ class AmmSoftwareRepository:
                    au.last_name,
                    COALESCE(s.cognome, au.last_name) AS soggetto_cognome,
                    COALESCE(s.nome, au.first_name) AS soggetto_nome,
+                   s.ragione_sociale_completa AS soggetto_ragione_sociale,
                    script.fn_is_super_admin(au.id) AS is_super_admin,
                    id.ruolo_applicativo::text AS ruolo_applicativo,
                    au.is_active,

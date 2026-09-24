@@ -17,6 +17,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.payload_validators import (
     optional_int,
     paginated_envelope,
@@ -98,7 +99,7 @@ class EmailAccountListView(AdminAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(min_caratteri=1),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
             OpenApiParameter(name="order_by", type=str, required=False),
@@ -264,7 +265,7 @@ class EmailTemplateListView(AdminAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(min_caratteri=1),
             OpenApiParameter(name="codice", type=str, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
@@ -416,7 +417,7 @@ class EmailLogListView(AdminAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="stato", type=str, required=False),
             OpenApiParameter(name="ambito", type=str, required=False),
             OpenApiParameter(name="pratica_id", type=int, required=False),

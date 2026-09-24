@@ -24,7 +24,7 @@ primo stadio se la categoria del BA ha `partecipa_promo = TRUE`. L'EXCLUDE
 
 | Parametro | Tipo | Descrizione |
 |---|---|---|
-| `search` | string | ILIKE su `codice`/`descrizione` promo + `codice`/`descrizione` articolo |
+| `search` | string | Ricerca libera: le colonne le decide il catalogo della lista `vendite.promo_articoli` (`ricerca_full` nella configurazione). Sotto 3 caratteri il termine si ignora (nessun `400`) |
 | `attivo` | bool | `true`/`false`/assente |
 | `articolo_id` | UUID | Filtro articolo |
 | `uom_id` | int | Filtro unita' di misura |

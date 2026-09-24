@@ -20,6 +20,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.payload_validators import (
     paginated_envelope,
     parse_list_params,
@@ -52,8 +53,7 @@ class PromoArticoliView(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False,
-                             description="Ricerca su codice/descrizione promo e articolo."),
+            param_ricerca_full(),
             OpenApiParameter(name="attivo", type=bool, required=False),
             OpenApiParameter(name="articolo_id", type=str, required=False,
                              description="UUID articolo."),

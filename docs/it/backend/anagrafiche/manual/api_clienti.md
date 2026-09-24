@@ -41,7 +41,7 @@ via `parse_list_params`.
 
 | Query param | Tipo | Note |
 | --- | --- | --- |
-| `search` | str | ILIKE su ragione sociale / CF / P.IVA / codice BA / codice soggetto (min 3 char) |
+| `search` | str | Ricerca libera sulle colonne che il catalogo della lista `anagrafiche.clienti` accende per l'operatore (le decide il catalogo, non il codice: `ricerca_full` nella configurazione della lista). Sotto 3 caratteri non filtra (nessun 400). Vale anche per l'export |
 | `utility_id` | int | Filtra per utility |
 | `stato_cliente_id` | int | Filtra per stato cliente |
 | `limit`/`offset`/`order_by`/`order_dir` | — | Paginazione/ordinamento standard |

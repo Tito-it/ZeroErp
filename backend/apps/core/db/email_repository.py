@@ -26,6 +26,8 @@ def _parse_jsonb_field(row: dict[str, Any], field: str) -> None:
 
 from apps.core.services.email_constants import AMBITO_SISTEMA
 from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
     fetchone_scalar,
     jsonb_out,
     row_to_dict,
@@ -76,6 +78,19 @@ EMAIL_LOG_ORDER_COLUMNS: dict[str, str] = {
 }
 
 
+# Cosa si PUO' cercare nelle tre liste email; cosa si cerca lo dice il catalogo
+# della lista (`add_ricerca_full_condition`, brief-be-ricerca-full-liste-residue
+# §2), letto a ogni ricerca. Colonne semplici della tabella nel `FROM` (alias
+# `ea`, `et`, `el`), proiettate con lo stesso nome: forma a tupla.
+# ⭐ Soglie (brief §6): account e template sono tabelle di CONFIGURAZIONE e
+#    cercano da un carattere (Tid, 2026-09-23); il log e' un registro, non
+#    configurazione, e resta al default del BB (sotto soglia il termine non
+#    filtra — prima del 2026-09-24 filtrava da un carattere).
+_RICERCA_EMAIL_ACCOUNT = RicercaFull("config.email_account", ("codice", "descrizione", "email_from"))
+_RICERCA_EMAIL_TEMPLATE = RicercaFull("config.email_template", ("codice", "oggetto"))
+_RICERCA_EMAIL_LOG = RicercaFull("config.email_log", ("destinatario", "oggetto"))
+
+
 # Scopo: risolve la clausola ORDER BY dalla whitelist, con fallback esplicito.
 #        Il tiebreaker sull'id lo aggiunge il chiamante: e' l'unica cosa che
 #        cambia fra le tre liste (`ea.id`, `et.id`, `el.id`). La direzione passa
@@ -115,10 +130,9 @@ class EmailRepository:
 
         if attivo_only:
             conditions.append("ea.attivo IS TRUE")
-        if search:
-            conditions.append("(ea.codice ILIKE %s OR ea.descrizione ILIKE %s OR ea.email_from ILIKE %s)")
-            like = f"%{search}%"
-            params.extend([like, like, like])
+        add_ricerca_full_condition(
+            conditions, params, search, _RICERCA_EMAIL_ACCOUNT, alias="ea", min_caratteri=1,
+        )
 
         where = " AND ".join(conditions) if conditions else "TRUE"
         order_clause = _email_order_clause(
@@ -333,10 +347,9 @@ class EmailRepository:
         if codice:
             conditions.append("et.codice = %s")
             params.append(codice)
-        if search:
-            conditions.append("(et.codice ILIKE %s OR et.oggetto ILIKE %s)")
-            like = f"%{search}%"
-            params.extend([like, like])
+        add_ricerca_full_condition(
+            conditions, params, search, _RICERCA_EMAIL_TEMPLATE, alias="et", min_caratteri=1,
+        )
 
         where = " AND ".join(conditions) if conditions else "TRUE"
         # Default storico a due chiavi (`codice, lingua`): un template esiste in
@@ -633,10 +646,7 @@ class EmailRepository:
         if data_a:
             conditions.append("el.data_insert < (%s::date + INTERVAL '1 day')")
             params.append(data_a)
-        if search:
-            conditions.append("(el.destinatario ILIKE %s OR el.oggetto ILIKE %s)")
-            like = f"%{search}%"
-            params.extend([like, like])
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_EMAIL_LOG, alias="el")
 
         where = " AND ".join(conditions) if conditions else "TRUE"
         # Default `data_insert DESC`: un log si legge dal piu' recente.

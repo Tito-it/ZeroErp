@@ -98,6 +98,21 @@ export const PAGINATION = {
   ROWS_OPTIONS: [10, 25, 50, 100]
 }
 
+// Ricerca libera delle liste: la soglia del termine, sotto la quale NON si
+// manda (la lista resta quella di prima mentre si digita).
+// ⭐ Specchio di `RICERCA_MIN_CARATTERI` del backend (`core/db/_helpers.py`), la
+//    soglia di default del BB `add_ricerca_full_condition`. Una sede sola nel
+//    frontend (2026-09-24, regola del 2 — ok Tid): prima lo stesso `3` era
+//    scritto in sei store e due volte in `useListaEmptyStateFetch`.
+// ⚠️ E' il DEFAULT: le liste di configurazione cercano da un carattere nel
+//    backend, e finche' la soglia per lista non arriva dalla configurazione
+//    (brief-be-ricerca-full-liste-residue §13.6) il frontend la manda da tre.
+//    Chi la legge passa sempre da `paramsRicerca` / `ricercaCorta`
+//    (`core/utils/listParams.js`), mai da un confronto scritto sul posto.
+export const RICERCA = {
+  MIN_CARATTERI: 3,
+}
+
 // Formato data (PrimeVue DatePicker dateFormat)
 // dd/mm/yy = GG/MM/YYYY in PrimeVue ('yy' = anno a 4 cifre)
 // Centralizzato: cambiare qui per aggiornare tutte le date del sistema.
@@ -142,6 +157,9 @@ export const FIELD_LENGTH = {
   // sempre — un `maxlength` scritto a mano non e' un limite dichiarato, e' un
   // numero che nessuno ricontrolla il giorno che la colonna cambia.
   FAMIGLIA_CODICE_MAX: 16,
+  // Il `codice` dell'operatore (dal 2026-09-24): `varchar(32)`, come i codici
+  // di `config.*` (changeSet `20260924-03`) — il `codice_interno` resta 16.
+  FAMIGLIA_CODICE_OPERATORE_MAX: 32,
   FAMIGLIA_DESCRIZIONE_MAX: 120,
   FAMIGLIA_PREFISSO_MAX: 8,
   REGISTRO_PREFISSO_MAX: 4,

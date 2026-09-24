@@ -16,6 +16,8 @@ from django.db import connection
 
 from apps.anagrafiche.db._helpers import get_or_create_soggetto_ruolo
 from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
     sql_order_clause,
     extract_paginated,
     row_to_dict,
@@ -25,26 +27,34 @@ from apps.core.db._helpers import (
 
 # Whitelist colonne ammesse per ORDER BY: chiave = `campo_sorgente` del catalogo
 # 'anagrafiche.clienti' (e' quello che `<ListaConfigurabile>` invia come
-# sortField), valore = espressione SQL. Qualificata dove la chiave e' una
-# colonna fisica (la query joina sei tabelle: un nome nudo diventerebbe ambiguo
-# alla prima omonimia); nuda dove e' un alias di output della SELECT, che
-# ORDER BY risolve solo cosi'.
+# sortField), valore = la colonna della vista `anagrafiche.vw_clienti_lista`,
+# qualificata con il suo alias `v`.
 #
 # L'identificativo fiscale a video e' SEMPRE `id_fiscale_univoco_cf_piva` (la
 # colonna GENERATED che unifica CF e P.IVA). `codice_fiscale` e `partita_iva`
 # nudi non sono esposti da nessuna colonna della lista: fuori dalla whitelist.
 _CLIENTI_ORDER_COLS: dict[str, str] = {
-    "ragione_sociale_completa": "s.ragione_sociale_completa",
-    "id_fiscale_univoco_cf_piva": "s.id_fiscale_univoco_cf_piva",
-    "soggetto_codice": "soggetto_codice",
-    "ba_codice": "ba_codice",
-    "utility_descrizione": "utility_descrizione",
-    "stato_descrizione": "stato_descrizione",
-    "data_attivazione": "cl.data_attivazione",
-    "data_sospensione": "cl.data_sospensione",
-    "data_riattivazione": "cl.data_riattivazione",
-    "data_chiusura": "cl.data_chiusura",
+    c: f"v.{c}"
+    for c in (
+        "ragione_sociale_completa", "id_fiscale_univoco_cf_piva",
+        "soggetto_codice", "ba_codice", "utility_descrizione", "stato_descrizione",
+        "data_attivazione", "data_sospensione", "data_riattivazione", "data_chiusura",
+    )
 }
+
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+# ⭐ Tupla con alias `v`: la lista legge la vista che il catalogo le dichiara
+#    (`vista_sql = vw_clienti_lista`), quindi il `campo_sorgente` e' un nome di
+#    colonna vero anche nel `WHERE`.
+# ⭐ L'id fiscale univoco e non CF e P.IVA separati (Tid, 2026-09-23): come
+#    fornitori, soggetti ed emittenti. Fino al 2026-09-24 la ricerca era scritta
+#    a mano qui e cercava `codice_fiscale` e `partita_iva` nudi, che nessuna
+#    colonna della lista mostra. Nessun termine si perde: la colonna GENERATED
+#    porta `cf || ' ' || piva` quando i due differiscono, altrimenti quello che c'e'.
+_RICERCA_CLIENTI = RicercaFull(
+    "anagrafiche.clienti",
+    ("ragione_sociale_completa", "ba_codice", "soggetto_codice", "id_fiscale_univoco_cf_piva"),
+)
 
 
 class ClientiRepository:
@@ -252,61 +262,57 @@ class ClientiRepository:
             order_by, order_dir,
             colonne=_CLIENTI_ORDER_COLS,
             default=_CLIENTI_ORDER_COLS["ragione_sociale_completa"],
-            tiebreak="cl.id",
+            tiebreak="v.id",
         )
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
-        sql = f"""
-            SELECT cl.id,
-                   cl.billing_account_id,
-                   cl.istanza_utility_id,
-                   cl.soggetto_ruolo_id,
-                   s.id AS soggetto_id,
-                   s.codice AS soggetto_codice,
-                   ba.codice AS ba_codice,
-                   s.ragione_sociale_completa,
-                   s.codice_fiscale,
-                   s.partita_iva,
-                   s.id_fiscale_univoco_cf_piva,
-                   u.descrizione AS utility_descrizione,
-                   u.id AS utility_id,
-                   sc.descrizione_breve AS stato_descrizione,
-                   sc.codice_interno AS stato_codice_interno,
-                   sc.codice AS stato_codice,
-                   cl.data_attivazione,
-                   cl.data_chiusura,
-                   cl.data_sospensione,
-                   cl.data_riattivazione,
-                   COUNT(*) OVER () AS total_count
-              FROM anagrafiche.clienti cl
-              JOIN anagrafiche.istanze_utilities iu ON iu.id = cl.istanza_utility_id
-              JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
-              JOIN anagrafiche.billing_account ba ON ba.id = cl.billing_account_id
-              JOIN config.utilities u ON u.id = cl.utility_id
-              JOIN config.stati_cliente sc ON sc.id = cl.stato_cliente_id
-             WHERE (%s::text IS NULL OR (
-                       s.ragione_sociale_completa ILIKE %s
-                    OR s.codice_fiscale ILIKE %s
-                    OR s.partita_iva ILIKE %s
-                    OR ba.codice ILIKE %s
-                    OR s.codice ILIKE %s
-                   ))
-               AND (%s::integer IS NULL OR cl.utility_id = %s)
-               AND (%s::integer IS NULL OR cl.stato_cliente_id = %s)
-               AND (
-                     %s::bigint[] IS NULL
-                  OR script.fn_check_ba_visible_for_emittenti(ba.id, %s::bigint[])
-                   )
-             ORDER BY {ordinamento}
-             LIMIT %s OFFSET %s
-        """  # noqa: S608
-        params = [
-            search_pattern, search_pattern, search_pattern,
-            search_pattern, search_pattern, search_pattern,
+        conditions: list[str] = [
+            "(%s::integer IS NULL OR v.utility_id = %s)",
+            "(%s::integer IS NULL OR v.stato_cliente_id = %s)",
+            "(%s::bigint[] IS NULL"
+            " OR script.fn_check_ba_visible_for_emittenti(v.billing_account_id, %s::bigint[]))",
+        ]
+        params: list[Any] = [
             utility_id, utility_id,
             stato_cliente_id, stato_cliente_id,
             emittente_ids, emittente_ids,
-            limit, offset,
         ]
+        # ⚠️ Sotto `RICERCA_MIN_CARATTERI` (3) il termine non filtra: fino al
+        #    2026-09-24 la ricerca scritta a mano filtrava da un carattere (e
+        #    senza `escape_ilike`: un `%` o un `_` facevano da jolly).
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_CLIENTI, alias="v")
+        # ⭐ Dal 2026-09-24 la lista legge la VISTA che il catalogo le dichiara
+        #    (`vista_sql = vw_clienti_lista`, `security_invoker`): fino a quel
+        #    giorno questa query ne era una copia — stessi cinque join, stesse
+        #    colonne — e il catalogo nominava una vista che la lista non leggeva
+        #    (brief-be-ricerca-full-liste-residue §5.2). Una sola sede della
+        #    forma della riga: una colonna nuova della lista si aggiunge alla vista.
+        sql = f"""
+            SELECT v.id,
+                   v.billing_account_id,
+                   v.istanza_utility_id,
+                   v.soggetto_ruolo_id,
+                   v.soggetto_id,
+                   v.soggetto_codice,
+                   v.ba_codice,
+                   v.ragione_sociale_completa,
+                   v.codice_fiscale,
+                   v.partita_iva,
+                   v.id_fiscale_univoco_cf_piva,
+                   v.utility_descrizione,
+                   v.utility_id,
+                   v.stato_descrizione,
+                   v.stato_codice_interno,
+                   v.stato_codice,
+                   v.data_attivazione,
+                   v.data_chiusura,
+                   v.data_sospensione,
+                   v.data_riattivazione,
+                   COUNT(*) OVER () AS total_count
+              FROM anagrafiche.vw_clienti_lista v
+             WHERE {" AND ".join(conditions)}
+             ORDER BY {ordinamento}
+             LIMIT %s OFFSET %s
+        """  # noqa: S608
+        params.extend([limit, offset])
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return extract_paginated(cursor)

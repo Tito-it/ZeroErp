@@ -21,6 +21,7 @@ from apps.anagrafiche.services.categorie_clienti_listini_service import (
 )
 from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.payload_validators import (
     paginated_envelope,
     parse_list_params,
@@ -43,8 +44,7 @@ class CategorieClientiListiniView(AdminAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False,
-                             description="Ricerca su codice/descrizione categoria e listino."),
+            param_ricerca_full(min_caratteri=1),
             OpenApiParameter(name="attivo", type=bool, required=False),
             OpenApiParameter(name="categoria_cliente_id", type=int, required=False),
             OpenApiParameter(name="utility_id", type=int, required=False),

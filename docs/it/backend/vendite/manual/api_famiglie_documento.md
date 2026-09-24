@@ -26,6 +26,14 @@ quel sezionale **fa**. Il modello e le decisioni stanno in
 | `GET` | `/api/v1/vendite/famiglie/export/?formato=csv\|xlsx` | Export delle righe filtrate |
 | `GET` | `/api/v1/vendite/famiglie/lookup/` | Le famiglie attive coi loro default, per il drawer dei registri (`DomainAPIView`, area `vendite`, envelope `{"results": [...]}`) |
 
+**Ricerca libera** (`search`, lista ed export): le colonne le decide il catalogo
+della lista `vendite.famiglie_documento` (`ricerca_full` nella configurazione).
+Da **un** carattere: è una tabella di configurazione, con prefissi e codici
+corti. ⭐ Dal 2026-09-24 si cerca il `codice`, non il `codice_interno` (chiave
+immutabile del sistema, non il codice dell'operatore). Il `codice` esce in lista
+e nel dettaglio (`SELECT v.*` sulla vista); il **lookup** porta ancora il solo
+`codice_interno`, che è la chiave con cui i registri si agganciano.
+
 Tutto il CRUD sta su **`AdminAPIView`** (solo amministratore): una famiglia è
 configurazione del sistema, non un dato di dominio. ⛔ Il **lookup no**: lo
 chiama una schermata di dominio, e chiuderlo spegnerebbe i campi del drawer
@@ -40,6 +48,7 @@ Sede della verità: `_CAMPI_CREATE` / `_CAMPI_UPDATE` in
 | Campo | CREATE | UPDATE | Perché |
 | --- | :---: | :---: | --- |
 | `codice_interno` | ✅ obbligatorio | ⛔ | È ciò su cui il codice confronta: **immutabile** (lock automatico `trgfn_lock_columns`) |
+| `codice` | ⛔ | ✅ | Il codice che la lista **mostra e cerca** (changeSet DB `20260924-03…-07`): mutabile, `UNIQUE`, `NOT NULL`. Alla nascita lo valorizza il trigger `trg_famiglie_documento_a10_default_codice_ins` col `codice_interno`: la madre non ha il parametro, quindi la creazione non lo passa e si cambia **dopo**, in modifica (Tid, 2026-09-24). Vuoto → `400 E_VENDITE_VALIDATION` col campo. ⚠️ Sulle sei famiglie di **seed** il valore lo decide il CSV (mirror `runOnChange`): una modifica dal CRUD torna al valore del seed al migrate successivo, come già la `descrizione` |
 | `descrizione` | ✅ obbligatorio | ✅ | Etichetta |
 | `schema_tabella`, `nome_tabella`, `colonna_numero` | ✅ obbligatori | ✅ (a registri assenti) | Dove vive il documento e dove scrive il numero. Il guard dei riferimenti verifica su `pg_attribute` che tabella e colonne **esistano davvero** |
 | `colonna_billing_account` | ✅ **facoltativa** | ✅ (a registri assenti) | Il nome della colonna che porta il cliente. ⭐ **`NULL` = «questa famiglia non ha un billing account»**, la forma dell'ordine di acquisto, la cui controparte è un `soggetto_ruolo`. Stessa forma di `colonna_serie`; `''` normalizzata a `NULL`. Le famiglie senza BA **saltano** in `fn_ba_ha_storia_emittente` / `fn_get_storia_emittente_ba` — corretto per costruzione, un documento senza BA non contribuisce alla storia di nessun BA |
@@ -67,6 +76,7 @@ del DB non esposta.
 | spegnere una famiglia con registri vivi | guard di disattivazione | `script.fn_check_famiglia_documento_disattivabile` |
 | seconda famiglia **attiva** sulla stessa tabella | `E_VENDITE_DUPLICATO` con la famiglia che blocca **nominata** | `uq_famiglie_documento_tabella_attiva` (indice parziale `WHERE attivo`), tradotto dal service |
 | `codice_interno` duplicato | `E_VENDITE_DUPLICATO` | `uq_famiglie_documento_codice_interno`, tradotto dal service |
+| `codice` duplicato | `E_VENDITE_DUPLICATO` | `uq_famiglie_documento_codice`, tradotto dal service col campo `codice` in modifica e `codice_interno` in creazione (il codice nasce dal codice interno) |
 
 ⛔ **I tre codici dei guard NON si traducono nel service**: arrivano come
 `P0001` da `script.fn_log_and_raise_error`, non sono `IntegrityError`, e

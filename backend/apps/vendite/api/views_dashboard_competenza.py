@@ -25,6 +25,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
+from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.payload_validators import (
     qp_bool_optional,
     qp_int_optional,
@@ -702,18 +703,7 @@ class ApiDashboardCompetenzaGruppi(DomainAPIView):
                     "valorizzato, `registro_id` viene ignorato."
                 ),
             ),
-            OpenApiParameter(
-                name="search",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "Ricerca libera su ragione sociale, identificativo fiscale, "
-                    "codice BA di fatturazione, codice commessa e riferimento "
-                    "documento. Sotto i 3 caratteri viene IGNORATA (nessun 400, "
-                    "nessuna lista svuotata)."
-                ),
-            ),
+            param_ricerca_full(),
             OpenApiParameter(
                 name="order_by",
                 type=str,
@@ -949,7 +939,7 @@ class ApiDashboardCompetenzaGruppiExport(DomainAPIView):
             OpenApiParameter(name="ba_non_determinabile", type=bool, required=False),
             OpenApiParameter(name="registro_id", type=int, required=False),
             OpenApiParameter(name="registro_non_risolvibile", type=bool, required=False),
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="order_by", type=str, required=False),
             OpenApiParameter(name="order_dir", type=str, required=False),
         ],

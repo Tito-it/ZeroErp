@@ -204,7 +204,7 @@ class ApiArticoliList(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY, required=False),
+            param_ricerca_full(rifiuta_sotto_soglia=True),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="is_composito", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="tipo_voce_id", type=int, location=OpenApiParameter.QUERY, required=False),
@@ -226,6 +226,9 @@ class ApiArticoliList(DomainAPIView):
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         p = parse_list_params(qp, default_order="descrizione")
+        # ⚠️ Il 400 sotto soglia RESTA (brief-be-ricerca-full-liste-residue §6:
+        #    decisione aperta sulle liste non di configurazione). Le colonne
+        #    le decide il catalogo della lista (BB nel repository, dal 2026-09-24).
         require_min_search_length(p["search"], field_name="search")
 
         results, total = fn_list_articoli(

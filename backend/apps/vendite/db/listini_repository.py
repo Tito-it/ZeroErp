@@ -15,7 +15,13 @@ from uuid import UUID
 
 from django.db import connection, transaction
 
-from apps.core.db._helpers import extract_paginated, row_to_dict, rows_to_list
+from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
+    extract_paginated,
+    row_to_dict,
+    rows_to_list,
+)
 from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
 
 logger = logging.getLogger(__name__)
@@ -100,20 +106,24 @@ RIGHE_ORDER_COLUMNS: dict[str, str] = {
 }
 
 
-# Scopo: Aggiunge condizione ILIKE parametrica su due colonne testuali.
-def _append_ilike_search(
-    *,
-    conditions: list[str],
-    params: list[Any],
-    left_column: str,
-    right_column: str,
-    search: str | None,
-) -> None:
-    if search is None:
-        return
-    conditions.append(f"({left_column} ILIKE %s OR {right_column} ILIKE %s)")
-    like_value = f"%{search}%"
-    params.extend([like_value, like_value])
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+# ⭐ 2026-09-24 (brief-be-ricerca-full-liste-residue §7-bis, passo 7): le due
+#    liste cercavano senza che il catalogo lo dichiarasse; il seed del team DB
+#    ha acceso le colonne e la ricerca passa dal BB. ⛔ Ritirato nello stesso
+#    giro `_append_ilike_search`, copia identica di quello di catalogo: niente
+#    escape di `%`/`_`, niente strip, e un elenco di colonne cablato che il
+#    pannello admin non poteva spegnere.
+_RICERCA_LISTINI = RicercaFull("vendite.listini", ("codice", "descrizione"))
+
+# ⭐ Forma a tupla sull'alias `unione`, e NON due mappe per le due gambe della
+#    `UNION ALL` (`ad.*` e `adc.*`): la condizione si applica ai nomi che la
+#    lista MOSTRA (`articolo_codice`, `articolo_descrizione`), sulla CTE, UNA
+#    volta. Due dichiarazioni per gamba sarebbero due copie che possono
+#    divergere — una riga standalone trovata e il composito con lo stesso
+#    articolo no — e due letture del catalogo per ricerca.
+_RICERCA_LISTINI_RIGHE = RicercaFull(
+    "vendite.listini_righe", ("articolo_codice", "articolo_descrizione"),
+)
 
 
 # Scopo: Prepara colonne, placeholder e parametri per un INSERT dinamico su colonne whitelisted.
@@ -190,13 +200,11 @@ class ListiniRepository:
         if attivo is not None:
             conditions.append("l.attivo = %s")
             params.append(attivo)
-        _append_ilike_search(
-            conditions=conditions,
-            params=params,
-            left_column="l.codice",
-            right_column="l.descrizione",
-            search=search,
-        )
+        # ⚠️ Una condizione sola per le DUE query (conteggio e pagina): stessi
+        #    `conditions`/`params`, quindi il totale non puo' descrivere un
+        #    perimetro diverso dalle righe. Il 400 sotto soglia resta nella view
+        #    (brief §6, decisione aperta): qui il BB non vede mai un termine corto.
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_LISTINI, alias="l")
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         count_sql = f"""
@@ -844,13 +852,6 @@ class ListiniRepository:
         if attivo is not None:
             conditions.append("r.attivo = %s")
             params.append(attivo)
-        _append_ilike_search(
-            conditions=conditions,
-            params=params,
-            left_column="ad.codice",
-            right_column="ad.descrizione",
-            search=search,
-        )
 
         where_clause = "WHERE " + " AND ".join(conditions)
 
@@ -866,26 +867,32 @@ class ListiniRepository:
         """
 
         # ── Gamba 2: i compositi con prezzo bundle ────────────────────────
-        # Stessi filtri della gamba standalone (search sull'articolo, guard
-        # listino↔versione); `attivo` non e' una colonna di
+        # Stessi filtri della gamba standalone (guard listino↔versione; la
+        # ricerca sta FUORI dalle gambe, sulla CTE `unione` — vedi
+        # `_RICERCA_LISTINI_RIGHE`); `attivo` non e' una colonna di
         # `listini_righe_componenti` a livello di padre: il composito ESISTE
         # nella lista se ha almeno un componente attivo, quindi il filtro
         # `attivo=False` non ha compositi da mostrare.
         cond_comp: list[str] = ["lrc.listino_versione_id = %s", "lrc.attivo = TRUE"]
         params_comp: list[Any] = [versione_id]
-        _append_ilike_search(
-            conditions=cond_comp,
-            params=params_comp,
-            left_column="adc.codice",
-            right_column="adc.descrizione",
-            search=search,
-        )
         where_comp = "WHERE " + " AND ".join(cond_comp)
         # `attivo=False` chiede esplicitamente le righe disattivate: i compositi
         # non ne hanno, quindi la gamba si annulla invece di sporcare l'elenco.
         if attivo is False:
             cond_comp.append("FALSE")
             where_comp = "WHERE " + " AND ".join(cond_comp)
+
+        # ── La ricerca libera: sulla UNIONE, cioe' su cio' che la lista mostra ─
+        # ⭐ Il `WHERE` sta prima di `COUNT(*) OVER()`, quindi il totale conta
+        #    le righe trovate e non l'intera versione. PostgreSQL spinge la
+        #    condizione dentro le due gambe della `UNION ALL` (colonne del
+        #    `GROUP BY` nella seconda): non si paga una scansione in piu'.
+        cond_unione: list[str] = []
+        params_unione: list[Any] = []
+        add_ricerca_full_condition(
+            cond_unione, params_unione, search, _RICERCA_LISTINI_RIGHE, alias="unione",
+        )
+        where_unione = ("WHERE " + " AND ".join(cond_unione)) if cond_unione else ""
 
         data_sql = f"""
             WITH unione AS (
@@ -956,15 +963,18 @@ class ListiniRepository:
             )
             SELECT *, COUNT(*) OVER() AS total_count
               FROM unione
+            {where_unione}
              ORDER BY {order_column} {safe_order_dir} NULLS LAST, row_key ASC
              LIMIT %s OFFSET %s
         """  # noqa: S608 — order_column da whitelist, direzione normalizzata
 
-        # L'ordine dei parametri segue le due gambe della UNION:
-        # gamba 1 (join_guard + where), gamba 2 (join_guard + where), poi paginazione.
+        # L'ordine dei parametri segue il testo SQL: gamba 1 (join_guard +
+        # where), gamba 2 (join_guard + where), la ricerca sulla unione, poi
+        # la paginazione.
         data_params = (
             join_guard_params + params
             + join_guard_params + params_comp
+            + params_unione
             + [safe_limit, safe_offset]
         )
 

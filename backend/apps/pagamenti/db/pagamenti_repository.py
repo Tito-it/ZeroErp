@@ -37,6 +37,7 @@ from apps.core.db._helpers import (
     rows_to_list,
     sql_order_direction,
     sql_tiebreak_direction,
+    utente_di_sessione,
 )
 from apps.core.db.emittente_scope_helpers import (
     add_emittente_scope_condition_risolta,
@@ -117,6 +118,19 @@ _RICERCA_ECCEDENZE = RicercaFull("pagamenti.eccedenze", {
     "cliente_ragione_sociale": "srd.ragione_sociale_completa",
     "fattura_numero": "v.fattura_numero",
 })
+# ⭐ Le rate (passo 7 del brief, dopo il seed DB del 24-09): forma a TUPLA,
+#    perche' tutte e quattro sono colonne della STESSA vista
+#    (`vendite.vw_fatture_scadenze_lista`) e la lista la legge con DUE alias —
+#    `v` la pagina, `p` il perimetro di `solo_aperte`. La tupla prende l'alias
+#    dalla chiamata: una mappa lo cablerebbe, e il secondo ramo cercherebbe
+#    sulla relazione sbagliata. ⭐ `numero_documento` c'e' per decisione di Tid
+#    (23-09): si cerca ANCHE il documento, non solo il cliente.
+_RICERCA_RATE = RicercaFull("pagamenti.rate", (
+    "numero_documento",
+    "ragione_sociale_completa",
+    "ba_codice",
+    "id_fiscale_univoco_cf_piva",
+))
 
 _DISTINTA_SELECT = """
     SELECT
@@ -1556,8 +1570,12 @@ class PagamentiRepository:
     #    `vw_saldi_rate`; sul perimetro di un cliente regge.
     # ⛔ `fattura_numero` e' un confronto ESATTO, non un `ILIKE`: nel lookup 101
     #    porta anche 1010 e 2101, ed e' giusto la'; qui chi digita un numero
-    #    vuole QUEL documento (brief §8). `search` invece cerca il CLIENTE —
-    #    ragione sociale, codice BA, id fiscale — mai il numero.
+    #    nel filtro vuole QUEL documento (brief §8). ⚠️ `search` e' un'ALTRA
+    #    cosa, e dal 2026-09-24 cerca ANCHE il documento (decisione di Tid,
+    #    brief-be-ricerca-full-liste-residue §7): e' la ricerca libera, che
+    #    cade sulle colonne che il catalogo accende (`_RICERCA_RATE` ∩
+    #    `ui.fn_lista_colonne_ricerca_full`), e li' «101» porta anche la 1010
+    #    — come in ogni ricerca libera. Il filtro esatto resta com'e'.
     # ⚠️ Lo scope emittente applicativo si SOMMA alla RLS (api.md §Enforcement
     #    RLS), come sulla lista fatture da cui il lookup legge: `v.emittente_fiscale_id`
     #    e' la PK dell'emittente, convenzione `pk`.
@@ -1626,14 +1644,12 @@ class PagamentiRepository:
             if anno is not None:
                 conditions.append(f"{alias}.anno = %s")
                 params.append(anno)
-            if search and len(search) >= 3:
-                conditions.append(
-                    f"({alias}.ragione_sociale_completa ILIKE %s "
-                    f"OR {alias}.ba_codice ILIKE %s "
-                    f"OR {alias}.id_fiscale_univoco_cf_piva ILIKE %s)"
-                )
-                like = f"%{search}%"
-                params.extend([like, like, like])
+            # ⭐ Il BB DENTRO la funzione dell'alias, non fuori: pagina e
+            #    perimetro ricevono la stessa condizione sulla loro relazione,
+            #    e i due insiemi non possono divergere (brief §5.1). ⚠️ Con
+            #    `solo_aperte` il catalogo si legge due volte nella stessa
+            #    richiesta: e' il prezzo della sede unica, e una query leggera.
+            add_ricerca_full_condition(conditions, params, search, _RICERCA_RATE, alias=alias)
             if data_scadenza_da is not None:
                 conditions.append(f"{alias}.data_scadenza >= %s")
                 params.append(data_scadenza_da)
@@ -1905,23 +1921,16 @@ class PagamentiRepository:
     #    qui «non so chi sei» vale **no**.
     def emittente_nel_perimetro(self, emittente_soggetto_ruolo_id: int) -> bool:
         self._guard_canale_sistema("emittente_nel_perimetro")
+        # L'utente per cui la connessione agisce, dalla GUC delle policy RLS
+        # (BB `utente_di_sessione`: il nome della GUC e il suo tranello stanno
+        # li'). Senza utente non c'e' perimetro: si rifiuta.
+        auth_user_id = utente_di_sessione()
+        if auth_user_id is None:
+            return False
         with connection.cursor() as cursor:
-            # ⚠️ La GUC si chiama `app.current_user_id`, NON `app.auth_user_id`:
-            #    e' il nome che usano le policy RLS di questo schema, ed e' da
-            #    li' che si legge — mai dal nome che sembra giusto. Con il nome
-            #    sbagliato il `current_setting` risponde NULL e questa funzione
-            #    rifiuta TUTTO, compreso chi ha diritto: un difetto che i mock
-            #    non vedono, perche' i mock non hanno GUC.
-            cursor.execute(
-                "SELECT NULLIF(current_setting('app.current_user_id', true), '')::int"
-            )
-            row = cursor.fetchone()
-            auth_user_id = row[0] if row else None
-            if auth_user_id is None:
-                return False
             cursor.execute(
                 "SELECT COALESCE(script.fn_scope_ef_whitelist_via_sr(%s, %s), false)",
-                [int(auth_user_id), int(emittente_soggetto_ruolo_id)],
+                [auth_user_id, int(emittente_soggetto_ruolo_id)],
             )
             return bool(cursor.fetchone()[0])
 

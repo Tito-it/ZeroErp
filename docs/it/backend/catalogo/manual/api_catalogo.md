@@ -61,7 +61,7 @@ Tutte le risposte usano l'envelope standard:
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `search` | string | No | Ricerca su `codice` e `descrizione` |
+| `search` | string | No | Ricerca libera: le colonne le decide il catalogo della lista `catalogo.articoli`. Sotto 3 caratteri: `400` `E_SEARCH_VALIDATION` |
 | `attivo` | bool | No | Filtro attivo/disattivo |
 | `is_composito` | bool | No | Filtro articoli composti |
 | `voce_utility` | bool | No | Filtro articoli utility |
@@ -305,7 +305,7 @@ di prima.
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `search` | string | No | Ricerca su `codice` e `descrizione` |
+| `search` | string | No | Ricerca su `codice` e `descrizione` (la lookup non e' una lista: niente catalogo). `%` e `_` sono caratteri, non jolly; spazi ai bordi ignorati. Sotto 3 caratteri: `400` `E_SEARCH_VALIDATION` |
 | `voce_utility` | bool | No | Filtro utility |
 | `attivo` | bool | No | Default API `true` |
 | `is_composito` | bool | No | Filtro composti |
@@ -785,7 +785,10 @@ permesso di **livello oggetto** sui rispettivi modelli.
 ## Regole trasversali
 
 - Tutti gli endpoint richiedono JWT.
-- Gli endpoint search/lista con `search` applicano `require_min_search_length(...)`.
+- La ricerca libera delle liste (`search`) cade sulle colonne che il catalogo
+  della lista accende. Soglia: articoli e lookup articoli `400` sotto 3 caratteri
+  (`require_min_search_length`); tipologie UoM, unita` di misura e conversioni
+  sono tabelle di configurazione e cercano da un carattere.
 - Tutte le response detail e gli envelope lista UoM operativa includono
   `non_editable_fields: string[]` (Fase 5) — il FE pilota i `:disabled`
   da questa lista invece di cablare regole. Source: vista

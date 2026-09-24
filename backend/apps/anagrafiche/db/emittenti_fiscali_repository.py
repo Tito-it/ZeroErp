@@ -57,14 +57,12 @@ _EMITTENTI_ORDER_DEFAULT = "ragione_sociale_completa"
 
 # Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
 # ⭐ Emittenti: si cerca per id fiscale univoco, per uniformita' con le altre
-#    anagrafiche (Tid, 2026-09-23). ⏳ `partita_iva` resta dichiarata finche'
-#    il seed la accende: si toglie DOPO che il team DB l'ha spenta (brief DB
-#    §3.1), o il presidio vedrebbe una colonna accesa sconosciuta.
+#    anagrafiche (Tid, 2026-09-23). `partita_iva` tolta il 2026-09-24, dopo che
+#    il seed l'ha spenta (brief DB §3.2): l'id fiscale univoco la contiene.
 _RICERCA_EMITTENTI = RicercaFull("anagrafiche.emittenti_fiscali", {
     "codice": "ef.codice",
     "ragione_sociale_completa": "s.ragione_sociale_completa",
     "id_fiscale_univoco_cf_piva": "s.id_fiscale_univoco_cf_piva",
-    "partita_iva": "s.partita_iva",
 })
 _RICERCA_EMITTENTE_BA = RicercaFull("anagrafiche.emittente_billing_account", {
     "billing_account_codice": "ba.codice",

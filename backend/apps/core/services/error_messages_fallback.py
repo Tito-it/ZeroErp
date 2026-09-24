@@ -1116,6 +1116,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_TXID_GENERATION": "Generazione del tx_id fallita.",
     "E_TX_ID": "Generazione del trigger tx_id fallita.",
     "E_UI_CAMPO_SORGENTE_NON_TROVATO": "Campo sorgente colonna non trovato nella vista SQL.",
+    "E_UI_CHIAMATA_NON_VALIDA": "Chiamata non valida alla configurazione della lista: il contesto della richiesta non corrisponde all'utente.",
     "E_UI_COLONNA_IN_USO": "La colonna e' in uso (preferenze utente, preset o permessi). Disattivala con attivo=false invece di eliminarla.",
     "E_UI_COLONNA_NON_TROVATA": "Colonna lista non trovata.",
     "E_UI_COLONNA_VALIDAZIONE": "Colonna lista non valida.",

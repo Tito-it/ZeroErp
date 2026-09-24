@@ -109,8 +109,9 @@ export function registraDocumento(famiglia, docId) {
 // ══════════════════════════════════════════════════════════════
 
 // Le righe di UNA testata, paginate (lista `magazzino.<famiglia>_righe`).
-// Filtro `search` (colonne dal catalogo; sotto 3 caratteri non filtra — la
-// casella arriva al passo 6 del brief-be-ricerca-full-liste-residue).
+// Filtro `search` (colonne dal catalogo; sotto 3 caratteri non filtra): la
+// casella sta nel `#filtri-sempre` del drawer del documento e compare solo se
+// il catalogo accende almeno una colonna (`ricerca_full`).
 // Senza ordinamento: `id ASC`, l'ordine di digitazione.
 export function listRighe(famiglia, docId, params = {}) {
   return api.get(`${base(famiglia)}/${docId}/righe/`, { params })
@@ -227,8 +228,9 @@ export function listBlocchi(articoloId, magazzinoId) {
 // `data_a` (su `data_mov`), `sorgente_tipo` (`config.sorgenti.codice_interno`),
 // e i due deep-link dal documento POSTED: `inventario_id` / `rettifica_id`
 // (i movimenti nati dalle righe di QUEL documento), `search` (colonne dal
-// catalogo; sotto 3 caratteri non filtra — la casella arriva al passo 6 del
-// brief-be-ricerca-full-liste-residue). Senza ordinamento: `data_mov DESC, id DESC`.
+// catalogo; sotto 3 caratteri non filtra — la casella compare solo se il
+// catalogo accende almeno una colonna, `ricerca_full`). Senza ordinamento:
+// `data_mov DESC, id DESC`.
 export function listMovimenti(params = {}) {
   return api.get(`${BASE}/movimenti/`, { params })
 }

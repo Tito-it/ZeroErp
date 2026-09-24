@@ -225,6 +225,8 @@ class ApiFamigliaDetail(AdminAPIView):
     @extend_schema(
         operation_id="vendite_famiglie_update",
         request=inline_serializer(name="VenditeFamigliaUpdateReq", fields={
+            # Il codice dell'operatore (dal 2026-09-24): mutabile e unico; vuoto -> 400.
+            "codice": serializers.CharField(required=False),
             "descrizione": serializers.CharField(required=False),
             "schema_tabella": serializers.CharField(required=False),
             "nome_tabella": serializers.CharField(required=False),

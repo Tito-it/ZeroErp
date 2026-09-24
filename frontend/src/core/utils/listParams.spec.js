@@ -17,8 +17,13 @@
 //  5. filtri assenti: oggetto vuoto, non un errore
 //  6. paramsPagina porta pagina e ordinamento nella stessa forma
 //  7. paramsPagina: order_by assente => nessuna chiave di ordinamento
+//  8. paramsRicerca: vuoto o sotto soglia non manda niente, sopra manda trimmato
+//  9. paramsRicerca: la soglia e' un parametro (liste da un carattere)
+// 10. termineCorto: vuoto NON e' corto (sono due stati diversi)
+// 11. la soglia di default e' `RICERCA.MIN_CARATTERI`, non un numero sul posto
 import { describe, expect, it } from 'vitest'
-import { paramsOrdinamento, paramsPagina } from './listParams'
+import { RICERCA } from '../constants'
+import { paramsOrdinamento, paramsPagina, paramsRicerca, termineCorto } from './listParams'
 
 describe('paramsOrdinamento', () => {
   it('senza order_by non manda niente, nemmeno order_dir', () => {
@@ -63,5 +68,36 @@ describe('paramsPagina', () => {
   it('senza order_by non ha nessuna chiave di ordinamento', () => {
     const p = paramsPagina({ limit: 25, offset: 0, order_by: null, order_dir: 'desc' })
     expect(p).toEqual({ page: 1, page_size: 25 })
+  })
+})
+
+// ⭐ La ricerca libera (2026-09-24, regola del 2): la stessa riga `trim` +
+//    `>= 3` viveva in sei store. Ogni ramo che le copie scrivevano sta qui.
+describe('paramsRicerca e termineCorto', () => {
+  it('vuoto o sotto soglia non manda niente, sopra manda il termine trimmato', () => {
+    expect(paramsRicerca({ search: '' })).toEqual({})
+    expect(paramsRicerca({ search: null })).toEqual({})
+    expect(paramsRicerca({})).toEqual({})
+    expect(paramsRicerca({ search: '   ' })).toEqual({})
+    expect(paramsRicerca({ search: ' ab ' })).toEqual({})
+    expect(paramsRicerca({ search: '  abc  ' })).toEqual({ search: 'abc' })
+  })
+
+  it('la soglia e un parametro', () => {
+    expect(paramsRicerca({ search: 'K' }, { minCaratteri: 1 })).toEqual({ search: 'K' })
+    expect(paramsRicerca({ search: ' ' }, { minCaratteri: 1 })).toEqual({})
+  })
+
+  it('termineCorto: vuoto non e corto, sotto soglia si, a soglia no', () => {
+    expect(termineCorto('')).toBe(false)
+    expect(termineCorto('ab')).toBe(true)
+    expect(termineCorto('abc')).toBe(false)
+    expect(termineCorto('a', { minCaratteri: 1 })).toBe(false)
+  })
+
+  it('la soglia di default e RICERCA.MIN_CARATTERI', () => {
+    const giusto = 'x'.repeat(RICERCA.MIN_CARATTERI)
+    expect(paramsRicerca({ search: giusto })).toEqual({ search: giusto })
+    expect(paramsRicerca({ search: giusto.slice(1) })).toEqual({})
   })
 })

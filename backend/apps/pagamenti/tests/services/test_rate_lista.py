@@ -96,7 +96,7 @@ class RateListaTests(SimpleTestCase):
     def test_ricerca_corta_rifiutata(self):
         with self.assertRaises(ServiceError) as ctx:
             saldi_service.list_rate(auth_user_id=5, limit=25, search="ro")
-        self.assertEqual(ctx.exception.code, "E_PAGAMENTI_VALIDATION")
+        self.assertEqual(ctx.exception.code, "E_SEARCH_VALIDATION")
         self.assertEqual(ctx.exception.context.get("field"), "search")
 
     # Scopo: `solo_aperte` e' SUPPORTATO (P-3 c'e'): al repository arriva un

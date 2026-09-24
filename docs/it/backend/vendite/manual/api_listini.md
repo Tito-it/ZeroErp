@@ -57,7 +57,7 @@ Le API richiedono JWT (`Authorization: Bearer <token>`) e usano l'envelope stand
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `search` | string | No | Ricerca su `codice` e `descrizione` |
+| `search` | string | No | Ricerca libera: le colonne le decide il catalogo della lista `vendite.listini` (`ricerca_full` nella configurazione). Sotto 3 caratteri: `400` `E_SEARCH_VALIDATION` |
 | `utility_id` | int | No | Filtro per utility (FK `config.utilities`) |
 | `tipologia_id` | int | No | Filtro per tipologia listino (FK `config.listini_tipologie`) |
 | `attivo` | bool | No | Filtro attivo/disattivo; parsing rigoroso |
@@ -525,6 +525,12 @@ Le righe sono arricchite con campi display:
 - `articolo_codice`, `articolo_descrizione`
 - `uom_codice`, `uom_descrizione`
 - descrizioni del contesto BA / utility / emittente se presenti
+
+Query param `search`: ricerca libera, le colonne le decide il catalogo della
+lista `vendite.listini_righe` (`ricerca_full` nella configurazione). Sotto 3
+caratteri il termine si **ignora** (nessun `400`). Cade sulle righe standalone
+**e** sui compositi bundle, perché si applica ai campi che la lista mostra, dopo
+l'unione delle due gambe.
 
 ### 4.2 Crea riga
 

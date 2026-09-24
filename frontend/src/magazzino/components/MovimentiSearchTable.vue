@@ -20,6 +20,7 @@
 import { computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
+import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
@@ -48,7 +49,7 @@ const { sorgenteMovimento, opzioniSorgenteMovimento } = useEtichetteMagazzino()
 const opzioniSorgente = opzioniSorgenteMovimento()
 
 const {
-  onPage, onSort, applyFilters, paginatorProps, tablePage,
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
   listaRef, dirty,
   exportDialogVisible, exportLoading, onExportConfirm, onConfigLoaded,
   pageActions, perimetroBloccato,
@@ -107,6 +108,16 @@ onMounted(() => store.fetchList())
     <template v-else>
       <div class="app-page-toolbar">
         <FiltriLista :store="store" :inert="perimetroBloccato">
+          <!-- La ricerca: colonne dal catalogo (`ricerca_full`), sotto 3
+               caratteri il termine non filtra; l'export porta la stessa
+               `search` (`paramsFiltro`). -->
+          <template #sempre>
+            <InputText
+              v-model="searchText"
+              class="app-filter-w-lg"
+              :placeholder="t('common.search')"
+            />
+          </template>
           <LookupSelect
             v-model="magazzinoFilter"
             class="app-filter-w-md"

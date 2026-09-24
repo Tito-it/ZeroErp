@@ -134,6 +134,15 @@ Errori:
   `ui.lista_definizione` oppure `attivo=false`
 - `400` `E_UI_GENERIC_FAILED` — DatabaseError generico durante la
   risoluzione (caso eccezionale, log a DB)
+- `500` `E_UI_CHIAMATA_NON_VALIDA` (classe `TECNICO`, dal 2026-09-24) — il
+  contesto di sessione della richiesta (GUC `app.current_user_id`) è vuoto o
+  nomina un utente diverso da quello autenticato. La configurazione risponde
+  per l'utente della chiamata, `ricerca_full` e la ricerca vera per quello
+  della GUC: se divergessero, la casella direbbe una cosa e la ricerca ne
+  farebbe un'altra, senza errore. In una richiesta HTTP le due fonti
+  coincidono per costruzione (`JwtAuditAuthentication`), quindi a video non
+  compare mai: segnala un chiamante rotto. Contesto a diario: `lista_codice`,
+  `auth_user_id`, `utente_di_sessione`. Brief-be-ricerca-full-liste-residue §12
 
 #### Note
 
@@ -456,6 +465,7 @@ In `apps/core/services/error_policies.py`:
 | `E_UI_CAMPO_SORGENTE_NON_TROVATO` | 400 | `show_error_banner` | Trigger B2 (admin only) |
 | `E_UI_PREFERENZA_VALIDAZIONE` | 400 | `highlight_form_fields` | Service write (whitelist/tipi) |
 | `E_UI_GENERIC_FAILED` | 400 | `show_error_banner` | Service (DatabaseError non riconosciuto) |
+| `E_UI_CHIAMATA_NON_VALIDA` | 500 | `show_error_banner` | Service (`get_lista_config_per_video`: contesto di sessione ≠ utente della chiamata) |
 
 ## Note di migrazione
 

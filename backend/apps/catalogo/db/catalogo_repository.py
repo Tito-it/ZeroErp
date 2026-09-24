@@ -16,6 +16,7 @@ from django.db import connection
 from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
+    escape_ilike,
     fetch_con_sonda,
     row_to_dict,
     rows_to_list,
@@ -189,7 +190,14 @@ ARTICOLI_DETAIL_COLUMNS: tuple[str, ...] = (
 # Cosa si PUO' cercare nelle liste di catalogo; cosa si cerca lo dice il
 # catalogo (`add_ricerca_full_condition`, brief-be-ricerca-full-liste-residue §2).
 # Tabelle di configurazione: la ricerca parte da un carattere (Tid, 2026-09-23).
-_RICERCA_UOM_TIPI = RicercaFull("catalogo.uom_tipi", ("codice", "codice_interno", "descrizione"))
+# ⭐ Articoli dal 2026-09-24, dopo il seed che accende codice e descrizione
+#    (brief-db-ricerca-full-colonne-da-accendere §3.1, righe 321-322).
+_RICERCA_ARTICOLI = RicercaFull("catalogo.articoli", ("codice", "descrizione"))
+# ⛔ Il `codice_interno` NON si cerca (Tid, 2026-09-23): e' la chiave immutabile
+#    del sistema, non il codice dell'operatore. Tolto il 2026-09-24, DOPO che il
+#    seed l'ha spento a catalogo (riga 276, brief DB §3.4): nell'ordine inverso
+#    il catalogo avrebbe acceso una colonna sconosciuta alla dichiarazione.
+_RICERCA_UOM_TIPI = RicercaFull("catalogo.uom_tipi", ("codice", "descrizione"))
 _RICERCA_UNITA_MISURA = RicercaFull("catalogo.unita_misura", ("codice", "descrizione"))
 _RICERCA_CONVERSIONI = RicercaFull("catalogo.conversioni_uom", {
     "uom_from_codice": "uf.codice",
@@ -198,24 +206,6 @@ _RICERCA_CONVERSIONI = RicercaFull("catalogo.conversioni_uom", {
     "uom_to_descrizione": "ut.descrizione",
 })
 
-
-# Scopo: Aggiunge una condizione di ricerca ILIKE su due colonne testuali.
-# ⚠️ Resta per articoli e lookup articoli: `catalogo.articoli` non accende
-#    colonne `ricercabile_full` a catalogo, e col BB la sua ricerca non
-#    troverebbe niente (brief-be-ricerca-full-liste-residue §7-bis).
-def _append_ilike_search(
-    *,
-    conditions: list[str],
-    params: list[Any],
-    left_column: str,
-    right_column: str,
-    search: str | None,
-) -> None:
-    if search is None:
-        return
-    conditions.append(f"({left_column} ILIKE %s OR {right_column} ILIKE %s)")
-    like_value = f"%{search}%"
-    params.extend([like_value, like_value])
 
 class CatalogoRepository:
     """Repository generico per query articoli e lookup UoM."""
@@ -266,13 +256,10 @@ class CatalogoRepository:
         if listino_tipologia_id is not None:
             conditions.append("a.listino_tipologia_id = %s")
             params.append(listino_tipologia_id)
-        _append_ilike_search(
-            conditions=conditions,
-            params=params,
-            left_column="a.codice",
-            right_column="a.descrizione",
-            search=search,
-        )
+        # Colonne dal catalogo della lista (BB). ⚠️ Soglia di default e non
+        # `min_caratteri=1`: gli articoli non sono una tabella di configurazione,
+        # e la view risponde ancora 400 sotto soglia (brief §6, decisione aperta).
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_ARTICOLI, alias="a")
         if data_da is not None:
             conditions.append("a.data_insert::date >= %s")
             params.append(data_da)
@@ -439,13 +426,19 @@ class CatalogoRepository:
         needs_articoli_join = False
         join_clause = ""
 
-        _append_ilike_search(
-            conditions=conditions,
-            params=params,
-            left_column="a.codice",
-            right_column="a.descrizione",
-            search=search,
-        )
+        # ⚠️ La lookup NON e' una lista: non ha un catalogo da leggere e non passa
+        #    dal BB `add_ricerca_full_condition` (brief-be-ricerca-full-liste-
+        #    residue §7-bis, ultimo paragrafo). La ricerca resta scritta qui, con
+        #    `escape_ilike` e `strip` come le altre lookup (`billing_account`,
+        #    `istanze_utility`): senza escape «BA_1» o «50%» facevano da jolly.
+        #    Un solo consumatore: niente helper (regola del 2). L'helper
+        #    `_append_ilike_search` che la condivideva con la lista articoli e'
+        #    ritirato il 2026-09-24 (brief §8).
+        termine = search.strip() if search else ""
+        if termine:
+            like_value = f"%{escape_ilike(termine)}%"
+            conditions.append("(a.codice ILIKE %s OR a.descrizione ILIKE %s)")
+            params.extend([like_value, like_value])
         if attivo is not None:
             conditions.append("a.attivo = %s")
             params.append(attivo)

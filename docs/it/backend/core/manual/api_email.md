@@ -72,7 +72,7 @@ GET /api/v1/amm-software/email-accounts/
 
 | Parametro | Tipo | Obbligatorio | Default | Note |
 | --- | --- | :---: | --- | --- |
-| `search` | string | No | — | ILIKE su codice, descrizione, email_from |
+| `search` | string | No | — | Ricerca libera: le colonne le decide il catalogo della lista `config.email_account`. Da un carattere (tabella di configurazione) |
 | `limit` | int | No | 50 | Max 200 |
 | `offset` | int | No | 0 | — |
 | `order_by` | string | No | `codice` | Colonna di ordinamento |
@@ -242,7 +242,7 @@ GET /api/v1/amm-software/email-templates/
 
 | Parametro | Tipo | Obbligatorio | Default | Note |
 | --- | --- | :---: | --- | --- |
-| `search` | string | No | — | ILIKE su codice, oggetto |
+| `search` | string | No | — | Ricerca libera: le colonne le decide il catalogo della lista `config.email_template`. Da un carattere (tabella di configurazione) |
 | `codice` | string | No | — | Filtro esatto per codice |
 | `limit` | int | No | 50 | Max 200 |
 | `offset` | int | No | 0 | — |
@@ -324,7 +324,9 @@ GET /api/v1/amm-software/email-log/{id}/
 Admin vede tutti gli ambiti. Filtri: `search`, `stato`, `ambito`, `pratica_id`,
 `unita_organizzativa_id`, `data_da`/`data_a` (`YYYY-MM-DD`), `limit`, `offset`,
 `order_by` (default `data_insert`), `order_dir` (default `desc`). Risposta paginata
-come le altre liste admin.
+come le altre liste admin. `search`: le colonne le decide il catalogo della lista
+`config.email_log`; sotto 3 caratteri il termine non filtra (e' un registro, non
+configurazione — fino al 2026-09-24 filtrava da un carattere).
 
 Il dettaglio include `corpo_inviato_html` e `corpo_inviato_testo` (corpo esattamente
 come inviato, anche se la bozza e' stata modificata prima dell'invio).
@@ -492,7 +494,8 @@ Il perimetro **non** e' un filtro della view: lo applica la RLS su
 `config.email_log`, per **emittente** (`fn_scope_ef_whitelist`); le email di ambito
 `SISTEMA` le legge solo un super admin (o il processo `send_pending_emails`).
 Filtri: `search`, `stato`, `pratica_id`, `data_da`/`data_a` (`YYYY-MM-DD`), `limit`,
-`offset`.
+`offset`. `search` e' la ricerca della lista `config.email_log` (stessa query): le
+colonne le decide il suo catalogo, e sotto 3 caratteri il termine non filtra.
 
 ---
 

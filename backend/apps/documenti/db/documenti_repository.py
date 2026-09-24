@@ -18,7 +18,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import rows_to_list
+from apps.core.db._helpers import RicercaFull, add_ricerca_full_condition, rows_to_list
 from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
 from apps.core.services.error_manager import ErrorManager
 
@@ -294,6 +294,19 @@ _ASSET_PROJECTION_DETAIL = (
     _ASSET_PROJECTION + ",\n    a.meta,\n    a.storicizza,\n    a.user_insert,\n    a.user_update"
 )
 
+# Cosa si PUO' cercare nelle liste dei template e degli asset; cosa si cerca lo
+# dice il catalogo della lista (`add_ricerca_full_condition`, brief-be-ricerca-
+# full-liste-residue §2). Colonne semplici delle tabelle nel `FROM` (alias `t` e
+# `a`), proiettate con lo stesso nome: forma a tupla.
+# ⛔ Il `codice_interno` NON si cerca (Tid, 2026-09-23 — brief §7-bis): e' la
+#    chiave immutabile del sistema, non il codice dell'operatore. Fino al
+#    2026-09-24 la ricerca scritta a mano lo cercava; il catalogo non lo accende.
+# ⭐ Da un carattere (`min_caratteri=1`), senza 400: template e asset sono
+#    tabelle di CONFIGURAZIONE (Tid, 2026-09-24 — brief §6 e §13.3 a), come le
+#    altre dell'area config che cercano da un carattere.
+_RICERCA_TEMPLATE_DOCUMENTI = RicercaFull("documenti.template_documenti", ("codice", "descrizione"))
+_RICERCA_TEMPLATE_ASSET = RicercaFull("documenti.template_asset", ("codice", "descrizione", "file_name"))
+
 _ASSET_FROM = """
     FROM documenti.template_asset a
     JOIN documenti.tipi_asset_documento tad ON tad.id = a.asset_tipo_id
@@ -429,12 +442,8 @@ class DocumentiRepository:
             # Lista vuota = nessun emittente -> 0 risultati senza errore.
             conditions.append("t.emittente_fiscale_id = ANY(%s)")
             params.append(list(emittente_ids_scope))
-        if search and search.strip():
-            pattern = f"%{search.strip()}%"
-            conditions.append(
-                "(t.codice ILIKE %s OR t.codice_interno ILIKE %s OR t.descrizione ILIKE %s)"
-            )
-            params.extend([pattern, pattern, pattern])
+        # Un punto solo: la stessa condizione serve count e pagina.
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_TEMPLATE_DOCUMENTI, alias="t", min_caratteri=1)
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -738,13 +747,8 @@ class DocumentiRepository:
         if emittente_ids_scope is not None:
             conditions.append("a.emittente_fiscale_id = ANY(%s)")
             params.append(list(emittente_ids_scope))
-        if search and search.strip():
-            pattern = f"%{search.strip()}%"
-            conditions.append(
-                "(a.codice ILIKE %s OR a.codice_interno ILIKE %s "
-                "OR a.descrizione ILIKE %s OR a.file_name ILIKE %s)"
-            )
-            params.extend([pattern, pattern, pattern, pattern])
+        # Un punto solo: la stessa condizione serve count e pagina.
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_TEMPLATE_ASSET, alias="a", min_caratteri=1)
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 

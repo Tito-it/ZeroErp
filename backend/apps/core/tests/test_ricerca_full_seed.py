@@ -130,6 +130,21 @@ _RICERCHE: tuple[tuple[str, object], ...] = (
     ("pagamenti.distinta_righe", _da_costante(_P, "_RICERCA_RIGHE_DISTINTA")),
     ("pagamenti.rate_fuori_capienza", _da_costante(_P, "_RICERCA_RATE_FUORI_CAPIENZA")),
     ("pagamenti.eccedenze", _da_costante(_P, "_RICERCA_ECCEDENZE")),
+    ("pagamenti.rate", _da_costante(_P, "_RICERCA_RATE")),
+    ("catalogo.articoli", _da_costante("apps.catalogo.db.catalogo_repository", "_RICERCA_ARTICOLI")),
+    ("documenti.template_documenti", _da_costante("apps.documenti.db.documenti_repository", "_RICERCA_TEMPLATE_DOCUMENTI")),
+    ("documenti.template_asset", _da_costante("apps.documenti.db.documenti_repository", "_RICERCA_TEMPLATE_ASSET")),
+    ("config.email_account", _da_costante("apps.core.db.email_repository", "_RICERCA_EMAIL_ACCOUNT")),
+    ("config.email_template", _da_costante("apps.core.db.email_repository", "_RICERCA_EMAIL_TEMPLATE")),
+    ("config.email_log", _da_costante("apps.core.db.email_repository", "_RICERCA_EMAIL_LOG")),
+    ("anagrafiche.clienti", _da_costante("apps.anagrafiche.db.clienti_repository", "_RICERCA_CLIENTI")),
+    ("anagrafiche.soggetti", _da_costante("apps.anagrafiche.db.soggetti_repository", "_RICERCA_SOGGETTI")),
+    ("anagrafiche.categorie_clienti_listini", _da_costante("apps.anagrafiche.db.categorie_clienti_listini_repository", "_RICERCA_MATRICE")),
+    ("anagrafiche.operatori", _da_costante("apps.amm_software.db.amm_software_repository", "_RICERCA_OPERATORI")),
+    ("vendite.listini", _da_costante(_V + "listini_repository", "_RICERCA_LISTINI")),
+    ("vendite.listini_righe", _da_costante(_V + "listini_repository", "_RICERCA_LISTINI_RIGHE")),
+    ("vendite.promo_articoli", _da_costante(_V + "promo_articoli_repository", "_RICERCA_PROMO")),
+    ("vendite.dash_competenza_gruppi", _da_costante(_V + "vendite_repository", "_RICERCA_DASH_COMPETENZA_GRUPPI")),
     ("catalogo.conversioni_uom", _da_costante("apps.catalogo.db.catalogo_repository", "_RICERCA_CONVERSIONI")),
     ("config.tipi_ruolo_tipi_indirizzo", _da_costante("apps.config.db.tipi_ruolo_tipi_indirizzo_repository", "_RICERCA")),
     ("config.utilities_tipi_ruolo", _da_costante("apps.config.db.utilities_tipi_ruolo_repository", "_RICERCA")),
@@ -141,12 +156,8 @@ _RICERCHE: tuple[tuple[str, object], ...] = (
 # Liste con colonne `ricercabile_full = t` la cui ricerca e' ancora scritta a
 # mano (o assente) e non passa dal BB. Fotografia del 2026-09-23: PUO' SOLO
 # CALARE (test 4). Il piano per svuotarlo:
-# docs/it/dev/work-in-progress/brief-be-ricerca-full-liste-residue.md
-_DEBITO_RICERCA_A_MANO: frozenset[str] = frozenset({
-    "anagrafiche.clienti",
-    "anagrafiche.soggetti",
-    "pagamenti.rate",
-})
+# docs/it/dev/work-done/brief-be-ricerca-full-liste-residue.md
+_DEBITO_RICERCA_A_MANO: frozenset[str] = frozenset()
 
 
 # Scopo: i `campo_sorgente` ricercabili e attivi di una lista, dal seed.

@@ -35,7 +35,7 @@ Restituisce l'elenco paginato dei soggetti con ricerca full-text e filtro per ti
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `search` | string | No | Testo libero per ricerca su ragione sociale, cognome, nome, CF, P.IVA |
+| `search` | string | No | Ricerca libera sulle colonne che il catalogo della lista `anagrafiche.soggetti` accende per l'operatore (le decide il catalogo, non il codice: `ricerca_full` nella configurazione della lista). Sotto 3 caratteri non filtra (nessun 400). Vale anche per l'export |
 | `tipo_soggetto_dettaglio_id` | int | No | Filtra per tipo soggetto (PF, SRL, SPA, ecc.) |
 | `limit` | int | No | Numero massimo di risultati per pagina (default: 25) |
 | `offset` | int | No | Offset per paginazione |

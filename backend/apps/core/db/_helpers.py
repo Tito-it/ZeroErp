@@ -209,6 +209,23 @@ def colonne_ricerca_accese(lista_codice: str) -> list[str]:
         return [r[0] for r in cursor.fetchall()]
 
 
+# Scopo: l'utente per cui la connessione sta agendo: la GUC `app.current_user_id`
+#        che `JwtAuditAuthentication` imposta per la RLS. `None` se vuota (fuori
+#        da una richiesta autenticata, o su un canale che non l'ha dichiarata).
+# ⚠️ Il nome e' `app.current_user_id`, NON `app.auth_user_id`: e' quello delle
+#    policy RLS. Col nome sbagliato `current_setting(…, true)` risponde NULL e
+#    chi legge conclude «nessun utente» — un difetto che i mock non vedono,
+#    perche' i mock non hanno GUC.
+# ⭐ Regola del 2 (2026-09-24, brief-be-ricerca-full-liste-residue §12): la
+#    leggevano `pagamenti_repository.emittente_nel_perimetro` e la guardia di
+#    contesto di `ui_service.get_lista_config_per_video`.
+def utente_di_sessione() -> int | None:
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT NULLIF(current_setting('app.current_user_id', true), '')::int")
+        row = cursor.fetchone()
+    return int(row[0]) if row and row[0] is not None else None
+
+
 def add_ricerca_full_condition(
     conditions: list[str],
     params: list[Any],

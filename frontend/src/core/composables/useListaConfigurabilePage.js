@@ -116,6 +116,21 @@ export function useListaConfigurabilePage(
     // fatto a mano non deve schiantare su una pagina che, senza sospensione,
     // funziona lo stesso: il cancello si vede, e il backend rifiuta comunque.
     if ('fetchSospesa' in store) store.fetchSospesa = perimetroBloccato.value
+    // ⭐ La casella di ricerca si mostra solo se la lista cerca davvero
+    //    (`ricerca_full`, brief-be-ricerca-full-liste-residue §7-bis): la
+    //    legge `FiltriLista` dallo store. Prima della guardia `configAligned`,
+    //    come il cancello: l'amministratore puo' spegnere le colonne, e la
+    //    configurazione si ricarica (salvataggio della personalizzazione).
+    // ⚠️ Assegnata senza guard `in`: gli store scritti a mano senza il core
+    //    la ricevono lo stesso (lo store Pinia e' reattivo anche sulle chiavi
+    //    nuove). Una chiave assente sarebbe una casella sempre accesa.
+    store.ricercaFull = typeof config?.ricerca_full === 'boolean' ? config.ricerca_full : null
+    // Un termine arrivato da fuori (`?search=` di un deep-link, un tab
+    // riattivato) su una lista che non cerca: la casella non c'e' piu' per
+    // cancellarlo, e il backend risponderebbe una lista vuota. Si svuota dalla
+    // casella stessa, cosi' il `watch` di `useSearchTable` riallinea lo store
+    // e rifa' la fetch.
+    if (store.ricercaFull === false && search.searchText.value) search.searchText.value = ''
     if (configAligned.value) return
     configAligned.value = true
     const newLimit = config?.pagina_dimensione

@@ -26,7 +26,7 @@ from apps.core.api.payload_validators import (
     qp_bool_optional,
     qp_int_optional,
 )
-from apps.core.api.search_validators import require_min_search_length
+from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -55,7 +55,7 @@ class ApiTemplateList(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY, required=False),
+            param_ricerca_full(min_caratteri=1),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(
                 name="tipo_documento_output_id",
@@ -94,7 +94,8 @@ class ApiTemplateList(DomainAPIView):
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         params = parse_list_params(qp, default_order="codice")
-        require_min_search_length(params["search"], field_name="search")
+        # Le colonne le decide il catalogo della lista (BB nel repository), da
+        # un carattere: tabella di configurazione, niente 400 (Tid, 2026-09-24).
 
         result = TemplateService().list_templates(
             request.user,
@@ -474,7 +475,7 @@ class ApiAssetList(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY, required=False),
+            param_ricerca_full(min_caratteri=1),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="asset_tipo_id", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="emittente_fiscale_id", type=int, location=OpenApiParameter.QUERY, required=False),
@@ -497,7 +498,8 @@ class ApiAssetList(DomainAPIView):
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         params = parse_list_params(qp, default_order="codice")
-        require_min_search_length(params["search"], field_name="search")
+        # Le colonne le decide il catalogo della lista (BB nel repository), da
+        # un carattere: tabella di configurazione, niente 400 (Tid, 2026-09-24).
 
         result = TemplateService().list_asset(
             request.user,

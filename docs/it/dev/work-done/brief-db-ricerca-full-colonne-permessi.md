@@ -23,7 +23,7 @@
 >   ricerca e cerca sull'intersezione con le colonne dichiarate dal repository.
 >   Le dieci liste di vendite ci passano; presidi `test_ricerca_full_seed` e
 >   `tests/db/test_ricerca_full_db`. Le altre 32 liste:
->   [brief-be-ricerca-full-liste-residue](../work-in-progress/brief-be-ricerca-full-liste-residue.md).
+>   [brief-be-ricerca-full-liste-residue](brief-be-ricerca-full-liste-residue.md).
 > - §6, ultimo punto: il commento di `ui_repository.list_colonne_by_codice` ora
 >   dice che quella non è la sede delle colonne di ricerca.
 >

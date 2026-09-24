@@ -37,6 +37,14 @@
 //              cio' che serve.
 //   default    i filtri: in linea su desktop, dentro il drawer in compatta.
 //
+// ⭐ `#sempre` NON SI RENDE SE LA LISTA NON CERCA (`store.ricercaFull ===
+//    false`, dalla configurazione: brief-be-ricerca-full-liste-residue §7-bis,
+//    Tid 2026-09-23). Una casella su una lista senza colonne accese a catalogo
+//    non troverebbe niente per costruzione, e la casella e il catalogo non
+//    devono poter dire due cose diverse. ⚠️ Solo `false`: `null`/assente
+//    («non si sa ancora», o superficie senza catalogo) lascia la casella —
+//    niente lampeggio a ogni apertura.
+//
 // ⛔ IL BB UNIFICA IL CONTENITORE, NON I FILTRI (`feedback_bb_legge_non_trasporta`):
 //    i widget restano quelli che sono, con i loro `@change`. Qui non passa
 //    nessun valore.
@@ -173,6 +181,10 @@ const segnoRisolto = computed(() => {
   )
 })
 
+// La casella di ricerca (`#sempre`) c'e' salvo che la lista dichiari di non
+// cercare — vedi l'intestazione.
+const conRicerca = computed(() => props.store?.ricercaFull !== false)
+
 const haSegno = computed(() => segnoRisolto.value.stato !== SEGNO_VUOTO)
 const soloDefault = computed(() => segnoRisolto.value.stato === SEGNO_DEFAULT)
 const modificato = computed(() => segnoRisolto.value.stato === SEGNO_MODIFICATO)
@@ -216,7 +228,7 @@ function pulisci() {
   <!-- Desktop: la forma di sempre. `app-page-filters` resta la classe del
        gruppo, cosi' la resa e il flex-wrap non cambiano di una riga. -->
   <div v-if="!compatto" class="app-page-filters" :inert="inert">
-    <slot name="sempre" />
+    <slot v-if="conRicerca" name="sempre" />
     <slot />
     <!-- ⭐ «PULISCI FILTRI» ANCHE SU DESKTOP (decisione A3 di Tid, 2026-09-23).
          Su desktop i filtri si vedono tutti, quindi il SEGNO sarebbe poco piu'
@@ -249,7 +261,7 @@ function pulisci() {
 
   <!-- Compatta: la ricerca resta, i filtri diventano un gesto. -->
   <div v-else class="app-page-filters app-page-filters--compatta" :inert="inert">
-    <slot name="sempre" />
+    <slot v-if="conRicerca" name="sempre" />
     <!-- ⛔ IL BADGE NON VA NEL DEFAULT SLOT DEL BUTTON, e la prima stesura lo
          faceva: in PrimeVue lo slot di default SOSTITUISCE il rendering interno
          (icona, label, badge) — `<slot>` avvolge tutto in `Button.vue`. Il

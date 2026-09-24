@@ -14,7 +14,7 @@
 #
 # Indice test (0..N):
 #   0. list_templates_basic_no_filters
-#   1. list_templates_applies_filters_and_search
+#   1. list_templates_applies_filters_and_search_dal_catalogo
 #   2. list_templates_applies_emittente_scope_anyarray
 #   3. list_templates_paginazione_deterministica_id_tiebreaker
 #   4. get_template_returns_row_or_none
@@ -132,9 +132,17 @@ class DocumentiRepositoryListTemplatesTests(TestCase):
         self.assertIn("AS emittente_ragione_sociale", data_sql)
         self.assertIn("LEFT JOIN anagrafiche.soggetti_ruoli sr_ef", data_sql)
 
-    # 1. filtri valorizzati e search ILIKE entrano nei params.
+    # 1. filtri valorizzati e ricerca libera entrano nei params. Le colonne
+    #    della ricerca le accende il catalogo della lista (BB
+    #    `add_ricerca_full_condition`, lettura mockata qui). ⛔ Il
+    #    `codice_interno` non si cerca (Tid, 2026-09-23): fino al 2026-09-24 la
+    #    ricerca scritta a mano lo cercava.
+    @patch(
+        "apps.core.db._helpers.colonne_ricerca_accese",
+        return_value=["codice", "descrizione"],
+    )
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
-    def test_list_templates_applies_filters_and_search(self, mocked_factory) -> None:
+    def test_list_templates_applies_filters_and_search_dal_catalogo(self, mocked_factory, _accese) -> None:
         cursor = _mk_cursor(
             fetchone_results=[(0,), None],
             descriptions=[[], _columns("id")],
@@ -158,10 +166,12 @@ class DocumentiRepositoryListTemplatesTests(TestCase):
         self.assertIn("t.tipo_documento_output_id = %s", sql)
         self.assertIn("t.sorgente_tipo_id = %s", sql)
         self.assertIn("t.emittente_fiscale_id = %s", sql)
-        self.assertIn("ILIKE %s", sql)
+        self.assertIn("(t.codice)::text ILIKE %s", sql)
+        self.assertIn("(t.descrizione)::text ILIKE %s", sql)
+        self.assertNotIn("codice_interno", sql.split("WHERE", 1)[1])
         self.assertEqual(
             params,
-            [False, 10, 20, 11, "%prevent%", "%prevent%", "%prevent%"],
+            [False, 10, 20, 11, "%prevent%", "%prevent%"],
         )
 
     # 2. scope emittente passa lista ANY(%s) con i soli id whitelisted.

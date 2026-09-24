@@ -97,6 +97,11 @@ Elenco dei **gruppi fatturabili** (emissione mirata, 2026-07-27).
   Python**: il vocabolario è estensibile lato DB e una lista parallela si
   disallineerebbe al primo tipo aggiunto; il valore è un bind param e le voci
   valide del perimetro le dichiara il blocco `tipi` della risposta.
+- `search` (opzionale): ricerca libera, le colonne le decide il catalogo della
+  lista `vendite.dash_competenza_gruppi` (`ricerca_full` nella configurazione).
+  Sotto 3 caratteri il termine si **ignora** (nessun `400`, nessuna lista
+  svuotata). Vale per lista, `riepilogo` ed export — la soglia sta nel
+  repository; le tre facet non la seguono (perimetro base).
 - `order_by` / `order_dir` (opzionali): whitelist `riferimento` | `tipo_gruppo` |
   `cliente_display` | `commessa_codice` | `n_attivita` | `valore` (default,
   DESC) | `data_attivita_max`; tiebreak stabile su `gruppo_key`.
@@ -369,7 +374,7 @@ revisioni): cambia solo il bersaglio dell'azione.
 ⚠️ **La ricerca libera su `riferimento` resta NON indicizzata.** Il costo per
 riga è molto minore, ma la sua natura non è cambiata: resta un `COALESCE` il cui
 primo ramo si risolve per riga, quindi valutato su tutto il perimetro prima di
-poter filtrare. Il rimedio non è togliere il campo dalla whitelist — è ancorare
+poter filtrare. Il rimedio non è spegnere la colonna a catalogo — è ancorare
 la ricerca alla sorgente del documento, ed è un cantiere aperto (DL-2).
 
 Il blocco **`tipi`** è la *facet* del filtro: le voci realmente presenti nel

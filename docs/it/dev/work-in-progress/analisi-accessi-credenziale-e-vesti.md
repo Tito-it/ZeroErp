@@ -13,8 +13,8 @@
 > proposto (§4) e le domande che decide Tid (§5). Non contiene codice: dalle
 > decisioni nasceranno un brief DB e un piano BE/FE (§6).
 >
-> **Stato:** ⏳ analisi — decise da Tid il 2026-09-24 **D-1, D-2, D-3, D-7**
-> (§5); aperte D-4, D-5, D-6, D-8, D-9, D-10. Brief DB scritto:
+> **Stato:** ⏳ analisi — decise da Tid il 2026-09-24 **D-1…D-8**
+> (§5); aperte D-9, D-10. Brief DB scritto:
 > [brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md).
 >
 > **Come leggere «Verificato»:** ✅ = riletto sul codice o sulla doc
@@ -170,11 +170,11 @@ diverso da quello di invitare un cliente: è un diritto, non un ciclo di vita.
 | D-1 | **Sede del blocco della credenziale**: una tabella 1:1 con `auth_user` in uno schema nostro (le colonne su `django.auth_user` sarebbero dentro una tabella di Django) | ✅ **DECISA (Tid, 2026-09-24): come proposto** — tabella nostra, forma a scelta del team DB; `tentativi_falliti`/`bloccato_fino_a` via da `identita_digitali` nello stesso giro |
 | D-2 | Il **reset password riuscito sblocca** la credenziale? | ✅ **DECISA (Tid, 2026-09-24): sì** — chi dimostra di possedere l'email ha già superato la prova che il blocco protegge |
 | D-3 | **Riattivazione**: sempre con un nuovo invito (token), come portale e shop, oppure diretta dall'admin per tutte le vesti? | ✅ **DECISA (Tid, 2026-09-24): nuovo invito, per tutte le vesti** (*«ho un dubbio, però credo che sia meglio nuovo invito»*). ⭐ Ciò che scioglie il dubbio: col flusso deciso sulla credenziale, chi ha già una password riattiva con **un clic** (token CROSS, nessuna password nuova) — il costo è un giro di email, e in cambio nessuna veste torna attiva senza che la persona lo sappia. ⇒ la riattivazione diretta di `amm_software` si ritira; la risorsa umana (il rapporto di lavoro) e l'accesso restano due cose: riattivare la persona in HR non riapre la porta |
-| D-4 | La **revoca dell'admin** blocca la riattivazione self-service dello shop (A-6)? | sì: serve distinguere «mai attivata / disattivata dall'utente» da «revocata»; senza, la revoca non è una revoca |
-| D-5 | **Disattivazione**: chiude le sessioni della sola veste o tutte? | della sola veste (servono sessioni riconoscibili per veste: il claim `identita_id` c'è già) |
-| D-6 | L'operatore può **riusare una credenziale esistente** (A-9), come il portale? | sì, è la stessa regola dell'invito |
+| D-4 | La **revoca dell'admin** blocca la riattivazione self-service dello shop (A-6)? | ✅ **DECISA (Tid, 2026-09-24): sì** — la veste ricorda di essere stata **revocata dall'amministratore**; da revocata l'attivazione self-service dello shop è rifiutata e si torna solo con un nuovo invito (D-3). «Mai attivata» resta attivabile dal pulsante come oggi |
+| D-5 | **Disattivazione**: chiude le sessioni della sola veste o tutte? | ✅ **DECISA (Tid, 2026-09-24): della sola veste** — le sessioni si riconoscono dal claim `identita_id`, che c'è già; le altre vesti della stessa persona restano aperte. Vale per **tutte** le vesti (oggi l'operatore chiude tutto, portale/shop niente) |
+| D-6 | L'operatore può **riusare una credenziale esistente** (A-9), come il portale? | ✅ **DECISA (Tid, 2026-09-24): una persona, una credenziale** — la creazione dell'operatore riusa la credenziale esistente per email (stessa regola dell'invito: veste aggiunta, attivazione con un clic e la password che la persona ha già); l'email si confronta **sempre senza distinguere maiuscole e minuscole**, in tutte le strade. ⚠️ Tocca anche il DB: `anagrafiche.fn_crea_auth_user` oggi rifiuta l'email duplicata (`E_ADMIN_EMAIL_DUPLICATA`, confronto case-sensitive) |
 | D-7 | Il **cambio password obbligatorio** (`deve_cambiare_password`) è della veste o della credenziale? | ✅ **DECISA (Tid, 2026-09-24): della credenziale** — la password è una sola. Oggi è per veste e il reset lo azzera su tutte, che è già di fatto la lettura per credenziale. Sta nella stessa sede di D-1 |
-| D-8 | `last_login`: lo si scrive, o il guard dell'invito operatore passa a «veste già attiva → rifiuto» come il portale? | la seconda: è la regola unica di §4.2 |
+| D-8 | `last_login`: lo si scrive, o il guard dell'invito operatore passa a «veste già attiva → rifiuto» come il portale? | ✅ **DECISA (Tid, 2026-09-24): tutte e due le cose.** Il guard diventa «**veste già attiva → rifiuto**», uguale per ogni veste (regola unica di §4.2); ⛔ `last_login` non decide più chi si può invitare. **E l'ultimo accesso si registra**: oggi nessuno lo scrive (SimpleJWT ha `UPDATE_LAST_LOGIN` a `False` e il login non lo aggiorna) — va scritto a ogni login riuscito, come informazione («ultimo accesso il…»). Nota per il piano: `last_login` è della credenziale. L'ultimo accesso **per veste** oggi non c'è da nessuna parte: `dbops.sessioni_utente` registra l'evento LOGIN per `auth_user_id`, senza la veste (nessuna colonna, `dettaglio` vuoto) — se servirà, l'evento dovrà portare l'`identita_id` del token (verificato sulla doc auto-generata, 2026-09-24) |
 | D-9 | Login e reset per **username**, che per portale/shop è generato: si accede per email? | fuori da questo cantiere, ma da decidere: oggi il reset di un cliente portale richiede un dato che nessuno gli ha comunicato |
 | D-10 | `totp_obbligatorio` (per veste, mai letto) | fuori cantiere; quando arriverà il TOTP sarà della credenziale come il dispositivo |
 

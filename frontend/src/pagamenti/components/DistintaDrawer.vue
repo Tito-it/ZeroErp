@@ -38,6 +38,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Drawer from 'primevue/drawer'
+import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 
@@ -314,7 +315,7 @@ const azioniRighe = computed(() => [
 ])
 
 const {
-  onPage, onSort, applyFilters, paginatorProps, tablePage,
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
   exportDialogVisible, exportLoading, onExportConfirm, reloadAll,
 } = useDrawerTabLista(storeRighe, {
@@ -664,6 +665,16 @@ watch(
                ⭐ Dal 2026-09-23 sta nei FILTRI della lista, non in una barra
                sua sopra di essa: e' un filtro di quelle righe, quindi sotto i
                1024px scende nel drawer dal basso e conta nel segno. -->
+          <!-- La ricerca: colonne dal catalogo (`ricerca_full`: senza colonne
+               accese la casella non si rende), sotto 3 caratteri il termine
+               non filtra. L'export porta la stessa `search` (`paramsFiltro`). -->
+          <template #filtri-sempre>
+            <InputText
+              v-model="searchText"
+              class="app-filter-w-lg"
+              :placeholder="t('common.search')"
+            />
+          </template>
           <template v-if="interruttoreScartate" #filtri>
             <FiltroToggle
               v-model="mostraScartate"

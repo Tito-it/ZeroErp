@@ -38,6 +38,14 @@ E_VENDITE_NOT_FOUND = "E_VENDITE_NOT_FOUND"
 # Il vincolo che merita una frase sua (§11.10 BE-F8), tenuto fuori dalla mappa
 # generica perche' il suo messaggio ha bisogno di una LETTURA.
 _UQ_TABELLA_ATTIVA = "uq_famiglie_documento_tabella_attiva"
+# Il `codice` dell'operatore (dal 2026-09-24). Fuori dalla mappa generica
+# perche' il campo da accendere dipende dal verbo: in modifica e' `codice`, in
+# creazione il codice nasce uguale al `codice_interno` (trigger) — e' quello
+# che l'operatore ha scritto, ed e' quello da correggere.
+# ⚠️ Letto con `vincolo_violato` (confine di parola): `..._codice` e' un
+#    prefisso di `..._codice_interno`, e un confronto per sottostringa li
+#    confonderebbe.
+_UQ_CODICE = "uq_famiglie_documento_codice"
 
 _UNIQUE_CONSTRAINTS: dict[str, tuple] = {
     "uq_famiglie_documento_codice_interno": (
@@ -120,7 +128,7 @@ class FamiglieDocumentoService:
             with transaction.atomic():
                 esito = self.repo.crea_famiglia(dati)
         except IntegrityError as exc:
-            self._traduci(exc, dati)
+            self._traduci(exc, dati, in_modifica=False)
             raise  # pragma: no cover — _traduci solleva sempre
         famiglia = self.get_famiglia(esito["famiglia_id"])
         # ⭐ Quanti registri ha provveduto la madre: e' meta' del lavoro che la
@@ -132,11 +140,20 @@ class FamiglieDocumentoService:
         self, famiglia_id: int, payload: dict[str, Any]
     ) -> dict[str, Any]:
         dati = self._normalizza(payload)
+        # Il `codice` si cambia, non si svuota: e' NOT NULL con un CHECK di non
+        # vuoto, e un `""` normalizzato a NULL arriverebbe come violazione
+        # generica su un campo che l'operatore ha davanti.
+        if "codice" in dati and dati["codice"] is None:
+            ErrorManager.raise_error(
+                code=E_VENDITE_VALIDATION,
+                message="Il codice della famiglia non può essere vuoto.",
+                context={"field": "codice"},
+            )
         try:
             with transaction.atomic():
                 toccate = self.repo.update_famiglia(famiglia_id, dati)
         except IntegrityError as exc:
-            self._traduci(exc, dati)
+            self._traduci(exc, dati, in_modifica=True)
             raise  # pragma: no cover — _traduci solleva sempre
         # ⚠️ `toccate == 0` ha due cause — la famiglia non esiste, oppure il
         #    payload non portava nessuna colonna scrivibile — e a distinguerle
@@ -158,7 +175,9 @@ class FamiglieDocumentoService:
         return self.get_famiglia(famiglia_id)
 
     # Scopo: la traduzione dei vincoli DB, in una sede sola per i due verbi.
-    def _traduci(self, exc: IntegrityError, dati: dict[str, Any]) -> None:
+    def _traduci(
+        self, exc: IntegrityError, dati: dict[str, Any], *, in_modifica: bool,
+    ) -> None:
         # ⭐ IL DUPLICATO DELLA TABELLA SI NOMINA, e per questo sta fuori dalla
         #    mappa generica. L'indice e' PARZIALE (`WHERE attivo`), quindi la
         #    riga che blocca c'e' ed e' attiva: un «duplicato» nudo manderebbe
@@ -166,6 +185,25 @@ class FamiglieDocumentoService:
         #    solo scorrendo la lista tabella per tabella.
         if vincolo_violato(exc, [_UQ_TABELLA_ATTIVA]) is not None:
             self._rifiuta_tabella_gia_presa(exc, dati)
+        if vincolo_violato(exc, [_UQ_CODICE]) is not None:
+            # ⚠️ Il campo lo decide il VERBO, non la presenza della chiave nel
+            #    payload: in creazione il `codice` non si scrive (non e' in
+            #    `_CAMPI_CREATE`), ma un client che lo mandasse comunque lo
+            #    avrebbe in `dati` — e l'errore nominerebbe un campo ignorato.
+            campo = "codice" if in_modifica else "codice_interno"
+            ErrorManager.raise_error(
+                code=E_VENDITE_DUPLICATO,
+                message=(
+                    "Esiste già una famiglia di documento con questo codice."
+                    if campo == "codice" else
+                    "Il codice interno coincide con il codice di un'altra "
+                    "famiglia di documento: alla nascita il codice vale il "
+                    "codice interno, e i codici sono unici."
+                ),
+                detail=str(exc),
+                context={"field": campo, campo: dati.get(campo)},
+                cause=exc,
+            )
         map_integrity_error(
             exc,
             unique_constraints=_UNIQUE_CONSTRAINTS,

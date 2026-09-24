@@ -16,7 +16,13 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import sql_order_clause, row_to_dict, rows_to_list
+from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
+    row_to_dict,
+    rows_to_list,
+    sql_order_clause,
+)
 
 
 # Whitelist colonne ammesse per ORDER BY: protegge da SQL injection sul
@@ -84,6 +90,23 @@ _SELECT_COLS = """
     m.data_update,
     m.user_update
 """
+
+
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+# Mappa `campo_sorgente → espressione`: i nomi del catalogo sono nomi di USCITA
+# di `_SELECT_COLS`, e ogni valore e' la stessa espressione che la SELECT
+# proietta con quel nome (si cerca su cio' che si mostra).
+# ⭐ Le due descrizioni sono colonne del catalogo dal 2026-09-24 (brief DB
+#    §3.2-bis): prima la ricerca le cercava senza che il catalogo lo dicesse.
+_RICERCA_MATRICE = RicercaFull(
+    "anagrafiche.categorie_clienti_listini",
+    {
+        "categoria_codice": "cc.codice",
+        "categoria_descrizione": "cc.descrizione",
+        "listino_codice": "l.codice",
+        "listino_descrizione": "l.descrizione",
+    },
+)
 
 
 _FROM_JOINS = """
@@ -154,13 +177,13 @@ class CategorieClientiListiniRepository:
             # La colonna validita e' daterange calcolata da trigger.
             conditions.append("m.validita @> %s::date")
             params.append(valid_at)
-        if search:
-            conditions.append(
-                "(cc.codice ILIKE %s OR cc.descrizione ILIKE %s "
-                "OR l.codice ILIKE %s OR l.descrizione ILIKE %s)"
-            )
-            like = f"%{search.strip()}%"
-            params.extend([like, like, like, like])
+        # ⭐ Una condizione sola per pagina e conteggio (`where_clause` qui
+        #    sotto): i due insiemi non possono divergere.
+        # ⭐ Da un carattere: matrice di configurazione, gemella di
+        #    `tipi_ruolo_tipi_indirizzo` e `categorie_clienti` (Tid, 2026-09-24).
+        #    Fino ad allora la ricerca scritta a mano non escapava `%`/`_` (e un
+        #    termine di soli spazi diventava `%%`).
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_MATRICE, min_caratteri=1)
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 

@@ -16,9 +16,12 @@
 //       ⭐ Estratto il 2026-08-28 con la regola del 2 (ok di Tid) alla TERZA
 //       sede: `vendite/stores/lotti`, `vendite/stores/fondiFatturaDaDecidere` e
 //       le quattro liste di `pagamenti`.
+//       ⭐ Dal 2026-09-24 anche la RICERCA LIBERA (`paramsRicerca`,
+//       `termineCorto`): la soglia del termine era scritta in sei store e due
+//       volte nel BB di stato della lista.
 // ------------------------------------------------------------
 
-import { PAGINATION } from '../constants'
+import { PAGINATION, RICERCA } from '../constants'
 
 // Scopo: i due parametri di pagina che un endpoint page-based si aspetta, piu'
 //        l'ordinamento quando c'e'. Cio' che varia — i filtri di dominio —
@@ -89,4 +92,42 @@ export function paramsPagina(f, {
 export function paramsOrdinamento(f, { orderDirDefault = 'desc' } = {}) {
   if (!f?.order_by) return {}
   return { order_by: f.order_by, order_dir: f.order_dir || orderDirDefault }
+}
+
+// Scopo: il termine di ricerca dei filtri, ripulito dagli spazi — la forma in
+//        cui il backend lo riceve (il BB del backend fa lo stesso `strip`).
+// @param {object} f - i filtri dello store (`search`).
+// @returns {string}
+export function termineRicerca(f) {
+  return (f?.search || '').trim()
+}
+
+// Scopo: un termine c'e' ma e' ancora troppo corto per cercare («sto
+//        digitando»). E' la domanda del BB di stato della lista
+//        (`useListaEmptyStateFetch`, guardia empty-state e opzione
+//        `ricercaCorta` — che e' un'altra cosa: cosa FARE col termine corto).
+// ⚠️ Termine vuoto → `false`: «nessuna ricerca» e «ricerca corta» sono due
+//    stati diversi, e la guardia empty-state li tratta in due modi.
+// @param {string} termine - gia' trimmato (`termineRicerca`).
+// @param {object} [opts]
+// @param {number} [opts.minCaratteri] - soglia (default `RICERCA.MIN_CARATTERI`).
+// @returns {boolean}
+export function termineCorto(termine, { minCaratteri = RICERCA.MIN_CARATTERI } = {}) {
+  return termine.length > 0 && termine.length < minCaratteri
+}
+
+// Scopo: il parametro `search` come lo chiede il backend — il termine trimmato
+//        da `minCaratteri` in su, NIENTE sotto (la lista resta quella di prima
+//        mentre si digita).
+// ⭐ Estratto il 2026-09-24 (regola del 2, ok Tid): la stessa riga
+//    `trim` + `>= 3` viveva in `useListaStoreCore.paramsFiltro`, `resiCoda` e
+//    nei quattro store di pagamenti scritti a mano. Fetch ed export la
+//    chiedono qui, cosi' il file scaricato cerca come la videata.
+// @param {object} f - i filtri dello store (`search`).
+// @param {object} [opts]
+// @param {number} [opts.minCaratteri] - soglia (default `RICERCA.MIN_CARATTERI`).
+// @returns {{search?: string}}
+export function paramsRicerca(f, { minCaratteri = RICERCA.MIN_CARATTERI } = {}) {
+  const termine = termineRicerca(f)
+  return termine && !termineCorto(termine, { minCaratteri }) ? { search: termine } : {}
 }

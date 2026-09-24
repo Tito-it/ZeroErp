@@ -70,7 +70,7 @@ Restituisce la lista paginata degli operatori con filtri opzionali.
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `search` | string | no | Ricerca libera su username, nome, cognome, email (ILIKE) |
+| `search` | string | no | Ricerca libera sulle colonne che il catalogo della lista `anagrafiche.operatori` accende per l'operatore (le decide il catalogo, non il codice: `ricerca_full` nella configurazione della lista). Sotto 3 caratteri non filtra (nessun 400). Ogni riga porta anche `soggetto_ragione_sociale` (ragione sociale completa del soggetto, `null` senza soggetto) |
 | `ruolo_sistema` | string | no | Filtra per ruolo: `ADMIN`, `OPERATIVO`, `DISABILITATO` |
 | `unita_organizzativa_id` | int | no | Filtra per unita' organizzativa |
 | `is_active` | bool | no | Filtra per stato attivo (`true`/`false`/`1`/`0`) |

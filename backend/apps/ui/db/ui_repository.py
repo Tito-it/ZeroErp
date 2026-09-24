@@ -16,7 +16,12 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import colonne_ricerca_accese, jsonb_out, rows_to_list
+from apps.core.db._helpers import (
+    colonne_ricerca_accese,
+    jsonb_out,
+    rows_to_list,
+    utente_di_sessione,
+)
 
 
 # Espressione SQL pura per leggere la GUC `app.ruolo_applicativo` con
@@ -185,6 +190,12 @@ class UiRepository:
     #        ricerca non possono dire cose diverse.
     def ha_ricerca_full(self, lista_codice: str) -> bool:
         return bool(colonne_ricerca_accese(lista_codice))
+
+    # Scopo: l'utente del contesto di sessione (GUC `app.current_user_id`), cioe'
+    #        quello per cui `ha_ricerca_full` e la ricerca vera rispondono. Lo
+    #        legge la guardia di `UiService.get_lista_config_per_video`.
+    def utente_di_sessione(self) -> int | None:
+        return utente_di_sessione()
 
     # Scopo: Restituisce la `lista_definizione.id` data il codice. None se
     #        inesistente o non attivo. Usato dai service per distinguere
