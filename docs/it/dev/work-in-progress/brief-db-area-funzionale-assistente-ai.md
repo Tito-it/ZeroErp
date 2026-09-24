@@ -272,8 +272,9 @@ unica).
   * `cerca_articoli`, `cerca_billing_account`: prima `LETTURA` su
     `catalogo`/`anagrafiche`, ora i gemelli sono i **lookup cross-dominio**
     (`skip_area_check`): li usa ogni operatore attivo, come li usa ogni drawer
-    della UI. ⚠️ **È un allargamento**: se per l'AI si vuole di più del lookup,
-    il gemello giusto è la lista del dominio, e va deciso;
+    della UI. ✅ **Decisione di Tid, 2026-09-25:** va bene così. All'AI basta
+    ciò che vede la casella di ricerca dei form, e il gemello resta il lookup,
+    non la lista del dominio;
   * `cerca_documenti_generati`: prima area `documenti`, ora `vendite`, l'area
     in cui è montata la lista documenti del preventivo;
   * `cerca_soggetti`, `dettaglio_soggetto`, `cerca_promo_articoli`: ora
@@ -296,10 +297,12 @@ gemello `BillingAccountLookupView` passa i soggetto-ruolo
 `script.fn_check_ba_visible_for_emittenti`
 (`fn_get_ba_emittente_sr_id(...) = ANY(p_emittente_ids)`): dall'AI un BA
 legittimo spariva. Fuori perimetro non si usciva, perché la policy RLS `via_efba`
-filtra comunque. Ora il tool usa i soggetto-ruolo. Il presidio
+filtra comunque. Il difetto nasceva dalle **due copie** dello scope, e si
+chiude togliendole (regola del 2, ok Tid 2026-09-25):
+`BillingAccountService.search_lookup(user=…)` risolve lo scope da sé, coi
+soggetto-ruolo, e view e tool passano solo l'utente. Il presidio
 `test_billing_account_tool_scope.py` fa passare tool e view dallo stesso
-resolver e pretende che arrivi al service lo **stesso** scope: con le PK è
-rosso.
+resolver e pretende che arrivi al repository lo **stesso** scope.
 
 ### 5.3 Parte B — cosa significano i tre livelli dell'area `ai_assistant`
 
@@ -452,3 +455,4 @@ query più l'area «Assistente AI» fra quelle assegnabili nel pannello dei prof
 | 2026-09-24 | Tid | «L'AI assume solo i privilegi con cui l'operatore è attivo». ⇒ Aggiunto il §5 (parti A e B) come richiesta al backend; l'imposizione del livello a DB rinviata a un approfondimento (§8) |
 | 2026-09-24 | Tid | Dopo l'approfondimento: le letture dei tool in transazione di sola lettura entrano qui (§5.3 punto 3, §5.4 punto 4); la stessa garanzia per tutte le `GET` e il permesso nel verbo vanno in due brief propri (§8), il primo fra le prime cose da fare |
 | 2026-09-24 | backend | **§5.2 (parte A) fatta**, su decisione di Tid di procedere solo con quella: regola estratta (`valuta_accesso_endpoint`), 18 tool legati al gemello, `required_*` e `amm_software` ritirati, presidio 2 del §5.4. Resoconto e cambi di comportamento nel §5.2.1. Il DB **non** ha ancora eseguito il §4 (riga assente dal CSV su `dev/db-tid` e `main`): §5.3 e presìdi 1, 3, 4 restano in attesa |
+| 2026-09-25 | Tid | Gemelli di `cerca_articoli` e `cerca_billing_account`: restano i lookup cross-dominio (§5.2.1). Corretto lo scope emittente di `cerca_billing_account` (PK → soggetto-ruolo), poi spostato nel service: view e tool passano l'utente (regola del 2, ok Tid) |

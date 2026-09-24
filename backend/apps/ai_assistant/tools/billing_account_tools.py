@@ -65,34 +65,25 @@ class CercaBillingAccountTool(AITool):
             # aggiunta, basta popolare route_template qui.
         )
 
-    # Scopo: Esegue la ricerca BA tramite il service dedicato, risolvendo
+    # Scopo: Esegue la ricerca BA tramite il service dedicato, che risolve
     #        lo scope emittente dell'operatore autenticato.
     def execute(self, params: dict[str, Any], request: Any) -> dict[str, Any]:
         from apps.anagrafiche.services.billing_account_service import BillingAccountService
-        from apps.core.services.permissions_resolver import PermissionResolver
 
         solo_validi_raw = params.get("solo_validi")
         solo_validi = True if solo_validi_raw is None else bool(solo_validi_raw)
         valid_at: date | None = date.today() if solo_validi else None
 
-        # Scope emittente fiscale: None per superuser, lista bigint[] per operatori.
-        # ⛔ SOGGETTO-RUOLO, non PK: la query confronta con
-        #    `script.fn_check_ba_visible_for_emittenti`, che vuole i
-        #    soggetto_ruolo_id degli emittenti — come li passa il gemello
-        #    `BillingAccountLookupView`. Fino al 2026-09-24 qui c'erano le PK
-        #    (`get_emittenti_pk_ids`): si confrontavano numeri di due tabelle
-        #    diverse, e un operatore non vedeva i BA che la UI gli mostra.
-        #    Presidio: `test_billing_account_tool_scope`, che fa passare tool e
-        #    view dallo stesso resolver e pretende lo stesso scope.
-        emittente_ids = PermissionResolver.get_emittenti_sr_ids(request.user, cache={})
-
         svc = BillingAccountService()
+        # Lo scope emittente lo risolve il service dall'utente, come per il
+        # gemello `BillingAccountLookupView`: fino al 2026-09-24 il tool lo
+        # risolveva da se' con le PK al posto dei soggetto-ruolo.
         response = svc.search_lookup(
+            user=request.user,
             q=params.get("q", ""),
             utility_id=params.get("utility_id"),
             solo_validi=solo_validi,
             valid_at=valid_at,
-            emittente_ids=emittente_ids,
             limit=self.safe_page_size(params),
         )
 

@@ -13,13 +13,14 @@
 #    dall'AI si confrontavano numeri di due tabelle diverse, e i BA legittimi
 #    sparivano senza errore. Nessun test lo vedeva, perche' ciascuno dei due
 #    passava un array «di emittenti».
-# ⭐ Il test non dice «deve chiamare sr_ids»: fa passare TOOL E VIEW dallo
-#    stesso resolver mockato (sr e pk con valori diversi) e pretende che al
-#    service arrivi lo STESSO scope. Se un giorno la view cambia, il tool la
-#    deve seguire.
+# ⭐ Da quel giorno lo scope lo risolve il SERVICE (`search_lookup(user=...)`),
+#    e tool e view passano solo l'utente. Il test non dice «deve chiamare
+#    sr_ids»: fa passare TOOL E VIEW dallo stesso resolver mockato (sr e pk con
+#    valori diversi) e pretende che al REPOSITORY arrivi lo STESSO scope. Se un
+#    giorno uno dei due tornasse a risolverlo da se', il test lo vede.
 #
 # Indice test:
-#   1) tool e view passano al service lo stesso scope emittente
+#   1) tool e view fanno arrivare al repository lo stesso scope emittente
 #   2) lo scope e' quello dei soggetto-ruolo, non delle PK
 # ------------------------------------------------------------
 
@@ -36,8 +37,7 @@ from apps.core.services.permissions_resolver import PermissionResolver
 
 _SR_IDS = [501, 502]
 _PK_IDS = [7, 8]
-_SERVICE = "apps.anagrafiche.services.billing_account_service.BillingAccountService.search_lookup"
-_VIEW_SERVICE = "apps.anagrafiche.api.views_billing_account.BillingAccountService"
+_REPO = "apps.anagrafiche.services.billing_account_service.BillingAccountRepository"
 
 
 class TestBillingAccountToolScope(unittest.TestCase):
@@ -52,21 +52,25 @@ class TestBillingAccountToolScope(unittest.TestCase):
             self.addCleanup(patcher.stop)
         self.user = MagicMock(is_authenticated=True, is_superuser=False)
 
+    # Scopo: lo scope che arriva al repository passando da `chiama`.
+    def _scope_al_repository(self, chiama) -> list[int] | None:
+        with patch(_REPO) as repo_cls:
+            repo_cls.return_value.search_lookup.return_value = ([], 0)
+            chiama()
+        return repo_cls.return_value.search_lookup.call_args.kwargs["emittente_ids"]
+
     def _scope_del_tool(self) -> list[int] | None:
         request = MagicMock(user=self.user)
-        with patch(_SERVICE, return_value={"results": [], "total_count": 0}) as svc:
-            CercaBillingAccountTool().execute({"q": "Rossi"}, request)
-        return svc.call_args.kwargs["emittente_ids"]
+        return self._scope_al_repository(
+            lambda: CercaBillingAccountTool().execute({"q": "Rossi"}, request)
+        )
 
     def _scope_della_view(self) -> list[int] | None:
         request = MagicMock(user=self.user)
         request.query_params = QueryDict("q=Rossi")
-        with patch(_VIEW_SERVICE) as svc_cls:
-            svc_cls.return_value.search_lookup.return_value = {
-                "results": [], "total_count": 0, "limit": 20,
-            }
-            BillingAccountLookupView().get(request)
-        return svc_cls.return_value.search_lookup.call_args.kwargs["emittente_ids"]
+        return self._scope_al_repository(
+            lambda: BillingAccountLookupView().get(request)
+        )
 
     # 1) Il punto: le due strade verso lo stesso service non divergono.
     def test_tool_e_view_passano_lo_stesso_scope(self) -> None:

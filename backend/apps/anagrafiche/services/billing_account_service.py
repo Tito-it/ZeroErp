@@ -15,6 +15,7 @@ from typing import Any
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
 from apps.core.db.lookup_repository import LookupRepository
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.permissions_resolver import PermissionResolver
 from apps.core.services.service_errors import ServiceError
 
 _MIN_QUERY_LENGTH = 2
@@ -31,19 +32,27 @@ class BillingAccountService:
     """Facade per operazioni di lookup billing_account."""
 
     # Scopo: Esegue lookup billing_account per autocomplete con regole di dominio.
-    #        Valida query min 2 char, cap limit a 50, delega a repository con
-    #        scope emittente gia' risolto dal chiamante (view).
+    #        Valida query min 2 char, cap limit a 50, risolve lo scope
+    #        emittente dell'utente e delega al repository.
+    # ⛔ Lo scope lo risolve il SERVICE, non il chiamante (2026-09-24). Fino a
+    #    quel giorno lo passavano la view e il tool dell'AI, ciascuno per conto
+    #    suo, e l'avevano risolto in due modi: la view coi soggetto_ruolo_id, il
+    #    tool con le PK — numeri di due tabelle diverse, confrontati in silenzio.
+    #    Quale id vuole la query e' un fatto della QUERY
+    #    (`script.fn_check_ba_visible_for_emittenti` confronta col soggetto-ruolo
+    #    dell'emittente): per questo si decide qui, accanto a lei, e il
+    #    chiamante passa solo l'utente.
     # Perimetro: sola lettura. Ritorna lista arricchita + total_count per
     #        gestione UI "affina la ricerca" quando total > limit.
     # Risultato: dict {results, total_count} pronto per success_response.
     def search_lookup(
         self,
         *,
+        user: Any,
         q: str,
         utility_id: int | None = None,
         solo_validi: bool = True,
         valid_at: date | None = None,
-        emittente_ids: list[int] | None = None,
         limit: int = _DEFAULT_LIMIT,
     ) -> dict[str, Any]:
         function_name = "anagrafiche.billing_account_service.search_lookup"
@@ -63,6 +72,10 @@ class BillingAccountService:
             effective_limit = _DEFAULT_LIMIT
         else:
             effective_limit = min(int(limit), _MAX_LIMIT)
+
+        # Scope emittente: None = nessuna restrizione (superuser), [] = nessun
+        # emittente autorizzato (nessun BA), altrimenti i soggetto_ruolo_id.
+        emittente_ids = PermissionResolver.get_emittenti_sr_ids(user, cache={})
 
         repository = BillingAccountRepository()
         results, total_count = repository.search_lookup(
