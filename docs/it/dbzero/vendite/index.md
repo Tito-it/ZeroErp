@@ -311,6 +311,7 @@
 - [trgfn_emittenti_fiscali_provision_registri](funzioni/trgfn_emittenti_fiscali_provision_registri.md)
 - [trgfn_event_log_append_only](funzioni/trgfn_event_log_append_only.md) — (rev 2026-08-21)
 - [trgfn_event_log_deriva_scope](funzioni/trgfn_event_log_deriva_scope.md)
+- [trgfn_famiglie_documento_default_codice](funzioni/trgfn_famiglie_documento_default_codice.md)
 - [trgfn_famiglie_documento_guard_disattivazione](funzioni/trgfn_famiglie_documento_guard_disattivazione.md) — *(rev 2026-09-01 — trigger nato il 2026-09-01)*
 - [trgfn_famiglie_documento_guard_riferimenti](funzioni/trgfn_famiglie_documento_guard_riferimenti.md) — (latest review 31-08-2026)
 - [trgfn_famiglie_documento_guard_struttura](funzioni/trgfn_famiglie_documento_guard_struttura.md) — *(rev 2026-09-01 — trigger nato il 2026-09-01)*

@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FAMIGLIA DI DOCUMENTO PRENDE IL SUO `codice` — passo 1 di 4: la colonna
+#   vendite.famiglie_documento.codice
+#   Brief: brief-db-ricerca-full-colonne-da-accendere.md §3.5
+#
+# ── PERCHE' ──────────────────────────────────────────────────────
+#   La tabella aveva il solo codice_interno: la chiave immutabile del
+#   sistema, bersaglio della FK dei registri. La lista delle famiglie
+#   poteva quindi cercare e mostrare solo quello — e il codice_interno non
+#   si usa per cercare (Tid, 2026-09-23): e' la chiave di sistema, non il
+#   codice dell'operatore. Qui nasce la forma delle altre tabelle a doppio
+#   codice (linee-guida-sql §6c): `codice` mutabile, UNIQUE, per la vista e
+#   la ricerca; `codice_interno` immutabile, per la logica.
+#
+# ── LA SEQUENZA, E PERCHE' IN QUATTRO PASSI ──────────────────────
+#   -03 (questo)  colonna NUDA: su dev la tabella ha righe, e un NOT NULL
+#                 senza valore non entra;
+#   -04 (20_code) trigger alla nascita: se l'INSERT non passa `codice`, vale
+#                 il codice_interno. La madre vendite.fn_crea_famiglia_documento
+#                 e il CRUD del backend non lo conoscono, e restano come sono;
+#   -05           backfill del pregresso (su un DB da zero: zero righe);
+#   -06           NOT NULL, UNIQUE, CHECK non vuoto — in un changeSet suo,
+#                 separato dall'UPDATE.
+#   Il valore delle famiglie seminate lo dichiara il CSV (mirror 20260830-14,
+#   colonna in coda).
+#
+# ⛔ Niente lock: il `codice` e' fatto per essere cambiato. Il lock
+#   automatico resta sul solo codice_interno.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260924-03-alter-famiglie-documento-add-codice-mctit.yaml
+
+  - changeSet:
+      id: 20260924-03-alter-famiglie-documento-add-codice
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Passo 1 di 4 del codice mutabile di vendite.famiglie_documento: la colonna, nuda.
+        Il trigger alla nascita (-04), il backfill (-05) e i vincoli (-06) vengono dopo.
+        Brief: brief-db-ricerca-full-colonne-da-accendere.md §3.5.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: famiglie_documento
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.famiglie_documento
+                ADD COLUMN IF NOT EXISTS codice varchar(32);
+
+              COMMENT ON COLUMN vendite.famiglie_documento.codice IS
+                'Codice della famiglia che l''operatore vede e cerca: MODIFICABILE, UNIQUE, non vuoto. ⛔ Non e'' il riferimento di sistema: la logica, la FK dei registri e i seed usano codice_interno, che e'' immutabile (linee-guida-sql §6c). Alla nascita, se l''INSERT non lo passa, vale il codice_interno (trigger trg_famiglie_documento_a10_default_codice_ins); sulle famiglie seminate lo dichiara il CSV del mirror. Brief: brief-db-ricerca-full-colonne-da-accendere.md §3.5.';

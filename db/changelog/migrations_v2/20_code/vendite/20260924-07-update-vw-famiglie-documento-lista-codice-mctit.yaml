@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA VISTA DELLE FAMIGLIE PORTA ANCHE IL `codice`
+#   vendite.vw_famiglie_documento_lista
+#   Brief: brief-db-ricerca-full-colonne-da-accendere.md §3.5
+#
+# ── COSA CAMBIA ──────────────────────────────────────────────────
+#   Una colonna in piu', `codice` (nato in 20260924-03/-06). La lista
+#   `vendite.famiglie_documento` dichiara `vista_sql` = questa vista, e il
+#   trigger del catalogo valida ogni campo_sorgente contro le sue colonne:
+#   la riga di catalogo `codice` (lista_colonna.csv, id 938) entra solo se
+#   la colonna e' qui. 20_code gira prima di 80_data, quindi l'ordine regge
+#   anche su un database da zero.
+#
+# ── IN CODA, E NON ACCANTO A codice_interno ──────────────────────
+#   CREATE OR REPLACE VIEW sa solo APPENDERE. Il posto accanto al
+#   codice_interno vorrebbe DROP + CREATE (con GRANT e COMMENT da
+#   riscrivere): non compra niente, perche' tutti i lettori leggono per
+#   NOME (<ListaConfigurabile> fa data[campo_sorgente], l'export idem, il
+#   repository nomina le colonne). CREATE OR REPLACE conserva GRANT e
+#   COMMENT della vista.
+#
+# ── ⛔ security_invoker VA RISCRITTO ─────────────────────────────
+#   Si AZZERA a ogni CREATE OR REPLACE VIEW: una revisione che non lo
+#   ripete trasforma la vista in un bypass della RLS, in silenzio.
+#
+# Corpo: dalla doc auto-generata (docs/it/dbzero/vendite/views/
+#   vw_famiglie_documento_lista.md), non dagli YAML — l'ultima revisione e'
+#   20260902-06. Unica differenza: `f.codice` in coda.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260924-07-update-vw-famiglie-documento-lista-codice-mctit.yaml
+
+  - changeSet:
+      id: 20260924-07-update-vw-famiglie-documento-lista-codice
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        La vista di lettura delle famiglie porta anche il `codice` mutabile (20260924-03/-06), in
+        coda: e'' la vista_sql della lista, e il catalogo valida il campo_sorgente contro le sue
+        colonne. security_invoker=on ripetuto perche'' si azzera a ogni CREATE OR REPLACE VIEW.
+        Brief: brief-db-ricerca-full-colonne-da-accendere.md §3.5.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+                columnName: codice
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_famiglie_documento_lista
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_famiglie_documento_lista
+              WITH (security_invoker = on) AS
+              SELECT f.id,
+                  f.codice_interno,
+                  f.descrizione,
+                  f.schema_tabella,
+                  f.nome_tabella,
+                  f.colonna_numero,
+                  f.colonna_serie,
+                  f.colonna_billing_account,
+                  ((f.schema_tabella || '.'::text) || f.nome_tabella) AS tabella_documento,
+                  f.presidia_data_documento,
+                  (f.colonna_serie IS NOT NULL) AS gestisce_serie,
+                  f.ammette_regole_fiscali,
+                  f.prefisso_default,
+                  f.lunghezza_default,
+                  r.n_registri,
+                  r.n_registri_attivi,
+                  f.attivo,
+                  f.meta,
+                  f.data_insert,
+                  f.data_update,
+                  disattiva.reason AS rimozione_blocco_reason,
+                  disattiva.reason_key AS rimozione_blocco_reason_key,
+                  disattiva.dettaglio AS rimozione_blocco_dettaglio,
+                  (disattiva.reason IS NULL) AS can_disattivare,
+                  struttura.reason AS struttura_blocco_reason,
+                  struttura.reason_key AS struttura_blocco_reason_key,
+                  struttura.dettaglio AS struttura_blocco_dettaglio,
+                  (struttura.reason IS NULL) AS can_modificare_struttura,
+                  -- ⭐ 2026-09-24: il codice che l'operatore vede e cerca
+                  --   (mutabile). In coda perche' CREATE OR REPLACE sa solo
+                  --   appendere.
+                  f.codice
+                 FROM (((vendite.famiglie_documento f
+                   LEFT JOIN LATERAL ( SELECT count(*) AS n_registri,
+                          count(*) FILTER (WHERE rr.attivo) AS n_registri_attivi
+                         FROM vendite.registri_fatturazione rr
+                        WHERE ((rr.famiglia_documento)::text = (f.codice_interno)::text)) r ON (true))
+                   LEFT JOIN LATERAL ( SELECT (m.value ->> 'reason'::text) AS reason,
+                          (m.value ->> 'reason_key'::text) AS reason_key,
+                          (m.value -> 'dettaglio'::text) AS dettaglio
+                         FROM jsonb_array_elements(script.fn_check_famiglia_documento_disattivabile(f.id)) WITH ORDINALITY m(value, ord)
+                        ORDER BY m.ord
+                       LIMIT 1) disattiva ON (true))
+                   LEFT JOIN LATERAL ( SELECT (m.value ->> 'reason'::text) AS reason,
+                          (m.value ->> 'reason_key'::text) AS reason_key,
+                          (m.value -> 'dettaglio'::text) AS dettaglio
+                         FROM jsonb_array_elements(script.fn_check_famiglia_documento_struttura_modificabile(f.id)) WITH ORDINALITY m(value, ord)
+                        ORDER BY m.ord
+                       LIMIT 1) struttura ON (true));

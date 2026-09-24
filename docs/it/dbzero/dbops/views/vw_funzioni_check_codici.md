@@ -4,15 +4,16 @@
 > 📝 **Descrizione**
 >
 > SEDE UNICA della risalita «funzione plpgsql -&gt; fn_check_* nominate nel corpo -&gt; codici che quelle nominano come motivo». Una riga per (funzione, check, codice); codice NULL se la check non nomina motivi (il legame compare lo stesso). motivo_chiave = 'campo'/'parametro' se il MOTIVO che nomina il codice porta la chiave del canale nel suo dettaglio (che fn_raise_primo_motivo_se_presente fonde nel context) — PESSIMISTA: solo se tutti i motivi di quel codice la portano; n_motivi = quante volte la check lo nomina.
+> ⭐ rev 2026-09-24 (20260924-08) — LA DELEGA: una check che RESTITUISCE i motivi di un'altra fn_check_* (v_motivi || x.fn_check_…, v_m := x.fn_check_…, jsonb_agg sugli elementi) ne EREDITA i codici, a qualunque profondita'; una che la CONSUMA (count, EXISTS, IF) no — emette un motivo suo. Se nell'istruzione della delega il codice e' confrontato con dei letterali (`-&gt;&gt; 'codice' = 'E_X'` o `IN (…)`) eredita SOLO quelli: script.fn_check_prezzi_in_attesa eredita da fn_check_prezzi_autorizzati il solo E_DOC_PREZZO_PENDENTE. Anche check_emette_valori si propaga. Prima la risalita si fermava a un livello, e le due madri di revisione (20260924-34/-35) uscivano come ramo cieco nel presidio C2. ⚠️ `&lt;&gt;` / NOT IN non sono riconosciuti come filtro: si eredita tutto — un legame in piu', mai un ramo cieco.
 > LETTORI: dbops.vw_punti_primo_motivo (il rubinetto: i soli punti che sollevano il primo motivo a mano) e dbops.vw_punti_canale_campo (il presidio C2: tutti i siti, bonificati compresi). Prima la risalita viveva dentro la sola vw_punti_primo_motivo, e la seconda l'avrebbe ricopiata.
-> ⚠️ Le fn_check_* si cercano nel sorgente SENZA commenti; una riga per (funzione, check, codice) — la derivazione precedente dava un doppione quando la check nomina lo stesso codice in due motivi. ⚠️ La finestra di un motivo NON e' «fino al ;»: le check a CTE costruiscono piu' motivi in uno statement, quindi il sorgente si spezza sulle occorrenze di 'codice',. ⚠️ Euristica su pg_proc.prosrc: riconosce la forma scritta, non il significato. Brief: brief-be-presidio-ui-action-e-canale-campi §4.
+> ⚠️ Le fn_check_* si cercano nel sorgente SENZA commenti; una riga per (funzione, check, codice) — un codice che arriva da piu' strade si aggrega. ⚠️ La finestra di un motivo NON e' «fino al ;»: le check a CTE costruiscono piu' motivi in uno statement, quindi il sorgente si spezza sulle occorrenze di 'codice',. ⚠️ Euristica su pg_proc.prosrc: riconosce la forma scritta, non il significato. Brief: brief-be-presidio-ui-action-e-canale-campi §4.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_funzioni_check_codici
 WITH (security_invoker=true) AS
-WITH funzioni AS MATERIALIZED (
+WITH RECURSIVE funzioni AS MATERIALIZED (
          SELECT p.oid,
             (n.nspname)::text AS sch,
             (p.proname)::text AS fn,
@@ -32,17 +33,49 @@ WITH funzioni AS MATERIALIZED (
             m_1.m[2] AS cfn
            FROM (funzioni f
              CROSS JOIN LATERAL regexp_matches(f.sorgente, '(\w+)\.(fn_check_\w+)\s*\('::text, 'g'::text) m_1(m))
+        ), check_nomi(csch, cfn) AS (
+         SELECT l_1.csch,
+            l_1.cfn
+           FROM legami l_1
+        UNION
+         SELECT d.m[1] AS m,
+            d.m[2] AS m
+           FROM (((check_nomi cn
+             JOIN pg_namespace ns ON ((ns.nspname = cn.csch)))
+             JOIN pg_proc p ON (((p.proname = cn.cfn) AND (p.pronamespace = ns.oid))))
+             CROSS JOIN LATERAL regexp_matches(regexp_replace(regexp_replace(p.prosrc, '/\*.*?\*/'::text, ''::text, 'g'::text), '--[^\n]*'::text, ''::text, 'g'::text), '(\w+)\.(fn_check_\w+)\s*\('::text, 'g'::text) d(m))
         ), checks AS MATERIALIZED (
          SELECT DISTINCT c_1.oid AS check_oid,
-            l_1.csch,
-            l_1.cfn,
+            cn.csch,
+            cn.cfn,
             (c_1.prosrc ~ '''valori'''::text) AS emette_valori,
             regexp_replace(regexp_replace(c_1.prosrc, '/\*.*?\*/'::text, ''::text, 'g'::text), '--[^\n]*'::text, ''::text, 'g'::text) AS csrc
-           FROM ((( SELECT DISTINCT legami.csch,
-                    legami.cfn
-                   FROM legami) l_1
-             JOIN pg_namespace cn ON ((cn.nspname = l_1.csch)))
-             JOIN pg_proc c_1 ON (((c_1.proname = l_1.cfn) AND (c_1.pronamespace = cn.oid))))
+           FROM ((check_nomi cn
+             JOIN pg_namespace ns ON ((ns.nspname = cn.csch)))
+             JOIN pg_proc c_1 ON (((c_1.proname = cn.cfn) AND (c_1.pronamespace = ns.oid))))
+        ), deleghe AS (
+         SELECT DISTINCT c_1.check_oid,
+            d.check_oid AS delegata_oid,
+            x.resto
+           FROM ((checks c_1
+             CROSS JOIN LATERAL ( SELECT m_1.m[1] AS dsch,
+                    m_1.m[2] AS dfn,
+                    m_1.m[3] AS resto
+                   FROM regexp_matches(c_1.csrc, '(?:\|\||:=)\s*(\w+)\.(fn_check_\w+)\s*\(([^;]*)'::text, 'g'::text) m_1(m)
+                UNION ALL
+                 SELECT m_1.m[1] AS m,
+                    m_1.m[2] AS m,
+                    m_1.m[3] AS m
+                   FROM regexp_matches(c_1.csrc, 'jsonb_agg\s*\([^;]*?jsonb_array_elements\s*\(\s*(\w+)\.(fn_check_\w+)\s*\(([^;]*)'::text, 'g'::text) m_1(m)) x)
+             JOIN checks d ON (((d.csch = x.dsch) AND (d.cfn = x.dfn))))
+          WHERE (d.check_oid <> c_1.check_oid)
+        ), filtri AS (
+         SELECT DISTINCT dl.check_oid,
+            dl.delegata_oid,
+            l_1.m[1] AS codice
+           FROM ((deleghe dl
+             CROSS JOIN LATERAL regexp_matches(dl.resto, '->>\s*''codice''\s*(?:=\s*''E_[A-Z0-9_]+''|IN\s*\([^)]*\))'::text, 'g'::text) f(m))
+             CROSS JOIN LATERAL regexp_matches(f.m[1], '''(E_[A-Z0-9_]+)'''::text, 'g'::text) l_1(m))
         ), motivi AS (
          SELECT c_1.check_oid,
             (regexp_match(s.pz, '^''(E_[A-Z0-9_]+)'''::text))[1] AS codice,
@@ -50,25 +83,64 @@ WITH funzioni AS MATERIALIZED (
            FROM (checks c_1
              CROSS JOIN LATERAL regexp_split_to_table(c_1.csrc, '''codice''\s*,\s*'::text) WITH ORDINALITY s(pz, k))
           WHERE (s.k > 1)
-        ), motivi_per_codice AS (
-         SELECT motivi.check_oid,
-            motivi.codice,
+        ), motivi_propri AS (
+         SELECT m_1.check_oid,
+            m_1.codice,
             (count(*))::integer AS n_motivi,
                 CASE
-                    WHEN bool_and((motivi.finestra ~ '''campo''\s*,'::text)) THEN 'campo'::text
-                    WHEN bool_and((motivi.finestra ~ '''(campo|parametro)''\s*,'::text)) THEN 'parametro'::text
+                    WHEN bool_and((m_1.finestra ~ '''campo''\s*,'::text)) THEN 'campo'::text
+                    WHEN bool_and((m_1.finestra ~ '''(campo|parametro)''\s*,'::text)) THEN 'parametro'::text
                     ELSE NULL::text
                 END AS motivo_chiave
-           FROM motivi
-          WHERE (motivi.codice IS NOT NULL)
-          GROUP BY motivi.check_oid, motivi.codice
+           FROM motivi m_1
+          WHERE (m_1.codice IS NOT NULL)
+          GROUP BY m_1.check_oid, m_1.codice
+        ), codici_rec(check_oid, codice, n_motivi, motivo_chiave) AS (
+         SELECT mp.check_oid,
+            mp.codice,
+            mp.n_motivi,
+            mp.motivo_chiave
+           FROM motivi_propri mp
+        UNION
+         SELECT dl.check_oid,
+            cr.codice,
+            cr.n_motivi,
+            cr.motivo_chiave
+           FROM (deleghe dl
+             JOIN codici_rec cr ON ((cr.check_oid = dl.delegata_oid)))
+          WHERE ((NOT (EXISTS ( SELECT 1
+                   FROM filtri f
+                  WHERE ((f.check_oid = dl.check_oid) AND (f.delegata_oid = dl.delegata_oid))))) OR (EXISTS ( SELECT 1
+                   FROM filtri f
+                  WHERE ((f.check_oid = dl.check_oid) AND (f.delegata_oid = dl.delegata_oid) AND (f.codice = cr.codice)))))
+        ), motivi_per_codice AS (
+         SELECT cr.check_oid,
+            cr.codice,
+            (sum(cr.n_motivi))::integer AS n_motivi,
+                CASE
+                    WHEN bool_and((NOT (cr.motivo_chiave IS DISTINCT FROM 'campo'::text))) THEN 'campo'::text
+                    WHEN bool_and((cr.motivo_chiave = ANY (ARRAY['campo'::text, 'parametro'::text]))) THEN 'parametro'::text
+                    ELSE NULL::text
+                END AS motivo_chiave
+           FROM codici_rec cr
+          GROUP BY cr.check_oid, cr.codice
+        ), valori_rec(check_oid) AS (
+         SELECT c_1.check_oid
+           FROM checks c_1
+          WHERE c_1.emette_valori
+        UNION
+         SELECT dl.check_oid
+           FROM (deleghe dl
+             JOIN valori_rec v ON ((v.check_oid = dl.delegata_oid)))
         )
  SELECT l.sch,
     l.fn,
     l.funzione,
     l.csch AS check_schema,
     l.cfn AS check_funzione,
-    c.emette_valori AS check_emette_valori,
+    (EXISTS ( SELECT 1
+           FROM valori_rec v
+          WHERE (v.check_oid = c.check_oid))) AS check_emette_valori,
     m.codice,
     m.n_motivi,
     m.motivo_chiave

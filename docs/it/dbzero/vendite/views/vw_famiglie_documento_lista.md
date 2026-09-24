@@ -37,7 +37,8 @@ SELECT f.id,
     struttura.reason AS struttura_blocco_reason,
     struttura.reason_key AS struttura_blocco_reason_key,
     struttura.dettaglio AS struttura_blocco_dettaglio,
-    (struttura.reason IS NULL) AS can_modificare_struttura
+    (struttura.reason IS NULL) AS can_modificare_struttura,
+    f.codice
    FROM (((vendite.famiglie_documento f
      LEFT JOIN LATERAL ( SELECT count(*) AS n_registri,
             count(*) FILTER (WHERE rr.attivo) AS n_registri_attivi
