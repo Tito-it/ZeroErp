@@ -68,7 +68,7 @@ Causa: componente in workflow L3, campi struttura frozen. Soluzione: attendere A
 | Tabella | `preventivi_righe_componenti` | `ordini_righe_componenti` |
 | FK col denylist | `riga_preventivo_id` | `riga_ordine_id` |
 | Context JSONB | `riga_preventivo_id` | `riga_ordine_id` |
-| Guard testata complementare | ✅ `trgfn_preventivi_guard_transizione_approvazione` | ❌ non implementato (ordini non ha guard transizione stato) |
+| Guard testata complementare (dal 2026-09-24) | ✅ `trgfn_preventivi_guard_transizione` / `fn_check_preventivo_emettibile` → [`fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati) | ✅ `trgfn_ordini_guard_transizione`, Regola 5 (solo DRAFT → CONFERMATO) → [`fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati) |
 
 ---
 

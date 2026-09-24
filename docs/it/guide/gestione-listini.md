@@ -341,9 +341,11 @@ e' calcolato componente per componente vs il suo suggerito.
 
 **L3 sui componenti**: workflow approvazione PENDING/APPROVED/REJECTED
 opera anche su `<sorgente>_righe_componenti.stato_approvazione_prezzo`.
-Il guard `trgfn_<sorgente>_guard_transizione_approvazione` blocca la
-transizione del documento sorgente verso lo stato terminale (es.
-preventivo → ACCETTATO) se esiste anche un solo componente PENDING. La
+Dal 2026-09-24 un solo componente attivo PENDING o REJECTED blocca
+l'uscita dalla bozza e l'accettazione del documento sorgente (es.
+preventivo → EMESSO e → ACCETTATO): lo decide
+[`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati),
+chiesto dal guard di transizione di ogni documento. La
 modifica della struttura del componente PENDING e' bloccata da
 `trgfn_<sorgente>_righe_componenti_guard_pending` (simmetrico al guard
 della riga padre).
@@ -360,7 +362,7 @@ Quando l'operatore richiede un prezzo che viola i limiti L2, può **richiedere a
 
 **Trigger DB di guardia**:
 
-* `trgfn_preventivi_guard_transizione_approvazione`: blocca passaggio preventivo→ACCETTATO se esistono righe `stato_approvazione_prezzo='PENDING'` (`E_PREVENTIVO_RIGHE_PRICING_PENDENTI`)
+* [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati) (dal 2026-09-24): un prezzo in attesa (`PENDING`) o rifiutato (`REJECTED`), su righe o componenti BoM attivi, blocca l'uscita dalla bozza e l'accettazione di preventivi, contratti, offerte, ordini e DDT (`E_DOC_PREZZO_PENDENTE` / `E_DOC_PREZZO_RIFIUTATO`); l'annullamento resta sempre possibile. Sul preventivo la chiede [`vendite.trgfn_preventivi_guard_transizione`](/dbzero/vendite/funzioni/trgfn_preventivi_guard_transizione), che ha preso il posto del trigger ritirato `trgfn_preventivi_guard_transizione_approvazione`
 * `trgfn_preventivi_righe_guard_pending`: blocca modifica struttura riga PENDING; permette solo transizione di stato approvazione (`E_RIGA_PREZZO_PENDENTE`)
 
 **Endpoint API**:
@@ -518,7 +520,8 @@ Nessun fallback silenzioso. Ogni scenario non risolvibile produce un errore stru
 | `E_VENDITE_PRICING_FAILED`                | Errore generico pricing (envelope, dettaglio in `detail`)                                                                                  |
 | `E_BOM_MODIFICA_VIETATA`                  | Tentata modifica/eliminazione campo struttura BoM. Risolvere con pattern chiudi+inserisci nuova versione (vedi §5.3)                       |
 | `E_DATA_AL_MINORE_DAL`                    | Tentata chiusura riga BoM con `valido_al < valido_dal` (guard comune delle date, come su ogni periodo di validità)                        |
-| `E_PREVENTIVO_RIGHE_PRICING_PENDENTI`     | Tentata accettazione preventivo con righe in attesa di approvazione (L3)                                                                   |
+| `E_DOC_PREZZO_PENDENTE`                  | Tentata emissione/accettazione di un documento di vendita con un prezzo in attesa di approvazione (L3). Sostituisce `E_PREVENTIVO_RIGHE_PRICING_PENDENTI`, ritirato il 2026-09-24 |
+| `E_DOC_PREZZO_RIFIUTATO`                 | Tentata emissione/accettazione di un documento di vendita con un prezzo rifiutato (L3)                                                     |
 | `E_RIGA_PREZZO_PENDENTE`                  | Tentata modifica struttura riga in stato `stato_approvazione_prezzo='PENDING'`                                                             |
 | `E_APPROVAZIONE_PREZZO_NON_AMMESSA`       | Tentata approva/rifiuta su riga non PENDING o senza pratica collegata; oppure coda approvazioni richiesta da admin globale senza emittente |
 

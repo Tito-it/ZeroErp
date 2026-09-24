@@ -165,3 +165,23 @@ del BE all'esecuzione.
 - **`stati_doc_contratti.meta.outgoing_action`**: campo storico presente su DRAFT e ATTIVO
   in DB, non più letto dalla funzione. Da rimuovere nella prossima PR che tocca
   `stati_doc_contratti` (vedi `transizioni_stati_contratti` §Regole operative).
+
+## Rev 2026-09-24 — «Attiva» spento finché un prezzo non è autorizzato
+
+Regola decisa da Tid: *un prezzo che nessuno ha autorizzato non esce dalla bozza*. Un
+contratto con una riga o un componente BoM **attivi** in attesa di approvazione
+(`PENDING`) o **rifiutati** (`REJECTED`) non si attiva.
+
+* La funzione passa alla forma dell'**array dei motivi**, come preventivo e ordine:
+  `enabled`, `reason` e `reason_key` di ogni azione discendono da una chiave **nuova**,
+  `reasons`. Nessuna chiave tolta.
+* Verso `ATTIVO` l'array contiene prima i motivi di [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati), poi il generico «documento
+  vuoto» di prima (`DOCUMENTO_SENZA_RIGHE`, invariato). Il primo è quello che il
+  frontend mostra da solo.
+* È lo stesso building block che
+  [`vendite.trgfn_contratti_guard_transizione_stato`](/dbzero/vendite/funzioni/trgfn_contratti_guard_transizione_stato)
+  usa per sollevare: pulsante e database non possono dissentire.
+
+Motivi nuovi: `PREZZO_PENDENTE` / `PREZZO_RIFIUTATO`, con `reason_key`
+`common.azione_reason.prezzo_pendente` / `common.azione_reason.prezzo_rifiutato`.
+(changeSet `20260924-26`, brief `brief-db-preventivi-congelamento-pricing`.)

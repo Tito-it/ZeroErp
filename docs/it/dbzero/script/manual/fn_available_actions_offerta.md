@@ -208,3 +208,24 @@ Risultato per stato:
   dal `key` (`crea_revisione`, `push_contratto` e `genera_ordine` usano routing
   speciale nel drawer; le transizioni standard usano l'endpoint generico
   cambio-stato).
+
+## Rev 2026-09-24 — «Emetti» e «Accetta» spenti finché un prezzo non è autorizzato
+
+Regola decisa da Tid: *un prezzo che nessuno ha autorizzato non esce dalla bozza*.
+Un'offerta con un'eccezione o un suo componente **attivi** in attesa di approvazione
+(`PENDING`) o **rifiutati** (`REJECTED`) non si emette e non si accetta.
+
+* Le azioni di stato passano alla forma dell'**array dei motivi**: `enabled`, `reason` e
+  `reason_key` discendono da una chiave **nuova**, `reasons`. `crea_revisione`, le push e
+  l'ordine non cambiano.
+* Verso `EMESSA`: prima il motivo del listino di prima (versione mancante o non attiva,
+  stessi `reason` e `reason_key`), poi i motivi di [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati).
+* Verso `ACCETTATA`: i motivi di [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati).
+* Il rientro automatico `SUPERATA → EMESSA` non è un'azione manuale e non compare qui.
+* È lo stesso building block che
+  [`vendite.trgfn_offerte_commerciali_guard_transizione`](/dbzero/vendite/funzioni/trgfn_offerte_commerciali_guard_transizione)
+  usa per sollevare: pulsanti e database non possono dissentire.
+
+Motivi nuovi: `PREZZO_PENDENTE` / `PREZZO_RIFIUTATO`, con `reason_key`
+`common.azione_reason.prezzo_pendente` / `common.azione_reason.prezzo_rifiutato`.
+(changeSet `20260924-28`, brief `brief-db-preventivi-congelamento-pricing`.)

@@ -10,7 +10,7 @@
 --  3) ⭐ zero punti NON CLASSIFICATI — un presidio che non sa leggere un sito
 --        deve diventare ROSSO, non saltarlo
 --  4) il debito FUORI perimetro non cresce (soglia 6, puo' solo calare)
---  5) le diciannove funzioni bonificate CHIAMANO davvero l'helper (una
+--  5) le ventitre' funzioni bonificate CHIAMANO davvero l'helper (una
 --        chiamata, non una menzione: i commenti sono fuori dal conteggio)
 --  6) ⚠️ il marcatore non e' troppo LARGO: un codice LETTERALE resta fuori
 --  7) ⭐⭐ la canarina: il marcatore non e' troppo STRETTO
@@ -154,7 +154,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    21,
+    23,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -182,7 +182,18 @@ SELECT is(
     --   La gemella fn_posta_inventario era gia' nel conto dal 18-09 (chiamava
     --   l'helper sul motivo di riga) e non si muove: si conta la FUNZIONE, non le
     --   chiamate.
-    'le ventuno funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-09-24: da 21 a 23. Due siti NUOVI nati sull'helper col building
+    --   block dei prezzi non autorizzati (brief-db-preventivi-congelamento-
+    --   pricing): vendite.trgfn_contratti_guard_transizione_stato (20260924-25,
+    --   verso ATTIVO) e vendite.trgfn_offerte_commerciali_guard_transizione
+    --   (20260924-27, verso EMESSA e ACCETTATA), che sollevano il primo motivo di
+    --   script.fn_check_prezzi_autorizzati. Il contratto sostituisce un codice
+    --   letterale (E_COMPONENTE_PREZZO_PENDENTE), l'offerta un controllo che non
+    --   c'era. Le altre due chiamate nuove dello stesso giro — Regola 3 di
+    --   trgfn_preventivi_guard_transizione (-22) e Regola 5 di
+    --   trgfn_ordini_guard_transizione (-29) — stanno in funzioni gia' nel conto:
+    --   si conta la FUNZIONE, non le chiamate.
+    'le ventitre'' funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la

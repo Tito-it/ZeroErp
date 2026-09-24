@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Ritiro della copia: il trigger a10 del prezzo sul preventivo.
+#
+# vendite.trgfn_preventivi_guard_transizione_approvazione (trigger
+# trg_preventivi_a10_guard_transizione_approvazione_upd, 20260422-06) bloccava
+# l'ingresso in ACCETTATO con righe o componenti BoM PENDING. Dal 20260924-22
+# lo stesso lavoro lo fa la Regola 3 di vendite.trgfn_preventivi_guard_transizione
+# sul building block script.fn_check_prezzi_autorizzati — e lo fa meglio:
+# guarda anche il REJECTED (D-1) e solo righe e componenti attivi.
+# Tenerlo sarebbe una SECONDA copia del predicato, che la regola del 2 ritira
+# nello stesso giro dell'estrazione.
+#
+# ⚠️ Differenze di comportamento, volute:
+#   - l'errore esce da trgfn_preventivi_guard_transizione con
+#     E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO, non piu'
+#     E_PREVENTIVO_RIGHE_PRICING_PENDENTI (ritirato nel catalogo, obsoleto_dal
+#     2026-09-24);
+#   - una riga o un componente DISATTIVATI non contano piu'.
+#
+# Censimento prima del DROP (2026-09-24): nessun changeSet di 80_data o 90_end
+# nomina il trigger o la funzione; unico lettore nei pgTAP
+# vendite/test-preventivi-approvazione-prezzo.sql, riscritto nello stesso giro.
+# Il trigger e' scritto a mano (20_code/vendite/20260422-06), non da ci_apply.
+#
+# Brief: brief-db-preventivi-congelamento-pricing.md (§4.3)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260924-24-drop-trgfn-preventivi-guard-transizione-approvazione-mctit.yaml
+
+  - changeSet:
+      id: 20260924-24-drop-trgfn-preventivi-guard-transizione-approvazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritiro del trigger a10 trg_preventivi_a10_guard_transizione_approvazione_upd
+        e della sua funzione: il controllo dei prezzi entrando in ACCETTATO sta
+        ora nella Regola 3 di trgfn_preventivi_guard_transizione (20260924-22).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_preventivi_a10_guard_transizione_approvazione_upd
+                  ON vendite.preventivi;
+
+              DROP FUNCTION IF EXISTS vendite.trgfn_preventivi_guard_transizione_approvazione();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Manovra di emergenza: la funzione e il trigger si ricreano a
+              --   mano dal corpo nella doc auto-gen alla revisione 2026-05-12
+              --   (20260512-29) e dalla CREATE TRIGGER di 20260422-06. Prima
+              --   va ritirata la Regola 3 di trgfn_preventivi_guard_transizione,
+              --   o le due copie torneranno a dissentire.
+              SELECT 1;

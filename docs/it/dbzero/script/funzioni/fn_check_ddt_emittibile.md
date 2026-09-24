@@ -20,6 +20,9 @@ AS $function$
 --   proprio codice) e script.fn_available_actions_ddt (espone
 --   l'azione disabled + reason). Brief:
 --   brief-db-guard-righe-avanzamento-stato §1a-bis (Rev 2).
+--   rev 2026-09-24: il punto 5 (prezzo in attesa) passa al building
+--   block script.fn_check_prezzi_autorizzati — PENDING E REJECTED, solo
+--   componenti attivi (brief-db-preventivi-congelamento-pricing, D-6).
 -- Ritorna: [] se emittibile; altrimenti array ordinato di
 --   {codice, reason, reason_key, dettaglio}.
 DECLARE
@@ -183,19 +186,17 @@ BEGIN
     --   causale manca: in quel caso l'emissione e' gia' bloccata da
     --   E_DDT_CAUSALE_OBBLIGATORIA e questi due controlli non aggiungono nulla.
     IF COALESCE(v_fatturabile, false) THEN
-        -- 5. COMPONENTI BoM CASO A — prezzo in attesa di approvazione...
-        IF EXISTS (
-            SELECT 1 FROM vendite.ddt_righe dr
-              JOIN vendite.ddt_righe_componenti drc ON drc.riga_ddt_id = dr.id
-             WHERE dr.ddt_id = p_ddt.id
-               AND drc.stato_approvazione_prezzo = 'PENDING'::config.stato_approvazione_prezzo
-        ) THEN
-            v_motivi := v_motivi || jsonb_build_object(
-                'codice',     'E_COMPONENTE_PREZZO_PENDENTE',
-                'reason',     'COMPONENTI_PREZZO_PENDENTE',
-                'reason_key', 'vendite.ddt.azione_reason.componenti_prezzo_pendente',
-                'dettaglio',  NULL);
-        END IF;
+        -- 5. COMPONENTI BoM CASO A — prezzo non autorizzato: in attesa di
+        --   approvazione (PENDING) o rifiutato (REJECTED).
+        -- ⭐ rev 2026-09-24: il predicato e' il building block
+        --   script.fn_check_prezzi_autorizzati, comune ai cinque documenti
+        --   di vendita. Qui resta la POLITICA: lo si chiede solo se il
+        --   documento vende. Fino a questa revisione il controllo era
+        --   scritto qui, guardava il solo PENDING e anche i componenti
+        --   spenti, e sollevava E_COMPONENTE_PREZZO_PENDENTE — il codice
+        --   del guard PER RIGA dei componenti, che resta suo.
+        v_motivi := v_motivi
+                 || script.fn_check_prezzi_autorizzati('vendite.ddt'::regclass, p_ddt.id);
 
         -- ...oppure non ancora valorizzato.
         IF EXISTS (
@@ -219,7 +220,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_ddt_emittibile(p_ddt vendite.ddt)
-IS 'Single source dei motivi che impediscono l''emissione (EMESSO) di un DDT: righe attive (543), causale (544), prezzo risolvibile se causale fatturabile (545), aliquota sulle righe che portano un prezzo, indirizzi obbligatori, componenti BoM CASO A pendenti/non valorizzati. Ritorna [] se emittibile, altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio}. PURA: non solleva. rev 2026-08-19: i due motivi sui COMPONENTI si valutano solo se la causale e'' fatturabile, come gia'' faceva il motivo sulle righe. ⭐ rev 2026-08-28 (brief-db-ddt-riconsegna-eredita-testata, Fase C / R4-ter, decisione di Tid): sesto motivo E_DDT_RIGA_IVA_MANCANTE — una riga attiva CON PREZZO e senza iva_id non si emette. Chiudeva un difetto silenzioso: vw_ddt_righe_iva_base filtra prezzo_unitario e NON iva_id, quindi quella riga entrava nel riepilogo con imponibile pieno, codice IVA vuoto e imposta zero, su un documento stampato. ⭐ Il discrimine e'' il PREZZO e non la causale, e per questo il controllo sta FUORI dal ramo fatturabile: la vista del riepilogo la causale non la guarda, e il vincolo deve avere lo stesso perimetro del consumatore che protegge. ⚠️ Si guarda dr.prezzo_unitario e NON il COALESCE col fulfillment del punto 3: una riga dal prezzo solo derivato non entra nella vista, quindi non ha il difetto. ⛔ Non e'' un NOT NULL di colonna, e non poteva esserlo: ordini_righe.iva_id e'' nullable e fn_genera_ddt_da_ordine la copia, quindi il vincolo avrebbe fatto fallire l''evasione ordine con un 23502 muto. ⚠️ Il punto nuovo sta fra il prezzo e gli indirizzi: fn_available_actions_ddt legge il PRIMO motivo, quindi l''ordine e'' il contratto.';
+IS 'Single source dei motivi che impediscono l''emissione (EMESSO) di un DDT: righe attive (543), causale (544), prezzo risolvibile se causale fatturabile (545), aliquota sulle righe che portano un prezzo, indirizzi obbligatori, componenti BoM CASO A pendenti/non valorizzati. Ritorna [] se emittibile, altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio}. PURA: non solleva. rev 2026-08-19: i due motivi sui COMPONENTI si valutano solo se la causale e'' fatturabile, come gia'' faceva il motivo sulle righe. ⭐ rev 2026-08-28 (brief-db-ddt-riconsegna-eredita-testata, Fase C / R4-ter, decisione di Tid): sesto motivo E_DDT_RIGA_IVA_MANCANTE — una riga attiva CON PREZZO e senza iva_id non si emette. Chiudeva un difetto silenzioso: vw_ddt_righe_iva_base filtra prezzo_unitario e NON iva_id, quindi quella riga entrava nel riepilogo con imponibile pieno, codice IVA vuoto e imposta zero, su un documento stampato. ⭐ Il discrimine e'' il PREZZO e non la causale, e per questo il controllo sta FUORI dal ramo fatturabile: la vista del riepilogo la causale non la guarda, e il vincolo deve avere lo stesso perimetro del consumatore che protegge. ⚠️ Si guarda dr.prezzo_unitario e NON il COALESCE col fulfillment del punto 3: una riga dal prezzo solo derivato non entra nella vista, quindi non ha il difetto. ⛔ Non e'' un NOT NULL di colonna, e non poteva esserlo: ordini_righe.iva_id e'' nullable e fn_genera_ddt_da_ordine la copia, quindi il vincolo avrebbe fatto fallire l''evasione ordine con un 23502 muto. ⚠️ Il punto nuovo sta fra il prezzo e gli indirizzi: fn_available_actions_ddt legge il PRIMO motivo, quindi l''ordine e'' il contratto. rev 2026-09-24: il punto 5 dei componenti BoM (prezzo in attesa) passa al building block script.fn_check_prezzi_autorizzati — PENDING E REJECTED, solo componenti attivi di righe attive, codici E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO (prima E_COMPONENTE_PREZZO_PENDENTE, reason COMPONENTI_PREZZO_PENDENTE). La politica resta qui: si chiede solo se la causale vende. Il guard trgfn_ddt_guard_transizione_approvazione solleva i due codici nuovi. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-5, D-6).';
 ```
 
 ---

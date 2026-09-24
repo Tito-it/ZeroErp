@@ -87,12 +87,12 @@ La riga padre composita CASO A **non deve ricevere un prezzo manuale** — il su
 
 | Aspetto | Preventivi | Ordini |
 |---|---|---|
-| Guard L3 PENDING | ✅ `trgfn_preventivi_righe_componenti_guard_pending` | ❌ Non ancora implementato |
-| Guard testata blocco ACCETTATO | ✅ `trgfn_preventivi_guard_transizione_approvazione` | ❌ Non ancora implementato |
+| Guard L3 PENDING | ✅ `trgfn_preventivi_righe_componenti_guard_pending` | ✅ [`trgfn_ordini_righe_componenti_guard_pending`](/dbzero/vendite/funzioni/trgfn_ordini_righe_componenti_guard_pending) (20260511-38) |
+| Guard testata sul prezzo non autorizzato (dal 2026-09-24) | ✅ `trgfn_preventivi_guard_transizione` (Regola 3, verso ACCETTATO) e `fn_check_preventivo_emettibile` (verso EMESSO) | ✅ `trgfn_ordini_guard_transizione`, Regola 5 — solo DRAFT → CONFERMATO |
 | `utility_id` sulla testata | ✅ disponibile | ❌ Non presente su `ordini` |
 | Numero trigger | 8 | 7 |
 
-Il guard L3 specifico per ordini verrà aggiunto in una PR separata al completamento del workflow approvazione prezzi su questa sorgente.
+Il controllo di testata, in entrambi i documenti, è [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati): un componente attivo in attesa (PENDING) o rifiutato (REJECTED) blocca l'avanzamento con `E_DOC_PREZZO_PENDENTE` / `E_DOC_PREZZO_RIFIUTATO`. Sull'ordine lo chiede solo la conferma dalla bozza: il rientro automatico da EVASO / PARZIALMENTE_EVASO non conferma niente di nuovo.
 
 ---
 

@@ -21,10 +21,15 @@ AS $function$
 --   Manuale: valido_al >= CURRENT_DATE (no riscrittura storica).
 --   Manuale retroattiva: E_CONTRATTO_VALIDO_AL_RETROATTIVO (449).
 -- ATTIVO->ANNULLATO: non ammessa (cade nel catch generico).
--- DRAFT->ATTIVO: blocca se componenti BoM CASO A con prezzo PENDING.
+-- ->ATTIVO: blocca se righe o componenti BoM attivi hanno un prezzo
+--   non autorizzato (PENDING o REJECTED).
 -- Aggiornato 2026-05-12: check PENDING componenti.
 -- Aggiornato 2026-05-14: no-retroattiva su cessazione manuale.
 -- Aggiornato 2026-05-20: DRAFT->ANNULLATO ammessa.
+-- Aggiornato 2026-09-24: il controllo del prezzo all'attivazione passa
+--   dal building block script.fn_check_prezzi_autorizzati — righe E
+--   componenti, PENDING E REJECTED (brief-db-preventivi-congelamento-
+--   pricing, D-4/D-5).
 DECLARE
     v_codice_da config.stati_doc_contratti.codice_interno%TYPE;
     v_codice_a  config.stati_doc_contratti.codice_interno%TYPE;
@@ -84,23 +89,30 @@ BEGIN
         );
     END IF;
 
-    -- Check componenti BoM CASO A con prezzo PENDING (solo su DRAFT->ATTIVO).
-    IF v_codice_da = 'DRAFT' AND v_codice_a = 'ATTIVO' THEN
-        IF EXISTS (
-            SELECT 1 FROM vendite.contratti_righe cr
-              JOIN vendite.contratti_righe_componenti crc
-                ON crc.riga_contratto_id = cr.id
-             WHERE cr.contratto_id = NEW.id
-               AND crc.stato_approvazione_prezzo = 'PENDING'::config.stato_approvazione_prezzo
-        ) THEN
-            PERFORM script.fn_log_and_raise_error(
-                'database', TG_NAME::text, 'E_COMPONENTE_PREZZO_PENDENTE',
-                jsonb_build_object('contratto_id', NEW.id,
-                    'hint', 'Componente BoM CASO A in attesa di approvazione prezzo. '
-                         || 'Attendi esito su tutti i componenti prima di attivare il contratto.'),
-                NEW.tx_id, NEW.id::text
-            );
-        END IF;
+    -- Prezzi non autorizzati (rev 2026-09-24): un contratto con un prezzo
+    -- che nessuno ha autorizzato — in attesa o rifiutato, su righe o
+    -- componenti BoM attivi — non si attiva (D-1, D-4).
+    --
+    -- ⭐ Il predicato e' il building block script.fn_check_prezzi_autorizzati,
+    --   lo STESSO che fn_available_actions_contratto usa per spegnere
+    --   «Attiva»: qui si solleva soltanto.
+    -- ⚠️ Fino a questa revisione il controllo guardava i SOLI componenti
+    --   PENDING: una riga con un prezzo in attesa, o un prezzo rifiutato,
+    --   passavano. E sollevava E_COMPONENTE_PREZZO_PENDENTE, il codice del
+    --   guard PER RIGA dei componenti — che resta suo.
+    -- ⚠️ Sulla DESTINAZIONE: oggi ci si arriva solo da DRAFT (le altre
+    --   strade verso ATTIVO non sono ammesse sopra).
+    IF v_codice_a = 'ATTIVO' THEN
+        PERFORM script.fn_raise_primo_motivo_se_presente(
+            'database', TG_NAME::text,
+            script.fn_check_prezzi_autorizzati('vendite.contratti'::regclass, NEW.id),
+            NULL,
+            NEW.tx_id,
+            jsonb_build_object(
+                'contratto_id', NEW.id,
+                'numero',       NEW.numero,
+                'stato_da',     v_codice_da,
+                'stato_a',      v_codice_a));
     END IF;
 
     RETURN NEW;
@@ -108,7 +120,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_contratti_guard_transizione_stato()
-IS 'Trigger function: controlla transizioni stato contratto. DRAFT->ATTIVO: sempre ammessa (check PENDING componenti BoM). DRAFT->ANNULLATO: sempre ammessa (nessuna fatturazione su DRAFT). ATTIVO->ANNULLATO: non ammessa (raise E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA). ATTIVO->CESSATO: job automatico (GUC app.cessazione_automatica=true) ammette valido_al<oggi; cessazione manuale ammette valido_al>=oggi (no retroattiva). Retroattiva raise E_CONTRATTO_VALIDO_AL_RETROATTIVO (449); NULL raise E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA. rev 2026-05-20 (DRAFT->ANNULLATO).';
+IS 'Trigger function: controlla transizioni stato contratto. DRAFT->ATTIVO: sempre ammessa (check PENDING componenti BoM). DRAFT->ANNULLATO: sempre ammessa (nessuna fatturazione su DRAFT). ATTIVO->ANNULLATO: non ammessa (raise E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA). ATTIVO->CESSATO: job automatico (GUC app.cessazione_automatica=true) ammette valido_al<oggi; cessazione manuale ammette valido_al>=oggi (no retroattiva). Retroattiva raise E_CONTRATTO_VALIDO_AL_RETROATTIVO (449); NULL raise E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA. rev 2026-05-20 (DRAFT->ANNULLATO). rev 2026-09-24: all''''ingresso in ATTIVO il controllo del prezzo passa dal building block script.fn_check_prezzi_autorizzati via fn_raise_primo_motivo_se_presente — righe E componenti BoM attivi, PENDING E REJECTED, codici E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO. Prima guardava i soli componenti PENDING e sollevava E_COMPONENTE_PREZZO_PENDENTE (che resta al guard per riga dei componenti). La capability fn_available_actions_contratto legge la stessa funzione. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-4, D-5).';
 ```
 
 ---

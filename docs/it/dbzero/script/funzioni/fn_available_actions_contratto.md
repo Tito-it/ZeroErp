@@ -41,6 +41,12 @@ AS $function$
 --   si applica: filtrare per presenza risponde vero per tutti i documenti,
 --   va guardato il valore.
 --   brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3.
+--   rev 2026-09-24: le azioni passano alla forma dell'ARRAY DEI MOTIVI
+--   (come preventivo e ordine): enabled/reason/reason_key discendono da
+--   `reasons`, che somma i prezzi non autorizzati verso ATTIVO (building
+--   block script.fn_check_prezzi_autorizzati, lo stesso del guard di
+--   transizione) e il generico «documento vuoto».
+--   (brief-db-preventivi-congelamento-pricing, D-4/D-5).
 DECLARE
     v_stato_id     vendite.contratti.stato_doc_contratto_id%TYPE;
     v_stato_cod    config.stati_doc_contratti.codice_interno%TYPE;
@@ -48,6 +54,7 @@ DECLARE
     v_stato_codice config.stati_doc_contratti.codice%TYPE;
     v_valido_dal   vendite.contratti.valido_dal%TYPE;
     v_listino_id   vendite.contratti.listino_id%TYPE;
+    v_mot_attiva   jsonb := '[]'::jsonb;
     v_pdf_mode     config.stati_doc_contratti.pdf_mode%TYPE;
     v_pdf_allow    config.stati_doc_contratti.pdf_allow_allegati%TYPE;
     v_actions      jsonb;
@@ -97,6 +104,13 @@ BEGIN
                AND cr.attivo = TRUE
         );
 
+    -- Motivi ostativi all'ATTIVAZIONE: i prezzi non autorizzati. E' il
+    -- building block che trgfn_contratti_guard_transizione_stato usa per
+    -- sollevare, quindi «Attiva» e guard non possono divergere.
+    -- rev 2026-09-24, brief-db-preventivi-congelamento-pricing (D-4).
+    v_mot_attiva := script.fn_check_prezzi_autorizzati('vendite.contratti'::regclass,
+                                                       p_contratto_id);
+
     SELECT COALESCE(
         jsonb_agg(
             jsonb_build_object(
@@ -112,14 +126,12 @@ BEGIN
                 'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
                 'requires_date',   COALESCE((t.meta->>'requires_date')::boolean, false),
                 'outlined',        COALESCE((t.meta->>'outlined')::boolean, false),
-                'enabled',         NOT (COALESCE((t.meta->>'requires_righe')::boolean, false)
-                                        AND NOT v_ha_righe),
-                'reason',          CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
-                                             AND NOT v_ha_righe
-                                        THEN 'DOCUMENTO_SENZA_RIGHE' END,
-                'reason_key',      CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
-                                             AND NOT v_ha_righe
-                                        THEN 'common.azione_reason.senza_righe' END
+                -- Tutto discende dall'array dei motivi: nessuna
+                -- regola puo' mascherarne un'altra (rev 2026-09-24).
+                'enabled',         jsonb_array_length(m.motivi) = 0,
+                'reason',          m.motivi -> 0 ->> 'reason',
+                'reason_key',      m.motivi -> 0 ->> 'reason_key',
+                'reasons',         m.motivi
             )
             ORDER BY sa.ordine
         ),
@@ -128,6 +140,23 @@ BEGIN
     INTO v_actions
     FROM config.transizioni_stati_contratti t
     JOIN config.stati_doc_contratti sa ON sa.id = t.stato_a_id
+    -- I motivi della destinazione, sommati in un array solo. Ordine:
+    -- prima quelli specifici della destinazione, poi il generico
+    -- «documento vuoto»; il primo e' quello che il FE mostra da solo.
+    -- ⚠️ Il motivo «documento vuoto» e' lo stesso di prima, scritto nella
+    --   forma di un motivo: stessi reason e reason_key.
+    CROSS JOIN LATERAL (
+        SELECT CASE WHEN sa.codice_interno = 'ATTIVO'
+                    THEN v_mot_attiva ELSE '[]'::jsonb END
+            || CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                         AND NOT v_ha_righe
+                    THEN jsonb_build_array(jsonb_build_object(
+                             'codice',     NULL,
+                             'reason',     'DOCUMENTO_SENZA_RIGHE',
+                             'reason_key', 'common.azione_reason.senza_righe',
+                             'dettaglio',  NULL))
+                    ELSE '[]'::jsonb END AS motivi
+    ) m
     WHERE t.stato_da_id = v_stato_id
       AND t.attivo IS TRUE
       AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE
@@ -173,7 +202,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_contratto(p_contratto_id bigint)
-IS 'Capability contratto per detail API: available_actions + can_change_state + can_edit_testata/righe + non_editable_fields + stato_codice_interno + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_contratti. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il contratto e'' vuoto -> enabled=false + reason DOCUMENTO_SENZA_RIGHE. Vuoto per il contratto = negoziato puro (listino_id NULL) senza AGGIUNTA attiva con prezzo; con listino mai vuoto (predicato specchiato da trgfn_contratti_freeze_listino_versione). rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_contratti.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile (DRAFT -> Bozza) e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati. L''arricchimento requires_date a valle somma chiavi e non la tocca. rev 2026-08-11: + stato_info_key, la nota di stato letta dal meta dello stato corrente ed emessa SEMPRE che lo stato la dichiari, anche accanto a un''azione ancora abilitata: la nota spiega lo STATO e non risponde a una barra vuota (decisione §5 di Tid, gia'' applicata a preventivo/ordine/DDT con 20260810-04/-05/-06). Questo dominio era fra i cinque che non emettevano affatto il campo mentre il drawer lo legge gia'': il cablaggio c''era ed era inerte. ⚠️ La PROPRIETA'' nel meta resta nessuna_azione_key mentre il campo del blob si chiama stato_info_key: scripts/check_i18n_keys.py trova le chiavi seminate per quel nome, e rinominarla senza toccare il guard lo renderebbe verde per cecita''. ⚠️ Il campo e'' SEMPRE presente nel blob, col valore a null quando non si applica: filtrare per presenza risponde vero per tutti i documenti, va guardato il valore. brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3.';
+IS 'Capability contratto per detail API: available_actions + can_change_state + can_edit_testata/righe + non_editable_fields + stato_codice_interno + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_contratti. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il contratto e'' vuoto -> enabled=false + reason DOCUMENTO_SENZA_RIGHE. Vuoto per il contratto = negoziato puro (listino_id NULL) senza AGGIUNTA attiva con prezzo; con listino mai vuoto (predicato specchiato da trgfn_contratti_freeze_listino_versione). rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_contratti.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile (DRAFT -> Bozza) e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati. L''arricchimento requires_date a valle somma chiavi e non la tocca. rev 2026-08-11: + stato_info_key, la nota di stato letta dal meta dello stato corrente ed emessa SEMPRE che lo stato la dichiari, anche accanto a un''azione ancora abilitata: la nota spiega lo STATO e non risponde a una barra vuota (decisione §5 di Tid, gia'' applicata a preventivo/ordine/DDT con 20260810-04/-05/-06). Questo dominio era fra i cinque che non emettevano affatto il campo mentre il drawer lo legge gia'': il cablaggio c''era ed era inerte. ⚠️ La PROPRIETA'' nel meta resta nessuna_azione_key mentre il campo del blob si chiama stato_info_key: scripts/check_i18n_keys.py trova le chiavi seminate per quel nome, e rinominarla senza toccare il guard lo renderebbe verde per cecita''. ⚠️ Il campo e'' SEMPRE presente nel blob, col valore a null quando non si applica: filtrare per presenza risponde vero per tutti i documenti, va guardato il valore. brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3. rev 2026-09-24: le azioni passano alla forma dell''''ARRAY DEI MOTIVI, come preventivo e ordine — enabled/reason/reason_key discendono da `reasons` (chiave nuova nel blob). Verso ATTIVO l''''array somma i prezzi non autorizzati (PENDING o REJECTED su righe e componenti BoM attivi) da script.fn_check_prezzi_autorizzati, lo stesso building block con cui trgfn_contratti_guard_transizione_stato solleva; poi il generico DOCUMENTO_SENZA_RIGHE, invariato. ⚠️ La reason_key common.azione_reason.prezzo_pendente / prezzo_rifiutato e'''' un debito verso il frontend. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-4, D-5).';
 ```
 
 ---
