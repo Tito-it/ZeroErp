@@ -12,10 +12,16 @@
 --   viste rispondono con cio' che il registro e la copia contengono.
 -- ⚠️ RI-COLLOCATO col Lotto 2 (brief-db-magazzino-lotto-2-motore, D-L2-b,
 --   sezione 7): la porta del ledger e' chiusa — l'app non scrive movimenti ne'
---   valore_giacenza. La giacenza e la copia si costruiscono ATTRAVERSO LA
---   PRIMITIVA (fn_scrivi_movimento), che scrive la copia da sola: e' diventato
---   un test di comportamento. Il magazzino usa le ubicazioni (D-L2-m: ogni
---   movimento ne nomina una), l'articolo e' costruito gestito (helper).
+--   valore_giacenza. La giacenza e la copia si costruiscono attraverso chi
+--   scrive il registro, che scrive la copia da sola: e' un test di
+--   comportamento. Il magazzino usa le ubicazioni (D-L2-m: ogni movimento ne
+--   nomina una), l'articolo e' costruito gestito (helper).
+-- ⭐ Rev 2026-09-24 (brief-db-magazzino-verbi-con-permesso, P-4): l'app non
+--   esegue piu' la primitiva. La giacenza si costruisce con i VERBI
+--   (fn_posta_inventario, fn_posta_rettifica) e il test RESTA come app: le sue
+--   asserzioni sono sulle viste, che hanno senso lette sotto RLS. Stessi
+--   movimenti di prima (+5 U1 e +4 U2 a costo 10, -2 da U1; +3 e -3 sul secondo
+--   articolo), quindi stessi valori attesi. L'operatore riceve registra_magazzino.
 --
 -- Elenco test (plan 12):
 --   La rinomina e' di tutto:
@@ -84,6 +90,7 @@ DO $ctx$ BEGIN
     PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo));
 END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
+DO $az$ BEGIN PERFORM dbops.fn_pgtap_concedi_azione((SELECT auth_user_id FROM _mondo), 'registra_magazzino'); END $az$;
 
 CREATE TEMP TABLE _fix (mag bigint, art uuid, u1 bigint, u2 bigint);
 
@@ -100,8 +107,6 @@ DECLARE
     v_ret magazzino.rettifiche.id%TYPE;
     v_rr  magazzino.rettifiche_righe.id%TYPE;
     v_tipo_ubi config.tipi_ubicazione.id%TYPE;
-    v_src_inv  config.sorgenti.id%TYPE;
-    v_src_ret  config.sorgenti.id%TYPE;
 BEGIN
     SELECT emittente_fiscale_id INTO v_ef FROM _mondo;
     -- L'indirizzo si FABBRICA (dato di macchina: zero righe su un DB da zero);
@@ -113,8 +118,6 @@ BEGIN
     IF v_tipo_ubi IS NULL THEN
         RAISE EXCEPTION 'fixture: serve un tipo di ubicazione attivo (seed di catalogo)';
     END IF;
-    SELECT id INTO v_src_inv FROM config.sorgenti WHERE codice_interno = 'INVENTARIO_RIGA';
-    SELECT id INTO v_src_ret FROM config.sorgenti WHERE codice_interno = 'RETTIFICA_RIGA';
 
     -- usa_ubicazioni: i movimenti nominano U1 e U2 (D-L2-m).
     INSERT INTO magazzino.magazzini (codice, descrizione, indirizzo_dettaglio_id, emittente_fiscale_id, usa_ubicazioni)
@@ -122,16 +125,18 @@ BEGIN
     INSERT INTO magazzino.ubicazioni (magazzino_id, codice, tipo_id) VALUES (v_mag, 'PGT-U1', v_tipo_ubi) RETURNING id INTO v_u1;
     INSERT INTO magazzino.ubicazioni (magazzino_id, codice, tipo_id) VALUES (v_mag, 'PGT-U2', v_tipo_ubi) RETURNING id INTO v_u2;
 
+    -- +5 in U1 e +4 in U2 a costo 10 (un inventario, due righe), poi -2 da U1
+    -- (una rettifica, alla media): ATTRAVERSO I VERBI, che passano dalla primitiva,
+    -- che scrive anche la copia: 50 + 40 - 2 * 10 (media) = 70.
     INSERT INTO magazzino.inventari (magazzino_id) VALUES (v_mag) RETURNING id INTO v_inv;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata) VALUES (v_inv, v_art, 9) RETURNING id INTO v_ir;
+    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, ubicazione_id, costo_unitario) VALUES (v_inv, v_art, 5, v_u1, 10) RETURNING id INTO v_ir;
+    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, ubicazione_id, costo_unitario) VALUES (v_inv, v_art, 4, v_u2, 10);
+    UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_inv;
+    PERFORM magazzino.fn_posta_inventario(v_inv);
     INSERT INTO magazzino.rettifiche (magazzino_id) VALUES (v_mag) RETURNING id INTO v_ret;
-    INSERT INTO magazzino.rettifiche_righe (rettifica_id, articolo_id, qta_delta) VALUES (v_ret, v_art, -2) RETURNING id INTO v_rr;
-
-    -- +5 in U1, +4 in U2 (stessa sorgente, tranche diverse), -2 da U1 (rettifica):
-    -- ATTRAVERSO LA PRIMITIVA, che scrive anche la copia: 50 + 40 - 2 * 10 (media) = 70.
-    PERFORM magazzino.fn_scrivi_movimento(v_mag, v_art, 'INV_INIZIALE',  5, v_src_inv, v_ir, NULL, 10, NULL, NULL, v_u1);
-    PERFORM magazzino.fn_scrivi_movimento(v_mag, v_art, 'INV_INIZIALE',  4, v_src_inv, v_ir, NULL, 10, NULL, NULL, v_u2);
-    PERFORM magazzino.fn_scrivi_movimento(v_mag, v_art, 'RETT_NEG',     -2, v_src_ret, v_rr, NULL, NULL, NULL, NULL, v_u1);
+    INSERT INTO magazzino.rettifiche_righe (rettifica_id, articolo_id, qta_delta, ubicazione_id) VALUES (v_ret, v_art, -2, v_u1) RETURNING id INTO v_rr;
+    UPDATE magazzino.rettifiche SET stato_mag_rettifiche = 'CONFIRM' WHERE id = v_ret;
+    PERFORM magazzino.fn_posta_rettifica(v_ret);
 
     INSERT INTO _fix VALUES (v_mag, v_art, v_u1, v_u2);
 END $fix$;
@@ -184,11 +189,13 @@ BEGIN
     SELECT mag, u1 INTO v_mag, v_u1 FROM _fix;
     v_art2 := dbops.fn_pgtap_crea_articolo('PGT-VG1-ZERO', true, false, false);
     INSERT INTO magazzino.inventari (magazzino_id) VALUES (v_mag) RETURNING id INTO v_inv;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, ubicazione_id) VALUES (v_inv, v_art2, 3, v_u1) RETURNING id INTO v_ir;
+    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, ubicazione_id, costo_unitario) VALUES (v_inv, v_art2, 3, v_u1, 10) RETURNING id INTO v_ir;
+    UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_inv;
+    PERFORM magazzino.fn_posta_inventario(v_inv);
     INSERT INTO magazzino.rettifiche (magazzino_id) VALUES (v_mag) RETURNING id INTO v_ret;
     INSERT INTO magazzino.rettifiche_righe (rettifica_id, articolo_id, qta_delta, ubicazione_id) VALUES (v_ret, v_art2, -3, v_u1) RETURNING id INTO v_rr;
-    PERFORM magazzino.fn_scrivi_movimento(v_mag, v_art2, 'INV_INIZIALE', 3, (SELECT id FROM config.sorgenti WHERE codice_interno = 'INVENTARIO_RIGA'), v_ir, NULL, 10, NULL, NULL, v_u1);
-    PERFORM magazzino.fn_scrivi_movimento(v_mag, v_art2, 'RETT_NEG',    -3, (SELECT id FROM config.sorgenti WHERE codice_interno = 'RETTIFICA_RIGA'), v_rr, NULL, NULL, NULL, NULL, v_u1);
+    UPDATE magazzino.rettifiche SET stato_mag_rettifiche = 'CONFIRM' WHERE id = v_ret;
+    PERFORM magazzino.fn_posta_rettifica(v_ret);
 END $z$;
 SELECT is(
     (SELECT trim_scale(v.qta)::text || '|' || trim_scale(v.valore)::text || '|' || coalesce(v.costo_medio::text, 'NULL')

@@ -14,7 +14,7 @@
 >
 > **La regola:** [linee-guida-sql §12](/linee-guida-sql) — le capability
 >
-> **Piano:** [brief-db-magazzino-lotto-2-bis-be-fe](/dev/work-in-progress/brief-db-magazzino-lotto-2-bis-be-fe) R-1 · nasce dalla D-L2-h di [brief-db-magazzino-lotto-2-motore](/dev/work-in-progress/brief-db-magazzino-lotto-2-motore)
+> **Piano:** [brief-db-magazzino-lotto-2-bis-be-fe](/dev/work-in-progress/brief-db-magazzino-lotto-2-bis-be-fe) R-1 · nasce dalla D-L2-h di [brief-db-magazzino-lotto-2-motore](/dev/work-done/brief-db-magazzino-lotto-2-motore)
 
 ---
 

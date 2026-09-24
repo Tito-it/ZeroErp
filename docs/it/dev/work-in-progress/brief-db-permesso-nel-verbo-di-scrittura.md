@@ -4,7 +4,16 @@
 > §7), poi team DB e backend.
 > **Origine:** approfondimento del §8 di
 > [brief-db-area-funzionale-assistente-ai.md](brief-db-area-funzionale-assistente-ai.md).
-> **Stato:** ⚠️ **analisi con decisioni aperte — nessun changeSet chiesto**.
+> **Stato:** ✅ **D-1 → D-5 decise da Tid il 2026-09-24** (§7). Questo brief è la
+> sede del **modello**; il lavoro si fa nei brief operativi — il primo è
+> [brief-db-magazzino-verbi-con-permesso.md](brief-db-magazzino-verbi-con-permesso.md)
+> (D-4, D-5). Il verbo generico del pannello (D-3) avrà il suo, all'inizio del
+> cantiere `magazzino`/`acquisti`.
+> **Avanzamento al 2026-09-24 notte:** il primo brief operativo ha la porta chiusa —
+> P-0 → P-5 applicati, pgTAP verdi. Il guard `script.fn_guard_azione` esiste, i due
+> verbi di magazzino lo applicano, e l'app non esegue più la primitiva. Restano P-6 e
+> la decisione D-V1 di quel brief. Il prossimo brief operativo del modello è il verbo
+> generico del pannello (D-3).
 >
 > **In una riga:** oggi il DB **calcola** i permessi ma non li **applica**:
 > qualunque scrittura che il backend autorizza per errore, il DB la esegue. La
@@ -13,7 +22,8 @@
 > perde `INSERT`/`UPDATE`/`DELETE` sulle tabelle che il verbo protegge.
 >
 > ⇒ La proposta è di adottarla come **regola per i domini nuovi** e di portarci
-> gli esistenti uno alla volta, **senza data**. Prima servono le decisioni del §7.
+> gli esistenti uno alla volta, **senza data**. Le decisioni del §7 sono prese
+> (D-1 → D-5, 2026-09-24).
 
 ---
 
@@ -51,7 +61,7 @@ il punto di partenza: **non** decidono né la forma né la priorità.
   generico sulle tabelle di configurazione e scritture a tabella costruita a
   runtime). Le funzioni DB che scrivono coprono una parte dei casi.
 * ⭐ **La forma «porta» esiste già**: Lotto 2 di magazzino, D-L2-b
-  ([brief-db-magazzino-lotto-2-motore.md](brief-db-magazzino-lotto-2-motore.md)).
+  ([brief-db-magazzino-lotto-2-motore.md](../work-done/brief-db-magazzino-lotto-2-motore.md)).
   `zeroerp_app` ha solo `SELECT` su `magazzino.movimenti`; scrive solo la
   primitiva `fn_scrivi_movimento`, `SECURITY DEFINER` del proprietario; il
   perimetro è rimesso dal guard BB `script.trgfn_guard_emittente_scope`.
@@ -86,11 +96,15 @@ la **funzione** che la esegue.
   **funzione DB** (il *verbo*): `fn_posta_inventario`, `fn_cambia_stato_pratica`, …
 * Il verbo **dichiara il suo permesso nella prima riga**, con un building block
   unico, e non con un controllo scritto a mano:
-  * `script.fn_require_azione(p_permission_codename)`, oppure
-  * `script.fn_require_livello(p_area_schema_db, p_tipo_accesso)`.
+  * `script.fn_guard_azione(p_auth_user_id, p_permission_codename)` — ✅ scritto
+    il 2026-09-24 (`20260924-38`), oppure
+  * `script.fn_guard_livello(…)`, la forma sull'oggetto (D-5), che nasce con il
+    verbo generico del pannello.
 
-  Il BB legge `app.current_user_id` e chiama le funzioni di risoluzione che già
-  esistono (sede unica della regola). Se il permesso manca, solleva un **codice
+  Il verbo passa l'utente letto da `app.current_user_id` con l'espressione delle
+  policy (linee-guida-sql §10.4); il BB chiama le funzioni di risoluzione che
+  già esistono (sede unica della regola). Il nome è `fn_guard_*` perché blocca
+  sollevando (linee-guida-sql §5). Se il permesso manca, solleva un **codice
   registrato**, famiglia autorizzazione.
 * ⭐ Per un'azione di processo il verbo **è** l'azione: `cambia_stato_pratica` il
   codename, `fn_cambia_stato_pratica` il verbo. La coppia rende naturale ciò che
@@ -131,7 +145,7 @@ perimetro: va scritto nella guida, non lasciato implicito.
 
 ## 5. Il percorso
 
-1. **Il BB del permesso** (`fn_require_azione` / `fn_require_livello`) e i suoi
+1. **Il BB del permesso** (`fn_guard_azione` / `fn_guard_livello`) e i suoi
    codici di errore: un cantiere piccolo, in `script`.
 2. **I domini nuovi nascono così**: `magazzino` e `acquisti` sono il prossimo
    cantiere (decisione di Tid del 2026-09-11), e ogni decisione presa lì vale per
@@ -156,8 +170,8 @@ perimetro: va scritto nella guida, non lasciato implicito.
 | **D-1** | Adottare il modello (§4) come direzione? | ✅ **DECISA da Tid il 2026-09-24: sì** — i domini nuovi (`magazzino`, `acquisti`) nascono così; gli esistenti ci passano quando un cantiere tocca le loro scritture, uno alla volta, senza data. Accettato il limite del §4.4 |
 | **D-2** | Ogni verbo è legato a **un'azione di processo**, o basta il livello d'area per i verbi CRUD semplici? | ✅ **DECISA da Tid il 2026-09-24: due forme, un BB.** Le operazioni di processo (cambia stato, emetti, genera, annulla…) chiedono la loro azione — verbo e azione coincidono; le operazioni semplici (crea, modifica, cancella) chiedono il livello d'area (`TUTTO`). La forma la sceglie chi scrive il verbo, nella prima riga, con il BB unico. `azioni_processo` non si riempie di azioni che ripetono il livello, e l'amministratore ragiona come oggi |
 | **D-3** | Il CRUD generico delle tabelle di configurazione (`config_crud_repository`) | ✅ **DECISA da Tid il 2026-09-24 — verbo generico SUBITO**, all'inizio del cantiere `magazzino`/`acquisti`. Vedi §7.1 |
-| **D-4** | Il Lotto 2 chiude subito la porta aperta (§2, ultimo punto)? | ✅ **DECISA da Tid il 2026-09-24: sì, primo cantiere del modello, subito.** `fn_posta_inventario` e `fn_posta_rettifica` diventano i verbi: controllano la loro azione nella prima riga (azioni nuove, area Magazzino) e girano DEFINER del proprietario; l'app perde `EXECUTE` su `fn_scrivi_movimento` e `fn_ricalcola_valore_giacenza`; il perimetro sui documenti (inventari, rettifiche) lo rimette il guard BB, da verificare nel lavoro. Il backend non cambia: chiama già solo le due operazioni. Sede del lavoro: da decidere (vedi registro) |
-| **D-5** | Gli override per oggetto (`fn_resolve_livello_oggetto`, `area_model_overrides`) | Il BB li onora quando il verbo nomina il proprio oggetto; da verificare sui primi verbi |
+| **D-4** | Il Lotto 2 chiude subito la porta aperta (§2, ultimo punto)? | ✅ **DECISA da Tid il 2026-09-24: sì, primo cantiere del modello, subito.** `fn_posta_inventario` e `fn_posta_rettifica` diventano i verbi: controllano nella prima riga l'azione **`registra_magazzino`**, che esiste già ed è il gate del backend (non servono azioni nuove), e girano DEFINER del proprietario; l'app perde `EXECUTE` su `fn_scrivi_movimento` e `fn_ricalcola_valore_giacenza`; il perimetro sui documenti lo rimette il verbo, chiamando lo stesso predicato della policy. Il backend non cambia. **Sede del lavoro:** [brief-db-magazzino-verbi-con-permesso.md](brief-db-magazzino-verbi-con-permesso.md); il brief del Lotto 2 ha solo una nota in D-L2-b, per non falsarne lo stato di consegnato |
+| **D-5** | Gli override per oggetto (`fn_resolve_livello_oggetto`, `area_model_overrides`) | ✅ **DECISA da Tid il 2026-09-24.** Nella forma semplice il verbo dichiara **l'oggetto** su cui scrive, non l'area: il BB passa da `fn_resolve_livello_oggetto` (override utente, poi livello d'area), e l'area la legge da `area_model_overrides`, senza ripeterla. Vale anche per il verbo generico del pannello (ogni riga della lista ammessa dichiara il suo oggetto). L'oggetto si nomina con la chiave che il catalogo ha già (`app_label` + `model_name`): una seconda nomenclatura sarebbe una seconda sede. Le operazioni di processo restano sull'azione. ⛔ **Difetto trovato**: `fn_resolve_livello_oggetto` non ha il gate di contesto (`app.ruolo_applicativo` ≠ `OPERATORE` ⇒ `BLOCCATO`) che ha `fn_resolve_livello_area`, quindi un override per oggetto vale anche fuori dalla veste operatore. Il BB applica il gate da sé; la funzione si corregge nello stesso lavoro, perché il backend la usa già |
 
 ### 7.1 D-3 — il pannello di configurazione passa dal verbo generico
 
@@ -209,4 +223,5 @@ migrare.
 | 2026-09-24 | Tid | D-1 decisa: sì al modello del verbo come direzione |
 | 2026-09-24 | Tid | D-2 decisa: due forme (azione per i processi, livello d'area per il CRUD semplice), un BB |
 | 2026-09-24 | Tid | D-3 decisa, **corretta** rispetto alla prima proposta («al primo cantiere che tocca il pannello»): il pannello contiene tabelle di magazzino, quindi verbo generico subito, lista ammessa a DB con l'area di appartenenza, porta chiusa per dominio (§7.1) |
-| 2026-09-24 | Tid | D-4 decisa: i due verbi del Lotto 2 con permesso e DEFINER, `EXECUTE` sulla primitiva tolto all'app |
+| 2026-09-24 | Tid | D-4 decisa: i due verbi del Lotto 2 con permesso e DEFINER, `EXECUTE` sulla primitiva tolto all'app. Sede del lavoro: brief operativo proprio, non il brief del Lotto 2 (consegnato), che riceve solo una nota in D-L2-b |
+| 2026-09-24 | Tid | D-5 decisa: il verbo dichiara l'oggetto, il BB rispetta gli override; correzione del gate in `fn_resolve_livello_oggetto` nel brief operativo di magazzino (§2.4) |

@@ -110,6 +110,7 @@
 - [fn_get_vie_discendenti](manual/fn_get_vie_discendenti.md) — (rev 2026-08-21)
 - [fn_gruppi_di_commessa_nel_lotto](manual/fn_gruppi_di_commessa_nel_lotto.md) — (latest review 2026-09-08)
 - [fn_gruppi_trascinati_da_uscita](manual/fn_gruppi_trascinati_da_uscita.md) — (latest review 2026-09-08)
+- [fn_guard_azione](manual/fn_guard_azione.md) — (scritta il 24-09-2026)
 - [fn_guard_soggetto_pf_pura](manual/fn_guard_soggetto_pf_pura.md) — (latest review 18-04-2026)
 - [fn_guard_soggetto_ruolo](manual/fn_guard_soggetto_ruolo.md) — (latest review 05-12-25) - **Verifica esistenza**     Controlla se esiste già un’associazione tra il soggetto e il codice interno del ruolo in `anagrafiche.soggetti_ruoli`.
 - [fn_guard_utility_tipo_ruolo](manual/fn_guard_utility_tipo_ruolo.md) — (latest review 16-02-2026) `script.fn_guard_utility_tipo_ruolo` valida la coerenza tra `utility_id` e `tipo_ruolo_id` con semantica:

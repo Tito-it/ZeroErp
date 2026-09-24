@@ -222,8 +222,9 @@ possesso dell'email, non annulla la decisione di chi ha bloccato.
    secondi rimanenti.
 
 I codici nuovi entrano in `codici_errore.csv` e `messaggi_errore.csv`, con la
-categoria scelta sulla tassonomia esistente (per l'attesa, se c'è, quella del
-«troppe richieste»).
+classe `NON_PERMESSO` (403) di `E_UTENTE_BLOCCATO`. ⚠️ La prima stesura diceva
+«per l'attesa, se c'è, quella del "troppe richieste"»: superata dalla nota qui
+sotto.
 
 ⚠️ **Nota del backend (2026-09-24): per l'attesa NON un 429.** Due fatti,
 verificati: (1) fra le dieci classi del catalogo **non ce n'è una** «troppe

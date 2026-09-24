@@ -1,0 +1,126 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-4 — LA PORTA SI CHIUDE ANCHE SULLE FUNZIONI
+#   magazzino.fn_scrivi_movimento, magazzino.fn_ricalcola_valore_giacenza
+#   Brief: brief-db-magazzino-verbi-con-permesso, sezione 2.3
+#   Decisione: D-4 di brief-db-permesso-nel-verbo-di-scrittura
+#
+# -- PERCHE' --------------------------------------------------------------------------------------
+#   Dal Lotto 2 l'app non scrive sul registro: scrive la primitiva DEFINER. Ma
+#   l'app poteva CHIAMARE la primitiva, saltando i verbi (20260924-41) che
+#   applicano registra_magazzino e rimettono il perimetro. Da qui l'app li
+#   raggiunge solo dai verbi; i verbi, DEFINER del proprietario, eseguono la
+#   primitiva come proprietario.
+#   fn_ricalcola_valore_giacenza e' uno strumento di riparazione della copia del
+#   valore: il backend non la chiama, la usa il proprietario (rimedio del presidio
+#   dbops.vw_magazzino_valore_giacenza_divergente).
+#
+# -- LA REVOCA VA ANCHE A PUBLIC ------------------------------------------------------------------
+#   Le funzioni hanno EXECUTE a PUBLIC per default (`=X`): revocarlo alla sola app
+#   non toglierebbe niente, perche' l'app lo eredita da PUBLIC. Tutti gli overload,
+#   letti dal catalogo (oggi uno per funzione).
+#
+# -- LE TRE SEDI (linee-guida-sql §11.8) ----------------------------------------------------------
+#   Questo forward agisce SUBITO su dev (ci_apply su dev non gira da solo). La
+#   postura la tengono stabile: `v_fn_riservate` nel loop
+#   90_end/ci_apply/20260205-41 e il blocco «POSTURA DICHIARATA» di
+#   scripts/sql/provision_db_roles.sql, che in CI gira DOPO ci_apply. Il pgTAP
+#   che le tiene allineate e' db/pgtap/magazzino/test-porta-ledger-v1.sql (17-18).
+#
+# -- FUORI, DICHIARATO ----------------------------------------------------------------------------
+#   I grant ESPLICITI ai ruoli batch restano (zeroerp_batch_fatturazione ha
+#   EXECUTE su entrambe): i privilegi dei ruoli batch stanno nel provisioning,
+#   mai in un changeSet (linee-guida-sql §11.6). Segnalato nel brief.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260924-42-revoke-app-execute-primitiva-magazzino-mctit.yaml
+
+  - changeSet:
+      id: 20260924-42-revoke-app-execute-primitiva-magazzino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La porta del ledger di magazzino si chiude anche sulle funzioni: REVOKE EXECUTE su
+        magazzino.fn_scrivi_movimento e magazzino.fn_ricalcola_valore_giacenza a PUBLIC e a
+        zeroerp_app. L'app li raggiunge solo dai verbi fn_posta_inventario / fn_posta_rettifica
+        (DEFINER, registra_magazzino). Postura resa stabile da v_fn_riservate nel loop 20260205-41 e
+        dal blocco «POSTURA DICHIARATA» di provision_db_roles.sql. Brief:
+        brief-db-magazzino-verbi-con-permesso §2.3 (P-4).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "2"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'magazzino' AND p.proname IN ('fn_posta_inventario', 'fn_posta_rettifica')
+                     AND p.prosecdef;
+            - sqlCheck:
+                expectedResult: "2"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'magazzino' AND p.proname IN ('fn_scrivi_movimento', 'fn_ricalcola_valore_giacenza');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $porta$
+              DECLARE
+                  v_fn record;
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: skip porta sulle funzioni.';
+                      RETURN;
+                  END IF;
+
+                  -- La primitiva e il ricalcolo: riservati. A PUBLIC e all'app insieme.
+                  FOR v_fn IN
+                      SELECT p.oid::regprocedure AS firma
+                        FROM pg_catalog.pg_proc p
+                        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                       WHERE n.nspname = 'magazzino'
+                         AND p.proname IN ('fn_scrivi_movimento', 'fn_ricalcola_valore_giacenza')
+                         AND p.prokind = 'f'
+                  LOOP
+                      EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC, zeroerp_app', v_fn.firma);
+                  END LOOP;
+
+                  -- I verbi restano la strada dell'app (lo erano gia': si ridice, idempotente).
+                  GRANT EXECUTE ON FUNCTION magazzino.fn_posta_inventario(bigint) TO zeroerp_app;
+                  GRANT EXECUTE ON FUNCTION magazzino.fn_posta_rettifica(bigint)  TO zeroerp_app;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Riapre la porta sulle funzioni (la postura del Lotto 2). ⚠️ Senza togliere le
+              -- voci da v_fn_riservate (loop 20260205-41) e dal provisioning, la passata
+              -- ci_apply successiva la richiude.
+              DO $porta$
+              DECLARE
+                  v_fn record;
+              BEGIN
+                  FOR v_fn IN
+                      SELECT p.oid::regprocedure AS firma
+                        FROM pg_catalog.pg_proc p
+                        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                       WHERE n.nspname = 'magazzino'
+                         AND p.proname IN ('fn_scrivi_movimento', 'fn_ricalcola_valore_giacenza')
+                         AND p.prokind = 'f'
+                  LOOP
+                      EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO PUBLIC, zeroerp_app', v_fn.firma);
+                  END LOOP;
+              END
+              $porta$;

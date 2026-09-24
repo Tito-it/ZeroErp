@@ -216,6 +216,23 @@ FROM (VALUES ('magazzino.movimenti_attesi')) AS t(nome)
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 
+-- ⭐ E LA PORTA SULLE FUNZIONI (dal 2026-09-24): brief
+--   brief-db-magazzino-verbi-con-permesso, sezione 2.3 (P-4). La primitiva e il
+--   ricalcolo del valore sono RISERVATE: l'app li raggiunge solo dai verbi
+--   (`fn_posta_inventario`, `fn_posta_rettifica`, SECURITY DEFINER), che
+--   applicano registra_magazzino. La revoca va anche a PUBLIC (`=X` per default).
+--   Stesso elenco di `v_fn_riservate` nel loop 20260205-41 e del forward
+--   90_end/20260924-42; `db/pgtap/magazzino/test-porta-ledger-v1.sql` (17-18) lo
+--   dice se non lo fa.
+SELECT format('REVOKE EXECUTE ON FUNCTION %I.%I(%s) FROM PUBLIC, %I',
+              n.nspname, p.proname, pg_get_function_identity_arguments(p.oid), :'app_role')
+FROM pg_proc p
+JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'magazzino'
+  AND p.proname IN ('fn_scrivi_movimento', 'fn_ricalcola_valore_giacenza')
+  AND p.prokind = 'f'
+\gexec
+
 -- ------------------------------------------------------------------
 -- ⭐ ECCEZIONE: `maintenance` — `USAGE` sullo schema e il SOLO `SELECT` sul
 --    giornale dei job. Niente altro.

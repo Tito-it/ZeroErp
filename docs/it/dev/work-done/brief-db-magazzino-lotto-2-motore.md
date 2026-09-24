@@ -6,7 +6,7 @@
 > magazzino — il primo endpoint, il drawer dell'inventario — **non nasce qui**:
 > è un brief BE/FE suo, e parte quando questa primitiva esiste.
 >
-> **Origine.** Analisi [carico e scarico §8](analisi-db-magazzino-carico-e-scarico.md)
+> **Origine.** Analisi [carico e scarico §8](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md)
 > (spacchettamento del 2026-09-14): *«Lotto 2 — DB, motore: la primitiva (M-2),
 > la `fn_check` di disponibilità separata, l'operazione inventario iniziale
 > (passo 2), la vista situazione merce (M-3, senza le colonne che aspettano il
@@ -14,9 +14,9 @@
 > `gestito_a_magazzino`, i pgTAP di comportamento (M-7). ⚠️ Con `requires_lotto`
 > esposto in vista/BE/drawer senza il lock BoM di `requires_serial`»*. I due
 > prerequisiti sono **chiusi**: il Lotto 1
-> ([brief](../work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md), 15-09,
+> ([brief](brief-db-magazzino-lotto-1-terreno-vuoto.md), 15-09,
 > PR #1593) e il BB dell'emittente di default
-> ([brief](../work-done/brief-db-emittente-di-default-un-bb-solo.md), 17-09,
+> ([brief](brief-db-emittente-di-default-un-bb-solo.md), 17-09,
 > `20260915-36 → -46` `EXECUTED`).
 >
 > **Stato:** ✅ **LATO DB CHIUSO il 2026-09-18** — ventidue changeSet
@@ -28,6 +28,9 @@
 > `script/test-rubinetto-primo-motivo-v1` — §7, §11). Le quattordici decisioni
 > D-L2-a → D-L2-n sono di Tid (17-09); le sedici criticità C1–C16 di P-0 sono
 > tutte chiuse (§6-ter).
+>
+> 📦 **ARCHIVIATO il 2026-09-24** in `work-done/` (decisione di Tid), dopo la chiusura
+> della porta coi verbi (`brief-db-magazzino-verbi-con-permesso`, nota in D-L2-b).
 >
 > ✅ **E dal 2026-09-22 il lotto è CONSEGNATO INTERO** (§12.5): B-7 `--update`
 > fatto e committato, commit `787ab05ba` mergiato in `Tito-dev` (PR #1605), le
@@ -197,6 +200,18 @@ dell'operatore; è la famiglia `NOT_FOUND` su un catalogo che quel codice porta
 già, quindi il rubinetto non lo ferma).
 
 ### D-L2-b — La porta → **DEFINER del proprietario, `zeroerp_app` in sola lettura sul ledger, perimetro col guard BB** — ✅ confermata da Tid il 2026-09-17
+
+> ⚠️ **Porta chiusa a metà — riletto il 2026-09-24.** La porta decide **da dove**
+> si scrive, non **chi** può scrivere: l'app conserva `EXECUTE` su
+> `fn_scrivi_movimento` e `fn_ricalcola_valore_giacenza` (può saltare le
+> operazioni), e nessuna delle quattro funzioni controlla un permesso
+> (`registra_magazzino` lo guarda solo il backend). ✅ **Completata il 2026-09-24**
+> (`20260924-38` → `-42` applicati, pgTAP verdi): i due verbi applicano
+> `registra_magazzino` e l'app non esegue più primitiva e ricalcolo. Dettaglio in
+> [brief-db-magazzino-verbi-con-permesso.md](../work-in-progress/brief-db-magazzino-verbi-con-permesso.md),
+> primo cantiere del modello deciso in
+> [brief-db-permesso-nel-verbo-di-scrittura.md](../work-in-progress/brief-db-permesso-nel-verbo-di-scrittura.md)
+> (D-4). Il testo qui sotto resta com'era: descrive ciò che è stato consegnato.
 
 | Chi | Che cosa può fare, da questo lotto |
 | --- | --- |
@@ -1281,13 +1296,13 @@ non si lancia; l'autogen (`changelog-autogen.yaml`) non si rigenera a mano.
 
 ## 10. Riferimenti
 
-- Le decisioni: [analisi carico e scarico](analisi-db-magazzino-carico-e-scarico.md)
+- Le decisioni: [analisi carico e scarico](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md)
   (M-1 → M-9, §5-bis la primitiva, §7-bis la formula, §8 i lotti),
-  [analisi aggancio §8-quater](analisi-db-magazzino-aggancio-documento-e-produzione.md)
-  (D-1 → D-9), [Lotto 1](../work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md)
+  [analisi aggancio §8-quater](../work-in-progress/analisi-db-magazzino-aggancio-documento-e-produzione.md)
+  (D-1 → D-9), [Lotto 1](brief-db-magazzino-lotto-1-terreno-vuoto.md)
   (§3 D-L1-*, §5 le lezioni, §9 che cosa rinvia qui),
-  [emittente di default](../work-done/brief-db-emittente-di-default-un-bb-solo.md),
-  [modifiche certe §7](../work-done/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md)
+  [emittente di default](brief-db-emittente-di-default-un-bb-solo.md),
+  [modifiche certe §7](brief-db-modifiche-certe-ciclo-vendita-e-articolo.md)
   (il presidio di prontezza).
 - Le forme da copiare: `fn_check_*` pura → `script.fn_check_ordine_confermabile`;
   il sollevamento dal primo motivo → `script.fn_raise_primo_motivo_se_presente`;
@@ -1319,6 +1334,8 @@ non si lancia; l'autogen (`changelog-autogen.yaml`) non si rigenera a mano.
 
 | Data | Cosa |
 | --- | --- |
+| 2026-09-24 (notte) | 📦 **ARCHIVIATO in `work-done/`** (decisione di Tid). Il lotto era consegnato dal 22-09; l'ultimo residuo — la porta chiusa a metà — è chiuso in `brief-db-magazzino-verbi-con-permesso` (`20260924-38` → `-42` applicati, pgTAP verdi). Link aggiornati nei documenti che lo citano per percorso |
+| 2026-09-24 | ⚠️ **Nota in D-L2-b, lotto non riaperto.** La porta è chiusa a metà: l'app può chiamare la primitiva direttamente e nessuna funzione controlla `registra_magazzino`. Il completamento è un cantiere a sé, [brief-db-magazzino-verbi-con-permesso.md](../work-in-progress/brief-db-magazzino-verbi-con-permesso.md) (decisione D-4 di Tid, stesso giorno): questo brief resta la fotografia di ciò che è stato consegnato |
 | 2026-09-22 | ✅ **Chiusi i quattro residui di §12.5, e il lotto è consegnato intero.** (1) **La prova del lock a due sessioni** è stata eseguita come app sul mondo committato di dbdev (magazzino `1109`, articolo `art-comp-001`, contesti operatore 5 e 6), con la sorgente tipizzata costruita **dentro ciascuna transazione** e tutte e due ritirate: `pg_locks` mostra la **stessa coppia di chiavi** con A `granted = t` e B `granted = f`, B ha impiegato **8 129 ms** (attesa, non rifiuto immediato) e al rilascio ha riletto sul saldo **committato** (`disponibili 0`) — la disponibilità si legge **dopo** il lock, e il ledger è rimasto vuoto. ⚠️ Il ramo «passa sul saldo aggiornato» resta **dichiarato non provato**: vorrebbe una scrittura permanente su dbdev. (2) **B-7 `--update`** era già fatto e committato (dieci codici nuovi + `E_CONFIG_MANCANTE` a 52). (3) **Commit** `787ab05ba`, mergiato con la PR #1605. (4) **La CI da zero è verde**: la corsa `35451924195` (19-09) contiene questo commit e ha fatto migrate da zero + `ci_apply` + provisioning + Django + **suite pgTAP**, con zero righe di magazzino in `baseline-rossi-ci.tsv` ⇒ `ci-local.sh --fresh --ci-apply` è ridondante. ⚠️ Due fatti datati **fuori dal lotto**: dal 21-09 sera la CI **non parte** (billing GitHub), e l'ultima corsa reale della suite aveva **una** regressione — `ui/test-lista-definizione-perimetro-emittente-v1`, già sanata il 22-09 (`559dbf351`). ⚠️ Il presidio di prontezza su dbdev è passato da `NESSUNO_MARCATO` a `MARCATI \| 3`: l'uso in-app ha marcato tre articoli. 🔵 **Decisione di Tid lo stesso giorno: il brief resta in `work-in-progress/`** — consegnato, non ancora archiviato |
 | 2026-09-18 (pomeriggio, chiusura DB) | ✅ **`20260918-27` applicato da Tid e i due presidi trasversali rilanciati: verdi.** Con questo il lato DB del lotto è **chiuso**: 22 changeSet `EXECUTED`, quindici pgTAP del lotto verdi come app, i due trasversali verdi, B-7 verde sul catalogo vivo. Aggiornati la testa del brief (§Stato), §6 P-8/P-9, §7, §12.1, §12.2, §12.5. ⏳ A Tid restano B-7 `--update`, il lock a due sessioni, `ci-local.sh --fresh --ci-apply`, il commit; a BE/FE §4.9 e §4.10. Chiusura del brief in `work-done/` quando anche la CI da zero è verde |
 | 2026-09-18 (pomeriggio, dopo l'apply) | 🔴 **Due regressioni dal runner come app, entrambe su presidi TRASVERSALI e non sui dodici pgTAP del lotto.** (1) `dbops/test-riferimenti-morti-v1` test 2: `fn_sorgenti_orfane` → `55000 record "v_s" non ancora assegnato` + `XX000 cached plan` sul `RETURN QUERY`, classe `REALE` — un `record` riempito da `FOR … IN EXECUTE` ha tupla indeterminata per `plpgsql_check` (lo dice il suo stesso hint alla riga 18). Rimedio sul modello, non nel registro: **`20260918-27`**, il ciclo interno su tre scalari `%TYPE` di `config.sorgenti`; comportamento e firma invariati, provato con l'SQL estratto in `ROLLBACK` (6/6 + 9/9), cinque guardrail statici verdi. (2) `script/test-rubinetto-primo-motivo-v1` test 5: 20 contro 17. Tre menzioni nuove, ma **due** chiamate (`fn_scrivi_movimento`, `fn_posta_inventario`: siti nati sull'helper) e **una** in un commento (`fn_check_disponibilita_uscita`, che nomina il consumatore): il predicato contava il TESTO. Riscritto sulla **chiamata** (commenti tolti, nome + `(`, la forma di `vw_punti_primo_motivo`) e portato a **19** con la nota datata; 7/7 in transazione ritirata. Registrati in §4.7, §5 (due trappole), §6 P-8/P-9, §7 (riga nuova: i due presidi trasversali si rilanciano in ogni cantiere che aggiunge funzioni). ⏳ Apply del `-27`, rilancio dei due file e baseline: Tid |

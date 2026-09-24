@@ -14,7 +14,8 @@ CREATE OR REPLACE FUNCTION script.fn_resolve_livello_oggetto(p_auth_user_id inte
  STABLE
 AS $function$
 DECLARE
-    v_livello config.user_override_oggetti.livello%TYPE;
+    v_livello   config.user_override_oggetti.livello%TYPE;
+    v_ctx_ruolo anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -23,14 +24,27 @@ BEGIN
     --   oggetto lo usa, altrimenti risale alla catena area
     --   via fn_resolve_livello_area.
     --
-    -- Catena (refactor §4.6.B.3):
+    -- Catena (rev 2026-09-24, gate di contesto):
+    --   0. Gate GUC: se app.ruolo_applicativo popolata e
+    --      != OPERATORE -> BLOCCATO (fail-closed), come
+    --      fn_resolve_livello_area.
     --   1. Assenza identita OPERATORE attiva -> BLOCCATO
     --   2. fn_is_super_admin -> TUTTO
     --   3. Override utente oggetto (se valido)
     --   4. Fallback -> fn_resolve_livello_area
     -- =========================================================
 
-    -- 1. Identita OPERATORE attiva (helper DRY §4.6.B.0).
+    -- 0. Gate contesto GUC (fail-closed su non-OPERATORE).
+    v_ctx_ruolo := NULLIF(
+        current_setting('app.ruolo_applicativo', true), ''
+    )::config.ruolo_applicativo;
+
+    IF v_ctx_ruolo IS NOT NULL
+       AND v_ctx_ruolo <> 'OPERATORE'::config.ruolo_applicativo THEN
+        RETURN 'BLOCCATO'::config.livello_accesso;
+    END IF;
+
+    -- 1. Identita OPERATORE attiva.
     IF NOT script.fn_has_identita_attiva(
                p_auth_user_id,
                'OPERATORE'::config.ruolo_applicativo) THEN
@@ -42,7 +56,7 @@ BEGIN
         RETURN 'TUTTO'::config.livello_accesso;
     END IF;
 
-    -- 3. Override utente oggetto (OPERATIVO)
+    -- 3. Override utente oggetto.
     SELECT uoo.livello
       INTO v_livello
       FROM config.user_override_oggetti uoo
@@ -55,13 +69,13 @@ BEGIN
         RETURN v_livello;
     END IF;
 
-    -- 4. Fallback alla catena area
+    -- 4. Fallback alla catena area.
     RETURN script.fn_resolve_livello_area(p_auth_user_id, p_area_schema_db);
 END
 $function$
 
 COMMENT ON FUNCTION script.fn_resolve_livello_oggetto(p_auth_user_id integer, p_app_label character varying, p_model_name character varying, p_area_schema_db character varying)
-IS 'Risolve livello accesso oggetto per utente. Refactor §4.6.B.3: ramo ADMIN -> fn_is_super_admin; ramo DISABILITATO -> check identita OPERATORE attiva. Fallback area invariato.';
+IS 'Risolve il livello di accesso per un model (app_label + model_name): override utente per oggetto, altrimenti la catena d''area (fn_resolve_livello_area). Context-aware: app.ruolo_applicativo valorizzata e diversa da OPERATORE -> BLOCCATO (passo 0, come fn_resolve_livello_area; mancava dal 20260421-04 ed e'' stato aggiunto il 2026-09-24, brief-db-magazzino-verbi-con-permesso §2.4). Poi: identita'' OPERATORE attiva, super admin, override per oggetto valido, fallback d''area. La chiama il backend per gli endpoint con un model (PermissionResolver.get_livello_oggetto).';
 ```
 
 ---

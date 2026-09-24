@@ -28,6 +28,10 @@ SELECT plan(6);
 
 CREATE TEMP TABLE _mondo AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo)); END $ctx$;
+-- Rev 2026-09-24 (brief-db-magazzino-verbi-con-permesso §3.2): fn_posta_inventario e
+--   fn_posta_rettifica sono VERBI e applicano registra_magazzino (script.fn_guard_azione);
+--   l'operatore di fixture e' tecnico e non ha azioni: il permesso si costruisce qui.
+DO $az$ BEGIN PERFORM dbops.fn_pgtap_concedi_azione((SELECT auth_user_id FROM _mondo), 'registra_magazzino'); END $az$;
 
 CREATE TEMP TABLE _fix (mag bigint, art uuid, inv bigint, riga bigint, mov bigint);
 DO $fix$

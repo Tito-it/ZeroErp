@@ -1,6 +1,14 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: il soggetto sono i CONTROLLI della primitiva
+--   magazzino.fn_scrivi_movimento, che dal 2026-09-24 l'app non esegue piu': la
+--   raggiunge solo dai verbi fn_posta_inventario / fn_posta_rettifica
+--   (brief-db-magazzino-verbi-con-permesso, P-4). Chiamarla coi parametri che il
+--   test sceglie e' cosa che solo uno scrittore privilegiato puo' fare: forma 3
+--   del criterio del runner, come i test del ledger del Lotto 2. Il contesto
+--   operatore resta impostato: il guard di scope e i controlli lo leggono.
 --
 -- Test: i controlli della primitiva magazzino.fn_scrivi_movimento, uno per
 --   test, ciascuno col caso COSTRUITO (brief-db-magazzino-lotto-2-motore,
@@ -12,8 +20,10 @@
 --   per lotti; per seriale), un lotto, un asset, e un inventario DRAFT con
 --   righe come sorgenti (INVENTARIO_RIGA:{riga}). Una SECONDA azienda per
 --   l'asset di altro emittente (contesto cambiato per costruirlo, e rimesso).
--- ⚠️ Gira come l'applicazione: la primitiva e' DEFINER, il guard di scope
---   legge le GUC dell'operatore, la RLS filtra le letture del test.
+-- ⚠️ Fino al 2026-09-24 girava come l'applicazione; da P-4 gira come owner
+--   (marcatore in testa). Il guard di scope legge comunque le GUC dell'operatore;
+--   le letture del test NON sono piu' filtrate dalla RLS — provato il 24-09 che
+--   le 25 asserzioni non ne dipendono (fixture costruita, id propri).
 --
 -- Elenco test (plan 25 — il 5 e il 16 sono in due asserzioni):
 --    1) parametro: qta = 0 -> E_MAG_CHIAMATA_NON_VALIDA (la frase nomina la funzione)

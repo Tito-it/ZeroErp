@@ -1,7 +1,7 @@
 # Piano BE/FE — magazzino, Lotto 2: il motore arriva a video
 
 > **Chi scrive:** backend/frontend (`dev/backend-tid`), 2026-09-18.
-> **Origine:** [brief-db-magazzino-lotto-2-motore.md](brief-db-magazzino-lotto-2-motore.md)
+> **Origine:** [brief-db-magazzino-lotto-2-motore.md](../work-done/brief-db-magazzino-lotto-2-motore.md)
 > — lato DB **chiuso il 18-09** (22 changeSet `EXECUTED`, PR #1605 già in
 > `Tito-dev`), che lascia a BE/FE **due richieste minime** (§4.9, §4.10 — la CI
 > è rossa finché non arrivano) e rimanda a *«un brief BE/FE suo»* il resto:
