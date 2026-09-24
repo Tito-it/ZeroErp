@@ -8,9 +8,16 @@ L'admin invia un invito email partendo dal cliente o fornitore
 anagrafico; l'utente clicca il link e attiva la propria veste — il flow
 distingue automaticamente:
 
-- **INVITO** (email nuova): l'utente sceglie la password al primo accesso
-- **CROSS** (email gia' nota come operatore o altra veste): one-click,
-  password preesistente invariata
+- **INVITO** (l'utente non ha ancora una password vera: email nuova, o
+  invitato che non ha mai attivato): l'utente sceglie la password
+- **CROSS** (l'utente ha gia' una password vera: operatore o altra veste
+  attivata): one-click, password preesistente invariata
+
+Il discriminante e' la **credenziale**, non «l'utente esiste gia'»
+(`PortaleRepository.auth_user_ha_password`): un `auth_user` creato da un invito
+nasce col segnaposto `!`, password non utilizzabile, e lo resta finche' l'invito
+non si attiva. ⛔ In **entrambi** i flussi l'identita' nasce `attivo=false` e si
+attiva solo al consumo del token.
 
 Esiste anche un endpoint **autenticato cross-veste** che consente a un
 `CLIENTE_PORTALE` gia' loggato di aggiungersi la veste `SHOP_CUSTOMER`
@@ -24,7 +31,8 @@ sullo stesso `auth_user`, senza email/token.
 | `TokenService` | Token monouso tipo `INVITO_PORTALE` / `ATTIVAZIONE_PORTALE_CROSS` / `INVITO_SHOP` / `ATTIVAZIONE_SHOP_CROSS`, scadenza 72h |
 | `EmailDispatchService` | Template `INVITO_PORTALE` (clienti/fornitori) e `INVITO_SHOP` (shop customer) |
 | `apply_new_password` | Set password + reset flag `deve_cambiare_password` in transazione |
-| `PortaleRepository.riattiva_identita` | UPDATE `attivo=true` su `identita_digitali` |
+| `PortaleRepository.auth_user_ha_password` | Discriminante dei due flussi: l'`auth_user` ha una password utilizzabile? |
+| `PortaleRepository.riattiva_identita` | UPDATE `attivo=true` su `identita_digitali`, al consumo del token (entrambi i flussi) |
 | `PermissionResolver.get_ruolo_applicativo` | Filtro veste corrente per `ProfileActivateShopView` |
 | GUC `app.soggetto_ruolo_id` | Letto da `ProfileActivateShopView` per legare la nuova identita allo stesso `soggetto_ruolo` del portale corrente |
 
@@ -51,11 +59,13 @@ disattivazioni qui sotto.
 `reinvio=true`: invalida i token portale precedenti per quell'auth_user
 e genera il nuovo invito.
 
-⚠️ Difetto noto (M-3): con un'email **nuova** il primo invito crea l'`auth_user` e
-l'identita' gia' `attivo=true`. Il reinvio ritrova quell'utente, passa al flow
-CROSS e viene rifiutato con `E_INVITO_PORTALE` («ha gia' accesso a questa
-veste»): oggi a chi non ha mai attivato **non si puo' rinviare** l'invito. Vedi
-[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+Il reinvio a chi non ha mai attivato resta nel flow **INVITO** (token con scelta
+della password): l'`auth_user` esiste, ma la sua password non e' ancora
+utilizzabile. ⚠️ Fino al 2026-09-24 il primo invito creava l'identita' gia'
+`attivo=true` con una password temporanea, e il flusso si sceglieva da «l'utente
+e' stato appena creato»: il reinvio cadeva nel CROSS ed era rifiutato con
+`E_INVITO_PORTALE` («ha gia' accesso»), cioe' **impossibile** (M-3 della
+[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 **Semantica transazionale del reinvio (fix analisi-fix-transazioni #17, 2026-07-08).**
 L'invalidazione dei token precedenti e la ri-emissione identita/token avvengono nella
@@ -81,12 +91,12 @@ lo shop aveva ancora l'invalidazione fuori-atomic).
 }
 ```
 
-`is_cross=true` quando l'email matcha un `auth_user` gia' esistente:
-nessun nuovo `auth_user` creato, viene aggiunta una **2a identita**
-`attivo=false` in attesa di attivazione cross.
-Con `is_cross=false` (email nuova) l'identita' nasce invece **`attivo=true`**,
-con password temporanea casuale e `deve_cambiare_password=true`: l'attivazione
-fa scegliere la password, non accende l'identita'.
+`is_cross=true` quando l'`auth_user` ha gia' una password vera: viene aggiunta
+una **2a identita** in attesa di attivazione cross. `nuovo_utente` dice solo se
+l'`auth_user` e' stato creato ora. In **tutti** i casi l'identita' e'
+`attivo=false`, `deve_cambiare_password=false`, e nessuna password viene scritta:
+la accende il consumo del token (e nel flow INVITO l'utente sceglie la password
+nello stesso gesto).
 
 ---
 
@@ -158,10 +168,10 @@ anagrafiche ≥ LETTURA.
 + cross) — usato dalla UI per mostrare "scade tra N ore". E' valorizzato ogni
 volta che un token vivo esiste, quindi anche su `ATTIVO`.
 
-⚠️ Difetto noto (M-3): siccome l'invito con email nuova crea l'identita' gia'
-`attivo=true`, quel cliente risulta **`ATTIVO` subito dopo l'invito**, prima di
-aver scelto la password; `PENDING` compare solo nel flow CROSS. Vedi
-[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+Dopo un invito, in entrambi i flussi, la veste e' **`PENDING`** fino
+all'attivazione. ⚠️ Fino al 2026-09-24 l'invito con email nuova creava l'identita'
+gia' attiva, e quel cliente risultava `ATTIVO` prima di aver scelto la password
+(M-3).
 
 ---
 
@@ -220,14 +230,9 @@ errore (`disattivato=false`, stato ritornato coerente).
 
 **Riattivazione**: non c'e' un endpoint "riattiva" dedicato per evitare
 ambiguita. Per rimettere in linea un accesso disattivato, l'admin
-**rinvia un invito** (flow INVITO o CROSS a seconda dello stato
-auth_user): il service riattiva automaticamente l'identita esistente se
-compatibile (vedi `PortaleRepository.riattiva_identita`).
-
-⚠️ Difetto noto (M-3): dopo una disattivazione l'`auth_user` esiste gia', quindi il
-reinvio segue **sempre** il flow CROSS (token senza scelta password) — anche per
-chi aveva solo la password temporanea del primo invito e non ha mai attivato.
-Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+**rinvia un invito**: flow CROSS se l'utente ha una password vera (aveva gia'
+attivato), INVITO se non l'ha mai scelta. L'identita' esistente resta disattivata
+e la riattiva il consumo del token nuovo (`PortaleRepository.riattiva_identita`).
 
 ---
 
@@ -257,7 +262,7 @@ usa per decidere quale UI mostrare (form password vs conferma one-click).
 ```
 
 `token_type` ∈ `{"INVITO_PORTALE", "ATTIVAZIONE_PORTALE_CROSS"}`.
-`requires_password=true` solo per `INVITO_PORTALE` (email nuova).
+`requires_password=true` solo per `INVITO_PORTALE` (utente senza password vera).
 
 **Response (token invalido/scaduto/usato)** — risposta generica per
 evitare enumeration:

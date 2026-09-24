@@ -88,7 +88,6 @@ def _operativo_request() -> MagicMock:
     request.query_params = {}
     # Simula assenza cache per-request
     del request._zeroerp_perms_cache
-    del request._zeroerp_perms_cache_loaded_from_redis
     return request
 
 

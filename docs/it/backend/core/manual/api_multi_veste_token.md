@@ -91,7 +91,10 @@ nel nuovo refresh (SimpleJWT ruota solo `jti/exp/iat`).
 ## Claim JWT custom
 
 Oltre ai claim standard SimpleJWT (`token_type`, `exp`, `iat`, `jti`,
-`user_id`), il JWT emesso da `MultiVesteTokenSerializer` contiene:
+`user_id`), il JWT emesso da `MultiVesteTokenSerializer` contiene i claim seguenti.
+Li inietta `emetti_refresh_veste(user, identita)`, la catena **unica** di chi apre una
+sessione: il login e — dal 2026-09-24 — il cambio password
+([api_token_cambio_password.md](api_token_cambio_password.md)).
 
 | Claim               | Tipo   | Fonte                                             | Scopo                                                                                                                                                                        |
 | ------------------- | ------ | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

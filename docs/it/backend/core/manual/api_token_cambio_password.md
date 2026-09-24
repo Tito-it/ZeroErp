@@ -114,19 +114,24 @@ Authorization: Bearer {access_token}
 
 I tre campi vengono ripuliti dagli spazi iniziali e finali (`.strip()`) prima dei controlli.
 
-#### Azioni (atomiche)
+#### Azioni
 
-1. `user.set_password(new_password)` + `user.save()`
-2. Reset flag `deve_cambiare_password = false`
-3. Blacklist tutti i refresh token precedenti dell'utente
-4. Genera nuova coppia JWT (access + refresh) con `RefreshToken.for_user(user)`
-5. Audit: evento LOGIN con il `sid` del nuovo refresh, o il suo `jti` se il `sid` manca
+1. Rilegge l'identita' della veste del JWT corrente (`identita_id` del claim): se nel
+   frattempo e' stata revocata, 401 `E_IDENTITA_NON_ATTIVA` **prima** di toccare la
+   password
+2. `user.set_password(new_password)` + `user.save()`, reset del flag
+   `deve_cambiare_password = false` sulla veste corrente, blacklist di tutti i refresh
+   token precedenti dell'utente (atomiche, `apply_new_password`)
+3. Riapre la sessione **nella stessa veste** con la catena del login,
+   `emetti_refresh_veste` (`multi_veste_token_serializer.py`): `sid` nuovo,
+   `identita_id`, `ruolo_applicativo` e, per un operatore, l'emittente attivo risolto
+   come al login. La sessione e' nuova perche' la blacklist ha appena chiuso le altre
+4. Audit: evento LOGIN con il `sid` della sessione nuova
 
-> ⚠️ Difetto noto ([M-2](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)): `RefreshToken.for_user` non inietta i claim
-> `identita_id`, `ruolo_applicativo` e `sid` che il login mette nel token. Il frontend
-> installa la nuova coppia e la richiesta successiva esce 401 `E_JWT_SENZA_IDENTITA`
-> (`JwtAuditAuthentication`). Per lo stesso motivo l'audit LOGIN registra il `jti`
-> al posto del `sid`.
+> ⚠️ Fino al 2026-09-24 la coppia si emetteva con `RefreshToken.for_user(user)`, senza i
+> claim della veste: il frontend la installava e la richiesta successiva usciva 401
+> `E_JWT_SENZA_IDENTITA` — proprio nel cambio obbligatorio al primo accesso — e l'audit
+> registrava il `jti` al posto del `sid` (M-2 della [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 #### Output (successo)
 
@@ -148,6 +153,7 @@ Il frontend deve aggiornare i token nello store con quelli nuovi.
 | --- | --- | --- |
 | `E_CHANGE_PASSWORD` | 400 | Validazione fallita (password vuota, mismatch, troppo semplice, ecc.) |
 | `E_CHANGE_PASSWORD` | 400 | Password attuale non corretta |
+| `E_IDENTITA_NON_ATTIVA` | 401 | La veste della sessione non e' piu' attiva: la password non cambia |
 
 ---
 
@@ -258,7 +264,7 @@ ApiExceptionMiddleware
 UserLanguageMiddleware
 CsrfViewMiddleware
 AuthenticationMiddleware
-JwtAuditMiddleware              ← reset GUC, precarica cache permessi (non autentica)
+JwtAuditMiddleware              ← reset GUC, rifiuto DISABILITATO (non autentica)
 PasswordChangeRequiredMiddleware ← blocca se deve cambiare password
 RequestLogMiddleware
 MessageMiddleware

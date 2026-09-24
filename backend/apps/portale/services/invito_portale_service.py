@@ -22,11 +22,9 @@
 from __future__ import annotations
 
 import logging
-import secrets
 from typing import Any, TypedDict
 
 from django.conf import settings
-from django.contrib.auth.hashers import make_password
 from django.db import connection, transaction
 
 from apps.core.db.auth_repository import AuthRepository
@@ -445,25 +443,32 @@ class InvitoPortaleService:
             invalidate_existing=True,
         )
 
-    # Scopo: Flusso comune invito (cliente+fornitore). Post modello 1:N
-    # §8.4.1 branching esplicito email nuova vs esistente:
+    # Scopo: Flusso comune invito (cliente+fornitore+shop). Due flussi, e
+    # il discriminante e' «l'utente ha gia' una password VERA?»
+    # (`PortaleRepository.auth_user_ha_password`):
     #
-    # - Email NUOVA (auth_user non esiste): flow "INVITO classico".
-    #   Crea auth_user + identita `attivo=true`, setta password temporanea,
-    #   flag deve_cambiare_password=true, token tipo INVITO_PORTALE.
-    #   L'utente all'attivazione sceglie la password definitiva.
+    # - NO (email nuova, oppure utente creato da un invito e mai attivato):
+    #   flow "INVITO". Crea, se manca, l'auth_user col segnaposto `!` (password
+    #   non utilizzabile), token tipo INVITO_*. All'attivazione l'utente
+    #   sceglie la password e l'identita si attiva.
     #
-    # - Email ESISTENTE (auth_user gia' presente come operatore o altra
-    #   veste portale): flow "CROSS". Aggiunge una 2a identita con
-    #   `attivo=false`, NON tocca la password (l'utente ha gia' la sua),
-    #   NON setta deve_cambiare_password, token tipo
-    #   ATTIVAZIONE_PORTALE_CROSS. L'attivazione (§8.4.2) attivera'
-    #   l'identita senza chiedere nuova password.
+    # - SI' (operatore, o altra veste gia' attivata): flow "CROSS". NON tocca
+    #   la password, token tipo ATTIVAZIONE_*_CROSS. L'attivazione (§8.4.2)
+    #   attiva l'identita senza chiedere una password.
+    #
+    # ⛔ In ENTRAMBI i flussi l'identita nasce `attivo=false` e si attiva solo
+    #    al consumo del token: una veste che nessuno ha ancora accettato non e'
+    #    un accesso. Fino al 2026-09-24 il flow INVITO la creava gia' attiva,
+    #    con una password temporanea, e sceglieva il flusso da «l'auth_user e'
+    #    stato appena creato»: al reinvio l'utente esisteva gia', il flusso
+    #    diventava CROSS e il rifiuto «ha gia' accesso» rendeva il reinvio
+    #    impossibile — mentre lo stato accessi diceva ATTIVO a chi non aveva
+    #    mai attivato (M-3 dell'analisi difetti).
     #
     # Orchestrazione in transazione atomica: upsert auth_user, upsert
-    # identita, [solo flow INVITO] set password temp + flag, genera token.
-    # Fuori dalla transazione: invio email + timestamp. Rationale: il
-    # token deve restare valido anche se l'email fallisce (recupero manuale).
+    # identita, genera token. Fuori dalla transazione: invio email +
+    # timestamp. Rationale: il token deve restare valido anche se l'email
+    # fallisce (recupero manuale).
     def _invia_invito_common(
         self,
         *,
@@ -505,29 +510,13 @@ class InvitoPortaleService:
             auth_user_id, was_created = self._ensure_auth_user(
                 email=email, nome_destinatario=nome_destinatario
             )
-            # Branching flow: `was_created=True` significa auth_user nuovo
-            # → flow INVITO, identita attivo=true + password temp.
-            # `was_created=False` → flow CROSS, identita attivo=false + no password.
-            is_cross = not was_created
+            # Branching flow sulla credenziale, non sulla creazione (vedi sopra).
+            is_cross = self._repo.auth_user_ha_password(auth_user_id)
             identita_id = self._ensure_identita(
                 auth_user_id=auth_user_id,
                 soggetto_ruolo_id=soggetto_ruolo_id,
                 ruolo_applicativo=ruolo_applicativo,
-                attivo=not is_cross,
             )
-
-            if not is_cross:
-                # Flow INVITO: password temporanea + flag deve_cambiare_password.
-                # L'utente dovra' scegliere la password definitiva in attivazione.
-                temp_password = secrets.token_urlsafe(16)
-                with connection.cursor() as cursor:
-                    cursor.execute(
-                        "UPDATE django.auth_user SET password = %s WHERE id = %s",
-                        [make_password(temp_password), auth_user_id],
-                    )
-                self._auth_repo.set_deve_cambiare_password(
-                    auth_user_id, True, identita_id=identita_id
-                )
 
             token_tipo = cfg["token_cross"] if is_cross else cfg["token_invito"]
             token_plain = self._token_service.create(
@@ -631,7 +620,9 @@ class InvitoPortaleService:
         first, last = self._split_name(nome_destinatario)
         new_id = self._repo.create_auth_user_portale(
             email=email,
-            password_hash="!",  # placeholder, verra' sovrascritto nel flow
+            # Password NON utilizzabile finche' l'invito non si attiva: e' cio'
+            # che al reinvio tiene l'utente nel flow INVITO.
+            password_hash="!",
             first_name=first,
             last_name=last,
         )
@@ -644,31 +635,24 @@ class InvitoPortaleService:
     # §8.4.1, vedi `AuthRepository.set_deve_cambiare_password/...`).
     #
     # Comportamento per stato identita:
-    # - Non esiste: la crea con `attivo=attivo` e
-    #   `deve_cambiare_password=attivo` (flow INVITO ha entrambi true, flow
-    #   CROSS ha entrambi false — la password resta quella dell'utente).
-    # - Esiste gia' ATTIVA: ERRORE `E_INVITO_PORTALE_GIA_ATTIVO` — l'utente
-    #   ha gia' accesso al portale con quella veste; un nuovo invito non
-    #   ha senso (se serve reset credenziali, il self-service password
-    #   reset copre il caso). Copre sia primo-invito mal richiesto sia
-    #   reinvio su identita gia' attivata (§8.4.1 BUG1).
+    # - Non esiste: la crea `attivo=false`, `deve_cambiare_password=false`,
+    #   in entrambi i flussi. Si attiva al consumo del token.
+    # - Esiste gia' ATTIVA: ERRORE — l'utente ha gia' accesso al portale con
+    #   quella veste; un nuovo invito non ha senso (se serve reset
+    #   credenziali, il self-service password reset copre il caso).
     # - Esiste collegata ad un auth_user DIVERSO: ERRORE (stato incoerente
     #   del modello — soggetto_ruolo con holder diverso dall'auth_user
     #   risolto via email). Richiede intervento manuale, NON risolviamo
     #   automaticamente (§8.4.1 FRAG4).
-    # - Esiste disattivata con auth_user coerente: e' il caso legittimo
-    #   del reinvio di invito scaduto/non attivato:
-    #   * flow INVITO (`attivo=True`): riattiva la riga, il caller
-    #     rigenerera' comunque token + password.
-    #   * flow CROSS (`attivo=False`): NON riattiva — l'attivazione avviene
-    #     al consumo del token CROSS (§8.4.2).
+    # - Esiste disattivata con auth_user coerente: e' il caso legittimo del
+    #   reinvio (invito scaduto, mai attivato, o veste revocata): la si
+    #   lascia disattivata, la attivera' il consumo del token nuovo.
     def _ensure_identita(
         self,
         *,
         auth_user_id: int,
         soggetto_ruolo_id: int,
         ruolo_applicativo: str,
-        attivo: bool,
     ) -> int:
         existing = self._repo.find_identita_portale(
             soggetto_ruolo_id, ruolo_applicativo
@@ -678,8 +662,8 @@ class InvitoPortaleService:
                 auth_user_id=auth_user_id,
                 soggetto_ruolo_id=soggetto_ruolo_id,
                 ruolo_applicativo=ruolo_applicativo,
-                attivo=attivo,
-                deve_cambiare_password=attivo,
+                attivo=False,
+                deve_cambiare_password=False,
             )
 
         identita_id = int(existing["identita_id"])
@@ -713,11 +697,7 @@ class InvitoPortaleService:
                 ),
             )
 
-        # Identita disattivata in attesa di attivazione (caso reinvio
-        # legittimo). Solo flow INVITO riattiva on-the-fly — il CROSS
-        # delega l'attivazione al consumo del token CROSS.
-        if attivo:
-            self._repo.riattiva_identita(identita_id)
+        # Identita disattivata (reinvio): resta com'e', la attiva il token.
         return identita_id
 
     # Scopo: Invalida la coppia di token (INVITO + CROSS) della veste per

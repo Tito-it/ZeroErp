@@ -247,6 +247,9 @@ class AttivazioneShopView(APIView):
                 blacklist_tokens=False,
                 auth_repo=_auth_repo,
             )
+            # L'identita' nasce disattivata anche nel flow INVITO e si
+            # attiva QUI, nella stessa transazione del consumo (M-3).
+            self._attiva_identita_o_rifiuta(identita_id)
 
     # Scopo: Flow CROSS — consume token + riattiva identita. Password
     # preesistente invariata (l'utente e' gia' operatore o altra veste).
@@ -261,18 +264,27 @@ class AttivazioneShopView(APIView):
             _token_service.consume(
                 token, ATTIVAZIONE_SHOP_CROSS_TOKEN_TIPO, ip=ip
             )
-            updated = _portale_repo.riattiva_identita(identita_id)
-            if not updated:
-                logger.warning(
-                    "security.cross_shop_riattiva_fallita identita_id=%s — "
-                    "riga non trovata, rollback consume token",
-                    identita_id,
-                )
-                ErrorManager.require(
-                    False,
-                    code=E_ATTIVAZIONE_SHOP,
-                    message=(
-                        "Identita shop non piu' disponibile. "
-                        "Contattare l'amministratore per un nuovo invito."
-                    ),
-                )
+            self._attiva_identita_o_rifiuta(identita_id)
+
+    # Scopo: Attiva l'identita' dell'invito, comune ai due flussi (INVITO e
+    # CROSS): la veste nasce disattivata e diventa un accesso solo qui, al
+    # consumo del token. Rowcount 0 = identita' rimossa fra l'invito e il
+    # consumo: il token e' gia' marcato utilizzato DENTRO la transazione del
+    # chiamante, quindi sollevare fa rollback di consumo e password insieme,
+    # e l'admin rigenera l'invito.
+    def _attiva_identita_o_rifiuta(self, identita_id: int) -> None:
+        if _portale_repo.riattiva_identita(identita_id):
+            return
+        logger.warning(
+            "security.shop_attiva_identita_fallita identita_id=%s — "
+            "riga non trovata, rollback consume token",
+            identita_id,
+        )
+        ErrorManager.require(
+            False,
+            code=E_ATTIVAZIONE_SHOP,
+            message=(
+                "Identita shop non piu' disponibile. "
+                "Contattare l'amministratore per un nuovo invito."
+            ),
+        )

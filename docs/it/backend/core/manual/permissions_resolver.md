@@ -87,12 +87,12 @@ chiamanti — è stato **tolto il 2026-09-12** (analisi-software-per-dati-morti
   `[]`, mai un permesso concesso per mancanza di un dato.
 - **La cache L1 vive in `request._zeroerp_perms_cache`, ma non muore con la
   richiesta**: le permission class di `apps/core/api/permissions.py` la
-  pre-caricano da Redis e la salvano su Redis (chiave per `auth_user`, TTL
-  `PERMISSIONS_CACHE_TTL`), vedi [permissions_cache.md](permissions_cache.md).
+  pre-caricano da Redis e la salvano su Redis (chiave per utente **e contesto di
+  sessione** — identita' ed emittente effettivo —, TTL `PERMISSIONS_CACHE_TTL`), vedi
+  [permissions_cache.md](permissions_cache.md). ⭐ Il contesto sta nella chiave perche'
+  i valori di `ruolo_applicativo`, `is_super_admin`, `area:*`, `azione:*` ed
+  `emittenti_*` li calcolano funzioni che leggono le GUC di veste ed emittente attivo.
   L'invalidazione Redis la fanno i writer (profili, override, reparto).
-  > ⚠️ Difetto noto (M-1): i valori di `ruolo_applicativo`, `area:*` ed
-  > `emittenti_pk_ids` dipendono dai GUC di veste ed emittente attivo, ma la chiave
-  > Redis e' per `auth_user`. Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 - ⚠️ Difetto noto (S-4): il ripiego di `get_ruolo_applicativo` senza GUC prende
   un'identita attiva qualsiasi: per un utente con piu' vesti il risultato non e'
   deterministico. Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).

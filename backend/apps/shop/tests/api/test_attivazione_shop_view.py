@@ -85,7 +85,9 @@ class AttivaShopTests(TestCase):
             content_type="application/json",
         )
 
-    # Scopo: Flow INVITO_SHOP happy path: consume token + apply password.
+    # Scopo: Flow INVITO_SHOP happy path: consume token + apply password +
+    # attivazione dell'identita' (nasce disattivata anche qui, M-3).
+    @patch(f"{_VIEWS_PATH}._portale_repo")
     @patch(f"{_VIEWS_PATH}.apply_new_password")
     @patch(f"{_VIEWS_PATH}.transaction.atomic")
     @patch(f"{_VIEWS_PATH}.User")
@@ -93,9 +95,10 @@ class AttivaShopTests(TestCase):
     @patch(f"{_VIEWS_PATH}.resolve_shop_token")
     def test_flow_invito_happy_path(
         self, mock_resolve, mock_token_svc, MockUser,
-        mock_atomic, mock_apply,
+        mock_atomic, mock_apply, mock_repo,
     ):
         mock_resolve.return_value = _resolved(10, 600, _INVITO)
+        mock_repo.riattiva_identita.return_value = True
         MockUser.objects.filter.return_value.first.return_value = MagicMock(id=10)
         mock_atomic.return_value.__enter__ = MagicMock()
         mock_atomic.return_value.__exit__ = MagicMock(return_value=False)
@@ -118,6 +121,7 @@ class AttivaShopTests(TestCase):
             "tk_shop", _INVITO, ip="127.0.0.1"
         )
         mock_apply.assert_called_once()
+        mock_repo.riattiva_identita.assert_called_once_with(600)
 
     # Scopo: Flow CROSS happy path: consume + riattiva, no password.
     @patch(f"{_VIEWS_PATH}._portale_repo")

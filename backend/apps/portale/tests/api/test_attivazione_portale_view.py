@@ -12,6 +12,7 @@ Indice test eseguiti:
 2)  ValidateViewTests.test_token_cross_returns_requires_password_false
 3)  ValidateViewTests.test_token_invalido_returns_valid_false
 4)  AttivaViewTests.test_flow_invito_happy_path
+4b) AttivaViewTests.test_flow_invito_identita_sparita_solleva (M-3)
 5)  AttivaViewTests.test_flow_invito_senza_password_solleva
 6)  AttivaViewTests.test_flow_cross_happy_path_no_password_richiesta
 7)  AttivaViewTests.test_flow_cross_ignora_password_in_payload
@@ -94,16 +95,20 @@ class AttivaViewTests(TestCase):
             content_type="application/json",
         )
 
-    # Scopo: Flow INVITO — consume token INVITO + apply_new_password.
+    # Scopo: Flow INVITO — consume token INVITO + apply_new_password +
+    # attivazione dell'identita' (nasce disattivata anche qui, M-3).
+    @patch(f"{_VIEWS_PATH}._portale_repo")
     @patch(f"{_VIEWS_PATH}.apply_new_password")
     @patch(f"{_VIEWS_PATH}.validate_password")
     @patch(f"{_VIEWS_PATH}.User")
     @patch(f"{_VIEWS_PATH}.resolve_portale_token")
     @patch(f"{_VIEWS_PATH}._token_service")
     def test_flow_invito_happy_path(
-        self, mock_token, mock_resolve, MockUser, mock_validate_pw, mock_apply_pw
+        self, mock_token, mock_resolve, MockUser, mock_validate_pw, mock_apply_pw,
+        mock_repo,
     ):
         mock_resolve.return_value = _resolved(42, 500, _INVITO)
+        mock_repo.riattiva_identita.return_value = True
         mock_user = MagicMock(spec=["id", "username"])
         mock_user.id = 42
         MockUser.objects.filter.return_value.first.return_value = mock_user
@@ -129,6 +134,34 @@ class AttivaViewTests(TestCase):
         call_kwargs = mock_apply_pw.call_args.kwargs
         self.assertEqual(call_kwargs["identita_id"], 500)
         self.assertFalse(call_kwargs["blacklist_tokens"])
+        mock_repo.riattiva_identita.assert_called_once_with(500)
+
+    # Scopo: M-3 — flow INVITO con identita' rimossa fra invito e consumo:
+    # errore, e il consumo e la password stanno nella stessa transazione.
+    @patch(f"{_VIEWS_PATH}._portale_repo")
+    @patch(f"{_VIEWS_PATH}.apply_new_password")
+    @patch(f"{_VIEWS_PATH}.validate_password")
+    @patch(f"{_VIEWS_PATH}.User")
+    @patch(f"{_VIEWS_PATH}.resolve_portale_token")
+    @patch(f"{_VIEWS_PATH}._token_service")
+    def test_flow_invito_identita_sparita_solleva(
+        self, mock_token, mock_resolve, MockUser, _mock_validate_pw, _mock_apply_pw,
+        mock_repo,
+    ):
+        mock_resolve.return_value = _resolved(42, 500, _INVITO)
+        MockUser.objects.filter.return_value.first.return_value = MagicMock(id=42)
+        mock_repo.riattiva_identita.return_value = False
+
+        from apps.portale.api.views import AttivazionePortaleView
+        response = AttivazionePortaleView().post(
+            self._post({
+                "token": "tk_invito",
+                "new_password": "Str0ngPass!",
+                "new_password_confirm": "Str0ngPass!",
+            })
+        )
+        body = json.loads(response.content)
+        self.assertEqual(body["error"]["code"], "E_ATTIVAZIONE_PORTALE")
 
     # Scopo: Flow INVITO senza password nel payload → errore.
     @patch(f"{_VIEWS_PATH}.User")

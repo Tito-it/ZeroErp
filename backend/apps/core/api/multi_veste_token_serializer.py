@@ -14,10 +14,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.core.api.token_serializers import SidTokenObtainPairSerializer
 from apps.core.db.auth_repository import AuthRepository
@@ -50,6 +52,37 @@ class VesteNonAttivaError(AuthenticationFailed):
     default_detail = "Non hai accesso a questo canale."
 
 
+# Scopo: Emette il refresh token di una SESSIONE NUOVA in una veste — la
+#        catena unica per chi apre una sessione: login e cambio password.
+#        Sessione nuova vuol dire `sid` nuovo (con l'OutstandingToken
+#        allineato, via `SidTokenObtainPairSerializer.get_token`), i due claim
+#        della veste (`identita_id`, `ruolo_applicativo`) e, solo per gli
+#        OPERATORI, l'emittente attivo risolto come al login:
+#          - operatore   → il suo emittente di permesso;
+#          - super admin → la preferenza salvata, se ancora valida;
+#          - nessuno dei due → claim OMESSO = «Tutti gli emittenti», e il FE
+#            chiede di scegliere (`deve_scegliere` in /me/).
+#        Portale e shop non hanno un emittente dentro cui lavorare: un claim
+#        inerte li' sarebbe solo rumore in un token firmato.
+#        I claim si agganciano al refresh: SimpleJWT li copia sull'access.
+#
+#        ⛔ Regola del 2 (2026-09-24, ok Tid): fino a quel giorno la catena
+#        viveva solo nel serializer del login, e il cambio password emetteva
+#        con `RefreshToken.for_user` — un token SENZA veste, che la richiesta
+#        dopo rifiutava con 401 `E_JWT_SENZA_IDENTITA` (M-2 dell'analisi
+#        difetti). Chi apre una sessione passa di qui.
+#        `identita` e' la riga della veste: servono `id` e `ruolo_applicativo`.
+def emetti_refresh_veste(user: Any, identita: Mapping[str, Any]) -> RefreshToken:
+    refresh = SidTokenObtainPairSerializer.get_token(user)
+    refresh[JWT_CLAIM_IDENTITA_ID] = int(identita["id"])
+    refresh[JWT_CLAIM_RUOLO_APPLICATIVO] = identita["ruolo_applicativo"]
+    if identita["ruolo_applicativo"] == RUOLO_APPLICATIVO_OPERATORE:
+        attivo = EmittenteAttivoService().risolvi_per_login(user.id)
+        if attivo is not None:
+            refresh[JWT_CLAIM_EMITTENTE_ATTIVO_ID] = int(attivo)
+    return refresh
+
+
 class MultiVesteTokenSerializer(SidTokenObtainPairSerializer):
     """Serializer login per namespace multi-veste (admin / portale / shop).
 
@@ -67,9 +100,8 @@ class MultiVesteTokenSerializer(SidTokenObtainPairSerializer):
       2. inietta nei token i claim `identita_id` + `ruolo_applicativo`;
       3. solleva VesteNonAttivaError se l'utente non ha la veste.
 
-    I claim custom sono agganciati al refresh token: SimpleJWT li copia
-    in automatico sull'access token tramite la property `access_token`
-    (eccezione: i `no_copy_claims` standard — exp, jti, token_type).
+    I claim li inietta `emetti_refresh_veste`, la catena comune a chi apre
+    una sessione (login e cambio password).
     """
 
     allowed_ruoli_applicativi: Sequence[str] = ()
@@ -89,30 +121,15 @@ class MultiVesteTokenSerializer(SidTokenObtainPairSerializer):
         if identita is None:
             raise VesteNonAttivaError()
 
-        # Step 3: rigenera i token con claim custom. super().validate ha
-        # gia' chiamato internamente get_token() e scritto i token base in
-        # `data`; qui li sovrascriviamo con una copia arricchita dei claim
-        # custom. Il doppio get_token() e' un costo in-memory trascurabile
-        # (nessuna query DB) e preferibile all'alternativa — trasformare
-        # get_token() da classmethod a instance-method — che romperebbe
-        # il contratto SimpleJWT.
-        refresh = self.get_token(self.user)
-        refresh[JWT_CLAIM_IDENTITA_ID] = int(identita["id"])
-        refresh[JWT_CLAIM_RUOLO_APPLICATIVO] = identita["ruolo_applicativo"]
-
-        # Step 4: emittente attivo (impersonazione di scope). Solo per gli
-        # OPERATORI: portale e shop non hanno un emittente dentro cui lavorare,
-        # e un claim inerte li' sarebbe solo rumore in un token firmato.
-        #   - operatore  → il suo emittente di permesso;
-        #   - super admin → la preferenza salvata, se ancora valida;
-        #   - nessuno dei due → claim OMESSO = «Tutti gli emittenti», e il FE
-        #     chiede di scegliere (`deve_scegliere` in /me/).
-        # Il claim si aggancia al refresh: SimpleJWT lo copia sull'access.
-        if identita["ruolo_applicativo"] == RUOLO_APPLICATIVO_OPERATORE:
-            attivo = EmittenteAttivoService().risolvi_per_login(self.user.id)
-            if attivo is not None:
-                refresh[JWT_CLAIM_EMITTENTE_ATTIVO_ID] = int(attivo)
-
+        # Step 3: rigenera i token con i claim della veste. super().validate
+        # ha gia' chiamato internamente get_token() e scritto i token base in
+        # `data`; qui li sovrascriviamo con quelli emessi dal BB della veste.
+        # Il doppio get_token() costa due scritture (INSERT
+        # dell'OutstandingToken e UPDATE del `sid`) per un token che non esce
+        # mai dalla view: e' preferibile all'alternativa — trasformare
+        # get_token() da classmethod a instance-method — che romperebbe il
+        # contratto SimpleJWT.
+        refresh = emetti_refresh_veste(self.user, identita)
         data["refresh"] = str(refresh)
         data["access"] = str(refresh.access_token)
         return data

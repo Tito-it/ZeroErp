@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.contrib.auth.hashers import is_password_usable
 from django.db import connection
 
 
@@ -116,6 +117,22 @@ class PortaleRepository:
             row = cursor.fetchone()
             return int(row[0]) if row else None
 
+    # Scopo: Dice se l'auth_user ha una password VERA, cioe' una credenziale
+    # che la persona ha scelto (attivando un invito, come operatore, col
+    # reset). E' il discriminante dei due flussi d'invito: chi non ce l'ha
+    # deve sceglierla (INVITO), chi ce l'ha attiva solo la veste (CROSS).
+    # Un auth_user creato da un invito nasce col segnaposto `!`, che Django
+    # tratta come password non utilizzabile, e lo resta finche' l'invito non
+    # si attiva. ⛔ Non «l'utente e' stato appena creato»: al reinvio l'utente
+    # esiste gia' e non ha mai scelto niente (M-3 dell'analisi difetti).
+    # Utente inesistente = False.
+    def auth_user_ha_password(self, auth_user_id: int) -> bool:
+        sql = "SELECT password FROM django.auth_user WHERE id = %s"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [auth_user_id])
+            row = cursor.fetchone()
+        return bool(row) and is_password_usable(row[0])
+
     # Scopo: Crea una nuova riga auth_user per un portale user.
     # Username derivato da email (prefisso prima della @), con suffisso
     # progressivo se gia' esistente. is_active=true: il filtraggio ruolo
@@ -150,15 +167,11 @@ class PortaleRepository:
     # `trgfn_identita_digitali_guard_coerenza` (§7.1.1) verifica coerenza
     # ruolo_applicativo x tipo soggetto.
     # Parametri `attivo` + `deve_cambiare_password` OBBLIGATORI kw-only
-    # (no default, §8.4.1 FRAG9): i 2 flow hanno valori diversi e
-    # un default implicito sarebbe security-risky (un futuro caller che
-    # dimentica i kwargs creerebbe accidentalmente identita attiva).
-    # - Flow INVITO (email nuova, auth_user appena creato):
-    #   `attivo=True, deve_cambiare_password=True`. L'utente entra subito
-    #   dopo aver settato la password definitiva.
-    # - Flow CROSS (email gia' esistente come operatore o altra veste):
-    #   `attivo=False, deve_cambiare_password=False`. L'utente attivera'
-    #   la nuova veste con il token `ATTIVAZIONE_PORTALE_CROSS`.
+    # (no default, §8.4.1 FRAG9): un default implicito sarebbe
+    # security-risky (un futuro caller che dimentica i kwargs creerebbe
+    # accidentalmente identita attiva). Oggi l'invito le crea entrambe
+    # `False` in tutti e due i flussi: l'identita si attiva al consumo del
+    # token (M-3, 2026-09-24).
     def create_identita_portale(
         self,
         *,
@@ -191,8 +204,8 @@ class PortaleRepository:
             assert row is not None
             return int(row[0])
 
-    # Scopo: Riattiva un'identita portale disattivata (es. invito scaduto
-    # poi ri-inviato dal flow INVITO §8.4.1). Estratta dal service per
+    # Scopo: Attiva un'identita portale disattivata: al consumo del token
+    # d'invito, in entrambi i flussi (M-3, 2026-09-24). Estratta dal service per
     # rispettare il pattern 3-layer: l'accesso DB sta nel repository, il
     # service non emette SQL diretto.
     def riattiva_identita(self, identita_id: int) -> bool:

@@ -29,6 +29,7 @@ from apps.core.services.auth_constants import (
     JWT_CLAIM_IDENTITA_ID,
     JWT_CLAIM_SID,
 )
+from apps.core.services.permissions_cache import contesto_sessione
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +221,11 @@ def set_jwt_gucs(
                 ],
             )
             row = cursor.fetchone()
-            identita_trovata = bool(row) and row[-1] > 0
+            # Le ultime due colonne: la GUC dell'emittente (il valore che
+            # `set_config` ha scritto, cioe' l'emittente EFFETTIVO) e il
+            # conteggio. Lette dalla coda: una GUC aggiunta in testa non le sposta.
+            emittente_effettivo, identita_count = row[-2:] if row else (None, 0)
+            identita_trovata = identita_count > 0
     except DatabaseError:
         logger.warning(
             "jwt_audit_authentication.set_gucs_failed user_id=%s",
@@ -231,6 +236,14 @@ def set_jwt_gucs(
 
     if identita_trovata and request is not None:
         request._zeroerp_jwt_guc_set = True  # type: ignore[attr-defined]
+        # Contesto della cache permessi L2: identita' ed emittente EFFETTIVO,
+        # cioe' il valore che `set_config` ha appena scritto nella GUC (vuoto
+        # se il claim nomina un emittente disattivato). I permessi dipendono
+        # da queste GUC, quindi la chiave di cache dipende da loro. Senza
+        # questo marcatore la L2 non si usa: si lavora sulla sola L1.
+        request._zeroerp_perms_contesto = contesto_sessione(  # type: ignore[attr-defined]
+            identita_id, emittente_effettivo
+        )
     return identita_trovata
 
 
