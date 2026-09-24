@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from apps.ai_assistant.tools.base import AITool
+from apps.ai_assistant.tools.base import AITool, EndpointGemello
+from apps.amm_software.api.views import OperatoriListView
 from apps.core.db._helpers import RICERCA_MIN_CARATTERI
 
 
@@ -48,8 +49,7 @@ class CercaOperatoriTool(AITool):
                 },
                 "required": [],
             },
-            required_area="amm_software",
-            required_level="LETTURA",
+            endpoint=EndpointGemello(OperatoriListView, "GET"),
         )
 
     _FIELD_MAP = {

@@ -17,6 +17,15 @@ Implementazione in `apps/core/api/throttling.py`:
 parsing del rate che accetta anche periodi in minuti/ore (`5m`, `15m`, `1h`). Una view che
 dichiara `throttle_classes` sostituisce il default.
 
+**Quale «IP».** Tutte e tre le classi prendono la chiave da `get_client_ip`
+(`apps/core/services/request_context.py`), non dalla lettura propria di DRF: il valore
+di `X-Forwarded-For` di cui fidarsi lo decide il setting obbligatorio
+`TRUSTED_PROXY_COUNT` (env `DJANGO_TRUSTED_PROXY_COUNT`, 1 con Nginx), contando **da
+destra**. I valori a sinistra li scrive il client, e cambiarli non dà un contatore nuovo.
+Le richieste di cui l'IP non si ricava condividono un contatore solo (`ip-sconosciuto`).
+⛔ Un throttle nuovo deriva da queste classi: `get_ident` di DRF, con `NUM_PROXIES` non
+impostato, userebbe l'header intero.
+
 Il resto di questo documento riguarda `SearchBurstRateThrottle`.
 
 ## Input

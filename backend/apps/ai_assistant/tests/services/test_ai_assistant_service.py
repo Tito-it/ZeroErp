@@ -30,9 +30,17 @@ from apps.ai_assistant.providers.mock_provider import MockProvider
 from apps.ai_assistant.services import ai_assistant_service
 from apps.ai_assistant.services import tool_registry
 from apps.core.services.permissions_resolver import PermissionResolver
-from apps.ai_assistant.tools.base import AITool
+from apps.ai_assistant.tools.base import AITool, EndpointGemello
+from apps.core.api.base_views import DomainAPIView
+from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
 from apps.ai_assistant.types import ToolCall
 from apps.core.services.service_errors import ServiceError
+
+
+# Gemello fabbricato: il permesso dei tool di test e' quello di questa view,
+# decisa dalla regola di `ZeroERPPermission` (GET → view, POST → add).
+class _PraticheView(DomainAPIView):
+    area_funzionale = "pratiche"
 
 
 class _DummySearchTool(AITool):
@@ -59,8 +67,20 @@ class TestAIAssistantService(unittest.TestCase):
         ai_assistant_service.clear_conversations()
         tool_registry.clear_registry()
 
+        for nome, valore in (
+            ("get_ruolo_applicativo", RUOLO_APPLICATIVO_OPERATORE),
+            ("is_super_admin", False),
+        ):
+            patcher = patch.object(PermissionResolver, nome, return_value=valore)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
         self.user = MagicMock()
         self.user.id = 1
+        # Operatore, non superuser: un MagicMock nudo avrebbe `is_superuser`
+        # vero e passerebbe ogni permesso, anche nei test che provano un rifiuto.
+        self.user.is_authenticated = True
+        self.user.is_superuser = False
         self.user.first_name = "Test"
         self.user.last_name = "User"
         self.user.username = "testuser"
@@ -123,7 +143,7 @@ class TestAIAssistantService(unittest.TestCase):
         # Registra tool di test
         tool = _DummySearchTool(
             name="cerca_pratiche", description="d", input_schema={},
-            required_area="pratiche",
+            endpoint=EndpointGemello(_PraticheView, "GET"),
             route_template={"name": "pratiche-dettaglio", "params": {"id": "{id}"}},
         )
         tool_registry.register_tool(tool)
@@ -185,7 +205,7 @@ class TestAIAssistantService(unittest.TestCase):
     def test_query_max_iterations(self, mock_perms, mock_disabled, mock_log, mock_provider):
         tool = _DummySearchTool(
             name="cerca_pratiche", description="d", input_schema={},
-            required_area="pratiche",
+            endpoint=EndpointGemello(_PraticheView, "GET"),
         )
         tool_registry.register_tool(tool)
 
@@ -334,7 +354,7 @@ class TestAIAssistantService(unittest.TestCase):
     ):
         spy = _SpyWriteTool(
             name="cambia_stato_pratica", description="d", input_schema={},
-            required_area="pratiche", required_level="TUTTO",
+            endpoint=EndpointGemello(_PraticheView, "POST"),
             requires_confirmation=True,
         )
         tool_registry.register_tool(spy)
@@ -366,7 +386,7 @@ class TestAIAssistantService(unittest.TestCase):
     ):
         spy = _SpyWriteTool(
             name="cambia_stato_pratica", description="d", input_schema={},
-            required_area="pratiche", required_level="TUTTO",
+            endpoint=EndpointGemello(_PraticheView, "POST"),
             requires_confirmation=True,
         )
         tool_registry.register_tool(spy)

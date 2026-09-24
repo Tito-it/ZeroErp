@@ -11,7 +11,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from apps.ai_assistant.tools.base import AITool
+from apps.ai_assistant.tools.base import AITool, EndpointGemello
+from apps.vendite.api.preventivi_views import ApiPreventiviList, ApiPreventivoDetail
+from apps.vendite.api.views_contratti import ApiContrattiList, ApiContrattoDetail
+from apps.vendite.api.views_listini import ApiListiniList
+from apps.vendite.api.views_promo_articoli import PromoArticoliView
 from apps.core.db._helpers import RICERCA_MIN_CARATTERI
 
 
@@ -85,8 +89,7 @@ class CercaContrattiTool(AITool):
                 },
                 "required": [],
             },
-            required_area="vendite",
-            required_level="LETTURA",
+            endpoint=EndpointGemello(ApiContrattiList, "GET"),
             # Naviga alla lista contratti con filtro search pre-impostato sul numero
             route_template={
                 "name": "vendite-contratti",
@@ -162,8 +165,7 @@ class DettaglioContrattoTool(AITool):
                 },
                 "required": ["contratto_id"],
             },
-            required_area="vendite",
-            required_level="LETTURA",
+            endpoint=EndpointGemello(ApiContrattoDetail, "GET"),
         )
 
     # Scopo: Recupera il dettaglio di un contratto dal service.
@@ -277,8 +279,7 @@ class CercaPreventiviTool(AITool):
                 },
                 "required": [],
             },
-            required_area="vendite",
-            required_level="LETTURA",
+            endpoint=EndpointGemello(ApiPreventiviList, "GET"),
             route_template={
                 "name": "vendite-preventivi",
                 "query": {"search": "{numero}"},
@@ -354,8 +355,7 @@ class DettaglioPreventivoTool(AITool):
                 },
                 "required": ["preventivo_id"],
             },
-            required_area="vendite",
-            required_level="LETTURA",
+            endpoint=EndpointGemello(ApiPreventivoDetail, "GET"),
         )
 
     # Scopo: Recupera il dettaglio del preventivo dal service.
@@ -440,8 +440,7 @@ class CercaPromoArticoliTool(AITool):
                 },
                 "required": [],
             },
-            required_area="vendite",
-            required_level="LETTURA",
+            endpoint=EndpointGemello(PromoArticoliView, "GET"),
             route_template={
                 "name": "vendite-promo-articoli",
                 "query": {"search": "{codice}"},
@@ -528,8 +527,7 @@ class CercaListiniTool(AITool):
                 },
                 "required": [],
             },
-            required_area="vendite",
-            required_level="LETTURA",
+            endpoint=EndpointGemello(ApiListiniList, "GET"),
             route_template={
                 "name": "vendite-listini",
                 "query": {"search": "{codice}"},

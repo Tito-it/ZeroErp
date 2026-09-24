@@ -10,9 +10,30 @@
 from __future__ import annotations
 
 import abc
+from dataclasses import dataclass
 from typing import Any
 
 from apps.core.db._helpers import RICERCA_MIN_CARATTERI
+
+
+# Scopo: L'endpoint della UI che fa la stessa cosa di un tool: la classe della
+#        view e il metodo HTTP. Da qui si DERIVA il permesso del tool
+#        (`apps.core.api.permissions.valuta_accesso_endpoint`), con la stessa
+#        regola che `ZeroERPPermission` applica alla UI.
+# ⛔ Il permesso non si dichiara sul tool (brief-db-area-funzionale-assistente-ai
+#    §5.2). Fino al 2026-09-24 ogni tool scriveva a mano `required_area`,
+#    `required_level`, `required_action`: una seconda copia della regola, che
+#    gia' divergeva dalla UI — il cambio stato pratica chiedeva area `TUTTO`
+#    dove l'endpoint chiede solo l'azione, l'elenco operatori un'area che non
+#    esiste. E un tool che scrive, dichiarato `LETTURA` per svista, avrebbe
+#    scritto per un operatore in sola lettura.
+# ⚠️ Il gemello e' l'endpoint che chiama lo STESSO service con lo stesso
+#    significato, non uno che «somiglia». Lo verifica
+#    `test_tool_endpoint_gemello`: la view esiste e implementa il metodo.
+@dataclass(frozen=True)
+class EndpointGemello:
+    view: type
+    metodo: str
 
 
 class AITool(abc.ABC):
@@ -29,24 +50,16 @@ class AITool(abc.ABC):
         name: str,
         description: str,
         input_schema: dict[str, Any],
-        required_area: str | None,
-        required_level: str = "LETTURA",
+        endpoint: EndpointGemello,
         route_template: dict[str, Any] | None = None,
         requires_confirmation: bool = False,
-        required_action: str | None = None,
     ) -> None:
         self.name = name
         self.description = description
         self.input_schema = input_schema
-        self.required_area = required_area
-        self.required_level = required_level
+        self.endpoint = endpoint
         self.route_template = route_template
         self.requires_confirmation = requires_confirmation
-        # Azione di processo fine (codename) richiesta, speculare al
-        # `<action>_permission` dell'endpoint UI corrispondente. Se valorizzata,
-        # il filtro/ri-check verifica anche check_azione → l'AI ha la STESSA
-        # granularita' (area + azione fine) della UI. None = solo area-level.
-        self.required_action = required_action
 
     # Scopo: Esegue il tool con i parametri forniti dall'LLM.
     #        Ogni sottoclasse deve implementare questo metodo.

@@ -22,7 +22,12 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from apps.ai_assistant.services.prompt_builder import build_system_prompt, reset_static_context_cache
-from apps.ai_assistant.tools.base import AITool
+from apps.ai_assistant.tools.base import AITool, EndpointGemello
+from apps.core.api.base_views import DomainAPIView
+
+
+class _GemelloView(DomainAPIView):
+    area_funzionale = "pratiche"
 
 
 class _DummyTool(AITool):
@@ -64,8 +69,8 @@ class TestPromptBuilder(unittest.TestCase):
 
     # Scopo: Il prompt deve elencare i tool disponibili.
     def test_prompt_contains_tool_names(self):
-        t1 = _DummyTool(name="cerca_pratiche", description="d", input_schema={}, required_area=None)
-        t2 = _DummyTool(name="cerca_soggetti", description="d", input_schema={}, required_area=None)
+        t1 = _DummyTool(name="cerca_pratiche", description="d", input_schema={}, endpoint=EndpointGemello(_GemelloView, "GET"))
+        t2 = _DummyTool(name="cerca_soggetti", description="d", input_schema={}, endpoint=EndpointGemello(_GemelloView, "GET"))
         prompt = build_system_prompt(self.user, [t1, t2])
         self.assertIn("cerca_pratiche", prompt)
         self.assertIn("cerca_soggetti", prompt)

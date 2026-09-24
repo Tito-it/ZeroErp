@@ -12,7 +12,14 @@ from __future__ import annotations
 from typing import Any
 
 from apps.ai_assistant.services.user_context import get_emittente_fiscale_id
-from apps.ai_assistant.tools.base import AITool
+from apps.ai_assistant.tools.base import AITool, EndpointGemello
+from apps.pratiche.api.views import (
+    ApiPraticaDetail,
+    ApiPraticaFlussiList,
+    ApiPraticaNoteList,
+    ApiPraticaStato,
+    ApiPraticheList,
+)
 from apps.core.db._helpers import RICERCA_MIN_CARATTERI
 
 
@@ -61,8 +68,7 @@ class CercaPraticheTool(AITool):
                 },
                 "required": [],
             },
-            required_area="pratiche",
-            required_level="LETTURA",
+            endpoint=EndpointGemello(ApiPraticheList, "GET"),
             # Naviga alla lista pratiche con filtro search pre-impostato
             route_template={
                 "name": "pratiche-gestione",
@@ -124,8 +130,7 @@ class DettaglioPraticaTool(AITool):
                 },
                 "required": ["pratica_id"],
             },
-            required_area="pratiche",
-            required_level="LETTURA",
+            endpoint=EndpointGemello(ApiPraticaDetail, "GET"),
         )
 
     # Scopo: Recupera il dettaglio di una pratica dal repository.
@@ -175,8 +180,7 @@ class CercaFlussiPraticaTool(AITool):
                 },
                 "required": ["pratica_id"],
             },
-            required_area="pratiche",
-            required_level="LETTURA",
+            endpoint=EndpointGemello(ApiPraticaFlussiList, "GET"),
         )
 
     # Scopo: Elenca i flussi di una pratica dal repository.
@@ -238,8 +242,7 @@ class CreaPraticaTool(AITool):
                 },
                 "required": ["tipo_prestazione_id", "priorita_id"],
             },
-            required_area="pratiche",
-            required_level="TUTTO",
+            endpoint=EndpointGemello(ApiPraticheList, "POST"),
             requires_confirmation=True,
         )
 
@@ -304,12 +307,8 @@ class CambiaStatoPraticaTool(AITool):
                 },
                 "required": ["pratica_id", "nuovo_stato"],
             },
-            required_area="pratiche",
-            required_level="TUTTO",
+            endpoint=EndpointGemello(ApiPraticaStato, "POST"),
             requires_confirmation=True,
-            # Stessa granularita' fine dell'endpoint UI ApiPraticaStato
-            # (post_permission="cambia_stato_pratica").
-            required_action="cambia_stato_pratica",
         )
 
     # Scopo: Genera il sommario del cambio stato per la conferma.
@@ -366,8 +365,7 @@ class AggiungiNotaPraticaTool(AITool):
                 },
                 "required": ["pratica_id", "tipo_nota", "contenuto"],
             },
-            required_area="pratiche",
-            required_level="TUTTO",
+            endpoint=EndpointGemello(ApiPraticaNoteList, "POST"),
             requires_confirmation=True,
         )
 

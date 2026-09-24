@@ -12,7 +12,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from apps.ai_assistant.tools.base import AITool
+from apps.ai_assistant.tools.base import AITool, EndpointGemello
+from apps.vendite.api.preventivi_documenti_views import ApiPreventivoDocumentiList
 
 
 # Mappa codice sorgente -> resolver (sorgente_id -> sorgente_uid). Un
@@ -82,8 +83,12 @@ class CercaDocumentiGeneratiTool(AITool):
                 },
                 "required": ["sorgente_code", "sorgente_id"],
             },
-            required_area="documenti",
-            required_level="LETTURA",
+            # ⚠️ Il gemello e' la lista documenti del PREVENTIVO perche'
+            #    `_SORGENTE_UID_RESOLVERS` ne attiva una sola. Ogni sorgente
+            #    ha la sua lista, con la sua area (`build_documenti_sorgente_views`):
+            #    attivarne una seconda vuol dire un tool per sorgente, non una
+            #    voce in piu' nella mappa sotto il gemello di un'altra.
+            endpoint=EndpointGemello(ApiPreventivoDocumentiList, "GET"),
         )
 
     _FIELD_MAP = {
