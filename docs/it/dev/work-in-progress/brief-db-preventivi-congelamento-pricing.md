@@ -6,6 +6,19 @@
 > [brief-be-fe-capability-annidata.md](brief-be-fe-capability-annidata.md)
 > («il predicato duplicato di preventivi, brief DB suo»).
 >
+> **Stato (2026-09-24, notte):** ✅ **DB CHIUSO — due giri applicati, pgTAP
+> verdi** (Tid: «migrazione applicata test verdi»).
+> * Giro 1: tredici changeSet `20260924-20…-32`, §8 — la regola nei cinque
+>   documenti di vendita.
+> * Giro 2: cinque changeSet `20260924-33…-37`, §10 — nessuna revisione con un
+>   prezzo in attesa. I due rossi della corsa precedente erano il giro 2 non
+>   ancora applicato (§10.4): rientrati.
+> * ⏳ **Restano, fuori dal DB**: le richieste al FE e al BE del §6 — ⚠️ quella
+>   al FE è **bloccante per la CI** (due `reason_key` nuove,
+>   `check_i18n_keys.py`, alla prossima rigenerazione della doc auto-gen); la
+>   riga di `test-preventivi-approvazione-prezzo.sql` in `baseline-rossi-ci.tsv`,
+>   da togliere con `scripts/pgtap-baseline-ci-rientrati.sh` dopo la corsa CI su
+>   `Tito-dev`. Quando FE e BE hanno consegnato, il brief va in `work-done/`.
 > **Stato (2026-09-24, sera):** ✅ **DB applicato, pgTAP senza regressioni**
 > (Tid: «migrazione applicata nessuna regressione»). Sei decisioni di Tid
 > (D-1…D-6, §3 e §7). Tredici changeSet `20260924-20…-32`, due righe nuove e
@@ -177,8 +190,8 @@ trigger (censimento prima del `DROP`).
 
 | Codice | Stato | Note |
 | --- | --- | --- |
-| `E_DOC_PREZZO_PENDENTE` | 🆕 `CONFLITTO_STATO`, messaggio id 1119 | «Il documento non può avanzare: ci sono prezzi ancora in attesa di approvazione (%s).» |
-| `E_DOC_PREZZO_RIFIUTATO` | 🆕 `CONFLITTO_STATO`, messaggio id 1120 | «Il documento non può avanzare: ci sono prezzi rifiutati dal responsabile (%s).» |
+| `E_DOC_PREZZO_PENDENTE` | 🆕 `CONFLITTO_STATO`, messaggio id 1119 | «Non si può procedere: ci sono prezzi ancora in attesa di approvazione (%s).» |
+| `E_DOC_PREZZO_RIFIUTATO` | 🆕 `CONFLITTO_STATO`, messaggio id 1120 | «Non si può procedere: ci sono prezzi rifiutati dal responsabile (%s).» |
 | `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` | ⛔ **ritirato**, `obsoleto_dal` 2026-09-24 | lo sollevava solo il trigger a10; la riga resta per `dbops.error_log` |
 | `E_COMPONENTE_PREZZO_PENDENTE` | vivo, nota riscritta | resta il codice del guard **per riga** dei componenti; non è più il codice del blocco di emissione (DDT) o di attivazione (contratto) |
 
@@ -358,24 +371,88 @@ CSV.
 ✅ **Dopo l'apply (Tid, 2026-09-24 sera)**: migrazione applicata, corsa pgTAP
 senza regressioni.
 
-## 10. Domanda aperta per Tid — la revisione che ricopia un «in attesa»
+## 10. Le revisioni che ricopiano un «in attesa» — il giro 2
 
-`fn_crea_revisione_preventivo` (e `fn_crea_revisione_offerta`) ricopiano sulla
-revisione **stato e pratica** di approvazione, 1:1. È il debito già aperto in
-PROJECT_CONTEXT («Pratica di approvazione prezzo su revisione superata»): una
-riga `PENDING` ricopiata può avere la pratica già chiusa sulla revisione
-vecchia, e allora resta in attesa **per sempre** — nessuno la esita, e il guard
-per riga ne vieta la modifica.
+### 10.1 Il problema e la decisione
 
-* **Prima di oggi** quella revisione si emetteva ma non si accettava (trigger
-  a10).
-* **Da oggi** non si emette nemmeno (D-2). L'esito finale è lo stesso — il
-  documento non arriva all'accettazione — ma il blocco arriva prima. La via
-  d'uscita resta: si annulla.
+`fn_crea_revisione_preventivo` e `fn_crea_revisione_offerta` ricopiano sulla
+revisione **stato e pratica** di approvazione, 1:1 (`20260914-14`,
+`20260601-05`: «prezzo fuori policy sempre marcato»). Una riga **in attesa**
+ricopiata resta legata alla pratica della revisione vecchia: l'esito arriva
+lì, e sulla nuova l'attesa non finisce più. Non si modifica (guard per riga) e,
+dal giro 1, il documento non si emette: resta solo l'annullamento. È il debito
+di PROJECT_CONTEXT «Pratica di approvazione prezzo su revisione superata».
 
-Non è stato toccato: la cura sta in quel debito (la pratica che segue la
-revisione, o lo stato che non si ricopia se la pratica è chiusa), non in
-un'eccezione alla regola. **Da decidere se aprirlo adesso.**
+Tid ha proposto di non copiare lo stato e ripartire dal primo stato valido
+(che è il **vuoto**, «nessuna approvazione chiesta»). ⚠️ Azzerare riapriva il
+difetto sanato il 14-09 — la revisione nasceva con lo stesso prezzo e senza
+marca — e con D-1 avrebbe fatto **passare un prezzo rifiutato**. La sua
+seconda regola («se la precedente è in attesa non si fa una nuova versione»)
+bastava da sola a chiudere il caso. ✅ **Decisione di Tid del 2026-09-24:
+proposta 1+2.**
+
+1. **Non si crea una revisione** (preventivo e offerta) se il documento ha
+   righe o componenti attivi **in attesa**. «Crea revisione» resta a video,
+   spento con il motivo.
+2. **La copia resta** per approvato e rifiutato.
+
+### 10.2 Cosa è stato scritto
+
+| # | File | Cosa |
+| --- | --- | --- |
+| -33 | `20_code/script/…-create-fn-check-prezzi-in-attesa` | `script.fn_check_prezzi_in_attesa(regclass, bigint)`: dei motivi del building block, il solo `E_DOC_PREZZO_PENDENTE`. Quattro consumatori, scritto una volta |
+| -34 | `20_code/vendite/…-update-fn-crea-revisione-preventivo-guard-prezzi-in-attesa` | la madre rifiuta col primo motivo (sito nuovo dell'helper) |
+| -35 | `20_code/vendite/…-update-fn-crea-revisione-offerta-guard-prezzi-in-attesa` | idem; in più firma/`RETURNS` ancorati con `%TYPE` e `SECURITY INVOKER` esplicito, che mancavano |
+| -36 | `20_code/script/…-update-fn-available-actions-preventivo-revisione-prezzi` | «Crea revisione» spento col motivo; `can_create_revisione` **veritiero** |
+| -37 | `20_code/script/…-update-fn-available-actions-offerta-revisione-prezzi` | idem |
+
+* **Messaggi**: `E_DOC_PREZZO_PENDENTE` / `_RIFIUTATO` diventano «Non si può
+  procedere: ci sono prezzi … (N).» — «il documento non può avanzare» era falso
+  per una revisione. Causa e soluzione dell'«in attesa» nominano la revisione.
+  Stesso CSV (`runOnChange`), nessuna chiave FE nuova.
+* **Dichiarazione dallo YAML**, non dall'auto-gen: le due madri partono dai loro
+  ultimi YAML (`20260915-41`, `20260601-05`), verificati identici al vivo
+  (`prosrc` e `COMMENT`); le capability dai miei `-23` e `-28`.
+* **pgTAP**: `test-fn-check-prezzi-autorizzati-v1` da 38 a 44 test (39-44 sulle
+  revisioni: pulsante spento, madre che rifiuta, rifiutato che non blocca e si
+  ricopia, offerta); `test-rubinetto-primo-motivo-v1` test 5 da 23 a 25.
+* **Doc**: `manual/` nuova per `fn_check_prezzi_in_attesa`, sezioni «rev
+  2026-09-24» sulle due madri e sui due pulsanti, riga nella guida dei
+  preventivi (§4.1).
+* ⚠️ **Al FE**: nessuna chiave nuova; il frontend legge già l'azione
+  `crea_revisione` da `available_actions` e ne rispetta `enabled` — basta il
+  collaudo a video (preventivo e offerta EMESSI con un prezzo in attesa).
+
+### 10.3 Le prove (prima dell'apply)
+
+Sullo scratch, che ha il giro 1 applicato, in `BEGIN … ROLLBACK`:
+`test-fn-check-prezzi-autorizzati-v1` **44/44**, `test-rubinetto-primo-motivo-v1`
+7/7, `test-preventivi-approvazione-prezzo` 10/10; `plpgsql_check` a zero sulle
+cinque funzioni. **Controprova**: senza `-33…-37` diventano rossi 39-44. I
+pgTAP esistenti che creano revisioni (sette file) hanno gli stessi rossi prima
+e dopo. Guardrail statici verdi.
+
+### 10.4 La corsa della notte: due rossi attesi
+
+La corsa pgTAP di Tid ha dato, fra i «rossi QUI che la CI non conosce»:
+
+| File | Esito |
+| --- | --- |
+| `script/test-fn-check-prezzi-autorizzati-v1.sql` | ASSERZIONE |
+| `script/test-rubinetto-primo-motivo-v1.sql` | ASSERZIONE |
+
+**Causa**: il giro 2 non è applicato su quel database (su `zeroerp_ci` il
+`databasechangelog` si ferma a `20260924-32`, letto il 2026-09-24). I due file
+però sono già quelli del giro 2: il primo verifica le revisioni (test 39-44),
+il secondo conta 25 siti dell'helper del primo motivo, e senza `-33…-35` sono
+23. È la controprova del §10.3 vista dall'altra parte: senza i changeSet
+diventano rossi proprio 39-44 e il test 5. Con `-33…-37` in testa alla stessa
+transazione i due file danno 44/44 e 7/7.
+
+⇒ **Non è debito e non entra in baseline**: si applica il giro 2 e si rilancia.
+✅ **Fatto** (Tid, 2026-09-24 notte): giro 2 applicato, test verdi.
+Un pgTAP che usa un oggetto nuovo si misura solo su un database che quel
+changeSet ce l'ha.
 
 ## 11. Registro
 
@@ -384,5 +461,8 @@ un'eccezione alla regola. **Da decidere se aprirlo adesso.**
 | 2026-09-24 | **Nascita**, dal §5 del brief capability annidata dopo la consegna BE/FE. Confronto delle due sedi sul corpo delle funzioni (§2). Decisioni di Tid: D-1 (strada A: il `REJECTED` è regola, a DB), D-2 e D-3 sulla raccomandazione. D-4 aperta |
 | 2026-09-24 (sera) | **DB scritto.** D-4 (contratti e offerte), D-5 (un building block solo) e D-6 (ordini e DDT) decise da Tid. Tredici changeSet `20260924-20…-32` (fascia `-20…-39`, per non incrociare il §13 del brief delle date di validità), catalogo dei codici, un pgTAP nuovo e due aggiornati, doc. ⚠️ Scelta nuova rispetto alla prima stesura: i **rientri automatici** (ordine da `EVASO`, offerta da `SUPERATA`) non chiedono il prezzo, o un prezzo rimasto non autorizzato fermerebbe un annullamento (§4.2). Correzione di Tid in corso d'opera: firme ancorate con `%TYPE` (l'auto-gen le perde). Prove in transazione ritirata: §9. Aperta la domanda del §10 |
 | 2026-09-24 (sera, dopo) | **Applicato** da Tid, corsa pgTAP senza regressioni. Restano le richieste FE (bloccante per la CI) e BE del §6, la riga in `baseline-rossi-ci.tsv` e la domanda del §10 |
+| 2026-09-24 (notte) | **Giro 2, le revisioni** (§10): decisione di Tid «proposta 1+2» — nessuna revisione con un prezzo in attesa, la copia di approvato e rifiutato resta. `20260924-33…-37`, messaggi resi generici, pgTAP da 38 a 44, rubinetto a 25. Da applicare |
+| 2026-09-24 (notte, dopo) | Corsa pgTAP di Tid: due rossi «che la CI non conosce», `test-fn-check-prezzi-autorizzati-v1` e `test-rubinetto-primo-motivo-v1`. Causa: giro 2 non applicato su `zeroerp_ci` (`databasechangelog` fermo a `-32`). Attesi, non in baseline: §10.4. Resta l'apply del giro 2 |
+| 2026-09-24 (notte, chiusura DB) | **Giro 2 applicato, test verdi** (Tid). Il lato DB è chiuso; restano FE (bloccante per la CI), BE e la riga di baseline — §6 e testata |
 | 2026-09-24 (BE/FE) | **§6 consegnato** su `dev/backend-tid`. **BE**: `get_preventivo` consegna il blob **com'è** — tolti la riscrittura di `available_actions`/`can_edit_*` e il 🔴 DEBITO DICHIARATO. ⭐ **Decisione sui quattro riepiloghi** (lasciata al BE dal §6.1): **ritirati anch'essi**, non estesi ai componenti. Contare righe **e** componenti attivi in Python sarebbe stata una seconda copia del predicato di `fn_check_prezzi_autorizzati`; il motivo, col conteggio (`dettaglio.n_prezzi`), è già nelle `reasons` delle azioni che il prezzo spegne. Il repository conta ora solo le righe attive (`count_righe_attive`, per `righe_count`); `count_righe_per_stato_approvazione` tolto, senza altri lettori. Test riscritti sul contratto del DB (blob intatto: «Emetti» spento col motivo, «Annulla» acceso, testata e righe modificabili; nessun riepilogo sulla testata). Policy rigenerate (i due `E_DOC_PREZZO_*` e il ritiro di `E_PREVENTIVO_RIGHE_PRICING_PENDENTI`; il diff porta anche il ritiro di `E_BOM_VALIDO_AL_INVALIDO` del cantiere date di validità, già nel CSV committato); ripiego: dentro i due codici nuovi senza `%s`, fuori il ritirato. Commento stantio in `ddt_service.cambia_stato`. Doc: `api_preventivi.md`, `api_approvazioni_prezzo.md`, `api_ordini.md`. **FE**: `common.azione_reason.prezzo_pendente` / `prezzo_rifiutato` in it/en; tolta `vendite.ddt.azione_reason.componenti_prezzo_pendente`; il banner del `PreventiviDrawer` legge i motivi `PREZZO_PENDENTE`/`PREZZO_RIFIUTATO` dalle `reasons` delle azioni (compare solo quando il prezzo blocca davvero un'azione) e il suo testo dice la regola nuova (chiavi `banner_prezzi_pendenti`/`_rifiutati`: la vecchia prometteva «transizioni ed edit bloccati», falso dopo D-2/D-3). **Verifica**: BE `apps.vendite` + `apps.core` verdi (3323 test, 43 skip); FE `npm run verify` verde; `check_i18n_keys.py` pulito; `guard:capability` verde. Sul DB di sviluppo nessuna bozza o emesso ha oggi un prezzo in approvazione: il caso si è **costruito** in una transazione annullata (una riga della bozza 32865 portata a `REJECTED`) → «Emetti» `enabled: false`, `reason_key` `common.azione_reason.prezzo_rifiutato`, `n_prezzi = 1`; «Annulla» acceso; `can_edit_*` veri; nessun campo extra. **Resta**: collaudo a video (§6.3); la riga di `baseline-rossi-ci.tsv` (team DB); la domanda del §10. ⚠️ Banner solo sul preventivo: asimmetria dichiarata, chiusa nella riga sotto |
 | 2026-09-24 (FE, simmetria) | **Il banner del preventivo ritirato, non copiato** (decisione di Tid). L'asimmetria vera non era fra documenti ma fra **motivi**: il perché di un pulsante spento ha un canale solo, il tooltip di `mapAvailableActionsToDrawerActions` (tutti i motivi, non solo il primo), uguale in ogni drawer; «IVA mancante», «senza righe», «listino mancante» sono temporanei e azionabili come un prezzo in attesa, e nessuno ha un banner. Un banner su cinque documenti avrebbe lasciato i prezzi l'unico motivo col canale suo — ed è la stessa scelta della Decisione D di `work-done/brief-db-ddt-reason-push-catch-all.md` («tooltip discreto, non banner»). L'unica perdita, il **numero**, si recupera per tutti: il mapper passa i `valori` del motivo alla traduzione come `{0}` (`labelOrCode` con `params` opzionale), e le due chiavi dicono *«Ci sono prezzi in attesa di approvazione (2).»*. Un testo senza `{0}` non cambia. Presidi: `useDrawerActions.spec.js` 11 → 13 test (il 12 provato rosso per mutazione). Tolte le chiavi `banner_prezzi_*`. Il tag di stato sulla riga (preventivo, pannello componenti) resta: è dove l'operatore agisce. ⚠️ `useLottoAzioni.motiviTesto` era una seconda copia della resa dei motivi e **non** passava i `valori` → ✅ **regola del 2 applicata lo stesso giorno (ok Tid)**: `testoMotivi(t, te, azione)` in `useDrawerActions.js`, usata dal mapper e dal lotto, copia ritirata. Unica differenza di comportamento, voluta: sul lotto, un'azione spenta senza `reasons` ma col motivo singolo ora mostra quel motivo invece dell'avviso generico. Spec 15 test, FE `npm run verify` verde (322) |

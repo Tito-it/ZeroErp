@@ -85,6 +85,21 @@ BEGIN
         );
     END IF;
 
+    -- Guard (rev 2026-09-24): nessuna revisione con un prezzo IN ATTESA.
+    --   Le eccezioni si ricopiano con stato e pratica di approvazione (sotto):
+    --   una in attesa resterebbe legata alla pratica della rev N, e sulla
+    --   rev N+1 l'attesa non finirebbe piu'. Decisione di Tid del 2026-09-24:
+    --   prima l'esito, poi la revisione.
+    -- ⭐ Il predicato e' script.fn_check_prezzi_in_attesa, lo STESSO con cui
+    --   fn_available_actions_offerta spegne «Crea revisione». Approvato e
+    --   rifiutato NON bloccano: si ricopiano.
+    PERFORM script.fn_raise_primo_motivo_se_presente(
+        'vendite', 'fn_crea_revisione_offerta',
+        script.fn_check_prezzi_in_attesa('vendite.offerte_commerciali'::regclass, p_offerta_id),
+        NULL,
+        NULL::uuid,
+        jsonb_build_object('offerta_id', p_offerta_id));
+
     -- Recupera id stato BOZZA (config-driven, no hardcode).
     SELECT id INTO v_stato_bozza_id
       FROM config.stati_doc_offerte
@@ -243,7 +258,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_crea_revisione_offerta(p_offerta_id bigint, p_user text)
-IS 'Crea rev.N+1 di un''offerta EMESSA: copia testata + eccezioni attive + utility (1:1). Rev2 (2026-06-01): carry-forward 1:1 di stato_approvazione_prezzo + pratica_approvazione_prezzo_id sulle eccezioni (preserva l''invariante "prezzo fuori-policy sempre marcato"). uid e codice OFC-* generati ex novo. Il trigger z90 revisione (Step 6) marca automaticamente il padre SUPERATA. Guard: stato EMESSA obbligatorio. Parametri: p_offerta_id, p_user.';
+IS 'Crea rev.N+1 di un''offerta EMESSA: copia testata + eccezioni attive + utility (1:1). Rev2 (2026-06-01): carry-forward 1:1 di stato_approvazione_prezzo + pratica_approvazione_prezzo_id sulle eccezioni (preserva l''invariante "prezzo fuori-policy sempre marcato"). uid e codice OFC-* generati ex novo. Il trigger z90 revisione (Step 6) marca automaticamente il padre SUPERATA. Guard: stato EMESSA obbligatorio. Parametri: p_offerta_id, p_user. rev 2026-09-24 (20260924-35, decisione di Tid): nessuna revisione con un prezzo IN ATTESA — guard sul primo motivo di script.fn_check_prezzi_in_attesa (eccezioni e loro componenti attivi PENDING), lo stesso con cui la capability spegne «Crea revisione»: un''eccezione in attesa ricopiata restava legata alla pratica della rev N. Approvato e rifiutato continuano a ricopiarsi. Firma e RETURNS ancorati con %TYPE, SECURITY INVOKER esplicito. Brief: brief-db-preventivi-congelamento-pricing §10.';
 ```
 
 ---

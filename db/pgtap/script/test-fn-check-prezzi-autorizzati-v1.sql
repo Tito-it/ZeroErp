@@ -7,7 +7,7 @@
 --   documenti di vendita. Riferimenti: 20260924-20 … -32.
 -- Brief: docs/it/dev/work-in-progress/brief-db-preventivi-congelamento-pricing.md
 --
--- Elenco test (plan 38):
+-- Elenco test (plan 44):
 --  Il building block
 --   1) una testata che non conosce e' un errore, non un «niente da dire»
 --   2) un id nullo e' un errore
@@ -55,6 +55,13 @@
 --  36) i due codici sono registrati, vivi, CONFLITTO_STATO
 --  37) E_PREVENTIVO_RIGHE_PRICING_PENDENTI e' ritirato
 --  38) le reason_key nuove stanno nel namespace trasversale
+--  Revisioni (§10 del brief: prima l'esito, poi la revisione)
+--  39) preventivo EMESSO con un prezzo in attesa: «Crea revisione» spento
+--  40) ... e la madre fn_crea_revisione_preventivo rifiuta
+--  41) col prezzo RIFIUTATO la revisione si crea (il rifiutato non blocca)
+--  42) ... e la riga della revisione porta il REJECTED: la copia resta
+--  43) offerta EMESSA con un componente in attesa: «Crea revisione» spento
+--  44) ... e la madre fn_crea_revisione_offerta rifiuta
 --
 -- Scopo:
 --  - ⭐ i casi si COSTRUISCONO: mondo, articoli, distinta base e documenti
@@ -77,7 +84,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- arriva mai.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(38);
+SELECT plan(44);
 
 -- =========================================================
 -- Il mondo: azienda di chi agisce + cliente fatturabile legato a lei.
@@ -155,7 +162,8 @@ BEGIN
             ('pendente',   'PENDING',   NULL,        true,        true),
             ('misto',      'REJECTED',  'PENDING',   true,        true),
             ('spenti',     'REJECTED',  'REJECTED',  false,       false),
-            ('emesso',     NULL,        NULL,        true,        true)
+            ('emesso',     NULL,        NULL,        true,        true),
+            ('rev',        NULL,        NULL,        true,        true)
         ) AS v(tag, st_riga, st_comp, riga_attiva, comp_attivo)
     LOOP
         INSERT INTO vendite.preventivi
@@ -253,7 +261,7 @@ SELECT is(
               (SELECT prev_id FROM _p WHERE tag = 'misto'))) m
        JOIN config.messaggi_errore me ON me.codice = m ->> 'codice' AND me.lingua = 'it'
       WHERE m ->> 'codice' = 'E_DOC_PREZZO_RIFIUTATO'),
-    'Il documento non può avanzare: ci sono prezzi rifiutati dal responsabile (1).',
+    'Non si può procedere: ci sono prezzi rifiutati dal responsabile (1).',
     '7) ... e il conteggio va nei `valori`: la frase resa lo porta'
 );
 
@@ -772,6 +780,82 @@ SELECT is(
               (SELECT prev_id FROM _p WHERE tag = 'misto'))) WITH ORDINALITY AS x(m, o)),
     '["common.azione_reason.prezzo_pendente", "common.azione_reason.prezzo_rifiutato"]'::jsonb,
     '38) le reason_key stanno nel namespace trasversale common.azione_reason'
+);
+
+-- =========================================================
+-- 39-44) Revisioni: non si creano con un prezzo IN ATTESA (§10 del brief)
+-- ⭐ La revisione ricopia stato e pratica di approvazione 1:1. Una riga in
+--   attesa ricopiata restava legata alla pratica della versione vecchia, e
+--   sulla nuova l'attesa non finiva piu'. Decisione di Tid del 2026-09-24:
+--   prima l'esito, poi la revisione. Approvato e rifiutato si ricopiano.
+-- =========================================================
+UPDATE vendite.preventivi
+   SET stato_doc_preventivo_id = (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'EMESSO')
+ WHERE id = (SELECT prev_id FROM _p WHERE tag = 'rev');
+
+-- Il prezzo passa in attesa dopo l'emissione: il modello lo ammette.
+UPDATE vendite.preventivi_righe
+   SET stato_approvazione_prezzo = 'PENDING'
+ WHERE id = (SELECT riga_id FROM _p WHERE tag = 'rev');
+
+SELECT is(
+    (SELECT (a ->> 'enabled') || ' / ' || (a ->> 'reason_key')
+       FROM jsonb_array_elements(script.fn_available_actions_preventivo(
+              (SELECT prev_id FROM _p WHERE tag = 'rev')) -> 'available_actions') a
+      WHERE a ->> 'key' = 'crea_revisione'),
+    'false / common.azione_reason.prezzo_pendente',
+    '39) preventivo EMESSO con un prezzo in attesa: «Crea revisione» c''e'', spento col motivo'
+);
+
+SELECT throws_like(
+    format('SELECT * FROM vendite.fn_crea_revisione_preventivo(%s, ''pgtap'')',
+           (SELECT prev_id FROM _p WHERE tag = 'rev')),
+    '%prezzi ancora in attesa di approvazione%',
+    '40) ... e la madre fn_crea_revisione_preventivo rifiuta: prima l''esito, poi la revisione'
+);
+
+-- L'esito arriva: il responsabile rifiuta.
+UPDATE vendite.preventivi_righe
+   SET stato_approvazione_prezzo = 'REJECTED'
+ WHERE id = (SELECT riga_id FROM _p WHERE tag = 'rev');
+
+SELECT lives_ok(
+    format('SELECT * FROM vendite.fn_crea_revisione_preventivo(%s, ''pgtap'')',
+           (SELECT prev_id FROM _p WHERE tag = 'rev')),
+    '41) col prezzo RIFIUTATO la revisione si crea: il rifiutato non blocca la revisione'
+);
+
+SELECT is(
+    (SELECT r.stato_approvazione_prezzo::text
+       FROM vendite.preventivi p
+       JOIN vendite.preventivi_righe r ON r.preventivo_id = p.id
+      WHERE p.numero = (SELECT p0.numero FROM vendite.preventivi p0
+                         WHERE p0.id = (SELECT prev_id FROM _p WHERE tag = 'rev'))
+        AND p.id <> (SELECT prev_id FROM _p WHERE tag = 'rev')),
+    'REJECTED',
+    '42) ... e la riga della revisione porta il REJECTED: la copia resta (azzerarla farebbe passare il prezzo rifiutato)'
+);
+
+-- Offerta: l'eccezione-kit e' EMESSA (test 24). Il suo componente torna in
+-- attesa (una nuova richiesta).
+UPDATE vendite.offerte_commerciali_eccezioni_componenti
+   SET stato_approvazione_prezzo = 'PENDING'
+ WHERE id = (SELECT comp_id FROM _o WHERE tag = 'kit');
+
+SELECT is(
+    (SELECT (a ->> 'enabled') || ' / ' || (a ->> 'reason_key')
+       FROM jsonb_array_elements(script.fn_available_actions_offerta(
+              (SELECT offerta_id FROM _o WHERE tag = 'kit')) -> 'available_actions') a
+      WHERE a ->> 'key' = 'crea_revisione'),
+    'false / common.azione_reason.prezzo_pendente',
+    '43) offerta EMESSA con un componente in attesa: «Crea revisione» c''e'', spento col motivo'
+);
+
+SELECT throws_like(
+    format('SELECT vendite.fn_crea_revisione_offerta(%s, ''pgtap'')',
+           (SELECT offerta_id FROM _o WHERE tag = 'kit')),
+    '%prezzi ancora in attesa di approvazione%',
+    '44) ... e la madre fn_crea_revisione_offerta rifiuta'
 );
 
 SELECT * FROM finish();

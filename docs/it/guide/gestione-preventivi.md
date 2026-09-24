@@ -288,6 +288,13 @@ Caratteristiche:
 
 - una revisione si crea **solo da uno stato EMESSO**
 - non possono coesistere due revisioni DRAFT per lo stesso numero
+- ⚠️ dal 2026-09-24 una revisione **non si crea se un prezzo è in attesa di
+  approvazione**: prima serve l'esito del responsabile. La revisione ricopia le
+  righe con il loro stato di approvazione, e una riga in attesa ricopiata
+  resterebbe legata alla richiesta della versione vecchia, in attesa per
+  sempre. Un prezzo **approvato** o **rifiutato** invece si ricopia com'è (il
+  rifiutato si corregge sulla revisione). «Crea revisione» resta a video,
+  spento con il motivo
 - la nuova revisione nasce **DRAFT** e diventa la "rev attiva" del numero
 - la rev precedente resta in DB come storico (stato EMESSO conservato)
 

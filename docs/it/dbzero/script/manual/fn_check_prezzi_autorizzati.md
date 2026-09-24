@@ -12,6 +12,9 @@ Chi la chiede, documento per documento:
 Chi spegne i pulsanti con gli stessi motivi:
 > • [script.fn_available_actions_preventivo](/dbzero/script/funzioni/fn_available_actions_preventivo), [script.fn_available_actions_contratto](/dbzero/script/funzioni/fn_available_actions_contratto), [script.fn_available_actions_offerta](/dbzero/script/funzioni/fn_available_actions_offerta), [script.fn_available_actions_ordine](/dbzero/script/funzioni/fn_available_actions_ordine), [script.fn_available_actions_ddt](/dbzero/script/funzioni/fn_available_actions_ddt)
 >
+Il filtro sul solo «in attesa», per le revisioni:
+> • [script.fn_check_prezzi_in_attesa](/dbzero/script/funzioni/fn_check_prezzi_in_attesa) — una revisione non si crea con un prezzo in attesa (dal 2026-09-24)
+>
 Il guard che resta sulla singola riga:
 > • [script.trgfn_righe_guard_pending](/dbzero/script/funzioni/trgfn_righe_guard_pending) — una riga in attesa non si modifica
 
@@ -121,8 +124,8 @@ rifiutato:
 Entrambi `CONFLITTO_STATO` (409): non c'è un campo della richiesta da correggere, quindi nel
 contesto non va la chiave `campo`.
 
-* **`valori`** porta il **conteggio**, che è ciò che la frase mostra: *«Il documento non può
-  avanzare: ci sono prezzi ancora in attesa di approvazione (2).»*;
+* **`valori`** porta il **conteggio**, che è ciò che la frase mostra: *«Non si può procedere:
+  ci sono prezzi ancora in attesa di approvazione (2).»*;
 * **`dettaglio`** porta `n_prezzi` e la **prima** riga (e componente) a video, per chi
   diagnostica. ⚠️ Nella frase non va una riga: `preventivi_righe` e le eccezioni d'offerta
   non hanno un numero di riga da mostrare.

@@ -148,6 +148,22 @@ BEGIN
     );
   END IF;
 
+  -- Guard (rev 2026-09-24): nessuna revisione con un prezzo IN ATTESA.
+  --   La revisione ricopia stato e pratica di approvazione 1:1 (sotto): una
+  --   riga in attesa ricopiata resterebbe legata alla pratica della rev N,
+  --   l'esito arriverebbe li' e sulla rev N+1 l'attesa non finirebbe piu' —
+  --   bloccata dal guard per riga e, dal 20260924-21, anche all'emissione.
+  --   Decisione di Tid del 2026-09-24: prima l'esito, poi la revisione.
+  -- ⭐ Il predicato e' script.fn_check_prezzi_in_attesa, lo STESSO con cui
+  --   fn_available_actions_preventivo spegne «Crea revisione»: qui si
+  --   solleva soltanto. Approvato e rifiutato NON bloccano: si ricopiano.
+  PERFORM script.fn_raise_primo_motivo_se_presente(
+    'vendite', 'fn_crea_revisione_preventivo',
+    script.fn_check_prezzi_in_attesa('vendite.preventivi'::regclass, p_preventivo_id),
+    NULL,
+    NULL::uuid,
+    jsonb_build_object('preventivo_id', p_preventivo_id, 'numero', v_numero));
+
   -- Recupera stato DRAFT id
   SELECT id INTO v_stato_draft_id
     FROM config.stati_doc_preventivi
@@ -291,7 +307,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_crea_revisione_preventivo(p_preventivo_id bigint, p_user text)
-IS 'Crea revisione DRAFT da preventivo EMESSO: copia testata, righe attive, componenti BoM (FK remap) e indirizzi. Stato corrente e risoluzione DRAFT per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #2. rev 2026-08-05 (20260805-25): codici rinominati con prefisso E_ — E_PREV_REVISIONE_STATO_NON_AMMESSO (850), E_PREV_REVISIONE_BOZZA_ESISTENTE (851), E_PREV_STATO_CORRENTE_NON_TROVATO (852); i vecchi nomi restano a catalogo ritirati con obsoleto_dal. rev 2026-09-14 (20260914-13): le righe copiate portano data_consegna_richiesta_cliente — la data chiesta dal cliente sopravvive alla revisione come sopravvive al push (20260913-20); firma e RETURNS TABLE di nuovo ancorati con %TYPE, SECURITY INVOKER esplicito. Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 6-quinquies. rev 2026-09-14 (20260914-14, D di Tid): le righe copiate portano anche le marche di approvazione prezzo — stato_approvazione_prezzo + pratica_approvazione_prezzo_id 1:1, come i componenti e come fn_crea_revisione_offerta (invariante: prezzo fuori policy sempre marcato; ciclo di vita della pratica su rev superata: dominio approvazioni, refactor-prezzi 4.7). Presidio: test-fn-crea-revisione-preventivo-riga-completa-v1. rev 2026-09-15 (20260915-41, D3 di Tid): la TESTATA copia emittente_fiscale_id dalla rev N — prima lo riempiva il default di sessione, e per un super admin su un altro emittente attivo la rev N+1 nasceva incoerente col BA (rifiutata dal guard). Brief: brief-db-emittente-di-default-un-bb-solo, sezione 7.1.';
+IS 'Crea revisione DRAFT da preventivo EMESSO: copia testata, righe attive, componenti BoM (FK remap) e indirizzi. Stato corrente e risoluzione DRAFT per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #2. rev 2026-08-05 (20260805-25): codici rinominati con prefisso E_ — E_PREV_REVISIONE_STATO_NON_AMMESSO (850), E_PREV_REVISIONE_BOZZA_ESISTENTE (851), E_PREV_STATO_CORRENTE_NON_TROVATO (852); i vecchi nomi restano a catalogo ritirati con obsoleto_dal. rev 2026-09-14 (20260914-13): le righe copiate portano data_consegna_richiesta_cliente — la data chiesta dal cliente sopravvive alla revisione come sopravvive al push (20260913-20); firma e RETURNS TABLE di nuovo ancorati con %TYPE, SECURITY INVOKER esplicito. Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 6-quinquies. rev 2026-09-14 (20260914-14, D di Tid): le righe copiate portano anche le marche di approvazione prezzo — stato_approvazione_prezzo + pratica_approvazione_prezzo_id 1:1, come i componenti e come fn_crea_revisione_offerta (invariante: prezzo fuori policy sempre marcato; ciclo di vita della pratica su rev superata: dominio approvazioni, refactor-prezzi 4.7). Presidio: test-fn-crea-revisione-preventivo-riga-completa-v1. rev 2026-09-15 (20260915-41, D3 di Tid): la TESTATA copia emittente_fiscale_id dalla rev N — prima lo riempiva il default di sessione, e per un super admin su un altro emittente attivo la rev N+1 nasceva incoerente col BA (rifiutata dal guard). Brief: brief-db-emittente-di-default-un-bb-solo, sezione 7.1. rev 2026-09-24 (20260924-34, decisione di Tid): nessuna revisione con un prezzo IN ATTESA — guard sul primo motivo di script.fn_check_prezzi_in_attesa (righe e componenti attivi PENDING), lo stesso con cui la capability spegne «Crea revisione». Una riga in attesa ricopiata restava legata alla pratica della rev N e sulla rev N+1 non si esitava piu''''. Approvato e rifiutato continuano a ricopiarsi (azzerarli farebbe passare un prezzo rifiutato). Brief: brief-db-preventivi-congelamento-pricing §10.';
 ```
 
 ---
