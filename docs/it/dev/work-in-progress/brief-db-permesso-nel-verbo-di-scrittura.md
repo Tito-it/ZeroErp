@@ -153,11 +153,51 @@ perimetro: va scritto nella guida, non lasciato implicito.
 
 | # | Domanda | Proposta |
 | --- | --- | --- |
-| **D-1** | Adottare il modello (§4) come direzione? | Sì, per i domini nuovi e per gli esistenti al passaggio del loro cantiere |
-| **D-2** | Ogni verbo è legato a **un'azione di processo**, o basta il livello d'area per i verbi CRUD semplici? | Due forme, **un BB**: le operazioni di processo usano l'azione, il CRUD semplice il livello (`add`/`change`/`delete` ⇒ `TUTTO`). Così `azioni_processo` non si riempie di azioni che ripetono il livello |
-| **D-3** | Il CRUD generico delle tabelle di configurazione (`config_crud_repository`) | Un verbo generico DEFINER, con la stessa whitelist e il controllo di livello sull'area `config` — oppure fuori perimetro finché le tabelle di configurazione restano scrivibili solo da `SUPER_ADMIN`. Da decidere |
-| **D-4** | Il Lotto 2 chiude subito la porta aperta (§2, ultimo punto)? | Sì, come primo caso: è piccolo, il dominio è già nella forma giusta, e insegna il modello su un caso vero |
+| **D-1** | Adottare il modello (§4) come direzione? | ✅ **DECISA da Tid il 2026-09-24: sì** — i domini nuovi (`magazzino`, `acquisti`) nascono così; gli esistenti ci passano quando un cantiere tocca le loro scritture, uno alla volta, senza data. Accettato il limite del §4.4 |
+| **D-2** | Ogni verbo è legato a **un'azione di processo**, o basta il livello d'area per i verbi CRUD semplici? | ✅ **DECISA da Tid il 2026-09-24: due forme, un BB.** Le operazioni di processo (cambia stato, emetti, genera, annulla…) chiedono la loro azione — verbo e azione coincidono; le operazioni semplici (crea, modifica, cancella) chiedono il livello d'area (`TUTTO`). La forma la sceglie chi scrive il verbo, nella prima riga, con il BB unico. `azioni_processo` non si riempie di azioni che ripetono il livello, e l'amministratore ragiona come oggi |
+| **D-3** | Il CRUD generico delle tabelle di configurazione (`config_crud_repository`) | ✅ **DECISA da Tid il 2026-09-24 — verbo generico SUBITO**, all'inizio del cantiere `magazzino`/`acquisti`. Vedi §7.1 |
+| **D-4** | Il Lotto 2 chiude subito la porta aperta (§2, ultimo punto)? | ✅ **DECISA da Tid il 2026-09-24: sì, primo cantiere del modello, subito.** `fn_posta_inventario` e `fn_posta_rettifica` diventano i verbi: controllano la loro azione nella prima riga (azioni nuove, area Magazzino) e girano DEFINER del proprietario; l'app perde `EXECUTE` su `fn_scrivi_movimento` e `fn_ricalcola_valore_giacenza`; il perimetro sui documenti (inventari, rettifiche) lo rimette il guard BB, da verificare nel lavoro. Il backend non cambia: chiama già solo le due operazioni. Sede del lavoro: da decidere (vedi registro) |
 | **D-5** | Gli override per oggetto (`fn_resolve_livello_oggetto`, `area_model_overrides`) | Il BB li onora quando il verbo nomina il proprio oggetto; da verificare sui primi verbi |
+
+### 7.1 D-3 — il pannello di configurazione passa dal verbo generico
+
+**Il fatto che ha deciso la forma** (letto dal codice il 2026-09-24): il pannello
+generico di configurazione (`REL_CONSENTITE` in `core/db/dbops_repository.py`,
+scrittura in `core/db/config_crud_repository.py` con il nome della tabella
+costruito a runtime) **non gestisce solo `config`**. La sua lista contiene tabelle
+di altri domini, fra cui `magazzino.magazzini`, `magazzino.ubicazioni` e
+`magazzino.causali`. E le quattro view del pannello dichiarano
+`area_funzionale = "config"` per **qualunque** tabella.
+
+Due conseguenze:
+
+* rimandare il pannello farebbe nascere `magazzino` con la porta chiusa sui
+  movimenti e **aperta sulle sue anagrafiche**: non sarebbe «nato così» (D-1);
+* ⛔ oggi chi ha `TUTTO` su Configurazione e `LETTURA` su Magazzino **crea e
+  cancella magazzini**: il permesso guarda l'area del pannello, non quella a cui
+  la riga appartiene.
+
+**La decisione:**
+
+1. **Un verbo generico, subito** — per esempio `fn_config_scrivi(tabella,
+   operazione, dati)`, `SECURITY DEFINER` del proprietario, perimetro col guard BB
+   dove la tabella ne ha uno.
+2. **Tutto il pannello passa dal verbo subito.** Lato backend è un repository
+   solo: il cambio vale per tutte le tabelle della lista in un colpo.
+3. **La lista ammessa diventa un dato del DB**, non più una costante del backend,
+   e **ogni riga dichiara l'area a cui la tabella appartiene** (`magazzino.magazzini`
+   → Magazzino). Il verbo controlla il livello su **quell'area**, nella forma
+   semplice della D-2 (`TUTTO`). La costante `REL_CONSENTITE` si ritira nello
+   stesso giro: una sede sola.
+4. **La porta si chiude per dominio.** `REVOKE` all'app da subito sulle tabelle di
+   `magazzino` e `acquisti`; le altre si chiudono quando passa il loro dominio
+   (D-1). Fino ad allora sono scrivibili anche direttamente, e la lista a DB lo
+   deve poter dire.
+
+⚠️ **Effetto voluto sul comportamento**: il punto 3 toglie la scrittura sulle
+tabelle di un dominio a chi aveva `TUTTO` solo su Configurazione. È corretto per il
+modello; qualche profilo andrà rivisto. Non siamo in produzione: niente da
+migrare.
 
 ---
 
@@ -166,3 +206,7 @@ perimetro: va scritto nella guida, non lasciato implicito.
 | Data | Chi | Cosa |
 | --- | --- | --- |
 | 2026-09-24 | DB | Brief scritto dall'approfondimento del §8 del brief dell'assistente AI, su decisione di Tid («3 con brief apposito») |
+| 2026-09-24 | Tid | D-1 decisa: sì al modello del verbo come direzione |
+| 2026-09-24 | Tid | D-2 decisa: due forme (azione per i processi, livello d'area per il CRUD semplice), un BB |
+| 2026-09-24 | Tid | D-3 decisa, **corretta** rispetto alla prima proposta («al primo cantiere che tocca il pannello»): il pannello contiene tabelle di magazzino, quindi verbo generico subito, lista ammessa a DB con l'area di appartenenza, porta chiusa per dominio (§7.1) |
+| 2026-09-24 | Tid | D-4 decisa: i due verbi del Lotto 2 con permesso e DEFINER, `EXECUTE` sulla primitiva tolto all'app |
