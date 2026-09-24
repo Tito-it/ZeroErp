@@ -356,7 +356,7 @@ contrario — che il service **passa** le date invertite al repository.
 
 > 🔢 **Progressivi (2026-09-24):** i changeSet di questa richiesta, se cadono
 > il 24-09, stanno in `20260924-01` … `-19`. `-20…-39` sono riservati a
-> [brief-db-preventivi-congelamento-pricing.md](../work-in-progress/brief-db-preventivi-congelamento-pricing.md).
+> [brief-db-preventivi-congelamento-pricing.md](brief-db-preventivi-congelamento-pricing.md).
 
 La prova qui sopra ne ha trovata una che il censimento del §2 non poteva vedere
 (guardava i trigger, non le funzioni che validano i propri parametri). Letto
@@ -470,7 +470,7 @@ avrebbe tenuto aperta la strada per rimetterne una. **6 test, 15 punti, verdi**
 con `ZEROERP_TEST_DB_E2E=1`. `genera_error_policies` riporta «già allineato»,
 `--check` è pulito, e nessuna classe di un codice esistente è cambiata. Il file
 generato porta anche le voci di
-[brief-db-preventivi-congelamento-pricing.md](../work-in-progress/brief-db-preventivi-congelamento-pricing.md)
+[brief-db-preventivi-congelamento-pricing.md](brief-db-preventivi-congelamento-pricing.md)
 (`E_DOC_PREZZO_*` nuovi, `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` ritirato): stesso
 catalogo, già in git. I loro ripieghi toccano a quel brief (§6.2). Cancelli dei
 codici (`test_error_policies_classi`, `test_error_policies_divergenza_db`,

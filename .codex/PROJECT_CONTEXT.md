@@ -406,8 +406,10 @@ produzione, non c'è niente da aspettare.*
   (building block `script.fn_check_prezzi_autorizzati`, cinque documenti di
   vendita), non più la sola accettazione — la revisione con quella riga non si
   emette, e resta solo l'annullamento. ✅ **Deciso da Tid lo stesso giorno**
-  (§10 di `work-in-progress/brief-db-preventivi-congelamento-pricing.md`,
-  `20260924-33…-37`, applicati il 24-09 con test verdi): una revisione **non si crea** finché un
+  (§10 di `work-done/brief-db-preventivi-congelamento-pricing.md`,
+  `20260924-33…-37`, applicati il 24-09 con test verdi; collaudo a video da
+  eseguire in `work-in-progress/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md`):
+  una revisione **non si crea** finché un
   prezzo è in attesa, quindi la riga in attesa ricopiata non può più nascere;
   approvato e rifiutato si ricopiano come prima. Resta del BE il ciclo di vita
   della pratica su una rev superata (il suo `meta` nomina la riga della rev N)

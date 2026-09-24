@@ -161,7 +161,7 @@ i motivi nel tooltip del pulsante spento, col conteggio (`valori`). ⛔ Fino a q
 `available_actions`/`can_edit_*` in Python e aggiungeva sulla testata quattro
 riepiloghi (`frozen_for_*`, `*_pricing_count`) che contavano le sole righe:
 tutti ritirati
-([brief-db-preventivi-congelamento-pricing §6.1](../../../dev/work-in-progress/brief-db-preventivi-congelamento-pricing.md)).
+([brief-db-preventivi-congelamento-pricing §6.1](../../../dev/work-done/brief-db-preventivi-congelamento-pricing.md)).
 
 ---
 

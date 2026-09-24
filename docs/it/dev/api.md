@@ -719,7 +719,7 @@ unifica la lettura; motivi, chiavi i18n e sotto-oggetti (`pdf`) si leggono dal
 suo `capabilities`, mai da `detail.x`.
 ✅ **Il pregresso è convertito** (2026-09-23, tutti i dettagli in un giro, senza
 doppia lettura):
-[brief-be-fe-capability-annidata.md](work-in-progress/brief-be-fe-capability-annidata.md).
+[brief-be-fe-capability-annidata.md](work-done/brief-be-fe-capability-annidata.md).
 
 ⚠️ **La chiave c'è sempre**: un dettaglio che ripiega quando la capability
 fallisce (offerte, lotto) consegna `capabilities: {}`, non la omette — la
