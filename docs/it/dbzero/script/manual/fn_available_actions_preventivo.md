@@ -209,3 +209,13 @@ Motivi possibili: `PREZZO_PENDENTE` / `PREZZO_RIFIUTATO`, con `reason_key`
 ⭐ Con questo il backend può togliere la sua riscrittura di `available_actions` e
 `can_edit_*` in `preventivi_service.get_preventivo` (richiesta al team backend, brief
 `brief-db-preventivi-congelamento-pricing` §6). (changeSet `20260924-23`.)
+
+---
+
+### Rev 2026-09-24 (2) — «Crea revisione» spento con un prezzo in attesa
+
+(`20260924-36`.) L'azione `crea_revisione` resta proposta su `EMESSO`, ma è **spenta con il
+motivo** (`enabled`, `reason`, `reason_key`, `reasons`) se il preventivo ha un prezzo in
+attesa — [script.fn_check_prezzi_in_attesa](/dbzero/script/funzioni/fn_check_prezzi_in_attesa),
+la stessa funzione con cui `fn_crea_revisione_preventivo` rifiuta. `can_create_revisione`
+diventa **veritiero**: vero solo se la revisione si può davvero creare.

@@ -160,4 +160,20 @@ SELECT * FROM vendite.fn_crea_revisione_preventivo(42, 'operatore1');
 
 ---
 
+### Rev 2026-09-24 — nessuna revisione con un prezzo in attesa
+
+(`20260924-34`, decisione di Tid.) Dopo i controlli sullo stato, la funzione rifiuta la
+revisione se il preventivo ha righe o componenti attivi con un prezzo **in attesa** di
+approvazione: solleva il primo motivo di
+[script.fn_check_prezzi_in_attesa](/dbzero/script/funzioni/fn_check_prezzi_in_attesa)
+(`E_DOC_PREZZO_PENDENTE`). La ragione: la revisione ricopia stato e pratica di approvazione, e
+una riga in attesa ricopiata restava legata alla pratica della versione vecchia — in attesa
+per sempre sulla nuova. **Prima l'esito, poi la revisione.**
+
+⭐ La copia di approvato e rifiutato **resta** (`20260914-14`): azzerarla farebbe passare un
+prezzo rifiutato. Il pulsante «Crea revisione» è spento con lo stesso motivo
+(`fn_available_actions_preventivo`).
+
+---
+
 {% include-markdown "signature-core.md" %}

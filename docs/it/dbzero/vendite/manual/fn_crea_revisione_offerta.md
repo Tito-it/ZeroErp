@@ -122,4 +122,17 @@ SELECT vendite.fn_crea_revisione_offerta(42, 'operatore1');
 
 ---
 
+### Rev 2026-09-24 — nessuna revisione con un prezzo in attesa
+
+(`20260924-35`, decisione di Tid.) Dopo il controllo sullo stato, la funzione rifiuta la
+revisione se l'offerta ha eccezioni o loro componenti attivi con un prezzo **in attesa**:
+solleva il primo motivo di
+[script.fn_check_prezzi_in_attesa](/dbzero/script/funzioni/fn_check_prezzi_in_attesa)
+(`E_DOC_PREZZO_PENDENTE`). Stessa ragione della gemella del preventivo: un'eccezione in attesa
+ricopiata restava legata alla pratica della versione vecchia. La copia di approvato e
+rifiutato resta (`20260601-05`). Nello stesso changeSet firma e risultato sono ancorati con
+`%TYPE` e `SECURITY INVOKER` è esplicito.
+
+---
+
 {% include-markdown "signature-core.md" %}

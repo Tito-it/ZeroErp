@@ -229,3 +229,13 @@ Un'offerta con un'eccezione o un suo componente **attivi** in attesa di approvaz
 Motivi nuovi: `PREZZO_PENDENTE` / `PREZZO_RIFIUTATO`, con `reason_key`
 `common.azione_reason.prezzo_pendente` / `common.azione_reason.prezzo_rifiutato`.
 (changeSet `20260924-28`, brief `brief-db-preventivi-congelamento-pricing`.)
+
+---
+
+### Rev 2026-09-24 (2) — «Crea revisione» spento con un prezzo in attesa
+
+(`20260924-37`.) L'azione `crea_revisione` resta proposta su `EMESSA`, ma è **spenta con il
+motivo** se l'offerta ha un prezzo in attesa —
+[script.fn_check_prezzi_in_attesa](/dbzero/script/funzioni/fn_check_prezzi_in_attesa), la
+stessa funzione con cui `fn_crea_revisione_offerta` rifiuta. `can_create_revisione` diventa
+**veritiero**.

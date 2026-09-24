@@ -10,7 +10,7 @@
 --  3) ⭐ zero punti NON CLASSIFICATI — un presidio che non sa leggere un sito
 --        deve diventare ROSSO, non saltarlo
 --  4) il debito FUORI perimetro non cresce (soglia 6, puo' solo calare)
---  5) le ventitre' funzioni bonificate CHIAMANO davvero l'helper (una
+--  5) le venticinque funzioni bonificate CHIAMANO davvero l'helper (una
 --        chiamata, non una menzione: i commenti sono fuori dal conteggio)
 --  6) ⚠️ il marcatore non e' troppo LARGO: un codice LETTERALE resta fuori
 --  7) ⭐⭐ la canarina: il marcatore non e' troppo STRETTO
@@ -154,7 +154,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    23,
+    25,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -193,7 +193,12 @@ SELECT is(
     --   trgfn_preventivi_guard_transizione (-22) e Regola 5 di
     --   trgfn_ordini_guard_transizione (-29) — stanno in funzioni gia' nel conto:
     --   si conta la FUNZIONE, non le chiamate.
-    'le ventitre'' funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-09-24 (sera): da 23 a 25. Due siti NUOVI nati sull'helper: le
+    --   madri delle revisioni vendite.fn_crea_revisione_preventivo (20260924-34)
+    --   e vendite.fn_crea_revisione_offerta (20260924-35), che rifiutano una
+    --   revisione col primo motivo di script.fn_check_prezzi_in_attesa (§10 del
+    --   brief-db-preventivi-congelamento-pricing).
+    'le venticinque funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la

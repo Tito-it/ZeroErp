@@ -49,6 +49,7 @@
 - [fn_check_preventivo_annullabile](funzioni/fn_check_preventivo_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-08-10)
 - [fn_check_preventivo_emettibile](funzioni/fn_check_preventivo_emettibile.md) — (rev 2026-09-24 — MOTIVO 2, i prezzi non autorizzati; funzione nata il 2026-08-29)
 - [fn_check_prezzi_autorizzati](funzioni/fn_check_prezzi_autorizzati.md) — (nata il 2026-09-24 — `20260924-20`)
+- [fn_check_prezzi_in_attesa](funzioni/fn_check_prezzi_in_attesa.md) — (nata il 2026-09-24 — `20260924-33`)
 - [fn_check_registro_disattivabile](funzioni/fn_check_registro_disattivabile.md)
 - [fn_check_registro_forma_modificabile](funzioni/fn_check_registro_forma_modificabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_check_registro_serie_ammessa](funzioni/fn_check_registro_serie_ammessa.md)
