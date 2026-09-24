@@ -1,6 +1,6 @@
 {
   "_scopo": "Registro delle letture PIATTE di una chiave di primo livello del blob capability (npm run guard:capability, verifica 3). Il blob sta SOTTO `capabilities` (api.md §«Il blob sta SOTTO `capabilities`», decisione Tid 2026-09-23): qui stanno SOLO gli omonimi — stesso nome, altra sorgente — ciascuno col suo motivo. PUO SOLO CALARE: il guard e rosso se una lettura non dichiarata compare, e anche se una dichiarata sparisce senza che la voce venga abbassata. Si scrive a mano: il motivo non si genera.",
-  "_regola": "docs/it/dev/work-in-progress/brief-be-fe-capability-annidata.md §4.0 e §4.3",
+  "_regola": "docs/it/dev/work-done/brief-be-fe-capability-annidata.md §4.0 e §4.3",
   "echi": {
     "stato_codice": "Il blob riecheggia lo stato del documento. Lo stesso nome e' una colonna di documenti e righe di lista in tutto il frontend (distinte, coda righe, dashboard): una lettura piatta di `stato_codice` legge una riga, non il blob.",
     "stato_codice_interno": "Come `stato_codice`: il blob del contratto lo riecheggia, e ogni testata e ogni vista di lista ha la sua colonna omonima.",
