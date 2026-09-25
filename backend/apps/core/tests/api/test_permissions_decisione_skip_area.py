@@ -13,6 +13,10 @@
 #        - outbox email: vale l'AREA `config`. Leggere vuole LETTURA, spedire
 #          vuole TUTTO (i livelli sono TUTTO / LETTURA / BLOCCATO): senza, 403.
 #          Nessuno skip la apre.
+#        - il LOG email (`EmailLogOperatoreListView`, sola lettura): vale lo
+#          SKIP dal 2026-09-26 (Tid) — chi vede quale mail lo decide la RLS per
+#          ambito, e un livello d'area sopra sarebbe una seconda regola. Le
+#          bozze restano sotto `config` finche' non esiste `invia_email`.
 #        - `RuoliConfigResolverView`: vale lo SKIP, come i lookup soggetti di
 #          cui e' la configurazione — la apre chi apre un drawer, da qualunque
 #          dominio, senza livello su `anagrafiche`.
@@ -31,6 +35,7 @@ Indice test (0..N):
  2. test_leggere_l_outbox_vuole_lettura_su_config
  3. test_spedire_una_mail_vuole_scrittura_su_config
  4. test_la_configurazione_del_resolver_soggetti_si_apre_senza_anagrafiche
+ 5. test_il_log_email_si_legge_senza_nessun_livello_su_config
 """
 
 from unittest.mock import ANY, MagicMock, patch
@@ -38,7 +43,11 @@ from unittest.mock import ANY, MagicMock, patch
 from django.test import SimpleTestCase
 
 from apps.anagrafiche.api.views_ruoli_config import RuoliConfigResolverView
-from apps.core.api.email_views import EmailOutboxListView, EmailOutboxSendView
+from apps.core.api.email_views import (
+    EmailLogOperatoreListView,
+    EmailOutboxListView,
+    EmailOutboxSendView,
+)
 from apps.core.api.permissions import ZeroERPPermission
 from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
 from apps.core.tests.api.test_permissions import _mock_request
@@ -117,3 +126,15 @@ class DecisioneSkipAreaTests(SimpleTestCase):
         _resolver(mock_resolver, "BLOCCATO")
         self.assertTrue(self.perm.has_permission(_mock_request(method="GET"), RuoliConfigResolverView()))
         mock_resolver.get_livello_area.assert_not_called()
+
+    @patch("apps.core.api.permissions.PermissionResolver")
+    def test_il_log_email_si_legge_senza_nessun_livello_su_config(self, mock_resolver):
+        """Le proprie mail le legge chiunque: il perimetro lo tiene la RLS.
+
+        ⚠️ Nello stesso test la controprova sull'outbox: aprire il log non deve
+        aver aperto le bozze, che restano sotto `config`.
+        """
+        _resolver(mock_resolver, "BLOCCATO")
+        self.assertTrue(self.perm.has_permission(_mock_request(method="GET"), EmailLogOperatoreListView()))
+        mock_resolver.get_livello_area.assert_not_called()
+        self.assertFalse(self.perm.has_permission(_mock_request(method="GET"), EmailOutboxListView()))

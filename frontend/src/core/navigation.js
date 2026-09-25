@@ -40,6 +40,8 @@ export const NAV_ICONS = Object.freeze({
   // futuro giri/job). pi-wrench = cassetta attrezzi, non-tecnico.
   STRUMENTI: 'pi pi-wrench',
   CODE_LAVORO: 'pi pi-inbox',
+  // Dominio PERSONALE (2026-09-26): le cose dell'operatore, non di un'area.
+  PERSONALE: 'pi pi-user',
   // Dominio INCASSI. ⚠️ Nessuna e' l'icona del dominio (`pi-credit-card`): una
   // voce di menu che ripete l'icona del suo dominio non distingue niente.
   DISTINTE: 'pi pi-wallet',
@@ -149,7 +151,14 @@ export const DOMAINS = [
   // lavoro/stampa (accesso primario = badge top bar; la voce menu e' la via
   // secondaria — brief gestione-code P-1).
   { key: 'strumenti', icon: NAV_ICONS.STRUMENTI, to: '/strumenti', schemaDb: 'strumenti' },
-  { key: 'config', icon: NAV_ICONS.CONFIG, to: '/config', schemaDb: 'config' },
+  // Personale: cio' che appartiene all'OPERATORE e non a un'area — oggi le sue
+  // email (decisione Tid 2026-09-26). ⛔ SENZA `schemaDb`, di proposito: un
+  // dominio senza area non si blocca mai, ed e' la forma a video dello
+  // `skip_area_check` delle sue rotte BE. Chi vede quale riga lo decide la RLS.
+  // ⚠️ Una voce che qui chiede un'area rimetterebbe il cancello che il backend
+  // non ha: resta fuori, o va in un dominio d'area.
+  { key: 'personale', icon: NAV_ICONS.PERSONALE, to: '/personale' },
+  { key: 'config', icon: NAV_ICONS.CONFIG, to: '/config'},
   { key: 'amm-software', icon: NAV_ICONS.AMM_SOFTWARE, to: '/amm-software', adminOnly: true, schemaDb: 'amm_software' }
 ]
 
@@ -282,6 +291,9 @@ export const DOMAIN_MENUS = {
   'contabilita': [],
   'strumenti': [
     { key: 'code-lavoro', icon: NAV_ICONS.CODE_LAVORO, to: '/strumenti/code-lavoro' }
+  ],
+  'personale': [
+    { key: 'email', icon: NAV_ICONS.ENVELOPE, to: '/personale/email' }
   ],
   'pratiche': [
     { key: 'home', icon: NAV_ICONS.HOME, to: '/pratiche' },

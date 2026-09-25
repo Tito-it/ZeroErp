@@ -14,6 +14,8 @@ import logging
 import re
 import smtplib
 from datetime import datetime, timezone
+from email import encoders
+from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Any
@@ -22,7 +24,9 @@ from django.conf import settings
 
 from apps.core.db.email_repository import EmailRepository
 from apps.core.services import crypto_service
+from apps.core.services.email_allegati_storage import percorso_allegato
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.service_errors import ServiceError
 
 logger = logging.getLogger("zeroerp.email")
 
@@ -186,6 +190,10 @@ class EmailDispatchService:
         pratica_id: int | None = None,
         auth_user_id: int | None = None,
         destinatari_cc: list[str] | None = None,
+        # ⭐ Per una mail che non e' di sistema: l'azienda e CHI la manda — in
+        #    un invio diretto, l'utente della richiesta. Vedi `insert_log`.
+        emittente_fiscale_id: int | None = None,
+        creato_da_user_id: int | None = None,
     ) -> tuple[int, bool]:
         template, account, oggetto, corpo_html, corpo_testo = self.resolve_and_render(
             codice_template=codice_template,
@@ -209,6 +217,8 @@ class EmailDispatchService:
             pratica_id=pratica_id,
             auth_user_id=auth_user_id,
             contesto_json=variabili,
+            emittente_fiscale_id=emittente_fiscale_id,
+            creato_da_user_id=creato_da_user_id,
         )
 
     # Scopo: Invia email da dati gia' renderizzati (usato sia da send_email che da outbox).
@@ -236,6 +246,15 @@ class EmailDispatchService:
         pratica_id: int | None = None,
         auth_user_id: int | None = None,
         contesto_json: dict[str, Any] | None = None,
+        emittente_fiscale_id: int | None = None,
+        creato_da_user_id: int | None = None,
+        # ⭐ Gli allegati da spedire (righe di `config.email_allegato`, con
+        #    `nome_file`, `mime_type`, `file_path`). Dalla bozza sono i suoi:
+        #    al momento dell'invio stanno ancora sull'outbox, e al log si
+        #    agganciano dopo (`copy_allegati_to_log`).
+        # ⛔ Fino al 2026-09-25 non esisteva: gli allegati si salvavano e si
+        #    agganciavano al log, ma la mail partiva senza.
+        allegati: list[dict[str, Any]] | None = None,
     ) -> tuple[int, bool]:
         # Crea record log con stato PENDING
         log_id = self._repo.insert_log(
@@ -252,6 +271,8 @@ class EmailDispatchService:
             pratica_id=pratica_id,
             auth_user_id=auth_user_id,
             contesto_json=contesto_json,
+            emittente_fiscale_id=emittente_fiscale_id,
+            creato_da_user_id=creato_da_user_id,
         )
 
         # Invio
@@ -260,7 +281,10 @@ class EmailDispatchService:
             self._registra_non_configurato(log_id, account, ambito)
             return log_id, False
         if canale == CANALE_CONSOLE:
-            self._send_console(account, destinatario, destinatari_cc, oggetto, corpo_html, corpo_testo)
+            self._send_console(
+                account, destinatario, destinatari_cc, oggetto, corpo_html,
+                corpo_testo, allegati,
+            )
             # ⭐ `SIMULATA`, non `SENT` — il residuo dichiarato qui e' CHIUSO
             #    (team DB, 2026-09-11: `chk_email_log_stato` ammette il quinto
             #    valore). La mail e' stata stampata, non consegnata, e adesso il
@@ -276,7 +300,7 @@ class EmailDispatchService:
 
         success = self._send_smtp(
             account, destinatario, destinatari_cc, oggetto, corpo_html,
-            corpo_testo, log_id, ambito,
+            corpo_testo, log_id, ambito, allegati,
         )
         return log_id, success
 
@@ -295,6 +319,7 @@ class EmailDispatchService:
         corpo_testo: str | None,
         log_id: int,
         ambito: str,
+        allegati: list[dict[str, Any]] | None = None,
     ) -> bool:
         server: smtplib.SMTP | smtplib.SMTP_SSL | None = None
         try:
@@ -307,7 +332,16 @@ class EmailDispatchService:
                 return False
             password = crypto_service.decrypt(encrypted_pw)
 
-            msg = MIMEMultipart("alternative")
+            corpo = MIMEMultipart("alternative")
+            if corpo_testo:
+                corpo.attach(MIMEText(corpo_testo, "plain", "utf-8"))
+            corpo.attach(MIMEText(corpo_html, "html", "utf-8"))
+            # ⭐ Con allegati il messaggio e' `mixed`: il corpo alternativo
+            #    (testo + HTML) e poi i file. Senza, resta il solo corpo.
+            # ⛔ Un file che non si legge fa FALLIRE l'invio (OSError, ramo
+            #    sotto): una mail che parte senza l'allegato promesso e'
+            #    peggio di una che non parte e lo dice nel log.
+            msg = self._componi_con_allegati(corpo, allegati) if allegati else corpo
             msg["Subject"] = oggetto
             msg["From"] = account["email_from"]
             msg["To"] = destinatario
@@ -315,10 +349,6 @@ class EmailDispatchService:
                 msg["Cc"] = ", ".join(destinatari_cc)
             if account.get("email_reply_to"):
                 msg["Reply-To"] = account["email_reply_to"]
-
-            if corpo_testo:
-                msg.attach(MIMEText(corpo_testo, "plain", "utf-8"))
-            msg.attach(MIMEText(corpo_html, "html", "utf-8"))
 
             all_recipients = [destinatario] + (destinatari_cc or [])
 
@@ -337,7 +367,10 @@ class EmailDispatchService:
             logger.info("Email inviata: log_id=%s dest=%s", log_id, destinatario)
             return True
 
-        except (smtplib.SMTPException, OSError, ValueError) as exc:
+        # ⚠️ `ServiceError` e' il path di un allegato fuori dalla radice
+        #    (`percorso_allegato`): la mail non parte, e il log lo dice invece
+        #    di restare PENDING.
+        except (smtplib.SMTPException, OSError, ValueError, ServiceError) as exc:
             self._repo.update_log_stato(
                 log_id, "FAILED", ambito=ambito, errore=str(exc)[:500],
             )
@@ -349,6 +382,26 @@ class EmailDispatchService:
                     server.quit()
                 except Exception:
                     pass
+
+    # Scopo: Il messaggio `mixed` — il corpo alternativo seguito dai file
+    #        allegati, letti dallo storage col BB `percorso_allegato`.
+    def _componi_con_allegati(
+        self, corpo: MIMEMultipart, allegati: list[dict[str, Any]],
+    ) -> MIMEMultipart:
+        msg = MIMEMultipart("mixed")
+        msg.attach(corpo)
+        for allegato in allegati:
+            with open(percorso_allegato(allegato["file_path"]), "rb") as f:
+                contenuto = f.read()
+            principale, _, secondario = (
+                allegato.get("mime_type") or "application/octet-stream"
+            ).partition("/")
+            parte = MIMEBase(principale, secondario or "octet-stream")
+            parte.set_payload(contenuto)
+            encoders.encode_base64(parte)
+            parte.add_header("Content-Disposition", "attachment", filename=allegato["nome_file"])
+            msg.attach(parte)
+        return msg
 
     # Scopo: Registra sul giornale che l'email NON e' partita perche' l'account
     #        non e' configurato — con il motivo e la strada per rimediare.
@@ -393,17 +446,20 @@ class EmailDispatchService:
         oggetto: str,
         corpo_html: str,
         corpo_testo: str | None,
+        allegati: list[dict[str, Any]] | None = None,
     ) -> None:
         separator = "=" * 60
         logger.info(
             "\n%s\nEMAIL (console mode)\n%s\n"
             "Da:       %s\nA:        %s\nCC:       %s\nOggetto:  %s\n"
+            "Allegati: %s\n"
             "%s\n%s\n%s",
             separator, separator,
             account.get("email_from", "N/D"),
             destinatario,
             ", ".join(destinatari_cc) if destinatari_cc else "(nessuno)",
             oggetto,
+            ", ".join(a["nome_file"] for a in allegati) if allegati else "(nessuno)",
             "-" * 60,
             corpo_testo or "(solo HTML)",
             separator,
@@ -414,6 +470,10 @@ class EmailDispatchService:
     # ⚠️ L'ambito si legge dal `log_detail` che il chiamante ha gia' in mano
     #    (`get_log` lo consegna): serve a scegliere la porta con cui si
     #    scrive l'esito, non a descrivere la riga.
+    # ⭐ Gli allegati si rileggono dal LOG: al primo tentativo fallito
+    #    `confirm_and_send` li ha gia' agganciati alla riga. Il processo li vede
+    #    perche' la policy degli allegati passa da quella del log, che gli da'
+    #    le mail del suo perimetro.
     def retry_log_entry(self, log_id: int, account: dict[str, Any], log_detail: dict[str, Any]) -> bool:
         ambito = log_detail["ambito"]
         canale = self.canale_invio(account)
@@ -422,6 +482,7 @@ class EmailDispatchService:
             #    e' lo stesso guasto una seconda volta. Si dice, e si torna False.
             self._registra_non_configurato(log_id, account, ambito)
             return False
+        allegati = self._repo.list_allegati_by_log(log_id)
         if canale == CANALE_CONSOLE:
             self._send_console(
                 account,
@@ -430,6 +491,7 @@ class EmailDispatchService:
                 log_detail["oggetto"],
                 log_detail.get("corpo_inviato_html", ""),
                 log_detail.get("corpo_inviato_testo"),
+                allegati,
             )
             # ⭐ Stesso esito del gemello in `send_raw`: stampata, non spedita.
             #    ⛔ `inviato_at` NULL (brief §7.1) — e qui la riga potrebbe gia'
@@ -448,6 +510,7 @@ class EmailDispatchService:
             log_detail.get("corpo_inviato_testo"),
             log_id,
             ambito,
+            allegati,
         )
 
     # Scopo: Testa la connessione SMTP di un account (senza inviare email).

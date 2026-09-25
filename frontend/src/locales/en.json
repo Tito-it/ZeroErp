@@ -251,6 +251,7 @@
     "contabilita": "Accounting",
     "amm-software": "Admin Software",
     "strumenti": "Tools",
+    "personale": "Personal",
     "collapse": "Collapse",
     "expand": "Expand",
     "back_home": "Home",
@@ -269,6 +270,9 @@
   "nav_menu": {
     "strumenti": {
       "code-lavoro": "Work queues"
+    },
+    "personale": {
+      "email": "Email"
     },
     "amm-software": {
       "operatori": "Operators",
@@ -1317,7 +1321,6 @@
     "email_template": "Template",
     "email_template_title": "Email template",
     "email_smtp_password_placeholder": "********",
-    "email_stato_tutti": "All statuses",
     "email_stato_sent": "Sent",
     "email_stato_failed": "Failed",
     "email_stato_pending": "Pending",
@@ -5928,6 +5931,10 @@
       "non_letto": "The balance could not be read: retry before concluding there is nothing left to pay.",
       "livello_non_pronto": "The balance for this level is not available yet.",
       "include_riga_corrente": "The amount in progress also includes this line: at this level the balance cannot exclude it."
+    },
+    "email_log": {
+      "stato": "Status",
+      "stato_tutti": "All statuses"
     }
   },
   "fattura_lookup": {

@@ -263,8 +263,8 @@ export function listUnitaOrganizzative() {
 
 // Livelli EREDITATI dal profilo: cosa l'operatore avrebbe senza override.
 // ⛔ Non e' `reparti/<uo_id>/profilo/`, che legge il solo binding REPARTO: i
-//    bindings sono tre (AD_HOC prio 1, PORTALE e REPARTO prio 2) e i resolver
-//    prendono il primo per priorita'. Alimenta la colonna «ereditato».
+//    bindings sono tre (AD_HOC prio 1, REPARTO prio 2, PORTALE di veste prio 3)
+//    e i resolver prendono il primo per priorita'. Alimenta la colonna «ereditato».
 // ℹ️ Nessuna chiave `oggetti`: per un model l'ereditato e' il livello della sua
 //    AREA, che sta gia' in `aree`.
 export function getPermessiEreditati(authUserId) {
@@ -322,10 +322,3 @@ export function lookupAuditSources() {
   return api.get(`${BASE}/lookup/audit-sources/`)
 }
 
-// Lookup statico stati email log (5 codici fissi: SENT/PENDING/RETRY/FAILED/
-// SIMULATA — quest'ultimo dal 2026-09-11: stampata a video, non spedita).
-// Single source of truth lato BE in amm_software_service._EMAIL_LOG_STATI_VALIDI.
-// Restituisce lista nuda di { codice, descrizione, ordering }.
-export function lookupEmailLogStati() {
-  return api.get(`${BASE}/lookup/email-log-stati/`)
-}

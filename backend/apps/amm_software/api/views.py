@@ -287,8 +287,10 @@ class PermessiEreditatiView(AdminAPIView):
     perche' da quel momento non segue piu' il reparto quando il reparto cambia.
 
     ⛔ Non e' `reparti/<uo_id>/profilo/`: quello legge il solo binding REPARTO,
-    mentre i bindings sono tre (AD_HOC prio 1, PORTALE e REPARTO prio 2) e i
-    resolver prendono il primo per priorita'.
+    mentre i bindings sono tre (AD_HOC prio 1, REPARTO prio 2, PORTALE di
+    veste prio 3) e i resolver prendono il primo per priorita'. Il calcolo sta
+    a DB (`script.fn_get_permessi_ereditati_aree` / `..._azioni`), la stessa
+    funzione che i resolver chiamano.
     """
 
     @extend_schema(
@@ -946,27 +948,3 @@ class AuditSourcesLookupView(AdminAPIView):
         return success_response(AmmSoftwareService().list_audit_sources())
 
 
-class EmailLogStatiLookupView(AdminAPIView):
-    """GET lookup statico stati email log (Fase 5).
-
-    Single source of truth in `amm_software_service._EMAIL_LOG_STATI_VALIDI`
-    + `_EMAIL_LOG_STATI_DESCRIZIONI`. Niente DB: 5 codici fissi
-    (SENT/PENDING/RETRY/FAILED/SIMULATA) gestiti dal `EmailDispatchService`.
-    Pattern simmetrico a `EmittenteRoundingModesLookupView`.
-    ⚠️ Questa docstring finisce nello schema OpenAPI: e' la descrizione che
-    legge chi consuma la rotta, quindi il numero va tenuto col vocabolario.
-    """
-
-    @extend_schema(
-        responses={200: inline_serializer(
-            name="AmmEmailLogStatiLookupResp",
-            fields={
-                "data": serializers.ListField(child=serializers.DictField()),
-                "meta": serializers.DictField(required=False),
-            },
-        )},
-    )
-    # Scopo: Restituisce la lista statica degli stati email log.
-    def get(self, request: Request) -> JsonResponse:
-        del request
-        return success_response(AmmSoftwareService().list_email_log_stati())

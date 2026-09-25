@@ -783,3 +783,25 @@ export const CLASSE_ERRORE_MAP = {
 export function classeErroreSeverity(classe) {
   return resolveSeverity(CLASSE_ERRORE_MAP, classe)
 }
+
+// --- Mappa stati del log email (`config.email_log.stato`) ---
+// ⭐ Scesa qui il 2026-09-26 da `amministrazione/constants.js`: la usano due
+//    schermate (il log dell'admin e quello dell'operatore), e i colori di stato
+//    hanno una sede sola.
+// ⛔ Ogni stato TERMINALE ha il suo ramo: il ripiego non e' una rete. Nel
+//    2026-09-11 il ripiego era `info`, cioe' il colore di PENDING, e uno stato
+//    nuovo sarebbe uscito identico a «in lavorazione».
+// SIMULATA: stampata a video, non spedita — terminale e VOLUTA, quindi ne'
+// rossa (non e' un guasto) ne' verde (non e' arrivata a nessuno): grigia.
+export const STATO_EMAIL_LOG_MAP = {
+  SENT: 'success',
+  PENDING: 'info',
+  RETRY: 'warn',
+  FAILED: 'danger',
+  SIMULATA: 'secondary',
+}
+
+// Scopo: Shortcut per lo stato di una mail nel log.
+export function statoEmailLogSeverity(codice) {
+  return resolveSeverity(STATO_EMAIL_LOG_MAP, codice)
+}

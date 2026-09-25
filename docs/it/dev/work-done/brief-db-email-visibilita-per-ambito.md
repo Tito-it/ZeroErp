@@ -2,18 +2,24 @@
 
 > **Chi scrive:** backend/frontend (`dev/backend-tid`), 2026-09-25. **A chi:**
 > Tid (decisioni, §4), poi team DB (`dev/db-tid`).
-> **Origine:** [piano-be-fe-endpoint-senza-porta.md](piano-be-fe-endpoint-senza-porta.md)
+> **Origine:** [piano-be-fe-endpoint-senza-porta.md](../work-in-progress/piano-be-fe-endpoint-senza-porta.md)
 > §3. Il 2026-09-25 Tid ha scelto la strada **(a)**: gli operatori devono poter
 > vedere le mail del loro perimetro, a partire dalla sola lista.
-> **Stato:** ✅ **D-1 → D-5 decise da Tid il 2026-09-25** (§4, §4.1).
+> **Stato:** ✅ **CHIUSO e archiviato il 2026-09-26** (DB, BE e FE: §6, §8, §9).
+> Restano fuori, dichiarati: la regola della scheda pratica (D-3, cantiere
+> pratiche) e l'apertura delle bozze agli operatori (azione `invia_email`, piano
+> endpoint-senza-porta §2.3 passo 5).
+> ✅ **D-1 → D-5 decise da Tid il 2026-09-25** (§4, §4.1).
 > ✅ **Lato DB chiuso il 2026-09-25** (§6): changeSet `20260925-63..-70`
 > applicati, pgTAP senza regressioni, commit fatto (Tid).
 > ✅ **Secondo giro DB chiuso il 2026-09-25 sera** (§8): «una mail si tocca
 > solo in bozza», changeSet `20260925-71..-74`, applicati, pgTAP verdi (Tid).
-> **Lato DB non resta niente.** **Cosa resta** (§7): le richieste al **BE**
-> (§6.4 e §8.4; una rompe un test Django finché non la si fa), poi il §5. Il
-> brief va in `work-done/` quando il BE ha chiuso le sue richieste. ⛔ È il **prerequisito della
-> schermata operatore**: il BE/FE non parte finché questo brief non è chiuso.
+> **Lato DB non resta niente.** ✅ **Richieste al BE chiuse il 2026-09-26**
+> (§9): §6.4 e §8.4, più un difetto preesistente che nascondevano (l'`INSERT`
+> del log non scriveva l'emittente). **Cosa resta** (§7): il §5 — la lista del
+> log fuori dall'area `config` e la schermata — ✅ fatto il 2026-09-26 (§9.6).
+> Il brief può andare in `work-done/`. Era il **prerequisito della
+> schermata operatore**: da qui la schermata può partire.
 > **Da leggere per primo: §6.**
 >
 > **In una riga:** il modello dichiara che una mail di ambito `OPERATORE` la vede
@@ -346,14 +352,14 @@ scratch:
 
 | # | Cosa | Di chi | Stato |
 | --- | --- | --- | --- |
-| 1 | `test_ricerca_email_db.py`: la mail `OPERATORE` deve portare l'autore (§6.4.1) | BE | ⛔ aperto: il test Django è rosso finché non si fa |
-| 2 | `insert_log` e `send_raw` scrivono `email_log.creato_da_user_id` (§6.4.2) | BE | aperto: finché manca, una mail `OPERATORE` sul log viene respinta |
-| 3 | Togliere la regola dalle view: `_check_outbox_access` e il filtro della lista bozze (§6.4.3) | BE | aperto, insieme al §5 |
+| 1 | `test_ricerca_email_db.py`: la mail `OPERATORE` deve portare l'autore (§6.4.1) | BE | ✅ **chiuso** 2026-09-26 (§9.1) — e con lui `test_email_porta_di_sistema` n. 2, che aveva lo stesso difetto |
+| 2 | `insert_log` e `send_raw` scrivono `email_log.creato_da_user_id` (§6.4.2) | BE | ✅ **chiuso** 2026-09-26 (§9.1), insieme all'emittente che mancava da settembre |
+| 3 | Togliere la regola dalle view: `_check_outbox_access` e il filtro della lista bozze (§6.4.3) | BE | ✅ **chiuso** 2026-09-26 (§9.2) |
 | 4 | Ponte django parziale sullo scratch (§6.5) | Tid | ✅ **deciso il 2026-09-25: si lascia così**. Il rosso sparisce alla prossima ricostruzione dello scratch; non tocca la CI |
 | 5 | Regola della scheda pratica (D-3) | DB, con le pratiche | ✅ confermata rimandata al cantiere pratiche (Tid, 2026-09-25) |
 | 6 | Allegati di una mail già spedita (§6.6) | DB | ✅ **chiuso** (§8, `20260925-71..-74`): applicato, pgTAP verdi (Tid, 2026-09-25) |
-| 7 | La lista del log esce dall'area `config` (§5) | BE/FE | parte dopo i punti 1–3 |
-| 8 | Richieste BE del secondo giro (§8.4) | BE | aperto |
+| 7 | La lista del log esce dall'area `config` (§5) | BE/FE | ✅ **chiuso** 2026-09-26 (§9.6): skip d'area sulla sola lista, dominio FE «Personale» |
+| 8 | Richieste BE del secondo giro (§8.4) | BE | ✅ **chiuso** 2026-09-26 (§9.3) |
 
 ## 8. Secondo giro DB — «una mail si tocca solo in bozza» (2026-09-25 sera)
 
@@ -448,6 +454,106 @@ correzione del test 1).
    dopo l'annullamento le righe puntano a file che non esistono. Col guard
    nuovo quelle righe non si possono più togliere (la bozza è `CANCELLED`).
    Se le righe vanno tolte, si tolgono **prima** di scrivere `CANCELLED`.
+
+
+## 9. Consegna BE (2026-09-26)
+
+### 9.1 L'autore e l'azienda sul log (§6.4.1, §6.4.2)
+
+* `EmailRepository.insert_log` scrive `creato_da_user_id` **e**
+  `emittente_fiscale_id`. `send_raw` e `send_email` li prendono come
+  parametri; `confirm_and_send` li copia dalla **bozza** (`get_outbox` ora
+  legge anche l'emittente). Negli invii diretti li passa il chiamante:
+  oggi sono tutti `SISTEMA` (reset password, inviti, digest, approvazione
+  prezzo), quindi nessuno li valorizza, e la porta di sistema non li prende.
+* ⛔ **Il difetto che c'era sotto, e che il brief non nominava**: l'`INSERT`
+  del log non scriveva nemmeno `emittente_fiscale_id`. Dal `20260905-41`
+  (`chk_email_log_ambito_emittente`) ogni invio di una bozza non di sistema
+  veniva quindi **rifiutato** — prima dalla policy (42501), poi dal CHECK. Non
+  lo vedeva nessuno perché la schermata della bozza non esiste e i test del
+  service mockano il repository.
+* **Due** test Django scrivevano una mail `OPERATORE` senza autore, non uno:
+  `test_ricerca_email_db` (§6.4.1) e `test_email_porta_di_sistema` n. 2.
+  Corretti entrambi.
+* ⭐ Test nuovo sul DB vero, dal percorso del backend:
+  `core/tests/db/test_email_bozza_invio_db` — bozza `OPERATORE` con un
+  allegato, invio (canale forzato a console), il log porta autore ed emittente
+  della bozza e l'autore lo rilegge sotto RLS, l'allegato è agganciato al log.
+  **Controprova**: sul codice di prima i test 1 e 3 sono rossi con
+  `InsufficientPrivilege` sull'`INSERT` del log, cioè col difetto qui sopra.
+
+### 9.2 La seconda sede tolta dalle view (§6.4.3)
+
+`_check_outbox_access` e `_check_allegato_access` non esistono più, e la lista
+bozze non filtra più per `creato_da_user_id` (il parametro è uscito anche dal
+repository, che non ha altri chiamanti). Una bozza o un allegato fuori
+perimetro arriva come «non trovato» (`E_EMAIL_OP`, 400 — il difetto E-4
+dell'analisi core resta: «non trovato» esce come dato errato).
+
+### 9.3 Il secondo giro (§8.4)
+
+1. **`remove_attachment`**: lasciato al database, com'è scritto nel §8.4.1.
+   `E_EMAIL_ALLEGATO_NON_BOZZA` rigenerato in `error_policies_generated.py`
+   (`CONFLITTO_STATO`, 409) e col suo ripiego senza segnaposto. Il pulsante da
+   spegnere non esiste ancora: la schermata della bozza è la seconda tranche del
+   piano. `add_attachment` teneva già un pre-check «solo DRAFT», che serve
+   perché il file si scrive **prima** dell'`INSERT`: ora risponde col codice
+   del database invece di `E_OUTBOX`.
+2. **L'invio non allegava i file**: verificato, era vero. Ora `send_raw`
+   riceve gli allegati (dalla bozza: al momento dell'invio stanno ancora
+   sull'outbox) e il messaggio diventa `multipart/mixed`; il rilancio di
+   `send_pending_emails` li rilegge dal **log**. ⛔ Un file che non si legge
+   fa fallire l'invio (`FAILED` col motivo): una mail non parte senza l'allegato
+   promesso. Il percorso del file passa dal BB nuovo `percorso_allegato`
+   (`email_allegati_storage.py`), che il download scriveva a mano.
+3. **`cancel_draft`**: toglie le righe degli allegati **prima** di scrivere
+   `CANCELLED`, nella stessa transazione, e i file **dopo** il commit.
+   ✅ Scelta confermata da Tid il 2026-09-26: il brief chiedeva «se le righe vanno tolte».
+   Le ho tolte perché l'annullo cancellava già i file — tenere righe senza file
+   era il difetto. Se una bozza aveva un tentativo d'invio fallito, i suoi
+   allegati erano agganciati anche a quel log e ne escono con lei: è lo stesso
+   effetto di togliere un allegato da una bozza tornata `DRAFT`, che il guard
+   ammette per disegno (§8.1).
+
+### 9.4 Prove
+
+* `apps.core` intero sul DB di sviluppo con `ZEROERP_TEST_DB_E2E=1`: **1341
+  ok** (guardrail dei codici d'errore compresi).
+* Suite completa: 9 rossi, tutti in `vendite` e fuori perimetro — il giornale
+  trasversale (difetto noto del fuso, la corsa ha scavalcato la mezzanotte) e
+  `test_promo_articoli_service`, verde rilanciato da solo.
+
+### 9.5 Cosa resta
+
+~~Solo il §5: sotto quale area o permesso la lista del log esce da `config`~~ —
+✅ deciso e fatto il 2026-09-26, §9.6. Dal brief non resta niente: può andare
+in `work-done/`.
+
+### 9.6 Il §5: la lista del log per ogni operatore (2026-09-26)
+
+**Decisione di Tid**: `skip_area_check` sulla sola lista (sola lettura), senza
+un'area nuova. Chi vede quale mail lo decide la RLS: un livello d'area sopra
+sarebbe una seconda regola accanto a quella del modello. Bozze e invio restano
+sotto `config` finché non esiste `invia_email`.
+
+* **BE**: `EmailLogOperatoreListView` senza area; legge ora anche
+  `order_by`/`order_dir` (prima li ignorava: il clic su una colonna non
+  ordinava). Il vocabolario degli stati è sceso in `core`
+  (`email_constants.STATI_EMAIL_LOG_DESCRIZIONI`) e si serve da
+  `GET /core/email/log/stati/`, aperto come la lista: quello di
+  `/amm-software/lookup/email-log-stati/` era solo per il super admin, ed è
+  ritirato.
+* **Test**: il permesso (con tutto `BLOCCATO` la lista si apre, l'outbox no),
+  l'ordinamento, il lookup (forma, ordine, porta), e sul DB vero il caso che la
+  sola whitelist emittente non escludeva — due operatori dello stesso
+  emittente, ciascuno vede la sua mail `OPERATORE` e non quella del collega
+  (`test_email_bozza_invio_db` n. 4).
+* **FE**: dominio nuovo **«Personale»**, senza `schemaDb` (visibile a ogni
+  operatore interno, mai bloccato: la forma a video dello skip), voce «Email» su
+  `/personale/email`. La lista è il BB nuovo `core/components/EmailLogLista`
+  (regola del 2, ok Tid): lo usano anche il log dell'admin, che si è ridotto
+  alla sua porta. Select degli stati e colore dello stato scesi in `core`.
+  Presidio: `personale/navigazione.spec.js`, provato per mutazione.
 
 ---
 

@@ -51,8 +51,8 @@ class _Annulla(Exception):
 def _costruisci(cur) -> tuple[int, int, int]:
     for passo in _FIXTURE:
         cur.execute(passo)
-    cur.execute("SELECT emittente_fiscale_id FROM _mondo")
-    emittente = cur.fetchone()[0]
+    cur.execute("SELECT emittente_fiscale_id, auth_user_id FROM _mondo")
+    emittente, operatore = cur.fetchone()
     cur.execute(
         """
         INSERT INTO config.email_account
@@ -72,15 +72,20 @@ def _costruisci(cur) -> tuple[int, int, int]:
         """
     )
     template = cur.fetchone()[0]
+    # ⚠️ Una mail `OPERATORE` nomina il suo autore (`creato_da_user_id`,
+    #    brief-db-email-visibilita-per-ambito D-5): senza, la ferma il `WITH
+    #    CHECK` della policy. L'autore e' l'operatore del contesto, che cosi' la
+    #    rilegge dal ramo OPERATORE di `script.fn_scope_email_ambito`.
     cur.execute(
         """
         INSERT INTO config.email_log
-               (destinatario, oggetto, stato, ambito, emittente_fiscale_id, contesto_json)
+               (destinatario, oggetto, stato, ambito, emittente_fiscale_id,
+                creato_da_user_id, contesto_json)
         VALUES ('ricdestlog@esempio.test', 'Oggetto ricogglog', 'PENDING', 'OPERATORE',
-                %s, '{}'::jsonb)
+                %s, %s, '{}'::jsonb)
         RETURNING id
         """,
-        [emittente],
+        [emittente, operatore],
     )
     log = cur.fetchone()[0]
     return account, template, log

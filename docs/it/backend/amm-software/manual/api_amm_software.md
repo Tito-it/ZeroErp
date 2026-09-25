@@ -49,7 +49,8 @@ Base URL: `/api/v1/amm-software/`
 >   Pattern allineato a `ApiArticoliFormDefaults` (catalogo Fase 8).
 > - **Fase 5** (LANDED): audit hardening + email log lookup. Nuovi endpoint:
 >   `GET /lookup/audit-sources/` (§4.6, da `script.vw_audit_sources`) +
->   `GET /lookup/email-log-stati/` (§4.7, lookup statico Python). Refactor
+>   `GET /lookup/email-log-stati/` (§4.7, lookup statico Python — ritirato il
+  2026-09-26, ora `/core/email/log/stati/`). Refactor
 >   `audit-log` list response: nuovo shape per riga (`code`/`storico_id`/
 >   `area_funzionale`/`audit: {summary, diff}`), build dinamico UNION ALL
 >   dalla vista (rimozione `_AUDIT_TABLES` hardcoded), summary calcolato
@@ -1077,24 +1078,15 @@ curl -H "Authorization: Bearer <token>" \
   "https://host/api/v1/amm-software/lookup/audit-sources/"
 ```
 
-### 4.7 GET /api/v1/amm-software/lookup/email-log-stati/ -- (Fase 5)
+### 4.7 ~~GET /api/v1/amm-software/lookup/email-log-stati/~~ -- RITIRATO il 2026-09-26
 
-Lookup statico degli stati possibili di un evento email log. Single source of truth lato Python: `apps/amm_software/services/amm_software_service.py::_EMAIL_LOG_STATI_VALIDI`. Niente DB. Pattern simmetrico a `/lookup/rounding-modes/`.
-
-**Response shape**: `data` e' lista nuda di 4 elementi `{codice, descrizione, ordering}`. Ordering "default-first" con `SENT` primo (stato finale piu' frequente).
-
-```json
-{
-  "data": [
-    { "codice": "SENT",    "descrizione": "Inviata",                          "ordering": 1 },
-    { "codice": "PENDING", "descrizione": "In attesa di invio",               "ordering": 2 },
-    { "codice": "RETRY",   "descrizione": "Tentativo successivo programmato", "ordering": 3 },
-    { "codice": "FAILED",  "descrizione": "Invio fallito",                    "ordering": 4 }
-  ]
-}
-```
-
-**Consumer FE**: `frontend/src/amministrazione/components/EmailLogStatoSelect.vue` (wrapper riusabile cached con `useGlobalLookup('amm.email_log_stati')`). Usato da `EmailLogsListView.vue` per il filtro stato.
+Il vocabolario degli stati del log email e' sceso in `core`
+(`apps/core/services/email_constants.py::STATI_EMAIL_LOG_DESCRIZIONI`) e si
+serve da `GET /api/v1/core/email/log/stati/`, aperto a chi apre la lista del
+log — cioe' a ogni operatore, non piu' solo al super admin. Envelope
+`{"data": {"results": [...]}}`. Dettaglio in
+[api_email.md](../../core/manual/api_email.md) §«Endpoint Operatore — Log Email».
+Il numero di sezione resta per non spostare i riferimenti.
 
 ### 4.8 GET /api/v1/amm-software/lookup/model-overrides/ -- (Fase 8)
 

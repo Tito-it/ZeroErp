@@ -505,6 +505,22 @@ class EmailRepository:
         pratica_id: int | None = None,
         auth_user_id: int | None = None,
         contesto_json: dict[str, Any] | None = None,
+        # ⭐ Le due colonne che reggono la visibilita' di una mail che non e' di
+        #    sistema (brief-db-email-visibilita-per-ambito, D-5):
+        #    - `emittente_fiscale_id`: l'azienda. Obbligatoria fuori da
+        #      `SISTEMA` (`chk_email_log_ambito_emittente`, dal 2026-09-05) —
+        #      e fino al 2026-09-25 questo INSERT NON la scriveva: ogni mail
+        #      `OPERATORE`/`REPARTO` sul log veniva rifiutata;
+        #    - `creato_da_user_id`: CHI L'HA SCRITTA, obbligatorio per
+        #      `OPERATORE` (`chk_email_log_operatore_creatore`). ⛔ Non e'
+        #      `auth_user_id`, che e' l'utente DI CUI la mail parla. Dalla bozza
+        #      si copia il suo autore; in un invio diretto e' chi fa la
+        #      richiesta. ⛔ Non un DEFAULT dal GUC: un super admin che spedisce
+        #      la bozza di un altro ne diventerebbe l'autore.
+        #    Sulla porta di sistema non passano: una mail `SISTEMA` non ha ne'
+        #    azienda ne' autore.
+        emittente_fiscale_id: int | None = None,
+        creato_da_user_id: int | None = None,
     ) -> int:
         # ⛔ LE EMAIL DI SISTEMA PASSANO DA UNA PORTA LORO, e non e' una
         #    preferenza di stile: dal 2026-09-05 `config.email_log` ha la RLS
@@ -551,15 +567,17 @@ class EmailRepository:
                 (email_account_id, email_template_id, destinatario, destinatari_cc,
                  oggetto, corpo_inviato_html, corpo_inviato_testo,
                  stato, ambito, unita_organizzativa_id, pratica_id,
-                 auth_user_id, contesto_json)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                 auth_user_id, contesto_json, emittente_fiscale_id,
+                 creato_da_user_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
             RETURNING id
         """
         params = [
             email_account_id, email_template_id, destinatario, destinatari_cc,
             oggetto, corpo_inviato_html, corpo_inviato_testo,
             stato, ambito, unita_organizzativa_id, pratica_id,
-            auth_user_id, json.dumps(contesto_json or {}),
+            auth_user_id, json.dumps(contesto_json or {}), emittente_fiscale_id,
+            creato_da_user_id,
         ]
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
@@ -568,7 +586,7 @@ class EmailRepository:
     # Scopo: Aggiorna stato di un record log email (SENT, FAILED, RETRY,
     #        SIMULATA). ⚠️ L'elenco autorevole e' il `CHECK`
     #        `chk_email_log_stato`, specchiato in
-    #        `amm_software_service._EMAIL_LOG_STATI_VALIDI`: qui si dice
+    #        `email_constants.STATI_EMAIL_LOG`: qui si dice
     #        cosa passa di qua, non cosa e' ammesso.
     #
     # ⛔ `ambito` NON ha un default, e serve a scegliere la porta — non a
@@ -777,6 +795,7 @@ class EmailRepository:
                    eo.stato, eo.ambito,
                    eo.unita_organizzativa_id, eo.pratica_id,
                    eo.auth_user_id, eo.creato_da_user_id,
+                   eo.emittente_fiscale_id,
                    eo.email_account_id, eo.email_template_id,
                    eo.email_log_id, eo.inviato_at,
                    eo.contesto_json, eo.data_insert,
@@ -793,10 +812,14 @@ class EmailRepository:
         return result
 
     # Scopo: Lista bozze outbox con filtri e paginazione.
+    # ⛔ Chi vede quali bozze NON si filtra qui: lo decide la RLS
+    #    (`rls_email_outbox_ambito` → `script.fn_scope_email_ambito`). Fino al
+    #    2026-09-25 c'era un parametro `creato_da_user_id` che la view usava
+    #    come perimetro — una seconda sede della regola, e sbagliata: nascondeva
+    #    ai colleghi le bozze di REPARTO che il modello da' a loro.
     def list_outbox(
         self,
         *,
-        creato_da_user_id: int | None = None,
         unita_organizzativa_id: int | None = None,
         stato: str | None = None,
         pratica_id: int | None = None,
@@ -806,9 +829,6 @@ class EmailRepository:
         conditions: list[str] = []
         params: list[Any] = []
 
-        if creato_da_user_id is not None:
-            conditions.append("eo.creato_da_user_id = %s")
-            params.append(creato_da_user_id)
         if unita_organizzativa_id is not None:
             conditions.append("eo.unita_organizzativa_id = %s")
             params.append(unita_organizzativa_id)
@@ -948,17 +968,35 @@ class EmailRepository:
             cursor.execute(sql, [allegato_id])
             return row_to_dict(cursor)
 
-    # Scopo: Elimina un allegato per ID. Ritorna il file_path per pulizia storage.
+    # Scopo: Elimina un allegato per ID. Ritorna il file_path per pulizia storage
+    #        (None se la riga non c'e' o e' fuori dal perimetro RLS).
+    # ⭐ Un solo statement, come `delete_allegati_by_outbox`: il path che si
+    #    ritorna e' quello della riga davvero cancellata.
     def delete_allegato(self, allegato_id: int) -> str | None:
-        sql = "SELECT file_path FROM config.email_allegato WHERE id = %s"
+        sql = """
+            DELETE FROM config.email_allegato
+             WHERE id = %s
+            RETURNING file_path
+        """
         with connection.cursor() as cursor:
             cursor.execute(sql, [allegato_id])
             row = cursor.fetchone()
-            if not row:
-                return None
-            file_path = row[0]
-            cursor.execute("DELETE FROM config.email_allegato WHERE id = %s", [allegato_id])
-            return file_path
+            return row[0] if row else None
+
+    # Scopo: Elimina tutti gli allegati di una bozza. Ritorna i `file_path`
+    #        per la pulizia dello storage, che il chiamante fa DOPO il commit.
+    # ⚠️ Il database lo ammette solo a bozza DRAFT
+    #    (`config.trgfn_email_allegato_guard_solo_bozza`): chi annulla una
+    #    bozza toglie le righe PRIMA di scrivere `CANCELLED`.
+    def delete_allegati_by_outbox(self, outbox_id: int) -> list[str]:
+        sql = """
+            DELETE FROM config.email_allegato
+             WHERE email_outbox_id = %s
+            RETURNING file_path
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [outbox_id])
+            return [r[0] for r in cursor.fetchall()]
 
     # Scopo: Copia allegati da outbox a log dopo invio.
     def copy_allegati_to_log(self, outbox_id: int, log_id: int) -> int:

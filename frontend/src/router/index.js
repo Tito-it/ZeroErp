@@ -45,7 +45,7 @@ function resolvePathNamespace(path) {
 
 // Genera rotte placeholder per domini senza pagine dedicate
 function domainPlaceholderRoutes() {
-  const domainsWithRoutes = new Set(['amm-software', 'anagrafiche', 'catalogo', 'config', 'magazzino', 'pagamenti', 'pratiche', 'strumenti', 'vendite'])
+  const domainsWithRoutes = new Set(['amm-software', 'anagrafiche', 'catalogo', 'config', 'magazzino', 'pagamenti', 'pratiche', 'personale', 'strumenti', 'vendite'])
   return DOMAINS
     .filter(d => !domainsWithRoutes.has(d.key))
     .map(d => ({
@@ -384,6 +384,14 @@ const router = createRouter({
           name: 'strumenti-code-lavoro',
           component: () => import('../strumenti/views/CodeLavoroView.vue'),
           meta: { domain: 'strumenti', menuKey: 'code-lavoro' }
+        },
+
+        // --- Personale (dominio senza area: lo vede ogni operatore) ---
+        {
+          path: 'personale/email',
+          name: 'personale-email',
+          component: () => import('../personale/views/EmailLogView.vue'),
+          meta: { domain: 'personale', menuKey: 'email' }
         },
         {
           path: 'vendite/preventivi',

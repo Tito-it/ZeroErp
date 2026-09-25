@@ -60,7 +60,6 @@ urlpatterns = [
     path("emittenti-fiscali/form-defaults/", views.EmittentiFormDefaultsView.as_view(), name="amm-emittenti-form-defaults"),
     # Audit hardening + email log lookup (Fase 5)
     path("lookup/audit-sources/", views.AuditSourcesLookupView.as_view(), name="amm-audit-sources-lookup"),
-    path("lookup/email-log-stati/", views.EmailLogStatiLookupView.as_view(), name="amm-email-log-stati-lookup"),
     # Invito operatore
     path("operatori/<int:auth_user_id>/invita/", invito_views.InvitaOperatoreView.as_view(), name="amm-operatori-invita"),
     path("operatori/<int:auth_user_id>/reinvia-invito/", invito_views.ReinviaInvitoView.as_view(), name="amm-operatori-reinvia-invito"),
