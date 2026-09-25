@@ -20,7 +20,9 @@
 > `core/tests/db/test_sola_lettura_db.py` (che copre anche il §4 punto 3: la
 > connessione dopo il blocco non è in sola lettura). Lo usano i tool
 > dell'assistente. **Restano** il montaggio su tutte le `GET`/`HEAD`, i
-> presìdi 1 e 2 del §4, le eccezioni del §2.2 e il codice del §5 (DB).
+> presìdi 1 e 2 del §4 e le eccezioni del §2.2.
+> 🟢 **Il codice del §5 è su dbdev** (2026-09-25; ⏳ scratch `zeroerp_ci` e
+> commit): il backend può rigenerare i due moduli dei codici (§5.1).
 
 ---
 
@@ -121,6 +123,28 @@ messaggi, secondo
 [Messaggi di Errore e Generazione Log](../../guide/Messaggi-di-Errore-e-Generazione-Log.md);
 il backend lo usa solo dopo che è registrato.
 
+### 5.1 Com'è registrato (DB, 2026-09-25)
+
+| Dove | Cosa |
+| --- | --- |
+| `codici_errore.csv` | `E_SCRITTURA_IN_LETTURA`, classe `TECNICO` (500) |
+| `messaggi_errore.csv` (id 1138) | «Modifica dati non permessa.», con causa (una lettura che scrive: difetto dell'applicazione, non dei permessi) e soluzione (segnalarlo indicando la pagina) |
+
+⚠️ **Rispetto alla proposta: frase chiusa, senza `{vista}`.** Il nome della view
+serve a chi sviluppa e va **nel log** (come dice il §5 stesso); e
+`error_messages_fallback.py` tiene solo i messaggi senza `%s`, quindi con il
+segnaposto il ripiego del backend resterebbe senza testo. ⛔ Il testo **non**
+parla di autorizzazioni: «permessi insufficienti» è già `E_PERMESSO_NEGATO`, e
+un operatore che lo leggesse chiederebbe un permesso all'amministratore, che non
+risolve niente.
+
+Nessun changeSet nuovo: il codice lo alza solo il backend, entra con il carico
+dei due CSV. ✅ Caricato su dbdev (Tid, 2026-09-25); ⏳ scratch.
+
+**Al backend:** rigenerare `error_policies_generated.py` ed
+`error_messages_fallback.py`; poi la traduzione del `25006` in
+`transazione_sola_lettura`, con il nome della view nel log.
+
 ## 6. Perimetro e rischio
 
 | | |
@@ -138,3 +162,5 @@ il backend lo usa solo dopo che è registrato.
 | --- | --- | --- |
 | 2026-09-24 | DB | Brief scritto dall'approfondimento del §8 del brief dell'assistente AI; decisione di Tid: fra le prime cose |
 | 2026-09-25 | backend | Building block `transazione_sola_lettura` scritto e usato dai tool dell'assistente (regola del 2, ok Tid). Il montaggio sulle `GET` resta da fare |
+| 2026-09-25 | DB | §5 scritto: `E_SCRITTURA_IN_LETTURA` (`TECNICO`) e messaggio 1138 «Modifica dati non permessa.», frase chiusa e senza «autorizzazioni» (§5.1). Non applicato |
+| 2026-09-25 | Tid | Codice caricato su dbdev |
