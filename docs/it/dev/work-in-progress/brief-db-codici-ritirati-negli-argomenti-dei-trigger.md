@@ -2,7 +2,7 @@
 
 > **Perimetro:** DB (`dev/db-tid`), più una richiesta al BE in §4. **Aperto:** 2026-09-23.
 > **Origine:** una riga vista passando mentre si chiudeva
-> [brief-db-magazzino-lotto-2-bis-be-fe.md](brief-db-magazzino-lotto-2-bis-be-fe.md)
+> [brief-db-magazzino-lotto-2-bis-be-fe.md](../work-done/brief-db-magazzino-lotto-2-bis-be-fe.md)
 > — «`CODICE_NON_MODIFICABILE` è `obsoleto_dal 2026-08-05` e il registro dei
 > lock lo nomina ancora» — e la risposta di Tid: *«andrebbe corretto»*.
 >

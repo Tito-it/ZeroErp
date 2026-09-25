@@ -667,7 +667,7 @@ Il toggle e' gestito dallo store `useUiStore` (`isDark`, `toggleDarkMode`) e per
 ## Componenti Dominio Magazzino (`src/magazzino/`)
 
 > Lotto 2 del magazzino, FE del 2026-09-18 (piano
-> `work-in-progress/piano-be-fe-magazzino-lotto-2-motore.md`). ⭐ **Q-1 (Tid):
+> `work-done/piano-be-fe-magazzino-lotto-2-motore.md`). ⭐ **Q-1 (Tid):
 > inventario e rettifica sono UNA implementazione con due configurazioni** —
 > ogni componente del documento interno prende la `famiglia` in prop e legge
 > tutto da `FAMIGLIE`; un `if (famiglia === …)` in un componente è una
