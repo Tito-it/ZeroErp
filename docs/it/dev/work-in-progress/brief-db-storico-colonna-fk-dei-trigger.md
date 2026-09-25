@@ -1,13 +1,22 @@
 # Brief DB — lo storico che non si chiude: la colonna FK che il trigger cerca e non trova
 
-> **Perimetro:** DB (`dev/db-tid`). Nessuna ricaduta su BE né FE (§6).
+> **Perimetro:** DB (`dev/db-tid`). Nessuna ricaduta su BE né FE (§6), salvo la
+> nota sui codici errore (§10).
 > **Aperto:** 2026-09-25.
 > **Origine:** trovato strada facendo in
 > [brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md)
 > §11.5: un pgTAP modificava un parametro storicizzato e, sullo scratch, moriva
 > con `E_SNAPSHOT_CLOSE_ERROR`.
 >
-> **Stato:** 🟡 **analisi chiusa, niente scritto.** Una decisione per Tid in §4.
+> **Stato:** ✅ **CHIUSO SUL LATO DB — applicato il 2026-09-25** su dbdev e su
+> `zeroerp_ci` (`20260925-26`, `-27` `EXECUTED`). Verificato dopo l'apply sul
+> catalogo vivo di entrambi: **nessun** trigger di storico cerca una colonna che
+> la gemella non ha, il codice `E_STORICO_FK_COL_ASSENTE` è a catalogo, il
+> rubinetto è nel corpo vivo, il pgTAP owner non ha lasciato residui (§11).
+> pgTAP: il primo è verde; il secondo era rosso solo nella fixture, corretta e
+> da rilanciare (§11). Restano fuori, e non
+> tengono aperto questo brief: la nota al backend (§10) e l'indice sulla colonna
+> FK delle gemelle, da aprire in un brief suo (§9).
 >
 > **In una riga.** Il trigger di storico riceve il nome della colonna che lega la
 > riga storica alla madre; su **cinque** tabelle quel nome non esiste nella
@@ -138,6 +147,8 @@ Perché è la strada giusta, sul modello:
 Forma di ciascun changeSet: fa **una cosa sola**, con precondizione `MARK_RAN`
 «la colonna vecchia c'è e la nuova no». Su dbdev `parameters` viene saltato
 (ha già il nome nuovo); sugli altri quattro e su `zeroerp_ci` rinomina.
+⚠️ *Cambiato in scrittura: un changeSet solo con un `DO` sul catalogo vivo, non
+cinque `MARK_RAN` — il perché in §5.1.*
 
 ### B. L'eccezione nel registro (`STORICO_FK` in `automation_overrides_cols.csv`)
 
@@ -153,26 +164,46 @@ però ha tre problemi:
 3. **Per `parameters`** dbdev andrebbe comunque riallineato, con una rinomina
    inversa, visto che la sua colonna è `parameters_id`.
 
-⇒ **Decisione per Tid: A o B.** Il resto del brief è scritto per A.
+✅ **Decisione di Tid del 2026-09-25: strada A.**
 
-## 5. Che cosa entra (strada A)
+## 5. Che cosa è entrato (strada A)
 
-### 5.1 Le cinque rinomine — `00_schema/storico/`
+| File | Cosa |
+| --- | --- |
+| `00_schema/storico/20260925-26-rename-storico-colonna-fk-al-nome-dell-automazione` | le cinque rinomine (§5.1) |
+| `20_code/dbops/20260925-27-update-fn-run-automations-storico-verifica-colonna-fk` | il rubinetto (§5.2) |
+| `80_data/sql/config/codici_errore.csv`, `messaggi_errore.csv` | `E_STORICO_FK_COL_ASSENTE`, `TECNICO`, id 1127 |
+| `db/pgtap/dbops/test-storico-colonna-fk-dei-trigger-v1.sql` | invariante + comportamento, come applicazione (§5.3) |
+| `db/pgtap/dbops/test-storico-automazione-colonna-fk-v1.sql` | il rubinetto, `pgtap-runner: owner` (§5.4) |
+| `docs/it/dbzero/dbops/manual/fn_run_automations_storico.md`; `storico/manual/parameters.md`, `indirizzi.md`, `comuni.md` | il controllo nuovo; i nomi di colonna; tolta la FK descritta e che non esiste più dal `20250827-02` |
 
-Un file e un changeSet per tabella (linee-guida-sql §11.5: *uno per oggetto*).
+### 5.1 Le cinque rinomine — un changeSet solo, sul catalogo vivo
 
-* **Precondizione**: `onFail: MARK_RAN`; `sqlCheck` = 1 se la colonna vecchia
-  esiste **e** la nuova no.
-  ⚠️ Se esistessero entrambe, il changeSet salterebbe in silenzio: quel caso lo
-  prende il presidio di §5.3, non il migrate.
-* **Corpo**: `ALTER TABLE storico.<tab> RENAME COLUMN <vecchia> TO <nuova>`.
-  ⚠️ In PostgreSQL 18 il `NOT NULL` è un vincolo con un nome
-  (`parameters_parameter_id_not_null`), che la rinomina della colonna **non
-  segue**. Lo stesso vale per gli indici (`ix_storico_parameters_param_id`).
-  Da decidere nel giro di scrittura se rinominarli nello stesso `DO`, con
-  `IF EXISTS`, così che dbdev e un DB da zero abbiano gli stessi nomi.
-* Aggiornare il `COMMENT ON COLUMN` dove nomina la colonna vecchia (il
-  `20251212-02` ne scrive uno su `catasto_unita_immobiliare_id`).
+⚠️ **Cambiato rispetto al disegno** (che diceva «un changeSet per tabella con
+`MARK_RAN`»): è **un** changeSet con un `DO` che scorre le cinque gemelle e legge
+il catalogo vivo per ciascuna. Il perché:
+
+* dbdev e un DB da zero partono da stati **diversi** (su dbdev `parameters` è già
+  a posto): una `preCondition` `MARK_RAN` avrebbe saltato anche la parte che
+  vale per tutti (nomi di vincolo e indice, commento);
+* il caso «ci sono **entrambe** le colonne» con `MARK_RAN` sarebbe passato in
+  silenzio. Qui **solleva**, e nomina tabella e colonne;
+* cinque `DO` identici sarebbero cinque copie della stessa logica.
+
+Per ciascuna gemella: se manca → niente (la creerà il provisioning, già col nome
+giusto); vecchia sì e nuova no → `RENAME COLUMN`; nuova già presente → niente;
+entrambe o nessuna → **solleva**. Poi, sempre:
+
+* il `NOT NULL` (in PostgreSQL 18 ha un nome e la rinomina non lo segue) prende il
+  nome `<tab>_<col>_not_null`. Oggi dbdev e CI lo chiamano in due modi diversi su
+  `indirizzi_dettaglio`;
+* l'indice monocolonna sulla FK, dove c'è, prende il nome `ix_<tab>_<col>_fk`,
+  quello di `fn_ensure_storico_table` (`ix_storico_parameters_param_id` sulla CI);
+* un `COMMENT ON COLUMN` uguale per le cinque, che dice perché quel nome.
+
+Il nome di arrivo è il default del generatore (`<tabella>_id`), **non** una
+chiamata a `fn_get_override_col`: siamo in `00_schema`, e il registro delle
+eccezioni è un seed di `80_data` (§11.4).
 
 ⛔ Il changeSet del 2025 **non si modifica** (è mergiato: si romperebbe il
 checksum).
@@ -180,32 +211,48 @@ checksum).
 ### 5.2 ⭐ Il rubinetto — `dbops.fn_run_automations_storico`
 
 Prima di montare un trigger, l'automazione verifica che `fk_col` sia una colonna
-della gemella. Se non lo è, **solleva** con un codice nuovo
-(`E_STORICO_FK_COL_NOT_FOUND`, classe `TECNICO`), invece di montare un trigger
-destinato a morire alla prima chiusura.
+della gemella. Se non lo è, solleva `E_STORICO_FK_COL_ASSENTE` (classe `TECNICO`).
+Il blocco sta **fuori** dal `BEGIN … EXCEPTION` del `CREATE TRIGGER`, che lo
+ribattezzerebbe `E_STORICO_UD`, e vale **anche in dry run**: un «verrebbe creato»
+su un trigger rotto è una risposta sbagliata.
 
-È il punto in cui il difetto si sarebbe fermato **alla nascita**, per tutte e
-cinque le tabelle. Corpo dalla doc auto-generata, non da uno YAML.
+* ⚠️ Il nome **non** è `…_NOT_FOUND`, come avevo scritto nel disegno: il catalogo
+  avverte (su `E_STORICO_PARENT_PK_NOT_FOUND`) che quel suffisso si legge come un
+  404, e qui non manca un record.
+* ⚠️ `dbops.fn_run_automations` non cattura: se il rubinetto solleva, `ci_apply`
+  si ferma. È voluto: è un difetto di struttura, e un `ci_apply` verde con un
+  trigger rotto è la forma in cui questo difetto è rimasto nascosto.
+* Corpo preso da `pg_proc`, identico alla doc auto-generata il 2026-09-25; unica
+  differenza il blocco nuovo, più una riga nella documentazione interna e il
+  `COMMENT ON FUNCTION`.
 
-### 5.3 Il presidio sullo stato — pgTAP in `db/pgtap/dbops/`
+### 5.3 Il presidio sullo stato — `test-storico-colonna-fk-dei-trigger-v1` (plan 16)
 
-Invariante strutturale: *per ogni trigger su `trgfn_storico_generic`,
-`TG_ARGV[0]` è una colonna della gemella in `storico`.*
+* **1-2** — l'invariante: *per ogni trigger su `trgfn_storico_generic`,
+  `TG_ARGV[0]` è una colonna della gemella.* Il test 1 pretende almeno un trigger
+  (il 2 non è verde a vuoto). Guarda i trigger **che ci sono**, compresi quelli
+  nati prima del rubinetto e le gemelle ricreate a mano: è l'altra domanda
+  rispetto al 5.2.
+* **3-12** — per le cinque gemelle, il nome nuovo c'è e quello vecchio **no**:
+  se restassero entrambe, il test 2 sarebbe verde e due colonne direbbero la
+  stessa cosa.
+* **13-16** — il comportamento su `config.parameters`, con due righe
+  **costruite** con `storicizza = true` (due e non una: dopo il primo UPDATE il
+  reset può riportare il flag a false). UPDATE e DELETE vivono, e lo snapshot è
+  nella gemella legato per `parameters_id`.
 
-Non ripete il 5.2, risponde a un'altra domanda: il 5.2 guarda un trigger **mentre
-nasce**, questo guarda i trigger **che ci sono**, compresi quelli nati prima del
-rubinetto e le gemelle ricreate a mano, come è successo su dbdev.
+Gira come applicazione: `config.parameters` la scrive il pannello di
+amministrazione, ed è il percorso che moriva.
 
-⚠️ Gira dopo `ci_apply`, quando i trigger esistono. Su un DB senza trigger di
-storico non avrebbe niente da verificare: va scritto con un `ok()` che pretende
-**almeno un** trigger di storico, per non essere verde a vuoto.
+### 5.4 Il rubinetto alla prova — `test-storico-automazione-colonna-fk-v1` (plan 7, owner)
 
-### 5.4 Una prova che il difetto non torni — pgTAP
+Una madre `config.pgtap_sto_fk` e una gemella (copia della forma di
+`storico.parameters`) con la colonna FK chiamata `pgtap_sto_fk_rif`:
+l'automazione solleva `P0001` con la frase del catalogo, anche in dry run.
+Rinominata la colonna a `pgtap_sto_fk_id`, il trigger nasce con quell'argomento,
+e l'UPDATE di una riga storicizzata vive e scrive lo snapshot.
 
-Per ognuna delle cinque madri: una riga con `storicizza = true`, un `UPDATE`,
-e `lives_ok` più la presenza di uno snapshot chiuso (`valid_to` valorizzata) nella
-gemella. La riga si **fabbrica**, non si pesca fra quelle esistenti (AGENTS.md,
-corollario sui test).
+Marcato `pgtap-runner: owner`: fa DDL (prima forma ammessa in `scripts/testpgtap.sh`).
 
 ## 6. Chi legge quelle colonne (censito il 2026-09-25)
 
@@ -231,18 +278,148 @@ corollario sui test).
   valida; la seconda cade quando questo brief è applicato. Da riallineare in quel
   brief, non qui.
 
-## 8. Come si prova, e che cosa non prova
+## 8. Come è stato provato, e che cosa NON prova
 
-* SQL **estratto** dai changeSet, in `BEGIN … ROLLBACK`, da owner: su
-  `zeroerp_ci` le cinque rinomine e poi un `UPDATE` di una riga storicizzata per
-  tabella, che deve passare; su dbdev lo stesso, con `parameters` saltato.
-* Prova per mutazione del 5.2: con l'eccezione `STORICO_FK` di `clienti` tolta
-  nella transazione, il rubinetto deve sollevare nominando `anagrafiche.clienti`.
-* ⛔ Non prova il comportamento come applicazione: l'harness gira da owner. I pgTAP
-  li lancia Tid dopo l'apply.
+⚠️ **Non ho potuto provare da owner**: la password di `titodb` non è in
+`~/.pgpass`, e il servizio `zeroerp_log` viene rifiutato. Tutto quello che segue
+gira come `zeroerp_app`, in `BEGIN … ROLLBACK`.
+
+* **Comportamento (test 13-16, SQL estratto)**: su dbdev, dove `parameters` è
+  già a posto, **4 ok**. ⭐ **Controprova** su `zeroerp_ci`, ancora rotta: il test
+  13 è **rosso** con `la colonna "parameters_id" non esiste … E_SNAPSHOT_CLOSE_ERROR`.
+  Il test vede il difetto, non passa a vuoto.
+* **Il DO del 20260925-26**: estratto e fatto girare su **copie temporanee**
+  delle cinque gemelle (`CREATE TEMP TABLE … (LIKE storico.<tab> INCLUDING ALL)`,
+  con `storico.` sostituito da `pg_temp.` **solo** nella prova), su entrambi i DB:
+  * `zeroerp_ci`: cinque rinomine; dbdev: quattro, `parameters` saltata;
+  * NOT NULL e indice ai nomi attesi, commento su tutte e cinque;
+  * **idempotente**: la seconda passata dice «niente da rinominare» per tutte;
+  * **mutazione**: aggiunta la colonna vecchia accanto alla nuova su `comuni`,
+    il DO solleva nominandole.
+  ⚠️ È una prova della **logica**, non del changeSet: le copie non sono le
+  tabelle, e l'`ALTER` vero lo può fare solo l'owner.
+* **La funzione del 20260925-27**: copia in `pg_temp`, `plpgsql_check_function`
+  pulita (un solo avviso, `rel` non usata, che c'era già nel corpo vivo), e un
+  dry run su `config` e `anagrafiche` che passa su entrambi i DB. ⚠️ Il ramo
+  nuovo **non** è stato esercitato: serve una gemella senza trigger, cioè DDL in
+  `storico`. Lo esercita il pgTAP owner del §5.4.
+* Guardrail statici verdi: preambolo pgTAP, DDL su trigger generati,
+  `runOnChange`. CSV: id 1127 unico, il messaggio si formatta con tre valori.
+
+⛔ **Non prova**: l'SQL estratto da owner sulle tabelle vere, l'apply da zero
+(`zeroerp_ci`), i due pgTAP interi. Li lancia Tid.
+
+## 9. Cosa resta
+
+* ✅ **Tid**: apply su dbdev e `zeroerp_ci` (2026-09-25). ⏳ I due pgTAP: prima
+  dell'apply il test 2 del primo file era rosso su cinque madri in CI e su
+  quattro su dbdev; dopo l'apply il controllo equivalente, letto sul catalogo,
+  è vuoto su entrambi (§11).
+* **Backend**: la nota del §10.
+* 🔵 **L'indice sulla colonna FK delle gemelle: nessuna automazione lo fa
+  (verificato il 2026-09-25).** La chiusura dello snapshot
+  (`WHERE <fk> = … AND valid_to IS NULL`) gira a ogni UPDATE/DELETE della madre,
+  e senza indice legge tutta la gemella.
+  * `STORICO_PROVISION` (`fn_ensure_storico_table`) crea `ix_<tab>_<fk>_fk`
+    **solo quando crea la gemella**: se la gemella esiste esce subito, e non
+    converge mai;
+  * la policy degli indici FK (`dbops.apply_fk_index_policy`,
+    `vw_fk_senza_indice`) parte da `pg_constraint`, cioè dai vincoli FK veri. Le
+    gemelle non ne hanno (li ha tolti `20250827-02`): per lei non esistono.
+  * ⇒ Le gemelle nate fuori dal provisioning restano senza. Letto su dbdev,
+    fatto datato: `clienti.cliente_id`, `dati_societari.dati_societari_id` e,
+    dopo il `20260925-26`, `comuni`, `indirizzi`, `indirizzi_dettaglio`,
+    `catasto_unita_immobiliari`.
+  * ➜ **Fuori da questo brief, da aprire in un brief suo** (deciso il
+    2026-09-25): è un tema di prestazioni, non il difetto chiuso qui.
+  * **Proposta**: il provisioning dello storico **converge** anche su una gemella
+    che esiste già. Se nessun indice ha in testa la colonna FK (stesso calcolo
+    del trigger, override compreso), lo crea con il nome `ix_<tab>_<fk>_fk`. È la
+    sede giusta: la struttura della gemella è sua, e la colonna FK la conosce già.
+    Un changeSet che crea sei indici a mano sarebbe una seconda sede, e la
+    prossima gemella fatta fuori dal provisioning ricadrebbe nello stesso buco.
+  * Resta fuori, come altra domanda: `storico.comuni` e `storico.indirizzi`
+    non hanno il `NOT NULL` sulla colonna FK, che il provisioning dà a ogni
+    gemella nuova.
+
+## 10. Nota per il backend — codici errore da riallineare
+
+> **Per**: team backend (`dev/backend-tid`). **Quando**: dopo l'apply dei
+> changeSet del 2026-09-25 (questo brief e
+> [brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md)).
+
+Il catalogo dei codici errore ha **8 codici nuovi** che i due file del backend
+non portano ancora. Dopo l'apply su dbdev, `test_error_policies_divergenza_db`
+diventa **rosso** finché non si rigenera: è il presidio che fa il suo lavoro,
+non una regressione.
+
+**Cosa fare:**
+
+1. `manage.py genera_error_policies` → rigenera `error_policies_generated.py`
+   dalla vista `config.vw_codici_errore_identita`, e si committa.
+2. In `error_messages_fallback.py`, **a mano**, un messaggio di ripiego **senza
+   segnaposto** per ciascuno degli 8 codici. Lo pretende
+   `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego`.
+
+| Codice | Classe | Messaggio a catalogo | Cantiere |
+| --- | --- | --- | --- |
+| `E_CREDENZIALE_BLOCCATA` | `NON_PERMESSO` | Accesso bloccato dall'amministratore. | login |
+| `E_LOGIN_ATTESA` | `NON_PERMESSO` | Troppi tentativi non riusciti: riprovare fra %s secondi. | login |
+| `E_CREDENZIALE_NON_TROVATA` | `NON_TROVATO` | Credenziale non trovata. | login |
+| `E_CREDENZIALE_MOTIVO_OBBLIGATORIO` | `DATO_ERRATO` | Indicare il motivo del blocco. | login |
+| `E_CREDENZIALE_GIA_OPERATORE` | `CONFLITTO_STATO` | L'email %s appartiene gia' a un operatore. | login |
+| `E_CREDENZIALE_EMAIL_AMBIGUA` | `TECNICO` | Piu' accessi registrati con la stessa email. | login |
+| `E_AUTH_CHIAMATA_NON_VALIDA` | `TECNICO` | Chiamata non valida a %s: %s. | login |
+| `E_STORICO_FK_COL_ASSENTE` | `TECNICO` | Automazione di storico: la colonna %s non esiste in %s, … | storico (questo brief) |
+
+⚠️ **Tre punti che contano:**
+
+* **`E_LOGIN_ATTESA` e `E_CREDENZIALE_BLOCCATA` sono 403, non 429**, per scelta
+  del DB: il login del frontend intercetta il 429 prima di leggere il codice
+  (è il throttle per IP), e perderebbe i secondi d'attesa. La classe
+  `NON_PERMESSO` lo dà già: basta non aggiungere un override di status.
+* **Il ripiego dei codici con `%s` non contiene il segnaposto.** Per esempio
+  `E_LOGIN_ATTESA` → «Troppi tentativi non riusciti: riprovare fra qualche
+  secondo.» I secondi veri arrivano nel messaggio del DB e anche nel contesto
+  (`secondi_rimanenti`).
+* **`E_STORICO_FK_COL_ASSENTE` non arriva mai a una richiesta HTTP**: lo solleva
+  solo l'automazione dello storico, durante `ci_apply`. Va nei due file solo
+  perché i presidi li vogliono completi. Un ripiego generico da `TECNICO` basta.
+
+## 11. Dopo l'apply (2026-09-25)
+
+Letto come applicazione sul catalogo vivo di dbdev e di `zeroerp_ci`:
+
+| Controllo | dbdev | `zeroerp_ci` |
+| --- | --- | --- |
+| `20260925-26`, `-27` in `databasechangelog` | `EXECUTED` 09:56 | `EXECUTED` 09:58 |
+| trigger di storico con un argomento che non è una colonna della gemella | nessuno (prima 4) | nessuno (prima 5) |
+| `E_STORICO_FK_COL_ASSENTE` in `codici_errore` e `messaggi_errore` | sì | sì |
+| il rubinetto nel corpo vivo di `fn_run_automations_storico` | sì | sì |
+| residui del pgTAP owner (`pgtap_sto_fk`, tabella o trigger) | nessuno | nessuno |
+
+### I pgTAP (corsa di Tid, 2026-09-25, `zeroerp_ci`)
+
+* `test-storico-colonna-fk-dei-trigger-v1`: ✅ **verde**.
+* `test-storico-automazione-colonna-fk-v1` (owner): **5/7**, rossi il 6 e il 7.
+  Il rubinetto (1-5) funziona. Il rosso era **nella fixture**: lo snapshot
+  moriva con `null value in column "id"` sulla gemella di prova.
+  * Causa: la gemella di prova è copiata con `LIKE storico.parameters`, e
+    **`storico.parameters.id` ha due forme**: su dbdev è un default
+    `nextval(...)`, su `zeroerp_ci` una colonna `IDENTITY`. `INCLUDING DEFAULTS`
+    copia solo la prima.
+  * ✅ Corretto con `INCLUDING IDENTITY`. Provato su entrambi i DB con una
+    tabella temporanea: l'INSERT senza `id` riceve un valore. ⏳ Da rilanciare.
+  * ⚠️ La divergenza di `id` è un'altra traccia della gemella di dbdev
+    **ricreata a mano** (§2): il provisioning la crea `BIGSERIAL`, la catena da
+    zero la porta a `IDENTITY`. Non tocca il comportamento, perché entrambe
+    generano l'`id`, ma dbdev resta fuori modello anche qui. Non sanata in
+    questo brief.
 
 ## Registro
 
 | Data | Area | Cosa |
 | --- | --- | --- |
 | 2026-09-25 | DB | Aperto. Creatore di `storico.parameters` su DB da zero trovato (albero `migrations/`, ancora incluso). dbdev fuori modello (DROP manuale). Censimento: 5 madri con argomento e colonna disallineati, 4 anche su dbdev. Strada A consigliata. |
+| 2026-09-25 | DB | Tid sceglie la strada A. Scritti `20260925-26` (rinomine, un DO sul catalogo vivo) e `-27` (rubinetto `E_STORICO_FK_COL_ASSENTE`), codice nel catalogo, due pgTAP, doc. Provato come app (§8); owner, apply e pgTAP a Tid. |
+| 2026-09-25 | Tid / DB | Applicato su dbdev e `zeroerp_ci`. Verifica sul catalogo vivo (§11): invariante pulita su entrambi. Brief chiuso lato DB; indice sulle gemelle spostato a un brief suo. |

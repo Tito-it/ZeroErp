@@ -14,7 +14,7 @@
 | change_type | character | YES | 'A'::bpchar |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
-| indirizzo_dettaglio_id | integer | NO |  |
+| indirizzi_dettaglio_id | integer | NO |  |
 | snapshot | jsonb | NO |  |
 | tipo_operazione | smallint | YES |  |
 | tx_id | uuid | YES |  |

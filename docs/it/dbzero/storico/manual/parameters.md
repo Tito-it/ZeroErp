@@ -29,8 +29,13 @@ La tabella **`storico.parameters`** conserva gli **snapshot** delle modifiche su
 
 * **`config.parameters`**
 
-  * `parameter_id` è FK verso `config.parameters(id)`.
-  * **ON UPDATE CASCADE**, **ON DELETE SET NULL**: mantiene integrità referenziale e non perde lo snapshot in caso di cancellazione.
+  * `parameters_id` è l'id di `config.parameters`: una FK **logica**, senza
+    vincolo (le FK dello schema `storico` le ha tolte `20250827-02`, così uno
+    snapshot sopravvive alla cancellazione della madre).
+  * ⚠️ Il nome è quello che l'automazione passa al trigger di storico
+    (`<tabella>_id`). Fino al 2026-09-25 un database ricostruito da zero aveva
+    `parameter_id`, e ogni UPDATE/DELETE di un parametro storicizzato moriva:
+    rinominata da `20260925-26`.
 * **Triggers**
 
   * `trg_parameters_ins_upd_gen_tx_id`: assegna `tx_id` tramite `dbops.trgfn_tx_id_managed` su INSERT/UPDATE.
@@ -45,7 +50,7 @@ La tabella **`storico.parameters`** conserva gli **snapshot** delle modifiche su
 * **Schema evolutivo**
   Nuove colonne in `config.parameters` non richiedono modifiche in `storico.parameters`.
 * **Consistenza e performance**
-  FK e indici su `parameter_id` garantiscono operazioni sicure e veloci.
+  L'indice su `parameters_id` rende veloce la chiusura dello snapshot aperto.
 * **Uniformità di processo**
   Usa la funzione `script.trgfn_upd_dlt_storico_generic` come per tutte le altre entità del progetto, semplificando la manutenzione.
 

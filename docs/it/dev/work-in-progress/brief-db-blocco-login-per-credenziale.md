@@ -4,11 +4,12 @@
 > ricaduta sul backend al §7.
 >
 > **Data**: 2026-09-24 · **Stato**: 🟢 **P-1 APPLICATO il 2026-09-25** (§11,
-> `20260925-01…-25`). 🟡 **P-2 in parte APPLICATO il 2026-09-25** (§12):
-> `-40…-45` su dbdev e scratch; **`-46…-50` scritti e provati, da applicare** —
-> finché non lo sono, su dbdev **non si crea un SUPER_ADMIN** (§12.3). ⛔ **Il
-> backend va allineato** (§7, §11.3, §12.4): la madre dell'operatore ha firma e
-> ritorno nuovi, e il check dell'invito ha la regola rovesciata.
+> `20260925-01…-25`). 🟢 **P-2 APPLICATO il 2026-09-25** (§12,
+> `20260925-40…-50`, commit `acc6385d5`): corsa pgTAP di Tid **senza
+> regressioni**. ⛔ **Il backend va allineato** (§7, §11.3, §12.4): la madre
+> dell'operatore ha firma e ritorno nuovi, e il check dell'invito ha la regola
+> rovesciata — finché non lo è, su dbdev la creazione dell'operatore dal
+> pannello è rotta.
 >
 > **Da leggere per primo**: §12 (il P-2: cosa c'è, cosa è cambiato rispetto al
 > disegno, porta e profili, cosa chiede al backend), poi §11 (il P-1) e §2.
@@ -796,10 +797,10 @@ freno: meglio un test marcato che una porta aperta.
 | `20_code/script` | `-43` | `fn_check_operatore_invitabile` sulla regola unica (R-1, D-8): invitabile chi ha la veste **spenta**; via `last_login`, `is_active`, il ramo `DISABILITATO` morto | applicato |
 | `20_code/dbops` | `-45` | il builder pgTAP legge la `TABLE` e fa il passo dell'attivazione (accende la veste) | applicato |
 | `90_end` | `-44` | indice unico `ix_auth_user_email_lower_unique` su `lower(email)` `WHERE email <> ''`, `onFail: CONTINUE`; **ritira** `ix_auth_user_email_unique` (`20260401-20`, distingueva le maiuscole: contenuto nel nuovo) | applicato |
-| `00_schema/dbops` | `-46` | registro `dbops.automazione_attivo_eccezioni` (§12.3) | ⏳ da applicare |
-| `20_code/dbops` | `-47`, `-48` | `fn_ritira_attivo_eccezioni()`; il motore `fn_run_automations_attivo` salta le eccezioni e ritira | ⏳ |
-| `80_data` | `-49` | mirror del registro, prima riga: binding → identità | ⏳ |
-| `90_end` | `-50` | ritiro una tantum (su dbdev i trigger ci sono già) | ⏳ |
+| `00_schema/dbops` | `-46` | registro `dbops.automazione_attivo_eccezioni` (§12.3) | applicato |
+| `20_code/dbops` | `-47`, `-48` | `fn_ritira_attivo_eccezioni()`; il motore `fn_run_automations_attivo` salta le eccezioni e ritira | applicato |
+| `80_data` | `-49` | mirror del registro, prima riga: binding → identità | applicato |
+| `90_end` | `-50` | ritiro una tantum (su dbdev i trigger ci sono già) | applicato |
 | *(CSV esistenti)* | — | codici 1130 `E_CREDENZIALE_EMAIL_AMBIGUA` (TECNICO), 1131 `E_CREDENZIALE_GIA_OPERATORE` (CONFLITTO_STATO) | applicati |
 
 ⚠️ La numerazione salta da `-27` a `-40`: dal `-26` in su lavorava in parallelo
@@ -902,9 +903,18 @@ Sullo scratch `zeroerp_ci`, da owner, in transazioni ritirate, con l'SQL
 | pgTAP della tua lista §11.6 (super admin dal builder): `test-credenziale-blocco-admin-v1` (16), `test-permessi-funzioni-risoluzione` (34), `test-fn-check-ultimo-super-admin-attivo` (5), `test-billing-account-auto-link-ef` (4), `test-guard-albero-ba-omogeneo-v1` (12) | verdi dietro `-46…-50`, nessuna modifica |
 | cancelli statici (runOnChange, letterali, preCondition, trigger, grant batch, timestamp, preambolo pgTAP) | verdi |
 
-⚠️ **Non provato qui, resta a Tid**: la corsa pgTAP vera come app, il cancello
-B-7 (`codici-errore-baseline.sh`), e l'esito su un database ricostruito
-(soprattutto `-44`, che in CI salta per costruzione).
+✅ **Dopo l'apply (Tid, 2026-09-25)**: `-40…-50` applicati su dbdev e scratch;
+**corsa pgTAP senza regressioni**. ⚠️ Una correzione di Tid a
+`test-automazione-attivo-eccezioni-v1` prima della corsa: il nome della tabella
+si componeva con `tgrelid::regclass::text`, che dipende dal `search_path` — come
+app, con `config` nel path, esce senza schema, e il test 4 era rosso (il 2 verde
+per coincidenza). Nella prova da owner, senza `config` nel path, il difetto non
+si vedeva: ora il nome si compone dal catalogo (`nspname || '.' || relname`).
+⚠️ Resta il rosso **dello scratch** su `config/test-fk-auth-user-ponte-django-v1`:
+non è del P-2 (nessun changeSet `-40…-50` tocca FK verso `django.auth_user`), è
+il ponte a metà del §11.5.
+⏳ Non ancora visti: il cancello B-7 (`codici-errore-baseline.sh`) e l'esito in
+CI (soprattutto `-44`, che lì salta per costruzione).
 
 **Due correzioni ai test dopo l'apply di `-40…-45`**, da errori miei nei file
 (non nei changeSet): la forma testuale dell'indice nel test 5 di
@@ -915,7 +925,8 @@ quelle verdi della tabella.
 
 ### 12.6 Cosa resta
 
-- Tid: applicare `-46…-50`; corsa pgTAP; B-7.
+- ✅ Tid: `-40…-50` applicati, corsa pgTAP senza regressioni (2026-09-25).
+  ⏳ B-7; scratch da riallineare sul ponte django (§11.5).
 - Backend: §7 e §12.4 (lotto L-3; R-3 con L-4).
 - Guida `architettura-multi-face-auth` §3.1 (del backend, §8), con la veste che
   nasce spenta e porta/profili sganciati.
@@ -937,6 +948,7 @@ quelle verdi della tabella.
 | 2026-09-25 | Tid | P-1 applicato su dbdev e scratch. Sullo scratch `test-fk-auth-user-ponte-django-v1` rosso: ponte django a metà (§11.5), rimedio sulla macchina e domanda su `MARK_RAN` → `CONTINUE` |
 | 2026-09-25 | DB | **P-2 scritto** (§12): `20260925-40…-45`, con dentro R-1 e R-2 del piano BE/FE (§12.2); codici 1130-1131; 2 pgTAP nuovi, 4 adeguati. Tid applica `-40…-45` durante la prova |
 | 2026-09-25 | DB + Tid | Binding SUPER_ADMIN su veste spenta rifiutato dall'ATTIVO (trovato dalla prova pre-apply e dalla corsa di Tid, §11.6). Tid decide: **porta e profili si sganciano**. Scritti e provati `-46…-50` (registro delle eccezioni ATTIVO, ritiro per funzione e argomenti, motore, seed, ritiro una tantum); adeguati `test-fn-is-super-admin` (caso 6) e `test-profili-accesso-guard-ultimo-super-admin` (caso 3). Non applicati |
+| 2026-09-25 | Tid | `-40…-50` applicati su dbdev e scratch; commit `acc6385d5`. Corretto `test-automazione-attivo-eccezioni-v1` (nome tabella da `regclass::text`, dipendente dal `search_path`). Corsa pgTAP **senza regressioni** (§12.5) |
 
 ---
 {% include-markdown "signature-core.md" %}
