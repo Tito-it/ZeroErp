@@ -14,7 +14,8 @@
 --  9) ⛔ un operatore SENZA reparto non vede le mail di reparto
 --  10..11) ✅ il super admin vede tutto
 --  12..14) ⭐ il processo send_pending_emails vede e aggiorna le righe del LOG
---          di ogni ambito, dentro le sue aziende; sull'outbox niente
+--          di ogni ambito, dentro le sue aziende; sull'outbox niente, e degli
+--          allegati solo quelli agganciati al log (il ramo «log» della policy)
 --  15..18) ⛔ WITH CHECK: non si scrive, non si modifica e non si «sposta» una
 --          mail fuori dal proprio perimetro
 --  19..21) il satellite segue i suoi padri
@@ -187,11 +188,18 @@ BEGIN
     RETURNING id INTO v_id;
     INSERT INTO _righe VALUES ('ALL_A_OUT', 'allegato', v_id);
 
+    -- ⚠️ Come nell'applicazione: l'allegato nasce sulla BOZZA e all'invio si
+    --   aggancia al log (dal 20260925-74 non si scrive direttamente sul log).
+    --   Da qui porta due padri: chi vede solo il log (il processo, test 14)
+    --   lo vede per quella strada.
     INSERT INTO config.email_allegato
-        (email_log_id, nome_file, mime_type, dimensione_bytes, file_path)
-    VALUES ((SELECT id FROM _righe WHERE nome = 'L_A_OP'),
+        (email_outbox_id, nome_file, mime_type, dimensione_bytes, file_path)
+    VALUES ((SELECT id FROM _righe WHERE nome = 'O_A_OP'),
             'b.pdf', 'application/pdf', 1, 'pgtap/b.pdf')
     RETURNING id INTO v_id;
+    UPDATE config.email_allegato
+       SET email_log_id = (SELECT id FROM _righe WHERE nome = 'L_A_OP')
+     WHERE id = v_id;
     INSERT INTO _righe VALUES ('ALL_A_LOG', 'allegato', v_id);
 END
 $allegati$;
@@ -305,8 +313,8 @@ SELECT is(
     'ok:1',
     '13. e ne chiude lo stato: l''UPDATE su una mail OPERATORE altrui passa il WITH CHECK');
 
-SELECT is(pg_temp.visti('outbox'), '{}'::text[],
-    '14. sull''outbox il processo non vede niente: nessuna macchina la apre');
+SELECT is(pg_temp.visti('outbox') || pg_temp.visti('allegato'), ARRAY['ALL_A_LOG'],
+    '14. sull''outbox il processo non vede niente; degli allegati vede solo quello agganciato al log, per la strada del log');
 
 -- ============================================================
 -- 15..18. ⛔ WITH CHECK: fuori dal perimetro non si scrive

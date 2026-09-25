@@ -81,5 +81,6 @@ Questa relazione bidirezionale permette di navigare in entrambe le direzioni: da
 * CHECK: `ambito IN ('SISTEMA', 'REPARTO', 'OPERATORE')`
 * CHECK: se `ambito = 'REPARTO'` allora `unita_organizzativa_id IS NOT NULL`
 * CHECK: se `ambito = 'OPERATORE'` allora `creato_da_user_id IS NOT NULL`
+* Una bozza si **elimina** solo in `DRAFT`. Spedita, simulata, in partenza o annullata resta al suo posto: si annulla, non si cancella
 * FK NO ACTION su account, template, reparto, pratica
 * FK SET NULL su `email_log_id` (cross-reference)
