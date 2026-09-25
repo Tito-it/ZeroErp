@@ -1025,7 +1025,9 @@ D6 e il registro dei rossi in CI.
       era **verde per l'errore sbagliato** (super admin) e due sono rossi per un
       **difetto del DB da zero** — `storico.parameters` ha `parameter_id` mentre
       il trigger passa `parameters_id`, quindi su un'installazione nuova ogni
-      UPDATE su `config.parameters` fallisce. ✅ **Lotto 1 CHIUSO il 23-09**:
+      UPDATE su `config.parameters` fallisce. ✅ *Chiuso il 2026-09-25 da
+      [brief-db-storico-colonna-fk-dei-trigger.md](../work-done/brief-db-storico-colonna-fk-dei-trigger.md):
+      le madri erano cinque, non una, e quattro rotte anche su dbdev.* ✅ **Lotto 1 CHIUSO il 23-09**:
       i 9 di `pagamenti` chiedevano tutti una fattura, e la decisione è stata
       **un BB, non nove copie** — `20260923-04` (`fn_pgtap_crea_fattura`:
       mondo, coppia emittente/utility, registro coerente, stato alla nascita,
