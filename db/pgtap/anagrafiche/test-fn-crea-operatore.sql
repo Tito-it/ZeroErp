@@ -16,14 +16,14 @@
 --
 -- Elenco test (plan 12):
 --   1. Precondizione: esiste UO attiva e qualifica attiva
---   2. Creazione operatore con successo (la v2 torna l'auth_user_id)
+--   2. Creazione operatore con successo (la v2 torna l'auth_user_id, in una TABLE)
 --   3. auth_user creato con username corretto
 --   4. auth_user.email corretta
---   5. Catena soggetto -> ruolo -> risorsa_umana -> identita' OPERATORE attiva
+--   5. Catena soggetto -> ruolo -> risorsa_umana -> identita' OPERATORE SPENTA
 --   6. Soggetto ha tipo_soggetto_dettaglio_id = PR (Privato PF)
 --   7. Contatto default creato con email corretta
 --   8. Errore: username duplicato       (E_ADMIN_USERNAME_DUPLICATO)
---   9. Errore: email duplicata          (E_ADMIN_EMAIL_DUPLICATA)
+--   9. Errore: email gia' di un operatore, anche in MAIUSCOLO (E_CREDENZIALE_GIA_OPERATORE)
 --  10. Errore: codice fiscale duplicato (E_ADMIN_CF_DUPLICATO)
 --  11. Errore: UO inesistente           (E_ADMIN_UO_NON_TROVATA)
 --  12. Errore: cognome vuoto            (E_ADMIN_VALIDAZIONE)
@@ -43,6 +43,18 @@
 --     · i messaggi NON portano piu' il codice (dal 2026-08-05 il codice viaggia
 --       nel canale CONSTRAINT): i throws_matching cercano la FRASE a catalogo,
 --       e il codice si legge dal canale, nel test 8.
+--
+-- ⭐ Rev 2026-09-25 (brief-db-blocco-login-per-credenziale §12, changeSet
+--   20260925-42). La madre:
+--     · ritorna TABLE(auth_user_id, username, credenziale_riusata): si legge
+--       con SELECT … FROM (test 2); `p_attivo` e' uscito dalla firma;
+--     · crea la veste OPERATORE SPENTA — la accende l'attivazione dell'invito
+--       (regola unica, R-2): il test 5 lo pretende;
+--     · RIUSA la credenziale di un'email esistente (D-6) e rifiuta quella che
+--       ha gia' una veste OPERATORE: il test 9, che era «email duplicata», e'
+--       ora quel rifiuto — con l'email in MAIUSCOLO, che prova anche il
+--       confronto senza maiuscole (D-9). Il riuso vero e proprio sta in
+--       test-crea-operatore-riusa-credenziale-v1.sql.
 -- ------------------------------------------------------------
 BEGIN;
 
@@ -111,7 +123,7 @@ SELECT ok(
 -- =========================================================
 SELECT lives_ok(
     format(
-      $$UPDATE tmp_crea_op_ctx SET auth_user_id = anagrafiche.fn_crea_operatore_v2(
+      $$UPDATE tmp_crea_op_ctx SET auth_user_id = (SELECT m.auth_user_id FROM anagrafiche.fn_crea_operatore_v2(
         p_cognome := 'Rossi',
         p_nome := 'Mario',
         p_codice_fiscale := %L,
@@ -122,9 +134,8 @@ SELECT lives_ok(
         p_password_hash := 'pbkdf2_sha256$600000$test$hash_placeholder==',
         p_qualifica_id := %s,
         p_unita_organizzativa_id := %s,
-        p_is_super_admin := false,
-        p_attivo := true
-      ) $$,
+        p_is_super_admin := false
+      ) m) $$,
       (SELECT test_cf FROM tmp_crea_op_ctx),
       (SELECT test_username FROM tmp_crea_op_ctx),
       (SELECT test_email FROM tmp_crea_op_ctx),
@@ -151,9 +162,10 @@ SELECT is(
   );
 
 -- =========================================================
--- 5) Catena: soggetto + ruolo + risorsa umana + identita' OPERATORE attiva
+-- 5) Catena: soggetto + ruolo + risorsa umana + identita' OPERATORE SPENTA
 --    (era «bridge risorse_umane_auth_user» con ruolo_sistema = OPERATIVO;
---     nel modello nuovo: identita_digitali OPERATORE attiva, non super admin)
+--     nel modello nuovo: identita_digitali OPERATORE, non super admin).
+--    ⭐ Rev 2026-09-25: SPENTA — la accende l'attivazione dell'invito (R-2).
 -- =========================================================
 SELECT ok(
     EXISTS (
@@ -164,12 +176,12 @@ SELECT ok(
         JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
       WHERE i.auth_user_id = (SELECT auth_user_id FROM tmp_crea_op_ctx)
         AND i.ruolo_applicativo = 'OPERATORE'
-        AND i.attivo = true
+        AND i.attivo = false
         AND s.cognome = 'Rossi'
         AND s.nome = 'Mario'
         AND NOT script.fn_is_super_admin((SELECT auth_user_id FROM tmp_crea_op_ctx))
     ),
-    '5. Catena soggetto -> ruolo -> risorsa_umana -> identita'' OPERATORE attiva, non super admin'
+    '5. Catena soggetto -> ruolo -> risorsa_umana -> identita'' OPERATORE SPENTA (la accende l''invito), non super admin'
   );
 
 -- =========================================================
@@ -238,7 +250,9 @@ SELECT is(
   );
 
 -- =========================================================
--- 9) Errore: email duplicata
+-- 9) Errore: l'email e' gia' di un operatore — scritta in MAIUSCOLO.
+--    Rev 2026-09-25: la madre riusa la credenziale dell'email (D-6), e questa
+--    ha gia' la veste OPERATORE del test 2 (spenta): E_CREDENZIALE_GIA_OPERATORE.
 -- =========================================================
 SELECT throws_matching(
     format(
@@ -252,12 +266,12 @@ SELECT throws_matching(
         p_qualifica_id := %s,
         p_unita_organizzativa_id := %s
       ) $$,
-      (SELECT test_email FROM tmp_crea_op_ctx),
+      (SELECT upper(test_email) FROM tmp_crea_op_ctx),
       (SELECT qualifica_id FROM tmp_crea_op_ctx),
       (SELECT uo_id FROM tmp_crea_op_ctx)
     ),
-    'Email gia',
-    '9. Errore email duplicata (E_ADMIN_EMAIL_DUPLICATA)'
+    'appartiene gia',
+    '9. Email (in maiuscolo) gia'' di un operatore -> E_CREDENZIALE_GIA_OPERATORE'
   );
 
 -- =========================================================

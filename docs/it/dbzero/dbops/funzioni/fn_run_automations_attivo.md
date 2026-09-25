@@ -69,6 +69,14 @@ BEGIN
 
   v_schemas := dbops.fn_resolve_scope(p_schemas);
 
+  -- ⭐ Rev 20260925-48: chi genera ritira. Le FK dichiarate eccezione in
+  --   dbops.automazione_attivo_eccezioni non si legano sull'attivo: se i
+  --   trigger ci sono gia' (generati prima che la coppia diventasse
+  --   un'eccezione) si tolgono qui, a ogni giro. Non in dry run.
+  IF NOT p_dry_run THEN
+    PERFORM dbops.fn_ritira_attivo_eccezioni();
+  END IF;
+
   FOR rrule IN
     SELECT r.*
     FROM dbops.automation_rules_tbl r
@@ -164,6 +172,33 @@ BEGIN
 
       -- 2) fk_col gia' calcolata dal cursor (no chiamata a fn_get_child_fk_col)
       fk_col := rfk.child_fk_col;
+
+      -- 2.0) ⭐ Rev 20260925-48: FK dichiarata eccezione -> niente block,
+      --   niente require (dbops.automazione_attivo_eccezioni, col suo motivo).
+      IF EXISTS (SELECT 1 FROM dbops.automazione_attivo_eccezioni e
+                  WHERE e.schema_figlia  = rfk.child_schema
+                    AND e.tabella_figlia = rfk.child_table
+                    AND e.colonna_fk     = fk_col) THEN
+        IF p_dry_run THEN
+          PERFORM dbops.fn_audit_log_once(
+            p_function_name => 'fn_run_automations_attivo',
+            p_status        => 'DRYRUN',
+            p_rule_type     => 'ATTIVO_SKIP_ECCEZIONE',
+            p_exec_mode     => p_exec_mode,
+            p_parts         => ARRAY['ATTIVO_BLOCK','ATTIVO_REQUIRE'],
+            p_dry_run       => true,
+            p_params        => jsonb_build_object(
+                                'action','SKIP',
+                                'reason','ECCEZIONE_DICHIARATA',
+                                'parent', rfk.parent_schema||'.'||rfk.parent_table,
+                                'child',  rfk.child_schema||'.'||rfk.child_table,
+                                'fk',     fk_col
+                              ),
+            p_message       => 'Skip: FK dichiarata in dbops.automazione_attivo_eccezioni'
+          );
+        END IF;
+        CONTINUE;
+      END IF;
 
       -- 2.1) applica automations solo su FK con suffisso _id
       IF lower(fk_col) NOT LIKE '%_id' THEN
@@ -435,7 +470,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_run_automations_attivo(p_exec_mode text, p_schemas text[], p_dry_run boolean)
-IS 'Automazione ATTIVO (BLOCK + REQUIRE): crea trigger BLOCK sul padre e REQUIRE sul figlio quando il padre ha colonna attivo. Usa la colonna del padre realmente referenziata dalla FK (confkey[1]), non la PK, per supportare FK su colonne UNIQUE non-PK.';
+IS 'Automazione ATTIVO (BLOCK + REQUIRE): crea trigger BLOCK sul padre e REQUIRE sul figlio quando il padre ha colonna attivo. Usa la colonna del padre realmente referenziata dalla FK (confkey[1]), non la PK, per supportare FK su colonne UNIQUE non-PK. ⭐ Rev 20260925-48: salta le FK dichiarate in dbops.automazione_attivo_eccezioni (ognuna col suo motivo) e, fuori dal dry run, in testa a ogni giro chiama dbops.fn_ritira_attivo_eccezioni, che toglie i trigger gia'' generati per quelle coppie: chi genera ritira. Prima eccezione: config.profili_accesso_bindings.identita_digitale_id (porta e profili si sganciano, brief-db-blocco-login-per-credenziale §12.3).';
 ```
 
 ---

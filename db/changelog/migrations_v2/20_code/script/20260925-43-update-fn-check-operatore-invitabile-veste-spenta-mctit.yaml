@@ -1,0 +1,177 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 — script.fn_check_operatore_invitabile sulla REGOLA UNICA dell'invito
+#   (R-1 del piano BE/FE, D-8 dell'analisi accessi)
+#   Brief: brief-db-blocco-login-per-credenziale, sezione 12
+#
+# Corpo di partenza: la doc auto-generata (docs/it/dbzero/script/funzioni/
+# fn_check_operatore_invitabile.md), verificata uguale al vivo il 2026-09-25.
+#
+# ── PERCHE' NELLO STESSO GIRO DEL P-2 ─────────────────────────────────
+#   Col P-2 la veste OPERATORE nasce SPENTA (20260925-42). Il check di prima
+#   pretendeva la veste ATTIVA e is_active = true: un operatore appena creato
+#   non sarebbe stato invitabile, e l'invito — l'unico modo di accenderlo —
+#   non sarebbe mai partito. Un vicolo cieco, non una regola.
+#
+# ── LA REGOLA, ROVESCIATA (analisi §4.2, D-8) ─────────────────────────
+#   Si invita chi ha una veste OPERATORE SPENTA: l'invito e' cio' che la
+#   accende (e il reinvito riapre una veste disattivata, D-3).
+#     1. auth_user valido ed esistente                    (invariato)
+#     2. almeno una veste OPERATORE                        (invariato)
+#     3. ⛔ nessuna veste OPERATORE ATTIVA — «veste gia' attiva → rifiuto»,
+#        uguale per ogni veste (D-8). Era il contrario: si pretendeva attiva.
+#     4. la veste nella sua finestra valido_dal/valido_al  (invariato)
+#     5. un'email a cui mandare l'invito                   (invariato)
+#   Tolte:
+#     - `last_login IS NULL` (D-8: l'ultimo accesso non decide piu' chi si
+#       invita; e fino a oggi nessuno lo scriveva);
+#     - `is_active = true`: e' derivato dalle vesti (fn_sync_auth_user_is_active),
+#       quindi con la sola veste spenta e' false PER COSTRUZIONE;
+#     - il ramo `ruolo_applicativo = 'DISABILITATO'`, codice morto: il join
+#       filtra gia' OPERATORE (lo diceva il pgTAP dal 2026-04-29).
+#
+# ⚠️ Piu' vesti OPERATORE sulla stessa credenziale: il modello le ammette
+#   (l'unique e' solo WHERE attivo), la madre dal 20260925-42 non le crea piu'.
+#   Il check le aggrega invece di prenderne una a caso (prima: SELECT INTO su
+#   un LEFT JOIN a piu' righe, la prima che capitava).
+#
+# Contratto invariato: RETURNS jsonb {invitabile, motivo, email}. Cambiano
+# alcuni testi di `motivo` (li legge fn_get_operatore_detail come
+# invite_reason): chi li confronta per stringa va censito (brief §12).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260925-43-update-fn-check-operatore-invitabile-veste-spenta-mctit.yaml
+
+  - changeSet:
+      id: 20260925-43-update-fn-check-operatore-invitabile-veste-spenta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_check_operatore_invitabile sulla regola unica dell'invito (R-1, D-8): si invita
+        chi ha una veste OPERATORE SPENTA; una veste gia' attiva si rifiuta. Tolti last_login,
+        is_active (derivato: false per costruzione con la veste spenta) e il ramo DISABILITATO
+        (morto). Contratto jsonb invariato. Brief: brief-db-blocco-login-per-credenziale §12.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_operatore_invitabile(p_auth_user_id integer)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  -- Tipi espliciti: colonne di django.auth_user (niente %TYPE su Django).
+                  v_trovato          boolean;
+                  v_email            VARCHAR(254);
+                  v_n_vesti          integer;
+                  v_veste_attiva     boolean;
+                  v_in_finestra      boolean;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dire se un operatore puo' ricevere l'invito che ACCENDE
+                  --   la sua veste OPERATORE (regola unica dell'invito,
+                  --   rev 20260925-43: la veste nasce spenta, la accende
+                  --   l'attivazione; il reinvito riapre una veste spenta).
+                  --
+                  -- Condizioni:
+                  --   1. auth_user valido ed esistente
+                  --   2. almeno una veste OPERATORE
+                  --   3. nessuna veste OPERATORE gia' attiva (D-8)
+                  --   4. la veste nella sua finestra temporale
+                  --   5. auth_user ha un indirizzo email
+                  --   ⛔ NON contano piu': last_login (D-8) e is_active
+                  --      (derivato dalle vesti: false per costruzione).
+                  --
+                  -- Ritorna:
+                  --   JSONB: {invitabile: bool, motivo: text, email: text}
+                  -- =========================================================
+
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      RETURN jsonb_build_object(
+                          'invitabile', false,
+                          'motivo', 'auth_user_id non valido',
+                          'email', NULL
+                      );
+                  END IF;
+
+                  -- Credenziale + le sue vesti OPERATORE, AGGREGATE: il modello
+                  -- ammette piu' vesti spente sulla stessa credenziale, e
+                  -- prenderne una a caso deciderebbe per la prima che capita.
+                  SELECT true,
+                         au.email,
+                         count(idg.id),
+                         bool_or(idg.attivo),
+                         bool_or(    (idg.valido_dal IS NULL OR idg.valido_dal <= CURRENT_DATE)
+                                 AND (idg.valido_al  IS NULL OR idg.valido_al  >= CURRENT_DATE))
+                    INTO v_trovato, v_email, v_n_vesti, v_veste_attiva, v_in_finestra
+                    FROM django.auth_user au
+                    LEFT JOIN anagrafiche.identita_digitali idg
+                      ON idg.auth_user_id = au.id
+                     AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                   WHERE au.id = p_auth_user_id
+                   GROUP BY au.email;
+
+                  IF v_trovato IS NULL THEN
+                      RETURN jsonb_build_object(
+                          'invitabile', false,
+                          'motivo', 'Utente non trovato',
+                          'email', NULL
+                      );
+                  END IF;
+
+                  IF v_n_vesti = 0 THEN
+                      RETURN jsonb_build_object(
+                          'invitabile', false,
+                          'motivo', 'Nessuna identita OPERATORE',
+                          'email', v_email
+                      );
+                  END IF;
+
+                  -- ⛔ D-8: veste gia' attiva → rifiuto. L'accesso c'e' gia': per
+                  --   una password dimenticata c'e' il reset, non l'invito.
+                  IF v_veste_attiva THEN
+                      RETURN jsonb_build_object(
+                          'invitabile', false,
+                          'motivo', 'Veste OPERATORE gia'' attiva',
+                          'email', v_email
+                      );
+                  END IF;
+
+                  IF NOT v_in_finestra THEN
+                      RETURN jsonb_build_object(
+                          'invitabile', false,
+                          'motivo', 'Identita fuori finestra temporale',
+                          'email', v_email
+                      );
+                  END IF;
+
+                  IF v_email IS NULL OR trim(v_email) = '' THEN
+                      RETURN jsonb_build_object(
+                          'invitabile', false,
+                          'motivo', 'Nessun indirizzo email configurato',
+                          'email', NULL
+                      );
+                  END IF;
+
+                  RETURN jsonb_build_object(
+                      'invitabile', true,
+                      'motivo', NULL,
+                      'email', v_email
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_operatore_invitabile(integer) IS
+                  'Dice se un operatore puo'' ricevere l''invito che ACCENDE la sua veste OPERATORE. ⭐ Rev 20260925-43 (brief-db-blocco-login-per-credenziale §12; R-1 del piano BE/FE, D-8): regola unica dell''invito — la veste nasce spenta (fn_crea_operatore_v2) e la accende l''attivazione; il reinvito riapre una veste spenta (D-3). Invitabile se: credenziale esistente, almeno una veste OPERATORE, NESSUNA veste OPERATORE gia'' attiva (veste attiva -> rifiuto), veste nella sua finestra, email presente. Non contano piu'' last_login (D-8) ne'' is_active (derivato dalle vesti, false per costruzione con la sola veste spenta). Le vesti OPERATORE della credenziale si aggregano (il modello ne ammette piu'' d''una spenta). Ritorna jsonb {invitabile, motivo, email}; motivo lo legge fn_get_operatore_detail come invite_reason.';

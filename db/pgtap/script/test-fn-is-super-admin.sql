@@ -10,8 +10,8 @@
 --   - Identita inesistente -> false
 --   - Identita attiva + binding SUPER_ADMIN attivo -> true
 --   - Identita attiva + binding inattivo -> false
---   - Identita inattiva + binding attivo: stato che il modello NON ammette
---     (caso 6: si asserisce il rifiuto)
+--   - Identita inattiva + binding attivo -> false (rev 2026-09-25: lo stato
+--     ESISTE — porta e profili sganciati — e il caso 6 lo collauda)
 --   - Profilo SUPER_ADMIN inattivo -> false
 --   - Identita fuori finestra temporale -> false
 --
@@ -24,7 +24,7 @@
 --    3. fn_is_super_admin su auth_user senza identita -> false
 --    4. Identita attiva + binding attivo -> true
 --    5. Identita attiva + nessun binding -> false
---    6. Disattivare un'identita con binding SA attivo -> respinto
+--    6. Identita inattiva + binding SA attivo -> false
 --    7. Binding disattivato -> false
 --    8. Identita con valido_al scaduto -> false
 --
@@ -59,6 +59,9 @@
 --   2026-09-23. Il ramo fail-closed di fn_is_super_admin su identita'
 --   inattiva resta difesa in profondita', ma uno stato irraggiungibile non
 --   si collauda: si collauda la regola che lo rende irraggiungibile.
+--   ⚠️ SUPERATO il 2026-09-25 (brief-db-blocco-login-per-credenziale §12.3):
+--   porta e profili si sono sganciati, lo stato «inattiva + binding attivo»
+--   ora esiste e il caso 6 collauda il ramo di fn_is_super_admin che lo nega.
 --   ⭐ E il debito §22.4 si chiude: i builder chiudono da soli la saga del
 --   soggetto (indirizzi compresi), quindi il file torna IMMEDIATE come gli
 --   altri — la riga «pgtap-differiti: escluso» e' tolta.
@@ -158,18 +161,33 @@ SELECT ok(
 );
 
 -- =========================================================
--- 6) Identita inattiva + binding attivo: il modello non lo ammette.
---    Disattivare l'identita' 3 col suo binding SA attivo e' respinto.
---    (Il verso opposto — attivare un binding su un'identita' inattiva —
---    lo respinge trgfn_child_requires_active_parent.)
+-- 6) Identita inattiva + binding attivo -> false.
+--    ⭐ Rev 2026-09-25 (brief-db-blocco-login-per-credenziale §12.3): fino a
+--    quel giorno il modello NON ammetteva questo stato (la coppia ATTIVO
+--    block/require fra binding e identita') e il caso asseriva il rifiuto.
+--    Con la veste OPERATORE che nasce spenta, porta e profili si sono
+--    sganciati (dbops.automazione_attivo_eccezioni, decisione Tid): lo stato
+--    esiste — e' l'operatore in attesa d'invito, o disattivato — e la regola
+--    da collaudare e' quella che lo nega: la porta chiusa vince sul binding.
+--    Il binding SA di 1 resta attivo: spegnere 3 non e' spegnere l'ultimo.
 -- =========================================================
-SELECT throws_like(
-    $$UPDATE anagrafiche.identita_digitali
-         SET attivo = false
-       WHERE id = (SELECT identita_id FROM _t_id WHERE idx = 3)$$,
-    '%ci sono ancora righe collegate attive in config.profili_accesso_bindings%',
-    '6. Identita con binding SUPER_ADMIN attivo: la disattivazione e'' respinta (lo stato «inattiva + binding attivo» non esiste)'
+UPDATE anagrafiche.identita_digitali
+   SET attivo = false
+ WHERE id = (SELECT identita_id FROM _t_id WHERE idx = 3);
+
+SELECT is(
+    script.fn_is_super_admin(
+        (SELECT auth_user_id FROM _t_au WHERE idx = 3)
+    ),
+    false,
+    '6. Identita inattiva + binding SUPER_ADMIN attivo -> false (la porta chiusa vince)'
 );
+
+-- Riaccesa: il caso 7 spegne il binding di 1, e 3 deve restare un SA attivo
+-- perche' quello non sia l'ultimo.
+UPDATE anagrafiche.identita_digitali
+   SET attivo = true
+ WHERE id = (SELECT identita_id FROM _t_id WHERE idx = 3);
 
 -- =========================================================
 -- 7) Binding disattivato -> false

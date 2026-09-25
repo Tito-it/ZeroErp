@@ -33,8 +33,10 @@
 --   2. Single super-admin -> can_disable=false + disable_reason valorizzata
 --   3. Demote bloccato (single SA) -> can_demote_super_admin=false
 --                                       + demote_reason valorizzata
---   4. Invite con last_login -> can_invite=false + invite_reason
---                                contiene 'login'
+--   4. Invite su veste gia' ATTIVA -> can_invite=false + invite_reason
+--                                contiene 'attiva' (rev 2026-09-25: la regola
+--                                unica dell'invito, D-8 — last_login non
+--                                decide piu'; 20260925-43)
 --
 -- Niente SAVEPOINT (azzera il counter pgTAP).
 -- ------------------------------------------------------------
@@ -143,30 +145,36 @@ SELECT is(
 );
 
 -- =========================================================
--- 4) Invite con last_login: forzo last_login NOT NULL su un user
---    che altrimenti sarebbe invitabile. can_invite=false e
---    invite_reason cita 'login'.
+-- 4) Invite su veste gia' ATTIVA: can_invite=false e invite_reason
+--    cita 'attiva'.
+--
+--    ⭐ Rev 2026-09-25 (brief-db-blocco-login-per-credenziale §12,
+--    20260925-43): fino a quel giorno il caso era «last_login NOT NULL
+--    -> non invitabile». Con la regola unica dell'invito (D-8) si invita
+--    chi ha la veste SPENTA, e last_login non decide piu': il rifiuto
+--    viene dalla veste gia' attiva, che il builder accende. L'UPDATE di
+--    last_login resta, a dire che anche con un accesso registrato il
+--    motivo e' la veste, non il login.
 --
 --    Strategia: costruisco un altro SA (cosi' non e' "ultimo"
---    ed evito interazioni con lo scenario 2/3). Su quell'auth_user
---    setto last_login=now() -> non invitabile.
+--    ed evito interazioni con lo scenario 2/3).
 -- =========================================================
 CREATE TEMP TABLE _t_c4 AS
 SELECT auth_user_id AS au_id
   FROM dbops.fn_pgtap_crea_operatore_umano('detail SA invito', p_super_admin := true);
 
--- Forzo email valorizzata + last_login != NULL: cosi' fn_check_operatore_invitabile
--- supera tutti i guard precedenti e fallisce specificatamente sul last_login.
+-- Email valorizzata + last_login != NULL: il rifiuto deve arrivare dalla
+-- veste attiva, non dal login.
 UPDATE django.auth_user
    SET email      = COALESCE(NULLIF(email, ''), 'pgtap+invite@example.com'),
        last_login = now()
  WHERE id = (SELECT au_id FROM _t_c4);
 
 SELECT is(
-    (SELECT (NOT can_invite) AND invite_reason ILIKE '%login%'
+    (SELECT (NOT can_invite) AND invite_reason ILIKE '%gia%attiva%'
        FROM script.fn_get_operatore_detail((SELECT au_id FROM _t_c4))),
     true,
-    '4. Invite con last_login: can_invite=false + invite_reason cita "login"'
+    '4. Invite su veste gia'' attiva: can_invite=false + invite_reason cita "attiva"'
 );
 
 SELECT * FROM finish();
