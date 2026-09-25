@@ -27,15 +27,18 @@ AS $function$
 -- 2026-09-23: la veste la legge ui.fn_veste_corrente() e il livello di
 --        colonna lo calcola ui.fn_lista_colonne_livello(): due building
 --        block condivisi con la ricerca libera (fn_lista_colonne_ricerca_full).
+-- 2026-09-25: la riga della lista la legge ui.fn_lista_da_codice() (BB
+--        condiviso con la ricerca libera e col backend), e il JSONB porta
+--        ricerca_min_caratteri, la soglia della ricerca libera della lista.
 DECLARE
+  -- La riga della lista, letta una volta dal BB: id, multi_emittente (P-2b,
+  -- 2026-08-18), perimetro_emittente (2026-09-02), ricerca_min_caratteri
+  -- (2026-09-25) vengono tutti da qui.
+  v_lista            ui.lista_definizione%ROWTYPE;
   v_lista_id         ui.lista_definizione.id%TYPE;
-  -- P-2b (2026-08-18): la capacita' dichiarata della lista.
-  v_multi_emittente  ui.lista_definizione.multi_emittente%TYPE;
-  -- 2026-09-02: la lista ha righe che appartengono a un emittente?
-  v_perimetro_emitt  ui.lista_definizione.perimetro_emittente%TYPE;
   v_config_colonne   JSONB;
-  v_ordinamento      JSONB;
-  v_filtri           JSONB;
+  v_ordinamento      ui.lista_preset.ordinamento_default%TYPE;
+  v_filtri           ui.lista_preset.filtri_default%TYPE;
   v_pagina_dim       ui.lista_preset.pagina_dimensione%TYPE := 25;
   v_profili_ids      INTEGER[];
   v_colonne_nuove    INTEGER := 0;
@@ -58,27 +61,15 @@ DECLARE
   v_preset_aggiornato      BOOLEAN := FALSE;
 BEGIN
   -- -------------------------------------------------------
-  -- 0. Recupera lista_id dal codice
+  -- 0. La riga della lista dal codice (2026-09-25: dal BB)
   -- -------------------------------------------------------
-  -- ⚠️ P-2b: multi_emittente si legge QUI, nella SELECT che c'era gia'.
-  --   Una seconda query sulla stessa riga sarebbe un round-trip in piu' su
-  --   una funzione che gira a ogni apertura di lista.
-  SELECT id, multi_emittente, perimetro_emittente
-    INTO v_lista_id, v_multi_emittente, v_perimetro_emitt
-    FROM ui.lista_definizione
-   WHERE codice = p_lista_codice
-     AND attivo = TRUE;
-
-  IF v_lista_id IS NULL THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database',
-      'ui.fn_resolve_lista_config',
-      'E_UI_LISTA_NON_TROVATA',
-      jsonb_build_object('detail', format('codice lista: ''%s''', p_lista_codice)),
-      NULL,
-      p_lista_codice
-    );
-  END IF;
+  -- ⚠️ Una lettura sola: multi_emittente, perimetro_emittente e la soglia
+  --   della ricerca si prendono da questa riga. Una seconda query sulla
+  --   stessa riga sarebbe un round-trip in piu' su una funzione che gira a
+  --   ogni apertura di lista. Lista assente o spenta: E_UI_LISTA_NON_TROVATA,
+  --   sollevato dal BB.
+  v_lista    := ui.fn_lista_da_codice(p_lista_codice);
+  v_lista_id := v_lista.id;
 
   -- -------------------------------------------------------
   -- 1. Risolvi profili applicabili (DB-4: GUC-aware)
@@ -391,6 +382,11 @@ BEGIN
     'ordinamento',       COALESCE(v_ordinamento, '[]'::JSONB),
     'filtri',            COALESCE(v_filtri, '{}'::JSONB),
     'pagina_dimensione', v_pagina_dim,
+    -- ⭐ 2026-09-25: la soglia della ricerca libera, una proprieta' della
+    --   LISTA (non del preset, non dell'utente): sotto questo numero di
+    --   caratteri il termine non si manda. E' la stessa colonna che legge il
+    --   BB di ricerca del backend: una sede, due lettori. Chiave ADDITIVA.
+    'ricerca_min_caratteri', v_lista.ricerca_min_caratteri,
     'colonne_nuove',     v_colonne_nuove,
     'preset_aggiornato', v_preset_aggiornato,
     -- ⭐ P-2b: la lista dichiara se sa reggere piu' emittenti.
@@ -401,7 +397,7 @@ BEGIN
     --   decidono lo scope e la RLS), dice se la SCHERMATA e' leggibile nella
     --   condizione in cui sta per essere aperta. Chi la usa come controllo di
     --   autorizzazione crea una seconda via d'accesso accanto a quella vera.
-    'multi_emittente',   COALESCE(v_multi_emittente, false),
+    'multi_emittente',   COALESCE(v_lista.multi_emittente, false),
     -- ⭐ 2026-09-02 — IL TERZO CASO, e senza di lui il flag sopra risponde a
     --   una domanda che per certe liste non esiste. `multi_emittente` dice
     --   «so dire da quale emittente arriva ogni riga»; su un catalogo GLOBALE
@@ -417,14 +413,14 @@ BEGIN
     --   dire (perimetro_emittente = false). Sono due ragioni diverse per lo
     --   stesso gesto, e vanno tenute distinte: la prima e' una capacita'
     --   conquistata, la seconda e' la natura del dato.
-    'perimetro_emittente', COALESCE(v_perimetro_emitt, true)
+    'perimetro_emittente', COALESCE(v_lista.perimetro_emittente, true)
   );
 
 END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_resolve_lista_config(p_lista_codice character varying, p_auth_user_id integer, p_emittente_fiscale_id bigint)
-IS 'Risolve configurazione lista per un utente: cascata preset (GUC-aware, deterministica per priorita), merge nuove colonne, normalizzazione, filtro autorizzativo, etichetta_i18n_key. DEF-2 (2026-05-11): preset_aggiornato. DB-A (2026-06-02): priorita per colonna (peso ritiro dinamico FE), letta fresca da ui.lista_colonna (attributo globale, non overridabile). P-2b (2026-08-18): l''envelope porta anche multi_emittente, la capacita'' dichiarata dalla lista di reggere piu'' emittenti. Chiave ADDITIVA, letta nella SELECT che gia'' recuperava la lista (nessun round-trip in piu''). ⚠️ NON e'' un permesso: non decide cosa l''utente puo'' vedere — quello lo decidono lo scope e la RLS — ma se la SCHERMATA e'' leggibile nella condizione in cui sta per essere aperta. Brief perimetro-emittente P-2b. 2026-09-23: la veste la legge ui.fn_veste_corrente() e il livello di colonna lo calcola ui.fn_lista_colonne_livello(), building block condivisi con la ricerca libera (fn_lista_colonne_ricerca_full): una sede per il calcolo, perche'' la ricerca non trovi righe per una colonna che la lista non mostra. Brief: brief-db-ricerca-full-colonne-permessi.';
+IS 'Risolve configurazione lista per un utente: cascata preset (GUC-aware, deterministica per priorita), merge nuove colonne, normalizzazione, filtro autorizzativo, etichetta_i18n_key. DEF-2 (2026-05-11): preset_aggiornato. DB-A (2026-06-02): priorita per colonna (peso ritiro dinamico FE), letta fresca da ui.lista_colonna (attributo globale, non overridabile). P-2b (2026-08-18): l''envelope porta anche multi_emittente, la capacita'' dichiarata dalla lista di reggere piu'' emittenti. Chiave ADDITIVA, letta nella SELECT che gia'' recuperava la lista (nessun round-trip in piu''). ⚠️ NON e'' un permesso: non decide cosa l''utente puo'' vedere — quello lo decidono lo scope e la RLS — ma se la SCHERMATA e'' leggibile nella condizione in cui sta per essere aperta. Brief perimetro-emittente P-2b. 2026-09-23: la veste la legge ui.fn_veste_corrente() e il livello di colonna lo calcola ui.fn_lista_colonne_livello(), building block condivisi con la ricerca libera (fn_lista_colonne_ricerca_full): una sede per il calcolo, perche'' la ricerca non trovi righe per una colonna che la lista non mostra. Brief: brief-db-ricerca-full-colonne-permessi. 2026-09-25: la riga della lista la legge ui.fn_lista_da_codice(), building block condiviso con la ricerca libera e col backend (una lettura sola, stesso E_UI_LISTA_NON_TROVATA), e il JSONB porta ricerca_min_caratteri: la soglia della ricerca libera, proprieta'' della lista (ui.lista_definizione.ricerca_min_caratteri), la stessa che legge il BB di ricerca del backend. Brief: brief-db-be-fe-ricerca-soglia-per-lista.';
 ```
 
 ---

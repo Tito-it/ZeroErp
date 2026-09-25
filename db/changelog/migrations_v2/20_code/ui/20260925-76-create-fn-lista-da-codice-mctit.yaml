@@ -1,0 +1,97 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA DI UNA LISTA, DAL SUO CODICE — building block
+#   ui.fn_lista_da_codice(lista_codice) RETURNS ui.lista_definizione
+#   Piano: brief-db-be-fe-ricerca-soglia-per-lista, sezione 4.3
+#
+# -- PERCHE' NASCE (regola del 2) ------------------------------
+#   «La lista con questo codice, se esiste ed e' attiva, altrimenti
+#   E_UI_LISTA_NON_TROVATA» era scritto due volte, uguale:
+#   ui.fn_resolve_lista_config e ui.fn_lista_colonne_ricerca_full. La soglia
+#   della ricerca (20260925-75) chiedeva un terzo lettore, il BB di ricerca
+#   del backend: invece della terza copia nasce la sede, e le due copie si
+#   ritirano nello stesso giro (20260925-77 e -78).
+#
+# -- COSA RESTITUISCE --------------------------------------------
+#   La riga intera di ui.lista_definizione. Chi la chiama ne prende i campi
+#   che gli servono, da UNA lettura: il risolutore ne usa quattro (id,
+#   multi_emittente, perimetro_emittente, ricerca_min_caratteri), la ricerca
+#   dei campi l'id, il backend la soglia:
+#     SELECT ricerca_min_caratteri FROM ui.fn_lista_da_codice(%s)
+#
+# -- IL CODICE D'ERRORE -------------------------------------------
+#   E_UI_LISTA_NON_TROVATA, gia' registrato (NON_TROVATO), stessa frase e
+#   stesso valore (%s = il codice). Cambia solo la funzione che lo firma nel
+#   log: ora e' il BB; il chiamante resta nello stack dell'eccezione.
+#
+# GRANT: nessuno nel changeSet. EXECUTE a PUBLIC e i default privileges del
+#   loop di ci_apply coprono zeroerp_app, come per i BB del 2026-09-23.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20260925-76-create-fn-lista-da-codice-mctit.yaml
+
+  - changeSet:
+      id: 20260925-76-create-fn-lista-da-codice
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.fn_lista_da_codice(lista_codice): la riga di ui.lista_definizione con quel codice, se
+        esiste ed e' attiva, altrimenti E_UI_LISTA_NON_TROVATA. Building block (regola del 2): la
+        stessa lettura era copiata nel risolutore e nella ricerca libera, e la soglia della ricerca ne
+        chiedeva un terzo lettore. Piano: brief-db-be-fe-ricerca-soglia-per-lista, sezione 4.3.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: ui
+            tableName: lista_definizione
+            columnName: ricerca_min_caratteri
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.fn_lista_da_codice(
+                p_lista_codice ui.lista_definizione.codice%TYPE
+              )
+               RETURNS ui.lista_definizione
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: la riga della lista con questo codice, se esiste ed e' attiva.
+              -- Lista assente o spenta: E_UI_LISTA_NON_TROVATA, col codice nella frase.
+              -- Sede unica della lettura per codice: il risolutore delle liste, la
+              -- ricerca libera e il backend (soglia della ricerca) passano da qui.
+              DECLARE
+                v_lista ui.lista_definizione%ROWTYPE;
+              BEGIN
+                SELECT ld.*
+                  INTO v_lista
+                  FROM ui.lista_definizione ld
+                 WHERE ld.codice = p_lista_codice
+                   AND ld.attivo = TRUE;
+
+                IF NOT FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'ui.fn_lista_da_codice',
+                    'E_UI_LISTA_NON_TROVATA',
+                    jsonb_build_object('detail', format('codice lista: ''%s''', p_lista_codice)),
+                    NULL,
+                    p_lista_codice
+                  );
+                END IF;
+
+                RETURN v_lista;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.fn_lista_da_codice(character varying)
+              IS 'La riga di ui.lista_definizione con questo codice, se esiste ed e'' attiva; altrimenti E_UI_LISTA_NON_TROVATA (il codice nella frase). Building block: sede unica della lettura di una lista per codice. La usano ui.fn_resolve_lista_config (id, multi_emittente, perimetro_emittente, ricerca_min_caratteri, da una lettura sola), ui.fn_lista_colonne_ricerca_full (id) e il building block di ricerca del backend, che ne legge la soglia: SELECT ricerca_min_caratteri FROM ui.fn_lista_da_codice(codice). Brief: brief-db-be-fe-ricerca-soglia-per-lista.';

@@ -1,0 +1,99 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA SOGLIA DELLA RICERCA E' UN FATTO DELLA LISTA
+#   ui.lista_definizione.ricerca_min_caratteri
+#   Piano: brief-db-be-fe-ricerca-soglia-per-lista, sezione 4.1
+#
+# -- COS'E' -----------------------------------------------------
+#   Quanti caratteri servono perche' la ricerca libera filtri. Dipende da
+#   COSA e' la lista (una tabella di configurazione a codici corti, «KG»,
+#   «FT», o un archivio che cresce), non da chi la chiama: e' una proprieta'
+#   della lista, e le proprieta' della lista stanno qui (decisione di Tid,
+#   2026-09-24). Fino a oggi la soglia viveva in tre sedi che non si
+#   conoscevano (argomento del BB di ricerca del BE, schema OpenAPI per view,
+#   costante del FE), e il FE non la conosceva affatto.
+#
+# -- PERCHE' NOT NULL DEFAULT 3, e non NULL = «default di progetto» ------
+#   Il brief lasciava la scelta al team DB. Con NULL = default, ciascuno dei
+#   DUE lettori (la configurazione della schermata e il BB di ricerca del BE)
+#   dovrebbe risolvere il NULL con la propria costante: due sedi che
+#   decidono lo stesso fatto, e divergono al primo ritocco di una delle due.
+#   Con NOT NULL la risposta e' UNA, gia' risolta, e i lettori non fanno
+#   COALESCE. Il 3 e' la soglia di progetto: le costanti del BE e del FE
+#   restano solo per le ricerche che NON sono una lista a catalogo (per
+#   esempio il resolver dei soggetti, brief sezione 6 b).
+#
+# -- IL VINCOLO ---------------------------------------------------
+#   `>= 1`: una soglia a 0 significherebbe «filtra anche col termine vuoto»,
+#   che non e' una soglia. Nessun tetto: non c'e' un numero oltre il quale
+#   il modello si rompa.
+#
+# ⚠️ ORDINE LIQUIBASE: questo changeSet sta in `00_schema`, i lettori in
+#    `20_code` (20260925-76 … -78), e l'autogen mescola le due cartelle per
+#    NUMERO: chi legge la colonna ha numero piu' alto.
+#
+# ⚠️ SEED: la colonna si dichiara nel CSV principale
+#    (80_data/sql/ui/lista_definizione.csv + elenco `columns` di 20260507-06),
+#    mai con un UPDATE (linee guida SQL 11.2). Il DEFAULT copre le liste nate
+#    fuori dal seed (il pannello di configurazione, i pgTAP).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20260925-75-alter-ui-lista-definizione-add-ricerca-min-caratteri-mctit.yaml
+
+  - changeSet:
+      id: 20260925-75-alter-ui-lista-definizione-add-ricerca-min-caratteri
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Aggiunge ui.lista_definizione.ricerca_min_caratteri (smallint NOT NULL DEFAULT 3,
+        CHECK >= 1): la soglia della ricerca libera e' una proprieta' della lista, letta dalla
+        configurazione della schermata e dal BB di ricerca del BE dalla stessa fonte. NOT NULL
+        perche' la risposta sia una, gia' risolta. Piano: brief-db-be-fe-ricerca-soglia-per-lista,
+        sezione 4.1.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: ui
+              tableName: lista_definizione
+          - not:
+            - columnExists:
+                schemaName: ui
+                tableName: lista_definizione
+                columnName: ricerca_min_caratteri
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ %TYPE non e' valido in ALTER TABLE ADD COLUMN: tipo esplicito.
+              ALTER TABLE ui.lista_definizione
+                  ADD COLUMN ricerca_min_caratteri smallint NOT NULL DEFAULT 3
+                  CONSTRAINT chk_ui_lista_definizione_ricerca_min_caratteri
+                      CHECK (ricerca_min_caratteri >= 1);
+
+              COMMENT ON COLUMN ui.lista_definizione.ricerca_min_caratteri IS
+                  'Quanti caratteri servono perche'' la ricerca libera della lista filtri: sotto '
+                  'soglia il termine non si applica. E'' una proprieta'' della lista (una tabella '
+                  'di configurazione a codici corti cerca da 1, un archivio che cresce da 3), '
+                  'non di chi la chiama. Sede UNICA del fatto: la leggono la configurazione '
+                  'della schermata (chiave ricerca_min_caratteri di ui.fn_resolve_lista_config) '
+                  'e il building block di ricerca del backend (ui.fn_lista_da_codice), dalla '
+                  'stessa riga. NOT NULL: la risposta e'' una, gia'' risolta, e nessun lettore '
+                  'la completa con una costante sua. Default 3, la soglia di progetto; CHECK >= 1. '
+                  'Si dichiara nel seed lista_definizione.csv. '
+                  'Brief: brief-db-be-fe-ricerca-soglia-per-lista.';
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE ui.lista_definizione DROP COLUMN IF EXISTS ricerca_min_caratteri;

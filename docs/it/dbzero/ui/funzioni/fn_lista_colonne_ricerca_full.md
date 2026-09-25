@@ -24,26 +24,14 @@ AS $function$
 -- Contesto dalla sessione: utente da app.current_user_id, veste da
 -- ui.fn_veste_corrente(). L'emittente non entra nel livello di colonna.
 -- ⚠️ Senza utente: nessun grant, le colonne sensibili escono.
+-- 2026-09-25: la lista dal codice la legge ui.fn_lista_da_codice(), il BB
+-- condiviso col risolutore delle liste (stesso E_UI_LISTA_NON_TROVATA).
 DECLARE
   v_lista_id     ui.lista_definizione.id%TYPE;
-  v_auth_user_id integer := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+  v_auth_user_id ui.lista_preferenza_utente.auth_user_id%TYPE := NULLIF(current_setting('app.current_user_id', true), '')::integer;
 BEGIN
-  SELECT ld.id
-    INTO v_lista_id
-    FROM ui.lista_definizione ld
-   WHERE ld.codice = p_lista_codice
-     AND ld.attivo = TRUE;
-
-  IF v_lista_id IS NULL THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database',
-      'ui.fn_lista_colonne_ricerca_full',
-      'E_UI_LISTA_NON_TROVATA',
-      jsonb_build_object('detail', format('codice lista: ''%s''', p_lista_codice)),
-      NULL,
-      p_lista_codice
-    );
-  END IF;
+  -- Lista assente o spenta: E_UI_LISTA_NON_TROVATA, sollevato dal BB.
+  v_lista_id := (ui.fn_lista_da_codice(p_lista_codice)).id;
 
   RETURN QUERY
   SELECT lc.codice,
@@ -61,7 +49,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_lista_colonne_ricerca_full(p_lista_codice character varying)
-IS 'Colonne di una lista in cui l''utente corrente puo'' fare la ricerca libera, con il campo_sorgente da interrogare: attive, ricercabile_full, campo_sorgente valorizzato (NULL e stringa vuota sono vuoto), livello effettivo diverso da BLOCCATO (LETTURA entra). Il livello viene da ui.fn_lista_colonne_livello, lo stesso di fn_resolve_lista_config: non si cerca in una colonna che la lista non mostra. Utente da app.current_user_id, veste da ui.fn_veste_corrente(); l''emittente non entra nel livello di colonna. Senza utente nessun grant: le colonne sensibili escono. Lista assente o spenta: E_UI_LISTA_NON_TROVATA. Richiesta del team BE, 2026-09-23. Brief: brief-db-ricerca-full-colonne-permessi.';
+IS 'Colonne di una lista in cui l''utente corrente puo'' fare la ricerca libera, con il campo_sorgente da interrogare: attive, ricercabile_full, campo_sorgente valorizzato (NULL e stringa vuota sono vuoto), livello effettivo diverso da BLOCCATO (LETTURA entra). Il livello viene da ui.fn_lista_colonne_livello, lo stesso di fn_resolve_lista_config: non si cerca in una colonna che la lista non mostra. Utente da app.current_user_id, veste da ui.fn_veste_corrente(); l''emittente non entra nel livello di colonna. Senza utente nessun grant: le colonne sensibili escono. Lista assente o spenta: E_UI_LISTA_NON_TROVATA, dal building block ui.fn_lista_da_codice (2026-09-25), lo stesso del risolutore. Richiesta del team BE, 2026-09-23. Brief: brief-db-ricerca-full-colonne-permessi.';
 ```
 
 ---
