@@ -2,7 +2,7 @@
 
 ## API
 - [api-domain-conventions](manual/api-domain-conventions.md) — Definire uno standard unico per costruire future API di dominio.
-- [api_config_tables](manual/api_config_tables.md) — Un solo gruppo di endpoint per **leggere e manutenere le tabelle di configurazione** (config.* e le altre in whitelist), senza scrivere una view per ognuna. E' il lato server del pannello di configurazione generico: il…
+- [api_config_tables](manual/api_config_tables.md) — Un solo gruppo di endpoint per **leggere e manutenere le tabelle di configurazione** (config.* e le altre della lista), senza scrivere una view per ognuna. E' il lato server del pannello di configurazione generico: il F…
 - [api_diagnostics_error_envelope](manual/api_diagnostics_error_envelope.md) — Fornire un endpoint tecnico per validare contratto error envelope e policy retry.
 - [api_email](manual/api_email.md) — Sistema completo di invio email con risoluzione automatica account SMTP e template per reparto/contesto. Supporta invio diretto, bozze editabili (outbox), allegati, consultazione log. Ogni email e' tracciata in config.e…
 - [api_endpoint_helpers](manual/api_endpoint_helpers.md) — Centralizzare il flusso standard dei POST JSON (parse, validazione base, envelope, idempotenza).
@@ -49,5 +49,6 @@
 - [permissions_resolver](manual/permissions_resolver.md) — Risolutore centrale dei permessi ZeroErp: una classe statica che **delega ogni decisione alle funzioni SQL script.fn_*** e tiene una cache per-request per non ripetere lo stesso round-trip due volte nella stessa richies…
 - [request_log_middleware](manual/request_log_middleware.md) — Registrare ogni request API (/api/*, anonime comprese) nella tabella dbops.request_log con metodo, path, status, durata e utente.
 - [session_audit_service](manual/session_audit_service.md) — Registrare eventi di sessione JWT (login, refresh, logout, revoca) nella tabella dbops.sessioni_utente.
+- [sola_lettura_middleware](manual/sola_lettura_middleware.md) — Far girare ogni richiesta GET e HEAD delle API dentro una transazione di **sola lettura** garantita dal DB: una scrittura tentata dalla view fallisce, qualunque codice la tenti, e arriva come E_SCRITTURA_IN_LETTURA.
 - [sveglie_processi](manual/sveglie_processi.md) — Dire **chi sveglia ogni processo automatico del backend**, con quale cadenza e **con quale riga di comando** — da una sede sola, leggibile da due programmi.
 - [zeroerp_permission](manual/zeroerp_permission.md) — Permission class DRF centrale per ZeroErp. Risolve automaticamente l'area funzionale dallo schema del model e verifica il livello di accesso tramite PermissionResolver.

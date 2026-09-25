@@ -1343,6 +1343,29 @@ Separazione logica, non fisica. Nei repository:
 Non creare sottodirectory `commands/` e `queries/`. La separazione
 nei commenti e nelle sezioni del file e' sufficiente.
 
+#### ⛔ Una GET non scrive, e lo garantisce il DB
+
+Dal 2026-09-25 ogni `GET`/`HEAD` delle API gira in una transazione di **sola
+lettura** (`SolaLetturaMiddleware`, ultimo della catena; il blocco e' il BB
+`transazione_sola_lettura`). Una scrittura tentata dalla view — anche dentro una
+funzione `SECURITY DEFINER` — fallisce, e arriva come **500
+`E_SCRITTURA_IN_LETTURA`** col nome della view nel log. Conseguenze per chi
+scrive codice:
+
+* un service chiamato da una `GET` non scrive **sulla connessione della
+  richiesta**: se deve farlo, la scrittura esce dalla `GET` (un'azione `POST`),
+  oppure la view lo **dichiara** con `scrittura_in_get = "<motivo>"`, e il
+  presidio `test_sola_lettura_rotte` la elenca per nome. Il motivo si scrive;
+  una dichiarazione senza motivo non vale;
+* niente `SELECT ... FOR UPDATE` in una `GET`: in sola lettura PostgreSQL lo
+  rifiuta;
+* niente `transazione_sola_lettura` dentro una `GET`: c'e' gia', e il BB
+  rifiuta di partire dentro una transazione aperta;
+* le GUC (`set_config`), il `tx_id` e il diario degli errori funzionano: non
+  sono scritture sulla connessione della richiesta.
+
+Contratto completo: [sola_lettura_middleware](../backend/core/manual/sola_lettura_middleware.md).
+
 ### Atomicità e composizione di scritture
 
 Un endpoint che modifica stato è **un'unità di lavoro atomica**. Quando l'operazione compone

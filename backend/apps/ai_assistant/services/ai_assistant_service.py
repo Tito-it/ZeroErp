@@ -338,7 +338,7 @@ def _run_tool_loop(
                 # ⭐ L'anteprima non deve scrivere niente, e lo garantisce il DB:
                 #    gira in una transazione di sola lettura (§5.3 punto 3).
                 try:
-                    with transazione_sola_lettura():
+                    with transazione_sola_lettura(chi=f"tool:{tool_name}"):
                         preview_result = tool_obj.preview(tool_input, request)
                     confirmation_id = str(uuid.uuid4())
                     _store_pending_confirmation(
@@ -378,7 +378,7 @@ def _run_tool_loop(
                     #    (brief-db-area-funzionale-assistente-ai §5.3 punto 3).
                     #    ⛔ Restano FUORI l'INSERT in `dbops.ai_query_log` e
                     #    l'esecuzione confermata di una scrittura.
-                    with transazione_sola_lettura():
+                    with transazione_sola_lettura(chi=f"tool:{tool_name}"):
                         result = tool_obj.execute(tool_input, request)
                     # Prefisso centralizzato: istruisce l'LLM a non modificare i dati
                     result["_istruzione"] = (

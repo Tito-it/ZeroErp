@@ -1022,6 +1022,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "Scrittura senza un utente in sessione su una tabella con perimetro "
         "emittente: il processo non dichiara chi agisce."
     ),
+    "E_SCRITTURA_IN_LETTURA": "Modifica dati non permessa.",
     "E_SEARCH_NOT_FOUND": "Nessun risultato trovato.",
     "E_SEARCH_VALIDATION": "Parametri ricerca non validi.",
     "E_SEQUENZA_NON_CONFIGURATA": "Sequenza di numerazione non configurata.",

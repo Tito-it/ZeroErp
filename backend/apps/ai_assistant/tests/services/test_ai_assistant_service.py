@@ -68,9 +68,11 @@ class _SpiaSolaLettura:
         self.dentro = False
         self.aperture = 0
 
+    # Stessa firma del BB: `chi` (chi legge, per il log) e' keyword-only.
     @contextmanager
-    def __call__(self) -> Iterator[None]:
+    def __call__(self, *, chi: str = "(non dichiarato)") -> Iterator[None]:
         self.aperture += 1
+        self.chi = chi
         self.dentro = True
         try:
             yield

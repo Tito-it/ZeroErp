@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 928, di cui 98 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 929, di cui 98 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1160,6 +1160,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_SCOPE_EMITTENTE": "NON_PERMESSO",
     # script.trgfn_guard_emittente_scope: una sessione APPLICATIVA ha provato a scrivere su una tabella con perimetro emittente senza dichiarare chi agisce (app.current_user_id vuota). ⛔ Fino al 2026-09-04 quel caso usciva con RETURN NEW: era la porta da cui un processo automatico scriveva ovunque, e il cantiere «nessun processo senza operatore» esiste per chiuderla. ⭐ Il criterio non e il ruolo DB ma row_security_active() sulla tabella: chi passa dalla RLS (proprietario, superuser, BYPASSRLS) passa anche di qui, e chi la subisce deve dire chi e. Un criterio solo, quello che PostgreSQL applica gia. ⚠️ TECNICO e non NON_PERMESSO: non ce una persona a cui negare qualcosa: ce un processo configurato senza identita. Il fratello NON_PERMESSO e E_SCOPE_EMITTENTE, che nega a un utente NOTO un emittente fuori perimetro. Brief: brief-db-processi-automatici-identita-e-perimetro §7.
     "E_SCOPE_SENZA_UTENTE": "TECNICO",
+    # Sollevato dal backend, mai dal DB: traduce il 25006 (read_only_sql_transaction) che PostgreSQL alza quando una richiesta classificata come lettura (GET/HEAD, tool di lettura dell'assistente) tenta una scrittura dentro apps/core/db/sola_lettura.py::transazione_sola_lettura. La regola e' della transazione, non del ruolo: vale anche dentro una SECURITY DEFINER. TECNICO: non e' un permesso mancante dell'operatore (quello e' E_PERMESSO_NEGATO), e' un difetto del codice, una lettura che scrive. Il nome della view va nel log, non nel messaggio. Nasce il 2026-09-25 (brief-be-letture-in-transazione-sola-lettura, sezione 5).
+    "E_SCRITTURA_IN_LETTURA": "TECNICO",
     "E_SEARCH_NOT_FOUND": "NON_TROVATO",
     "E_SEARCH_VALIDATION": "DATO_ERRATO",
     # <- SEQUENZA_NON_CONFIGURATA  (vivo)

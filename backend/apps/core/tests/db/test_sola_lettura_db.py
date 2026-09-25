@@ -26,6 +26,7 @@
 """Indice test (opt-in `ZEROERP_TEST_DB_E2E=1`).
 
 1. test_una_scrittura_nel_blocco_la_ferma_il_db
+     e arriva come `E_SCRITTURA_IN_LETTURA`, col `25006` come causa
 2. test_nel_blocco_si_legge
 3. test_dopo_il_blocco_la_connessione_scrive_di_nuovo
 4. test_dopo_un_errore_nel_blocco_la_connessione_scrive_di_nuovo
@@ -38,7 +39,8 @@ from unittest import TestCase
 
 from django.db import DatabaseError, connection, transaction
 
-from apps.core.db.sola_lettura import transazione_sola_lettura
+from apps.core.db.sola_lettura import E_SCRITTURA_IN_LETTURA, transazione_sola_lettura
+from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 
 _SQLSTATE_SOLA_LETTURA = "25006"  # read_only_sql_transaction
@@ -69,11 +71,17 @@ class TransazioneSolaLetturaDbTests(TestCase):
         super().setUpClass()
         richiedi_db_provvisto()
 
+    # ⭐ Il BB traduce il `25006` alla sorgente: un `ServiceError`, che nessun
+    #    traduttore di errori DB puo' riscrivere col suo ripiego. La causa resta
+    #    il `DatabaseError` di PostgreSQL, ed e' quello che prova la garanzia.
     def test_una_scrittura_nel_blocco_la_ferma_il_db(self) -> None:
-        with self.assertRaises(DatabaseError) as ctx:
-            with transazione_sola_lettura(), connection.cursor() as cur:
+        with self.assertRaises(ServiceError) as ctx:
+            with transazione_sola_lettura(chi="test"), connection.cursor() as cur:
                 cur.execute(_INSERT_IMPOSSIBILE)
-        self.assertEqual(_sqlstate(ctx.exception), _SQLSTATE_SOLA_LETTURA)
+        self.assertEqual(ctx.exception.code, E_SCRITTURA_IN_LETTURA)
+        self.assertEqual(ctx.exception.context, {"chi": "test"})
+        self.assertIsInstance(ctx.exception.__cause__, DatabaseError)
+        self.assertEqual(_sqlstate(ctx.exception.__cause__), _SQLSTATE_SOLA_LETTURA)
 
     def test_nel_blocco_si_legge(self) -> None:
         with transazione_sola_lettura():
@@ -90,7 +98,7 @@ class TransazioneSolaLetturaDbTests(TestCase):
         self.assertEqual(_transaction_read_only(), "off")
 
     def test_dopo_un_errore_nel_blocco_la_connessione_scrive_di_nuovo(self) -> None:
-        with self.assertRaises(DatabaseError):
+        with self.assertRaises(ServiceError):
             with transazione_sola_lettura(), connection.cursor() as cur:
                 cur.execute(_INSERT_IMPOSSIBILE)
         self.assertEqual(_transaction_read_only(), "off")

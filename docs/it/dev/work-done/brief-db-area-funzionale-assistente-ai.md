@@ -378,7 +378,7 @@ Tre cose servono perché la tabella sia vera:
      della richiesta: il `tx_id` arriva via dblink (altra connessione),
      `request_log` si scrive dopo la risposta, `ATOMIC_REQUESTS` è spento.
    * È lo stesso meccanismo che il brief
-     [brief-be-letture-in-transazione-sola-lettura.md](../work-in-progress/brief-be-letture-in-transazione-sola-lettura.md)
+     [brief-be-letture-in-transazione-sola-lettura.md](brief-be-letture-in-transazione-sola-lettura.md)
      estende a **tutte** le `GET`: se il backend lo realizza come building block,
      i tool lo **usano**, non ne scrivono una copia (regola del 2).
 
@@ -417,7 +417,7 @@ controllo del tool, che viene ripetuto proprio al momento della conferma.
   ONLY` come prima istruzione, rifiuta di partire dentro una transazione già
   aperta. Lo usa `ai_assistant_service` per i tool di lettura e per le
   anteprime; restano fuori l'esecuzione confermata e `ai_query_log`. È il pezzo
-  che [brief-be-letture-in-transazione-sola-lettura.md](../work-in-progress/brief-be-letture-in-transazione-sola-lettura.md)
+  che [brief-be-letture-in-transazione-sola-lettura.md](brief-be-letture-in-transazione-sola-lettura.md)
   monterà su tutte le `GET`.
   ⚠️ Un `25006` dentro un tool oggi arriva al modello come testo d'errore del
   tool (e nel log), non come un codice registrato: `E_SCRITTURA_IN_LETTURA` è
@@ -528,7 +528,7 @@ query più l'area «Assistente AI» fra quelle assegnabili nel pannello dei prof
   * **Ogni `GET` in una transazione di sola lettura** — il DB garantisce che una
     lettura non scriva, per tutta la UI e non solo per l'AI. Fra le **prime
     cose** da fare, insieme a questo brief:
-    [brief-be-letture-in-transazione-sola-lettura.md](../work-in-progress/brief-be-letture-in-transazione-sola-lettura.md).
+    [brief-be-letture-in-transazione-sola-lettura.md](brief-be-letture-in-transazione-sola-lettura.md).
   * **Il permesso controllato nel verbo di scrittura** — una scrittura passa
     solo da una funzione DB che controlla azione o livello: protegge anche da
     un backend che autorizza la scrittura sbagliata, che la sola lettura non
