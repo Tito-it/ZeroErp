@@ -26,7 +26,8 @@ DECLARE
 BEGIN
     -- Scopo: le righe di un documento interno si scrivono con la testata in
     --   DRAFT; in CONFIRM scrive solo l'operazione (la GUC che fissa
-    --   qta_sistema); POSTED e CANCEL sono congelate (D-L2-h). Un UPDATE che
+    --   qta_sistema, e solo dentro un verbo: chi esegue e' il proprietario,
+    --   D-V1); POSTED e CANCEL sono congelate (D-L2-h). Un UPDATE che
     --   sposta la riga su un'altra testata le controlla entrambe. «Testata
     --   assente» = cascata gia' decisa a monte (DELETE solo in DRAFT): passa.
     IF TG_OP = 'DELETE' THEN
@@ -51,9 +52,12 @@ BEGIN
         CONTINUE WHEN v_stato IS NULL;       -- cascata in corso, o fuori perimetro
 
         -- Un solo punto di sollevamento: la condizione in una variabile.
+        -- CONFIRM: la GUC dell'operazione per QUESTO documento E dentro un verbo
+        -- (la GUC l'app puo' accenderla da se', il proprietario non lo e').
         v_bloccata := CASE v_stato
                           WHEN 'DRAFT'   THEN false
                           WHEN 'CONFIRM' THEN current_setting(v_guc, true) IS DISTINCT FROM v_id::text
+                                              OR NOT script.fn_is_proprietario_tabella(TG_RELID)
                           ELSE true                 -- POSTED, CANCEL
                       END;
         IF v_bloccata THEN
@@ -63,7 +67,8 @@ BEGIN
                 jsonb_build_object('detail', 'scrittura di una riga con testata non in DRAFT',
                                    'tabella', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
                                    'testata', v_testata, 'documento_id', v_id,
-                                   'stato', v_stato, 'operazione', TG_OP),
+                                   'stato', v_stato, 'operazione', TG_OP,
+                                   'db_user', current_user),
                 v_tx_id,
                 v_stato);
         END IF;
@@ -77,7 +82,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION magazzino.trgfn_documento_interno_righe_guard_testata()
-IS 'Guard delle righe dei documenti interni di magazzino (inventari_righe, rettifiche_righe; TG_ARGV = tabella testata, colonna FK, colonna di stato, nome della GUC), BEFORE INSERT OR UPDATE OR DELETE: righe scrivibili solo con la testata in DRAFT; in CONFIRM scrive solo l''operazione — la stessa GUC transazionale della porta POSTED, e'' lei a fissare qta_sistema; POSTED e CANCEL congelate (E_MAG_DOCUMENTO_RIGHE_CONGELATE, CONFLITTO_STATO). Un UPDATE che sposta la riga controlla entrambe le testate. Testata assente = cascata gia'' ammessa a monte (DELETE solo in DRAFT) o fuori perimetro: passa. Brief: brief-db-magazzino-lotto-2-motore, sezione 3 (D-L2-h).';
+IS 'Guard delle righe dei documenti interni di magazzino (inventari_righe, rettifiche_righe; TG_ARGV = tabella testata, colonna FK, colonna di stato, nome della GUC), BEFORE INSERT OR UPDATE OR DELETE: righe scrivibili solo con la testata in DRAFT; in CONFIRM scrive solo l''operazione — la stessa GUC transazionale della porta POSTED, e'' lei a fissare qta_sistema — e dal 2026-09-25 solo dentro un verbo: chi esegue deve essere il proprietario della tabella, script.fn_is_proprietario_tabella(TG_RELID) (D-V1: la GUC l''app puo'' accenderla da se''); POSTED e CANCEL congelate (E_MAG_DOCUMENTO_RIGHE_CONGELATE, CONFLITTO_STATO). Un UPDATE che sposta la riga controlla entrambe le testate. Testata assente = cascata gia'' ammessa a monte (DELETE solo in DRAFT) o fuori perimetro: passa. Brief: brief-db-magazzino-lotto-2-motore, sezione 3 (D-L2-h); brief-db-magazzino-verbi-con-permesso D-V1.';
 ```
 
 ---

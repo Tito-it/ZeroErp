@@ -8,7 +8,7 @@
 > del Lotto 2
 > ([brief-db-magazzino-lotto-2-motore.md](../work-done/brief-db-magazzino-lotto-2-motore.md),
 > D-L2-b). Le decisioni D-1 → D-5 sono di Tid, tutte del 2026-09-24.
-> **Stato al 2026-09-24 notte:** ✅ **la porta è chiusa — P-0 → P-5 applicati e verdi.**
+> **Stato al 2026-09-25:** ✅ **la porta è chiusa — P-0 → P-5 e P-7 applicati e verdi; D-V1 decisa e chiusa.**
 > * ✅ applicati da Tid su dbdev: `20260924-38` (guard), `-39` (helper pgTAP), `-40`
 >   (gate in `fn_resolve_livello_oggetto`), `-41` (i due verbi), `-42` (primitiva e
 >   ricalcolo riservati, 23:35). Letto su dbdev: l'app esegue `fn_posta_inventario` e
@@ -18,11 +18,14 @@
 >   regressione.
 > * 🔵 **P-6 scritto**: nota del presidio in `presidi.csv` (da applicare: arriva coi
 >   mirror `runOnChange`) e il modello in `PROJECT_CONTEXT`.
-> * ⏳ Resta la decisione **D-V1** (§4: la porta `POSTED` apribile con una GUC che
->   l'app può impostare da sola).
-> * ⚠️ Nulla è committato: changeSet, loop, provisioning, pgTAP e pagine `manual/` sono
->   nel working tree, e vanno in un commit solo (i pgTAP nuovi sono verdi solo coi
->   changeSet, quelli vecchi sono rossi con i changeSet).
+> * ✅ **D-V1 decisa da Tid il 2026-09-25: strada A** (§4). ✅ **P-7 applicato da Tid il
+>   2026-09-25 su `zeroerp_ci` e dbdev (`20260925-37…-39`), corsa pgTAP senza regressioni.**
+>   La porta `POSTED` e le righe in `CONFIRM` chiedono la GUC **e** il proprietario; il BB
+>   `script.fn_is_proprietario_tabella` ha ritirato la copia di `ui`.
+> * ⏳ Resta il **commit** di P-7 (changeSet, pgTAP, `codici_errore.csv`, pagine `manual/`,
+>   brief), e P-6 arriva al DB coi mirror al prossimo migrate.
+> * ✅ Committato in un commit solo il 2026-09-24 (`f2e724b47`, poi PR #1681):
+>   changeSet, loop, provisioning, pgTAP e pagine `manual/` insieme.
 >
 > **In una riga:** nel Lotto 2 la porta sul registro dei movimenti decide **da
 > dove** si scrive, non **chi** può scrivere. L'app può chiamare direttamente la
@@ -246,6 +249,30 @@ permesso. I verbi non chiudono questo buco. Due strade:
 Raccomandazione: **A**, perché resta tutto nel guard che esiste già. Non blocca
 P-1…P-5: si può decidere dopo.
 
+✅ **DECISA da Tid il 2026-09-25: strada A.** Lavoro in **P-7** (§5). Tre
+precisazioni venute scrivendolo, sul modello:
+
+1. **La GUC resta, e si aggiunge il proprietario: le due condizioni in AND.**
+   Rispondono a due domande diverse. Il proprietario dice **chi** scrive («non
+   l'app»), e chiude il buco. La GUC dice **quale operazione e quale
+   documento** («la registrazione di *questo* inventario»). Senza la GUC,
+   qualunque altra funzione DEFINER del proprietario, per esempio il verbo
+   generico del pannello (D-3 del brief del modello), potrebbe portare un
+   documento a `POSTED` senza movimenti. L'app può ancora accendere la GUC, ma
+   da sola la GUC non apre più niente.
+2. **Il buco era in due guard, non in uno.** Anche
+   `trgfn_documento_interno_righe_guard_testata` apre le righe di un documento
+   in `CONFIRM` con la stessa GUC: è così che il verbo scrive `qta_sistema`.
+   L'app poteva accenderla e riscrivere le righe di un documento confermato.
+   Stessa regola, stesso giro.
+3. **Regola del 2.** «Scrive solo il proprietario della tabella» ha già una
+   copia: `ui.trgfn_lista_definizione_guard_multi_emittente` (`20260818-17`),
+   che legge il proprietario da `pg_class` e chiede
+   `pg_has_role(current_user, …, 'USAGE')`. La nostra sarebbe la seconda, quindi
+   si estrae il building block `script.fn_is_proprietario_tabella(regclass)` e la
+   copia di `ui` passa da lì nello stesso giro. ⚠️ **L'estrazione tocca due
+   domini (`ui`, `magazzino`): serve l'«ok Tid»** (AGENTS.md, regola del 2).
+
 ## 5. I passi
 
 | Passo | Cosa |
@@ -265,6 +292,7 @@ P-1…P-5: si può decidere dopo.
 • `test-fn-scrivi-movimento-{controlli,disponibilita,valore,seriali}-v1` al runner **`owner`** con motivo (forma 3); in `controlli` corretta la frase «la RLS filtra le letture del test».
 **Prova** su `zeroerp_ci` come proprietario, concatenati all'SQL estratto di `-40`, `-41`, `-42`: i quattro della primitiva 25 + 9 + 10 + 5 verdi; `test-valore-giacenza-forma-v1` 12/12 coi verbi; `test-porta-ledger-v1` 14/18 — i quattro rossi sono **4, 5, 6, 7**, le asserzioni di comportamento che valgono solo come app (4-6 lo erano già prima). La corsa come app è di Tid |
 | **P-6** | ✅ **Scritto il 2026-09-24, CSV NON applicato.** `80_data/sql/dbops/presidi.csv`, riga di `dbops.vw_magazzino_valore_giacenza_divergente`: la nota dice che la primitiva la raggiungono solo i verbi e che il rimedio (`fn_ricalcola_valore_giacenza`) lo esegue il **proprietario**. Una riga cambiata, CSV ricontrollato (47 righe, 11 colonne, LF), nessun test o documento ne fissa il testo; arriva al DB coi due mirror `runOnChange` (`20260910-08`, `-35`, chiave `vista`). Il `COMMENT` della vista («il rimedio è fn_ricalcola_valore_giacenza») resta vero e non si tocca: un changeSet solo per aggiungere chi lo esegue non vale il costo. `PROJECT_CONTEXT`: il modello come regola dei domini nuovi, col primo caso chiuso. Stato nel brief del modello e nota in D-L2-b del Lotto 2: già scritti |
+| **P-7** | ✅ **Applicato da Tid il 2026-09-25 su `zeroerp_ci` e dbdev, corsa pgTAP senza regressioni.** Numeri `-37…-39` presi in coda al buco `-28…-39`, perché un'altra sessione lavorava dal `-28`. • `20_code/script/20260925-37-create-fn-is-proprietario-tabella`: il BB `script.fn_is_proprietario_tabella(regclass)`, check pura, `LANGUAGE sql` (legge solo `pg_catalog`), STABLE, **INVOKER per costruzione**, `NULL`/inesistente → `false`, `GRANT EXECUTE` all'app. • `20_code/magazzino/20260925-38-update-trgfn-documento-interno-guard-posting-proprietario`: porta `POSTED` e righe in `CONFIRM` chiedono **GUC e proprietario** (`TG_RELID`); stessi codici e frasi, il contesto guadagna `dentro_verbo` e `db_user`. Corpi di partenza dalla doc auto-generata, verificata uguale a `pg_get_functiondef` su tutti e due i database. • `20_code/ui/20260925-39-update-trgfn-lista-definizione-guard-multi-emittente-bb`: la copia di `ui` passa dal BB (regola del 2); comportamento invariato, il contesto perde `owner_atteso`. • `codici_errore.csv`: la nota di `E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE` e `E_MAG_DOCUMENTO_RIGHE_CONGELATE` (solo la colonna `note`; il backend copia solo la classe). Pagine `manual/`: una nuova per il BB, tre aggiornate. **Prova dell'SQL estratto** su `zeroerp_ci` come proprietario, in transazione annullata: `plpgsql_check` a zero righe sui tre guard; BB `NULL`→f, oid 0→f, proprietario su `inventari`→t; `GRANT` e `COMMENT` presenti; **il rollback estratto rimette i tre corpi identici agli originali** e toglie il BB. Dopo l'apply di Tid: i `COMMENT` vivi su `zeroerp_ci` coincidono col file (è entrata questa versione). **pgTAP come app** su `zeroerp_ci` (`psql -f`, senza runner): `test-fn-is-proprietario-tabella-v1` 7/7 (nuovo); `test-documenti-interni-guard-v1` 18/18 (7 e 10 ribaltati: la GUC accesa dall'app **non** apre più; 7b: il verbo passa e scrive `qta_sistema`); `test-capability-documenti-interni-v1` 14/14 (la matrice separa il rifiuto della porta dal codice, verde con tutti e due i runner); nessuna regressione su `test-fn-posta-inventario-v1` 17/17, `test-fn-posta-rettifica-v1` 6/6, `test-verbi-permesso-v1` 11/11, `ui/test-lista-definizione-multi-emittente-v1` 9/9, `ui/test-lista-definizione-perimetro-emittente-v1` 8/8. Controprova del test 7 del BB: il corpo vecchio di `ui` legge `relowner`, quindi con la copia in piedi sarebbe rosso. Il primo tentativo cercava `pg_class` ed era rosso sul corpo nuovo, che nomina `pg_class` in un commento: corretto su `relowner`. ✅ Dopo l'apply su dbdev, corsa col runner di Tid: **nessuna regressione**. Resta il commit |
 
 ### 5.1 Riquadro P-0 — i censimenti del 2026-09-24
 
@@ -321,3 +349,7 @@ repo.
 | 2026-09-24 (notte) | DB | **P-4 e P-5 parte B scritti e provati** (non applicati): forward `-42`, voci nel loop e nel provisioning; porta riscritta (18), viste costruite coi verbi, quattro test della primitiva a `owner`. Il presidio delle funzioni riservate è `test-porta-ledger-v1`, non il pgTAP dei registri (§2.3 corretto). Dichiarato fuori: `EXECUTE` esplicito del ruolo batch di fatturazione |
 | 2026-09-24 (notte) | Tid | `-42` applicato (23:35), pgTAP della parte B lanciati: **verdi**. Verificato su dbdev: verbi eseguibili dall'app, primitiva e ricalcolo no. La porta è chiusa; restano P-6 e D-V1 |
 | 2026-09-24 (notte) | DB | **P-6 scritto**: nota del presidio in `presidi.csv` (una riga, da applicare coi mirror), il modello in `PROJECT_CONTEXT`. Il `COMMENT` della vista resta com'è, perché è vero. Resta D-V1 |
+| 2026-09-25 | Tid | **D-V1 decisa: strada A** |
+| 2026-09-25 | DB | **P-7 scritto e provato** (`20260925-37…-39`): GUC **e** proprietario in AND (precisazione 1 di §4), anche il guard delle righe (precisazione 2), BB estratto e copia di `ui` ritirata (precisazione 3, ⚠️ serve l'«ok Tid»: tocca due domini). pgTAP: uno nuovo, due adeguati |
+| 2026-09-25 | Tid | `-37…-39` applicati su `zeroerp_ci` (18:06); su dbdev `-37` (18:05) |
+| 2026-09-25 | Tid | `-38`, `-39` applicati anche su dbdev; corsa pgTAP: **nessuna regressione**. D-V1 chiusa, resta il commit |
