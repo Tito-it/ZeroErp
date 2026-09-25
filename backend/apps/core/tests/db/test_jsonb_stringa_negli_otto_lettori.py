@@ -67,7 +67,7 @@ def _lettori():
             "auth_repository.registra_tentativo_login",
             "apps.core.db.auth_repository.connection",
             lambda: AuthRepository().registra_tentativo_login(
-                1, provenienza="203.0.113.7", successo=False,
+                1, nome_digest=bytes(32), provenienza="203.0.113.7", successo=False,
             ),
         ),
         (

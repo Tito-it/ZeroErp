@@ -175,5 +175,5 @@ Validazione payload e traduzione vincoli DB delegate al building block
   (coerente con altri admin tools come emittenti fiscali). Route:
   `/amm-software/matrice-utilities-ruoli`.
 - I lookup `config.utilities` e `config.tipi_ruoli` sono gia' presenti nella
-  whitelist `REL_CONSENTITE` di `dbops_repository.py`, quindi i Select del
+  lista del lookup generico (`config.tabelle_gestibili`), quindi i Select del
   drawer riusano `LookupSelect` (BB esistente).

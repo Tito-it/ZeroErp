@@ -162,6 +162,19 @@ del frontend lo intercetta prima di leggere il codice.
   ma non il blocco.
 - Password giusta sulla porta sbagliata (`E_VESTE_NON_ATTIVA`) non conta come
   tentativo fallito.
+- ⭐ **Un nome che non esiste si comporta come uno che esiste.** Freno e
+  attesa valgono anche per un nome che non trova nessuna credenziale, con gli
+  stessi numeri e le stesse risposte: la chiave è il **nome tentato**
+  (`config.nomi_tentati`, `config.nomi_tentati_provenienze`), e dopo N
+  tentativi arriva lo stesso `E_UTENTE_BLOCCATO`. Così chi prova non impara
+  se il nome esiste. Il nome **non entra in chiaro** né nel DB né nei log:
+  il backend ne passa un'impronta (HMAC con una chiave che il DB non ha),
+  perché chi digita la password nel campo del nome la lascerebbe lì. Il
+  blocco dell'admin resta solo delle credenziali, e il suo messaggio rivela
+  che il nome c'è: è accettato, al titolare serve sapere a chi rivolgersi.
+- Il nome si confronta **come lo confronta l'autenticazione**: spazi in testa
+  e in coda tolti, maiuscole distinte. Una normalizzazione diversa per il
+  controllo farebbe sfuggire il nome al freno.
 - ⚠️ **Due regole diverse, anche se i numeri si somigliano.** Il throttle
   `LoginRateThrottle` (5 richieste ogni 5 minuti per IP, qualunque credenziale)
   ferma chi **inonda** l'endpoint; il freno per provenienza (N password

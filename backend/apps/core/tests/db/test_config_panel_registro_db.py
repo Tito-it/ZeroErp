@@ -20,16 +20,19 @@
 # ------------------------------------------------------------
 #
 # Indice test:
-#  1. ogni rel del registro FE e' in `REL_CONSENTITE` (la lista del pannello
-#     passa dal lookup generico: fuori whitelist = 400 a video)
+#  1. ogni rel del registro FE e' nel PANNELLO della lista a DB
+#     (`config.tabelle_gestibili.pannello`): fuori lista = 400 a video, e le
+#     tabelle con RLS non ci stanno (D-P2: il verbo non sa rimetterne il perimetro)
 #  2. ogni rel risponde alla lista (`fn_list_lookup_codici`, i parametri del pannello)
 #  3. ogni colonna del metadata ha l'etichetta in it.json e en.json; `uid` mai
 #  4. ogni `references` e' una relazione esistente; `references_column` e' la
-#     colonna referenziata; `references_lookup` e' vero sse la relazione e' in
-#     `REL_CONSENTITE` — e in quel caso la colonna e' una che il lookup porta
+#     colonna referenziata; `references_lookup` e' vero sse la relazione e' fra
+#     quelle del lookup (`config.tabelle_gestibili.lookup`) — e in quel caso la colonna e' una che il lookup porta
 #     (`LOOKUP_COLONNE_VALORE`), altrimenti la `LookupSelect` salverebbe `undefined`
 #  5. ogni rel del registro ha l'etichetta `config_panel.tabelle.<schema>.<tabella>`
 #     in it.json e en.json (dal 21-09 il registro non porta piu' `label`)
+#  6. ogni rel che il FRONTEND passa al lookup generico (letta dal sorgente)
+#     e' nel lookup a DB
 
 from __future__ import annotations
 
@@ -41,7 +44,8 @@ from unittest import TestCase
 from django.db import connection, transaction
 
 from apps.core.db.config_metadata_repository import ConfigMetadataRepository
-from apps.core.db.dbops_repository import LOOKUP_COLONNE_VALORE, REL_CONSENTITE
+from apps.core.db.dbops_repository import LOOKUP_COLONNE_VALORE
+from apps.core.db.tabelle_gestibili_repository import TabelleGestibiliRepository
 from apps.core.services.lookup_service import fn_list_lookup_codici
 from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
 
@@ -55,6 +59,33 @@ _PREFISSO = "config_panel.campi"
 #        dati con una riga per tabella: la regex e' il suo parser).
 def _rel_del_registro() -> list[str]:
     return re.findall(r"rel: '([a-z_]+\.[a-z_]+)'", _REGISTRO.read_text(encoding="utf-8"))
+
+
+# Le forme con cui il frontend passa una rel al LOOKUP GENERICO: la prop `rel`
+# di LookupSelect (e `rel:` negli oggetti di configurazione), il parametro
+# `?rel=` di un URL, e i tre composable che lo chiamano.
+# ⛔ Non `useGlobalLookup(chiave, fetcher)`: la chiave e' un nome di cache, e il
+#    fetcher e' spesso un endpoint dedicato (`amm.audit_sources`,
+#    `anagrafiche.risorse_umane`), non il lookup generico.
+# ⚠️ `:rel="espressione"` e' un binding Vue, non una rel: conta solo se dentro
+#    c'e' un letterale (`:rel="'config.iva'"`).
+_RE_REL_FRONTEND = re.compile(
+    r"""(?:(?<!:)\brel\s*[=:]\s*['"]|:rel\s*=\s*"'|[?&]rel="""
+    r"""|\b(?:useLookupCodici|useLookupEtichettato|lookupCodici)\(\s*['"])"""
+    r"""([a-z_]+\.[a-z_]+)"""
+)
+
+
+# Scopo: le rel che il frontend passa al lookup generico, con il primo file
+#        che le nomina (per il messaggio del rosso).
+def _rel_del_frontend() -> dict[str, str]:
+    trovate: dict[str, str] = {}
+    for file in sorted((_ROOT / "frontend" / "src").rglob("*")):
+        if file.suffix not in (".vue", ".js") or not file.is_file():
+            continue
+        for rel in _RE_REL_FRONTEND.findall(file.read_text(encoding="utf-8")):
+            trovate.setdefault(rel, str(file.relative_to(_ROOT)))
+    return trovate
 
 
 # Scopo: il blocco `config_panel` di un locale.
@@ -81,11 +112,17 @@ class ConfigPanelRegistroDbTests(TestCase):
         richiedi_db_provvisto()
         cls.rels = _rel_del_registro()
         assert cls.rels, "registro FE vuoto o non letto"
+        lista = TabelleGestibiliRepository()
+        cls.rel_pannello = frozenset(v["rel"] for v in lista.voci_pannello())
+        cls.rel_lookup = lista.rel_lookup()
 
     # 1.
-    def test_ogni_rel_del_registro_e_ammessa_al_lookup(self) -> None:
-        fuori = sorted(set(self.rels) - REL_CONSENTITE)
-        self.assertEqual(fuori, [], "rel nel registro FE ma non in REL_CONSENTITE: la lista del pannello e' un 400")
+    def test_ogni_rel_del_registro_e_nel_pannello(self) -> None:
+        fuori = sorted(set(self.rels) - self.rel_pannello)
+        self.assertEqual(
+            fuori, [],
+            "rel nel registro FE ma non nel pannello di config.tabelle_gestibili: la lista e' un 400",
+        )
 
     # 2. Ogni rel in un savepoint: si vogliono TUTTE le rotte in un giro, non
     #    la prima (il 21-09 erano tre — lotti, stati, titoli_cortesia — e una
@@ -152,7 +189,7 @@ class ConfigPanelRegistroDbTests(TestCase):
                         [target, col["references_column"]],
                     )
                     self.assertIsNotNone(cur.fetchone(), f"{rel}.{col['name']} → {target}.{col['references_column']} non esiste")
-                    ammessa = target in REL_CONSENTITE
+                    ammessa = target in self.rel_lookup
                     if ammessa:
                         self.assertIn(
                             col["references_column"], LOOKUP_COLONNE_VALORE,
@@ -166,3 +203,14 @@ class ConfigPanelRegistroDbTests(TestCase):
         for locale in ("it", "en"):
             senza = sorted(set(self.rels) - _etichette_tabelle(locale))
             self.assertEqual(senza, [], f"rel senza `config_panel.tabelle.*` in {locale}.json (a video la rel grezza)")
+
+    # 6. Le rel che il frontend passa al lookup generico: la lista e' un dato
+    #    del DB, e un seed che ne perdesse una darebbe un 400 a video.
+    # ⭐ L'elenco si LEGGE dal sorgente, non si ricopia: fino al 2026-09-25
+    #    questo test ne nominava due a mano, e le altre ottanta tendine non
+    #    avevano presidio.
+    def test_le_rel_nominate_dal_frontend_sono_nel_lookup(self) -> None:
+        nominate = _rel_del_frontend()
+        self.assertGreater(len(nominate), 0, "nessuna rel trovata: la regex non legge piu' il frontend")
+        fuori = {rel: dove for rel, dove in nominate.items() if rel not in self.rel_lookup}
+        self.assertEqual(fuori, {}, "rel passate al lookup generico ma fuori da config.tabelle_gestibili.lookup")

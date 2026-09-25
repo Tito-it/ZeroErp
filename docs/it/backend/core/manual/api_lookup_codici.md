@@ -12,9 +12,10 @@ Utilizza la funzione DB `dbops.fn_get_lookup_codici` come sorgente dati generica
 con un filtro ILIKE e paginazione esterna. La funzione DB resta generica; il filtro testo e la
 paginazione finale vivono nel layer Python/SQL del repository.
 
-La relazione interrogabile è controllata da una whitelist Python (`REL_CONSENTITE` in
-`apps/core/db/dbops_repository.py`). Per aggiungere una nuova tabella config basta inserirla
-nella whitelist, senza modificare il DB.
+La relazione interrogabile è una riga di [`config.tabelle_gestibili`](/dbzero/config/tabelle/tabelle_gestibili)
+con `lookup = true` (dal 2026-09-25; prima era la costante Python `REL_CONSENTITE`). La stessa
+tabella dice quali relazioni si modificano dal pannello di configurazione (`pannello`): una
+sede sola per le tendine, il pannello e il suo verbo di scrittura.
 
 ## Endpoint
 
@@ -49,8 +50,8 @@ valida i seguenti parametri con `ErrorManager.require`:
 - **`page`**: deve essere >= 1.
 - **`page_size`**: deve essere compreso tra 1 e 200.
 
-La whitelist di **`rel`** (`REL_CONSENTITE`) la controlla invece il repository
-(`DbopsRepository.list_lookup_codici`), prima di qualunque query.
+La lista di **`rel`** (`config.tabelle_gestibili`, colonna `lookup`) la controlla invece il
+repository (`DbopsRepository.list_lookup_codici`), prima di qualunque query sulla tabella.
 
 Qualsiasi valore fuori range genera errore `E_CORE_VALIDATION` (HTTP 400) prima che la query
 raggiunga il database. Un `page` o `page_size` **non numerico** e' rifiutato gia' dalla view,
@@ -160,7 +161,7 @@ letti da form di aree diverse. Lo scope resta quello del repository — vedi
 
 ## Regole
 
-- `rel` deve essere nella whitelist `REL_CONSENTITE` (errore `E_CORE_VALIDATION` se assente).
+- `rel` deve essere una riga di `config.tabelle_gestibili` con `lookup = true` (errore `E_CORE_VALIDATION` se assente).
 - `search` vuoto o assente equivale a nessun filtro testo.
 - `attivo_only=true` applica `WHERE attivo IS TRUE` tramite la funzione DB (solo se la tabella
   ha colonna `attivo boolean`).
@@ -175,117 +176,25 @@ letti da form di aree diverse. Lo scope resta quello del repository — vedi
 - Paginazione gestita esternamente via SQL wrapper; il limit interno alla funzione DB è 10000
   (limite pratico sufficiente per tutte le tabelle config).
 
-## Relazioni consentite (whitelist attuale)
+## Relazioni consentite
 
-Include tutte le tabelle con struttura `id / codice / descrizione` distribuite su 9 schemi.
-La funzione DB `fn_get_lookup_codici` valida ulteriormente la struttura reale delle colonne
-e solleva errore se mancante.
+⛔ L'elenco **non si ricopia qui**: e' la tabella `config.tabelle_gestibili`
+(colonna `lookup`), e una copia in questa pagina sarebbe la prima ad
+invecchiare. Si legge sul DB o nel suo seed
+(`db/changelog/migrations_v2/80_data/sql/config/tabelle_gestibili.csv`).
 
-Totale: **87 tabelle** (elenco generato dal codice, 2026-09-14; 2026-09-21: **via `config.stati` e `config.titoli_cortesia`** — senza `codice`/`codice_interno`, `fn_get_lookup_codici` le rifiutava con `E_LOOKUP_STRUTTURA_TABELLA_INVALIDA`: erano dichiarate ammesse ed erano un 500, trovato dal presidio `apps/core/tests/db/test_config_panel_registro_db.py`; le nazioni hanno `GET /anagrafiche/stati/lookup/`).
+Per aggiungere una relazione: una riga nel CSV del seed, con l'**oggetto** a cui
+la tabella appartiene (`app_label`, `model_name`: la convenzione e'
+`(schema, nome tabella)`) e i due flag `lookup` / `pannello`. ⚠️ E' lavoro del
+**team DB** (l'app ha solo `SELECT` sulla lista: e' una porta, perche' il verbo
+del pannello scrive come proprietario su ogni tabella che vi compare). Una
+tabella con RLS puo' stare nel lookup ma non nel pannello.
 
-⭐ L'ultima entrata è `config.modi_approvvigionamento` (Blocco B di
-`brief-db-modifiche-certe-ciclo-vendita-e-articolo`): il modo di approvvigionamento
-dell'articolo è **una riga qui e non un endpoint** — è un vocabolario
-codice/descrizione come `config.nature_vendita`, il suo modello dichiarato, e il
-drawer articolo lo monta con `<LookupSelect rel="config.modi_approvvigionamento">`.
 ⚠️ L'ordine è quello del contratto generico (`order_col` = `codice` | `descrizione`),
 **non** la colonna `ordine` del vocabolario: vale per tutte le decodifiche, e se un
 giorno l'ordine di presentazione conterà è un'estensione di questo lookup, non un
 endpoint dedicato.
 
-### anagrafiche (1)
-
-```text
-anagrafiche.categorie_clienti
-```
-
-### catalogo (2)
-
-```text
-catalogo.unita_misura  catalogo.uom_tipi
-```
-
-### config (61)
-
-```text
-config.ambiti                       config.stati_doc_contratti
-config.aree_funzionali              config.stati_doc_ddt
-config.aspetti_beni                 config.stati_doc_fiscale
-config.assets_ownership             config.stati_doc_offerte
-config.canali_pratiche              config.stati_doc_ordini
-config.categoria_accisa             config.stati_doc_preventivi
-config.causali_trasporto            config.stati_doc_reso
-config.classi_utenze                config.stati_flussi_pratiche
-config.conti_contabili              config.stati_fornitore
-config.email_account                config.stati_pdp
-config.esiti_flussi_pratiche        config.stati_pratiche
-config.forme_giuridiche             config.stati_sdi
-config.iva                          config.termini_pagamento
-config.iva_assoggettamenti          config.tipi_allegato
-config.iva_natura                   config.tipi_attivita
-config.lingue                       config.tipi_contatti
-config.listini_tipologie            config.tipi_doc_fiscale
-config.modalita_addebito_trasporto  config.tipi_documenti
-config.modalita_pagamento           config.tipi_evento_assets
-config.modi_approvvigionamento      config.tipi_indirizzi
-config.nature_doc_fiscale           config.tipi_nota
-config.nature_vendita               config.tipi_reso
-config.note_stili                   config.tipi_ruoli
-config.priorita_pratiche            config.tipi_soggetto_dettaglio
-config.profili_accesso              config.tipi_titolo_iva
-config.qualifiche                   config.tipi_ubicazione
-config.registri_giornale            config.tipi_utenze
-config.sistema_codici               config.unita_organizzative
-config.sorgenti                     config.utilities
-config.stati_assets                 config.valute
-config.stati_cliente
-```
-
-### documenti (4)
-
-```text
-documenti.render_engine_documento  documenti.tipi_documento_output
-documenti.tipi_asset_documento     documenti.tipi_file_documento
-```
-
-### magazzino (3)
-
-```text
-magazzino.causali  magazzino.magazzini
-magazzino.ubicazioni
-```
-
-### pagamenti (4)
-
-```text
-pagamenti.centri_riscossione  pagamenti.vendite_contabili_righe_stati
-pagamenti.enti_incasso        pagamenti.vendite_contabili_stati
-```
-
-### pratiche (3)
-
-```text
-pratiche.handler_flussi   pratiche.tipi_prestazione
-pratiche.template_flussi
-```
-
-### ui (1)
-
-```text
-ui.lista_definizione
-```
-
-### vendite (8)
-
-```text
-vendite.area_geografica_fatturazione  vendite.famiglie_documento
-vendite.articoli_gruppi               vendite.listini
-vendite.articoli_spesa                vendite.stati_commessa
-vendite.articoli_tipologie            vendite.tipi_fondi_fattura
-```
-
-Per aggiungere una nuova relazione: inserire la stringa `schema.tabella` in `REL_CONSENTITE`
-in `backend/apps/core/db/dbops_repository.py`.
 ## Dipendenze DB
 
 - `dbops.fn_get_lookup_codici(p_rel, p_order_col, p_order_dir, p_attivo_only, p_limit, p_offset, p_includi_obsoleti)`
@@ -296,7 +205,7 @@ in `backend/apps/core/db/dbops_repository.py`.
 
 | Codice              | HTTP | Causa                                          |
 |---------------------|------|------------------------------------------------|
-| `E_CORE_VALIDATION` | 400  | `rel` fuori whitelist, parametri non validi    |
+| `E_CORE_VALIDATION` | 400  | `rel` fuori lista, parametri non validi        |
 | `E_VALIDATION_INPUT` | 400 | `page` / `page_size` non numerici              |
 | `E_LOOKUP_STRUTTURA_TABELLA_INVALIDA` | 500 | `fn_get_lookup_codici` rifiuta la struttura della tabella (colonne mancanti) |
 | codice del DB / `E_DATABASE` | secondo il catalogo | altri rifiuti della funzione DB: passa il codice applicativo se il DB lo dichiara, altrimenti `E_DATABASE` (400) o `E_DATABASE_RETRYABLE` (409) |

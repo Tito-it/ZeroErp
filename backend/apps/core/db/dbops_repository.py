@@ -13,6 +13,7 @@ from typing import cast
 from django.db import connection
 
 from apps.core.db._helpers import escape_ilike, fetch_paged_with_total, jsonb_out, sql_order_clause
+from apps.core.db.tabelle_gestibili_repository import TabelleGestibiliRepository
 from apps.core.services.service_errors import ServiceError
 from apps.core.types import (
     AuditLogRow,
@@ -22,141 +23,13 @@ from apps.core.types import (
     TaskRegistryRow,
 )
 
-# Whitelist relazioni consentite per la lookup generica.
-# Include tutte le tabelle config con struttura id/codice/descrizione.
-# La funzione DB fn_get_lookup_codici valida ulteriormente la struttura delle colonne.
-# ⭐ Pubblica (era `_REL_CONSENTITE` fino al 2026-09-21): e' il perimetro del
-#    pannello config e del metadata delle FK, quindi la leggono tre moduli —
-#    un nome privato importato da fuori mentiva sul suo ruolo.
-REL_CONSENTITE: frozenset[str] = frozenset(
-    {
-        # --- config ---
-        "config.ambiti",
-        "config.aree_funzionali",
-        "config.aspetti_beni",
-        "config.assets_ownership",
-        "config.canali_pratiche",
-        "config.categoria_accisa",
-        "config.causali_trasporto",
-        "config.classi_utenze",
-        "config.conti_contabili",
-        "config.email_account",
-        "config.esiti_flussi_pratiche",
-        "config.forme_giuridiche",
-        "config.iva",
-        "config.tipi_titolo_iva",
-        "config.iva_assoggettamenti",
-        "config.iva_natura",
-        "config.lingue",
-        "config.listini_tipologie",
-        "config.modalita_addebito_trasporto",
-        "config.modalita_pagamento",
-        # Modo di approvvigionamento dell'articolo (brief-db-modifiche-certe-
-        # ciclo-vendita-e-articolo, Blocco B). ⭐ Una riga qui e non un endpoint:
-        # e' un vocabolario codice/descrizione come `config.nature_vendita`, il
-        # suo modello dichiarato, e il drawer articolo lo monta con
-        # `<LookupSelect rel="config.modi_approvvigionamento">`.
-        "config.modi_approvvigionamento",
-        "config.nature_doc_fiscale",
-        "config.nature_vendita",
-        "config.note_stili",
-        "config.priorita_pratiche",
-        "config.profili_accesso",
-        "config.qualifiche",
-        # I registri che `script.vw_giornale_entita` cuce (brief-db-registri-
-        # giornale-catalogo, 2026-09-19): la tendina «Registro» del giornale
-        # trasversale li legge da qui, e il filtro `registro` del backend li
-        # valida contro la stessa tabella. ⚠️ Senza `attivo` (D3 del brief) e
-        # con `etichetta_key`: e' una specializzata, vedi `_LOOKUP_SPECIALIZZATE`.
-        "config.registri_giornale",
-        "config.sistema_codici",
-        "config.sorgenti",
-        # ⛔ NON `config.stati` (le nazioni): senza `codice`/`codice_interno`,
-        #    `fn_get_lookup_codici` la rifiuta con E_LOOKUP_STRUTTURA_TABELLA_INVALIDA
-        #    — era qui dichiarata ammessa ed era un 500 a ogni chiamata (trovato
-        #    dal presidio `test_config_panel_registro_db` il 2026-09-21). Ha il
-        #    lookup dedicato `GET /anagrafiche/stati/lookup/` e `StatiDrawer`.
-        "config.stati_assets",
-        "config.stati_cliente",
-        "config.stati_fornitore",
-        "config.stati_doc_contratti",
-        "config.stati_doc_ddt",
-        "config.stati_doc_fiscale",
-        "config.stati_doc_offerte",
-        "config.stati_doc_ordini",
-        "config.stati_doc_preventivi",
-        "config.stati_doc_reso",
-        "config.stati_flussi_pratiche",
-        "config.stati_pdp",
-        "config.stati_pratiche",
-        "config.stati_sdi",
-        "config.termini_pagamento",
-        "config.tipi_allegato",
-        "config.tipi_attivita",
-        "config.tipi_contatti",
-        "config.tipi_doc_fiscale",
-        "config.tipi_documenti",
-        "config.tipi_evento_assets",
-        "config.tipi_indirizzi",
-        "config.tipi_nota",
-        "config.tipi_reso",
-        "config.tipi_ruoli",
-        # ⛔ NON `config.titoli_cortesia`: solo `descrizione` + `descrizione_breve`,
-        #    senza `codice` ne' `attivo` — il lookup la rifiuta (stesso 500 di
-        #    `config.stati`, stesso presidio, 2026-09-21). Nessun consumatore
-        #    nel BE ne' nel FE: che cosa farne e' una domanda al DB (piano
-        #    anagrafiche-fuori-dal-pannello-config §7).
-        "config.tipi_soggetto_dettaglio",
-        "config.tipi_ubicazione",
-        "config.tipi_utenze",
-        "config.unita_organizzative",
-        "config.utilities",
-        "config.valute",
-        # --- anagrafiche ---
-        "anagrafiche.categorie_clienti",
-        # --- catalogo ---
-        "catalogo.uom_tipi",
-        "catalogo.unita_misura",
-        # --- documenti ---
-        "documenti.render_engine_documento",
-        "documenti.tipi_asset_documento",
-        "documenti.tipi_documento_output",
-        "documenti.tipi_file_documento",
-        # --- magazzino ---
-        "magazzino.causali",
-        "magazzino.magazzini",
-        "magazzino.ubicazioni",
-        # --- pagamenti ---
-        "pagamenti.centri_riscossione",
-        "pagamenti.enti_incasso",
-        "pagamenti.vendite_contabili_righe_stati",
-        "pagamenti.vendite_contabili_stati",
-        # --- pratiche ---
-        "pratiche.handler_flussi",
-        "pratiche.template_flussi",
-        "pratiche.tipi_prestazione",
-        # --- ui (personalizzazioni liste) ---
-        "ui.lista_definizione",
-        # --- vendite ---
-        "vendite.area_geografica_fatturazione",
-        # Famiglie di documento numerate su un registro. Serve al form del
-        # CRUD registri (2026-09-01). ⭐ WHITELIST, non un endpoint dedicato:
-        # e' una tabella codice/descrizione e il lookup generico la legge gia'
-        # — verificato sul database vivo, dbops.fn_get_lookup_codici deriva il
-        # `codice` da `codice_interno`, che qui e' l'unica delle due colonne
-        # a esistere (`feedback_lookup_whitelist_first`).
-        # ⚠️ Il valore da spedire e' `codice_interno`: e' quello che la FK
-        #    `fk_registri_fatturazione_famiglia` referenzia.
-        "vendite.famiglie_documento",
-
-        "vendite.articoli_gruppi",
-        "vendite.articoli_spesa",
-        "vendite.articoli_tipologie",
-        "vendite.listini",
-        "vendite.stati_commessa",
-        "vendite.tipi_fondi_fattura",
-    }
-)
+# ⛔ La whitelist del lookup generico NON e' piu' qui: dal 2026-09-25 e' la
+#    tabella `config.tabelle_gestibili` (colonna `lookup`), letta da
+#    `TabelleGestibiliRepository` (brief-db-pannello-config-verbo-generico). Fino
+#    a quel giorno era la costante `REL_CONSENTITE`, con una terza copia nel
+#    frontend; il verbo del pannello legge la stessa riga del DB, e una
+#    costante accanto sarebbe tornata a essere una seconda sede.
+#    `dbops.fn_get_lookup_codici` valida poi la struttura delle colonne.
 
 
 # Le colonne del payload del lookup generico che possono fare da VALORE di una
@@ -198,9 +71,10 @@ LOOKUP_MAX_SOURCE_ROWS = 10_000
 #                        «assegna» e che si ritira con `obsoleto_dal` — sarebbe
 #                        stata un 500 alla prima chiamata, con la rel dichiarata
 #                        ammessa (`feedback_contratto_dichiarato_provalo_intero`).
-# ⛔ Le tabelle del PANNELLO CONFIG sono ESATTAMENTE `REL_CONSENTITE`: il
-#    pannello lista le righe col lookup generico, quindi una tabella che il
-#    lookup non sa servire non la sa servire nemmeno il pannello. Fino al
+# ⛔ Le tabelle del PANNELLO CONFIG sono un SOTTOINSIEME di quelle del lookup
+#    (`config.tabelle_gestibili`: `pannello` implica `lookup`, fuori le quattro
+#    con RLS, D-P2): il pannello lista le righe col lookup generico, quindi una
+#    tabella che il lookup non sa servire non la sa servire nemmeno il pannello. Fino al
 #    2026-09-21 qui c'era un superset `CONFIG_TABLES = REL_CONSENTITE | {lotti}`,
 #    nato per `magazzino.lotti` (senza `descrizione`) con la promessa «il pannello
 #    legge information_schema e non ne ha bisogno» — vera per il drawer, falsa
@@ -295,6 +169,20 @@ _ERROR_LOG_COLONNE_DESC: frozenset[str] = frozenset({"occurred_at"})
 #    Riscriverlo era la copia numero quattro dello stesso `replace` a catena.
 def _prefisso_like(valore: str) -> str:
     return escape_ilike(valore) + "%"
+
+
+# Scopo: La `rel` e' ammessa al lookup generico? La risposta e' della lista a DB
+# (`config.tabelle_gestibili.lookup`); altrimenti 400, come prima. ⭐ Il nome
+# che finisce negli SQL dinamici e' quello di una riga della lista (CHECK di
+# forma), quindi il controllo e' anche la difesa dall'iniezione.
+def _richiedi_rel_lookup(rel: str) -> None:
+    voce = TabelleGestibiliRepository().voce(rel)
+    if voce is None or not voce["lookup"]:
+        raise ServiceError(
+            code="E_CORE_VALIDATION",
+            message="Relazione non consentita.",
+            detail=f"rel '{rel}' non e' fra le tabelle del lookup (config.tabelle_gestibili).",
+        )
 
 
 class DbopsRepository:
@@ -416,12 +304,7 @@ class DbopsRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict], int]:
-        if rel not in REL_CONSENTITE:
-            raise ServiceError(
-                code="E_CORE_VALIDATION",
-                message="Relazione non consentita.",
-                detail=f"rel '{rel}' non è nella whitelist delle lookup consentite.",
-            )
+        _richiedi_rel_lookup(rel)
 
         if rel in _LOOKUP_SPECIALIZZATE:
             return self._list_lookup_specializzato(
@@ -515,12 +398,7 @@ class DbopsRepository:
     #        per le anagrafiche fisse senza `attivo` (es. config.utilities) vale la sola
     #        esistenza (quelle tabelle non hanno il concetto di attivazione).
     def check_lookup_id_exists(self, *, rel: str, record_id: int) -> bool:
-        if rel not in REL_CONSENTITE:
-            raise ServiceError(
-                code="E_CORE_VALIDATION",
-                message="Relazione non consentita.",
-                detail=f"rel '{rel}' non e` nella whitelist delle lookup consentite.",
-            )
+        _richiedi_rel_lookup(rel)
         schema, _, table = rel.partition(".")
         with connection.cursor() as cursor:
             cursor.execute(

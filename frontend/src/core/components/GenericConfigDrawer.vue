@@ -62,8 +62,9 @@ const form = ref({})
 const originalForm = ref({}) // Per calcolare delta in edit mode
 
 // ⛔ Il drawer e' UNO per il pannello e cambia tabella con `rel`: il metadata
-// va azzerato, o la seconda tabella si apre col form della prima (e il BE,
-// che filtra le colonne sconosciute, risponde `{}` con successo).
+// va azzerato, o la seconda tabella si apre col form della prima (e il verbo
+// del pannello rifiuta le colonne che la tabella non ha,
+// `E_PANNELLO_CAMPO_NON_AMMESSO` — fino al 2026-09-25 le scartava in silenzio).
 watch(() => props.rel, () => { columns.value = [] })
 
 // Colonne editabili (esclude id), ciascuna col suo widget, la sua etichetta e

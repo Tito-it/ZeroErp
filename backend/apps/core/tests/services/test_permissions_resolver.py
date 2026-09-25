@@ -386,14 +386,18 @@ class PermissionResolverEmittenteForUserTests(TestCase):
 
 
 class PermissionResolverAreaModelOverrideTests(TestCase):
-    """Test per get_area_schema_db — query SQL diretta."""
+    """Test per get_area_schema_db — delega a script.fn_area_di_oggetto."""
 
-    # Scopo: Override trovato restituisce lo schema_db dell'area.
+    # Scopo: L'area la dice la funzione del DB (sede unica della regola, la
+    # stessa del guard dei verbi): il resolver la chiama, non la riscrive.
     @patch(_CONN)
     def test_override_trovato(self, mock_conn):
-        _setup_cursor(mock_conn, ("config",))
+        cursor = _setup_cursor(mock_conn, ("config",))
         result = PermissionResolver.get_area_schema_db("anagrafiche", "qualifiche")
         self.assertEqual(result, "config")
+        sql, params = cursor.execute.call_args.args
+        self.assertIn("script.fn_area_di_oggetto", sql)
+        self.assertEqual(params, ["anagrafiche", "qualifiche"])
 
     # Scopo: Override non trovato -> fallback ad app_label.
     @patch(_CONN)

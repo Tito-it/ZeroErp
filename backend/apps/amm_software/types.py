@@ -67,3 +67,8 @@ class OperatoreDetailRow(OperatoreRow):
     # SUPER_ADMIN): il FE nasconde l'azione invece di mostrarla disabled.
     can_demote_super_admin: bool | None
     demote_reason: str | None
+    # Lo stato della veste OPERATORE (R-9, `fn_get_operatore_detail`): la
+    # attiva se c'e', altrimenti la spenta piu' recente; NULL senza veste.
+    # ⚠️ Non e' `attivo` (risorsa umana) ne' `is_active` (credenziale, da
+    # tutte le vesti): e' l'unico campo che dice se QUESTA porta e' aperta.
+    veste_attiva: bool | None

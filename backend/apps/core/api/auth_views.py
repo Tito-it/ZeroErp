@@ -7,7 +7,8 @@
 #   - Throttling login per IP (LoginRateThrottle)
 #   - Freno sui tentativi falliti per credenziale + provenienza, attesa
 #     crescente e blocco dell'admin (fn_check_blocco_login,
-#     fn_registra_tentativo_login — config.credenziali)
+#     fn_registra_tentativo_login — config.credenziali); per un nome che non
+#     trova una credenziale, lo stesso freno sul nome tentato (R-7)
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -17,7 +18,8 @@ import logging
 from django.contrib.auth.models import User, update_last_login
 from django.db import DatabaseError
 from drf_spectacular.utils import extend_schema
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import AuthenticationFailed, ValidationError
+from rest_framework.fields import empty
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework_simplejwt.exceptions import InvalidToken
@@ -34,6 +36,7 @@ from apps.core.api.throttling import LoginRateThrottle
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services import session_audit_service
 from apps.core.services.db_error_fields import structured_db_error_code
+from apps.core.services.nome_tentato import digest_nome_tentato, etichetta_log
 from apps.core.services.request_context import get_client_ip
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.auth_constants import (
@@ -158,21 +161,36 @@ class AuditTokenObtainPairView(TokenObtainPairView):
                 detail="IP del chiamante non ricavabile dalla catena di proxy dichiarata.",
             )
 
-        username = request.data.get("username", "")
-        user = self._find_user(username)
+        # Il nome tentato come lo vedra' `authenticate` (vedi `_nome_tentato`).
+        # None = la richiesta non porta un nome: il serializer rispondera' 400
+        # senza guardare la password, quindi non e' un tentativo e non conta.
+        nome = self._nome_tentato(request)
+        user = self._find_user(nome) if nome is not None else None
+        credenziale_id = user.id if user else None
+        # ⭐ R-7 (brief-db-blocco-login-per-credenziale §13): check e
+        # registrazione si fanno SEMPRE, anche per un nome che non trova
+        # niente — la chiave (credenziale o nome) la sceglie il DB. Fino al
+        # 2026-09-25 stavano dentro `if user:`, e il numero di chiamate al DB
+        # e la risposta dopo la soglia dicevano se il nome esisteva.
+        digest = digest_nome_tentato(nome) if nome is not None else None
+        chi = etichetta_log(credenziale_id, digest) if digest is not None else "nome=-"
 
-        # 1. Se utente esiste, verifica blocco dell'admin, freno sulla
-        #    provenienza e attesa (lancia errore DB, convertito dal middleware)
-        if user:
+        # 1. Blocco dell'admin, freno sulla provenienza e attesa (lancia
+        #    errore DB, convertito dal middleware)
+        if digest is not None:
             try:
-                _auth_repo.check_blocco_login(user.id, provenienza=provenienza)
+                _auth_repo.check_blocco_login(
+                    credenziale_id, nome_digest=digest, provenienza=provenienza,
+                )
             except DatabaseError as exc:
                 # Il codice nel log: un rifiuto (E_CREDENZIALE_BLOCCATA,
                 # E_UTENTE_BLOCCATO, E_LOGIN_ATTESA) e un guasto del DB non
                 # sono la stessa riga di sicurezza.
+                # ⛔ Mai il nome in chiaro nei log (B-11): chi digita la
+                # password nel campo username la lascerebbe qui.
                 logger.warning(
-                    "security.login_blocked user=%s provenienza=%s code=%s",
-                    username, provenienza, structured_db_error_code(exc),
+                    "security.login_blocked %s provenienza=%s code=%s",
+                    chi, provenienza, structured_db_error_code(exc),
                 )
                 raise
 
@@ -185,7 +203,7 @@ class AuditTokenObtainPairView(TokenObtainPairView):
             # un tentativo fallito di credenziali: non conta ne' sulla
             # credenziale ne' sulla provenienza. Logga per audit
             # forense (qualcuno sta provando canali a cui non ha accesso).
-            logger.warning("security.veste_non_attiva user=%s", username)
+            logger.warning("security.veste_non_attiva %s", chi)
             raise
         except (AuthenticationFailed, InvalidToken):
             # Login fallito: registra tentativo.
@@ -196,28 +214,33 @@ class AuditTokenObtainPairView(TokenObtainPairView):
             # 2026-09-25 l'import era quello di SimpleJWT e nessuna password
             # sbagliata arrivata dall'API veniva contata: il freno non e' mai
             # scattato. Lo prova test_login_credenziale_db (login vero).
-            if user:
+            if digest is not None:
                 result = _auth_repo.registra_tentativo_login(
-                    user.id, provenienza=provenienza, successo=False,
+                    credenziale_id, nome_digest=digest, provenienza=provenienza,
+                    successo=False,
                 )
                 if result.get("bloccato"):
                     logger.warning(
-                        "security.login_locked user=%s provenienza=%s tentativi=%s blocco_minuti=%s",
-                        username, provenienza, result.get("tentativi"),
+                        "security.login_locked %s provenienza=%s tentativi=%s blocco_minuti=%s",
+                        chi, provenienza, result.get("tentativi"),
                         result.get("minuti_rimanenti"),
                     )
                 if result.get("attesa_secondi"):
                     logger.warning(
-                        "security.login_attesa user=%s provenienza=%s attesa_secondi=%s",
-                        username, provenienza, result.get("attesa_secondi"),
+                        "security.login_attesa %s provenienza=%s attesa_secondi=%s",
+                        chi, provenienza, result.get("attesa_secondi"),
                     )
             raise
 
         # 3. Login OK: reset contatore + audit sessione + check cambio password
         if response.status_code == 200:
-            if user:
+            # Un accesso riuscito ha sempre la credenziale: il nome e' passato
+            # dalla stessa normalizzazione di `authenticate`. Un successo senza
+            # credenziale il DB lo rifiuta come chiamata non valida.
+            if user and digest is not None:
                 _auth_repo.registra_tentativo_login(
-                    user.id, provenienza=provenienza, successo=True,
+                    user.id, nome_digest=digest, provenienza=provenienza,
+                    successo=True,
                 )
                 # Ultimo accesso (D-8): della credenziale, a ogni login
                 # riuscito. Qui e non con `UPDATE_LAST_LOGIN` di SimpleJWT:
@@ -272,15 +295,41 @@ class AuditTokenObtainPairView(TokenObtainPairView):
 
         return response
 
+    # Scopo: Il nome tentato normalizzato DAL CAMPO del serializer, cioe'
+    # esattamente il valore che arrivera' ad `authenticate`.
+    # ⛔ Non una normalizzazione scritta qui: il `CharField` di SimpleJWT toglie
+    # gli spazi (`trim_whitespace`) e converte i numeri. Fino al 2026-09-25 il
+    # lookup usava il valore grezzo: con « tid» non trovava la credenziale,
+    # quindi blocco dell'admin, freno e attesa non si controllavano, mentre
+    # `authenticate("tid")` faceva entrare. E due normalizzazioni diverse
+    # riaprono l'oracolo del nome (brief §13.3). Con l'email (L-4) si cambia
+    # il campo, e lookup e impronta lo seguono da soli.
+    # Ritorna None se il campo rifiuta il valore (assente, vuoto, non testo).
+    def _nome_tentato(self, request: Request) -> str | None:
+        dati = request.data
+        if not hasattr(dati, "get"):
+            return None
+        # Senza contesto: i campi non ne dipendono, e cosi' il metodo non
+        # chiede che `dispatch` abbia gia' impostato `self.request`.
+        campo = self.get_serializer_class()().fields[User.USERNAME_FIELD]
+        try:
+            return campo.run_validation(dati.get(User.USERNAME_FIELD, empty))
+        except ValidationError:
+            return None
+
     @staticmethod
     # Scopo: Trova user Django per username (best-effort, non lancia errore).
+    # Stessa ricerca di `ModelBackend` (`get_by_natural_key`: uguaglianza
+    # esatta), sul nome gia' normalizzato da `_nome_tentato`.
+    # ⛔ Nessun `except`: un guasto del DB qui NON e' «nome inesistente». Fino
+    # al 2026-09-25 un `except Exception` lo trasformava in `None`, e il login
+    # proseguiva col freno sul nome tentato invece che sulla credenziale —
+    # cioe' senza controllare il blocco dell'admin — mentre `authenticate`
+    # poteva far entrare. Fail-closed: l'errore sale e il login si ferma.
     def _find_user(username: str) -> User | None:
         if not username:
             return None
-        try:
-            return User.objects.filter(username=username).first()
-        except Exception:
-            return None
+        return User.objects.filter(username=username).first()
 
     @staticmethod
     # Scopo: Estrae user_id e sid dal refresh token nella response (no query DB extra).

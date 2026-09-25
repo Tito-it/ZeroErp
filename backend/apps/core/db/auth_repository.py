@@ -8,6 +8,8 @@
 # Gestisce anche lo stato della credenziale (config.credenziali, P-1 del
 # brief-db-blocco-login-per-credenziale): freno sui tentativi falliti per
 # credenziale + provenienza, attesa crescente, cambio password obbligatorio.
+# Per un nome che non trova una credenziale lo stesso freno vale sul nome
+# tentato (config.nomi_tentati, R-7 §13): la chiave la sceglie il DB.
 # ⛔ Nessun SQL diretto su quelle tabelle (chiuse all'app in scrittura): solo
 # le funzioni del DB, che sono la sede unica di «riga assente = niente stato».
 # Riusabile da qualsiasi dominio che necessiti un utente Django.
@@ -52,29 +54,42 @@ class AuthRepository:
             cursor.execute(sql, params)
             return fetchone_scalar(cursor)
 
-    # Scopo: Dice se la credenziale puo' provare ad entrare da questa provenienza.
+    # Scopo: Dice se il nome tentato puo' provare ad entrare da questa provenienza.
     # Solleva dal DB, nell'ordine: E_CREDENZIALE_BLOCCATA (blocco dell'admin),
     # E_UTENTE_BLOCCATO (freno su questa provenienza), E_LOGIN_ATTESA (attesa
-    # crescente sulla credenziale). `provenienza` = IP fidato del chiamante
-    # (`get_client_ip`), obbligatorio: il DB rifiuta NULL.
-    def check_blocco_login(self, auth_user_id: int, *, provenienza: str) -> None:
+    # crescente). La chiave la sceglie il DB (R-7, brief §13.1): la credenziale
+    # se `auth_user_id` c'e', altrimenti l'impronta del nome — quindi si chiama
+    # SEMPRE, anche per un nome che non trova niente. `nome_digest` = 32 byte
+    # (`nome_tentato.digest_nome_tentato`), obbligatorio anche con la
+    # credenziale; `provenienza` = IP fidato del chiamante (`get_client_ip`),
+    # obbligatorio: il DB rifiuta NULL.
+    def check_blocco_login(
+        self, auth_user_id: int | None, *, nome_digest: bytes, provenienza: str,
+    ) -> None:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT script.fn_check_blocco_login(%s, %s::inet)",
-                [auth_user_id, provenienza],
+                "SELECT script.fn_check_blocco_login(%s, %s::bytea, %s::inet)",
+                [auth_user_id, nome_digest, provenienza],
             )
 
-    # Scopo: Registra l'esito di un tentativo di login per credenziale + provenienza.
-    # Successo → azzera la credenziale e la SOLA coppia da cui si e' entrati.
-    # Fallimento → conta sulla coppia (freno) e sulla credenziale (attesa).
+    # Scopo: Registra l'esito di un tentativo di login per chiave + provenienza.
+    # Successo → azzera la credenziale e la SOLA coppia da cui si e' entrati
+    # (un successo senza credenziale e' una chiamata non valida).
+    # Fallimento → conta sulla coppia (freno) e sulla chiave (attesa): la
+    # credenziale se c'e', altrimenti il nome tentato, con gli stessi numeri.
     # Ritorna { bloccato, minuti_rimanenti, tentativi, attesa_secondi }.
     def registra_tentativo_login(
-        self, auth_user_id: int, *, provenienza: str, successo: bool
+        self,
+        auth_user_id: int | None,
+        *,
+        nome_digest: bytes,
+        provenienza: str,
+        successo: bool,
     ) -> dict:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT script.fn_registra_tentativo_login(%s, %s::inet, %s)",
-                [auth_user_id, provenienza, successo],
+                "SELECT script.fn_registra_tentativo_login(%s, %s::bytea, %s::inet, %s)",
+                [auth_user_id, nome_digest, provenienza, successo],
             )
             row = cursor.fetchone()
             if not row or not row[0]:

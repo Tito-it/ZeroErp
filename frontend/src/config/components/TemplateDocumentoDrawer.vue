@@ -12,7 +12,7 @@
 //
 //        Dropdown lookup standard:
 //          - tipi_documento_output, sorgenti, render_engine via LookupSelect
-//            (whitelist `REL_CONSENTITE` Tranche A);
+//            (lista del lookup `config.tabelle_gestibili`);
 //          - context_builder_code via dropdown hardcoded (whitelist
 //            applicativa Decisione 18+74).
 //        Emittente fiscale: gestito da `useEmittenteFiscaleField`. Per

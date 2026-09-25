@@ -3,7 +3,9 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Service layer per CRUD generico tabelle config.
-#        Validazione rel in whitelist, errori DB tradotti, metadata.
+#        Validazione della rel sulla lista del pannello (`config.tabelle_gestibili`),
+#        scrittura col verbo `config.fn_pannello_scrivi`, errori DB tradotti,
+#        metadata.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -12,24 +14,31 @@ from typing import Any
 
 from apps.core.db.config_crud_repository import ConfigCrudRepository
 from apps.core.db.config_metadata_repository import ConfigMetadataRepository
-from apps.core.db.dbops_repository import REL_CONSENTITE
+from apps.core.db.tabelle_gestibili_repository import TabelleGestibiliRepository
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import translate_db_errors
 
 E_CONFIG_VALIDATION = "E_CORE_VALIDATION"
-E_CONFIG_NOT_FOUND = "E_ANAG_NOT_FOUND"
+# ⭐ Lo stesso codice del verbo per la stessa cosa (una riga del pannello che
+# non c'e'), in lettura come in scrittura: fino al 2026-09-25 era
+# `E_ANAG_NOT_FOUND`, un codice di un altro dominio.
+E_CONFIG_NOT_FOUND = "E_PANNELLO_RIGA_NON_TROVATA"
 E_CONFIG_DUPLICATO = "E_ANAG_DUPLICATO"
 
 
+# Scopo: Valida la rel sulla lista del PANNELLO e restituisce (schema, table)
+# come li scrive la lista, non come li ha mandati il client.
+# ⚠️ Pannello, non lookup: le quattro tabelle con RLS stanno nelle tendine ma
+# non nel pannello (D-P2), e il verbo le rifiuterebbe comunque.
 def _parse_rel(rel: str) -> tuple[str, str]:
-    """Valida rel e restituisce (schema, table)."""
+    voce = TabelleGestibiliRepository().voce(rel)
     ErrorManager.require(
-        rel in REL_CONSENTITE,
+        voce is not None and voce["pannello"],
         code=E_CONFIG_VALIDATION,
         message=f"Tabella '{rel}' non consentita.",
     )
-    schema, table = rel.split(".", 1)
-    return schema, table
+    assert voce is not None
+    return voce["schema"], voce["table"]
 
 
 # Scopo: Le mappe vincolo → (codice, messaggio, campo) di `translate_db_errors`,
@@ -96,16 +105,25 @@ class ConfigCrudService:
             check_constraints=mappe["check"],
         )
 
-    # Scopo: Crea record; gli errori DB arrivano tradotti, col campo.
+    # Scopo: Crea record col verbo; gli errori DB arrivano tradotti, col campo.
     def create_record(self, rel: str, payload: dict[str, Any]) -> dict[str, Any]:
         schema, table = _parse_rel(rel)
         with self._db_errors("create", rel, schema, table):
-            return self._repo.create_record(schema, table, payload)
+            return self._repo.scrivi_record(rel, None, payload)
 
-    # Scopo: Aggiorna record; gli errori DB arrivano tradotti, col campo.
+    # Scopo: Aggiorna record col verbo; gli errori DB arrivano tradotti, col
+    # campo. La riga che non c'e' la dice il verbo (`E_PANNELLO_RIGA_NON_TROVATA`).
     def update_record(self, rel: str, record_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         schema, table = _parse_rel(rel)
         with self._db_errors("update", rel, schema, table):
-            updated = self._repo.update_record(schema, table, record_id, payload)
-        ErrorManager.require(updated, code=E_CONFIG_NOT_FOUND, message="Record non trovato.")
+            self._repo.scrivi_record(rel, record_id, payload)
         return {"updated": True}
+
+    # Scopo: Le righe di una tabella del PANNELLO, col lookup generico. La rel
+    # si valida sul pannello prima: il lookup ammette anche le tabelle che il
+    # pannello non gestisce (D-P2).
+    def list_records(self, rel: str, **filtri: Any) -> dict[str, Any]:
+        from apps.core.services.lookup_service import fn_list_lookup_codici
+
+        _parse_rel(rel)
+        return fn_list_lookup_codici(rel=rel, **filtri)

@@ -21,6 +21,7 @@ Indice test eseguiti:
 6)  EmettiTests.test_invalida_la_veste_prima_del_token_nuovo
 7)  EmettiTests.test_veste_fuori_dalla_porta_esplode
 8)  SpedisciTests.test_email_fallita_non_solleva_e_segna_l_invito
+8b) SpedisciTests.test_il_flusso_sceglie_il_template_della_porta
 9)  AttivaTests.test_con_password_consuma_imposta_e_accende
 10) AttivaTests.test_veste_sparita_solleva_dopo_il_consumo
 11) AttivaTests.test_con_password_senza_password_solleva_senza_consumare
@@ -166,9 +167,36 @@ class SpedisciTests(TestCase):
             )
         variabili = email.send_email.call_args.kwargs["variabili"]
         self.assertEqual(variabili["link"], "https://erp.example/attivazione-portale/abc")
-        self.assertEqual(variabili["is_cross"], "1")
         self.assertEqual(variabili["nome"], "Mario")
         repo.set_invito_inviato_at.assert_called_once_with(42, identita_id=500)
+
+    # Scopo: B-16 — il flusso sceglie il TESTO, non una variabile: nuovo →
+    # template della porta, un clic → il suo `_CROSS`. `is_cross` non viaggia
+    # piu' fra le variabili (il motore non ha rami, il testo non la usava).
+    @patch(f"{_BB}.nome_visualizzato", return_value="Admin")
+    def test_il_flusso_sceglie_il_template_della_porta(self, _nome):
+        from apps.core.services.invito_veste import EmissioneInvito
+
+        casi = (
+            (PORTA_OPERATORE, False, "INVITO_OPERATORE"),
+            (PORTA_OPERATORE, True, "INVITO_OPERATORE_CROSS"),
+            (PORTA_PORTALE, False, "INVITO_PORTALE"),
+            (PORTA_PORTALE, True, "INVITO_PORTALE_CROSS"),
+            (PORTA_SHOP, False, "INVITO_SHOP"),
+            (PORTA_SHOP, True, "INVITO_SHOP_CROSS"),
+        )
+        for porta, is_cross, atteso in casi:
+            with self.subTest(porta=porta.nome, is_cross=is_cross):
+                invito, _, _, email = _invito(ha_password=False)
+                with override_settings(FRONTEND_URL="https://erp.example"):
+                    invito.spedisci(
+                        porta, EmissioneInvito(token="abc", is_cross=is_cross),
+                        auth_user_id=42, identita_id=500, destinatario="m@x.it",
+                        invitato_da_user_id=1, variabili={},
+                    )
+                kwargs = email.send_email.call_args.kwargs
+                self.assertEqual(kwargs["codice_template"], atteso)
+                self.assertNotIn("is_cross", kwargs["variabili"])
 
 
 @patch(f"{_BB}.transaction")

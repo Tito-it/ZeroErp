@@ -1213,6 +1213,7 @@
     "select_emittenti": "Select issuers",
     "invita_operatore": "Send invitation",
     "reinvia_invito": "Resend invitation",
+    "accesso_gia_attivo": "Access already active: no invitation needed.",
     "invito_inviato": "Invitation sent",
     "invito_inviato_il": "Invitation sent on {data}",
     "invito_confirm_title": "Confirm invitation",

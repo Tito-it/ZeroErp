@@ -5,9 +5,15 @@
 // a video il ripiego e' la rel, presidio nel test del registro, punto 5).
 // ⛔ Niente `label` qui: fino al 2026-09-21 erano 65 stringhe italiane
 // hardcoded, l'unico testo del pannello fuori da `$t()`.
-// La whitelist backend (REL_CONSENTITE) controlla l'accesso, ED E' ANCHE il
-// perimetro di cio' che il pannello sa listare: la lista passa dal lookup
-// generico, quindi una tabella senza `codice`/`descrizione` qui NON entra.
+// La lista a DB `config.tabelle_gestibili` (colonna `pannello`) decide cosa il
+// pannello sa listare e scrivere: il salvataggio passa dal verbo
+// `config.fn_pannello_scrivi`, che rifiuta le tabelle fuori lista e quelle con
+// RLS, e la lista passa dal lookup generico, quindi una tabella senza
+// `codice`/`descrizione` qui NON entra. Questo registro ne e' un sottoinsieme
+// (etichette e ordine a video); il suo ritiro a favore della lista a DB e' la
+// D-P5 del brief-db-pannello-config-verbo-generico, da decidere col FE.
+// ⛔ Il salvataggio manda SOLO colonne scrivibili: dal 2026-09-25 un campo in
+// piu' e' `E_PANNELLO_CAMPO_NON_AMMESSO`, non viene piu' ignorato.
 // ⛔ Qui stanno i VOCABOLARI (codice, descrizione, attivo, qualche flag), resi
 // dal drawer generico metadata-driven. Un'anagrafica con chiavi esterne «vere»
 // (un magazzino con emittente e indirizzo, un'ubicazione con magazzino e
@@ -80,7 +86,6 @@ export const CONFIG_TABLES = [
   { schema: 'magazzino', rel: 'magazzino.causali' },
   // --- pagamenti ---
   { schema: 'pagamenti', rel: 'pagamenti.centri_riscossione' },
-  { schema: 'pagamenti', rel: 'pagamenti.enti_incasso' },
   { schema: 'pagamenti', rel: 'pagamenti.vendite_contabili_righe_stati' },
   { schema: 'pagamenti', rel: 'pagamenti.vendite_contabili_stati' },
   // --- pratiche ---

@@ -257,7 +257,7 @@ sul livello d'oggetto, che nascerà col verbo generico del pannello di
 configurazione (D-3) — e l'app che perde la scrittura diretta sulle tabelle che il
 verbo protegge. `magazzino` e `acquisti` nascono così; gli altri domini ci passano
 quando un cantiere tocca le loro scritture, senza data. ✅ **Primo caso chiuso il
-2026-09-24** (`work-in-progress/brief-db-magazzino-verbi-con-permesso.md`,
+2026-09-24** (`work-done/brief-db-magazzino-verbi-con-permesso.md`,
 `20260924-38` → `-42`): `fn_posta_inventario` e `fn_posta_rettifica` applicano
 `registra_magazzino`, l'app non esegue più la primitiva del registro. Il limite è
 scritto: il modello protegge da un backend che **sbaglia**, non da uno

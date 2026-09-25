@@ -2,24 +2,30 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Repository CRUD generico per tabelle config whitelisted.
-#        Usa metadata da ConfigMetadataRepository per costruire query dinamiche.
+# Scopo: Repository CRUD generico per le tabelle del pannello «Gestione
+#        tabelle» (`config.tabelle_gestibili` con `pannello`).
+#        Lettura: SQL costruito dai metadata. Scrittura: SOLO il verbo
+#        `config.fn_pannello_scrivi` (dal 2026-09-25, brief-db-pannello-config-
+#        verbo-generico), che chiede il livello TUTTO sull'OGGETTO della
+#        tabella e rifiuta i campi che non si scrivono.
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from django.db import connection
 
+from apps.core.db._helpers import jsonb_out
 from apps.core.db.config_metadata_repository import ConfigMetadataRepository
-from apps.core.db.dbops_repository import REL_CONSENTITE
+from apps.core.db.tabelle_gestibili_repository import TabelleGestibiliRepository
 
 _metadata = ConfigMetadataRepository()
 
 
 class ConfigCrudRepository:
-    """CRUD generico per tabelle nella whitelist lookup."""
+    """CRUD generico per le tabelle del pannello di configurazione."""
 
     # Scopo: Dettaglio singolo record con tutti i campi gestibili.
     def get_record(self, schema: str, table: str, record_id: int) -> dict[str, Any] | None:
@@ -35,50 +41,31 @@ class ConfigCrudRepository:
                 return None
             return dict(zip(cols, row))
 
-    # Scopo: Crea un nuovo record. Accetta solo colonne gestibili (no audit, no id).
-    def create_record(self, schema: str, table: str, data: dict[str, Any]) -> dict[str, Any]:
-        editable = _metadata.get_editable_column_names(schema, table)
-        # Filtra solo i campi forniti che sono colonne reali
-        fields = [(k, v) for k, v in data.items() if k in editable]
-        if not fields:
-            return {}
-        col_names = [f[0] for f in fields]
-        values = [f[1] for f in fields]
-        placeholders = ", ".join(["%s"] * len(fields))
-        col_list = ", ".join(col_names)
-        all_cols = ", ".join(_metadata.get_all_column_names(schema, table))
-
-        sql = f"""
-            INSERT INTO {schema}.{table} ({col_list}) VALUES ({placeholders})
-            RETURNING {all_cols}
-        """  # noqa: S608
+    # Scopo: Scrive una riga col verbo del pannello: `record_id` None = nuova,
+    # altrimenti modifica per id. Ritorna la riga scritta (senza audit).
+    # ⛔ Niente filtro dei campi qui: fino al 2026-09-25 un campo che non era
+    # una colonna si scartava in silenzio, e un payload tutto sconosciuto
+    # diventava un «successo» vuoto. Ora lo rifiuta il DB
+    # (`E_PANNELLO_CAMPO_NON_AMMESSO`, col campo; `E_PANNELLO_DATI_VUOTI`), e la
+    # riga che non c'e' e' `E_PANNELLO_RIGA_NON_TROVATA`.
+    # ⚠️ I valori li converte PostgreSQL sul tipo di ogni colonna
+    # (`jsonb_populate_record`): viaggiano come JSON, non come parametri.
+    def scrivi_record(
+        self, rel: str, record_id: int | None, data: dict[str, Any],
+    ) -> dict[str, Any]:
         with connection.cursor() as cursor:
-            cursor.execute(sql, values)
+            cursor.execute(
+                "SELECT config.fn_pannello_scrivi(%s, %s, %s::jsonb)",
+                [rel, record_id, json.dumps(data)],
+            )
             row = cursor.fetchone()
-            assert row is not None
-            return_cols = _metadata.get_all_column_names(schema, table)
-            return dict(zip(return_cols, row))
+        assert row is not None
+        return jsonb_out(row[0])
 
-    # Scopo: Aggiorna un record. Accetta solo colonne gestibili fornite nel payload.
-    def update_record(self, schema: str, table: str, record_id: int,
-                      data: dict[str, Any]) -> bool:
-        editable = _metadata.get_editable_column_names(schema, table)
-        fields = [(k, v) for k, v in data.items() if k in editable]
-        if not fields:
-            return False
-        set_clause = ", ".join([f"{f[0]} = %s" for f in fields])
-        values = [f[1] for f in fields]
-        values.append(record_id)
-        sql = f"UPDATE {schema}.{table} SET {set_clause} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, values)
-            return cursor.rowcount > 0
-
-    # Scopo: Lista tabelle disponibili raggruppate per schema.
+    # Scopo: Le tabelle del pannello, dalla lista a DB (`pannello`).
     @staticmethod
     def list_available_tables() -> list[dict[str, str]]:
-        result = []
-        for rel in sorted(REL_CONSENTITE):
-            schema, table = rel.split(".", 1)
-            result.append({"schema": schema, "table": table, "rel": rel})
-        return result
+        return [
+            {"schema": v["schema"], "table": v["table"], "rel": v["rel"]}
+            for v in TabelleGestibiliRepository().voci_pannello()
+        ]

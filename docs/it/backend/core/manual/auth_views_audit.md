@@ -46,15 +46,30 @@ TokenRefreshView  (SimpleJWT)
   `E_AUTH_CHIAMATA_NON_VALIDA` (500) **prima** di cercare lo username: la
   risposta non dice se l'utente esiste, e il DB non riceve mai una provenienza
   `NULL`.
-- **Stato della credenziale** (contro chi **prova** una credenziale): se lo
-  username esiste, `AuthRepository.check_blocco_login(uid, provenienza=)`
+- **Nome tentato**: lo username si legge **dal campo del serializer**
+  (`_nome_tentato`), cioè già normalizzato come lo vedrà `authenticate`
+  (spazi tolti, numeri convertiti). Con quel valore si cerca la credenziale
+  (`_find_user`, uguaglianza esatta come `ModelBackend`) e se ne calcola
+  l'impronta (`nome_tentato.digest_nome_tentato`, HMAC-SHA256 con chiave del
+  backend, 32 byte). ⛔ Fino al 2026-09-25 il lookup usava il valore grezzo:
+  con « tid» non trovava la credenziale e blocco, freno e attesa non si
+  controllavano, mentre `authenticate("tid")` faceva entrare. Un nome
+  assente, vuoto o non testuale non è un tentativo: il serializer risponde
+  400 senza guardare la password, e il DB non viene chiamato.
+- **Stato della credenziale** (contro chi **prova** una credenziale):
+  `AuthRepository.check_blocco_login(uid | None, nome_digest=, provenienza=)`
   solleva dal DB, nell'ordine, `E_CREDENZIALE_BLOCCATA` (blocco dell'admin),
   `E_UTENTE_BLOCCATO` (freno su questa provenienza), `E_LOGIN_ATTESA`
-  (attesa crescente) — tutti 403. Modello:
-  [guida multi-face §3.1-bis](../../../guide/architettura-multi-face-auth.md).
-- **Esito**: `registra_tentativo_login(uid, provenienza=, successo=)` —
-  fallimento: conta sulla coppia e sulla credenziale; successo: azzera la
-  credenziale e la **sola** coppia da cui si e' entrati. Eccezione:
+  (attesa crescente) — tutti 403. ⭐ Si chiama **sempre**, anche per un nome
+  che non trova una credenziale (R-7): allora `uid` è `None` e il DB usa
+  l'impronta del nome come chiave (`config.nomi_tentati`), con gli stessi
+  numeri e le stesse frasi. Chi prova non capisce se il nome esiste. Modello:
+  [guida multi-face §3.1-bis](../../../guide/architettura-multi-face-auth.md)
+  e [fn_check_blocco_login](/dbzero/script/manual/fn_check_blocco_login).
+- **Esito**: `registra_tentativo_login(uid | None, nome_digest=, provenienza=, successo=)` —
+  fallimento: conta sulla coppia e sulla chiave (credenziale o nome);
+  successo: azzera la credenziale e la **sola** coppia da cui si e' entrati
+  (un successo ha sempre la credenziale). Eccezione:
   `VesteNonAttivaError` (credenziali OK ma veste sbagliata) NON conta.
   ⛔ Il fallimento si intercetta su `rest_framework.exceptions.AuthenticationFailed`
   (quello che solleva il serializer), **non** sulla classe omonima di
@@ -154,7 +169,8 @@ l'utente ha un emittente attivo) documentati in
 | `dbops.sessioni_utente`              | INSERT via `session_audit_service` (login/refresh/logout)       |
 | `anagrafiche.identita_digitali`      | Source di `identita_id` + `ruolo_applicativo` iniettati nel JWT |
 | `script.fn_check_blocco_login`       | Blocco, freno per provenienza, attesa — prima della password    |
-| `script.fn_registra_tentativo_login` | Esito del tentativo per credenziale + provenienza               |
+| `script.fn_registra_tentativo_login` | Esito del tentativo per credenziale (o nome tentato) + provenienza |
+| `nome_tentato.digest_nome_tentato` / `etichetta_log` | Impronta del nome tentato (HMAC, la chiave non va al DB); come il tentativo compare nei log |
 | `script.fn_get_deve_cambiare_password` | Cambio password obbligatorio della credenziale                |
 | `MultiVesteTokenSerializer`          | Iniezione claim custom + risoluzione veste                      |
 | `JwtAuditAuthentication`             | Validazione claim + popolamento GUC a ogni request              |
@@ -163,11 +179,15 @@ l'utente ha un emittente attivo) documentati in
 
 - `apps/core/tests/api/test_auth_views.py` — test behavior login/refresh,
   guard astratta, cross-namespace (Admin/Portale/Shop), no-tentativo su
-  `VesteNonAttivaError`, provenienza assente, extract helpers.
+  `VesteNonAttivaError`, provenienza assente, extract helpers; nome
+  inesistente sulle stesse due chiamate e mai in chiaro nei log, nome con
+  spazi normalizzato come `authenticate`, nome assente senza chiamate al DB.
 - `apps/core/tests/db/test_login_credenziale_db.py` — ⭐ sul DB vero
   (`ZEROERP_TEST_DB_E2E=1`): binding di `AuthRepository` e login vero dalla
   view — 401 che contano, freno 403 solo dalla provenienza che sbaglia,
-  attesa coi secondi nel `message`, login riuscito.
+  attesa coi secondi nel `message`, login riuscito; ⭐ la parità del nome
+  inesistente (stesse risposte di una credenziale vera) e il freno che non
+  si aggira con uno spazio davanti al nome.
 - `apps/core/tests/api/test_multi_veste_token_serializer.py` — test serializer,
   `VesteNonAttivaError`, claim injection.
 - `apps/core/tests/api/test_jwt_audit_authentication.py` — test authenticate

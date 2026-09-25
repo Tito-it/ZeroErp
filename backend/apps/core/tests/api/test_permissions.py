@@ -66,6 +66,9 @@ def _mock_view(action: str | None = None, area: str | None = None, queryset: obj
     del view.patch_permission
     del view.delete_permission
     del view.model_permission
+    # L'oggetto dalla richiesta (D-P7, 2026-09-25): su un MagicMock il metodo
+    # esisterebbe e la catena lo userebbe al posto dell'area.
+    del view.oggetto_permesso_da_richiesta
     # Idem per `<chiave>_accesso` (dal 2026-09-25): su un MagicMock
     # l'attributo esisterebbe, e la catena lo leggerebbe come una
     # dichiarazione non valida. Le chiavi si leggono dalla catena, non si

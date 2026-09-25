@@ -13,9 +13,17 @@
 > difetto si chiude, si aggiornano insieme il codice, la sua doc e la riga qui.
 >
 > **Stato:** ⏳ aperto — Tid (2026-09-24): *«partendo da quelle più gravi»*.
-> Chiusi: **M-1** (e con lui **S-3**), **M-2**, **M-3**. **M-4, M-5, M-6**
-> confluiti nel cantiere [analisi-accessi-credenziale-e-vesti.md](analisi-accessi-credenziale-e-vesti.md). Le doc di `core/manual/` e `api_conti_bancari_ruolo.md` sono già
+> Chiusi: **M-1** (e con lui **S-3**), **M-2**, **M-3**; **M-4** il
+> 2026-09-25 nel cantiere accessi (lotto L-1). **M-5, M-6** restano in quel
+> cantiere, lotto **L-5** ancora da fare
+> ([piano-be-fe-accessi-credenziale-e-vesti.md](piano-be-fe-accessi-credenziale-e-vesti.md) §4.3).
+> Le doc di `core/manual/` e `api_conti_bancari_ruolo.md` sono già
 > allineate al comportamento attuale e rimandano qui (2026-09-24).
+>
+> **Ultima verifica sul codice: 2026-09-25.** Le voci ancora aperte sono
+> state ricontrollate dopo i commit del cantiere accessi (L-0, L-1, L-3):
+> nessun'altra risulta chiusa; per S-5 i punti colpiti sono cambiati (vedi
+> riga).
 >
 > **Come leggere «Verificato»:** ✅ = riletto sul codice da chi scrive
 > (2026-09-24); 🔎 = segnalato con prova `file:riga` dalla verifica per lotti,
@@ -30,9 +38,9 @@
 | M-1 | ✅ **CHIUSO 2026-09-24.** ~~La cache Redis dei permessi è per `auth_user`, ma i valori dipendono da veste ed emittente attivo~~ — più la riscrittura a ogni richiesta che rinnovava il TTL. Ora la chiave è (utente, **contesto di sessione**: identità + emittente **effettivo** della GUC, segnato da `set_jwt_gucs`); senza contesto la L2 non si usa; invalidazione per **generazione** utente/globale; scrittura solo se la richiesta ha aggiunto voci; il middleware non precarica più (non può conoscere il contesto). Test: `test_permissions_cache` (su LocMem vera), `test_permissions_cache_richiesta`, `test_jwt_audit_authentication` n. 13. Doc: `permissions_cache.md`, `permissions_resolver.md`, `jwt_audit_middleware.md`, catalogo BB | `core/services/permissions_cache.py`, `core/api/permissions.py`, `core/api/jwt_audit_authentication.py`, `core/middleware/jwt_audit_middleware.py` | ✅ |
 | M-2 | ✅ **CHIUSO 2026-09-24** (ok Tid). ~~Il cambio password emette token senza veste~~: ora la sessione si riapre nella stessa veste con la catena del login, estratta nel BB `emetti_refresh_veste` (regola del 2: login + cambio password); l'identità si rilegge **prima** di cambiare la password (revocata → 401 `E_IDENTITA_NON_ATTIVA`, password intatta); l'audit LOGIN registra il `sid`. Test: `test_change_password_token_veste`. Doc: `api_token_cambio_password.md`, `api_multi_veste_token.md`, catalogo BB | `core/api/change_password_view.py`, `core/api/multi_veste_token_serializer.py` | ✅ |
 | M-3 | ✅ **CHIUSO 2026-09-24** (strada decisa da Tid). ~~Invito portale/shop con email nuova: il reinvio è impossibile~~. Ora il flusso si sceglie sulla **credenziale** (`PortaleRepository.auth_user_ha_password`: l'utente creato da un invito resta col segnaposto `!` finché non attiva), non su «auth_user appena creato»; l'identità nasce `attivo=false` in **entrambi** i flussi e la accende il consumo del token (`_attiva_identita_o_rifiuta` nelle due view di attivazione, INVITO e CROSS); niente più password temporanea. Stato accessi: PENDING fino all'attivazione. ⚠️ Dati di sviluppo: gli invitati creati prima di oggi hanno una password temporanea *utilizzabile* e l'identità attiva — per loro il reinvio resta CROSS finché non si correggono a mano. Test: `test_reinvio_a_chi_non_ha_mai_attivato_resta_invito`, `test_flow_invito_identita_sparita_solleva`, happy path aggiornati. Doc: `api_invito_portale_shop.md`, catalogo BB | `portale/services/invito_portale_service.py`, `portale/db/portale_repository.py`, `portale/api/views.py`, `shop/api/views_attivazione.py` | ✅ |
-| M-4 | **Blocco login solo sulla veste OPERATORE.** `fn_check_blocco_login` e `fn_registra_tentativo_login` filtrano `ruolo_applicativo = 'OPERATORE'`: chi ha solo la veste portale o shop non viene mai bloccato, benché `PortaleTokenView` dichiari il contrario; chi è operatore e cliente viene bloccato come operatore sbagliando sul portale. ➜ ⭐ **Tid, 2026-09-24: il blocco è della CREDENZIALE, e il ciclo di vita degli accessi è uno solo per tutte le vesti** — cantiere a sé: [analisi-accessi-credenziale-e-vesti.md](analisi-accessi-credenziale-e-vesti.md) | `dbzero/script/funzioni/fn_check_blocco_login.md`, `auth_views.py:257-261` | ✅ |
-| M-5 | **Disattivare un operatore spegne tutte le vesti della credenziale** e le rinomina `DISABILITATO` (UPDATE su `identita_digitali` per `auth_user_id`, senza filtro sul ruolo). ➜ [analisi-accessi-credenziale-e-vesti.md](analisi-accessi-credenziale-e-vesti.md) §3.1 | `amm_software/db/amm_software_repository.py:487-493` | ✅ |
-| M-6 | **Riattivare un operatore porta a `OPERATORE` tutte le sue identità**: su una credenziale con anche una veste cliente/fornitore il guard di coerenza e l'unique `(auth_user_id, ruolo_applicativo) WHERE attivo` la fanno fallire (deduzione dai vincoli, da provare con un caso costruito). ➜ [analisi-accessi-credenziale-e-vesti.md](analisi-accessi-credenziale-e-vesti.md) §3.1 | `amm_software/db/amm_software_repository.py:528-534` | ✅ codice · 🔎 esito |
+| M-4 | ✅ **CHIUSO 2026-09-25** nel cantiere accessi, lotto L-1 ([piano](piano-be-fe-accessi-credenziale-e-vesti.md) §3.1-bis; DB: [brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md) P-1). Tentativi e blocco ora stanno sulla **credenziale** + provenienza: `AuthRepository.check_blocco_login(uid, provenienza=)` / `registra_tentativo_login`, niente più `identita_id` né filtro sulla veste. ~~**Blocco login solo sulla veste OPERATORE.** `fn_check_blocco_login` e `fn_registra_tentativo_login` filtrano `ruolo_applicativo = 'OPERATORE'`: chi ha solo la veste portale o shop non viene mai bloccato, benché `PortaleTokenView` dichiari il contrario; chi è operatore e cliente viene bloccato come operatore sbagliando sul portale. ➜ ⭐ **Tid, 2026-09-24: il blocco è della CREDENZIALE, e il ciclo di vita degli accessi è uno solo per tutte le vesti** — cantiere a sé: [analisi-accessi-credenziale-e-vesti.md](analisi-accessi-credenziale-e-vesti.md)~~ | `core/db/auth_repository.py`, `core/api/auth_views.py` | ✅ |
+| M-5 | **Disattivare un operatore spegne tutte le vesti della credenziale** e le rinomina `DISABILITATO` (UPDATE su `identita_digitali` per `auth_user_id`, senza filtro sul ruolo). ➜ [analisi-accessi-credenziale-e-vesti.md](analisi-accessi-credenziale-e-vesti.md) §3.1; si chiude col lotto L-5 del piano accessi (da fare, 2026-09-25) | `amm_software/db/amm_software_repository.py:343-346` (`disabilita_operatore` a riga 509) | ✅ |
+| M-6 | **Riattivare un operatore porta a `OPERATORE` tutte le sue identità** (➜ L-5: `riattiva_operatore` si ritira, si riattiva col reinvio — D-3): su una credenziale con anche una veste cliente/fornitore il guard di coerenza e l'unique `(auth_user_id, ruolo_applicativo) WHERE attivo` la fanno fallire (deduzione dai vincoli, da provare con un caso costruito). ➜ [analisi-accessi-credenziale-e-vesti.md](analisi-accessi-credenziale-e-vesti.md) §3.1 | `amm_software/db/amm_software_repository.py:539` (`riattiva_operatore`) | ✅ codice · 🔎 esito |
 
 ## 2. Contratto degli errori
 
@@ -58,7 +66,7 @@
 | S-3 | ✅ **CHIUSO 2026-09-24 con M-1.** ~~`permissions_cache.invalidate_all()` non cancella niente~~: ora cambia la generazione globale, niente più `delete_pattern` | `core/services/permissions_cache.py` | ✅ |
 | S-4 | **`get_ruolo_applicativo`, ripiego non deterministico**: `LIMIT 1` senza `ORDER BY` su un'identità attiva qualsiasi | `core/services/permissions_resolver.py:103-111` | 🔎 |
 | S-6 | **`get_ruolo_applicativo(user)` risponde per chi chiama, non per `user`**: legge prima la GUC `app.ruolo_applicativo` della richiesta e ignora l'argomento. In permessi-effettivi, consultando un altro utente, `ruolo_applicativo` è la veste del chiamante. Da verificare lo stesso effetto sui livelli d'area, perché `fn_resolve_livello_area` legge la stessa GUC | `core/services/permissions_resolver.py:92-115`, `core/api/views.py:200` | ✅ |
-| S-5 | **Password ripulite dagli spazi**: reset e attivazione operatore fanno `.strip()` su `new_password` → la password salvata può differire da quella digitata | `core/api/password_reset_views.py:143-144`, `attivazione_view.py:76-77` | 🔎 |
+| S-5 | **Password ripulite dagli spazi**: reset, attivazione e cambio password fanno `.strip()` su `new_password` → la password salvata può differire da quella digitata. ⚠️ 2026-09-25: col lotto L-3 l'attivazione è passata nel BB `attivazione_veste_views.py`, e il difetto c'è anche nel **cambio password** (non era nell'elenco del 24-09) | `core/api/password_reset_views.py:147-148`, `core/api/attivazione_veste_views.py:122-123`, `core/api/change_password_view.py:56-57` | ✅ |
 
 ## 4. Funzionali
 
@@ -78,7 +86,7 @@
 ## 5. Minori (docstring e percorsi)
 
 - `EmittenteFiscaleScopeMixin` esce subito per il super admin e salta l'intersezione con l'emittente attivo che `fn_get_emittenti_scope_pk_ids` applica; il mixin non ha utilizzatori. Docstring ferma a «nessuna riga = vede tutto».
-- `jwt_audit_middleware.py:78` dice «5 GUC» (sono 6); `permissions_resolver.py:62` cita `fn_is_super_admin*.sql` (i file sono `test-fn-is-super-admin*.sql`).
+- `jwt_audit_middleware.py:76` dice «5 GUC» (sono 6); `permissions_resolver.py:62` cita `fn_is_super_admin*.sql` (i file sono `test-fn-is-super-admin*.sql`).
 - `backend/deploy/sveglie.json`, chiave `_ritirate`: rimanda a `work-in-progress/brief-db-sveglia-dei-processi.md`, ora in `work-done/`.
 
 ## 6. Omissioni della doc (non difetti di codice)
@@ -89,7 +97,8 @@
 ## 7. Richieste al team DB
 
 - **E-1**: le sei righe nel CSV del catalogo codici (classe decisa sul modello: i due `*_NOT_FOUND` → NON_TROVATO; i due del middleware e `E_CAMBIO_PASSWORD_CHECK_FALLITO` → TECNICO; `E_CAMBIO_PASSWORD_RICHIESTO` → da decidere con Tid). Poi il BE rigenera e scrive i ripieghi.
-- **M-4** (e M-5, M-6): non più una richiesta isolata — il brief DB nasce dalle decisioni di [analisi-accessi-credenziale-e-vesti.md](analisi-accessi-credenziale-e-vesti.md) §5.
+- **M-4** (e M-5, M-6): non più una richiesta isolata — il brief DB è [brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md) (P-1 e P-2 applicati il 2026-09-25); per M-5/M-6 resta il lotto BE L-5.
+- ⚠️ **E-1 ancora aperta (2026-09-25)**: nessuno dei sei codici è in `error_policies_generated.py`. Il commit `3aaad8093` ha registrato altri codici (brief storico colonna FK), non questi.
 
 ---
 {% include-markdown "signature-core.md" %}
