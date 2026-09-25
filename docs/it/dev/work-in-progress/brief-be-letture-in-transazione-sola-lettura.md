@@ -2,7 +2,7 @@
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-09-24. **A chi:** team backend.
 > **Origine:** approfondimento del §8 di
-> [brief-db-area-funzionale-assistente-ai.md](brief-db-area-funzionale-assistente-ai.md).
+> [brief-db-area-funzionale-assistente-ai.md](../work-done/brief-db-area-funzionale-assistente-ai.md).
 > **Decisione di Tid, 2026-09-24:** si fa **fra le prime cose**, insieme al brief
 > dell'assistente AI.
 >
@@ -13,6 +13,14 @@
 > ⇒ **Al backend:** un building block che apre la transazione di sola lettura,
 > montato su tutte le `GET`/`HEAD` delle API, e riusato dai tool dell'assistente.
 > ⇒ **Al DB:** un codice di errore registrato (§5).
+>
+> ⭐ **Stato al 2026-09-25:** il building block **esiste** —
+> `apps/core/db/sola_lettura.py::transazione_sola_lettura`, nato col brief
+> dell'assistente (§5.3.1 di quello), col presidio su DB vero
+> `core/tests/db/test_sola_lettura_db.py` (che copre anche il §4 punto 3: la
+> connessione dopo il blocco non è in sola lettura). Lo usano i tool
+> dell'assistente. **Restano** il montaggio su tutte le `GET`/`HEAD`, i
+> presìdi 1 e 2 del §4, le eccezioni del §2.2 e il codice del §5 (DB).
 
 ---
 
@@ -129,3 +137,4 @@ il backend lo usa solo dopo che è registrato.
 | Data | Chi | Cosa |
 | --- | --- | --- |
 | 2026-09-24 | DB | Brief scritto dall'approfondimento del §8 del brief dell'assistente AI; decisione di Tid: fra le prime cose |
+| 2026-09-25 | backend | Building block `transazione_sola_lettura` scritto e usato dai tool dell'assistente (regola del 2, ok Tid). Il montaggio sulle `GET` resta da fare |

@@ -264,6 +264,18 @@ scritto: il modello protegge da un backend che **sbaglia**, non da uno
 **manomesso** (l'identità la dichiara il backend).
 
 ### Aperto — Media priorità
+- 🔴 **Il tetto d'area dei permessi non esiste** (BE + DB, difetto di
+  modello, senza decisione; registrato il 2026-09-25 dall'analisi
+  `work-in-progress/analisi-ui-permessi-operatore.md` §3, perché non si perda
+  con la sua chiusura): un'area `BLOCCATO` **non** blocca le sue azioni di
+  processo — `core/api/permissions.py` risponde con la sola
+  `check_azione` e non consulta l'area — e un override oggetto può essere
+  **più permissivo** della sua area (`fn_resolve_livello_oggetto` sostituisce,
+  non limita: «il più specifico vince», dichiarato nella guida di
+  architettura §3). Passare a «l'area è un tetto» è un cambio di semantica, da
+  fare a DB e BE, mai solo a video. Le domande da decidere sono in §6
+  dell'analisi (vale anche sul profilo? limite o cancellazione degli override
+  sottostanti?). Non è della v3 dei permessi, che è dormiente
 - **Il `codice` delle sei famiglie di documento di seed si perde al migrate**
   (DB, ereditata il 2026-09-24 dalla chiusura di
   `work-done/brief-be-ricerca-full-liste-residue.md`, §13.5): dal 24-09 il

@@ -8,24 +8,23 @@
 > del Lotto 2
 > ([brief-db-magazzino-lotto-2-motore.md](../work-done/brief-db-magazzino-lotto-2-motore.md),
 > D-L2-b). Le decisioni D-1 → D-5 sono di Tid, tutte del 2026-09-24.
-> **Stato al 2026-09-25:** ✅ **la porta è chiusa — P-0 → P-5 e P-7 applicati e verdi; D-V1 decisa e chiusa.**
+> **Stato al 2026-09-25 (sera):** ✅ **chiuso lato DB — P-0 → P-7 applicati, verdi e committati; D-V1 decisa e chiusa.**
 > * ✅ applicati da Tid su dbdev: `20260924-38` (guard), `-39` (helper pgTAP), `-40`
 >   (gate in `fn_resolve_livello_oggetto`), `-41` (i due verbi), `-42` (primitiva e
->   ricalcolo riservati, 23:35). Letto su dbdev: l'app esegue `fn_posta_inventario` e
->   `fn_posta_rettifica`, **non** esegue `fn_scrivi_movimento` né
->   `fn_ricalcola_valore_giacenza`.
-> * ✅ pgTAP lanciati da Tid dopo ogni apply: parte A e parte B **verdi**, nessuna
->   regressione.
-> * 🔵 **P-6 scritto**: nota del presidio in `presidi.csv` (da applicare: arriva coi
->   mirror `runOnChange`) e il modello in `PROJECT_CONTEXT`.
-> * ✅ **D-V1 decisa da Tid il 2026-09-25: strada A** (§4). ✅ **P-7 applicato da Tid il
->   2026-09-25 su `zeroerp_ci` e dbdev (`20260925-37…-39`), corsa pgTAP senza regressioni.**
->   La porta `POSTED` e le righe in `CONFIRM` chiedono la GUC **e** il proprietario; il BB
->   `script.fn_is_proprietario_tabella` ha ritirato la copia di `ui`.
-> * ⏳ Resta il **commit** di P-7 (changeSet, pgTAP, `codici_errore.csv`, pagine `manual/`,
->   brief), e P-6 arriva al DB coi mirror al prossimo migrate.
-> * ✅ Committato in un commit solo il 2026-09-24 (`f2e724b47`, poi PR #1681):
->   changeSet, loop, provisioning, pgTAP e pagine `manual/` insieme.
+>   ricalcolo riservati). L'app esegue `fn_posta_inventario` e `fn_posta_rettifica`,
+>   **non** esegue `fn_scrivi_movimento` né `fn_ricalcola_valore_giacenza`.
+>   Committati in `f2e724b47` (PR #1681).
+> * ✅ **P-6 arrivato al DB**: letto su dbdev il 2026-09-25, la nota del presidio
+>   `dbops.vw_magazzino_valore_giacenza_divergente` è quella nuova.
+> * ✅ **D-V1 decisa da Tid il 2026-09-25: strada A** (§4). **P-7** (`20260925-37…-39`)
+>   applicato su `zeroerp_ci` e dbdev, pgTAP senza regressioni, **committato** in
+>   `1d92ae6a2` (PR #1684). La porta `POSTED` e le righe in `CONFIRM` chiedono la GUC
+>   **e** il proprietario; il BB `script.fn_is_proprietario_tabella` ha ritirato la
+>   copia di `ui`.
+> * ✅ **§6 fatto dal backend il 2026-09-25** (`dev/backend-tid`, da committare): i
+>   fixture concedono `registra_magazzino`; test DB e smoke verdi, e lo smoke prova P-7
+>   dal percorso reale come `zeroerp_app`.
+> * ⏳ Resta solo il **commit del backend** (§6).
 >
 > **In una riga:** nel Lotto 2 la porta sul registro dei movimenti decide **da
 > dove** si scrive, non **chi** può scrivere. L'app può chiamare direttamente la
@@ -325,11 +324,24 @@ repo.
 ## 6. Ricadute sul backend
 
 * **Nessun cambio di codice**: il backend chiama già solo le due operazioni, con
-  `post_permission = "registra_magazzino"`.
+  `post_permission = "registra_magazzino"`. Verificato il 2026-09-25: il backend
+  non imposta mai da sé la GUC `zeroerp.magazzino_posting_*`.
 * **Richiesta**: censire i test Django che registrano un inventario o una
   rettifica con un utente **senza** l'azione e **non** super admin. Oggi passano
   perché il DB non controlla; dopo ricevono `E_PERMESSO_NEGATO`, ed è giusto così.
   Si correggono i fixture, non il DB.
+
+  ✅ **Fatto il 2026-09-25** (backend). Il censimento con la suite intera sul DB vero
+  (`ZEROERP_TEST_DB_E2E=1`, come in CI) ha trovato due punti, e solo quelli, con lo
+  stesso mondo: `apps/magazzino/tests/db/test_documento_interno_db.py` (7 test rossi
+  su `E_PERMESSO_NEGATO`) e lo smoke `smoke-magazzino-inventario-primo-carico.py`.
+  Tutti e due ora concedono l'azione con il BB dei pgTAP,
+  `dbops.fn_pgtap_concedi_azione(…, 'registra_magazzino')`, subito dopo il contesto
+  operatore. Esito: test DB di magazzino 22/22, smoke 12/12. Lo smoke esercita anche
+  P-7 dal percorso reale come `zeroerp_app`: il verbo scrive `qta_sistema` in
+  `CONFIRM` e porta a `POSTED`, e l'`UPDATE` diretto resta rifiutato.
+  ⚠️ In locale quei test sono saltati senza `ZEROERP_TEST_DB_E2E=1`, e per questo il
+  rosso non si era visto; in CI girano su ogni PR.
 
 ---
 
@@ -353,4 +365,5 @@ repo.
 | 2026-09-25 | DB | **P-7 scritto e provato** (`20260925-37…-39`): GUC **e** proprietario in AND (precisazione 1 di §4), anche il guard delle righe (precisazione 2), BB estratto e copia di `ui` ritirata (precisazione 3: tocca due domini, ok Tid registrato sotto). pgTAP: uno nuovo, due adeguati |
 | 2026-09-25 | Tid | `-37…-39` applicati su `zeroerp_ci` (18:06); su dbdev `-37` (18:05) |
 | 2026-09-25 | Tid | `-38`, `-39` applicati anche su dbdev; corsa pgTAP: **nessuna regressione**. D-V1 chiusa, resta il commit |
-| 2026-09-25 | Tid | **ok esplicito** all'estrazione di `script.fn_is_proprietario_tabella` su due domini (`ui`, `magazzino`), regola del 2 |
+| 2026-09-25 | Tid | P-7 committato (`1d92ae6a2`, PR #1684) |
+| 2026-09-25 | BE | **§6 fatto**: due fixture (test DB, smoke) concedono `registra_magazzino`; verdi. P-6 letto su dbdev: arrivato. Resta il commit del backend |

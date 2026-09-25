@@ -244,11 +244,15 @@ const userKebabItems = computed(() => {
 
 // Scopo: Verifica disponibilita' AI al mount (best-effort, non blocca).
 //        Solo se l'utente e' autenticato, per evitare 401 inutili.
+// ⭐ Si legge `utilizzabile`, non `enabled`: l'AI puo' essere accesa e l'area
+//    `ai_assistant` BLOCCATA per questo utente, e allora la chat
+//    risponderebbe 403 alla prima domanda. Lo decide il backend con la stessa
+//    regola di `/query/` (Tid, 2026-09-25).
 onMounted(async () => {
   if (!auth.isAuthenticated) return
   try {
     const response = await getAIStatus()
-    ui.aiAvailable = response.data?.data?.enabled === true
+    ui.aiAvailable = response.data?.data?.utilizzabile === true
   } catch {
     ui.aiAvailable = false
   }

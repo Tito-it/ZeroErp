@@ -123,11 +123,13 @@ Il catalogo degli strumenti AI non e' un elenco statico inviato all'LLM. Viene f
 1. **Blacklist installazione** — parametro `AI_DISABLED_TOOLS` in `config.parameters`, per disabilitare tool specifici per installazione senza toccare codice
 2. **Permessi dell'endpoint gemello** — ogni tool dichiara l'endpoint della UI che fa la stessa cosa (classe della view e metodo HTTP), e il permesso si **deriva** da li': il filtro chiama `valuta_accesso_endpoint`, la stessa regola che `ZeroERPPermission` applica alle chiamate della UI (catalogo BB backend). Area del model o `area_funzionale`, livello richiesto dal metodo, azione di processo (`<metodo>_permission`), override per oggetto, `SUPER_ADMIN`: tutto vale per il tool esattamente come per l'endpoint. Se l'operatore non puo' chiamare `ApiPraticheList`, il tool `cerca_pratiche` non viene nemmeno inviato all'LLM; se non puo' fare la `POST` di `ApiPraticheList`, non vede `crea_pratica`
 
-Il tool non dichiara area, livello o azione: una seconda copia della regola prima o poi direbbe una cosa diversa dalla UI. Un tool senza endpoint gemello e' un'eccezione, da scrivere per nome con il motivo (§6.3).
+3. **Livello sull'assistente** — l'area `ai_assistant` fa da secondo filtro, sullo strumento stesso: con `LETTURA` l'assistente **consulta** (solo i tool il cui gemello e' una lettura), con `TUTTO` anche **agisce** (i tool di scrittura, sempre con conferma), con `BLOCCATO` non risponde. Vale sempre il piu' stretto dei due livelli: un operatore con `TUTTO` su `pratiche` e `LETTURA` sull'assistente crea pratiche dalla UI ma non tramite l'assistente; uno con `TUTTO` sull'assistente e `LETTURA` su `pratiche` non ne crea da nessuna parte
+
+Il tool non dichiara area, livello o azione, e nemmeno se scrive: anche questo si **deriva** dal gemello (`chiamata_in_scrittura`, la stessa regola che decide il tipo di accesso della UI). Una seconda copia della regola prima o poi direbbe una cosa diversa dalla UI. Un tool senza endpoint gemello e' un'eccezione, da scrivere per nome con il motivo (§6.3).
 
 Il filtro e' ripetuto **tre volte**: quando il catalogo si offre al modello, quando un tool viene eseguito e quando si conferma una scrittura. Questo garantisce che l'LLM non puo' mai chiamare un'operazione per cui l'utente non ha permesso — perche' lo strumento non esiste nel suo catalogo.
 
-**L'ingresso.** L'endpoint dell'assistente (`AIQueryView`) appartiene all'area funzionale `ai_assistant`, che l'amministratore concede dal pannello dei profili come ogni altra area. Oggi l'ingresso e' una `POST` e quindi chiede il livello `TUTTO`: con `LETTURA` l'assistente risponde 403. Il significato di `LETTURA` sull'assistente («consulta, non agisce») e' in lavorazione.
+**L'ingresso.** L'endpoint dell'assistente (`AIQueryView`) appartiene all'area funzionale `ai_assistant`, che l'amministratore concede dal pannello dei profili come ogni altra area. Una domanda e' una lettura anche se viaggia in una `POST`: la view lo dichiara (`post_accesso = "view"`), quindi basta `LETTURA` per entrare. Il bottone dell'assistente nella barra in alto compare solo a chi puo' entrare: lo dice `GET /ai-assistant/status/` (campo `utilizzabile`), con la stessa regola.
 
 ### 3.5 Conferma operazioni in scrittura
 
@@ -137,6 +139,8 @@ Le operazioni che modificano dati (creazione pratica, cambio stato, aggiunta not
 2. **Esecuzione** — solo dopo conferma esplicita dell'operatore, il tool esegue l'operazione reale chiamando il service di dominio.
 
 Se l'operatore non conferma entro 5 minuti, la conferma pendente viene scartata automaticamente.
+
+**Le letture le garantisce il database.** Ogni tool di lettura, e l'anteprima di ogni tool di scrittura, gira dentro una transazione di **sola lettura** (`transazione_sola_lettura`, catalogo BB backend). Se un tool classificato come lettura prova a scrivere — per un errore di classificazione o per un service che scrive piu' di quanto dice — lo ferma PostgreSQL (`25006`), anche dentro una funzione `SECURITY DEFINER`. Restano fuori solo l'esecuzione confermata di una scrittura e il registro `dbops.ai_query_log`.
 
 ### 3.6 Contesto statico documentale
 
@@ -258,10 +262,10 @@ Per aggiungere uno strumento:
 1. Creare un file in `backend/apps/ai_assistant/tools/` con una classe che estende `AITool`
 2. Definire `name`, `description`, `input_schema` ed `endpoint=EndpointGemello(<view>, "<metodo>")`: la view della UI che chiama lo **stesso** service con lo stesso significato. I permessi del tool sono quelli di quell'endpoint, e non si dichiarano altrove
 3. Implementare `execute()` che chiama il service/repository esistente
-4. Per tool in scrittura, impostare `requires_confirmation=True` e implementare `preview()`
+4. Per tool in scrittura, implementare `preview()`. Che il tool scriva non si dichiara: lo dice il gemello (un metodo che non e' una lettura), e da li' discendono la conferma, il livello `TUTTO` sull'assistente e la sola lettura dell'anteprima
 5. Registrare nella funzione `populate_registry()` in `tool_registry.py`
 
-⚠️ Un tool che non ha un endpoint gemello e' un'eccezione: si decide chi lo puo' usare e lo si scrive per nome, con il motivo, in `_SENZA_GEMELLO` (`tests/tools/test_tool_endpoint_gemello.py`). Lo stesso test verifica per ogni tool registrato che il gemello esista, implementi il metodo, e che la conferma dichiarata corrisponda a un gemello di scrittura.
+⚠️ Un tool che non ha un endpoint gemello e' un'eccezione: si decide chi lo puo' usare e lo si scrive per nome, con il motivo, in `_SENZA_GEMELLO` (`tests/tools/test_tool_endpoint_gemello.py`). Lo stesso test verifica per ogni tool registrato che il gemello esista, implementi il metodo, e che «scrive» sia derivato dal gemello.
 
 I metodi helper `simplify_results()` e `safe_page_size()` nella classe base eliminano il codice ripetitivo.
 

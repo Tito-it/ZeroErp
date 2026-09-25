@@ -19,8 +19,12 @@
 # 9. test_query_tool_call_not_permitted_is_refused (ri-check permessi nel loop)
 # 10. test_execute_confirmation_refused_when_permission_lost (ri-check TOCTOU alla conferma)
 # 11. TestAuditLogReliability.test_reliable_failure_logs_error / _best_effort_failure_logs_warning
+# 12. TestSolaLetturaNelCiclo.test_il_tool_che_legge_gira_in_sola_lettura
+# 13. TestSolaLetturaNelCiclo.test_l_anteprima_si_e_l_esecuzione_confermata_no
 
 import unittest
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -55,12 +59,39 @@ class _DummySearchTool(AITool):
         }
 
 
+# Scopo: al posto di `transazione_sola_lettura` nei test unitari: non apre
+#        transazioni (niente DB) e dice se il codice sta girando DENTRO il
+#        blocco. Che il blocco fermi davvero una scrittura lo prova il test su
+#        DB vero (`core/tests/db/test_sola_lettura_db.py`).
+class _SpiaSolaLettura:
+    def __init__(self) -> None:
+        self.dentro = False
+        self.aperture = 0
+
+    @contextmanager
+    def __call__(self) -> Iterator[None]:
+        self.aperture += 1
+        self.dentro = True
+        try:
+            yield
+        finally:
+            self.dentro = False
+
+
 class TestAIAssistantService(unittest.TestCase):
     """Test ai_assistant_service.query()."""
 
     def setUp(self):
         # Cache conferme isolata in-process (no Redis: regola CI "test senza servizi").
         patcher = patch.object(ai_assistant_service, "cache", LocMemCache("ai-test-service", {}))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        # La sola lettura a DB non si apre in un test unitario.
+        self.spia_sola_lettura = _SpiaSolaLettura()
+        patcher = patch.object(
+            ai_assistant_service, "transazione_sola_lettura", self.spia_sola_lettura,
+        )
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -355,7 +386,6 @@ class TestAIAssistantService(unittest.TestCase):
         spy = _SpyWriteTool(
             name="cambia_stato_pratica", description="d", input_schema={},
             endpoint=EndpointGemello(_PraticheView, "POST"),
-            requires_confirmation=True,
         )
         tool_registry.register_tool(spy)
 
@@ -387,7 +417,6 @@ class TestAIAssistantService(unittest.TestCase):
         spy = _SpyWriteTool(
             name="cambia_stato_pratica", description="d", input_schema={},
             endpoint=EndpointGemello(_PraticheView, "POST"),
-            requires_confirmation=True,
         )
         tool_registry.register_tool(spy)
 
@@ -421,20 +450,102 @@ class TestAIAssistantService(unittest.TestCase):
 
 
 class _SpyWriteTool(AITool):
-    """Tool in scrittura di test: traccia preview/execute senza effetti reali."""
+    """Tool in scrittura di test: traccia preview/execute senza effetti reali,
+    e se ciascuno e' girato dentro la sola lettura (`spia`, se data)."""
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(self, *, spia: _SpiaSolaLettura | None = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.previewed = False
         self.executed = False
+        self.spia = spia
+        self.preview_in_sola_lettura: bool | None = None
+        self.execute_in_sola_lettura: bool | None = None
 
     def preview(self, params: dict[str, Any], request: Any) -> dict[str, Any]:
         self.previewed = True
+        if self.spia is not None:
+            self.preview_in_sola_lettura = self.spia.dentro
         return {"summary": "preview operazione", "details": params}
 
     def execute(self, params: dict[str, Any], request: Any) -> dict[str, Any]:
         self.executed = True
+        if self.spia is not None:
+            self.execute_in_sola_lettura = self.spia.dentro
         return {"message": "operazione eseguita"}
+
+
+class _SpyReadTool(AITool):
+    """Tool in lettura di test: dice se execute e' girato in sola lettura."""
+
+    def __init__(self, *, spia: _SpiaSolaLettura, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.spia = spia
+        self.execute_in_sola_lettura: bool | None = None
+
+    def execute(self, params: dict[str, Any], request: Any) -> dict[str, Any]:
+        self.execute_in_sola_lettura = self.spia.dentro
+        return {"count": 0, "results": []}
+
+
+# Scopo: brief-db-area-funzionale-assistente-ai §5.3 punto 3 — DOVE il ciclo
+#        apre la sola lettura. Lettura e anteprima dentro; l'esecuzione
+#        confermata di una scrittura fuori (deve scrivere).
+class TestSolaLetturaNelCiclo(unittest.TestCase):
+
+    # Stesso ambiente della classe madre (cache, permessi, spia), senza
+    # ereditarne i test.
+    setUp = TestAIAssistantService.setUp
+    tearDown = TestAIAssistantService.tearDown
+
+    @patch("apps.ai_assistant.services.ai_assistant_service.get_ai_provider")
+    @patch("apps.ai_assistant.services.ai_assistant_service._log_query")
+    @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
+    @patch.object(PermissionResolver, "get_livello_area", return_value="TUTTO")
+    def test_il_tool_che_legge_gira_in_sola_lettura(
+        self, mock_perms, mock_disabled, mock_log, mock_provider,
+    ):
+        spy = _SpyReadTool(
+            spia=self.spia_sola_lettura,
+            name="cerca_pratiche", description="d", input_schema={},
+            endpoint=EndpointGemello(_PraticheView, "GET"),
+        )
+        tool_registry.register_tool(spy)
+        mock_provider.return_value = MockProvider(
+            tool_response=ToolCall(id="tc1", name="cerca_pratiche", input={}),
+            default_response="Nessuna pratica.",
+        )
+
+        ai_assistant_service.query(user=self.user, request=self.request, message="pratiche?")
+
+        self.assertIs(spy.execute_in_sola_lettura, True)
+
+    @patch("apps.ai_assistant.services.ai_assistant_service.get_ai_provider")
+    @patch("apps.ai_assistant.services.ai_assistant_service._log_query")
+    @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
+    @patch.object(PermissionResolver, "get_livello_area", return_value="TUTTO")
+    def test_l_anteprima_si_e_l_esecuzione_confermata_no(
+        self, mock_perms, mock_disabled, mock_log, mock_provider,
+    ):
+        spy = _SpyWriteTool(
+            spia=self.spia_sola_lettura,
+            name="crea_pratica", description="d", input_schema={},
+            endpoint=EndpointGemello(_PraticheView, "POST"),
+        )
+        tool_registry.register_tool(spy)
+        mock_provider.return_value = MockProvider(
+            tool_response=ToolCall(id="tc1", name="crea_pratica", input={}),
+            default_response="Vuoi confermare?",
+        )
+
+        r1 = ai_assistant_service.query(user=self.user, request=self.request, message="crea")
+        self.assertIs(spy.preview_in_sola_lettura, True)
+        self.assertFalse(spy.executed)
+
+        ai_assistant_service.query(
+            user=self.user, request=self.request, message="__confirm__",
+            conversation_id=r1["conversation_id"],
+        )
+        self.assertIs(spy.execute_in_sola_lettura, False)
 
 
 class TestAuditLogReliability(unittest.TestCase):

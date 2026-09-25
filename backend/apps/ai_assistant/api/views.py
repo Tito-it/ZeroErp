@@ -32,7 +32,9 @@ class AIStatusView(APIView):
 
     Usa JWT semplice senza check area_funzionale: tutti gli utenti
     autenticati possono verificare se l'AI e' attiva.
-    Il check permessi area avviene solo su /query/.
+    Il check permessi area avviene solo su /query/; qui se ne da' l'esito
+    in anticipo (`utilizzabile`), perche' il frontend non mostri la chat a
+    chi riceverebbe un 403 alla prima domanda.
     """
 
     authentication_classes = [JwtAuditAuthentication]
@@ -47,6 +49,7 @@ class AIStatusView(APIView):
                         name="AIStatusData",
                         fields={
                             "enabled": serializers.BooleanField(),
+                            "utilizzabile": serializers.BooleanField(),
                             "provider": serializers.CharField(),
                             "tools_available": serializers.IntegerField(),
                         },
@@ -56,12 +59,31 @@ class AIStatusView(APIView):
         },
     )
     # Scopo: Restituisce lo stato dell'assistente AI.
-    #        Health check leggero: nessuna query DB, solo config statica.
+    #        `enabled` e' la configurazione dell'installazione; `utilizzabile`
+    #        dice se QUESTO utente puo' fare una domanda: attiva E ingresso
+    #        consentito dalla stessa regola di `/query/`
+    #        (`valuta_accesso_endpoint` su `AIQueryView`), non una copia.
+    # ⚠️ Non e' piu' «nessuna query DB» (dal 2026-09-25): il livello
+    #    sull'area `ai_assistant` si risolve con la cache permessi della
+    #    richiesta (`cache_permessi_richiesta`, L2 Redis), quindi sul DB solo
+    #    se non e' gia' in cache. A AI spenta non si chiede niente.
     def get(self, request: Request) -> JsonResponse:
         from apps.ai_assistant.services.tool_registry import get_all_tools
+        from apps.core.api.permissions import (
+            cache_permessi_richiesta,
+            valuta_accesso_endpoint,
+        )
 
+        enabled = bool(getattr(settings, "AI_ENABLED", False))
+        utilizzabile = False
+        if enabled:
+            with cache_permessi_richiesta(request) as cache:
+                utilizzabile = valuta_accesso_endpoint(
+                    request.user, AIQueryView, method="POST", cache=cache,
+                ).consentito
         return success_response({
-            "enabled": getattr(settings, "AI_ENABLED", False),
+            "enabled": enabled,
+            "utilizzabile": utilizzabile,
             "provider": getattr(settings, "AI_PROVIDER", "mock"),
             "tools_available": len(get_all_tools()),
         })
@@ -75,6 +97,14 @@ class AIQueryView(DomainAPIView):
     """
 
     area_funzionale = "ai_assistant"
+    # ⭐ Una domanda all'assistente e' una LETTURA, anche se viaggia in una
+    #    POST: senza questa riga chiederebbe `add`, e un operatore con
+    #    `LETTURA` su `ai_assistant` non potrebbe nemmeno chiedere
+    #    (brief-db-area-funzionale-assistente-ai §5.3 punto 1). Cio' che
+    #    l'assistente puo' FARE lo decide il filtro dei tool, che misura il
+    #    livello su quest'area col tipo del tool — e ripete il controllo alla
+    #    conferma, che passa anch'essa da qui (`tool_registry`).
+    post_accesso = "view"
 
     @extend_schema(
         request=inline_serializer(

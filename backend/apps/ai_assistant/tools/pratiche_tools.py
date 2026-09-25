@@ -243,7 +243,6 @@ class CreaPraticaTool(AITool):
                 "required": ["tipo_prestazione_id", "priorita_id"],
             },
             endpoint=EndpointGemello(ApiPraticheList, "POST"),
-            requires_confirmation=True,
         )
 
     # Scopo: Genera il sommario dell'operazione per la conferma utente.
@@ -308,7 +307,6 @@ class CambiaStatoPraticaTool(AITool):
                 "required": ["pratica_id", "nuovo_stato"],
             },
             endpoint=EndpointGemello(ApiPraticaStato, "POST"),
-            requires_confirmation=True,
         )
 
     # Scopo: Genera il sommario del cambio stato per la conferma.
@@ -366,7 +364,6 @@ class AggiungiNotaPraticaTool(AITool):
                 "required": ["pratica_id", "tipo_nota", "contenuto"],
             },
             endpoint=EndpointGemello(ApiPraticaNoteList, "POST"),
-            requires_confirmation=True,
         )
 
     # Scopo: Genera il sommario della nota per la conferma.
