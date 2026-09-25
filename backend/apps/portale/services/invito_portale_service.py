@@ -632,11 +632,11 @@ class InvitoPortaleService:
     # coppia (soggetto_ruolo_id, ruolo_applicativo). Ritorna l'`identita_id`
     # (nuova o esistente) per consentire al caller di puntare la riga
     # giusta negli UPDATE successivi (pattern richiesto dal modello 1:N
-    # §8.4.1, vedi `AuthRepository.set_deve_cambiare_password/...`).
+    # §8.4.1, vedi `set_invito_inviato_at`).
     #
     # Comportamento per stato identita:
-    # - Non esiste: la crea `attivo=false`, `deve_cambiare_password=false`,
-    #   in entrambi i flussi. Si attiva al consumo del token.
+    # - Non esiste: la crea `attivo=false`, in entrambi i flussi. Si attiva
+    #   al consumo del token.
     # - Esiste gia' ATTIVA: ERRORE — l'utente ha gia' accesso al portale con
     #   quella veste; un nuovo invito non ha senso (se serve reset
     #   credenziali, il self-service password reset copre il caso).
@@ -663,7 +663,6 @@ class InvitoPortaleService:
                 soggetto_ruolo_id=soggetto_ruolo_id,
                 ruolo_applicativo=ruolo_applicativo,
                 attivo=False,
-                deve_cambiare_password=False,
             )
 
         identita_id = int(existing["identita_id"])

@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 914, di cui 98 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 919, di cui 98 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -158,6 +158,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_AUDIT_SUMMARY_PARAM_NON_VALIDO": "DATO_ERRATO",
     # TERZO LATO — lotto 5B: i 25 su catene SQL (2026-08-07) · Brief §26. Non li chiama il backend direttamente: li chiamano altre · funzioni SQL. Nove su 25 sono il **framework di automazione** · (`fn_run_automations_*`, `fn_ensure_storico_table`), che genera · trigger e tabelle: stessa famiglia degli `E_ATTIVO_*` del lotto 4, · stesso 500. Con questi il registro arriva a zero.
     "E_AUDIT_UPDATE": "TECNICO",
+    # Guard di parametro delle funzioni della credenziale (fn_check_blocco_login, fn_registra_tentativo_login, fn_azzera_tentativi_credenziale, fn_get/fn_imposta_deve_cambiare_password, fn_blocca/fn_sblocca_credenziale) su valori che NESSUNA interfaccia puo' produrre: una credenziale NULL o <= 0, una provenienza NULL, un esito NULL. Gemello di E_MAG_CHIAMATA_NON_VALIDA: E_PARAMETRO_INVALIDO e' uno split rimandato (D11) e non si riusa. TECNICO perche' il chiamante e' rotto, non l'operatore. Nasce il 2026-09-25 (brief-db-blocco-login-per-credenziale).
+    "E_AUTH_CHIAMATA_NON_VALIDA": "TECNICO",
     "E_AUTHENTICATION_FAILED": "NON_AUTENTICATO",
     "E_AUTH_USER_SOGGETTO_CON_PIVA": "DATO_ERRATO",
     # Il dato manca sul SOGGETTO, non sul form in corso: evidenziare un · campo manderebbe a cercare dove non c'e'.
@@ -345,6 +347,12 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CONTRATTO_VALIDO_AL_RETROATTIVO": "CONFLITTO_STATO",
     "E_CORE_PROFILE_NOT_FOUND": "NON_TROVATO",
     "E_CORE_VALIDATION": "DATO_ERRATO",
+    # Login rifiutato da script.fn_check_blocco_login: la credenziale e' bloccata dall'amministratore (config.credenziali.bloccata_at, D-1 riletta, D-B1). Vale su tutte le porte, non scade e il reset password non la toglie (D-B3). ⚠️ 403 e NON 429, come E_UTENTE_BLOCCATO: il login del frontend intercetta il 429 prima di leggere il codice (e' il throttle per IP). Frase chiusa. Nasce il 2026-09-25 (brief-db-blocco-login-per-credenziale).
+    "E_CREDENZIALE_BLOCCATA": "NON_PERMESSO",
+    # script.fn_blocca_credenziale senza motivo: il blocco dell'amministratore e' una decisione con un autore e una ragione (D-1 riletta). campo = motivo nel contesto. Il CHECK chk_credenziali_blocco resta come rete. Nasce il 2026-09-25 (brief-db-blocco-login-per-credenziale).
+    "E_CREDENZIALE_MOTIVO_OBBLIGATORIO": "DATO_ERRATO",
+    # La credenziale indicata (django.auth_user.id) non esiste: la sollevano i verbi che scrivono config.credenziali (fn_registra_tentativo_login, fn_imposta_deve_cambiare_password, fn_blocca/fn_sblocca_credenziale), perche' la FK verso django.auth_user in CI non esiste (90_end, MARK_RAN) e senza il controllo lo stesso errore sarebbe un 23503 su dev e una riga orfana in CI. Frase chiusa: l'id viaggia nel contesto. Nasce il 2026-09-25 (brief-db-blocco-login-per-credenziale).
+    "E_CREDENZIALE_NON_TROVATA": "NON_TROVATO",
     "E_DATA_AL_MINORE_DAL": "DATO_ERRATO",
     "E_DATA_APERTURA": "DATO_ERRATO",
     "E_DATABASE": "DATO_ERRATO",
@@ -672,6 +680,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Resolver pricing v5 (fn_resolve_prezzo_listino_v2, rev 2026-05-13 · bundle-prioritario): versione listino non trovata o non attiva · alla data del documento. Indica un mismatch fra il listino eletto · (contratto o categoria) e la disponibilita' di una versione · operativa per quel periodo. · 404 -> 422 (audit 2026-08-06). Non era un «non trovato»: il · listino c'e', la query di `fn_resolve_prezzo_listino_v2` cerca una · versione `attivo = TRUE AND stato IN (ATTIVA, CHIUSA)` valida ALLA · DATA, e non ne trova. La richiesta si capisce e non si puo' · eseguire: e' la definizione del 422. Allineato al fratello · `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA`, che dice quasi la · stessa cosa ed era gia' 422.
     "E_LISTINO_VERSIONE_NON_ATTIVA": "NON_ESEGUIBILE",
     "E_LOCK_COLUMNS": "TECNICO",
+    # Login rifiutato da script.fn_check_blocco_login per l'attesa crescente sulla credenziale: oltre il tetto di fallimenti consecutivi (da qualunque provenienza) ogni tentativo deve aspettare, e questo e' arrivato prima. Rallenta senza chiudere: il titolare aspetta al piu' login_attesa_max_secondi. Il segnaposto sono i secondi rimanenti, riempiti dalla funzione (secondi_rimanenti anche nel contesto). ⚠️ 403 e NON 429: il login del frontend intercetta il 429 prima di leggere il codice e perderebbe i secondi. Nasce il 2026-09-25 (brief-db-blocco-login-per-credenziale).
+    "E_LOGIN_ATTESA": "NON_PERMESSO",
     "E_LOGOUT_NO_TOKEN": "DATO_ERRATO",
     # Sollevato da dbops.fn_get_lookup_codici (migration 20260520-04+06) · quando la tabella passata non ha la struttura attesa · (id + codice/codice_interno + descrizione) e non esiste override · dichiarativo in dbops.automation_overrides_cols (CODICE_COL/CODICE_INTERNO_COL). · E' un errore di configurazione/sviluppo (rel whitelistato in dbops_repository · senza colonne compatibili, o override mancante per tabella custom): · utente finale non puo' rimediarlo, va corretto dal team.
     "E_LOOKUP_STRUTTURA_TABELLA_INVALIDA": "TECNICO",

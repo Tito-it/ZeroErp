@@ -119,8 +119,9 @@ I tre campi vengono ripuliti dagli spazi iniziali e finali (`.strip()`) prima de
 1. Rilegge l'identita' della veste del JWT corrente (`identita_id` del claim): se nel
    frattempo e' stata revocata, 401 `E_IDENTITA_NON_ATTIVA` **prima** di toccare la
    password
-2. `user.set_password(new_password)` + `user.save()`, reset del flag
-   `deve_cambiare_password = false` sulla veste corrente, blacklist di tutti i refresh
+2. `user.set_password(new_password)` + `user.save()`, spegnimento dell'obbligo
+   di cambio password della **credenziale** (uno solo per tutte le vesti),
+   blacklist di tutti i refresh
    token precedenti dell'utente (atomiche, `apply_new_password`)
 3. Riapre la sessione **nella stessa veste** con la catena del login,
    `emetti_refresh_veste` (`multi_veste_token_serializer.py`): `sid` nuovo,
@@ -158,6 +159,13 @@ Il frontend deve aggiornare i token nello store con quelli nuovi.
 ---
 
 ## Flag `deve_cambiare_password` — Flusso completo
+
+⭐ **Il flag e' della credenziale, non della veste** (dal 2026-09-25): la
+password e' una sola, quindi l'obbligo di cambiarla vale su ogni porta. Sede:
+`config.credenziali`, letta e scritta **solo** da
+`fn_get_deve_cambiare_password` / `fn_imposta_deve_cambiare_password` (riga
+assente = `false`). Lo accende l'invito operatore; lo spegne qualunque nuova
+password (cambio, reset, attivazione).
 
 ### 1. Login
 
@@ -239,8 +247,9 @@ Superuser bypassa completamente il middleware.
 | --- | --- |
 | `config.token_monouso` | Tabella token con hash SHA-256, scadenza, consumo |
 | `config.fn_cleanup_token_scaduti(giorni)` | Job pulizia periodica |
-| `anagrafiche.identita_digitali.deve_cambiare_password` | Flag cambio password (⚠️ fino al 2026-09-12 questa riga nominava la vista `risorse_umane_auth_user`, nome vecchio del ponte in ritiro (analisi-software-per-dati-morti §2.1)) |
-| `script.fn_get_user_profile()` | Include `deve_cambiare_password` nel JSONB profilo |
+| `config.credenziali.deve_cambiare_password` | Flag cambio password della credenziale (fino al 2026-09-25 stava su ogni riga di `identita_digitali`) |
+| `script.fn_get_deve_cambiare_password` / `fn_imposta_deve_cambiare_password` | Unica lettura e scrittura del flag |
+| `script.fn_get_user_profile()` | Include `deve_cambiare_password` nel JSONB profilo (letto dalla credenziale) |
 
 ## File Python
 
@@ -250,7 +259,7 @@ Superuser bypassa completamente il middleware.
 | `apps/core/services/token_service.py` | Service: hash, generate, validate, consume |
 | `apps/core/api/change_password_view.py` | Endpoint POST /auth/change-password/ |
 | `apps/core/middleware/password_change_middleware.py` | Blocco navigazione se flag attivo |
-| `apps/core/db/auth_repository.py` | +get/set deve_cambiare_password |
+| `apps/core/db/auth_repository.py` | `get/set_deve_cambiare_password(auth_user_id)` — della credenziale, senza veste |
 | `apps/core/api/auth_views.py` | +flag password_change_required nella response login |
 
 ## Ordine middleware

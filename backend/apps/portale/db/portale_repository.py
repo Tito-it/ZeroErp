@@ -91,8 +91,7 @@ class PortaleRepository:
             SELECT id               AS identita_id,
                    auth_user_id,
                    attivo,
-                   invito_inviato_at,
-                   deve_cambiare_password
+                   invito_inviato_at
               FROM anagrafiche.identita_digitali
              WHERE soggetto_ruolo_id = %s
                AND ruolo_applicativo = %s::config.ruolo_applicativo
@@ -166,12 +165,12 @@ class PortaleRepository:
     # Scopo: Crea l'identita_digitali del portale user. Il trigger DB
     # `trgfn_identita_digitali_guard_coerenza` (§7.1.1) verifica coerenza
     # ruolo_applicativo x tipo soggetto.
-    # Parametri `attivo` + `deve_cambiare_password` OBBLIGATORI kw-only
-    # (no default, §8.4.1 FRAG9): un default implicito sarebbe
-    # security-risky (un futuro caller che dimentica i kwargs creerebbe
-    # accidentalmente identita attiva). Oggi l'invito le crea entrambe
-    # `False` in tutti e due i flussi: l'identita si attiva al consumo del
-    # token (M-3, 2026-09-24).
+    # Parametro `attivo` OBBLIGATORIO kw-only (no default, §8.4.1 FRAG9): un
+    # default implicito sarebbe security-risky (un futuro caller che lo
+    # dimentica creerebbe accidentalmente identita attiva). Oggi l'invito la
+    # crea `False` in tutti e due i flussi: l'identita si attiva al consumo
+    # del token (M-3, 2026-09-24). Il cambio password obbligatorio non e'
+    # della veste ma della credenziale (D-7, `config.credenziali`).
     def create_identita_portale(
         self,
         *,
@@ -179,14 +178,13 @@ class PortaleRepository:
         soggetto_ruolo_id: int,
         ruolo_applicativo: str,
         attivo: bool,
-        deve_cambiare_password: bool,
     ) -> int:
         sql = """
             INSERT INTO anagrafiche.identita_digitali
                    (auth_user_id, soggetto_ruolo_id, ruolo_applicativo,
-                    attivo, deve_cambiare_password, storicizza)
+                    attivo, storicizza)
             VALUES (%s, %s, %s::config.ruolo_applicativo,
-                    %s, %s, true)
+                    %s, true)
             RETURNING id
         """
         with connection.cursor() as cursor:
@@ -197,7 +195,6 @@ class PortaleRepository:
                     soggetto_ruolo_id,
                     ruolo_applicativo,
                     attivo,
-                    deve_cambiare_password,
                 ],
             )
             row = cursor.fetchone()

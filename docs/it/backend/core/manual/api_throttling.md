@@ -26,6 +26,13 @@ Le richieste di cui l'IP non si ricava condividono un contatore solo (`ip-sconos
 ⛔ Un throttle nuovo deriva da queste classi: `get_ident` di DRF, con `NUM_PROXIES` non
 impostato, userebbe l'header intero.
 
+⚠️ **`LoginRateThrottle` non e' il freno dei tentativi falliti.** Conta le
+**richieste** per IP, qualunque credenziale provino: ferma chi inonda l'endpoint.
+Il freno per credenziale + provenienza (DB, `config.credenziali`) conta le
+**password sbagliate** su una credenziale: ferma chi la prova. Due regole, anche
+se oggi i numeri (5 e 5) coincidono — vedi
+[guida multi-face §3.1-bis](../../../guide/architettura-multi-face-auth.md).
+
 Il resto di questo documento riguarda `SearchBurstRateThrottle`.
 
 ## Input

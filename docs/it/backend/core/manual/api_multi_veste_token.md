@@ -70,9 +70,10 @@ Headers: nessun auth necessario (il token del body fa fede).
 }
 ```
 
-`password_change_required` e' presente (valore `true`) solo se
-l'identita ha il flag `deve_cambiare_password = true`; altrimenti la chiave
-**manca** (non vale mai `false`).
+`password_change_required` e' presente (valore `true`) solo se la
+**credenziale** ha l'obbligo di cambio password (`fn_get_deve_cambiare_password`:
+e' della credenziale, non della veste — vale su ogni porta); altrimenti la
+chiave **manca** (non vale mai `false`).
 
 ### Refresh success (HTTP 200)
 
@@ -174,7 +175,10 @@ Ad **ogni** richiesta con Bearer, `JwtAuditAuthentication.authenticate()`:
 | `E_JWT_SENZA_IDENTITA`    | 401  | redirect_login    | JWT senza claim `identita_id` (token pre-refactor)                             | §8.3.4        |
 | `E_JWT_SENZA_SID`         | 401  | redirect_login    | JWT senza claim `sid` (o con `sid` vuoto)                                      | —             |
 | `E_IDENTITA_NON_ATTIVA`   | 401  | redirect_login    | `identita_id` non corrisponde a identita attiva (revocata)                     | §8.3.4        |
-| `E_UTENTE_BLOCCATO`       | 403  | show_error_banner | Identita **OPERATORE** con `bloccato_fino_a > now()` (tentativi falliti)       | Pre-esistente |
+| `E_CREDENZIALE_BLOCCATA`  | 403  | show_error_banner | Credenziale bloccata dall'amministratore: tutte le porte, non scade, il reset non la toglie | 2026-09-25 |
+| `E_UTENTE_BLOCCATO`       | 403  | show_error_banner | Freno sulla **provenienza**: troppe password sbagliate di fila da questo IP (frase chiusa, i minuti restano nel contesto del DB) | Pre-esistente, per credenziale + provenienza dal 2026-09-25 |
+| `E_LOGIN_ATTESA`          | 403  | show_error_banner | Attesa crescente sulla credenziale oltre il tetto di fallimenti da qualunque provenienza; i secondi nel `message` (⚠️ non in `detail`, che porta la causa del catalogo) | 2026-09-25 |
+| `E_AUTH_CHIAMATA_NON_VALIDA` | 500 | show_error_banner | Provenienza (IP fidato) non ricavabile: il login si rifiuta prima di cercare lo username | 2026-09-25 |
 
 La classe di ogni codice sta in `apps/core/services/error_policies_generated.py`
 (`CLASSE_PER_CODICE`), i tre `redirect_login` in
@@ -183,9 +187,11 @@ La classe di ogni codice sta in `apps/core/services/error_policies_generated.py`
 
 > ⚠️ Difetto noto (E-3): `InvalidToken` di SimpleJWT non e' nella mappa di
 > `drf_exception_handler`, quindi il 401 da token scaduto/invalido esce fuori
-> envelope. ⚠️ Difetto noto (M-4): il blocco tentativi agisce solo sulla veste
-> `OPERATORE`; chi ha solo la veste portale o shop non viene mai bloccato. Vedi
-> [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+> envelope.
+>
+> I tre rifiuti della credenziale sono 403, non 429: il 429 e' il throttle
+> per IP, che il frontend intercetta prima di leggere il codice. Modello
+> delle tre regole: [guida multi-face §3.1-bis](../../../guide/architettura-multi-face-auth.md).
 
 ## Audit sessione
 
@@ -217,8 +223,11 @@ l'audit procede comunque con GUC vuote.
 - Il claim `sid` e' preservato da `SidTokenObtainPairSerializer`: il
   `MultiVesteTokenSerializer` eredita da Sid (non da `TokenObtainPairSerializer`
   diretto) — senza questa catena l'audit sessioni si romperebbe.
-- Il throttle `LoginRateThrottle` (5 tentativi / 5 minuti per IP) e' applicato
+- Il throttle `LoginRateThrottle` (5 richieste / 5 minuti per IP) e' applicato
   su **tutte e 3** le view di login (ereditato da `AuditTokenObtainPairView`).
+  ⚠️ E' una regola diversa dal freno sulla provenienza (N password sbagliate
+  sulla **stessa credenziale** dallo stesso IP): il throttle ferma chi inonda
+  l'endpoint, il freno chi prova una credenziale.
 
 ## Dipendenze DB
 
@@ -227,8 +236,9 @@ l'audit procede comunque con GUC vuote.
 | `anagrafiche.identita_digitali`      | `anagrafiche` | Bridge auth_user ↔ soggetto_ruolo per veste. `UNIQUE(auth_user_id, ruolo_applicativo) WHERE attivo` post migration 20260420 |
 | `django.auth_user`                   | `django`      | Credenziali                                                                                                    |
 | `dbops.sessioni_utente`              | `dbops`       | Audit login/refresh                                                                                            |
-| `script.fn_check_blocco_login`       | `script`      | Blocco tentativi falliti                                                                                       |
-| `script.fn_registra_tentativo_login` | `script`      | Incremento/reset contatore                                                                                     |
+| `script.fn_check_blocco_login`       | `script`      | Blocco dell'admin, freno per provenienza, attesa — prima della password                                        |
+| `script.fn_registra_tentativo_login` | `script`      | Esito del tentativo per credenziale + provenienza                                                              |
+| `script.fn_get_deve_cambiare_password` | `script`    | Cambio password obbligatorio della credenziale                                                                 |
 
 ## File backend
 
@@ -238,7 +248,7 @@ l'audit procede comunque con GUC vuote.
 | `apps/core/api/multi_veste_token_serializer.py` | `MultiVesteTokenSerializer` + 3 subclass (Admin/Portale/Shop), `VesteNonAttivaError`                                                                                                                                                |
 | `apps/core/api/jwt_audit_authentication.py`     | `JwtAuditAuthentication` (legge claim + popola GUC), `set_jwt_gucs`, `JwtSenzaIdentitaError`, `IdentitaNonAttivaError`                                                                                                              |
 | `apps/core/api/token_serializers.py`            | `SidTokenObtainPairSerializer` (parent di MultiVeste, aggiunge `sid`)                                                                                                                                                               |
-| `apps/core/db/auth_repository.py`               | `find_identita_attiva_for_ruoli`, `get_identita_dettaglio`, `check_blocco_login`, `registra_tentativo_login`                                                                                                                        |
+| `apps/core/db/auth_repository.py`               | `find_identita_attiva_for_ruoli`, `get_identita_dettaglio`, `check_blocco_login`, `registra_tentativo_login`, `get_deve_cambiare_password`                                                                                          |
 | `apps/core/services/auth_constants.py`          | Costanti `JWT_CLAIM_*` + `RUOLO_APPLICATIVO_*`                                                                                                                                                                                      |
 | `apps/core/services/error_policies_generated.py` | Classe di `E_VESTE_NON_ATTIVA`, `E_JWT_SENZA_IDENTITA`, `E_JWT_SENZA_SID`, `E_IDENTITA_NON_ATTIVA` (`CLASSE_PER_CODICE`)                                                                                                             |
 | `apps/core/api/error_responses.py`              | `drf_exception_handler` — priorita' a `default_code` E_* delle subclass AuthenticationFailed                                                                                                                                        |

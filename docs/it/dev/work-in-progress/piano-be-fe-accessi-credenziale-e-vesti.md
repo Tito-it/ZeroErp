@@ -3,7 +3,7 @@
 > **Tipo documento**: piano di lavoro backend + frontend (`dev/backend-tid`).
 >
 > **Data**: 2026-09-24 · **Stato**: 🟡 **IN CORSO** — ✅ L-0 fatto
-> (2026-09-24, §2); gli altri lotti da fare.
+> (2026-09-24, §2); ✅ L-1 fatto (2026-09-25, §3.1-bis); gli altri lotti da fare.
 > Le tre domande di §6 sono decise (Tid, 2026-09-24).
 >
 > **Da dove viene**: [analisi-accessi-credenziale-e-vesti.md](analisi-accessi-credenziale-e-vesti.md)
@@ -111,14 +111,91 @@ attuale si rompe finché `auth_repository` non è allineato. I test col mock non
 lo vedono: serve un test sul DB provvisto (`richiedi_db_provvisto`) che faccia
 un login vero con un fallimento e un successo.
 
+### 3.1-bis ✅ L-1 fatto (2026-09-25)
+
+Sul P-1 applicato a dbdev (brief §11). Cosa c'e':
+
+- `AuthRepository`: `check_blocco_login(uid, provenienza=)`,
+  `registra_tentativo_login(uid, provenienza=, successo=)` (ritorna anche
+  `attesa_secondi`), `azzera_tentativi_credenziale(uid)` nuovo,
+  `get/set_deve_cambiare_password(uid)` sulle funzioni del DB — niente SQL
+  diretto, niente `identita_id`. `apply_new_password` perde `identita_id`
+  (cinque chiamanti).
+- Login: provenienza da `get_client_ip`; se manca, `E_AUTH_CHIAMATA_NON_VALIDA`
+  **prima** di cercare lo username (nessuna differenza fra utente esistente e
+  no). Reset riuscito → azzeramento nella stessa transazione (D-2).
+- Colonne tolte da `PortaleRepository` (`find_identita_portale`,
+  `create_identita_portale` senza `deve_cambiare_password`), dai due chiamanti,
+  dal model `IdentitaDigitale` (quattro campi).
+- Policy rigenerate (5 codici), ripieghi dei 5 codici.
+- ⭐ **Difetto preesistente trovato dal test sul DB vero**: la view
+  intercettava `AuthenticationFailed` di **SimpleJWT**, sottoclasse di quello
+  di DRF che il serializer solleva davvero ⇒ **nessuna password sbagliata
+  arrivata dall'API e' mai stata contata**, prima del P-1 come dopo. Il test
+  col mock era verde perche' sollevava la sottoclasse. Corretto l'import;
+  test unitario ora sulla classe vera.
+- ⭐ **Envelope vero** (non ipotizzato): `E_LOGIN_ATTESA` porta i secondi in
+  `message`, e `detail` e' la **causa** del catalogo; `E_UTENTE_BLOCCATO` e' una
+  frase chiusa, i minuti non arrivano all'envelope (restano nel contesto del
+  DB). Il FE leggeva `detail || message`: con l'attesa avrebbe perso i secondi.
+- Test: `apps/core/tests/db/test_login_credenziale_db.py` (8, DB vero, casi
+  costruiti), `test_auth_views` (+3: provenienza assente, fallimento e successo
+  con la provenienza), `test_password_reset` (+1: la view vera azzera dentro la
+  transazione; prova di mutazione fatta).
+- Doc: guida `architettura-multi-face-auth` §3.1 riscritta + §3.1-bis (le tre
+  regole e il throttle come regola distinta); manual `auth_views_audit`,
+  `api_multi_veste_token`, `api_password_reset`, `api_token_cambio_password`,
+  `api_throttling`.
+- ⚠️ **Resta aperto** (non L-1): `PasswordChangeRequiredMiddleware` e' inerte
+  col JWT (A-8, L-6); i minuti del freno non arrivano al messaggio (servirebbe
+  un `%s` nel messaggio di `E_UTENTE_BLOCCATO`, richiesta al DB se la si vuole);
+  il testo di `E_UTENTE_BLOCCATO` dice «Account … bloccato» mentre ora e' frenata
+  la sola provenienza (testo del catalogo, del DB: il login operatore usa ora
+  la chiave i18n, §3.2, ma il catalogo resta da correggere per ogni altro
+  lettore).
+- ⚠️ **Oracolo sull'esistenza dello username** (preesistente, non introdotto
+  da L-1): lo username inesistente non conta nulla, quindi resta 401 per
+  sempre, mentre uno esistente dopo la soglia risponde 403 `E_UTENTE_BLOCCATO`.
+  Chi prova sei password capisce se l'utente esiste. Il passo 0 del login
+  (provenienza prima di cercare l'utente) chiude solo il suo caso.
+  ✅ Tid, 2026-09-25: si corregge sul modello → §5 **R-7**; il testo del
+  catalogo → §5 **R-8**.
+- ⚠️ **Il login riuscito del test sul DB vero usa ancora un superuser
+  esistente** (con `skip` dichiarato). ✅ Tid, 2026-09-25: va costruito, ma
+  **si fa in L-3**: il caso si costruisce con la madre `fn_crea_operatore_v2`,
+  e la madre cambia firma col P-2 (sotto).
+- ⛔ **Il P-2 è già applicato su dbdev ma non è nel repo** (trovato il
+  2026-09-25 costruendo il caso sopra): sul DB `fn_crea_operatore_v2` non ha
+  più `p_attivo` e ritorna `TABLE(auth_user_id, username, credenziale_riusata)`,
+  mentre `AmmSoftwareRepository.crea_operatore` e la doc auto-gen in git hanno
+  ancora la firma vecchia ⇒ **la creazione di un operatore dall'app oggi
+  fallisce su dbdev** («la funzione non esiste»). È il caso previsto «stessa PR
+  del DB» di L-3: il BE non si allinea a una firma che non è in git; si
+  allinea col changeSet del P-2.
+
 ### 3.2 L-1 — Frontend
 
-`core/views/LoginView.vue` `resolveLoginError`:
+✅ Fatto (2026-09-25), `core/views/LoginView.vue` `resolveLoginError`:
 
-- `E_CREDENZIALE_BLOCCATA` → «Accesso bloccato dall'amministratore: contattalo»;
-- `E_LOGIN_ATTESA` → «Riprova fra N secondi», N dal messaggio del DB (stessa
-  forma di `E_UTENTE_BLOCCATO`, che legge i minuti dal messaggio);
+- `E_CREDENZIALE_BLOCCATA` → chiave i18n («Accesso bloccato
+  dall'amministratore: contattalo»);
+- `E_LOGIN_ATTESA` → `message` del DB, che porta i secondi (chiave di ripiego);
+- `E_UTENTE_BLOCCATO` → chiave i18n: è una frase chiusa, il `message` del DB
+  non porta nessun dato in più e non è tradotto. Il testo dice «da questa
+  postazione» — il freno è sulla coppia, non sull'account;
+- 5xx **e nessuna risposta** (rete, server spento) → messaggio tecnico, non
+  più «accesso non autorizzato» né «credenziali errate»;
 - chiavi i18n it/en.
+
+**Revisione critica di L-1 (2026-09-25, a lavoro fatto).** Correzioni:
+log `security.login_blocked` col **codice** del DB (prima un guasto e un
+rifiuto davano la stessa riga di sicurezza) e `security.login_attesa` con la
+provenienza; test sul DB vero: il savepoint si conferma solo su 200/401 (un
+500 inatteso avvelenava le asserzioni successive), il caso «da un'altra
+provenienza non è frenata» ora usa la password **giusta** e si ferma a
+`E_VESTE_NON_ATTIVA` (prima usava quella sbagliata, e il commento diceva il
+contrario), e la dipendenza dai parametri (tetto > soglia) è dichiarata con
+uno `skip` invece di essere assunta.
 
 ### 3.3 L-2 — Blocco e sblocco dell'admin
 
@@ -217,9 +294,10 @@ a Tid all'apertura del lotto, con l'elenco delle copie che si ritirano.
 
 ## 5. Richieste al team DB **non** ancora nel brief
 
-Il brief ha escluso di proposito la parte «per veste» (§10). Queste servono ai
+Il brief ha escluso di proposito la parte «per veste» (§10). R-1…R-6 servono ai
 lotti L-3, L-4, L-5 e L-2; vanno in un secondo brief, da scrivere all'apertura
-di quei lotti.
+di quei lotti. R-7 e R-8 sono nate dalla revisione di L-1 (2026-09-25) e non
+dipendono dalle vesti: possono partire da sole.
 
 | # | Richiesta | Per |
 | --- | --- | --- |
@@ -229,6 +307,8 @@ di quei lotti.
 | R-4 | La veste ricorda di essere stata **revocata** dall'admin (chi, quando), e la riattivazione self-service la rifiuta (sede della regola: DB) | L-5, D-4 |
 | R-5 | `DISABILITATO` **si ritira** come valore di `ruolo_applicativo` (§6 Q-2, deciso): la sua sorte nel tipo `config.ruolo_applicativo` e nei lettori (`fn_is_super_admin`, catena permessi, `trgfn_identita_digitali_guard_coerenza` che oggi lo esenta); le righe che oggi lo portano tornano al ruolo che avevano (dati di sviluppo, a mano) | L-5 |
 | R-6 | Una funzione di lettura dello stato di blocco dell'admin (`bloccata_at`, `bloccata_da`, `motivo_blocco`) per il dettaglio operatore: le tabelle sono chiuse all'app | L-2 |
+| R-7 | **La risposta del login non dipende dall'esistenza dello username** (✅ Tid, 2026-09-25). Oggi il freno e l'attesa hanno per chiave la **credenziale**: un nome inesistente non conta nulla e resta 401 per sempre, uno esistente dopo la soglia risponde 403 `E_UTENTE_BLOCCATO` (e oltre il tetto `E_LOGIN_ATTESA`) ⇒ chi prova sei password sa se l'utente esiste. La regola, sul modello: **il freno e l'attesa valgono per il NOME TENTATO**, esista o no. Per un nome inesistente, stessa soglia, stesso tetto, stessi codici, stesse due chiamate (check prima, registrazione dopo), così nemmeno il numero di chiamate al DB distingue i due casi. Vincoli: ⛔ il nome **non** si salva in chiaro (nel campo username finiscono anche delle password digitate lì per sbaglio): un hash del nome **normalizzato con la stessa regola del lookup** (oggi uguaglianza esatta sullo username; con L-4 email senza maiuscole, e la normalizzazione deve seguirla); righe con `cleanup_at` come `credenziali_provenienze`; nessuna riga in `config.credenziali` per un nome che non è una credenziale. La forma (tabella a parte o parametro nuovo delle stesse funzioni) la sceglie il DB. ⚠️ Due punti da decidere col brief: (a) hash semplice o HMAC con una chiave del backend: l'hash semplice di una password finita nel campo username si può attaccare offline; (b) `E_CREDENZIALE_BLOCCATA` continua a rivelare che il nome esiste, ma solo per una credenziale bloccata dall'admin, e al titolare quella frase serve per sapere a chi rivolgersi: proposta, **accettarlo e dichiararlo** | L-1 (chiusura) |
+| R-8 | Testo di `E_UTENTE_BLOCCATO` in `messaggi_errore.csv` (✅ Tid, 2026-09-25): oggi dice «Account temporaneamente bloccato per troppi tentativi.», ma il freno riguarda la sola **coppia credenziale + provenienza**, e da un'altra postazione si entra. Proposta: «Troppi tentativi non riusciti da questa postazione: accesso sospeso per qualche minuto.» (lo stesso testo della chiave i18n del login, §3.2). Il BE poi riallinea il ripiego in `error_messages_fallback.py`, **dopo** il changeSet: mai prima, o il ripiego sarebbe avanti rispetto al catalogo | L-1 (chiusura) |
 
 ---
 

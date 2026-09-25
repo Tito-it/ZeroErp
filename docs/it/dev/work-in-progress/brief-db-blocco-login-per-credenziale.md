@@ -765,6 +765,7 @@ freno: meglio un test marcato che una porta aperta.
 | 2026-09-24 | BE | §2.4: classe dei due codici nuovi `NON_PERMESSO` (403), non 429 — la classe non esiste e il login FE intercetta il 429 prima del codice |
 | 2026-09-25 | DB | **P-1 scritto e provato** (§11): 25 changeSet `20260925-01…-25`, 4 pgTAP, manual. Correzioni al disegno: PK `id`, `SELECT` all'app, azzeramento per perimetro, due building block in più, anche `fn_check_ultimo_super_admin_attivo`, parametri `storicizza = f`. Non applicato |
 | 2026-09-25 | Tid | P-1 applicato su dbdev e scratch. Sullo scratch `test-fk-auth-user-ponte-django-v1` rosso: ponte django a metà (§11.5), rimedio sulla macchina e domanda su `MARK_RAN` → `CONTINUE` |
+| 2026-09-25 | BE | §7 fatto per il P-1 (piano BE/FE §3.1-bis). Due note per il DB, nessuna urgente: `E_UTENTE_BLOCCATO` e' una frase chiusa, quindi i minuti del freno non arrivano all'operatore; e il testo «Account temporaneamente bloccato» ora descrive male un freno della sola provenienza |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -119,7 +119,7 @@ e shop è generato dall'email e non compare nelle email d'invito (🔎); il rese
 | --- | --- | --- |
 | M-5 | **Disattivare un operatore spegne tutte le vesti della credenziale** e le rinomina `DISABILITATO`: l'operatore che è anche cliente perde il portale, e il ruolo originale di ogni veste va perso | ✅ |
 | M-6 | **Riattivare un operatore porta a `OPERATORE` tutte le sue identità.** Una veste cliente o fornitore non può diventare OPERATORE (`trgfn_identita_digitali_guard_coerenza` vuole un soggetto_ruolo RIS_UMANA) e due righe attive con lo stesso ruolo violano l'unique `(auth_user_id, ruolo_applicativo) WHERE attivo`: la riattivazione di un operatore multi-veste **fallisce**, o, se passasse, corromperebbe le vesti. *Deduzione dai vincoli, da provare con un caso costruito* | ✅ il codice · 🔎 l'esito |
-| M-4 | Blocco per password errate solo per chi ha la veste OPERATORE (vedi §2.3) | ✅ |
+| M-4 | Blocco per password errate solo per chi ha la veste OPERATORE (vedi §2.3) | ✅ — **chiuso** il 2026-09-25 (P-1 DB + L-1 BE/FE): stato della credenziale per provenienza. ⚠️ Col test sul DB vero e' emerso che, per un import sbagliato, la view non contava **nessun** fallimento, per nessuna veste |
 
 ### 3.2 Asimmetrie fra le vesti
 

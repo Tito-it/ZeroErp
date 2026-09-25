@@ -126,13 +126,14 @@ class AttivaViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         body = json.loads(response.content)["data"]
         self.assertEqual(body["token_type"], _INVITO)
-        # Consume con tipo INVITO + apply_new_password con identita_id=500.
+        # Consume con tipo INVITO + apply_new_password (flag della
+        # credenziale, D-7: nessun identita_id) + attivazione della veste 500.
         mock_token.consume.assert_called_once()
         args, kwargs = mock_token.consume.call_args
         self.assertEqual(args[1], _INVITO)
         mock_apply_pw.assert_called_once()
         call_kwargs = mock_apply_pw.call_args.kwargs
-        self.assertEqual(call_kwargs["identita_id"], 500)
+        self.assertNotIn("identita_id", call_kwargs)
         self.assertFalse(call_kwargs["blacklist_tokens"])
         mock_repo.riattiva_identita.assert_called_once_with(500)
 
