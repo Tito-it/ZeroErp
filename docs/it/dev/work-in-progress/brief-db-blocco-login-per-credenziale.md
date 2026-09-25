@@ -9,7 +9,11 @@
 > regressioni**. ⛔ **Il backend va allineato** (§7, §11.3, §12.4): la madre
 > dell'operatore ha firma e ritorno nuovi, e il check dell'invito ha la regola
 > rovesciata — finché non lo è, su dbdev la creazione dell'operatore dal
-> pannello è rotta.
+> pannello è rotta. 🟢 **`-51` APPLICATO il 2026-09-25** su dbdev e scratch,
+> test verdi (§12.7: il riuso della credenziale non è più silenzioso; un
+> parametro nuovo **in coda**, con default, alla madre — la chiamata per nome
+> del backend resta valida, ma sull'email già in uso ora chiede la conferma).
+> **Il lavoro DB del P-2 è chiuso**: resta il backend (§12.6).
 >
 > **Da leggere per primo**: §12 (il P-2: cosa c'è, cosa è cambiato rispetto al
 > disegno, porta e profili, cosa chiede al backend), poi §11 (il P-1) e §2.
@@ -801,6 +805,8 @@ freno: meglio un test marcato che una porta aperta.
 | `20_code/dbops` | `-47`, `-48` | `fn_ritira_attivo_eccezioni()`; il motore `fn_run_automations_attivo` salta le eccezioni e ritira | applicato |
 | `80_data` | `-49` | mirror del registro, prima riga: binding → identità | applicato |
 | `90_end` | `-50` | ritiro una tantum (su dbdev i trigger ci sono già) | applicato |
+| `20_code/anagrafiche` | `-51` | la madre: rifiuto `E_CREDENZIALE_ALTRA_PERSONA` dove la persona è provabile; consenso dichiarato `p_riusa_auth_user_id`, altrimenti `E_CREDENZIALE_DA_CONFERMARE` (§12.7). Il parametro è **in coda, `DEFAULT NULL`**: i 17 di prima restano identici. `DROP` + `CREATE` perché per PostgreSQL un parametro in più è un'altra funzione, e con la vecchia viva una chiamata per nome che lo omette sarebbe ambigua («la funzione non è unica») | applicato |
+| *(CSV esistenti)* | — | codici 1132 `E_CREDENZIALE_ALTRA_PERSONA` (DATO_ERRATO), 1133 `E_CREDENZIALE_DA_CONFERMARE` (CONFLITTO_STATO) | applicati |
 | *(CSV esistenti)* | — | codici 1130 `E_CREDENZIALE_EMAIL_AMBIGUA` (TECNICO), 1131 `E_CREDENZIALE_GIA_OPERATORE` (CONFLITTO_STATO) | applicati |
 
 ⚠️ La numerazione salta da `-27` a `-40`: dal `-26` in su lavorava in parallelo
@@ -887,6 +893,7 @@ la creazione dell'operatore dal pannello è rotta (passa `p_attivo`, legge un
 | B-2 | invito e attivazione operatore (L-3) | l'invito non sovrascrive la password (A-1); l'**attivazione accende la veste** (A-3): senza, l'operatore creato non entra mai. `fn_check_operatore_invitabile` risponde già con la regola nuova: `motivo` nuovo `Veste OPERATORE gia' attiva`; spariti `Utente ha gia' effettuato login`, `Identita OPERATORE non attiva`, `Utente disattivato (is_active=false)` — ⚠️ `core/tests/services/test_invito_operatore.py:96` usa il testo vecchio in un mock |
 | B-3 | `PortaleRepository` (`portale_repository.py:114`) | la ricerca della credenziale per email chiama `script.fn_get_auth_user_id_for_email` invece di `LOWER(email) = LOWER(%s) LIMIT 1` (regola del 2; e il `LIMIT 1` sceglie a caso fra due credenziali) |
 | B-4 | codici | `E_CREDENZIALE_GIA_OPERATORE` (409, `campo = email`), `E_CREDENZIALE_EMAIL_AMBIGUA` (500): rigenerare `error_policies_generated.py` ed `error_messages_fallback.py` |
+| B-6 | `crea_operatore` + `OperatoreDrawer` (§12.7, dopo `-51`) | la prima chiamata **senza** `p_riusa_auth_user_id`; su `E_CREDENZIALE_DA_CONFERMARE` il dialog mostra dal contesto `username` e `vesti` della credenziale trovata e, confermato, rimanda **con** `p_riusa_auth_user_id := <auth_user_id del contesto>`. `E_CREDENZIALE_ALTRA_PERSONA` (400, `campo = email`) non si conferma: si corregge l'email. Codici da rigenerare con gli altri (B-4) |
 | B-5 | `disabilita_operatore` | dopo `-50` spegnere una veste con binding attivi non è più respinto dal guard generico; l'ultimo SUPER_ADMIN lo protegge `E_PROFILO_ULTIMO_SUPER_ADMIN` |
 
 ### 12.5 Come è stato provato
@@ -923,11 +930,88 @@ e in `test-crea-operatore-riusa-credenziale-v1` la credenziale riletta nella
 stessa istruzione che la scrive (snapshot di prima). Le versioni corrette sono
 quelle verdi della tabella.
 
+### 12.7 ❓ Domanda del backend (2026-09-25): il riuso per sola email
+
+**Il rilievo (BE).** La madre riusa la credenziale in base alla **sola email**, e
+non controlla che il soggetto dell'operatore sia la persona delle vesti che
+quella credenziale ha già. Un'email sbagliata collega la veste OPERATORE alla
+credenziale di un altro. Prima l'email già in uso fermava tutto
+(`E_ADMIN_EMAIL_DUPLICATA`); oggi resta l'avviso «credenziale riusata», che
+arriva **dopo** la scrittura.
+
+**Cosa il modello sa dire** (il guard di coerenza chiede alle vesti portale e
+shop il solo ruolo `CL`: il cliente può essere una persona fisica o un'azienda):
+
+| La credenziale trovata ha… | «Stessa persona?» |
+| --- | --- |
+| una veste su un soggetto **persona fisica** | decidibile: il soggetto dell'operatore dev'essere quello (flusso B) o avere lo stesso CF (flusso A) |
+| solo vesti su un soggetto **azienda** | non decidibile: niente lega la credenziale a una persona fisica |
+| nessuna veste | non decidibile |
+
+⚠️ Nel primo caso il flusso A non arriva mai al riuso:
+`fn_crea_soggetto_pf` rifiuta il CF già presente (`E_ADMIN_CF_DUPLICATO`). La
+stessa persona si fa operatore solo col flusso B, sul suo soggetto; il riuso con
+un soggetto **diverso** è quindi il caso sospetto per costruzione.
+
+✅ **Decisa da Tid il 2026-09-25: entrambe le difese, a DB** (la
+raccomandazione). Scritta in `20260925-51`, codici 1132-1133, pgTAP
+`test-crea-operatore-riusa-credenziale-v1` casi 14-20; ricaduta sul backend in
+§12.4 (B-6). ✅ **Applicata il 2026-09-25** su dbdev e scratch, corsa pgTAP di
+Tid verde.
+
+**Proposta DB** (così com'era stata scritta; la forma finale è sotto,
+«In esecuzione»):
+
+1. **rifiuto dove è provabile**: veste su un soggetto persona fisica diverso da
+   quello dell'operatore → codice nuovo (per esempio
+   `E_CREDENZIALE_ALTRA_PERSONA`);
+2. **consenso esplicito nella madre** per i casi non decidibili:
+   `p_riusa_credenziale boolean DEFAULT false`. Se la credenziale esiste e il
+   parametro è `false` → rifiuto «da confermare», con username e vesti della
+   credenziale nel contesto per il dialog; il frontend conferma e rimanda con
+   `true`. ⭐ Il default torna a essere «fermarsi prima di scrivere», e la
+   decisione sta nella stessa istruzione che scrive: nessuna distanza fra il
+   controllo e la scrittura, come succederebbe con una conferma solo FE/BE.
+   Esporre le vesti di un'altra credenziale è accettabile su una porta per soli
+   SUPER_ADMIN.
+
+Costo: un changeSet sulla madre (firma nuova: `DROP` + `CREATE`), uno o due
+codici, un pgTAP; lato BE il dialog e il secondo invio (lotto L-3).
+
+**In esecuzione (`-51`), cosa è cambiato rispetto alla proposta:**
+
+1. ⭐ **Il consenso è un id, non un booleano**: `p_riusa_auth_user_id` =
+   la credenziale che l'admin ha visto nel dialog, e la madre pretende che sia
+   quella trovata (`NULL` se l'email è nuova). Un «sì» non dice *a cosa*;
+   l'id sì, e una credenziale cambiata o sparita fra il dialog e l'invio ferma
+   di nuovo. Stampo della dichiarazione di `pagamenti.fn_posta_contabile` (D13,
+   `E_CONTABILE_DICHIARAZIONE_NON_CORRISPONDE`).
+2. **L'ordine**: «già operatore» → «altra persona» (passo 1) → soggetto
+   (passo 2: i rifiuti definitivi del flusso A, fra cui il CF già presente)
+   → consenso (passo 2-bis). L'admin non conferma mai qualcosa che sarebbe
+   rifiutato comunque.
+3. **Classi**: `E_CREDENZIALE_ALTRA_PERSONA` è `DATO_ERRATO` (rimedia chi compila:
+   l'email è sbagliata); `E_CREDENZIALE_DA_CONFERMARE` è `CONFLITTO_STATO` come la
+   dichiarazione contabile. Il contesto del secondo porta `auth_user_id`,
+   `username`, `vesti` (ruolo, attivo, denominazione del soggetto).
+4. **Provato** sullo scratch con l'SQL estratto (`-40…-50` già applicati):
+   `plpgsql_check` 0 errori; `test-crea-operatore-riusa-credenziale-v1` 20/20;
+   `test-fn-crea-operatore` 12, `test-fn-check-operatore-invitabile` 11,
+   `test-automazione-attivo-eccezioni-v1` 8,
+   `test-risorse-umane-guard-identita-attiva-v1` 8,
+   `test-fn-get-operatore-detail` 4, `test-fn-is-super-admin` 8 — verdi, senza
+   modifiche (usano email nuove, o si fermano prima sul «già operatore»).
+   Cancelli statici verdi. ⚠️ Nel pgTAP i casi di consenso nel flusso A
+   chiedono la finestra differita: la madre crea il soggetto prima del
+   controllo, e con `IMMEDIATE` parlerebbe il guard degli indirizzi (in
+   esercizio scatta al `COMMIT`).
+
 ### 12.6 Cosa resta
 
-- ✅ Tid: `-40…-50` applicati, corsa pgTAP senza regressioni (2026-09-25).
-  ⏳ B-7; scratch da riallineare sul ponte django (§11.5).
-- Backend: §7 e §12.4 (lotto L-3; R-3 con L-4).
+- ✅ Tid: `-40…-51` e i codici applicati, corse pgTAP verdi (2026-09-25).
+  ⏳ B-7 (`codici-errore-baseline.sh`); commit di `-51`; scratch da
+  riallineare sul ponte django (§11.5).
+- Backend: §7 e §12.4, B-6 compreso (lotto L-3; R-3 con L-4).
 - Guida `architettura-multi-face-auth` §3.1 (del backend, §8), con la veste che
   nasce spenta e porta/profili sganciati.
 
@@ -949,6 +1033,8 @@ quelle verdi della tabella.
 | 2026-09-25 | DB | **P-2 scritto** (§12): `20260925-40…-45`, con dentro R-1 e R-2 del piano BE/FE (§12.2); codici 1130-1131; 2 pgTAP nuovi, 4 adeguati. Tid applica `-40…-45` durante la prova |
 | 2026-09-25 | DB + Tid | Binding SUPER_ADMIN su veste spenta rifiutato dall'ATTIVO (trovato dalla prova pre-apply e dalla corsa di Tid, §11.6). Tid decide: **porta e profili si sganciano**. Scritti e provati `-46…-50` (registro delle eccezioni ATTIVO, ritiro per funzione e argomenti, motore, seed, ritiro una tantum); adeguati `test-fn-is-super-admin` (caso 6) e `test-profili-accesso-guard-ultimo-super-admin` (caso 3). Non applicati |
 | 2026-09-25 | Tid | `-40…-50` applicati su dbdev e scratch; commit `acc6385d5`. Corretto `test-automazione-attivo-eccezioni-v1` (nome tabella da `regclass::text`, dipendente dal `search_path`). Corsa pgTAP **senza regressioni** (§12.5) |
+| 2026-09-25 | BE → Tid | §12.7: il riuso per sola email può collegare la veste all'accesso di un'altra persona. Tid decide: rifiuto dove provabile + consenso a DB. Scritto e provato `-51` (consenso come dichiarazione dell'id), codici 1132-1133, pgTAP 14-20. Non applicato |
+| 2026-09-25 | Tid | `-51` e codici 1132-1133 applicati su dbdev e scratch; test verdi. Lavoro DB del P-2 chiuso |
 | 2026-09-25 | BE | §7 fatto per il P-1 (piano BE/FE §3.1-bis). Due note per il DB, nessuna urgente: `E_UTENTE_BLOCCATO` e' una frase chiusa, quindi i minuti del freno non arrivano all'operatore; e il testo «Account temporaneamente bloccato» ora descrive male un freno della sola provenienza |
 
 ---
