@@ -243,7 +243,6 @@ class AttivazioneShopView(APIView):
             _token_service.consume(token, INVITO_SHOP_TOKEN_TIPO, ip=ip)
             apply_new_password(
                 user, new_password,
-                identita_id=identita_id,
                 blacklist_tokens=False,
                 auth_repo=_auth_repo,
             )

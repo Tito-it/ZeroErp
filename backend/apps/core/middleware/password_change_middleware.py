@@ -15,7 +15,6 @@ from django.http import HttpRequest, JsonResponse
 from django.utils.deprecation import MiddlewareMixin
 
 from apps.core.db.auth_repository import AuthRepository
-from apps.core.services.auth_helpers import extract_identita_id_from_request
 from apps.core.services.request_context import get_request_id
 
 logger = logging.getLogger(__name__)
@@ -59,16 +58,11 @@ class PasswordChangeRequiredMiddleware(MiddlewareMixin):
         if user.is_superuser:
             return None
 
-        # Punta la veste del JWT corrente (§8.3.2 + §8.4.1). Fallback None
-        # tollera flussi senza JWT validato (LIMIT 1 legacy sulla prima
-        # identita attiva — difensivo).
-        identita_id = extract_identita_id_from_request(request)
-
-        # Leggi flag dal DB
+        # Leggi flag dal DB: e' della credenziale (D-7), non della veste.
+        # ⚠️ Col JWT questo punto oggi non viene raggiunto (A-8: a
+        # process_view `request.user` e' ancora anonimo): lo sposta L-6.
         try:
-            if _auth_repo.get_deve_cambiare_password(
-                user.id, identita_id=identita_id
-            ):
+            if _auth_repo.get_deve_cambiare_password(user.id):
                 meta = {}
                 request_id = get_request_id()
                 if request_id:

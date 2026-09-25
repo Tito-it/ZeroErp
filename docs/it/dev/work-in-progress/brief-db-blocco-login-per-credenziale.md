@@ -949,6 +949,7 @@ quelle verdi della tabella.
 | 2026-09-25 | DB | **P-2 scritto** (§12): `20260925-40…-45`, con dentro R-1 e R-2 del piano BE/FE (§12.2); codici 1130-1131; 2 pgTAP nuovi, 4 adeguati. Tid applica `-40…-45` durante la prova |
 | 2026-09-25 | DB + Tid | Binding SUPER_ADMIN su veste spenta rifiutato dall'ATTIVO (trovato dalla prova pre-apply e dalla corsa di Tid, §11.6). Tid decide: **porta e profili si sganciano**. Scritti e provati `-46…-50` (registro delle eccezioni ATTIVO, ritiro per funzione e argomenti, motore, seed, ritiro una tantum); adeguati `test-fn-is-super-admin` (caso 6) e `test-profili-accesso-guard-ultimo-super-admin` (caso 3). Non applicati |
 | 2026-09-25 | Tid | `-40…-50` applicati su dbdev e scratch; commit `acc6385d5`. Corretto `test-automazione-attivo-eccezioni-v1` (nome tabella da `regclass::text`, dipendente dal `search_path`). Corsa pgTAP **senza regressioni** (§12.5) |
+| 2026-09-25 | BE | §7 fatto per il P-1 (piano BE/FE §3.1-bis). Due note per il DB, nessuna urgente: `E_UTENTE_BLOCCATO` e' una frase chiusa, quindi i minuti del freno non arrivano all'operatore; e il testo «Account temporaneamente bloccato» ora descrive male un freno della sola provenienza |
 
 ---
 {% include-markdown "signature-core.md" %}

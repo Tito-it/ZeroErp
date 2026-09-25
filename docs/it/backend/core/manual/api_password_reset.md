@@ -141,12 +141,17 @@ In un'unica transazione:
 
 1. Consumo del token (registra l'IP)
 2. `user.set_password(new_password)` + save
-3. Reset flag `deve_cambiare_password = false` su tutte le identita' attive dell'utente
+3. Spegne l'obbligo di cambio password della **credenziale**
+   (`fn_imposta_deve_cambiare_password`: e' uno solo, vale per tutte le vesti)
 4. Blacklist di tutti i refresh token precedenti
+5. **Azzera i tentativi falliti** della credenziale su tutte le provenienze
+   (`AuthRepository.azzera_tentativi_credenziale`): chi possiede l'email ha
+   superato la prova che il freno protegge. ⛔ Il **blocco dell'amministratore
+   resta**: il reset dimostra il possesso dell'email, non annulla una decisione
 
 Dopo il commit, fuori transazione:
 
-5. Invio email conferma con template `CAMBIO_PASSWORD_CONFERMA` (un errore di invio
+6. Invio email conferma con template `CAMBIO_PASSWORD_CONFERMA` (un errore di invio
    viene solo loggato, la risposta resta 200)
 6. Log audit: `password_reset_confirmed`
 
@@ -210,7 +215,8 @@ per parsing rate custom (`"3/15m"`).
 | --- | --- |
 | `TokenService` | Genera/valida/consuma token monouso |
 | `EmailDispatchService` | Invia email reset e conferma |
-| `AuthRepository.set_deve_cambiare_password` | Reset flag dopo cambio |
+| `AuthRepository.set_deve_cambiare_password` | Spegne l'obbligo di cambio password della credenziale |
+| `AuthRepository.azzera_tentativi_credenziale` | Azzera i tentativi falliti (tutte le provenienze) |
 | Template `RESET_PASSWORD` | Corpo email con link |
 | Template `CAMBIO_PASSWORD_CONFERMA` | Notifica cambio avvenuto |
 

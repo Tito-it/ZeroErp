@@ -104,7 +104,6 @@ class ChangePasswordView(DomainAPIView):
             apply_new_password(
                 user,
                 new_password,
-                identita_id=identita_id,
                 blacklist_tokens=True,
                 auth_repo=_auth_repo,
             )

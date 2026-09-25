@@ -261,7 +261,6 @@ class AttivazionePortaleView(APIView):
             apply_new_password(
                 user,
                 new_password,
-                identita_id=identita_id,
                 blacklist_tokens=False,
                 auth_repo=_auth_repo,
             )
@@ -411,15 +410,13 @@ class ProfileActivateShopView(PortaleAPIView):
                     _portale_repo.riattiva_identita(identita_id)
                 else:
                     # Prima attivazione veste shop: crea identita
-                    # `attivo=True, deve_cambiare_password=False` perche'
-                    # la password e' quella gia' usata sul portale (stesso
-                    # auth_user, modello SSO multi-veste).
+                    # `attivo=True`: la password e' quella gia' usata sul
+                    # portale (stesso auth_user, modello SSO multi-veste).
                     identita_id = _portale_repo.create_identita_portale(
                         auth_user_id=request.user.id,
                         soggetto_ruolo_id=soggetto_ruolo_id,
                         ruolo_applicativo=RUOLO_APPLICATIVO_SHOP_CUSTOMER,
                         attivo=True,
-                        deve_cambiare_password=False,
                     )
 
             logger.info(

@@ -52,8 +52,8 @@ class InvitoTests(TestCase):
 
         auth.get_unita_organizzativa_id.return_value = 5
         # Post §8.4.1: il service risolve l'identita OPERATORE prima di
-        # propagare identita_id ai metodi set_deve_cambiare_password /
-        # set_invito_inviato_at.
+        # propagare identita_id a set_invito_inviato_at. Il cambio password
+        # obbligatorio e' della credenziale (D-7): niente identita_id.
         auth.find_identita_attiva_for_ruoli.return_value = {
             "id": 700,
             "soggetto_ruolo_id": 7,
@@ -77,9 +77,7 @@ class InvitoTests(TestCase):
 
         self.assertTrue(result["inviato"])
         self.assertIn("***", result["email"])
-        auth.set_deve_cambiare_password.assert_called_once_with(
-            42, True, identita_id=700
-        )
+        auth.set_deve_cambiare_password.assert_called_once_with(42, True)
         auth.set_invito_inviato_at.assert_called_once_with(42, identita_id=700)
         token.create.assert_called_once()
         email.send_email.assert_called_once()

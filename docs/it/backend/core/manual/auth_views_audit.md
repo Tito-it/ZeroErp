@@ -3,8 +3,8 @@
 ## Scopo
 
 Override delle view SimpleJWT per agganciare: (a) l'audit login/refresh nella
-tabella `dbops.sessioni_utente`, (b) il controllo blocco utente per tentativi
-falliti, (c) il throttle IP, (d) il guard cross-namespace multi-veste (§8.3).
+tabella `dbops.sessioni_utente`, (b) lo stato della credenziale — blocco
+dell'admin, freno per provenienza, attesa crescente —, (c) il throttle IP, (d) il guard cross-namespace multi-veste (§8.3).
 
 Per il **contratto HTTP completo** dei 6 endpoint (3 login + 3 refresh, uno
 per namespace), i claim JWT custom e i codici errore → vedi
@@ -38,19 +38,28 @@ TokenRefreshView  (SimpleJWT)
 - **Astratta**: `serializer_class = None` + `assert` guard in `post()`.
   Istanziarla direttamente → `AssertionError`. Le subclass DEVONO fornire
   un `serializer_class` sottoclasse di `MultiVesteTokenSerializer`.
-- **Throttle**: `LoginRateThrottle` (5 tentativi / 5 minuti per IP).
-- **Blocco utente**: prima del login, se lo username esiste, chiama
-  `AuthRepository.check_blocco_login(auth_user_id)` che solleva errore DB
-  (`E_UTENTE_BLOCCATO`, 403) se l'utente ha `bloccato_fino_a > now()`.
-  Dopo un login riuscito `registra_tentativo_login(successo=True)` azzera il
-  contatore.
-  > ⚠️ Difetto noto (M-4): `fn_check_blocco_login` e
-  > `fn_registra_tentativo_login` leggono solo l'identita `OPERATORE`: chi ha
-  > soltanto la veste portale o shop non viene mai bloccato. Vedi
-  > [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
-- **Tentativi falliti**: dopo login fallito chiama
-  `registra_tentativo_login(successo=False)`. Eccezione: `VesteNonAttivaError`
-  (credenziali OK ma veste sbagliata) NON viene contato come tentativo.
+- **Throttle**: `LoginRateThrottle` (5 richieste / 5 minuti per IP) — contro
+  chi **inonda** l'endpoint, qualunque credenziale provi. ⚠️ E' una regola
+  diversa dal freno qui sotto, anche se i numeri si somigliano.
+- **Provenienza**: prima di tutto, l'IP fidato del chiamante
+  (`get_client_ip`). Se non si ricava, il login si rifiuta con
+  `E_AUTH_CHIAMATA_NON_VALIDA` (500) **prima** di cercare lo username: la
+  risposta non dice se l'utente esiste, e il DB non riceve mai una provenienza
+  `NULL`.
+- **Stato della credenziale** (contro chi **prova** una credenziale): se lo
+  username esiste, `AuthRepository.check_blocco_login(uid, provenienza=)`
+  solleva dal DB, nell'ordine, `E_CREDENZIALE_BLOCCATA` (blocco dell'admin),
+  `E_UTENTE_BLOCCATO` (freno su questa provenienza), `E_LOGIN_ATTESA`
+  (attesa crescente) — tutti 403. Modello:
+  [guida multi-face §3.1-bis](../../../guide/architettura-multi-face-auth.md).
+- **Esito**: `registra_tentativo_login(uid, provenienza=, successo=)` —
+  fallimento: conta sulla coppia e sulla credenziale; successo: azzera la
+  credenziale e la **sola** coppia da cui si e' entrati. Eccezione:
+  `VesteNonAttivaError` (credenziali OK ma veste sbagliata) NON conta.
+  ⛔ Il fallimento si intercetta su `rest_framework.exceptions.AuthenticationFailed`
+  (quello che solleva il serializer), **non** sulla classe omonima di
+  SimpleJWT, che ne e' una sottoclasse: fino al 2026-09-25 l'import era
+  quello, e nessuna password sbagliata arrivata dall'API veniva contata.
 - **Audit login**: dopo login OK, popola le GUC di sessione via
   `set_jwt_gucs(username=, user_id=, identita_id=, request=)` (l'`identita_id`
   e' estratto dal refresh appena emesso tramite `_extract_identita_id_from_refresh`;
@@ -59,8 +68,8 @@ TokenRefreshView  (SimpleJWT)
   poi chiama `session_audit_service.record_login(user_id=, request=, jti=)`.
   Il valore passato come `jti` e' il claim `sid` del refresh (`_extract_claims`).
 - **Flag password_change_required**: se
-  `AuthRepository.get_deve_cambiare_password(user.id, identita_id=identita_id)`
-  ritorna True (flag letto sulla veste del JWT appena emesso), aggiunge
+  `AuthRepository.get_deve_cambiare_password(user.id)` ritorna True (l'obbligo
+  e' della **credenziale**, vale su ogni porta), aggiunge
   `password_change_required: true` alla response.
 
 ### Subclass login (Admin/Portale/Shop)
@@ -144,8 +153,9 @@ l'utente ha un emittente attivo) documentati in
 | ------------------------------------ | --------------------------------------------------------------- |
 | `dbops.sessioni_utente`              | INSERT via `session_audit_service` (login/refresh/logout)       |
 | `anagrafiche.identita_digitali`      | Source di `identita_id` + `ruolo_applicativo` iniettati nel JWT |
-| `script.fn_check_blocco_login`       | Blocco utente per tentativi falliti                             |
-| `script.fn_registra_tentativo_login` | Incremento/reset contatore tentativi                            |
+| `script.fn_check_blocco_login`       | Blocco, freno per provenienza, attesa — prima della password    |
+| `script.fn_registra_tentativo_login` | Esito del tentativo per credenziale + provenienza               |
+| `script.fn_get_deve_cambiare_password` | Cambio password obbligatorio della credenziale                |
 | `MultiVesteTokenSerializer`          | Iniezione claim custom + risoluzione veste                      |
 | `JwtAuditAuthentication`             | Validazione claim + popolamento GUC a ogni request              |
 
@@ -153,7 +163,11 @@ l'utente ha un emittente attivo) documentati in
 
 - `apps/core/tests/api/test_auth_views.py` — test behavior login/refresh,
   guard astratta, cross-namespace (Admin/Portale/Shop), no-tentativo su
-  `VesteNonAttivaError`, extract helpers.
+  `VesteNonAttivaError`, provenienza assente, extract helpers.
+- `apps/core/tests/db/test_login_credenziale_db.py` — ⭐ sul DB vero
+  (`ZEROERP_TEST_DB_E2E=1`): binding di `AuthRepository` e login vero dalla
+  view — 401 che contano, freno 403 solo dalla provenienza che sbaglia,
+  attesa coi secondi nel `message`, login riuscito.
 - `apps/core/tests/api/test_multi_veste_token_serializer.py` — test serializer,
   `VesteNonAttivaError`, claim injection.
 - `apps/core/tests/api/test_jwt_audit_authentication.py` — test authenticate

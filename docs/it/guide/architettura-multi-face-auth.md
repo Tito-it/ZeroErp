@@ -111,11 +111,7 @@ anagrafiche.identita_digitali
     attivo                BOOLEAN
     valido_dal            DATE
     valido_al             DATE       NULLABLE
-    deve_cambiare_password BOOLEAN
     invito_inviato_at     TIMESTAMPTZ NULLABLE
-    tentativi_falliti     SMALLINT   (lockout per veste)
-    bloccato_fino_a       TIMESTAMPTZ NULLABLE
-    totp_obbligatorio     BOOLEAN
     storicizza            BOOLEAN
     data_insert/update, user_insert/update   (audit standard)
     UNIQUE (auth_user_id, ruolo_applicativo) WHERE attivo = true
@@ -135,11 +131,44 @@ anagrafiche.identita_digitali
   stesso tempo, riferite allo stesso `auth_user` o a `auth_user` diversi.
 - `ruolo_applicativo` dice **in quale veste** l'utente si logga; la veste e'
   scelta dal canale/namespace di login, non da un toggle runtime.
-- Lo **stato di lockout** (`tentativi_falliti`, `bloccato_fino_a`) e' per-identita:
-  un lockout sul portale non blocca lo shop dello stesso user, perche' i flussi
-  di login sono indipendenti.
-- **TOTP** e' per-identita: un dipendente puo' avere TOTP obbligatorio come
-  `OPERATORE` e non come `SHOP_CUSTOMER`.
+- ⛔ **La veste non porta stato della password.** Tentativi falliti, blocco,
+  cambio password obbligatorio e (quando ci sara') l'obbligo di TOTP sono della
+  **credenziale**: la password e' una sola e vale per tutte le porte, quindi chi
+  la prova la sta provando per tutte. Vedi §3.1-bis.
+
+### 3.1-bis La credenziale: tentativi, freno, blocco
+
+Lo stato della credenziale sta in `config.credenziali` (1:1 con `auth_user`,
+la riga nasce alla prima scrittura: assente = nessuno stato) e
+`config.credenziali_provenienze`. L'app non le scrive: passa dalle funzioni
+del DB. Al login valgono **tre regole**, verificate nell'ordine, prima di
+guardare la password:
+
+| Regola | Chi la fa scattare | Cosa colpisce | Codice |
+| --- | --- | --- | --- |
+| **Blocco** | un SUPER_ADMIN, con un verbo e un motivo | la credenziale su tutte le porte; non scade, e il reset password non lo toglie | `E_CREDENZIALE_BLOCCATA` |
+| **Freno sulla provenienza** | automatico, dopo N password sbagliate di fila dalla stessa provenienza | la coppia credenziale + provenienza, per qualche minuto: chi attacca da una macchina non chiude fuori il titolare, che entra dalla sua | `E_UTENTE_BLOCCATO` |
+| **Attesa crescente** | automatico, oltre un tetto di password sbagliate di fila da qualunque provenienza | la credenziale, che **rallenta** (secondi, con un massimo) ma non si chiude | `E_LOGIN_ATTESA` |
+
+Tutti e tre sono `403`, non `429`: il `429` e' il throttle per IP, e il login
+del frontend lo intercetta prima di leggere il codice.
+
+- La **provenienza** e' l'IP del chiamante come lo ricava il backend dietro i
+  proxy dichiarati (`get_client_ip`, setting `TRUSTED_PROXY_COUNT`): un valore
+  scritto dal client non conta. Se non si ricava, il login si rifiuta.
+- Un **accesso riuscito** azzera la credenziale e toglie il freno della sola
+  provenienza da cui si e' entrati; un **reset password riuscito** azzera tutti
+  i freni (chi possiede l'email ha superato la prova che il freno protegge),
+  ma non il blocco.
+- Password giusta sulla porta sbagliata (`E_VESTE_NON_ATTIVA`) non conta come
+  tentativo fallito.
+- ⚠️ **Due regole diverse, anche se i numeri si somigliano.** Il throttle
+  `LoginRateThrottle` (5 richieste ogni 5 minuti per IP, qualunque credenziale)
+  ferma chi **inonda** l'endpoint; il freno per provenienza (N password
+  sbagliate sulla stessa credenziale) ferma chi **prova** una credenziale. Il
+  primo non sa quale credenziale si prova, il secondo non conta le richieste.
+- Il **cambio password obbligatorio** e' della credenziale: acceso dall'invito
+  operatore, spento da qualunque nuova password (cambio, reset, attivazione).
 
 ### 3.2 Il vincolo "persona fisica pura" si sposta
 

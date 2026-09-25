@@ -117,7 +117,8 @@ class InvitoPortaleTests(TestCase):
         # al consumo del token (M-3) — e nessuna password temporanea.
         create_kwargs = repo.create_identita_portale.call_args.kwargs
         self.assertFalse(create_kwargs["attivo"])
-        self.assertFalse(create_kwargs["deve_cambiare_password"])
+        # Il cambio password obbligatorio e\' della credenziale (D-7), non della veste.
+        self.assertNotIn("deve_cambiare_password", create_kwargs)
         token_kwargs = token.create.call_args.kwargs
         self.assertEqual(token_kwargs["tipo"], "INVITO_PORTALE")
         self.assertEqual(token_kwargs["meta"]["identita_id"], 500)
@@ -191,7 +192,8 @@ class InvitoPortaleTests(TestCase):
         kwargs = repo.create_identita_portale.call_args.kwargs
         self.assertEqual(kwargs["ruolo_applicativo"], "FORNITORE_PORTALE")
         self.assertFalse(kwargs["attivo"])
-        self.assertFalse(kwargs["deve_cambiare_password"])
+        # Il cambio password obbligatorio e\' della credenziale (D-7), non della veste.
+        self.assertNotIn("deve_cambiare_password", kwargs)
 
     # Scopo: Email vuota -> errore immediato, nessuna query.
     @patch(_REPO)
@@ -383,7 +385,8 @@ class InvitoPortaleTests(TestCase):
         # Identita creata disattivata + senza flag cambio password
         create_kwargs = repo.create_identita_portale.call_args.kwargs
         self.assertFalse(create_kwargs["attivo"])
-        self.assertFalse(create_kwargs["deve_cambiare_password"])
+        # Il cambio password obbligatorio e\' della credenziale (D-7), non della veste.
+        self.assertNotIn("deve_cambiare_password", create_kwargs)
 
         # Token tipo CROSS (non INVITO_PORTALE)
         token_kwargs = MockToken.return_value.create.call_args.kwargs
@@ -636,7 +639,8 @@ class InvitoShopCustomerTests(TestCase):
         kwargs = repo.create_identita_portale.call_args.kwargs
         self.assertEqual(kwargs["ruolo_applicativo"], "SHOP_CUSTOMER")
         self.assertFalse(kwargs["attivo"])
-        self.assertFalse(kwargs["deve_cambiare_password"])
+        # Il cambio password obbligatorio e\' della credenziale (D-7), non della veste.
+        self.assertNotIn("deve_cambiare_password", kwargs)
         # Token tipo + template + link path mappati su veste shop.
         token_kwargs = MockToken.return_value.create.call_args.kwargs
         self.assertEqual(token_kwargs["tipo"], "INVITO_SHOP")
@@ -696,7 +700,8 @@ class InvitoShopCustomerTests(TestCase):
         kwargs = repo.create_identita_portale.call_args.kwargs
         self.assertEqual(kwargs["ruolo_applicativo"], "SHOP_CUSTOMER")
         self.assertFalse(kwargs["attivo"])
-        self.assertFalse(kwargs["deve_cambiare_password"])
+        # Il cambio password obbligatorio e\' della credenziale (D-7), non della veste.
+        self.assertNotIn("deve_cambiare_password", kwargs)
         # Token CROSS, no UPDATE password (auth.set_deve_cambiare_password mai
         # chiamato in flow CROSS).
         token_kwargs = MockToken.return_value.create.call_args.kwargs

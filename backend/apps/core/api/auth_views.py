@@ -5,8 +5,9 @@
 # Scopo: Override delle view SimpleJWT per agganciare:
 #   - Logging sessioni utente (login/refresh) in dbops.sessioni_utente
 #   - Throttling login per IP (LoginRateThrottle)
-#   - Blocco per utente dopo tentativi falliti (fn_check_blocco_login,
-#     fn_registra_tentativo_login)
+#   - Freno sui tentativi falliti per credenziale + provenienza, attesa
+#     crescente e blocco dell'admin (fn_check_blocco_login,
+#     fn_registra_tentativo_login — config.credenziali)
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -14,10 +15,12 @@ from __future__ import annotations
 import logging
 
 from django.contrib.auth.models import User
+from django.db import DatabaseError
 from drf_spectacular.utils import extend_schema
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework_simplejwt.exceptions import AuthenticationFailed, InvalidToken
+from rest_framework_simplejwt.exceptions import InvalidToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from apps.core.api.jwt_audit_authentication import set_jwt_gucs
@@ -30,6 +33,9 @@ from apps.core.api.multi_veste_token_serializer import (
 from apps.core.api.throttling import LoginRateThrottle
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services import session_audit_service
+from apps.core.services.db_error_fields import structured_db_error_code
+from apps.core.services.request_context import get_client_ip
+from apps.core.services.service_errors import ServiceError
 from apps.core.services.auth_constants import (
     JWT_CLAIM_EMITTENTE_ATTIVO_ID,
     JWT_CLAIM_IDENTITA_ID,
@@ -98,8 +104,12 @@ class AuditTokenObtainPairView(TokenObtainPairView):
     `JwtAuditAuthentication` (§8.3.4) non potrebbe popolare le GUC.
 
     Override di TokenObtainPairView con:
-    - Throttle per IP (5 tentativi / 5 minuti)
-    - Blocco per utente (DB: tentativi_falliti + bloccato_fino_a)
+    - Throttle per IP (5 richieste / 5 minuti): contro chi INONDA l'endpoint,
+      qualunque credenziale provi
+    - Stato della credenziale (DB, config.credenziali): contro chi PROVA una
+      credenziale — freno sulla coppia credenziale + provenienza, attesa
+      crescente oltre un tetto, blocco dell'admin. ⚠️ Due regole distinte,
+      anche se oggi i numeri (5 e 5) coincidono
     - Audit login in dbops.sessioni_utente
     """
 
@@ -128,16 +138,42 @@ class AuditTokenObtainPairView(TokenObtainPairView):
             "serializer_class subclass di MultiVesteTokenSerializer)."
         )
 
+        django_request = request._request if hasattr(request, "_request") else request
+
+        # 0. La provenienza (IP fidato) e' la chiave del freno: senza, il
+        #    freno non si puo' applicare e il login si rifiuta (fail-closed).
+        #    Prima di cercare l'utente: la risposta non deve dipendere
+        #    dall'esistenza dello username. Causa tipica: la richiesta non e'
+        #    passata dalla catena di proxy dichiarata (DJANGO_TRUSTED_PROXY_COUNT).
+        provenienza = get_client_ip(django_request)
+        if provenienza is None:
+            logger.error(
+                "security.login_senza_provenienza remote_addr=%s xff=%s",
+                django_request.META.get("REMOTE_ADDR"),
+                django_request.META.get("HTTP_X_FORWARDED_FOR"),
+            )
+            raise ServiceError(
+                code="E_AUTH_CHIAMATA_NON_VALIDA",
+                message="Chiamata non valida al login: provenienza assente.",
+                detail="IP del chiamante non ricavabile dalla catena di proxy dichiarata.",
+            )
+
         username = request.data.get("username", "")
         user = self._find_user(username)
 
-        # 1. Se utente esiste, verifica blocco (lancia errore DB se bloccato)
+        # 1. Se utente esiste, verifica blocco dell'admin, freno sulla
+        #    provenienza e attesa (lancia errore DB, convertito dal middleware)
         if user:
             try:
-                _auth_repo.check_blocco_login(user.id)
-            except Exception:
-                # L'errore DB viene propagato al middleware che lo converte in JSON
-                logger.warning("security.login_blocked user=%s", username)
+                _auth_repo.check_blocco_login(user.id, provenienza=provenienza)
+            except DatabaseError as exc:
+                # Il codice nel log: un rifiuto (E_CREDENZIALE_BLOCCATA,
+                # E_UTENTE_BLOCCATO, E_LOGIN_ATTESA) e un guasto del DB non
+                # sono la stessa riga di sicurezza.
+                logger.warning(
+                    "security.login_blocked user=%s provenienza=%s code=%s",
+                    username, provenienza, structured_db_error_code(exc),
+                )
                 raise
 
         # 2. Tenta login (SimpleJWT)
@@ -146,41 +182,54 @@ class AuditTokenObtainPairView(TokenObtainPairView):
         except VesteNonAttivaError:
             # Credenziali corrette ma l'utente non ha la veste richiesta dal
             # namespace (es. operatore che tenta /portale/token/). Non e'
-            # un tentativo fallito di credenziali: non incrementa
-            # tentativi_falliti ne' attiva blocco utente/IP. Logga per audit
+            # un tentativo fallito di credenziali: non conta ne' sulla
+            # credenziale ne' sulla provenienza. Logga per audit
             # forense (qualcuno sta provando canali a cui non ha accesso).
             logger.warning("security.veste_non_attiva user=%s", username)
             raise
         except (AuthenticationFailed, InvalidToken):
-            # Login fallito: registra tentativo
+            # Login fallito: registra tentativo.
+            # ⛔ `AuthenticationFailed` e' quello di DRF, non quello di
+            # SimpleJWT: il serializer (`TokenObtainSerializer.validate`)
+            # solleva il primo, e il secondo ne e' una SOTTOCLASSE — catturare
+            # la sottoclasse non prende l'istanza della madre. Fino al
+            # 2026-09-25 l'import era quello di SimpleJWT e nessuna password
+            # sbagliata arrivata dall'API veniva contata: il freno non e' mai
+            # scattato. Lo prova test_login_credenziale_db (login vero).
             if user:
-                result = _auth_repo.registra_tentativo_login(user.id, successo=False)
+                result = _auth_repo.registra_tentativo_login(
+                    user.id, provenienza=provenienza, successo=False,
+                )
                 if result.get("bloccato"):
                     logger.warning(
-                        "security.login_locked user=%s tentativi=%s blocco_minuti=%s",
-                        username, result.get("tentativi"), result.get("minuti_rimanenti"),
+                        "security.login_locked user=%s provenienza=%s tentativi=%s blocco_minuti=%s",
+                        username, provenienza, result.get("tentativi"),
+                        result.get("minuti_rimanenti"),
+                    )
+                if result.get("attesa_secondi"):
+                    logger.warning(
+                        "security.login_attesa user=%s provenienza=%s attesa_secondi=%s",
+                        username, provenienza, result.get("attesa_secondi"),
                     )
             raise
 
         # 3. Login OK: reset contatore + audit sessione + check cambio password
         if response.status_code == 200:
             if user:
-                _auth_repo.registra_tentativo_login(user.id, successo=True)
+                _auth_repo.registra_tentativo_login(
+                    user.id, provenienza=provenienza, successo=True,
+                )
 
             user_id, jti = self._extract_claims(response)
             # §8.3.4: il MultiVesteTokenSerializer ha iniettato
-            # `identita_id` nel refresh token; lo estraiamo subito perche'
-            # serve sia al check `deve_cambiare_password` (§8.4.1 — puntato
-            # alla veste specifica) sia alle GUC di audit.
+            # `identita_id` nel refresh token; serve alle GUC di audit.
             identita_id = _extract_identita_id_from_refresh(
                 response.data.get("refresh") if response.data else None
             )
 
-            # Check flag deve_cambiare_password sulla veste del JWT
-            # appena emesso (non su una identita arbitraria dell'utente).
-            if user and _auth_repo.get_deve_cambiare_password(
-                user.id, identita_id=identita_id
-            ):
+            # Cambio password obbligatorio: e' della CREDENZIALE (D-7), vale
+            # per qualunque porta si stia usando.
+            if user and _auth_repo.get_deve_cambiare_password(user.id):
                 response.data["password_change_required"] = True
 
             # Hotfix BE-2.0ter: il login NON passa dalla DRF auth chain
@@ -196,7 +245,7 @@ class AuditTokenObtainPairView(TokenObtainPairView):
                     username=user.username,
                     user_id=user_id,
                     identita_id=identita_id,
-                    request=request._request if hasattr(request, "_request") else request,
+                    request=django_request,
                 )
                 # Se identita_id e' None o l'identita risulta non attiva,
                 # l'audit storico in record_login sara' scritto con GUC
@@ -211,7 +260,7 @@ class AuditTokenObtainPairView(TokenObtainPairView):
                     )
             session_audit_service.record_login(
                 user_id=user_id,
-                request=request._request if hasattr(request, "_request") else request,
+                request=django_request,
                 jti=jti,
             )
 
@@ -328,6 +377,7 @@ class AuditTokenRefreshView(TokenRefreshView):
 
         response = super().post(request, *args, **kwargs)
         if response.status_code == 200:
+            django_request = request._request if hasattr(request, "_request") else request
             user_id, jti = self._extract_claims(request)
             # Hotfix BE-2.0ter: il refresh NON passa dalla DRF auth chain
             # (la request porta solo il refresh token nel body, niente
@@ -359,7 +409,7 @@ class AuditTokenRefreshView(TokenRefreshView):
                         emittente_attivo_id=_extract_emittente_attivo_from_refresh(
                             request.data.get("refresh")
                         ),
-                        request=request._request if hasattr(request, "_request") else request,
+                        request=django_request,
                     )
                     if not gucs_ok:
                         logger.warning(
@@ -368,7 +418,7 @@ class AuditTokenRefreshView(TokenRefreshView):
                         )
             session_audit_service.record_refresh(
                 user_id=user_id,
-                request=request._request if hasattr(request, "_request") else request,
+                request=django_request,
                 jti=jti,
             )
         return response
