@@ -6,11 +6,13 @@
 > §3. Il 2026-09-25 Tid ha scelto la strada **(a)**: gli operatori devono poter
 > vedere le mail del loro perimetro, a partire dalla sola lista.
 > **Stato:** ✅ **D-1 → D-5 decise da Tid il 2026-09-25** (§4, §4.1).
-> 🟡 **DB applicato il 2026-09-25 su dbdev e su `zeroerp_ci`** (§6): changeSet
-> `20260925-63..-70` e cinque pgTAP. ⛔ Aperto un rosso **solo sullo scratch**,
-> `test-fk-auth-user-ponte-django-v1`, che aspetta una decisione di Tid (§6.5).
-> Poi tocca al **BE**, che ha tre richieste (§6.4). Una di queste rompe un test
-> Django finché non la si fa. ⛔ È il **prerequisito della
+> ✅ **Lato DB chiuso il 2026-09-25** (§6): changeSet `20260925-63..-70`
+> applicati, pgTAP senza regressioni, commit fatto (Tid).
+> ✅ **Secondo giro DB chiuso il 2026-09-25 sera** (§8): «una mail si tocca
+> solo in bozza», changeSet `20260925-71..-74`, applicati, pgTAP verdi (Tid).
+> **Lato DB non resta niente.** **Cosa resta** (§7): le richieste al **BE**
+> (§6.4 e §8.4; una rompe un test Django finché non la si fa), poi il §5. Il
+> brief va in `work-done/` quando il BE ha chiuso le sue richieste. ⛔ È il **prerequisito della
 > schermata operatore**: il BE/FE non parte finché questo brief non è chiuso.
 > **Da leggere per primo: §6.**
 >
@@ -258,6 +260,9 @@ change Liquibase e non SQL.
    * `db/pgtap/config/test-fk-auth-user-ponte-django-v1.sql` (invariante sulla
      colonna nuova).
 
+**Esito (Tid, 2026-09-25):** migrazione applicata, **nessuna regressione**
+pgTAP, commit fatto.
+
 ### 6.4 Richieste al BE
 
 1. ⛔ **Test Django che si rompe**: `apps/core/tests/db/test_ricerca_email_db.py`
@@ -316,6 +321,133 @@ scratch:
 
 * La FK `email_allegato → email_outbox` è `ON DELETE CASCADE`: cancellare una
   bozza già spedita porta via gli allegati che il log referenzia ancora (§4.1).
+  **Riletto il 2026-09-25 con Tid** («una mail inviata non si cancella, si
+  annulla solo in bozza»):
+  * **dall'applicazione non succede**: nessun codice fa `DELETE` di una bozza.
+    «Annulla» scrive `CANCELLED`, e il BE lo permette solo da `DRAFT`. Una
+    bozza in `DRAFT` non ha ancora un log, perché il log nasce all'invio: in
+    bozza il problema non esiste;
+  * ⚠️ **ma la regola «solo in bozza» vive solo nel BE.** Il database
+    non la conosce: `zeroerp_app` ha `DELETE` sulle tre tabelle, e nessun guard
+    lo ferma;
+  * ⛔ **e il problema esiste già in un'altra forma, raggiungibile dall'API.**
+    Rimuovere un allegato (`DELETE` sull'allegato →
+    `EmailOutboxService.remove_attachment`) controlla solo che l'operatore
+    possa accedere alla bozza, **non che sia in `DRAFT`**. Dopo l'invio lo
+    stesso allegato è legato anche al log: rimuoverlo lo toglie dalla storia
+    della mail spedita, e ne cancella il file.
+  * **Proposta** (da decidere, è un cantiere suo): la regola «si toccano solo
+    le bozze» va nel database, con un guard su `email_allegato` (niente
+    `DELETE` né cambio di padre se la bozza non è `DRAFT` o se c'è un log) e
+    su `email_outbox` (niente `DELETE` fuori da `DRAFT`). Il BE tiene il suo
+    controllo come messaggio all'utente.
+
+## 7. Cosa resta (2026-09-25, a DB chiuso)
+
+| # | Cosa | Di chi | Stato |
+| --- | --- | --- | --- |
+| 1 | `test_ricerca_email_db.py`: la mail `OPERATORE` deve portare l'autore (§6.4.1) | BE | ⛔ aperto: il test Django è rosso finché non si fa |
+| 2 | `insert_log` e `send_raw` scrivono `email_log.creato_da_user_id` (§6.4.2) | BE | aperto: finché manca, una mail `OPERATORE` sul log viene respinta |
+| 3 | Togliere la regola dalle view: `_check_outbox_access` e il filtro della lista bozze (§6.4.3) | BE | aperto, insieme al §5 |
+| 4 | Ponte django parziale sullo scratch (§6.5) | Tid | ✅ **deciso il 2026-09-25: si lascia così**. Il rosso sparisce alla prossima ricostruzione dello scratch; non tocca la CI |
+| 5 | Regola della scheda pratica (D-3) | DB, con le pratiche | ✅ confermata rimandata al cantiere pratiche (Tid, 2026-09-25) |
+| 6 | Allegati di una mail già spedita (§6.6) | DB | ✅ **chiuso** (§8, `20260925-71..-74`): applicato, pgTAP verdi (Tid, 2026-09-25) |
+| 7 | La lista del log esce dall'area `config` (§5) | BE/FE | parte dopo i punti 1–3 |
+| 8 | Richieste BE del secondo giro (§8.4) | BE | aperto |
+
+## 8. Secondo giro DB — «una mail si tocca solo in bozza» (2026-09-25 sera)
+
+Decisione di Tid: *«una mail inviata non si cancella, la cancellazione si fa
+solo in bozza»*, e il guard sta in questo brief (non in uno nuovo).
+
+### 8.1 La regola, com'è scritta
+
+| Cosa | Quando si può | Quando no |
+| --- | --- | --- |
+| **eliminare una bozza** (`email_outbox`) | solo se è `DRAFT` | spedita, simulata, in partenza, annullata: resta. Codice `E_DELETE_DOC_NON_BOZZA` |
+| **aggiungere, modificare, togliere un allegato** | solo se la sua bozza è `DRAFT` | altrimenti `E_EMAIL_ALLEGATO_NON_BOZZA`, con il verbo tentato |
+| **agganciare un allegato al log** (UPDATE del solo `email_log_id`) | sempre: è l'invio (bozza `READY`), e il nuovo tentativo dopo un fallimento | — |
+| allegato **senza bozza ma con un log** | mai: è storia | `E_EMAIL_ALLEGATO_NON_BOZZA` |
+
+* ⭐ **Invio fallito**: il BE riporta la bozza a `DRAFT` tenendo il log del
+  tentativo. La bozza torna modificabile, allegati compresi, e il tentativo
+  successivo li riaggancia al log nuovo. Il guard lo permette ed è provato
+  (test 9).
+* **Il CASCADE** bozza → allegati: in un `BEFORE DELETE` di allegato innescato
+  dal cascade la bozza risulta già cancellata. Il guard dell'allegato passa, e
+  a decidere è il guard della bozza, che il cascade lo ammette solo da `DRAFT`.
+
+### 8.2 I changeSet
+
+| # | File | Cosa fa |
+| --- | --- | --- |
+| 71 | `20_code/script/…-update-fn-get-stato-testata-documento-email-bozza` | il lettore `SECURITY DEFINER` dello stato impara `EMAIL_BOZZA`. La bozza ha la RLS, e un guard invoker non distinguerebbe «non c'è» da «non la vedo» |
+| 72 | `20_code/vendite/…-update-trgfn-doc-guard-delete-solo-bozza-email` | ⭐ il **building block** «un documento si cancella solo in bozza» adotta la bozza email: stesso significato, stessa frase, stesso rimedio (regola del 2) |
+| 73 | `20_code/config/…-create-trgfn-email-allegato-guard-solo-bozza` | il guard degli allegati |
+| 74 | `20_code/config/…-create-trigger-email-guard-solo-bozza` | i due trigger, fascia `_a10_` |
+| — | `80_data/sql/config/messaggi_errore.csv` (id 1139), `codici_errore.csv` | `E_EMAIL_ALLEGATO_NON_BOZZA`, `CONFLITTO_STATO`. La nota di `E_DELETE_DOC_NON_BOZZA` nomina la terza porta |
+
+⚠️ **Perché non il BB delle righe** (`trgfn_doc_righe_lock_fuori_bozza`): la prima
+metà del significato è la stessa, ma l'allegato ha un **secondo padre** (il log)
+e un aggancio legittimo fuori dalla bozza. Il BB fermerebbe l'invio.
+Allargarlo vorrebbe dire insegnare a un guard dei documenti di vendita
+un'eccezione che nessun documento di vendita ha. Il **lettore** invece è
+condiviso.
+⚠️ Il BB della cancellazione vive in `vendite` ed è montato su una tabella di
+`config`. È una dipendenza fra schemi, dichiarata nel changeSet: se il BB
+crescerà ancora, la sua sede giusta sarà `script`.
+
+### 8.3 Le prove (scratch, transazione annullata, SQL estratto)
+
+* `config/test-email-guard-solo-bozza.sql` (**nuovo**): **13/13**. Senza i
+  trigger (solo 71–73) dà **8 rossi**, esattamente sui rifiuti: il test vede
+  l'assenza del guard.
+* I due CSV sono emulati con due `INSERT` nella stessa transazione, perché il
+  mirror gira solo al migrate.
+* ⛔ **Alla corsa di Tid (applicato) il test 1 era rosso**: confrontava i nomi
+  da `::regclass::text` / `::regproc::text`, che **tolgono lo schema** quando
+  è nel `search_path`, e il runner ha `config` nel suo. La mia prova girava
+  senza quel `search_path` e non lo vedeva. Riscritto coi nomi letti dal
+  catalogo (`pg_namespace`), e riprovato sullo scratch con
+  `SET search_path = config, …`: 13/13.
+* Toccati e verdi prima e dopo: `rls/test-rls-email-ambito-reparto-operatore`
+  22/22 (con FORCE), `vendite/test-delete-righe-documento-bozza-v1` 10/10,
+  `vendite/test-trgfn-doc-righe-lock-fuori-bozza-v1` 21/21,
+  `config/test-fn-resolve-email-account` 7/7, `config/test-fn-email-sistema`
+  12/12, `dbops/test-presidi-debito-dichiarato` 8/8.
+* **Due pgTAP riscritti**:
+  * `config/test-fn-resolve-email-account`: per liberare l'account di sistema
+    **cancellava** le sue mail. Su dbdev ci sono mail di sistema già spedite, e
+    dal `-74` quel `DELETE` morirebbe. Ora le **stacca**
+    (`email_account_id = NULL`): al test serve un account senza figli, non
+    una storia cancellata. ⚠️ Sullo scratch non ci sono mail spedite: il caso
+    di dbdev si vedrà alla corsa di Tid;
+  * `rls/test-rls-email-ambito-reparto-operatore`: l'allegato «del log» nasce
+    sulla bozza e si aggancia al log, come nell'applicazione. Il test 14 ora
+    prova anche il ramo «log» della policy degli allegati: il processo vede
+    solo l'allegato agganciato al log.
+* `plpgsql_check`: il guard nuovo è pulito. Sul BB della cancellazione, provato
+  contro `email_outbox`, esce `OLD.numero` del ramo DDT: il presidio lo
+  classifica `FP_RAMO_ALTRA_TABELLA` (la funzione è montata su tre tabelle, e
+  l'errore compare su una sola).
+
+**Esito (Tid, 2026-09-25 sera):** migrazione applicata, pgTAP verdi (dopo la
+correzione del test 1).
+
+### 8.4 Richieste al BE (secondo giro)
+
+1. **`remove_attachment`** non controlla che la bozza sia `DRAFT`. Ora lo ferma
+   il DB, con un messaggio leggibile. Il BE può lasciarlo al DB, oppure
+   spegnere il pulsante di rimozione sulle mail non in bozza, che è la cosa
+   giusta per l'operatore.
+2. ⚠️ **L'invio non allega i file.** `email_service` costruisce il messaggio
+   con solo testo e HTML, e né `send_raw` né `send_pending_emails` leggono
+   `config.email_allegato`. Gli allegati si salvano e si agganciano al log, ma
+   non partono. Da verificare: è fuori dal perimetro DB.
+3. **`cancel_draft`** cancella i file fisici degli allegati ma lascia le righe:
+   dopo l'annullamento le righe puntano a file che non esistono. Col guard
+   nuovo quelle righe non si possono più togliere (la bozza è `CANCELLED`).
+   Se le righe vanno tolte, si tolgono **prima** di scrivere `CANCELLED`.
 
 ---
 

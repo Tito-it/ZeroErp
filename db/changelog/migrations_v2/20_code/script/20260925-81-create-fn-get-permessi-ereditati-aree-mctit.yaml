@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'EREDITATO DEI PERMESSI DI AREA IN UN POSTO SOLO: script.fn_get_permessi_ereditati_aree
+#   Brief: brief-db-pgtap-permessi-ereditati, sezioni 2 e 4 (D-1, D-2, D-3)
+#
+# -- PERCHE' ------------------------------------------------------------------------------------
+#   Il passo 4 dei resolver — «fra i profili applicabili, per ogni area vince quello di
+#   priorita' piu' bassa» — era scritto in TRE posti: fn_resolve_livello_area
+#   (ORDER BY priorita LIMIT 1), fn_get_user_permissions_map (DISTINCT ON), e la query del
+#   backend che alimenta la colonna «ereditato» del pannello permessi. Tre scritture dello
+#   stesso spareggio, e nessun test che le confrontasse (regola del 2, AGENTS.md).
+#   ⭐ Questo e' il building block: i due resolver di area lo CHIAMANO dal -83/-85, e il
+#   backend lo chiama al posto della sua query. Il presidio non prova piu' che le copie
+#   coincidono: prova che il passo 4 sta scritto qui e basta (linee-guida-sql §12.5.2).
+#
+# -- LA VESTE (D-1) ------------------------------------------------------------------------------
+#   I profili si raccolgono dalla sola veste OPERATORE. Prima i resolver chiamavano l'helper
+#   senza veste, e un operatore con anche un'identita' da cliente shop o portale si portava
+#   nei permessi da operatore il profilo PORTALE di quell'altra veste. E' lo stesso
+#   sconfinamento che fn_is_super_admin chiude dal 20-04: qui mancava la simmetria.
+#
+# -- LO SPAREGGIO E' DETERMINATO -----------------------------------------------------------------
+#   Sotto una sola veste ogni priorita' ha al massimo UN profilo: un binding AD_HOC per
+#   identita' (uq_profili_accesso_bindings_identita) e una identita' OPERATORE attiva per
+#   utente (uq_identita_digitali_auth_user_ruolo_attivo), un REPARTO per UO
+#   (uq_profili_accesso_bindings_uo) e una UO per risorsa umana
+#   (uq_risorse_umane_soggetto_ruolo), un PORTALE per veste (uq_profili_accesso_bindings_ruolo).
+#   Con le priorita' distinte del -80 (D-3), `ORDER BY area_id, priorita` non ha pari merito.
+#   Il pgTAP pinna quei cinque indici: sono la premessa, e se uno cade lo spareggio torna a caso.
+#
+# -- FORMA ---------------------------------------------------------------------------------------
+#   Una riga per area COPERTA da almeno un profilo; un'area assente vale BLOCCATO, e lo
+#   decide il chiamante. Porta il profilo vincente (id, tipo, descrizione): e' la
+#   provenienza che il pannello mostra accanto al livello.
+#   LANGUAGE sql BEGIN ATOMIC: le dipendenze entrano in pg_depend (un DROP dell'helper o di
+#   una colonna letta viene rifiutato), il corpo e' validato alla creazione, e il planner
+#   la inlina nei chiamanti. ⛔ Da sola nel suo `- sql:`: pgjdbc non riprende a spezzare
+#   le istruzioni dopo l'END (COMMENT e GRANT nel secondo change).
+#   Tutte le colonne ancorate: sono proiezioni di colonne vere. INVOKER, STABLE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260925-81-create-fn-get-permessi-ereditati-aree-mctit.yaml
+
+  - changeSet:
+      id: 20260925-81-create-fn-get-permessi-ereditati-aree
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_get_permessi_ereditati_aree(p_auth_user_id): per ogni area coperta dai
+        profili della veste OPERATORE, il livello del profilo di priorita' piu' bassa e il
+        profilo che lo da'. Sede unica del passo 4 dei resolver di area (D-1, D-2, D-3).
+        BEGIN ATOMIC, INVOKER, STABLE. Brief: brief-db-pgtap-permessi-ereditati.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_get_profili_accesso_applicabili';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_get_permessi_ereditati_aree';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_permessi_ereditati_aree(
+                  p_auth_user_id  anagrafiche.identita_digitali.auth_user_id%TYPE
+              )
+              RETURNS TABLE(
+                  area_id              config.profili_accesso_aree.area_id%TYPE,
+                  livello              config.profili_accesso_aree.livello%TYPE,
+                  profilo_accesso_id   config.profili_accesso.id%TYPE,
+                  profilo_tipo         config.profili_accesso.tipo%TYPE,
+                  profilo_descrizione  config.profili_accesso.descrizione%TYPE
+              )
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT DISTINCT ON (paa.area_id)
+                         paa.area_id,
+                         paa.livello,
+                         pa.id,
+                         pa.tipo,
+                         pa.descrizione
+                    FROM script.fn_get_profili_accesso_applicabili(
+                             p_auth_user_id,
+                             'OPERATORE'::config.ruolo_applicativo) h
+                    JOIN config.profili_accesso_aree paa
+                      ON paa.profilo_accesso_id = h.profilo_accesso_id
+                    JOIN config.profili_accesso pa
+                      ON pa.id = h.profilo_accesso_id
+                   ORDER BY paa.area_id, h.priorita;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_get_permessi_ereditati_aree(integer) IS
+                  'L''ereditato dei permessi di area di un operatore: per ogni area coperta da almeno '
+                  'un profilo della veste OPERATORE, il livello del profilo di priorita'' piu'' bassa '
+                  '(AD_HOC 1, REPARTO 2, PORTALE 3) e il profilo che lo da'' (id, tipo, descrizione). '
+                  'Area assente = nessun profilo la copre: vale BLOCCATO, e lo decide il chiamante. '
+                  'Niente override, niente super admin: e'' cio'' che l''operatore avrebbe dal solo '
+                  'profilo. Sede UNICA del passo 4 di script.fn_resolve_livello_area e '
+                  'script.fn_get_user_permissions_map (che la chiamano) e della colonna «ereditato» '
+                  'del pannello permessi (backend). Lo spareggio e'' determinato: sotto una veste '
+                  'ogni priorita'' ha al massimo un profilo (indici unici dei binding, di '
+                  'risorse_umane e di identita_digitali). BEGIN ATOMIC, INVOKER, STABLE. Brief: '
+                  'brief-db-pgtap-permessi-ereditati (D-1, D-2, D-3).';
+
+              GRANT EXECUTE ON FUNCTION script.fn_get_permessi_ereditati_aree(integer) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_permessi_ereditati_aree(integer);

@@ -17,7 +17,7 @@
 --   8) colonna con campo_sorgente '' (la forma che scrive il loader): esclusa
 --   9) colonna con campo_sorgente NULL: esclusa
 --  10) ⭐ due grant: TUTTO dal profilo AD_HOC (priorita' 1) e BLOCCATO dal
---      PORTALE (priorita' 2) — vince il piu' SPECIFICO, non il piu'
+--      PORTALE (priorita' 3, era 2 fino al 20260925-80) — vince il piu' SPECIFICO, non il piu'
 --      restrittivo: inclusa. E' la regola del BB, non solo il suo ripiego
 --  11) la colonna sensibile con grant TUTTO: inclusa
 --  12) la stessa con grant LETTURA: inclusa (LETTURA spegne l'export, non la vista)
@@ -64,10 +64,12 @@ SELECT plan(20);
 -- ============================================================
 -- Fixture 1: due profili a priorita' diversa per l'utente di contesto.
 --   n=1  AD_HOC, legato alla sua identita' OPERATORE     -> priorita' 1
---   n=2  PORTALE, legato alla veste OPERATORE             -> priorita' 2
+--   n=2  PORTALE, legato alla veste OPERATORE             -> priorita' 3
+--        (2 fino al 20260925-80: D-3 di brief-db-pgtap-permessi-ereditati)
 -- ⚠️ Il modello ammette UN binding per identita', UNO per veste e UNO per
 --    unita' organizzativa (indici unici parziali): due profili alla STESSA
---    priorita' sotto una sola veste si hanno solo con PORTALE + REPARTO.
+--    priorita' sotto una sola veste si avevano solo con PORTALE + REPARTO,
+--    e dal 20260925-80 non si hanno piu' (REPARTO 2, PORTALE 3).
 --    Il test 10 prova quindi l'altra meta' della regola — il piu'
 --    specifico batte il piu' restrittivo — che e' quella che discrimina.
 -- ⚠️ Stesso patto di test-fn-resolve-lista-config-contatore-colonne-nuove:

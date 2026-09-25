@@ -137,6 +137,7 @@
 - [fn_resolve_email_template](funzioni/fn_resolve_email_template.md) — Risolve il template email da utilizzare per un dato codice, reparto, tipo prestazione e lingua. Implementa una catena di fallback a 5 livelli che permette di specializzare i testi per reparto e tipo pratica mantenendo sempre un default di sistema.
 - [trgfn_comuni_protect_update](funzioni/trgfn_comuni_protect_update.md) — (latest review 29-12-25) Impedire la modifica dei campi chiave di `config.comuni` quando il comune e' gia' utilizzato nello stradario.
 - [trgfn_credenziali_guard_ultimo_super_admin](funzioni/trgfn_credenziali_guard_ultimo_super_admin.md) — (scritta il 25-09-2026)
+- [trgfn_email_allegato_guard_solo_bozza](funzioni/trgfn_email_allegato_guard_solo_bozza.md)
 - [trgfn_iva_guard_conti_iva](funzioni/trgfn_iva_guard_conti_iva.md) — * **Validazione contestuale**: eseguire controlli sui campi contabili prima di inserire o aggiornare un record in `config.iva`. * **Coerenza dei dati**: evitare associazioni errate tra codici IVA e conti di tipo sbagliato.
 - [trgfn_iva_stati_normalize](funzioni/trgfn_iva_stati_normalize.md) — (latest review 15-01-26) * **Impostare valori di default** per campi mancanti in `config.iva_stati` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
 - [trgfn_parameter_overrides_fk_surrogate_dispatch](funzioni/trgfn_parameter_overrides_fk_surrogate_dispatch.md) — (latest review 02-05-2026)

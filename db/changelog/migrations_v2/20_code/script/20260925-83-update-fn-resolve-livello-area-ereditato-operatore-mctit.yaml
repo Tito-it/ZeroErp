@@ -1,0 +1,154 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# fn_resolve_livello_area: IL PASSO 4 LO DA' IL BUILDING BLOCK (e conta la sola veste OPERATORE)
+#   Brief: brief-db-pgtap-permessi-ereditati, sezioni 2-4 (D-1, D-2, D-3)
+#
+#   Catena invariata ai passi 0-3 e 5 (gate di contesto, identita' OPERATORE attiva, super
+#   admin, override utente, default BLOCCATO). Il passo 4 non scrive piu' lo spareggio
+#   (`fn_get_profili_accesso_applicabili(p_auth_user_id) ... ORDER BY h.priorita LIMIT 1`):
+#   legge la riga dell'area da script.fn_get_permessi_ereditati_aree (-81), che e' la sede
+#   unica e che raccoglie i profili della sola veste OPERATORE.
+#
+#   ⚠️ CAMBIO DI SEMANTICA (D-1, deciso da Tid): un operatore con anche un'identita' di
+#   portale o shop non riceve piu' nei permessi da operatore i livelli del profilo PORTALE
+#   di quell'altra veste. E per D-3 il reparto vince sul profilo della veste OPERATORE.
+#   ⭐ Niente ORDER BY/LIMIT qui: il building block da' al massimo UNA riga per area, e
+#   config.aree_funzionali.schema_db e' unico (uq_aree_funzionali_schema_db).
+#
+#   Corpo dalla doc auto-gen (il vivo e' il 20260421-04). Firma, RETURNS e DECLARE ancorati:
+#   l'identita' della firma resta (integer, character varying).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260925-83-update-fn-resolve-livello-area-ereditato-operatore-mctit.yaml
+
+  - changeSet:
+      id: 20260925-83-update-fn-resolve-livello-area-ereditato-operatore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_resolve_livello_area: il passo 4 legge script.fn_get_permessi_ereditati_aree
+        (sede unica dello spareggio, sola veste OPERATORE) invece di riscriverlo. D-1: i
+        profili delle altre vesti non entrano piu' nei permessi da operatore. Firma ancorata,
+        identita' invariata. Brief: brief-db-pgtap-permessi-ereditati.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_get_permessi_ereditati_aree';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_resolve_livello_area(
+                  p_auth_user_id    anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  p_area_schema_db  config.aree_funzionali.schema_db%TYPE
+              )
+              RETURNS config.profili_accesso_aree.livello%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_livello    config.user_override_aree.livello%TYPE;
+                  v_ctx_ruolo  anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Risolve livello accesso area per un'area funzionale.
+                  --
+                  -- Catena (context-aware dal 21-04-2026):
+                  --   0. Gate GUC: se app.ruolo_applicativo popolata e
+                  --      != OPERATORE -> BLOCCATO (fail-closed).
+                  --   1. Assenza identita OPERATORE attiva -> BLOCCATO
+                  --   2. fn_is_super_admin -> TUTTO
+                  --   3. Override utente area (se valido temporalmente)
+                  --   4. Ereditato dal profilo: fn_get_permessi_ereditati_aree
+                  --      (sola veste OPERATORE; AD_HOC 1 > REPARTO 2 > PORTALE 3)
+                  --   5. Default -> BLOCCATO
+                  -- Rev 20260925-83: il passo 4 non riscrive lo spareggio, lo
+                  -- legge dal building block (sede unica, D-2) — e con esso la
+                  -- veste OPERATORE (D-1): prima contavano i profili di tutte le
+                  -- vesti dell'utente.
+                  -- =========================================================
+
+                  -- 0. Gate contesto GUC (fail-closed su non-OPERATORE).
+                  v_ctx_ruolo := NULLIF(
+                      current_setting('app.ruolo_applicativo', true), ''
+                  )::config.ruolo_applicativo;
+
+                  IF v_ctx_ruolo IS NOT NULL
+                     AND v_ctx_ruolo <> 'OPERATORE'::config.ruolo_applicativo THEN
+                      RETURN 'BLOCCATO'::config.livello_accesso;
+                  END IF;
+
+                  -- 1. Identita OPERATORE attiva (helper DRY).
+                  IF NOT script.fn_has_identita_attiva(
+                             p_auth_user_id,
+                             'OPERATORE'::config.ruolo_applicativo) THEN
+                      RETURN 'BLOCCATO'::config.livello_accesso;
+                  END IF;
+
+                  -- 2. Super admin? Bypass totale.
+                  IF script.fn_is_super_admin(p_auth_user_id) THEN
+                      RETURN 'TUTTO'::config.livello_accesso;
+                  END IF;
+
+                  -- 3. Override utente area (invariato).
+                  SELECT uoa.livello
+                    INTO v_livello
+                    FROM config.user_override_aree uoa
+                    JOIN config.aree_funzionali af ON af.id = uoa.area_id
+                   WHERE uoa.auth_user_id = p_auth_user_id
+                     AND af.schema_db = p_area_schema_db
+                     AND uoa.validita @> CURRENT_DATE;
+
+                  IF FOUND THEN
+                      RETURN v_livello;
+                  END IF;
+
+                  -- 4. Ereditato dal profilo: una riga al massimo per area
+                  --    (DISTINCT ON nel building block, schema_db unico).
+                  SELECT e.livello
+                    INTO v_livello
+                    FROM script.fn_get_permessi_ereditati_aree(p_auth_user_id) e
+                    JOIN config.aree_funzionali af
+                      ON af.id = e.area_id
+                   WHERE af.schema_db = p_area_schema_db;
+
+                  IF FOUND THEN
+                      RETURN v_livello;
+                  END IF;
+
+                  -- 5. Default sicuro.
+                  RETURN 'BLOCCATO'::config.livello_accesso;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_resolve_livello_area(integer, character varying) IS
+                  'Risolve il livello di accesso di un utente su un''area. Catena: gate di contesto '
+                  '(app.ruolo_applicativo valorizzata e diversa da OPERATORE -> BLOCCATO), identita'' '
+                  'OPERATORE attiva, super admin -> TUTTO, override utente valido, ereditato dal '
+                  'profilo (script.fn_get_permessi_ereditati_aree: sola veste OPERATORE, AD_HOC > '
+                  'REPARTO > PORTALE), default BLOCCATO. Rev 20260925-83 (brief-db-pgtap-permessi-'
+                  'ereditati, D-1 e D-2): il passo 4 non riscrive lo spareggio e non conta piu'' i '
+                  'profili delle altre vesti dell''utente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il rollback riporterebbe i profili delle altre vesti nei permessi da operatore
+              -- (D-1): nessun ripristino automatico.
+              SELECT 1;

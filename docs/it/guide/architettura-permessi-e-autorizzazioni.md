@@ -381,13 +381,22 @@ il resolver deve sapere per conto di **quale veste** si sta risolvendo.
 * **Risoluzione del profilo di accesso.** Il resolver interroga l'helper
   DB `script.fn_get_profili_accesso_applicabili(auth_user_id)` che
   restituisce l'elenco dei `profili_accesso` applicabili, uniti da tre
-  sorgenti in ordine di priorita':
+  sorgenti in ordine di priorita' (dal piu' specifico al piu' generale):
   1. **Binding AD_HOC**: un profilo agganciato direttamente alla
      specifica `identita_digitale` (override massima priorita')
-  2. **Binding per ruolo applicativo**: profilo preset standard per la
-     veste (es. `CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`)
-  3. **Binding per reparto**: profilo ereditato dall'unita' organizzativa
+  2. **Binding per reparto**: profilo ereditato dall'unita' organizzativa
      (solo per OPERATORE; richiede catena `identita → risorsa_umana → UO`)
+  3. **Binding per ruolo applicativo**: profilo di default della veste
+     (es. `CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`; sulla
+     veste `OPERATORE`, un profilo base per tutti gli operatori)
+
+  Per i permessi da operatore contano solo i profili della veste
+  `OPERATORE`: un operatore che e' anche cliente shop non porta nei suoi
+  permessi il profilo della veste cliente. Per ogni area e azione vince il
+  profilo di priorita' piu' bassa, e sotto una veste ce n'e' al massimo uno
+  per priorita'. La regola sta in `script.fn_get_permessi_ereditati_aree` /
+  `_azioni`, che servono sia i resolver sia la colonna «ereditato» del
+  pannello permessi.
 * **Risoluzione livello su area.** Prende il livello dal profilo piu'
   specifico applicabile (tabella `profili_accesso_aree`). Se esistono
   override individuali sull'area (`user_override_aree`), questi prevalgono

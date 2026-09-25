@@ -19,13 +19,14 @@ DECLARE
 BEGIN
   -- =========================================================
   -- Scopo:
-  --   Un documento (DDT o ordine) si cancella SOLO finche' e'
-  --   in bozza. Regola di dominio, decisa da Tid il 2026-08-26.
+  --   Un documento (DDT, ordine, bozza email) si cancella SOLO
+  --   finche' e' in bozza. Regola di dominio, decisa da Tid il
+  --   2026-08-26; la bozza email entra il 2026-09-25.
   --
   -- ⚠️ Nessuna lettura sotto RLS qui: lo stato sta su OLD, cioe'
   --    sulla riga che il chiamante sta gia' cancellando. Si
   --    legge solo il codice dello stato dal vocabolario, che
-  --    RLS non ha.
+  --    RLS non ha (sulla bozza email lo stato e' gia' il codice).
   -- =========================================================
   IF TG_TABLE_NAME = 'ddt' THEN
     v_documento := 'DDT';
@@ -42,6 +43,12 @@ BEGIN
       INTO v_stato
       FROM config.stati_doc_ordini s
      WHERE s.id = OLD.stato_doc_ordine_id;
+
+  ELSIF TG_TABLE_SCHEMA = 'config' AND TG_TABLE_NAME = 'email_outbox' THEN
+    -- rev 2026-09-25: la bozza email. Lo stato e' gia' il codice.
+    v_documento := 'EMAIL_BOZZA';
+    v_etichetta := concat('La mail «', left(OLD.oggetto, 80), '»');
+    v_stato     := OLD.stato::text;
 
   ELSE
     -- Errore di MONTAGGIO, come nel gemello di riga.
