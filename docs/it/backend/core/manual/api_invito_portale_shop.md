@@ -14,10 +14,17 @@ distingue automaticamente:
   attivata): one-click, password preesistente invariata
 
 Il discriminante e' la **credenziale**, non «l'utente esiste gia'»
-(`PortaleRepository.auth_user_ha_password`): un `auth_user` creato da un invito
+(`AuthRepository.auth_user_ha_password`): un `auth_user` creato da un invito
 nasce col segnaposto `!`, password non utilizzabile, e lo resta finche' l'invito
 non si attiva. ⛔ In **entrambi** i flussi l'identita' nasce `attivo=false` e si
-attiva solo al consumo del token.
+attiva solo al consumo del token. ⭐ La credenziale decide anche **all'attivazione**
+(`richiede_password`): se nel frattempo ha una password vera, un token INVITO vale
+come un clic e quella password non si sovrascrive.
+
+⭐ **Una strada per tutte le vesti** (2026-09-25, L-3): emissione, reinvio, email e
+attivazione sono il building block `apps/core/services/invito_veste.py`, lo stesso
+dell'operatore ([api_invito_operatore.md](api_invito_operatore.md)); fra le vesti
+cambia solo la **porta** (`PORTA_PORTALE`, `PORTA_SHOP`).
 
 Esiste anche un endpoint **autenticato cross-veste** che consente a un
 `CLIENTE_PORTALE` gia' loggato di aggiungersi la veste `SHOP_CUSTOMER`
@@ -27,12 +34,14 @@ sullo stesso `auth_user`, senza email/token.
 
 | Building block | Note |
 | --- | --- |
-| `InvitoPortaleService` (gestisce tutte e 3 le vesti) | Mappa `_VESTE_CONFIG` per token tipi + template + link path + scadenza |
+| `InvitoPortaleService` (gestisce tutte e 3 le vesti) | Parte della veste: entità → `soggetto_ruolo_id`, credenziale e veste spenta |
+| `InvitoVeste` · `attiva_veste` · `PORTA_PORTALE` / `PORTA_SHOP` | Building block unico (`apps/core/services/invito_veste.py`): token, reinvio, email, attivazione; la porta porta tipi token, template, link, codici |
 | `TokenService` | Token monouso tipo `INVITO_PORTALE` / `ATTIVAZIONE_PORTALE_CROSS` / `INVITO_SHOP` / `ATTIVAZIONE_SHOP_CROSS`, scadenza 72h |
 | `EmailDispatchService` | Template `INVITO_PORTALE` (clienti/fornitori) e `INVITO_SHOP` (shop customer) |
 | `apply_new_password` | Set password + reset flag `deve_cambiare_password` in transazione |
-| `PortaleRepository.auth_user_ha_password` | Discriminante dei due flussi: l'`auth_user` ha una password utilizzabile? |
-| `PortaleRepository.riattiva_identita` | UPDATE `attivo=true` su `identita_digitali`, al consumo del token (entrambi i flussi) |
+| `AuthRepository.auth_user_ha_password` | Discriminante dei due flussi: l'`auth_user` ha una password utilizzabile? |
+| `AuthRepository.attiva_identita` | UPDATE `attivo=true` su `identita_digitali` al consumo del token (entrambi i flussi), col guard su credenziale e porta |
+| `PortaleRepository.find_auth_user_by_email` | `script.fn_get_auth_user_id_for_email`: la credenziale dell'email senza maiuscole (P-2); email doppie → `E_CREDENZIALE_EMAIL_AMBIGUA` |
 | `PermissionResolver.get_ruolo_applicativo` | Filtro veste corrente per `ProfileActivateShopView` |
 | GUC `app.soggetto_ruolo_id` | Letto da `ProfileActivateShopView` per legare la nuova identita allo stesso `soggetto_ruolo` del portale corrente |
 
@@ -56,8 +65,12 @@ disattivazioni qui sotto.
 }
 ```
 
-`reinvio=true`: invalida i token portale precedenti per quell'auth_user
-e genera il nuovo invito.
+Ogni invito, con `reinvio` `true` o `false`, invalida i token pendenti **della
+veste** (i due tipi della porta, con quell'`identita_id` nel meta) nella stessa
+transazione del nuovo: vale un link solo. ⭐ Per veste e non per credenziale:
+cliente e fornitore portale della stessa persona condividono i tipi, e
+l'invito dell'uno non spegne quello dell'altro (fino al 2026-09-25 lo spegneva:
+la creazione del token invalidava per tipo e credenziale).
 
 Il reinvio a chi non ha mai attivato resta nel flow **INVITO** (token con scelta
 della password): l'`auth_user` esiste, ma la sua password non e' ancora
@@ -197,7 +210,7 @@ Simmetrico al precedente ma per fornitori: restituisce solo il blocco
 - `POST /api/v1/anagrafiche/fornitori/{fornitore_id}/disattiva-portale/`
 
 Soft-revoke veste non-operatore. Imposta `identita.attivo=false` e
-invalida i token pendenti (invito + cross) dell'auth_user. **Idempotente**:
+invalida i token pendenti (invito + cross) **della veste**. **Idempotente**:
 se la veste e' gia' disattiva o non esiste, la chiamata succede senza
 errore (`disattivato=false`, stato ritornato coerente).
 
@@ -232,7 +245,7 @@ errore (`disattivato=false`, stato ritornato coerente).
 ambiguita. Per rimettere in linea un accesso disattivato, l'admin
 **rinvia un invito**: flow CROSS se l'utente ha una password vera (aveva gia'
 attivato), INVITO se non l'ha mai scelta. L'identita' esistente resta disattivata
-e la riattiva il consumo del token nuovo (`PortaleRepository.riattiva_identita`).
+e la riattiva il consumo del token nuovo (`AuthRepository.attiva_identita`).
 
 ---
 
@@ -262,7 +275,8 @@ usa per decidere quale UI mostrare (form password vs conferma one-click).
 ```
 
 `token_type` ∈ `{"INVITO_PORTALE", "ATTIVAZIONE_PORTALE_CROSS"}`.
-`requires_password=true` solo per `INVITO_PORTALE` (utente senza password vera).
+`requires_password=true` solo per `INVITO_PORTALE` **e** credenziale ancora senza
+password vera, decisa al momento della verifica (`richiede_password`).
 
 **Response (token invalido/scaduto/usato)** — risposta generica per
 evitare enumeration:
@@ -395,36 +409,36 @@ credenziali del portale (stesso `auth_user`).
 I 4 tipi sono **mutuamente esclusivi**: lo stesso `token_hash` non puo'
 esistere su 2 tipi grazie al `UNIQUE (token_hash)` su
 `config.token_monouso`. Il caller della validate non deve sapere il tipo
-in anticipo: `_resolve_token_in(token, tipi)` itera su un insieme
-ammesso.
+in anticipo: `risolvi_token(porta, token)` prova i due tipi della porta.
 
 ---
 
-## Mappa `_VESTE_CONFIG` (single source of truth)
+## Le porte (`PortaInvito`)
 
-In [invito_portale_service.py](../../../../../backend/apps/portale/services/invito_portale_service.py)
-una mappa `dict[str, _VesteConfig]` (TypedDict) parametrizza il flow
-comune `_invia_invito_common` su 5 dimensioni:
+In [invito_veste.py](../../../../../backend/apps/core/services/invito_veste.py)
+ogni porta dice cio' che distingue un invito dall'altro:
 
-| Campo | CLIENTE_PORTALE | FORNITORE_PORTALE | SHOP_CUSTOMER |
-| --- | --- | --- | --- |
-| `token_invito` | `INVITO_PORTALE` | `INVITO_PORTALE` | `INVITO_SHOP` |
-| `token_cross` | `ATTIVAZIONE_PORTALE_CROSS` | `ATTIVAZIONE_PORTALE_CROSS` | `ATTIVAZIONE_SHOP_CROSS` |
-| `template` | `INVITO_PORTALE` | `INVITO_PORTALE` | `INVITO_SHOP` |
-| `link_path` | `/attivazione-portale` | `/attivazione-portale` | `/attivazione-shop` |
-| `scadenza_ore` | 72 | 72 | 72 |
+| Campo | `PORTA_PORTALE` (CLIENTE_ e FORNITORE_PORTALE) | `PORTA_SHOP` (SHOP_CUSTOMER) |
+| --- | --- | --- |
+| `token_invito` | `INVITO_PORTALE` | `INVITO_SHOP` |
+| `token_cross` | `ATTIVAZIONE_PORTALE_CROSS` | `ATTIVAZIONE_SHOP_CROSS` |
+| `template` | `INVITO_PORTALE` | `INVITO_SHOP` |
+| `link_path` | `/attivazione-portale` | `/attivazione-shop` |
+| `codice_invito` / `codice_attivazione` | `E_INVITO_PORTALE` / `E_ATTIVAZIONE_PORTALE` | `E_INVITO_PORTALE` / `E_ATTIVAZIONE_SHOP` |
+| `scadenza_ore` | 72 | 72 |
 
-**Aggiungere una nuova veste** = aggiungere una nuova entry alla mappa
-piu' il nuovo tipo token nel `SHOP_ATTIVAZIONE_TOKEN_TIPI` (o
-equivalente). Nessun'altra modifica al service necessaria.
+**Aggiungere una veste** = un ruolo in una porta esistente, o una porta nuova
+(con le sue due view, sottoclassi di `AttivazioneVesteValidateView` /
+`AttivazioneVesteView`).
 
 ---
 
 ## Test di riferimento
 
 - **Service unit**: [test_invito_portale_service.py](../../../../../backend/apps/portale/tests/services/test_invito_portale_service.py)
-- **API portale**: [test_attivazione_portale_view.py](../../../../../backend/apps/portale/tests/api/test_attivazione_portale_view.py) — attivazione e `ProfileActivateShop`
-- **API shop**: [test_attivazione_shop_view.py](../../../../../backend/apps/shop/tests/api/test_attivazione_shop_view.py) — validate e conferma
+- **Building block**: [test_invito_veste.py](../../../../../backend/apps/core/tests/services/test_invito_veste.py) — emissione, reinvio, email, attivazione, verifica
+- **API portale**: [test_attivazione_portale_view.py](../../../../../backend/apps/portale/tests/api/test_attivazione_portale_view.py) — cablaggio sulla porta e `ProfileActivateShop`
+- **API shop**: [test_attivazione_shop_view.py](../../../../../backend/apps/shop/tests/api/test_attivazione_shop_view.py) — cablaggio sulla porta
 
 ---
 

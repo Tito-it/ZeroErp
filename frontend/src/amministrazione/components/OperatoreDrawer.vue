@@ -14,7 +14,7 @@ import { listUnitaOrganizzative, invitaOperatore, reinviaInvito } from '../api/a
 import { TIPO_RUOLO_CODICE } from '../constants'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
-import { displayDate } from '../../core/utils/date'
+import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { capitalizeWords } from '../../core/utils/string'
 import { isEmailValid } from '../../core/utils/validators'
 import { useNotify } from '../../core/composables/useNotify'
@@ -46,8 +46,9 @@ const { confirmAction } = useConfirmAction()
 const notify = useNotify()
 const injectedReadonly = useInjectReadonly()
 
-// Building block: auth user (solo creazione)
-const auth = useAuthUser()
+// Building block: auth user (solo creazione). Senza password: la sceglie
+// l'operatore attivando l'invito (regola unica, L-3).
+const auth = useAuthUser({ conPassword: false })
 
 // SoggettoResolver: sotto-drawer per cerca/crea soggetto (solo creazione)
 const resolverVisible = ref(false)
@@ -78,10 +79,21 @@ const isReadonly = computed(() => props.readonly || injectedReadonly.value)
 const invitaLoading = ref(false)
 const emailEditInvalid = ref(false)
 
-// Scopo: Mostra pulsante invito se operatore non ha mai fatto login.
-const canInvite = computed(() => {
+// Scopo: Mostra il pulsante invito quando il DB dice che l'operatore e'
+// invitabile (`can_invite` di fn_get_operatore_detail: veste spenta, nella
+// finestra, email presente). ⛔ Non ricopiare qui la regola: fino al
+// 2026-09-25 era `!last_login && is_active`, e con la veste che nasce spenta
+// (`is_active` falso) il pulsante non compariva mai.
+const canInvite = computed(() => isEdit.value && store.currentOperatore?.can_invite === true)
+// Scopo: Perche' l'invito non si puo' mandare: il motivo del DB, sempre, anche
+// «veste gia' attiva». ⛔ Non filtrarlo con una colonna del dettaglio: `attivo`
+// e' della risorsa umana, non della veste, e nasconderlo con quella lo
+// toglieva proprio all'operatore appena creato; lo stato della veste il
+// dettaglio non lo porta.
+const inviteReason = computed(() => {
   const u = store.currentOperatore
-  return isEdit.value && u && !u.last_login && u.is_active
+  if (!isEdit.value || !u || canInvite.value) return ''
+  return u.invite_reason || ''
 })
 const hasBeenInvited = computed(() => !!store.currentOperatore?.invito_inviato_at)
 
@@ -143,7 +155,8 @@ watch(() => props.visible, async (val) => {
         soggetto_id: u.soggetto_id || null,
         ragione_sociale: u.ragione_sociale_completa || null,
         codice_fiscale: u.codice_fiscale || null,
-        emittenti_descrizione: u.emittenti_descrizione || ''
+        emittenti_descrizione: u.emittenti_descrizione || '',
+        last_login: u.last_login || null
       }
     }
   } else {
@@ -223,7 +236,6 @@ async function onSave() {
       nome: sogg?.nome || null,
       email: auth.form.email,
       username: auth.form.username,
-      password: auth.form.password,
       is_super_admin: form.value.is_super_admin,
       qualifica_id: form.value.qualifica_id,
       unita_organizzativa_id: form.value.unita_organizzativa_id
@@ -233,6 +245,11 @@ async function onSave() {
       { successMessage: t('amministrazione.operatore_creato') }
     )
     if (result !== null) {
+      // Email gia' di una credenziale (D-6): la persona entrera' col suo
+      // username e la sua password, e l'admin deve saperlo.
+      if (result.credenziale_riusata) {
+        notify.warn(t('amministrazione.credenziale_riusata', { username: result.username }))
+      }
       emit('saved')
     }
   }
@@ -261,8 +278,6 @@ const canSaveCreate = computed(() =>
   !!soggettoSelezionato.value
   && !!auth.form.username.trim()
   && isEmailValid(auth.form.email)
-  && !!auth.form.password
-  && auth.passwordMatch.value
   && !!form.value.qualifica_id
 )
 
@@ -356,8 +371,9 @@ const onClose = useDrawerClose(emit, 'cancelled')
           <h4>{{ t('amministrazione.section_accesso') }}</h4>
           <AuthUserForm
             :form="auth.form"
-            :password-match="auth.passwordMatch.value"
+            :show-password="false"
           />
+          <small class="app-field-hint">{{ t('amministrazione.password_da_invito') }}</small>
         </template>
 
         <!-- === Sezione Dati anagrafici + Collocazione === -->
@@ -453,8 +469,12 @@ const onClose = useDrawerClose(emit, 'cancelled')
               :placeholder="t('amministrazione.select_reparto')" />
           </div>
 
-          <!-- Validita' (solo modifica, sola lettura informativa) -->
+          <!-- Validita' e ultimo accesso (solo modifica, sola lettura informativa) -->
           <template v-if="isEdit">
+            <div class="form-field">
+              <label>{{ t('amministrazione.field_ultimo_accesso') }}</label>
+              <InputText :model-value="form.last_login ? displayTimestamp(form.last_login) : t('amministrazione.mai_entrato')" disabled />
+            </div>
             <div class="form-grid-2col">
               <div class="form-field">
                 <label>{{ t('amministrazione.field_valido_dal') }}</label>
@@ -468,7 +488,8 @@ const onClose = useDrawerClose(emit, 'cancelled')
           </template>
         </div>
 
-        <!-- Invito operatore (solo modifica, mai loggato) -->
+        <!-- Invito operatore (solo modifica, quando il DB lo ammette) -->
+        <small v-if="inviteReason" class="app-field-hint">{{ inviteReason }}</small>
         <div v-if="canInvite">
           <Button
             :label="hasBeenInvited ? t('amministrazione.reinvia_invito') : t('amministrazione.invita_operatore')"

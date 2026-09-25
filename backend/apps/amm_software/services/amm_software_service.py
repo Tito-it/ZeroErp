@@ -181,20 +181,32 @@ class AmmSoftwareService:
     # Scopo: Crea operatore completo. Due flussi:
     # Flusso A (soggetto_id assente): crea soggetto PF nuovo — cognome/nome/CF obbligatori.
     # Flusso B (soggetto_id presente): associa soggetto esistente — dati persona non richiesti.
-    # In entrambi: username, email, password, qualifica obbligatori.
-    # Contract pubblico Fase 7 multi-face: `is_super_admin?: bool` (default
-    # false). L'operatore viene sempre creato con `attivo=true` (la
-    # disabilitazione e' un comando dedicato).
+    # In entrambi: username, email, qualifica obbligatori.
+    # Contract pubblico Fase 7 multi-face: `is_super_admin?: bool` (default false).
+    # ⛔ Regola unica dell'invito (L-3, analisi §4.2): la veste OPERATORE nasce
+    # SPENTA e la accende l'attivazione dell'invito; la password non la
+    # sceglie l'admin — una credenziale nuova nasce col segnaposto non
+    # utilizzabile e la persona la sceglie attivando. Se l'email e' gia' di
+    # una credenziale (D-6) la si riusa: la risposta lo dice
+    # (`credenziale_riusata`, `username` effettivo) perche' il pannello lo
+    # mostri all'admin.
     def create_operatore(self, payload: dict) -> dict[str, Any]:
         ErrorManager.require(
             "ruolo_sistema" not in payload,
             code=E_AMM_VALIDAZIONE,
             message="Campo 'ruolo_sistema' non ammesso: usa is_super_admin.",
         )
+        # Rifiuto esplicito, non silenzio: un client che la manda ancora
+        # crederebbe che valga.
+        ErrorManager.require(
+            "password" not in payload,
+            code=E_AMM_VALIDAZIONE,
+            message="Campo 'password' non ammesso: la sceglie l'operatore attivando l'invito.",
+            context={"field": "password"},
+        )
         soggetto_id = (payload.get("soggetto_id") or "").strip() or None
         username = (payload.get("username") or "").strip()
         email = (payload.get("email") or "").strip()
-        password = payload.get("password") or ""
         raw_qualifica = payload.get("qualifica_id")
 
         # Guard UUID soggetto_id (flusso B)
@@ -213,7 +225,6 @@ class AmmSoftwareService:
         # Validazione comune (entrambi i flussi)
         ErrorManager.require(bool(username), code=E_AMM_VALIDAZIONE, message="Username obbligatorio.", context={"field": "username"})
         ErrorManager.require(bool(email), code=E_AMM_VALIDAZIONE, message="Email obbligatoria.", context={"field": "email"})
-        ErrorManager.require(bool(password), code=E_AMM_VALIDAZIONE, message="Password obbligatoria.", context={"field": "password"})
         ErrorManager.require(qualifica_id is not None and qualifica_id > 0, code=E_AMM_VALIDAZIONE, message="Qualifica obbligatoria.", context={"field": "qualifica_id"})
 
         # Validazione flusso A: dati persona obbligatori solo se soggetto nuovo
@@ -232,27 +243,28 @@ class AmmSoftwareService:
         # l'enum legacy della fn DB e' incapsulata nel repository.
         is_super_admin = bool(payload.get("is_super_admin"))
 
-        auth_user_id = self._repo.crea_operatore(
+        creato = self._repo.crea_operatore(
             soggetto_id=soggetto_id,
             cognome=cognome or None,
             nome=nome or None,
             codice_fiscale=codice_fiscale or None,
             username=username,
             email=email,
-            password_hash=make_password(password),
+            # Segnaposto non utilizzabile: la password la sceglie la persona.
+            password_hash=make_password(None),
             qualifica_id=qualifica_id,  # type: ignore[arg-type]
             unita_organizzativa_id=int(payload["unita_organizzativa_id"]) if payload.get("unita_organizzativa_id") else None,
             data_nascita=payload.get("data_nascita"),
             sesso=payload.get("sesso", DEFAULT_SESSO),
             is_super_admin=is_super_admin,
-            attivo=True,
             valido_dal=payload.get("valido_dal"),
             valido_al=payload.get("valido_al"),
             comune_nascita_id=optional_int(payload, "comune_nascita_id"),
             indirizzo_resid_dettaglio_id=optional_int(payload, "indirizzo_resid_dettaglio_id"),
             indirizzo_domfisc_dettaglio_id=optional_int(payload, "indirizzo_domfisc_dettaglio_id"),
         )
-        return self._repo.get_operatore_detail(auth_user_id) or {}
+        dettaglio = self._repo.get_operatore_detail(creato["auth_user_id"]) or {}
+        return {**dettaglio, "credenziale_riusata": creato["credenziale_riusata"]}
 
     # Scopo: Dettaglio operatore con validazione esistenza.
     def get_operatore(self, auth_user_id: int) -> dict[str, Any]:

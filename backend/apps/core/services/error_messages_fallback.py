@@ -241,6 +241,8 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_CORE_PROFILE_NOT_FOUND": "Profilo utente non trovato.",
     "E_CORE_VALIDATION": "Parametri non validi.",
     "E_CREDENZIALE_BLOCCATA": "Accesso bloccato dall'amministratore.",
+    "E_CREDENZIALE_EMAIL_AMBIGUA": "Piu' accessi registrati con la stessa email.",
+    "E_CREDENZIALE_GIA_OPERATORE": "L'email appartiene gia' a un operatore.",
     "E_CREDENZIALE_MOTIVO_OBBLIGATORIO": "Indicare il motivo del blocco.",
     "E_CREDENZIALE_NON_TROVATA": "Credenziale non trovata.",
     "E_DATABASE": "Errore durante l'operazione database.",
@@ -1067,6 +1069,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_STATO_RESO_TRANSIZIONE_NON_VALIDA": "Transizione di stato non ammessa per il reso.",
     "E_STATO_SORGENTE_PARAM_INVALIDO": "Parametri sorgente non validi.",
     "E_STATO_WORKFLOW_NON_TROVATO": "Stato di destinazione non trovato o non attivo.",
+    "E_STORICO_FK_COL_ASSENTE": "Automazione di storico: la colonna di collegamento non esiste nella tabella storica.",
     "E_STORICO_PARENT_PK_NOT_FOUND": "Impossibile determinare la chiave primaria della tabella padre.",
     "E_STORICO_PROVISION": "Generazione della tabella di storico fallita.",
     "E_STORICO_SCOPE_CATENA_CICLICA": (

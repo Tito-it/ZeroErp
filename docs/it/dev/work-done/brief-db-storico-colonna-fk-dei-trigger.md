@@ -15,8 +15,9 @@
 > rubinetto è nel corpo vivo, il pgTAP owner non ha lasciato residui (§11).
 > pgTAP: ✅ **entrambi verdi su `zeroerp_ci`** (il secondo dopo la correzione
 > della fixture, §11). Restano fuori, e non
-> tengono aperto questo brief: la nota al backend (§10) e l'indice sulla colonna
-> FK delle gemelle, da aprire in un brief suo (§9).
+> tengono aperto questo brief: la nota al backend (§10, ✅ chiusa dal backend
+> il 2026-09-25) e l'indice sulla colonna FK delle gemelle, da aprire in un
+> brief suo (§9).
 >
 > **In una riga.** Il trigger di storico riceve il nome della colonna che lega la
 > riga storica alla madre; su **cinque** tabelle quel nome non esiste nella
@@ -331,7 +332,7 @@ gira come `zeroerp_app`, in `BEGIN … ROLLBACK`.
   dell'apply il test 2 del primo file era rosso su cinque madri in CI e su
   quattro su dbdev; dopo l'apply il controllo equivalente, letto sul catalogo,
   è vuoto su entrambi (§11).
-* **Backend**: la nota del §10.
+* ✅ **Backend**: la nota del §10, chiusa il 2026-09-25 (vedi lì).
 * 🔵 **L'indice sulla colonna FK delle gemelle: nessuna automazione lo fa
   (verificato il 2026-09-25).** La chiusura dello snapshot
   (`WHERE <fk> = … AND valid_to IS NULL`) gira a ogni UPDATE/DELETE della madre,
@@ -368,6 +369,18 @@ Il catalogo dei codici errore ha **8 codici nuovi** che i due file del backend
 non portano ancora. Dopo l'apply su dbdev, `test_error_policies_divergenza_db`
 diventa **rosso** finché non si rigenera: è il presidio che fa il suo lavoro,
 non una regressione.
+
+✅ **Fatto dal backend il 2026-09-25.** Cinque degli otto codici (`E_CREDENZIALE_BLOCCATA`,
+`E_LOGIN_ATTESA`, `E_CREDENZIALE_NON_TROVATA`, `E_CREDENZIALE_MOTIVO_OBBLIGATORIO`,
+`E_AUTH_CHIAMATA_NON_VALIDA`) erano già registrati da `ea58bec4c`. Registrati
+ora gli altri tre, con policy rigenerata e ripiego senza segnaposto:
+`E_CREDENZIALE_GIA_OPERATORE`, `E_CREDENZIALE_EMAIL_AMBIGUA`,
+`E_STORICO_FK_COL_ASSENTE`. Prima di rigenerare ho verificato che i tre codici
+fossero nel CSV in git. Diff del generato: tre voci nuove, **zero classi
+cambiate**; `genera_error_policies --check` allineato. I cancelli con
+`ZEROERP_TEST_DB_E2E=1` sono verdi, e verde anche la suite intera (5131).
+⚠️ Il test `test_error_policies_divergenza_db` citato sopra non esiste con
+quel nome: la divergenza col DB la presidia `genera_error_policies --check`.
 
 **Cosa fare:**
 
@@ -446,3 +459,4 @@ Letto come applicazione sul catalogo vivo di dbdev e di `zeroerp_ci`:
 | 2026-09-25 | Tid / DB | Applicato su dbdev e `zeroerp_ci`. Verifica sul catalogo vivo (§11): invariante pulita su entrambi. Brief chiuso lato DB; indice sulle gemelle spostato a un brief suo. |
 | 2026-09-25 | Tid | pgTAP verdi su `zeroerp_ci`: `test-storico-colonna-fk-dei-trigger-v1` e, corretta la fixture (`INCLUDING IDENTITY`), `test-storico-automazione-colonna-fk-v1` 7/7. |
 | 2026-09-25 | Tid | Brief chiuso. La doppia forma di `storico.*.id` (`IDENTITY` / `BIGSERIAL`) non si sana (§11). Restano fuori il push del backend (§10) e l'indice sulle gemelle (brief suo, §9). |
+| 2026-09-25 | backend | §10 chiuso: registrati `E_CREDENZIALE_GIA_OPERATORE`, `E_CREDENZIALE_EMAIL_AMBIGUA`, `E_STORICO_FK_COL_ASSENTE` (policy rigenerata, ripiego); gli altri cinque c'erano già |

@@ -125,15 +125,15 @@ e shop è generato dall'email e non compare nelle email d'invito (🔎); il rese
 
 | # | Asimmetria | Cosa comporta | |
 | --- | --- | --- | --- |
-| A-1 | L'invito operatore **sovrascrive la password** della credenziale | se la credenziale ha anche una veste portale o shop attiva, quella perde l'accesso finché l'invito operatore non si attiva | 🔎 |
-| A-2 | Il guard «ha già accesso» dell'operatore si basa su `last_login`, che nessuno scrive | un operatore già operativo può essere reinvitato, e si vede sostituire la password | ✅ `last_login` |
-| A-3 | Identità operatore **attiva prima** che l'invito sia accettato | l'accesso esiste prima del consenso (con una password ignota, ma esiste) | 🔎 |
-| A-4 | Reinvio operatore con invalidazione fuori transazione | lo stesso difetto già chiuso sul portale col fix #17 | 🔎 |
+| A-1 | L'invito operatore **sovrascrive la password** della credenziale | se la credenziale ha anche una veste portale o shop attiva, quella perde l'accesso finché l'invito operatore non si attiva | ✅ — **chiuso** il 2026-09-25 (L-3): l'invito non tocca la password |
+| A-2 | Il guard «ha già accesso» dell'operatore si basa su `last_login`, che nessuno scrive | un operatore già operativo può essere reinvitato, e si vede sostituire la password | ✅ — **chiuso** il 2026-09-25 (P-2 R-1 + L-3): rifiuto su veste attiva, e `last_login` scritto al login |
+| A-3 | Identità operatore **attiva prima** che l'invito sia accettato | l'accesso esiste prima del consenso (con una password ignota, ma esiste) | ✅ — **chiuso** il 2026-09-25 (P-2 R-2 + L-3): nasce spenta, la accende l'attivazione |
+| A-4 | Reinvio operatore con invalidazione fuori transazione | lo stesso difetto già chiuso sul portale col fix #17 | ✅ — **chiuso** il 2026-09-25 (L-3): building block unico d'invito |
 | A-5 | Revoca: blacklist, invalidazione dei token d'invito e della cache presenti in un flusso e assenti nell'altro | una veste revocata resta usabile fino alla scadenza dell'access token, e i permessi in cache restano | 🔎 |
 | A-6 | Lo shop si riattiva da solo (`ProfileActivateShopView`) anche dopo una revoca dell'admin | la revoca dell'admin non è definitiva | 🔎 |
 | A-7 | Periodo di validità della veste non applicato al login | una veste scaduta resta usabile se la credenziale ha un'altra veste valida | 🔎 |
 | A-8 | `PasswordChangeRequiredMiddleware` inerte col JWT | il cambio obbligatorio è affidato al solo frontend | ✅ meccanismo |
-| A-9 | La creazione dell'operatore esige una credenziale nuova (email duplicata rifiutata, confronto case-sensitive), il portale la riusa per email (case-insensitive) | la stessa persona non può essere operatore e cliente con una credenziale sola, se diventa operatore per seconda | 🔎 |
+| A-9 | La creazione dell'operatore esige una credenziale nuova (email duplicata rifiutata, confronto case-sensitive), il portale la riusa per email (case-insensitive) | la stessa persona non può essere operatore e cliente con una credenziale sola, se diventa operatore per seconda | 🟡 — P-2 + L-3 (2026-09-25): riuso per email senza maiuscole; il consenso dell'admin al riuso aspetta la rev -51 in git (piano §4.1-bis) |
 
 ---
 

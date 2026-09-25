@@ -794,7 +794,10 @@
     "activation_welcome": "Benvenuto! Imposta la tua password per attivare l'account.",
     "activation_success": "Account attivato! Accedi con la password scelta.",
     "activation_token_invalid": "Il link di attivazione non e' valido o e' scaduto. Contatta l'amministratore.",
-    "activate_btn": "Attiva account"
+    "activate_btn": "Attiva account",
+    "activation_cross_welcome": "Stai per attivare l'accesso al gestionale con le tue credenziali esistenti. Non è richiesta una nuova password.",
+    "activate_cross_btn": "Attiva accesso",
+    "activation_cross_success": "Accesso attivato. Effettua il login con le tue credenziali esistenti."
   },
   "resolver": {
     "action_search": "Cerca",
@@ -1220,6 +1223,10 @@
     "disabilita_title": "Conferma disabilitazione",
     "disabilita_confirm": "Sei sicuro di voler disabilitare questo operatore? L'accesso verrà revocato immediatamente.",
     "operatore_creato": "Operatore creato con successo",
+    "field_ultimo_accesso": "Ultimo accesso",
+    "mai_entrato": "Mai entrato",
+    "password_da_invito": "La password la sceglie l'operatore attivando l'invito: dopo il salvataggio, invia l'invito dal dettaglio.",
+    "credenziale_riusata": "Questa persona ha già un accesso: entrerà con il nome utente «{username}» e la sua password. L'invito le servirà solo ad attivare la veste operatore.",
     "operatore_disabilitato": "Operatore disabilitato",
     "riattiva_title": "Conferma riattivazione",
     "riattiva_confirm": "Sei sicuro di voler riattivare questo operatore? L'accesso verrà ripristinato.",

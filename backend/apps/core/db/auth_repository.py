@@ -18,6 +18,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from django.contrib.auth.hashers import is_password_usable
 from django.db import connection
 
 from apps.core.db._helpers import fetchone_scalar, jsonb_out
@@ -223,8 +224,82 @@ class AuthRepository:
             cols = [c.name for c in cursor.description or []]
             return dict(zip(cols, row))
 
+    # Scopo: Le vesti di una credenziale per un ruolo, attive o spente, in
+    # ordine di id. Serve all'invito, che lavora su una veste SPENTA (regola
+    # unica: la veste nasce spenta e la accende l'attivazione). Una lista, non
+    # «la prima»: il modello ammette piu' vesti spente sullo stesso ruolo
+    # (l'unique vale solo WHERE attivo), e decide il chiamante cosa farne.
+    def find_identita_per_ruolo(
+        self, auth_user_id: int, ruolo_applicativo: str
+    ) -> list[dict[str, Any]]:
+        sql = """
+            SELECT id,
+                   soggetto_ruolo_id,
+                   ruolo_applicativo::text AS ruolo_applicativo,
+                   attivo
+              FROM anagrafiche.identita_digitali
+             WHERE auth_user_id = %s
+               AND ruolo_applicativo::text = %s
+             ORDER BY id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [auth_user_id, ruolo_applicativo])
+            cols = [c.name for c in cursor.description or []]
+            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    # Scopo: Nome, cognome e username di una credenziale (stringhe, mai None),
+    # per le variabili delle email d'invito. None se la credenziale non esiste.
+    def get_nomi_credenziale(self, auth_user_id: int) -> dict[str, str] | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT first_name, last_name, username FROM django.auth_user WHERE id = %s",
+                [auth_user_id],
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return {"first_name": row[0] or "", "last_name": row[1] or "", "username": row[2] or ""}
+
+    # Scopo: Dice se la credenziale ha una password VERA, cioe' scelta dalla
+    # persona (attivando un invito, col reset, col cambio). E' il
+    # discriminante dei due flussi d'invito, uguale per ogni veste: senza →
+    # la persona la sceglie all'attivazione; con → attiva con un clic. Una
+    # credenziale nata da un invito o dalla creazione dell'operatore ha il
+    # segnaposto non utilizzabile, e lo tiene finche' non si attiva.
+    def auth_user_ha_password(self, auth_user_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT password FROM django.auth_user WHERE id = %s",
+                [auth_user_id],
+            )
+            row = cursor.fetchone()
+        return bool(row) and is_password_usable(row[0])
+
+    # Scopo: Accende la veste di un invito, al consumo del token. Il filtro su
+    # credenziale e ruolo e' il guard: l'`identita_id` viene dal meta del
+    # token, e una veste di un'altra credenziale o di un'altra porta non si
+    # accende da qui. Ritorna False se nessuna riga corrisponde (veste
+    # rimossa, o token che non le appartiene): il chiamante annulla.
+    def attiva_identita(
+        self,
+        identita_id: int,
+        *,
+        auth_user_id: int,
+        ruoli_applicativi: Sequence[str],
+    ) -> bool:
+        sql = """
+            UPDATE anagrafiche.identita_digitali
+               SET attivo = true, data_update = now()
+             WHERE id = %s
+               AND auth_user_id = %s
+               AND ruolo_applicativo::text = ANY(%s)
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [identita_id, auth_user_id, list(ruoli_applicativi)])
+            return cursor.rowcount > 0
+
     # Scopo: Imposta l'obbligo di cambio password della CREDENZIALE (D-7).
-    # Chiamanti: invito operatore (True), cambio/reset/attivazione (False).
+    # Chiamanti: cambio/reset/attivazione (False).
     # Credenziale inesistente → E_CREDENZIALE_NON_TROVATA dal DB.
     def set_deve_cambiare_password(self, auth_user_id: int, valore: bool) -> None:
         with connection.cursor() as cursor:
