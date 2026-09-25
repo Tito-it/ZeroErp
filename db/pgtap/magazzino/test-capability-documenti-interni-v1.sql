@@ -90,7 +90,7 @@ SELECT is(
 -- ============================================================
 CREATE TEMP TABLE _matrice (stato_da text, stato_a text, ammessa_funzione boolean, passata_guard boolean);
 DO $m$
-DECLARE v_da text; v_a text; v_id bigint; v_ok boolean;
+DECLARE v_da text; v_a text; v_id bigint; v_ok boolean; v_cod text;
 BEGIN
     FOREACH v_da IN ARRAY ARRAY['DRAFT', 'CONFIRM', 'POSTED', 'CANCEL'] LOOP
         FOREACH v_a IN ARRAY ARRAY['DRAFT', 'CONFIRM', 'POSTED', 'CANCEL'] LOOP
@@ -112,17 +112,20 @@ BEGIN
                 PERFORM * FROM magazzino.fn_posta_inventario(v_id);
             END IF;
 
-            -- ⚠️ La porta POSTED e' un cancello A PARTE (la GUC dell'operazione):
-            --    senza questa riga, CONFIRM -> POSTED risulterebbe «rifiutata dal
-            --    guard» pur essendo nella matrice, e il test misurerebbe due
-            --    regole insieme. La porta ha il suo test in
-            --    test-documenti-interni-guard-v1; qui si misura la MATRICE.
-            PERFORM set_config('zeroerp.magazzino_posting_inventario', v_id::text, true);
+            -- ⚠️ La porta POSTED e' un cancello A PARTE (GUC dell'operazione E
+            --    proprietario, D-V1): come app CONFIRM -> POSTED la rifiuta sempre,
+            --    pur essendo nella matrice. Il guard controlla la matrice PRIMA
+            --    della porta, quindi il rifiuto della porta vuol dire «la matrice
+            --    l'ha ammessa»: si legge dal codice (CONSTRAINT_NAME), e il test
+            --    misura la sola MATRICE. La porta ha il suo test in
+            --    test-documenti-interni-guard-v1. (Fino al 2026-09-25 qui si
+            --    accendeva la GUC dall'app: dopo D-V1 non apre piu'.)
             BEGIN
                 UPDATE magazzino.inventari SET stato_mag_inventario = v_a WHERE id = v_id;
                 v_ok := true;
             EXCEPTION WHEN OTHERS THEN
-                v_ok := false;
+                GET STACKED DIAGNOSTICS v_cod = CONSTRAINT_NAME;
+                v_ok := v_cod IS NOT DISTINCT FROM 'E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE';
             END;
 
             INSERT INTO _matrice

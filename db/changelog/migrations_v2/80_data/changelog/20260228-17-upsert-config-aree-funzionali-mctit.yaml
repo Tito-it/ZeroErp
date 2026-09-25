@@ -1,7 +1,9 @@
 # ------------------------------------------------------------
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Liquibase changelog per Zero ERP
-# Seed config.aree_funzionali — 10 aree funzionali (1 per schema DB)
+# Seed config.aree_funzionali — il catalogo delle aree funzionali.
+# ⚠️ (2026-09-25) La chiave dell'area è `schema_db`, uguale a `codice`: non
+#   serve uno schema fisico omonimo (brief-db-area-funzionale-assistente-ai §4.1).
 # ------------------------------------------------------------
 
 databaseChangeLog:

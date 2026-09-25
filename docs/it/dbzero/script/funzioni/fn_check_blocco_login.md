@@ -74,6 +74,7 @@ BEGIN
              WHERE p.credenziale_id = v_credenziale_id
                AND p.provenienza    = p_provenienza;
         ELSE
+            -- I minuti vanno nel messaggio (a chi prova) e nel contesto (al log).
             v_rimanenti := GREATEST(1,
                 CEIL(EXTRACT(EPOCH FROM (v_bloccato_fino_a - now())) / 60)::integer);
             PERFORM script.fn_log_and_raise_error(
@@ -83,7 +84,7 @@ BEGIN
                                    'bloccato_fino_a',  v_bloccato_fino_a,
                                    'minuti_rimanenti', v_rimanenti),
                 NULL::uuid,
-                VARIADIC ARRAY[]::text[]);
+                VARIADIC ARRAY[v_rimanenti::text]);
         END IF;
     END IF;
 
@@ -116,7 +117,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_blocco_login(p_auth_user_id integer, p_provenienza inet)
-IS 'Check del login, PRIMA della verifica della password, per CREDENZIALE e PROVENIENZA (M-4: nessun filtro su veste o ruolo). Nell''ordine, il primo che scatta vince: (1) blocco dell''admin -> E_CREDENZIALE_BLOCCATA, non scade; (2) freno sulla coppia credenziale + provenienza -> E_UTENTE_BLOCCATO con i minuti rimanenti nel contesto, e un freno scaduto fa ripartire la coppia (riga cancellata); (3) attesa crescente sulla credenziale (fn_login_attesa_secondi) -> E_LOGIN_ATTESA con i secondi rimanenti. Nessuna riga in config.credenziali = passa. Credenziale NULL/<= 0 o provenienza NULL -> E_AUTH_CHIAMATA_NON_VALIDA. SECURITY DEFINER del PROPRIETARIO, non di un superuser, search_path bloccato; nessun guard di permesso, dichiarato (gira prima del login). Brief: brief-db-blocco-login-per-credenziale §2.4, §3.1.';
+IS 'Check del login, PRIMA della verifica della password, per CREDENZIALE e PROVENIENZA (M-4: nessun filtro su veste o ruolo). Nell''ordine, il primo che scatta vince: (1) blocco dell''admin -> E_CREDENZIALE_BLOCCATA, non scade; (2) freno sulla coppia credenziale + provenienza -> E_UTENTE_BLOCCATO con i minuti rimanenti nel messaggio e nel contesto, e un freno scaduto fa ripartire la coppia (riga cancellata); (3) attesa crescente sulla credenziale (fn_login_attesa_secondi) -> E_LOGIN_ATTESA con i secondi rimanenti. Nessuna riga in config.credenziali = passa. Credenziale NULL/<= 0 o provenienza NULL -> E_AUTH_CHIAMATA_NON_VALIDA. SECURITY DEFINER del PROPRIETARIO, non di un superuser, search_path bloccato; nessun guard di permesso, dichiarato (gira prima del login). Brief: brief-db-blocco-login-per-credenziale §2.4, §3.1, §12.8.';
 ```
 
 ---

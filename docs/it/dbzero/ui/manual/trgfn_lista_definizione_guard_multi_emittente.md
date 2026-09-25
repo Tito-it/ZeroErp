@@ -63,6 +63,12 @@ l'applicazione no.
 ⚠️ Il nome del ruolo **non e' scritto a mano**: uno scritto a mano sarebbe giusto
 su questa installazione e falso sulla prossima.
 
+Dal 25-09-2026 la domanda la fa il building block
+[script.fn_is_proprietario_tabella](/dbzero/script/funzioni/fn_is_proprietario_tabella)
+(`20260925-39`): questo guard era la prima copia della regola, e i guard dei
+documenti interni di magazzino sarebbero stati la seconda. Il comportamento non
+cambia; il contesto dell'errore non porta più `owner_atteso`.
+
 ⚠️ **Non c'e' nessun interruttore di disattivazione**, e non e' una dimenticanza:
 la condizione e' su *chi sei*, e non c'e' niente da accendere.
 

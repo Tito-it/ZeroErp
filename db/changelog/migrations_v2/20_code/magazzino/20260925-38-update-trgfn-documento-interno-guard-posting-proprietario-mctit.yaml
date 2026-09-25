@@ -1,0 +1,403 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-7 (D-V1, strada A) — LA PORTA POSTED E LE RIGHE IN CONFIRM SI APRONO SOLO DENTRO UN VERBO
+#   Brief: brief-db-magazzino-verbi-con-permesso, sezione 4 (D-V1, decisa da Tid il 2026-09-25) e P-7
+#
+# -- IL BUCO -------------------------------------------------------------------------------------
+#   I due guard dei documenti interni (inventari, rettifiche) aprivano la porta
+#   con la sola GUC transazionale zeroerp.magazzino_posting_<famiglia>, che il
+#   verbo imposta. Ma l'app ha UPDATE sui documenti e puo' fare set_config da
+#   se': poteva portare un documento a POSTED senza movimenti e senza il
+#   permesso (guard di transizione), o riscrivere le righe di un documento in
+#   CONFIRM (guard delle righe, la stessa GUC). I verbi di P-3 non lo chiudevano.
+#
+# -- LA CHIUSURA: GUC *E* PROPRIETARIO -----------------------------------------------------------
+#   Le due condizioni rispondono a domande diverse, e servono entrambe:
+#   - script.fn_is_proprietario_tabella(TG_RELID) dice CHI scrive: dentro un
+#     verbo DEFINER e' il proprietario, l'app non lo e'. Chiude il buco.
+#   - la GUC dice QUALE operazione e QUALE documento: senza, qualunque altra
+#     DEFINER del proprietario (per esempio il verbo generico del pannello, D-3
+#     del brief del modello) potrebbe registrare un documento senza movimenti.
+#   Da sola la GUC non apre piu' niente; da solo il proprietario nemmeno.
+#
+# -- COSA NON CAMBIA -----------------------------------------------------------------------------
+#   La matrice (da fn_documento_interno_transizioni), il DELETE solo in DRAFT, le
+#   righe libere in DRAFT e congelate in POSTED/CANCEL, i codici
+#   (E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE, E_MAG_DOCUMENTO_RIGHE_CONGELATE),
+#   i valori della frase. Il contesto guadagna 'dentro_verbo' e 'db_user' per chi
+#   diagnostica. Firme invariate (trigger function senza argomenti): i trigger
+#   restano quelli, con i loro TG_ARGV.
+#
+# -- CHI NE RISENTE ------------------------------------------------------------------------------
+#   - fn_posta_inventario / fn_posta_rettifica: nessun cambio, sono DEFINER del
+#     proprietario (20260924-41) e impostano gia' la GUC.
+#   - Il backend: nessun cambio, chiama solo i verbi.
+#   - Un DBA come proprietario o superuser con la GUC accesa passa ancora: e'
+#     voluto, il modello protegge da un backend che sbaglia (§4.4 del brief del
+#     modello), non dal proprietario.
+#   - pgTAP: test-documenti-interni-guard-v1 (7 e 10 si ribaltano) e
+#     test-capability-documenti-interni-v1 (la matrice separa i due rifiuti dal
+#     codice), nello stesso giro.
+#
+# -- CORPI DI PARTENZA ---------------------------------------------------------------------------
+#   Dalla doc auto-generata, verificata uguale a pg_get_functiondef su zeroerp e
+#   zeroerp_ci il 2026-09-25. Il rollback rimette quei corpi e quei COMMENT.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20260925-38-update-trgfn-documento-interno-guard-posting-proprietario-mctit.yaml
+
+  - changeSet:
+      id: 20260925-38-update-trgfn-documento-interno-guard-posting-proprietario
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I due guard dei documenti interni di magazzino aprono la porta POSTED e le righe in CONFIRM
+        solo con la GUC dell'operazione E dentro un verbo (script.fn_is_proprietario_tabella(TG_RELID):
+        chi esegue e' il proprietario). L'app che accende la GUC da se' non apre piu' niente.
+        Brief: brief-db-magazzino-verbi-con-permesso, D-V1 / P-7.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_is_proprietario_tabella';
+            - sqlCheck:
+                expectedResult: "2"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'magazzino'
+                     AND p.proname IN ('trgfn_documento_interno_guard_transizione',
+                                       'trgfn_documento_interno_righe_guard_testata');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.trgfn_documento_interno_guard_transizione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- text e non %TYPE: la funzione e' PARAMETRICA su due tabelle (inventari,
+                  -- rettifiche), lo stato lo legge per nome da TG_ARGV.
+                  v_col_stato    text := TG_ARGV[0];
+                  v_guc          text := TG_ARGV[1];
+                  v_old          text;
+                  v_new          text;
+                  v_ammessa      boolean;
+                  v_guc_valore   text;
+                  v_dentro_verbo boolean;
+              BEGIN
+                  -- Scopo: far rispettare la matrice degli stati dei documenti interni
+                  --   (D-L2-h), una per inventari e rettifiche (TG_ARGV: colonna di stato,
+                  --   nome della GUC). La matrice NON sta piu' qui: la dice
+                  --   magazzino.fn_documento_interno_transizioni, che la capability del
+                  --   drawer legge per disegnare i pulsanti (R-1 del Lotto 2-bis). Qui
+                  --   restano il DELETE ammesso solo in DRAFT (C3) e la porta POSTED, che
+                  --   si apre solo per l'operazione firmata con la GUC transazionale E
+                  --   solo dentro un verbo, cioe' quando scrive il proprietario (D-V1).
+                  IF TG_OP = 'DELETE' THEN
+                      v_old := to_jsonb(OLD) ->> v_col_stato;
+                      IF v_old <> 'DRAFT' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'magazzino', 'magazzino.trgfn_documento_interno_guard_transizione',
+                              'E_MAG_DOCUMENTO_NON_ELIMINABILE',
+                              jsonb_build_object('detail', 'DELETE di un documento interno non in DRAFT',
+                                                 'tabella', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                                 'documento_id', OLD.id, 'stato', v_old),
+                              OLD.tx_id,
+                              v_old);
+                      END IF;
+                      RETURN OLD;
+                  END IF;
+
+                  v_old := to_jsonb(OLD) ->> v_col_stato;
+                  v_new := to_jsonb(NEW) ->> v_col_stato;
+                  IF v_new IS NOT DISTINCT FROM v_old THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- La matrice, da UNA sede: qui si fa rispettare, li' si legge anche per
+                  -- accendere i pulsanti. Uno stato terminale (o sconosciuto) torna {},
+                  -- quindi nessuna destinazione e' ammessa.
+                  v_ammessa := v_new = ANY (magazzino.fn_documento_interno_transizioni(v_old));
+                  IF NOT v_ammessa THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.trgfn_documento_interno_guard_transizione',
+                          'E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA',
+                          jsonb_build_object('detail', 'transizione fuori dalla matrice',
+                                             'tabella', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                             'documento_id', NEW.id, 'da', v_old, 'a', v_new),
+                          NEW.tx_id,
+                          v_old, v_new);
+                  END IF;
+
+                  -- La porta POSTED: solo l'operazione (la GUC porta NEW.id) e solo dentro
+                  -- un verbo (chi esegue e' il proprietario). L'app puo' accendere la GUC da
+                  -- se', ma non e' il proprietario: da sola la GUC non apre piu' (D-V1).
+                  IF v_new = 'POSTED' THEN
+                      v_guc_valore   := current_setting(v_guc, true);
+                      v_dentro_verbo := script.fn_is_proprietario_tabella(TG_RELID);
+                      IF v_guc_valore IS DISTINCT FROM NEW.id::text OR NOT v_dentro_verbo THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'magazzino', 'magazzino.trgfn_documento_interno_guard_transizione',
+                              'E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE',
+                              jsonb_build_object('detail', 'POSTED senza la GUC dell''operazione o fuori da un verbo',
+                                                 'tabella', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                                 'documento_id', NEW.id, 'guc', v_guc,
+                                                 'guc_valore', v_guc_valore,
+                                                 'dentro_verbo', v_dentro_verbo,
+                                                 'db_user', current_user),
+                              NEW.tx_id,
+                              NEW.id::text);
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.trgfn_documento_interno_guard_transizione()
+              IS 'Guard di famiglia dei documenti interni di magazzino (inventari, rettifiche): fa rispettare la matrice degli stati, che dal 2026-09-22 LEGGE da magazzino.fn_documento_interno_transizioni invece di contenerla — la stessa sede da cui la capability del drawer disegna i pulsanti (R-1 del Lotto 2-bis, linee-guida-sql §12.2 punto 1). Monta su BEFORE UPDATE OF <colonna stato> e BEFORE DELETE con TG_ARGV = (colonna di stato, nome della GUC di posting). Tre rifiuti: E_MAG_DOCUMENTO_NON_ELIMINABILE (DELETE fuori da DRAFT, C3), E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA (fuori matrice), E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE (POSTED senza la GUC transazionale che l''operazione scrive, oppure fuori da un verbo). Dal 2026-09-25 (D-V1) la porta POSTED chiede le DUE condizioni: la GUC porta NEW.id (quale operazione, quale documento) E chi esegue e'' il proprietario della tabella, script.fn_is_proprietario_tabella(TG_RELID) (chi scrive: un verbo DEFINER, non l''app che accende la GUC da se''). Brief: brief-db-magazzino-lotto-2-motore sezione 3 (D-L2-h), 6-ter C3/C13; brief-db-magazzino-lotto-2-bis-be-fe R-1; brief-db-magazzino-verbi-con-permesso D-V1.';
+
+              CREATE OR REPLACE FUNCTION magazzino.trgfn_documento_interno_righe_guard_testata()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_testata     text := TG_ARGV[0];   -- es. 'inventari'
+                  v_col_fk      text := TG_ARGV[1];   -- es. 'inventario_id'
+                  v_col_stato   text := TG_ARGV[2];   -- es. 'stato_mag_inventario'
+                  v_guc         text := TG_ARGV[3];   -- es. 'zeroerp.magazzino_posting_inventario'
+                  -- bigint/text e non %TYPE: parametrica su due famiglie (vedi sopra).
+                  v_ids         bigint[];
+                  v_id          bigint;
+                  v_stato       text;
+                  v_bloccata    boolean;
+                  v_tx_id       uuid;
+              BEGIN
+                  -- Scopo: le righe di un documento interno si scrivono con la testata in
+                  --   DRAFT; in CONFIRM scrive solo l'operazione (la GUC che fissa
+                  --   qta_sistema, e solo dentro un verbo: chi esegue e' il proprietario,
+                  --   D-V1); POSTED e CANCEL sono congelate (D-L2-h). Un UPDATE che
+                  --   sposta la riga su un'altra testata le controlla entrambe. «Testata
+                  --   assente» = cascata gia' decisa a monte (DELETE solo in DRAFT): passa.
+                  IF TG_OP = 'DELETE' THEN
+                      v_ids   := ARRAY[(to_jsonb(OLD) ->> v_col_fk)::bigint];
+                      v_tx_id := OLD.tx_id;
+                  ELSIF TG_OP = 'INSERT' THEN
+                      v_ids   := ARRAY[(to_jsonb(NEW) ->> v_col_fk)::bigint];
+                      v_tx_id := NEW.tx_id;
+                  ELSE
+                      v_ids   := ARRAY[(to_jsonb(NEW) ->> v_col_fk)::bigint];
+                      IF (to_jsonb(OLD) ->> v_col_fk)::bigint IS DISTINCT FROM v_ids[1] THEN
+                          v_ids := v_ids || (to_jsonb(OLD) ->> v_col_fk)::bigint;
+                      END IF;
+                      v_tx_id := NEW.tx_id;
+                  END IF;
+
+                  FOREACH v_id IN ARRAY v_ids LOOP
+                      CONTINUE WHEN v_id IS NULL;
+                      -- Nomi da TG_ARGV (scritti nel CREATE TRIGGER), quotati: mai da un input.
+                      EXECUTE format('SELECT %I FROM magazzino.%I WHERE id = $1', v_col_stato, v_testata)
+                         INTO v_stato USING v_id;
+                      CONTINUE WHEN v_stato IS NULL;       -- cascata in corso, o fuori perimetro
+
+                      -- Un solo punto di sollevamento: la condizione in una variabile.
+                      -- CONFIRM: la GUC dell'operazione per QUESTO documento E dentro un verbo
+                      -- (la GUC l'app puo' accenderla da se', il proprietario non lo e').
+                      v_bloccata := CASE v_stato
+                                        WHEN 'DRAFT'   THEN false
+                                        WHEN 'CONFIRM' THEN current_setting(v_guc, true) IS DISTINCT FROM v_id::text
+                                                            OR NOT script.fn_is_proprietario_tabella(TG_RELID)
+                                        ELSE true                 -- POSTED, CANCEL
+                                    END;
+                      IF v_bloccata THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'magazzino', 'magazzino.trgfn_documento_interno_righe_guard_testata',
+                              'E_MAG_DOCUMENTO_RIGHE_CONGELATE',
+                              jsonb_build_object('detail', 'scrittura di una riga con testata non in DRAFT',
+                                                 'tabella', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                                 'testata', v_testata, 'documento_id', v_id,
+                                                 'stato', v_stato, 'operazione', TG_OP,
+                                                 'db_user', current_user),
+                              v_tx_id,
+                              v_stato);
+                      END IF;
+                  END LOOP;
+
+                  IF TG_OP = 'DELETE' THEN
+                      RETURN OLD;
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.trgfn_documento_interno_righe_guard_testata()
+              IS 'Guard delle righe dei documenti interni di magazzino (inventari_righe, rettifiche_righe; TG_ARGV = tabella testata, colonna FK, colonna di stato, nome della GUC), BEFORE INSERT OR UPDATE OR DELETE: righe scrivibili solo con la testata in DRAFT; in CONFIRM scrive solo l''operazione — la stessa GUC transazionale della porta POSTED, e'' lei a fissare qta_sistema — e dal 2026-09-25 solo dentro un verbo: chi esegue deve essere il proprietario della tabella, script.fn_is_proprietario_tabella(TG_RELID) (D-V1: la GUC l''app puo'' accenderla da se''); POSTED e CANCEL congelate (E_MAG_DOCUMENTO_RIGHE_CONGELATE, CONFLITTO_STATO). Un UPDATE che sposta la riga controlla entrambe le testate. Testata assente = cascata gia'' ammessa a monte (DELETE solo in DRAFT) o fuori perimetro: passa. Brief: brief-db-magazzino-lotto-2-motore, sezione 3 (D-L2-h); brief-db-magazzino-verbi-con-permesso D-V1.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.trgfn_documento_interno_guard_transizione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- text e non %TYPE: la funzione e' PARAMETRICA su due tabelle (inventari,
+                  -- rettifiche), lo stato lo legge per nome da TG_ARGV.
+                  v_col_stato  text := TG_ARGV[0];
+                  v_guc        text := TG_ARGV[1];
+                  v_old        text;
+                  v_new        text;
+                  v_ammessa    boolean;
+                  v_guc_valore text;
+              BEGIN
+                  -- Scopo: far rispettare la matrice degli stati dei documenti interni
+                  --   (D-L2-h), una per inventari e rettifiche (TG_ARGV: colonna di stato,
+                  --   nome della GUC). La matrice NON sta piu' qui: la dice
+                  --   magazzino.fn_documento_interno_transizioni, che la capability del
+                  --   drawer legge per disegnare i pulsanti (R-1 del Lotto 2-bis). Qui
+                  --   restano il DELETE ammesso solo in DRAFT (C3) e la porta POSTED, che
+                  --   si apre solo per l'operazione firmata con la GUC transazionale.
+                  IF TG_OP = 'DELETE' THEN
+                      v_old := to_jsonb(OLD) ->> v_col_stato;
+                      IF v_old <> 'DRAFT' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'magazzino', 'magazzino.trgfn_documento_interno_guard_transizione',
+                              'E_MAG_DOCUMENTO_NON_ELIMINABILE',
+                              jsonb_build_object('detail', 'DELETE di un documento interno non in DRAFT',
+                                                 'tabella', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                                 'documento_id', OLD.id, 'stato', v_old),
+                              OLD.tx_id,
+                              v_old);
+                      END IF;
+                      RETURN OLD;
+                  END IF;
+
+                  v_old := to_jsonb(OLD) ->> v_col_stato;
+                  v_new := to_jsonb(NEW) ->> v_col_stato;
+                  IF v_new IS NOT DISTINCT FROM v_old THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- La matrice, da UNA sede: qui si fa rispettare, li' si legge anche per
+                  -- accendere i pulsanti. Uno stato terminale (o sconosciuto) torna {},
+                  -- quindi nessuna destinazione e' ammessa.
+                  v_ammessa := v_new = ANY (magazzino.fn_documento_interno_transizioni(v_old));
+                  IF NOT v_ammessa THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.trgfn_documento_interno_guard_transizione',
+                          'E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA',
+                          jsonb_build_object('detail', 'transizione fuori dalla matrice',
+                                             'tabella', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                             'documento_id', NEW.id, 'da', v_old, 'a', v_new),
+                          NEW.tx_id,
+                          v_old, v_new);
+                  END IF;
+
+                  -- La porta POSTED: solo l'operazione, che si firma con la GUC.
+                  IF v_new = 'POSTED' THEN
+                      v_guc_valore := current_setting(v_guc, true);
+                      IF v_guc_valore IS DISTINCT FROM NEW.id::text THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'magazzino', 'magazzino.trgfn_documento_interno_guard_transizione',
+                              'E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE',
+                              jsonb_build_object('detail', 'POSTED senza la GUC dell''operazione',
+                                                 'tabella', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                                 'documento_id', NEW.id, 'guc', v_guc,
+                                                 'guc_valore', v_guc_valore),
+                              NEW.tx_id,
+                              NEW.id::text);
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.trgfn_documento_interno_guard_transizione()
+              IS 'Guard di famiglia dei documenti interni di magazzino (inventari, rettifiche): fa rispettare la matrice degli stati, che dal 2026-09-22 LEGGE da magazzino.fn_documento_interno_transizioni invece di contenerla — la stessa sede da cui la capability del drawer disegna i pulsanti (R-1 del Lotto 2-bis, linee-guida-sql §12.2 punto 1). Monta su BEFORE UPDATE OF <colonna stato> e BEFORE DELETE con TG_ARGV = (colonna di stato, nome della GUC di posting). Tre rifiuti: E_MAG_DOCUMENTO_NON_ELIMINABILE (DELETE fuori da DRAFT, C3), E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA (fuori matrice), E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE (POSTED senza la GUC transazionale che l''operazione scrive: la porta del ledger passa di li''). Brief: brief-db-magazzino-lotto-2-motore sezione 3 (D-L2-h), 6-ter C3/C13; brief-db-magazzino-lotto-2-bis-be-fe R-1.';
+
+              CREATE OR REPLACE FUNCTION magazzino.trgfn_documento_interno_righe_guard_testata()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_testata     text := TG_ARGV[0];   -- es. 'inventari'
+                  v_col_fk      text := TG_ARGV[1];   -- es. 'inventario_id'
+                  v_col_stato   text := TG_ARGV[2];   -- es. 'stato_mag_inventario'
+                  v_guc         text := TG_ARGV[3];   -- es. 'zeroerp.magazzino_posting_inventario'
+                  -- bigint/text e non %TYPE: parametrica su due famiglie (vedi sopra).
+                  v_ids         bigint[];
+                  v_id          bigint;
+                  v_stato       text;
+                  v_bloccata    boolean;
+                  v_tx_id       uuid;
+              BEGIN
+                  -- Scopo: le righe di un documento interno si scrivono con la testata in
+                  --   DRAFT; in CONFIRM scrive solo l'operazione (la GUC che fissa
+                  --   qta_sistema); POSTED e CANCEL sono congelate (D-L2-h). Un UPDATE che
+                  --   sposta la riga su un'altra testata le controlla entrambe. «Testata
+                  --   assente» = cascata gia' decisa a monte (DELETE solo in DRAFT): passa.
+                  IF TG_OP = 'DELETE' THEN
+                      v_ids   := ARRAY[(to_jsonb(OLD) ->> v_col_fk)::bigint];
+                      v_tx_id := OLD.tx_id;
+                  ELSIF TG_OP = 'INSERT' THEN
+                      v_ids   := ARRAY[(to_jsonb(NEW) ->> v_col_fk)::bigint];
+                      v_tx_id := NEW.tx_id;
+                  ELSE
+                      v_ids   := ARRAY[(to_jsonb(NEW) ->> v_col_fk)::bigint];
+                      IF (to_jsonb(OLD) ->> v_col_fk)::bigint IS DISTINCT FROM v_ids[1] THEN
+                          v_ids := v_ids || (to_jsonb(OLD) ->> v_col_fk)::bigint;
+                      END IF;
+                      v_tx_id := NEW.tx_id;
+                  END IF;
+
+                  FOREACH v_id IN ARRAY v_ids LOOP
+                      CONTINUE WHEN v_id IS NULL;
+                      -- Nomi da TG_ARGV (scritti nel CREATE TRIGGER), quotati: mai da un input.
+                      EXECUTE format('SELECT %I FROM magazzino.%I WHERE id = $1', v_col_stato, v_testata)
+                         INTO v_stato USING v_id;
+                      CONTINUE WHEN v_stato IS NULL;       -- cascata in corso, o fuori perimetro
+
+                      -- Un solo punto di sollevamento: la condizione in una variabile.
+                      v_bloccata := CASE v_stato
+                                        WHEN 'DRAFT'   THEN false
+                                        WHEN 'CONFIRM' THEN current_setting(v_guc, true) IS DISTINCT FROM v_id::text
+                                        ELSE true                 -- POSTED, CANCEL
+                                    END;
+                      IF v_bloccata THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'magazzino', 'magazzino.trgfn_documento_interno_righe_guard_testata',
+                              'E_MAG_DOCUMENTO_RIGHE_CONGELATE',
+                              jsonb_build_object('detail', 'scrittura di una riga con testata non in DRAFT',
+                                                 'tabella', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                                 'testata', v_testata, 'documento_id', v_id,
+                                                 'stato', v_stato, 'operazione', TG_OP),
+                              v_tx_id,
+                              v_stato);
+                      END IF;
+                  END LOOP;
+
+                  IF TG_OP = 'DELETE' THEN
+                      RETURN OLD;
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.trgfn_documento_interno_righe_guard_testata()
+              IS 'Guard delle righe dei documenti interni di magazzino (inventari_righe, rettifiche_righe; TG_ARGV = tabella testata, colonna FK, colonna di stato, nome della GUC), BEFORE INSERT OR UPDATE OR DELETE: righe scrivibili solo con la testata in DRAFT; in CONFIRM scrive solo l''operazione — la stessa GUC transazionale della porta POSTED, e'' lei a fissare qta_sistema; POSTED e CANCEL congelate (E_MAG_DOCUMENTO_RIGHE_CONGELATE, CONFLITTO_STATO). Un UPDATE che sposta la riga controlla entrambe le testate. Testata assente = cascata gia'' ammessa a monte (DELETE solo in DRAFT) o fuori perimetro: passa. Brief: brief-db-magazzino-lotto-2-motore, sezione 3 (D-L2-h).';

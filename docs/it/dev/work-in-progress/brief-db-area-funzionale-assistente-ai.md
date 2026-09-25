@@ -16,8 +16,9 @@
 > raggiungibile **solo da un `SUPER_ADMIN`**: a nessun altro il permesso si può
 > concedere, perché manca la riga a cui appenderlo.
 >
-> ⭐ **Stato al 2026-09-24:** §5.2 fatto (backend). §4 (DB) da fare; §5.3 lo
-> aspetta.
+> ⭐ **Stato al 2026-09-25:** §4 (DB) ✅ **chiuso e applicato** (§4.4). §5.2
+> fatto (backend). **Resta al backend:** §5.3, presìdi 1, 3, 4 del §5.4, §5.5 —
+> niente più li blocca.
 >
 > ⇒ **Al DB: una riga di catalogo** (§4).
 > ⇒ **Al backend: una sola regola dei permessi per UI e AI, e un significato per
@@ -179,6 +180,33 @@ in più che nessuno aggiorna):
 confronto. Rinominare `schema_db` di una riga scollega in silenzio override e
 profili di quell'area. Proteggere anche `schema_db` è un changeSet a sé (il
 trigger di lock si rigenera, non si modifica): **non** fa parte di questo brief.
+
+### 4.4 ✅ Fatto e applicato il 2026-09-25 (DB, `dev/db-tid`)
+
+* **La riga:** appesa a `80_data/sql/config/aree_funzionali.csv` con i valori
+  della tabella del §4 (`14`, `ai_assistant` ×3, `Assistente AI`, `t`, `140`).
+  La porta il mirror esistente `20260228-17` (`runOnChange` + `ANY`): nessun
+  changeSet nuovo per il dato. Ritoccata solo l'intestazione `#` del mirror, che
+  diceva «10 aree, 1 per schema DB» (fuori dal checksum).
+* **I due `COMMENT`:** `00_schema/config/20260925-28-comment-aree-funzionali-schema-db-chiave-tecnica`.
+  Il `COMMENT` della colonna è il testo del §4.1; quello della tabella toglie
+  «ogni area corrisponde a uno schema» e «`schema_db` separato da `codice`»,
+  che il pgTAP smentisce, e non elenca le aree.
+* **Provato** sullo scratch `zeroerp_ci`, da owner, in `BEGIN … ROLLBACK`: SQL
+  **estratto** dallo YAML + upsert di **tutto** il CSV (14 righe) da temp table.
+  Le 13 righe esistenti escono identiche (`EXCEPT` a zero), la 14 entra, gli
+  invarianti di `test-permessi-strutture-base` reggono (14 attive,
+  `schema_db = codice` ovunque, `ordinamento` positivo), e un operatore senza
+  concessioni risolve `ai_assistant` a `BLOCCATO`. Guardrail letterali SQL e
+  `runOnChange`: verdi.
+* **Lettori di `schema_db` censiti** (doc auto-gen): `fn_resolve_livello_area`,
+  `fn_resolve_livello_oggetto`, `fn_get_user_permissions_map`,
+  `ui.fn_resolve_dashboard_config`. Nessuno la confronta con uno schema fisico:
+  la riga nuova non ne rompe nessuno.
+* **Applicato il 2026-09-25** (Tid): sullo scratch `databasechangelog` dice
+  `20260925-28` `EXECUTED` e il mirror `20260228-17` `RERAN`. La riga
+  `14 / ai_assistant` c'è su `zeroerp` e su `zeroerp_ci`, e il `COMMENT` nuovo
+  di `schema_db` è quello vivo. pgTAP verdi (corsa di Tid).
 
 ---
 
@@ -456,3 +484,5 @@ query più l'area «Assistente AI» fra quelle assegnabili nel pannello dei prof
 | 2026-09-24 | Tid | Dopo l'approfondimento: le letture dei tool in transazione di sola lettura entrano qui (§5.3 punto 3, §5.4 punto 4); la stessa garanzia per tutte le `GET` e il permesso nel verbo vanno in due brief propri (§8), il primo fra le prime cose da fare |
 | 2026-09-24 | backend | **§5.2 (parte A) fatta**, su decisione di Tid di procedere solo con quella: regola estratta (`valuta_accesso_endpoint`), 18 tool legati al gemello, `required_*` e `amm_software` ritirati, presidio 2 del §5.4. Resoconto e cambi di comportamento nel §5.2.1. Il DB **non** ha ancora eseguito il §4 (riga assente dal CSV su `dev/db-tid` e `main`): §5.3 e presìdi 1, 3, 4 restano in attesa |
 | 2026-09-25 | Tid | Gemelli di `cerca_articoli` e `cerca_billing_account`: restano i lookup cross-dominio (§5.2.1). Corretto lo scope emittente di `cerca_billing_account` (PK → soggetto-ruolo), poi spostato nel service: view e tool passano l'utente (regola del 2, ok Tid) |
+| 2026-09-25 | DB | **§4 scritto e provato** (§4.4): riga 14 nel CSV del mirror `20260228-17`, i due `COMMENT` in `20260925-28` |
+| 2026-09-25 | Tid | **§4 applicato**, pgTAP verdi: il DB ha chiuso la sua parte. Il brief resta in WIP per il backend (§5.3, presìdi 1, 3, 4, §5.5) |

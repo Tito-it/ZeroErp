@@ -127,6 +127,7 @@
 - [fn_has_identita_attiva](funzioni/fn_has_identita_attiva.md) — (latest review 19-04-2026)
 - [fn_imposta_deve_cambiare_password](funzioni/fn_imposta_deve_cambiare_password.md) — (scritta il 25-09-2026)
 - [fn_indirizzi_obbligatori_mancanti](funzioni/fn_indirizzi_obbligatori_mancanti.md) — (rev 2026-07-11)
+- [fn_is_proprietario_tabella](funzioni/fn_is_proprietario_tabella.md) — (scritta il 25-09-2026)
 - [fn_is_super_admin](funzioni/fn_is_super_admin.md) — (latest review 20-04-2026 — filtro OPERATORE)
 - [fn_job_run_end](funzioni/fn_job_run_end.md) — (latest review 18-06-2026 — registrazione run job headless)
 - [fn_job_run_start](funzioni/fn_job_run_start.md) — (latest review 18-06-2026 — registrazione run job headless)
