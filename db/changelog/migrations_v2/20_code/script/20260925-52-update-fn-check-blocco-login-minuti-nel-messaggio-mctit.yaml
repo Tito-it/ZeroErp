@@ -1,0 +1,181 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1, NOTE DEL BACKEND — I MINUTI DEL FRENO ARRIVANO A CHI PROVA:
+#   script.fn_check_blocco_login(p_auth_user_id, p_provenienza)
+#   Brief: brief-db-blocco-login-per-credenziale, sezione 12.8
+#
+# ── ⛔ IL DIFETTO CHE CHIUDE ─────────────────────────────────────────
+#   E_UTENTE_BLOCCATO era una frase chiusa («Account temporaneamente bloccato
+#   per troppi tentativi.»): i minuti rimanenti stavano solo nel contesto, che
+#   il backend non espone. E la frase descriveva un blocco dell'ACCOUNT, mentre
+#   da 20260925-10 e' un freno sulla sola coppia credenziale + provenienza.
+#   Il gemello E_LOGIN_ATTESA porta gia' i secondi nel messaggio: stessa forma.
+#
+# ── ⭐ L'UNICA RIGA CHE CAMBIA ───────────────────────────────────────
+#   Il raise del freno passa i minuti come valore del segnaposto
+#   (VARIADIC ARRAY[v_rimanenti::text]); il resto del corpo e' quello di
+#   20260925-10, preso dalla doc auto-generata. Firma invariata: CREATE OR
+#   REPLACE, proprietario e GRANT restano.
+#
+# ── ⚠️ ORDINE CON IL MESSAGGIO ───────────────────────────────────────
+#   Il %s nuovo entra da messaggi_errore.csv (80_data), che gira DOPO 20_code.
+#   Nell'ordine giusto: format() con un valore in piu' e nessun segnaposto
+#   ignora il valore. Nell'ordine opposto (%s senza valore) alzerebbe 22023 e
+#   l'errore di dominio sparirebbe: e' il presidio 5 di
+#   test-catalogo-messaggi-errore-completo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260925-52-update-fn-check-blocco-login-minuti-nel-messaggio-mctit.yaml
+
+  - changeSet:
+      id: 20260925-52-update-fn-check-blocco-login-minuti-nel-messaggio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_check_blocco_login(p_auth_user_id, p_provenienza): E_UTENTE_BLOCCATO passa i
+        minuti rimanenti come valore del segnaposto, come E_LOGIN_ATTESA passa i secondi. Firma
+        invariata. Brief: brief-db-blocco-login-per-credenziale §12.8.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_check_blocco_login'
+                 AND pg_get_function_identity_arguments(p.oid) = 'p_auth_user_id integer, p_provenienza inet';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_blocco_login(
+                  p_auth_user_id integer,
+                  p_provenienza  config.credenziali_provenienze.provenienza%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: prima della verifica della password, dire se questa credenziale
+              --   puo' provare da questa provenienza. Tre verifiche, il primo che
+              --   scatta vince: blocco dell'admin, freno sulla coppia, attesa crescente.
+              DECLARE
+                  v_credenziale_id    config.credenziali.id%TYPE;
+                  v_bloccata_at       config.credenziali.bloccata_at%TYPE;
+                  v_fallimenti        config.credenziali.fallimenti_consecutivi%TYPE;
+                  v_ultimo_fallimento config.credenziali.ultimo_fallimento_at%TYPE;
+                  v_bloccato_fino_a   config.credenziali_provenienze.bloccato_fino_a%TYPE;
+                  v_tetto             integer;
+                  v_attesa_base       integer;
+                  v_attesa_max        integer;
+                  v_attesa            integer;
+                  v_riprova_da        timestamptz;
+                  v_rimanenti         integer;
+              BEGIN
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 OR p_provenienza IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_check_blocco_login', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id,
+                                             'p_provenienza',  p_provenienza::text),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_check_blocco_login',
+                                         'credenziale e provenienza obbligatorie']);
+                  END IF;
+
+                  SELECT c.id, c.bloccata_at, c.fallimenti_consecutivi, c.ultimo_fallimento_at
+                    INTO v_credenziale_id, v_bloccata_at, v_fallimenti, v_ultimo_fallimento
+                    FROM config.credenziali c
+                   WHERE c.auth_user_id = p_auth_user_id;
+
+                  -- Nessuna riga: nessun tentativo, non bloccata.
+                  IF v_credenziale_id IS NULL THEN
+                      RETURN;
+                  END IF;
+
+                  -- 1. Blocco dell'admin: non scade.
+                  IF v_bloccata_at IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_check_blocco_login', 'E_CREDENZIALE_BLOCCATA',
+                          jsonb_build_object('auth_user_id', p_auth_user_id,
+                                             'bloccata_at',  v_bloccata_at),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- 2. Freno sulla coppia credenziale + provenienza.
+                  SELECT p.bloccato_fino_a
+                    INTO v_bloccato_fino_a
+                    FROM config.credenziali_provenienze p
+                   WHERE p.credenziale_id = v_credenziale_id
+                     AND p.provenienza    = p_provenienza;
+
+                  IF v_bloccato_fino_a IS NOT NULL THEN
+                      IF v_bloccato_fino_a <= now() THEN
+                          -- Freno scaduto: la coppia riparte da zero.
+                          DELETE FROM config.credenziali_provenienze p
+                           WHERE p.credenziale_id = v_credenziale_id
+                             AND p.provenienza    = p_provenienza;
+                      ELSE
+                          -- I minuti vanno nel messaggio (a chi prova) e nel contesto (al log).
+                          v_rimanenti := GREATEST(1,
+                              CEIL(EXTRACT(EPOCH FROM (v_bloccato_fino_a - now())) / 60)::integer);
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'script.fn_check_blocco_login', 'E_UTENTE_BLOCCATO',
+                              jsonb_build_object('auth_user_id',     p_auth_user_id,
+                                                 'provenienza',      p_provenienza::text,
+                                                 'bloccato_fino_a',  v_bloccato_fino_a,
+                                                 'minuti_rimanenti', v_rimanenti),
+                              NULL::uuid,
+                              VARIADIC ARRAY[v_rimanenti::text]);
+                      END IF;
+                  END IF;
+
+                  -- 3. Attesa crescente sulla credenziale (da qualunque provenienza).
+                  IF v_fallimenti > 0 THEN
+                      SELECT lp.tetto_credenziale, lp.attesa_base_secondi, lp.attesa_max_secondi
+                        INTO v_tetto, v_attesa_base, v_attesa_max
+                        FROM script.fn_login_parametri() lp;
+
+                      v_attesa := script.fn_login_attesa_secondi(
+                          v_fallimenti, v_tetto, v_attesa_base, v_attesa_max);
+
+                      IF v_attesa > 0 THEN
+                          v_riprova_da := v_ultimo_fallimento + make_interval(secs => v_attesa);
+                          IF v_riprova_da > now() THEN
+                              v_rimanenti := GREATEST(1,
+                                  CEIL(EXTRACT(EPOCH FROM (v_riprova_da - now())))::integer);
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database', 'script.fn_check_blocco_login', 'E_LOGIN_ATTESA',
+                                  jsonb_build_object('auth_user_id',      p_auth_user_id,
+                                                     'fallimenti',        v_fallimenti,
+                                                     'attesa_secondi',    v_attesa,
+                                                     'secondi_rimanenti', v_rimanenti),
+                                  NULL::uuid,
+                                  VARIADIC ARRAY[v_rimanenti::text]);
+                          END IF;
+                      END IF;
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_blocco_login(integer, inet) IS
+                  'Check del login, PRIMA della verifica della password, per CREDENZIALE e PROVENIENZA (M-4: nessun filtro su veste o ruolo). Nell''ordine, il primo che scatta vince: (1) blocco dell''admin -> E_CREDENZIALE_BLOCCATA, non scade; (2) freno sulla coppia credenziale + provenienza -> E_UTENTE_BLOCCATO con i minuti rimanenti nel messaggio e nel contesto, e un freno scaduto fa ripartire la coppia (riga cancellata); (3) attesa crescente sulla credenziale (fn_login_attesa_secondi) -> E_LOGIN_ATTESA con i secondi rimanenti. Nessuna riga in config.credenziali = passa. Credenziale NULL/<= 0 o provenienza NULL -> E_AUTH_CHIAMATA_NON_VALIDA. SECURITY DEFINER del PROPRIETARIO, non di un superuser, search_path bloccato; nessun guard di permesso, dichiarato (gira prima del login). Brief: brief-db-blocco-login-per-credenziale §2.4, §3.1, §12.8.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il ritorno alla frase chiusa passa dal CSV dei messaggi: senza il
+              -- valore del segnaposto, un %s rimasto alzerebbe 22023.
+              SELECT 1;
