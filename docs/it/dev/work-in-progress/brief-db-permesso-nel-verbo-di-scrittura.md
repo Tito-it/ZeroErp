@@ -9,12 +9,12 @@
 > [brief-db-magazzino-verbi-con-permesso.md](brief-db-magazzino-verbi-con-permesso.md)
 > (D-4, D-5). Il verbo generico del pannello (D-3) avrà il suo, all'inizio del
 > cantiere `magazzino`/`acquisti`.
-> **Avanzamento al 2026-09-25** — il percorso del §5, passo per passo:
+> **Avanzamento al 2026-09-25 (sera)** — il percorso del §5, passo per passo:
 >
 > | Passo | Stato |
 > | --- | --- |
 > | 1. BB del permesso | 🟡 **a metà**: `script.fn_guard_azione` applicato e verde (`20260924-38`); `fn_guard_livello` (D-2, D-5) **non esiste**, nasce col verbo del pannello |
-> | 2a. Porta del Lotto 2 (D-4) | ✅ **chiusa e committata** (`20260924-38` → `-42`, commit `f2e724b47`, PR #1681). **D-V1 decisa il 2026-09-25 (strada A)** e **applicata senza regressioni** (P-7 di quel brief): la porta `POSTED` si apre solo con la GUC **e** dentro un verbo, col BB nuovo `script.fn_is_proprietario_tabella` (`20260925-37…-39`). La riga di `presidi.csv` (P-6) arriva al DB coi mirror al prossimo migrate |
+> | 2a. Porta del Lotto 2 (D-4) | ✅ **chiusa, committata, backend allineato.** `20260924-38` → `-42` (commit `f2e724b47`, PR #1681); **D-V1 decisa il 2026-09-25 (strada A)**: la porta `POSTED` e le righe in `CONFIRM` si aprono solo con la GUC **e** dentro un verbo, col BB nuovo `script.fn_is_proprietario_tabella` (`20260925-37…-39`, commit `1d92ae6a2`, PR #1684). P-6 (`presidi.csv`) letto su dbdev: arrivato. §6 del brief operativo fatto dal backend il 2026-09-25 (fixture con `registra_magazzino`, test DB e smoke verdi); resta solo il suo commit |
 > | 2b. Verbo generico del pannello (D-3) | ⛔ **non iniziato, senza brief operativo**: è il prossimo lavoro del modello. La premessa del §7.1 regge al 2026-09-25 — `REL_CONSENTITE` contiene ancora `magazzino.causali`, `magazzini`, `ubicazioni`, anche se magazzini e ubicazioni hanno dal 2026-09-21 endpoint e drawer propri |
 > | 3. Domini esistenti | aperto per costruzione, senza data. ⭐ **Secondo caso già fatto** fuori dal cantiere magazzino: [brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md) — i verbi di blocco/sblocco della credenziale chiedono `script.fn_guard_super_admin` (`20260925-06`), e l'app ha perso `INSERT`/`UPDATE`/`DELETE` su `config.credenziali` e `config.credenziali_provenienze` (`20260925-24`) |
 >
@@ -238,3 +238,4 @@ migrare.
 | 2026-09-24 | Tid | D-5 decisa: il verbo dichiara l'oggetto, il BB rispetta gli override; correzione del gate in `fn_resolve_livello_oggetto` nel brief operativo di magazzino (§2.4) |
 | 2026-09-25 | DB | Stato riscritto in testa: porta del Lotto 2 committata (`f2e724b47`), D-V1 ancora aperta; `fn_guard_livello` e il verbo del pannello (D-3) non iniziati; registrato il secondo caso del modello (credenziali, `fn_guard_super_admin`, §4.1) |
 | 2026-09-25 | Tid, DB | D-V1 del brief di magazzino decisa (strada A) e scritta: nasce `script.fn_is_proprietario_tabella`, il modo in cui un guard riconosce di essere attraversato da un verbo |
+| 2026-09-25 | BE | Stato del passo 2a riscritto: P-7 committato (`1d92ae6a2`), P-6 arrivato al DB, §6 del brief di magazzino fatto dal backend (da committare). Aperti: 1 (`fn_guard_livello`), 2b (D-3), 3 |
