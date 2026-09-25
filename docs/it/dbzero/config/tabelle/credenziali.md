@@ -42,6 +42,8 @@
 |------|--------|--------|--------|
 | trg_credenziali_a10_guard_ultimo_super_admin_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION config.trgfn_credenziali_guard_ultimo_super_admin()` |
 | trg_credenziali_a10_guard_ultimo_super_admin_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION config.trgfn_credenziali_guard_ultimo_super_admin()` |
+| trg_credenziali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_credenziali_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -8,7 +8,9 @@
 -- Semantica attesa:
 --   - Utente senza identita -> nessuna riga
 --   - Identita inattiva -> nessuna riga
---   - Identita CLIENTE_PORTALE con binding PORTALE al ruolo -> 1 riga prio 2
+--   - Identita CLIENTE_PORTALE con binding PORTALE al ruolo -> 1 riga prio 3
+--     (era 2 fino al 20260925-80: D-3 di brief-db-pgtap-permessi-ereditati,
+--     AD_HOC 1, REPARTO 2, PORTALE 3 — il piu' specifico vince)
 --   - Identita CLIENTE_PORTALE con binding AD_HOC -> 1 riga prio 1
 --   - Binding inattivo -> esclusi
 --   - Profilo inattivo -> esclusi
@@ -20,7 +22,7 @@
 -- Indice test (1..5):
 --    1. Setup: ruolo CL costruito + auth_user + identita CLIENTE_PORTALE attiva
 --    2. Nessun binding -> nessuna riga
---    3. Binding PORTALE standard (seed 9001) -> 1 riga priorita 2
+--    3. Binding PORTALE standard (seed 9001) -> 1 riga priorita 3
 --    4. Binding AD_HOC aggiunto -> blocked da UNIQUE identita, testiamo
 --       disattivando PORTALE temporaneamente (NB: il binding PORTALE e'
 --       su ruolo_applicativo, non su identita, quindi non conflitta col
@@ -114,7 +116,7 @@ SELECT ok(
 -- =========================================================
 -- Il binding PORTALE seed (9001 - CLIENTE_PORTALE) esiste nel DB e
 -- potrebbe matchare sul ruolo. Controllo che il nostro auth_user_id
--- ritorni almeno il binding seed di default (priorita 2).
+-- ritorni almeno il binding seed di default (priorita 3).
 -- NB: se il seed standard e' attivo, avremo gia' 1 riga qui.
 SELECT ok(
     (SELECT count(*) FROM script.fn_get_profili_accesso_applicabili(
@@ -124,12 +126,13 @@ SELECT ok(
 );
 
 -- =========================================================
--- 3) Con binding seed PORTALE (CLIENTE_PORTALE_STANDARD) -> priorita 2
+-- 3) Con binding seed PORTALE (CLIENTE_PORTALE_STANDARD) -> priorita 3
 -- =========================================================
 -- Il seed §4.3.7 ha creato il profilo CLIENTE_PORTALE_STANDARD (tipo
 -- PORTALE) e il suo binding per ruolo_applicativo = CLIENTE_PORTALE.
 -- Quindi per un'identita CLIENTE_PORTALE il helper deve ritornare almeno
--- questo binding con priorita=2.
+-- questo binding con priorita=3 (rev 20260925-80, D-3: era 2, a pari
+-- merito col REPARTO).
 -- ⚠️ Il profilo si risolve dal binding (tipo + ruolo applicativo), non
 --   dall'id: 9001 e' vero solo perche' il seed porta l'id esplicito.
 CREATE TEMP TABLE _t_portale AS
@@ -150,9 +153,9 @@ SELECT ok(
               (SELECT auth_user_id FROM _t_au)
           )
          WHERE profilo_accesso_id = (SELECT profilo_id FROM _t_portale)
-           AND priorita = 2
+           AND priorita = 3
     ),
-    '3. Con seed PORTALE CLIENTE_PORTALE_STANDARD -> riga priorita 2 presente'
+    '3. Con seed PORTALE CLIENTE_PORTALE_STANDARD -> riga priorita 3 presente'
 );
 
 -- =========================================================
@@ -195,7 +198,7 @@ SELECT ok(
 -- =========================================================
 -- Simulazione della logica usata dai resolver:
 -- se scegliamo il primo profilo per priorita, deve essere l'AD_HOC
--- (priorita 1), non il PORTALE seed (priorita 2).
+-- (priorita 1), non il PORTALE seed (priorita 3).
 SELECT ok(
     (SELECT profilo_accesso_id
        FROM script.fn_get_profili_accesso_applicabili(
@@ -204,7 +207,7 @@ SELECT ok(
       ORDER BY priorita
       LIMIT 1
     ) = (SELECT profilo_id FROM _t_ah),
-    '5. ORDER BY priorita LIMIT 1 -> AD_HOC (prio 1) vince su PORTALE (prio 2)'
+    '5. ORDER BY priorita LIMIT 1 -> AD_HOC (prio 1) vince su PORTALE (prio 3)'
 );
 
 SELECT * FROM finish();

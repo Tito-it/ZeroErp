@@ -1,0 +1,156 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# fn_get_user_permissions_map: LE CTE livelli_user/best_per_area LASCIANO IL POSTO AL BUILDING BLOCK
+#   Brief: brief-db-pgtap-permessi-ereditati, sezioni 2-4 (D-1, D-2, D-3)
+#
+#   La versione set-based di fn_resolve_livello_area (-83), letta dal frontend per la
+#   mappa dei permessi. Le due CTE (`fn_get_profili_accesso_applicabili(p_auth_user_id)` +
+#   `DISTINCT ON (area_id) ... ORDER BY area_id, priorita`) erano la terza scrittura dello
+#   spareggio: ora il LEFT JOIN e' su script.fn_get_permessi_ereditati_aree (-81), che da'
+#   gia' una riga per area e raccoglie la sola veste OPERATORE (D-1).
+#   Il resto e' invariato: guard sul parametro, gate di contesto, i due flag, il CASE per
+#   area attiva, override prima dell'ereditato, default BLOCCATO.
+#
+#   Corpo dalla doc auto-gen (il vivo e' il 20260421-04). Firma e DECLARE ancorati dove
+#   c'e' una colonna; i due flag e il RETURNS jsonb sono calcolati.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260925-85-update-fn-get-user-permissions-map-ereditato-operatore-mctit.yaml
+
+  - changeSet:
+      id: 20260925-85-update-fn-get-user-permissions-map-ereditato-operatore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_get_user_permissions_map: l'ereditato per area viene da
+        script.fn_get_permessi_ereditati_aree (sede unica dello spareggio, sola veste
+        OPERATORE) invece delle CTE livelli_user/best_per_area. D-1 come -83. Firma ancorata,
+        identita' invariata. Brief: brief-db-pgtap-permessi-ereditati.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_get_permessi_ereditati_aree';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_user_permissions_map(
+                  p_auth_user_id  anagrafiche.identita_digitali.auth_user_id%TYPE
+              )
+              RETURNS jsonb   -- mappa calcolata { "schema_db": "LIVELLO", ... }
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_has_identita boolean;   -- flag calcolato (fn_has_identita_attiva)
+                  v_is_super     boolean;   -- flag calcolato (fn_is_super_admin)
+                  v_ctx_ruolo    anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Mappa livello accesso per tutte le aree funzionali
+                  --   attive (single roundtrip). JSONB { "schema": "LIV", ... }.
+                  --
+                  -- Catena (context-aware dal 21-04-2026):
+                  --   1. Guard parametro obbligatorio
+                  --   2. Gate GUC: se app.ruolo_applicativo popolata e
+                  --      != OPERATORE -> v_has_identita=false, v_is_super=false
+                  --      (il CASE nel jsonb_object_agg produce BLOCCATO
+                  --      per tutte le aree).
+                  --   3. Altrimenti pre-calcolo dei due flag.
+                  --   4. Per area attiva: override, poi ereditato
+                  --      (fn_get_permessi_ereditati_aree), poi BLOCCATO.
+                  -- Rev 20260925-85: l'ereditato non si ricalcola qui (erano le
+                  -- CTE livelli_user/best_per_area): lo da' il building block,
+                  -- sede unica dello spareggio e della veste OPERATORE (D-1, D-2).
+                  -- =========================================================
+
+                  -- 1. Guard parametro obbligatorio.
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_permissions_map',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          'p_auth_user_id obbligatorio e > 0.'
+                      );
+                  END IF;
+
+                  -- 2-3. Gate contesto GUC + pre-calcolo flag.
+                  v_ctx_ruolo := NULLIF(
+                      current_setting('app.ruolo_applicativo', true), ''
+                  )::config.ruolo_applicativo;
+
+                  IF v_ctx_ruolo IS NOT NULL
+                     AND v_ctx_ruolo <> 'OPERATORE'::config.ruolo_applicativo THEN
+                      -- Fail-closed: mappa produrra' BLOCCATO per ogni area.
+                      v_has_identita := false;
+                      v_is_super     := false;
+                  ELSE
+                      v_has_identita := script.fn_has_identita_attiva(
+                                            p_auth_user_id,
+                                            'OPERATORE'::config.ruolo_applicativo);
+                      v_is_super     := script.fn_is_super_admin(p_auth_user_id);
+                  END IF;
+
+                  -- 4. Aggregazione jsonb: override, poi ereditato, poi BLOCCATO.
+                  RETURN (
+                      SELECT COALESCE(
+                          jsonb_object_agg(
+                              af.schema_db,
+                              CASE
+                                  WHEN NOT v_has_identita
+                                      THEN 'BLOCCATO'
+                                  WHEN v_is_super
+                                      THEN 'TUTTO'
+                                  ELSE COALESCE(
+                                      uoa.livello,
+                                      e.livello,
+                                      'BLOCCATO'::config.livello_accesso
+                                  )::text
+                              END
+                          ),
+                          '{}'::jsonb
+                      )
+                        FROM config.aree_funzionali af
+                        LEFT JOIN config.user_override_aree uoa
+                          ON uoa.auth_user_id = p_auth_user_id
+                         AND uoa.area_id = af.id
+                         AND uoa.validita @> CURRENT_DATE
+                        LEFT JOIN script.fn_get_permessi_ereditati_aree(p_auth_user_id) e
+                          ON e.area_id = af.id
+                       WHERE af.attivo = TRUE
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_user_permissions_map(integer) IS
+                  'Mappa dei livelli di accesso di un utente su tutte le aree attive, in una chiamata '
+                  '({schema_db: livello}). Stessa catena di script.fn_resolve_livello_area: gate di '
+                  'contesto (veste diversa da OPERATORE -> tutto BLOCCATO), identita'' OPERATORE '
+                  'attiva, super admin -> TUTTO, override utente, ereditato dal profilo '
+                  '(script.fn_get_permessi_ereditati_aree: sola veste OPERATORE), default BLOCCATO. '
+                  'Rev 20260925-85 (brief-db-pgtap-permessi-ereditati, D-1 e D-2): l''ereditato non '
+                  'si ricalcola qui, e non conta piu'' i profili delle altre vesti dell''utente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il rollback riporterebbe i profili delle altre vesti nei permessi da operatore
+              -- (D-1): nessun ripristino automatico.
+              SELECT 1;

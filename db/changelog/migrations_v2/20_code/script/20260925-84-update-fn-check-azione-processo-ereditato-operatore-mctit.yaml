@@ -1,0 +1,153 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# fn_check_azione_processo: IL PASSO 4 LO DA' IL BUILDING BLOCK (e conta la sola veste OPERATORE)
+#   Brief: brief-db-pgtap-permessi-ereditati, sezioni 2-4 (D-1, D-2, D-3)
+#
+#   Gemello del -83 sulle azioni di processo. Catena invariata ai passi 0-3 e 5; il passo 4
+#   legge la riga dell'azione da script.fn_get_permessi_ereditati_azioni (-82) invece di
+#   riscrivere `ORDER BY h.priorita LIMIT 1` sui profili di tutte le vesti.
+#   ⚠️ Cambio di semantica (D-1): il profilo PORTALE di un'altra veste dell'utente non
+#   abilita piu' un'azione da operatore. E' il resolver che applica il permesso nei verbi
+#   (script.fn_guard_azione): il cambio arriva anche li', ed e' voluto.
+#   Niente ORDER BY/LIMIT: una riga al massimo per azione, permission_codename unico
+#   (uq_azioni_processo_permission_codename).
+#
+#   Corpo dalla doc auto-gen (il vivo e' il 20260421-04). Firma e DECLARE ancorati:
+#   l'identita' resta (integer, character varying). RETURNS boolean: e' una risposta
+#   calcolata dalla catena, non la proiezione di una colonna.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260925-84-update-fn-check-azione-processo-ereditato-operatore-mctit.yaml
+
+  - changeSet:
+      id: 20260925-84-update-fn-check-azione-processo-ereditato-operatore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_check_azione_processo: il passo 4 legge
+        script.fn_get_permessi_ereditati_azioni (sede unica dello spareggio, sola veste
+        OPERATORE) invece di riscriverlo. D-1: i profili delle altre vesti non abilitano piu'
+        azioni da operatore. Firma ancorata, identita' invariata. Brief:
+        brief-db-pgtap-permessi-ereditati.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_get_permessi_ereditati_azioni';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_azione_processo(
+                  p_auth_user_id         anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  p_permission_codename  config.azioni_processo.permission_codename%TYPE
+              )
+              RETURNS boolean   -- risposta della catena, non la proiezione di una colonna
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_abilitata   config.user_override_azioni.abilitata%TYPE;
+                  v_ctx_ruolo   anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Verifica azione di processo abilitata per l'utente.
+                  --
+                  -- Catena (context-aware dal 21-04-2026):
+                  --   0. Gate GUC: se app.ruolo_applicativo popolata e
+                  --      != OPERATORE -> false (fail-closed).
+                  --   1. Assenza identita OPERATORE attiva -> false
+                  --   2. fn_is_super_admin -> true
+                  --   3. Override utente azione (se valido)
+                  --   4. Ereditato dal profilo: fn_get_permessi_ereditati_azioni
+                  --      (sola veste OPERATORE; AD_HOC 1 > REPARTO 2 > PORTALE 3)
+                  --   5. Default -> false (negata)
+                  -- Rev 20260925-84: il passo 4 non riscrive lo spareggio, lo
+                  -- legge dal building block (sede unica, D-2) — e con esso la
+                  -- veste OPERATORE (D-1).
+                  -- =========================================================
+
+                  -- 0. Gate contesto GUC (fail-closed su non-OPERATORE).
+                  v_ctx_ruolo := NULLIF(
+                      current_setting('app.ruolo_applicativo', true), ''
+                  )::config.ruolo_applicativo;
+
+                  IF v_ctx_ruolo IS NOT NULL
+                     AND v_ctx_ruolo <> 'OPERATORE'::config.ruolo_applicativo THEN
+                      RETURN false;
+                  END IF;
+
+                  -- 1. Identita OPERATORE attiva.
+                  IF NOT script.fn_has_identita_attiva(
+                             p_auth_user_id,
+                             'OPERATORE'::config.ruolo_applicativo) THEN
+                      RETURN false;
+                  END IF;
+
+                  -- 2. Super admin? Bypass totale.
+                  IF script.fn_is_super_admin(p_auth_user_id) THEN
+                      RETURN true;
+                  END IF;
+
+                  -- 3. Override utente azione (invariato).
+                  SELECT uoa.abilitata
+                    INTO v_abilitata
+                    FROM config.user_override_azioni uoa
+                    JOIN config.azioni_processo ap ON ap.id = uoa.azione_id
+                   WHERE uoa.auth_user_id = p_auth_user_id
+                     AND ap.permission_codename = p_permission_codename
+                     AND (uoa.valido_dal IS NULL OR uoa.valido_dal <= CURRENT_DATE)
+                     AND (uoa.valido_al  IS NULL OR uoa.valido_al  >= CURRENT_DATE);
+
+                  IF FOUND THEN
+                      RETURN v_abilitata;
+                  END IF;
+
+                  -- 4. Ereditato dal profilo: una riga al massimo per azione
+                  --    (DISTINCT ON nel building block, permission_codename unico).
+                  SELECT e.abilitata
+                    INTO v_abilitata
+                    FROM script.fn_get_permessi_ereditati_azioni(p_auth_user_id) e
+                    JOIN config.azioni_processo ap
+                      ON ap.id = e.azione_id
+                   WHERE ap.permission_codename = p_permission_codename;
+
+                  IF FOUND THEN
+                      RETURN v_abilitata;
+                  END IF;
+
+                  -- 5. Default sicuro.
+                  RETURN false;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_azione_processo(integer, character varying) IS
+                  'Verifica se un''azione di processo e'' abilitata per un utente. Catena: gate di '
+                  'contesto (app.ruolo_applicativo valorizzata e diversa da OPERATORE -> false), '
+                  'identita'' OPERATORE attiva, super admin -> true, override utente valido, ereditato '
+                  'dal profilo (script.fn_get_permessi_ereditati_azioni: sola veste OPERATORE, AD_HOC > '
+                  'REPARTO > PORTALE), default negata. Rev 20260925-84 (brief-db-pgtap-permessi-'
+                  'ereditati, D-1 e D-2): il passo 4 non riscrive lo spareggio e non conta piu'' i '
+                  'profili delle altre vesti dell''utente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il rollback riporterebbe i profili delle altre vesti nei permessi da operatore
+              -- (D-1): nessun ripristino automatico.
+              SELECT 1;

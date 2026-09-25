@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'EREDITATO DELLE AZIONI DI PROCESSO IN UN POSTO SOLO: script.fn_get_permessi_ereditati_azioni
+#   Brief: brief-db-pgtap-permessi-ereditati, sezioni 2 e 4 (D-1, D-2, D-3)
+#
+#   Gemello del -81 sulle azioni: stessa veste (OPERATORE, D-1), stesso spareggio per
+#   priorita' (determinato per gli indici unici dei binding, D-3), stessa forma.
+#   Il passo 4 di fn_check_azione_processo (ORDER BY priorita LIMIT 1), la CTE
+#   best_per_azione di fn_get_user_actions_map e la query delle azioni del pannello
+#   permessi (backend) erano tre scritture dello stesso criterio: da -84/-86 i due resolver
+#   lo CHIAMANO, e il backend pure.
+#
+#   Una riga per azione COPERTA da almeno un profilo; un'azione assente vale «negata», e lo
+#   decide il chiamante. LANGUAGE sql BEGIN ATOMIC, da sola nel suo `- sql:` (pgjdbc).
+#   Tutte le colonne ancorate. INVOKER, STABLE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260925-82-create-fn-get-permessi-ereditati-azioni-mctit.yaml
+
+  - changeSet:
+      id: 20260925-82-create-fn-get-permessi-ereditati-azioni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_get_permessi_ereditati_azioni(p_auth_user_id): per ogni azione di processo
+        coperta dai profili della veste OPERATORE, l'abilitazione del profilo di priorita'
+        piu' bassa e il profilo che la da'. Sede unica del passo 4 dei resolver di azione
+        (D-1, D-2, D-3). BEGIN ATOMIC, INVOKER, STABLE. Brief: brief-db-pgtap-permessi-ereditati.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_get_profili_accesso_applicabili';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_get_permessi_ereditati_azioni';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_permessi_ereditati_azioni(
+                  p_auth_user_id  anagrafiche.identita_digitali.auth_user_id%TYPE
+              )
+              RETURNS TABLE(
+                  azione_id            config.profili_accesso_azioni.azione_id%TYPE,
+                  abilitata            config.profili_accesso_azioni.abilitata%TYPE,
+                  profilo_accesso_id   config.profili_accesso.id%TYPE,
+                  profilo_tipo         config.profili_accesso.tipo%TYPE,
+                  profilo_descrizione  config.profili_accesso.descrizione%TYPE
+              )
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT DISTINCT ON (paz.azione_id)
+                         paz.azione_id,
+                         paz.abilitata,
+                         pa.id,
+                         pa.tipo,
+                         pa.descrizione
+                    FROM script.fn_get_profili_accesso_applicabili(
+                             p_auth_user_id,
+                             'OPERATORE'::config.ruolo_applicativo) h
+                    JOIN config.profili_accesso_azioni paz
+                      ON paz.profilo_accesso_id = h.profilo_accesso_id
+                    JOIN config.profili_accesso pa
+                      ON pa.id = h.profilo_accesso_id
+                   ORDER BY paz.azione_id, h.priorita;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_get_permessi_ereditati_azioni(integer) IS
+                  'L''ereditato delle azioni di processo di un operatore: per ogni azione coperta da '
+                  'almeno un profilo della veste OPERATORE, l''abilitazione del profilo di priorita'' '
+                  'piu'' bassa (AD_HOC 1, REPARTO 2, PORTALE 3) e il profilo che la da'' (id, tipo, '
+                  'descrizione). Azione assente = nessun profilo la copre: vale negata, e lo decide il '
+                  'chiamante. Niente override, niente super admin. Sede UNICA del passo 4 di '
+                  'script.fn_check_azione_processo e script.fn_get_user_actions_map (che la chiamano) '
+                  'e delle azioni «ereditate» del pannello permessi (backend). Gemella di '
+                  'script.fn_get_permessi_ereditati_aree. BEGIN ATOMIC, INVOKER, STABLE. Brief: '
+                  'brief-db-pgtap-permessi-ereditati (D-1, D-2, D-3).';
+
+              GRANT EXECUTE ON FUNCTION script.fn_get_permessi_ereditati_azioni(integer) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_permessi_ereditati_azioni(integer);

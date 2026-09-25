@@ -36,5 +36,12 @@
 | pk_tabelle_gestibili | `CREATE UNIQUE INDEX pk_tabelle_gestibili ON config.tabelle_gestibili USING btree (id)` |
 | uq_tabelle_gestibili_codice_interno | `CREATE UNIQUE INDEX uq_tabelle_gestibili_codice_interno ON config.tabelle_gestibili USING btree (codice_interno)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_tabelle_gestibili_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
+| trg_tabelle_gestibili_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_tabelle_gestibili_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

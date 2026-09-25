@@ -15,21 +15,25 @@ CREATE OR REPLACE FUNCTION script.fn_resolve_livello_area(p_auth_user_id integer
 AS $function$
 DECLARE
     v_livello    config.user_override_aree.livello%TYPE;
-    v_ctx_ruolo  config.ruolo_applicativo;
+    v_ctx_ruolo  anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
 BEGIN
     -- =========================================================
     -- Scopo:
     --   Risolve livello accesso area per un'area funzionale.
     --
-    -- Catena (post PR-B 21-04-2026, context-aware):
+    -- Catena (context-aware dal 21-04-2026):
     --   0. Gate GUC: se app.ruolo_applicativo popolata e
     --      != OPERATORE -> BLOCCATO (fail-closed).
     --   1. Assenza identita OPERATORE attiva -> BLOCCATO
     --   2. fn_is_super_admin -> TUTTO
     --   3. Override utente area (se valido temporalmente)
-    --   4. Profilo via fn_get_profili_accesso_applicabili
-    --      (AD_HOC prio 1 > REPARTO/PORTALE prio 2)
+    --   4. Ereditato dal profilo: fn_get_permessi_ereditati_aree
+    --      (sola veste OPERATORE; AD_HOC 1 > REPARTO 2 > PORTALE 3)
     --   5. Default -> BLOCCATO
+    -- Rev 20260925-83: il passo 4 non riscrive lo spareggio, lo
+    -- legge dal building block (sede unica, D-2) — e con esso la
+    -- veste OPERATORE (D-1): prima contavano i profili di tutte le
+    -- vesti dell'utente.
     -- =========================================================
 
     -- 0. Gate contesto GUC (fail-closed su non-OPERATORE).
@@ -67,17 +71,14 @@ BEGIN
         RETURN v_livello;
     END IF;
 
-    -- 4. Profilo via bindings (helper, 1-arg -> default NULL).
-    SELECT paa.livello
+    -- 4. Ereditato dal profilo: una riga al massimo per area
+    --    (DISTINCT ON nel building block, schema_db unico).
+    SELECT e.livello
       INTO v_livello
-      FROM script.fn_get_profili_accesso_applicabili(p_auth_user_id) h
-      JOIN config.profili_accesso_aree paa
-        ON paa.profilo_accesso_id = h.profilo_accesso_id
+      FROM script.fn_get_permessi_ereditati_aree(p_auth_user_id) e
       JOIN config.aree_funzionali af
-        ON af.id = paa.area_id
-     WHERE af.schema_db = p_area_schema_db
-     ORDER BY h.priorita
-     LIMIT 1;
+        ON af.id = e.area_id
+     WHERE af.schema_db = p_area_schema_db;
 
     IF FOUND THEN
         RETURN v_livello;
@@ -89,7 +90,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.fn_resolve_livello_area(p_auth_user_id integer, p_area_schema_db character varying)
-IS 'Risolve livello accesso area per utente. Context-aware (post PR-B 21-04-2026): gate GUC app.ruolo_applicativo != OPERATORE -> BLOCCATO. Altrimenti catena legacy: has_identita, fn_is_super_admin, override, profili via helper.';
+IS 'Risolve il livello di accesso di un utente su un''area. Catena: gate di contesto (app.ruolo_applicativo valorizzata e diversa da OPERATORE -> BLOCCATO), identita'' OPERATORE attiva, super admin -> TUTTO, override utente valido, ereditato dal profilo (script.fn_get_permessi_ereditati_aree: sola veste OPERATORE, AD_HOC > REPARTO > PORTALE), default BLOCCATO. Rev 20260925-83 (brief-db-pgtap-permessi-ereditati, D-1 e D-2): il passo 4 non riscrive lo spareggio e non conta piu'' i profili delle altre vesti dell''utente.';
 ```
 
 ---

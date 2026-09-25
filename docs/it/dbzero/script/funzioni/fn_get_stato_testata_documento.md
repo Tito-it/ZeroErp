@@ -31,12 +31,16 @@ BEGIN
   --    testata c'e', `stato` non e' mai NULL. Il chiamante puo'
   --    quindi usare l'assenza di riga come segnale, e non deve
   --    distinguere un NULL da un vuoto.
+  --    (EMAIL_BOZZA: `stato` e' NOT NULL sulla tabella stessa,
+  --    ed e' gia' il codice — il contratto regge uguale.)
   --
-  -- Chi lo chiama (2026-09-22):
+  -- Chi lo chiama (2026-09-25):
   --   - vendite.trgfn_doc_righe_lock_fuori_bozza (il guard
   --     generico: righe di documento solo in bozza);
   --   - vendite.trgfn_dlt_block_ordrig_ddtrig (l'etichetta per i
-  --     messaggi sui legami a valle).
+  --     messaggi sui legami a valle);
+  --   - config.trgfn_email_allegato_guard_solo_bozza (gli
+  --     allegati di una mail si toccano solo in bozza).
   -- =========================================================
   IF p_testata_id IS NULL OR p_testata_id <= 0 THEN
     RETURN;   -- nessuna riga: il chiamante lo legge come «assente»
@@ -66,6 +70,15 @@ BEGIN
       FROM vendite.contratti c
       JOIN config.stati_doc_contratti s ON s.id = c.stato_doc_contratto_id
      WHERE c.id = p_testata_id;
+
+  ELSIF p_documento = 'EMAIL_BOZZA' THEN
+    -- rev 2026-09-25: la bozza di una mail. Lo stato e' gia' il
+    -- codice; l'etichetta e' l'oggetto, che una persona riconosce.
+    RETURN QUERY
+    SELECT o.stato::text,
+           concat('La mail «', left(o.oggetto, 80), '»')
+      FROM config.email_outbox o
+     WHERE o.id = p_testata_id;
 
   ELSE
     -- Errore di CHIAMANTE, non di dato: nessuna persona sceglie

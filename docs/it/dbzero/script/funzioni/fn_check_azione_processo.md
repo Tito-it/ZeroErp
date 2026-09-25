@@ -15,20 +15,24 @@ CREATE OR REPLACE FUNCTION script.fn_check_azione_processo(p_auth_user_id intege
 AS $function$
 DECLARE
     v_abilitata   config.user_override_azioni.abilitata%TYPE;
-    v_ctx_ruolo   config.ruolo_applicativo;
+    v_ctx_ruolo   anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
 BEGIN
     -- =========================================================
     -- Scopo:
     --   Verifica azione di processo abilitata per l'utente.
     --
-    -- Catena (post PR-B 21-04-2026, context-aware):
+    -- Catena (context-aware dal 21-04-2026):
     --   0. Gate GUC: se app.ruolo_applicativo popolata e
     --      != OPERATORE -> false (fail-closed).
     --   1. Assenza identita OPERATORE attiva -> false
     --   2. fn_is_super_admin -> true
     --   3. Override utente azione (se valido)
-    --   4. Azione via fn_get_profili_accesso_applicabili
+    --   4. Ereditato dal profilo: fn_get_permessi_ereditati_azioni
+    --      (sola veste OPERATORE; AD_HOC 1 > REPARTO 2 > PORTALE 3)
     --   5. Default -> false (negata)
+    -- Rev 20260925-84: il passo 4 non riscrive lo spareggio, lo
+    -- legge dal building block (sede unica, D-2) — e con esso la
+    -- veste OPERATORE (D-1).
     -- =========================================================
 
     -- 0. Gate contesto GUC (fail-closed su non-OPERATORE).
@@ -67,17 +71,14 @@ BEGIN
         RETURN v_abilitata;
     END IF;
 
-    -- 4. Azione via bindings (helper, 1-arg -> default NULL).
-    SELECT paz.abilitata
+    -- 4. Ereditato dal profilo: una riga al massimo per azione
+    --    (DISTINCT ON nel building block, permission_codename unico).
+    SELECT e.abilitata
       INTO v_abilitata
-      FROM script.fn_get_profili_accesso_applicabili(p_auth_user_id) h
-      JOIN config.profili_accesso_azioni paz
-        ON paz.profilo_accesso_id = h.profilo_accesso_id
+      FROM script.fn_get_permessi_ereditati_azioni(p_auth_user_id) e
       JOIN config.azioni_processo ap
-        ON ap.id = paz.azione_id
-     WHERE ap.permission_codename = p_permission_codename
-     ORDER BY h.priorita
-     LIMIT 1;
+        ON ap.id = e.azione_id
+     WHERE ap.permission_codename = p_permission_codename;
 
     IF FOUND THEN
         RETURN v_abilitata;
@@ -89,7 +90,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.fn_check_azione_processo(p_auth_user_id integer, p_permission_codename character varying)
-IS 'Verifica se azione abilitata per utente. Context-aware (post PR-B 21-04-2026): gate GUC app.ruolo_applicativo != OPERATORE -> false. Altrimenti catena legacy: has_identita, fn_is_super_admin, override, azione via helper.';
+IS 'Verifica se un''azione di processo e'' abilitata per un utente. Catena: gate di contesto (app.ruolo_applicativo valorizzata e diversa da OPERATORE -> false), identita'' OPERATORE attiva, super admin -> true, override utente valido, ereditato dal profilo (script.fn_get_permessi_ereditati_azioni: sola veste OPERATORE, AD_HOC > REPARTO > PORTALE), default negata. Rev 20260925-84 (brief-db-pgtap-permessi-ereditati, D-1 e D-2): il passo 4 non riscrive lo spareggio e non conta piu'' i profili delle altre vesti dell''utente.';
 ```
 
 ---
