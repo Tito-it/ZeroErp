@@ -402,6 +402,13 @@ dalla corsa del 21-09, e sono candidati RIENTRATI da togliere con
    (`comuni`, `indirizzi`, `indirizzi_dettaglio`,
    `catasto_unita_immobiliari`: l'UPDATE lì riesce) — quindi non è un presidio
    così com'è scritto, ed è una lente, non un criterio.
+   ⛔ *Corretto il 2026-09-25: non erano falsi positivi.* Il trigger salta le
+   righe con `storicizza = false`; su una riga storicizzata l'UPDATE di
+   `catasto_unita_immobiliari` moriva anche su dbdev (provato in rollback).
+   Erano **cinque** madri rotte, quattro anche su dbdev, e il censimento era il
+   criterio giusto: è diventato il pgTAP
+   `dbops/test-storico-colonna-fk-dei-trigger-v1`. Chiuso da
+   [brief-db-storico-colonna-fk-dei-trigger.md](brief-db-storico-colonna-fk-dei-trigger.md).
 3. ⚠️ **`config/test-fn-email-sistema` è rosso anche su dbdev** (5 asserzioni):
    non è un file che «cerca invece di costruire», è un rosso che il registro
    della CI nasconde dietro l'etichetta. Fuori dal lotto 1: va guardato per

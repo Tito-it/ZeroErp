@@ -40,7 +40,7 @@
 - [value-normalizer](manual/value-normalizer.md) — Centralizzare utility riusabili di normalizzazione valori input.
 
 ## Altri contenuti
-- [auth_views_audit](manual/auth_views_audit.md) — Override delle view SimpleJWT per agganciare: (a) l'audit login/refresh nella tabella dbops.sessioni_utente, (b) il controllo blocco utente per tentativi falliti, (c) il throttle IP, (d) il guard cross-namespace multi-v…
+- [auth_views_audit](manual/auth_views_audit.md) — Override delle view SimpleJWT per agganciare: (a) l'audit login/refresh nella tabella dbops.sessioni_utente, (b) lo stato della credenziale — blocco dell'admin, freno per provenienza, attesa crescente —, (c) il throttle…
 - [emittente_fiscale_scope_mixin](manual/emittente_fiscale_scope_mixin.md) — Mixin per ViewSet e GenericAPIView che filtra automaticamente il queryset in base agli emittenti fiscali autorizzati per l'utente corrente.
 - [gen-bk-docs](manual/gen-bk-docs.md) — Automatizzare la generazione degli indici index.md (e opzionalmente index.ci.md) per docs/it/backend/<area>/, includendo una descrizione breve estratta dalla sezione **Scopo**.
 - [jwt_audit_authentication](manual/jwt_audit_authentication.md) — Subclass DRF di rest_framework_simplejwt.authentication.JWTAuthentication che, subito dopo un authenticate() di successo e prima che il view body inizi a scrivere:

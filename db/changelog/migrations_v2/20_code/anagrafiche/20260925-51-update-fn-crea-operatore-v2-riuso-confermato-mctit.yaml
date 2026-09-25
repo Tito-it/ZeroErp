@@ -1,0 +1,400 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 — IL RIUSO DELLA CREDENZIALE NON E' PIU' SILENZIOSO
+#   Brief: brief-db-blocco-login-per-credenziale, sezione 12.7 (rilievo del BE,
+#   decisione di Tid del 2026-09-25: entrambe le difese, a DB)
+#
+# Corpo di partenza: 20260925-42 (applicato, uguale al vivo: COMMENT verificato).
+#
+# ── IL DIFETTO ───────────────────────────────────────────────────────
+#   Dal -42 la madre riusa la credenziale in base alla SOLA email. Un'email
+#   sbagliata collegava la veste OPERATORE alla credenziale di un'altra persona,
+#   e l'admin lo scopriva solo dall'avviso «credenziale riusata», a cose fatte.
+#   Prima del -42 l'email gia' in uso fermava tutto (E_ADMIN_EMAIL_DUPLICATA).
+#
+# ── 1. ⛔ ALTRA PERSONA, DOVE IL MODELLO LO SA DIRE ───────────────────
+#   Se una veste della credenziale sta su un soggetto PERSONA FISICA che non e'
+#   l'operatore — flusso B: un altro soggetto; flusso A: un altro codice
+#   fiscale — e' un'altra persona: E_CREDENZIALE_ALTRA_PERSONA (DATO_ERRATO,
+#   campo = email). Con lo stesso CF nel flusso A e' la stessa persona, e parla
+#   fn_crea_soggetto_pf (E_ADMIN_CF_DUPLICATO: si usa il soggetto esistente).
+#   Le vesti di un cliente AZIENDA non dicono chi e' la persona (il guard di
+#   coerenza chiede solo il ruolo CL): li' decide l'admin, al punto 2.
+#
+# ── 2. ⭐ IL CONSENSO E' UNA DICHIARAZIONE ─────────────────────────────
+#   p_riusa_auth_user_id (nuovo, in coda, DEFAULT NULL) = la credenziale che
+#   l'admin ha visto nel dialog. La madre pretende che dica la credenziale che
+#   c'e': NULL se l'email e' nuova, l'id trovato se esiste. Qualunque
+#   differenza -> E_CREDENZIALE_DA_CONFERMARE (CONFLITTO_STATO), con username e
+#   vesti della credenziale nel contesto; il frontend mostra, l'admin conferma,
+#   il backend rimanda con l'id. Stampo: la dichiarazione di
+#   pagamenti.fn_posta_contabile (D13, E_CONTABILE_DICHIARAZIONE_NON_CORRISPONDE).
+#   Perche' un id e non un booleano: un «si'» non dice A COSA; l'id si', e una
+#   credenziale cambiata fra il dialog e l'invio ferma di nuovo.
+#   Il controllo sta DOPO il soggetto: i rifiuti definitivi parlano prima, e
+#   l'admin non conferma qualcosa che sarebbe rifiutato comunque.
+#   ⭐ Il default torna a essere «fermarsi prima di scrivere», e la decisione
+#   sta nella stessa istruzione che scrive.
+#
+# ── ⛔ CONTRATTO CHE CAMBIA: DROP + CREATE ────────────────────────────
+#   Firma da 17 a 18 parametri (p_riusa_auth_user_id in coda). Ritorno
+#   invariato. Censiti il 2026-09-25: a DB dbops.fn_pgtap_crea_operatore_umano
+#   (email sempre nuova: non cambia); backend amm_software_repository.crea_operatore
+#   (brief §12.4, B-6); pgTAP test-crea-operatore-riusa-credenziale-v1
+#   (adeguato nello stesso giro), test-fn-crea-operatore (test 9: gia'
+#   operatore, rifiutato prima — invariato).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260925-51-update-fn-crea-operatore-v2-riuso-confermato-mctit.yaml
+
+  - changeSet:
+      id: 20260925-51-update-fn-crea-operatore-v2-riuso-confermato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_crea_operatore_v2: il riuso della credenziale non e' piu' silenzioso. Veste
+        su una persona fisica diversa dall'operatore -> E_CREDENZIALE_ALTRA_PERSONA; altrimenti
+        serve il consenso p_riusa_auth_user_id = la credenziale trovata, o
+        E_CREDENZIALE_DA_CONFERMARE col contesto per il dialog. DROP + CREATE (18 parametri).
+        Brief: brief-db-blocco-login-per-credenziale §12.7.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_crea_operatore_v2(
+                  uuid, text, text, text, text, text, text, integer, integer, date, character,
+                  boolean, date, date, integer, bigint, bigint);
+
+              CREATE FUNCTION anagrafiche.fn_crea_operatore_v2(
+                  p_soggetto_id                    uuid      DEFAULT NULL::uuid,
+                  p_cognome                        text      DEFAULT NULL::text,
+                  p_nome                           text      DEFAULT NULL::text,
+                  p_codice_fiscale                 text      DEFAULT NULL::text,
+                  p_username                       text      DEFAULT NULL::text,
+                  p_email                          text      DEFAULT NULL::text,
+                  p_password_hash                  text      DEFAULT NULL::text,
+                  p_qualifica_id                   integer   DEFAULT NULL::integer,
+                  p_unita_organizzativa_id         integer   DEFAULT NULL::integer,
+                  p_data_nascita                   date      DEFAULT NULL::date,
+                  p_sesso                          character DEFAULT 'M'::bpchar,
+                  p_is_super_admin                 boolean   DEFAULT false,
+                  p_valido_dal                     date      DEFAULT CURRENT_DATE,
+                  p_valido_al                      date      DEFAULT NULL::date,
+                  p_comune_nascita_id              integer   DEFAULT NULL::integer,
+                  p_indirizzo_resid_dettaglio_id   bigint    DEFAULT NULL::bigint,
+                  p_indirizzo_domfisc_dettaglio_id bigint    DEFAULT NULL::bigint,
+                  -- ⭐ Rev 20260925-51: la credenziale che l'admin ha VISTO e confermato di
+                  --   riusare (django.auth_user.id: integer esplicito, niente %TYPE).
+                  p_riusa_auth_user_id             integer   DEFAULT NULL::integer
+              )
+              -- ⚠️ integer e text espliciti: sono colonne di django.auth_user.
+              RETURNS TABLE (
+                  auth_user_id        integer,
+                  username            text,
+                  credenziale_riusata boolean
+              )
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  -- integer/text espliciti: colonne di django.auth_user (niente %TYPE).
+                  v_auth_user_id     integer;
+                  v_username         text;
+                  v_riusata          boolean := false;
+                  v_soggetto_id      anagrafiche.soggetti.id%TYPE;
+                  v_ru_id            anagrafiche.risorse_umane.id%TYPE;
+                  v_tipo_soggetto_id config.tipi_soggetto_dettaglio.tipo_soggetto_id%TYPE;
+                  v_veste_attiva     anagrafiche.identita_digitali.attivo%TYPE;
+                  v_trovata          integer;   -- la credenziale dell'email, se c'era (django: niente %TYPE)
+                  v_vesti            jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: orchestratore della creazione di un operatore.
+                  --   Due flussi sul soggetto (A: nuovo / B: esistente).
+                  --   ⭐ Rev 20260925-42 (brief-db-blocco-login-per-credenziale §5.2):
+                  --   - la credenziale dell'email, se c'e', si RIUSA (D-6):
+                  --     password, username e nome restano i suoi;
+                  --   - la veste OPERATORE nasce SPENTA, sempre: la accende
+                  --     l'attivazione dell'invito (regola unica, R-2);
+                  --   - una credenziale che ha gia' una veste OPERATORE (attiva
+                  --     o spenta) si rifiuta: il rimedio e' il (re)invito.
+                  --   ⭐ Rev 20260925-51 (§12.7 del brief), il riuso non e' piu' silenzioso:
+                  --   - se la credenziale ha una veste su una PERSONA FISICA diversa
+                  --     dall'operatore, e' un'altra persona: E_CREDENZIALE_ALTRA_PERSONA;
+                  --   - negli altri casi il riuso vuole il CONSENSO: p_riusa_auth_user_id
+                  --     deve dichiarare la credenziale trovata, altrimenti
+                  --     E_CREDENZIALE_DA_CONFERMARE (col contesto per il dialog).
+                  -- Ritorna: la credenziale, il suo username EFFETTIVO, e se e'
+                  --   stata riusata (allora la password passata e' ignorata).
+                  -- =========================================================
+
+                  -- ============ Guard comuni ============
+                  -- ⚠️ Username e password_hash NON si validano qui: servono solo
+                  --   se la credenziale va creata, e allora li valida
+                  --   fn_crea_auth_user. Sulla credenziale riusata non servono.
+                  IF p_email IS NULL OR TRIM(p_email) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_operatore_v2',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('parametro', 'p_email'),
+                          NULL::uuid, 'Email obbligatoria.'
+                      );
+                  END IF;
+
+                  IF p_qualifica_id IS NULL OR p_qualifica_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_operatore_v2',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('parametro', 'p_qualifica_id'),
+                          NULL::uuid, 'Qualifica obbligatoria.'
+                      );
+                  END IF;
+
+                  -- ============ Step 1: la credenziale — riusata o creata ============
+                  -- La regola «quale credenziale ha questa email» sta in un posto
+                  -- solo, senza distinguere maiuscole e minuscole (D-9).
+                  v_auth_user_id := script.fn_get_auth_user_id_for_email(p_email);
+
+                  IF v_auth_user_id IS NOT NULL THEN
+                      -- ⭐ Serializza due creazioni sulla stessa credenziale: la
+                      --   seconda rilegge le vesti DOPO il COMMIT della prima.
+                      PERFORM 1
+                        FROM django.auth_user au
+                       WHERE au.id = v_auth_user_id
+                         FOR UPDATE;
+
+                      -- ⛔ Gia' operatore (attiva o spenta): con la veste che nasce
+                      --   spenta l'unique WHERE attivo qui non scatterebbe mai, e il
+                      --   duplicato scoppierebbe all'attivazione. DISABILITATO non
+                      --   conta: si ritira (R-5).
+                      SELECT bool_or(idg.attivo)
+                        INTO v_veste_attiva
+                        FROM anagrafiche.identita_digitali idg
+                       WHERE idg.auth_user_id = v_auth_user_id
+                         AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo;
+
+                      IF v_veste_attiva IS NOT NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'anagrafiche.fn_crea_operatore_v2',
+                              'E_CREDENZIALE_GIA_OPERATORE',
+                              jsonb_build_object('campo',        'email',
+                                                 'auth_user_id', v_auth_user_id,
+                                                 'veste_attiva', v_veste_attiva),
+                              NULL::uuid,
+                              TRIM(p_email));
+                      END IF;
+
+                      -- ⛔ Rev 20260925-51 — ALTRA PERSONA, dove il modello lo sa dire: una
+                      --   veste della credenziale sta su un soggetto PERSONA FISICA che non
+                      --   e' l'operatore (flusso B: un altro soggetto; flusso A: un altro
+                      --   codice fiscale). Con lo STESSO codice fiscale nel flusso A non si
+                      --   solleva qui: e' la stessa persona, e fn_crea_soggetto_pf dira'
+                      --   E_ADMIN_CF_DUPLICATO (va usato il soggetto esistente).
+                      --   Vesti su un'azienda, o nessuna veste: non decidibile -> consenso.
+                      IF EXISTS (
+                          SELECT 1
+                            FROM anagrafiche.identita_digitali idg
+                            JOIN anagrafiche.soggetti_ruoli sr         ON sr.id  = idg.soggetto_ruolo_id
+                            JOIN anagrafiche.soggetti s                ON s.id   = sr.soggetto_id
+                            JOIN config.tipi_soggetto_dettaglio tsd    ON tsd.id = s.tipo_soggetto_dettaglio_id
+                           WHERE idg.auth_user_id = v_auth_user_id
+                             AND tsd.tipo_soggetto_id = 'PF'
+                             AND CASE WHEN p_soggetto_id IS NOT NULL
+                                      THEN s.id <> p_soggetto_id
+                                      ELSE s.id_fiscale_univoco_cf_piva IS DISTINCT FROM UPPER(TRIM(p_codice_fiscale))
+                                 END
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'anagrafiche.fn_crea_operatore_v2',
+                              'E_CREDENZIALE_ALTRA_PERSONA',
+                              jsonb_build_object('campo',        'email',
+                                                 'auth_user_id', v_auth_user_id),
+                              NULL::uuid,
+                              TRIM(p_email));
+                      END IF;
+
+                      v_riusata := true;
+                      v_trovata := v_auth_user_id;
+                  ELSE
+                      SELECT anagrafiche.fn_crea_auth_user(
+                          p_username      := p_username,
+                          p_email         := p_email,
+                          p_password_hash := p_password_hash,
+                          p_first_name    := COALESCE(p_nome, ''),
+                          p_last_name     := COALESCE(p_cognome, '')
+                      ) INTO v_auth_user_id;
+                  END IF;
+
+                  -- ============ Step 2: Soggetto (flusso A o B) ============
+                  IF p_soggetto_id IS NOT NULL THEN
+                      -- Flusso B: soggetto esistente
+                      SELECT tsd.tipo_soggetto_id
+                        INTO v_tipo_soggetto_id
+                        FROM anagrafiche.soggetti s
+                        JOIN config.tipi_soggetto_dettaglio tsd
+                          ON tsd.id = s.tipo_soggetto_dettaglio_id
+                       WHERE s.id = p_soggetto_id;
+
+                      IF v_tipo_soggetto_id IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'anagrafiche.fn_crea_operatore_v2',
+                              'E_ADMIN_VALIDAZIONE',
+                              jsonb_build_object('p_soggetto_id', p_soggetto_id),
+                              NULL::uuid,
+                              'Soggetto con id=' || p_soggetto_id || ' non trovato.'
+                          );
+                      END IF;
+
+                      IF v_tipo_soggetto_id <> 'PF' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'anagrafiche.fn_crea_operatore_v2',
+                              'E_ADMIN_VALIDAZIONE',
+                              jsonb_build_object('p_soggetto_id', p_soggetto_id,
+                                                'tipo_soggetto_id', v_tipo_soggetto_id),
+                              NULL::uuid,
+                              'Soggetto deve essere Persona Fisica (PF). Trovato: ' || v_tipo_soggetto_id || '.'
+                          );
+                      END IF;
+
+                      v_soggetto_id := p_soggetto_id;
+
+                  ELSE
+                      -- Flusso A: crea soggetto PF nuovo
+                      IF p_cognome IS NULL OR TRIM(p_cognome) = '' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'anagrafiche.fn_crea_operatore_v2',
+                              'E_ADMIN_VALIDAZIONE',
+                              jsonb_build_object('parametro', 'p_cognome'),
+                              NULL::uuid, 'Cognome obbligatorio per creazione soggetto nuovo.'
+                          );
+                      END IF;
+
+                      IF p_nome IS NULL OR TRIM(p_nome) = '' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'anagrafiche.fn_crea_operatore_v2',
+                              'E_ADMIN_VALIDAZIONE',
+                              jsonb_build_object('parametro', 'p_nome'),
+                              NULL::uuid, 'Nome obbligatorio per creazione soggetto nuovo.'
+                          );
+                      END IF;
+
+                      IF p_codice_fiscale IS NULL OR TRIM(p_codice_fiscale) = '' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'anagrafiche.fn_crea_operatore_v2',
+                              'E_ADMIN_VALIDAZIONE',
+                              jsonb_build_object('parametro', 'p_codice_fiscale'),
+                              NULL::uuid,
+                              'Codice fiscale obbligatorio per creazione soggetto nuovo.'
+                          );
+                      END IF;
+
+                      SELECT anagrafiche.fn_crea_soggetto_pf(
+                          p_cognome           := p_cognome,
+                          p_nome              := p_nome,
+                          p_codice_fiscale    := p_codice_fiscale,
+                          p_email             := p_email,
+                          p_data_nascita      := p_data_nascita,
+                          p_sesso             := p_sesso,
+                          p_comune_nascita_id := p_comune_nascita_id
+                      ) INTO v_soggetto_id;
+                  END IF;
+
+                  -- ============ Step 2-bis: il CONSENSO al riuso (rev 20260925-51) ============
+                  -- ⭐ Dopo il soggetto, e non prima: i rifiuti definitivi (flusso A
+                  --   incompleto, CF gia' presente, soggetto non PF) parlano per primi, e
+                  --   l'admin non conferma qualcosa che verrebbe rifiutato comunque.
+                  -- La dichiarazione deve dire la credenziale che c'e' (stampo della
+                  --   dichiarazione di pagamenti.fn_posta_contabile, D13): NULL se l'email
+                  --   e' nuova, l'id trovato se esiste. Qualunque differenza — nessun
+                  --   consenso, un'altra credenziale, una credenziale sparita nel frattempo —
+                  --   ferma PRIMA che il riuso diventi definitivo.
+                  IF p_riusa_auth_user_id IS DISTINCT FROM v_trovata THEN
+                      SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                                 'ruolo_applicativo', idg.ruolo_applicativo,
+                                 'attivo',            idg.attivo,
+                                 'soggetto',          s.ragione_sociale_completa)
+                               ORDER BY idg.id), '[]'::jsonb)
+                        INTO v_vesti
+                        FROM anagrafiche.identita_digitali idg
+                        JOIN anagrafiche.soggetti_ruoli sr ON sr.id = idg.soggetto_ruolo_id
+                        JOIN anagrafiche.soggetti s        ON s.id  = sr.soggetto_id
+                       WHERE idg.auth_user_id = v_trovata;
+
+                      SELECT au.username INTO v_username
+                        FROM django.auth_user au
+                       WHERE au.id = v_trovata;
+
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_operatore_v2',
+                          'E_CREDENZIALE_DA_CONFERMARE',
+                          jsonb_build_object('campo',                'email',
+                                             'auth_user_id',         v_trovata,
+                                             'username',             v_username,
+                                             'vesti',                v_vesti,
+                                             'riusa_auth_user_id',   p_riusa_auth_user_id),
+                          NULL::uuid,
+                          TRIM(p_email),
+                          COALESCE(v_username, '-'));
+                  END IF;
+
+                  -- ============ Step 3: risorsa umana + veste OPERATORE SPENTA ============
+                  -- ⭐ p_attivo := false, sempre (R-2): la veste la accende
+                  --   l'attivazione dell'invito. La risorsa umana nasce attiva.
+                  SELECT anagrafiche.fn_crea_risorsa_umana_v2(
+                      p_soggetto_id            := v_soggetto_id,
+                      p_qualifica_id           := p_qualifica_id,
+                      p_unita_organizzativa_id := p_unita_organizzativa_id,
+                      p_valido_dal             := p_valido_dal,
+                      p_valido_al              := p_valido_al,
+                      p_auth_user_id           := v_auth_user_id,
+                      p_is_super_admin         := p_is_super_admin,
+                      p_attivo                 := false
+                  ) INTO v_ru_id;
+
+                  -- ============ Step 4: indirizzi soggetto (invariato) ============
+                  IF p_indirizzo_resid_dettaglio_id IS NOT NULL THEN
+                      PERFORM anagrafiche.fn_crea_indirizzo_soggetto(
+                          p_soggetto_id            := v_soggetto_id,
+                          p_tipo_indirizzo_codice  := 'RES',
+                          p_indirizzo_dettaglio_id := p_indirizzo_resid_dettaglio_id
+                      );
+
+                      PERFORM anagrafiche.fn_crea_indirizzo_soggetto(
+                          p_soggetto_id            := v_soggetto_id,
+                          p_tipo_indirizzo_codice  := 'DOMFISC',
+                          p_indirizzo_dettaglio_id := COALESCE(
+                              p_indirizzo_domfisc_dettaglio_id,
+                              p_indirizzo_resid_dettaglio_id
+                          )
+                      );
+                  END IF;
+
+                  -- ============ Ritorno: lo username EFFETTIVO ============
+                  SELECT au.username
+                    INTO v_username
+                    FROM django.auth_user au
+                   WHERE au.id = v_auth_user_id;
+
+                  RETURN QUERY SELECT v_auth_user_id, v_username, v_riusata;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_crea_operatore_v2(uuid, text, text, text, text, text, text, integer, integer, date, character, boolean, date, date, integer, bigint, bigint, integer)
+              IS 'Orchestratore della creazione di un operatore (flusso A: soggetto PF nuovo; flusso B: soggetto esistente). ⭐ Rev 20260925-42 (brief-db-blocco-login-per-credenziale §5.2): (1) la credenziale dell''email, se esiste, si RIUSA (D-6, una persona una credenziale) senza toccarne password, username e nome — la cerca script.fn_get_auth_user_id_for_email, senza distinguere maiuscole e minuscole; altrimenti la crea fn_crea_auth_user; (2) la veste OPERATORE nasce SPENTA, sempre (regola unica dell''invito, R-2): la accende l''attivazione, e p_attivo e'' uscito dalla firma; (3) una credenziale che ha gia'' una veste OPERATORE, attiva o spenta, si rifiuta con E_CREDENZIALE_GIA_OPERATORE (il rimedio e'' il reinvito). ⭐ Rev 20260925-51 (§12.7): il riuso non e'' piu'' silenzioso — una credenziale con una veste su una PERSONA FISICA diversa dall''operatore si rifiuta (E_CREDENZIALE_ALTRA_PERSONA); negli altri casi serve il consenso, p_riusa_auth_user_id = la credenziale trovata, altrimenti E_CREDENZIALE_DA_CONFERMARE con username e vesti nel contesto (dichiarazione di cio'' che si e'' visto, come pagamenti.fn_posta_contabile). Ritorna TABLE(auth_user_id, username effettivo, credenziale_riusata): con credenziale_riusata = true la password passata e'' stata IGNORATA. Si legge con SELECT * FROM. INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: la firma di prima (17 parametri) e' quella di 20260925-42.
+              SELECT 1;

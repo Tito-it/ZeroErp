@@ -51,8 +51,6 @@ db/pgtap/catalogo/test-vw-articoli-uom-operativa-dettaglio-capability-v1.sql	ERR
 db/pgtap/config/test-fn-cleanup-token-scaduti.sql	ERRORE_FIXTURE
 db/pgtap/config/test-fn-email-sistema.sql	ERRORE_FIXTURE
 db/pgtap/config/test-fn-get-parameter-full-categoria-cliente-v1.sql	ASSERZIONE
-db/pgtap/config/test-parameter-fk-surrogate-dispatch-v1.sql	ASSERZIONE
-db/pgtap/config/test-parameter-fk-surrogate-vuoto-v1.sql	ASSERZIONE
 db/pgtap/config/test-parameters-emittente-defaults-cascade.sql	ASSERZIONE
 db/pgtap/config/test-parameters-uom-defaults-cascade-v1.sql	ASSERZIONE
 db/pgtap/config/test-parameters-vendite-limiti-prezzi.sql	ASSERZIONE
