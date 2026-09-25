@@ -109,6 +109,13 @@ def _mock_livello(livello_map: dict[str, str]):
     return _side_effect
 
 
+# ⚠️ Dal 2026-09-25 un tool passa anche dal livello sull'assistente (§5.3):
+#    i test di questa classe provano il filtro del GEMELLO, e danno TUTTO su
+#    `ai_assistant` DICHIARANDOLO in ogni mappa. La semantica dei due livelli
+#    insieme sta in `test_livelli_assistente.py`.
+_AI_TUTTO = {"ai_assistant": "TUTTO"}
+
+
 class TestToolRegistry(unittest.TestCase):
     """Test tool_registry."""
 
@@ -125,7 +132,7 @@ class TestToolRegistry(unittest.TestCase):
         patcher = patch.object(PermissionResolver, "get_livello_area")
         self.mock_livello = patcher.start()
         self.addCleanup(patcher.stop)
-        self.mock_livello.side_effect = _mock_livello({})
+        self.mock_livello.side_effect = _mock_livello(dict(_AI_TUTTO))
 
     def tearDown(self):
         tool_registry.clear_registry()
@@ -151,7 +158,7 @@ class TestToolRegistry(unittest.TestCase):
     # Scopo: Il filtro include solo i tool il cui gemello e' accessibile.
     @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
     def test_filter_by_area_permission(self, _mock_disabled):
-        self.mock_livello.side_effect = _mock_livello({"pratiche": "LETTURA"})
+        self.mock_livello.side_effect = _mock_livello({"pratiche": "LETTURA", **_AI_TUTTO})
         tool_registry.register_tools([
             _tool("t_pratiche", _PraticheView), _tool("t_vendite", _VenditeView),
         ])
@@ -163,7 +170,7 @@ class TestToolRegistry(unittest.TestCase):
     # Scopo: BLOCCATO esclude il tool.
     @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
     def test_filter_blocks_bloccato(self, _mock_disabled):
-        self.mock_livello.side_effect = _mock_livello({"pratiche": "BLOCCATO"})
+        self.mock_livello.side_effect = _mock_livello({"pratiche": "BLOCCATO", **_AI_TUTTO})
         tool_registry.register_tool(_tool("t_bloccato", _PraticheView))
 
         self.assertEqual(tool_registry.get_tools_for_user(_operatore()), [])
@@ -171,7 +178,7 @@ class TestToolRegistry(unittest.TestCase):
     # Scopo: Un gemello POST chiede `add`, che `LETTURA` non concede.
     @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
     def test_filter_write_tool_requires_tutto(self, _mock_disabled):
-        self.mock_livello.side_effect = _mock_livello({"pratiche": "LETTURA"})
+        self.mock_livello.side_effect = _mock_livello({"pratiche": "LETTURA", **_AI_TUTTO})
         tool_registry.register_tool(_tool("t_write", _PraticheView, "POST"))
 
         self.assertEqual(tool_registry.get_tools_for_user(_operatore()), [])
@@ -184,12 +191,15 @@ class TestToolRegistry(unittest.TestCase):
 
         tools = tool_registry.get_tools_for_user(_operatore())
         self.assertEqual([t.name for t in tools], ["t_lookup"])
-        self.mock_livello.assert_not_called()
+        # Nessun livello di DOMINIO: l'unico chiesto e' quello sull'assistente.
+        self.assertEqual(
+            {c.args[1] for c in self.mock_livello.call_args_list}, {"ai_assistant"},
+        )
 
     # Scopo: La blacklist disabilita un tool.
     @patch.object(tool_registry, "_get_disabled_tools", return_value={"t_disabled"})
     def test_blacklist_disables_tool(self, _mock_disabled):
-        self.mock_livello.side_effect = _mock_livello({"pratiche": "TUTTO"})
+        self.mock_livello.side_effect = _mock_livello({"pratiche": "TUTTO", **_AI_TUTTO})
         tool_registry.register_tools([
             _tool("t_disabled", _PraticheView), _tool("t_enabled", _PraticheView),
         ])
@@ -210,14 +220,14 @@ class TestToolRegistry(unittest.TestCase):
     # Scopo: gemello GET su area LETTURA → permesso.
     @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
     def test_is_allowed_read_tool_lettura(self, _mock_disabled):
-        self.mock_livello.side_effect = _mock_livello({"pratiche": "LETTURA"})
+        self.mock_livello.side_effect = _mock_livello({"pratiche": "LETTURA", **_AI_TUTTO})
         t = _tool("t_r", _PraticheView)
         self.assertTrue(tool_registry.is_tool_allowed_for_user(_operatore(), t))
 
     # Scopo: area BLOCCATO → negato.
     @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
     def test_is_allowed_blocked(self, _mock_disabled):
-        self.mock_livello.side_effect = _mock_livello({"pratiche": "BLOCCATO"})
+        self.mock_livello.side_effect = _mock_livello({"pratiche": "BLOCCATO", **_AI_TUTTO})
         t = _tool("t_b", _PraticheView)
         self.assertFalse(tool_registry.is_tool_allowed_for_user(_operatore(), t))
 
@@ -225,14 +235,14 @@ class TestToolRegistry(unittest.TestCase):
     @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
     def test_is_allowed_write_requires_tutto(self, _mock_disabled):
         t = _tool("t_w", _PraticheView, "POST")
-        self.mock_livello.side_effect = _mock_livello({"pratiche": "LETTURA"})
+        self.mock_livello.side_effect = _mock_livello({"pratiche": "LETTURA", **_AI_TUTTO})
         self.assertFalse(tool_registry.is_tool_allowed_for_user(_operatore(), t))
-        self.mock_livello.side_effect = _mock_livello({"pratiche": "TUTTO"})
+        self.mock_livello.side_effect = _mock_livello({"pratiche": "TUTTO", **_AI_TUTTO})
         self.assertTrue(tool_registry.is_tool_allowed_for_user(_operatore(), t))
 
     # Scopo: tool in blacklist → negato anche con permessi pieni.
     def test_is_allowed_blacklist(self):
-        self.mock_livello.side_effect = _mock_livello({"pratiche": "TUTTO"})
+        self.mock_livello.side_effect = _mock_livello({"pratiche": "TUTTO", **_AI_TUTTO})
         t = _tool("t_disabled", _PraticheView)
         self.assertFalse(
             tool_registry.is_tool_allowed_for_user(
@@ -247,7 +257,7 @@ class TestToolRegistry(unittest.TestCase):
     #        dall'assistente.
     @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
     def test_is_allowed_gemello_con_azione_decide_solo_l_azione(self, _mock_disabled):
-        self.mock_livello.side_effect = _mock_livello({"pratiche": "LETTURA"})
+        self.mock_livello.side_effect = _mock_livello({"pratiche": "LETTURA", **_AI_TUTTO})
         t = _tool("t_act", _PraticaStatoView, "POST")
 
         self.mock_check_azione.return_value = False
@@ -257,13 +267,17 @@ class TestToolRegistry(unittest.TestCase):
         self.mock_check_azione.assert_called_with(
             ANY, "cambia_stato_pratica", cache=ANY,
         )
-        self.mock_livello.assert_not_called()
+        # Il livello su `pratiche` non si guarda: l'unico chiesto e' quello
+        # sull'assistente (il tool scrive, quindi `TUTTO`).
+        self.assertEqual(
+            {c.args[1] for c in self.mock_livello.call_args_list}, {"ai_assistant"},
+        )
 
     # Scopo: gemello `AdminAPIView` → solo SUPER_ADMIN, qualunque livello
     #        d'area abbia l'operatore (e' il caso di `cerca_operatori`).
     @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
     def test_is_allowed_gemello_admin_solo_super_admin(self, _mock_disabled):
-        self.mock_livello.side_effect = _mock_livello({"pratiche": "TUTTO"})
+        self.mock_livello.side_effect = _mock_livello({"pratiche": "TUTTO", **_AI_TUTTO})
         t = _tool("t_admin", _AdminView)
 
         self.assertFalse(tool_registry.is_tool_allowed_for_user(_operatore(), t))
@@ -281,7 +295,7 @@ class TestToolRegistry(unittest.TestCase):
     # Scopo: ruolo DISABILITATO → negato anche con area TUTTO.
     @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
     def test_is_allowed_disabilitato_negato(self, _mock_disabled):
-        self.mock_livello.side_effect = _mock_livello({"pratiche": "TUTTO"})
+        self.mock_livello.side_effect = _mock_livello({"pratiche": "TUTTO", **_AI_TUTTO})
         self.mock_get_ruolo_applicativo.return_value = "DISABILITATO"
         t = _tool("t_dis", _PraticheView)
         self.assertFalse(tool_registry.is_tool_allowed_for_user(_operatore(), t))
@@ -290,6 +304,6 @@ class TestToolRegistry(unittest.TestCase):
     #        una richiesta → fail-closed, anche con area TUTTO.
     @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
     def test_is_allowed_permission_class_non_valutabile_nega(self, _mock_disabled):
-        self.mock_livello.side_effect = _mock_livello({"pratiche": "TUTTO"})
+        self.mock_livello.side_effect = _mock_livello({"pratiche": "TUTTO", **_AI_TUTTO})
         t = _tool("t_nv", _NonValutabileView)
         self.assertFalse(tool_registry.is_tool_allowed_for_user(_operatore(), t))

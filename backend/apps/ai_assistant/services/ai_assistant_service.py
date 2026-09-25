@@ -30,6 +30,7 @@ from apps.ai_assistant.services.tool_registry import (
     is_tool_allowed_for_user,
 )
 from apps.ai_assistant.types import AIQueryResult
+from apps.core.db.sola_lettura import transazione_sola_lettura
 from apps.core.services.auth_constants import JWT_CLAIM_IDENTITA_ID
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.request_context import get_request_id
@@ -333,9 +334,12 @@ def _run_tool_loop(
                     tool_name, getattr(request.user, "id", None),
                 )
             elif tool_obj.requires_confirmation:
-                # Tool in scrittura: preview + richiesta conferma
+                # Tool in scrittura: preview + richiesta conferma.
+                # ⭐ L'anteprima non deve scrivere niente, e lo garantisce il DB:
+                #    gira in una transazione di sola lettura (§5.3 punto 3).
                 try:
-                    preview_result = tool_obj.preview(tool_input, request)
+                    with transazione_sola_lettura():
+                        preview_result = tool_obj.preview(tool_input, request)
                     confirmation_id = str(uuid.uuid4())
                     _store_pending_confirmation(
                         conversation_id=conversation_id,
@@ -367,7 +371,15 @@ def _run_tool_loop(
                     logger.exception("Errore preview tool %s: %s", tool_name, exc)
             else:
                 try:
-                    result = tool_obj.execute(tool_input, request)
+                    # ⭐ Un tool che legge non scrive, e lo garantisce il DB:
+                    #    se lo tenta (classificazione sbagliata, o un service
+                    #    che scrive piu' di quanto dice) PostgreSQL lo ferma
+                    #    con `25006`, anche dentro una funzione DEFINER
+                    #    (brief-db-area-funzionale-assistente-ai §5.3 punto 3).
+                    #    ⛔ Restano FUORI l'INSERT in `dbops.ai_query_log` e
+                    #    l'esecuzione confermata di una scrittura.
+                    with transazione_sola_lettura():
+                        result = tool_obj.execute(tool_input, request)
                     # Prefisso centralizzato: istruisce l'LLM a non modificare i dati
                     result["_istruzione"] = (
                         "DATI REALI DAL DATABASE. Copia ESATTAMENTE questi valori "

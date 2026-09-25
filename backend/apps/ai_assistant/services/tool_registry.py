@@ -42,8 +42,8 @@ def register_tools(tools: list[AITool]) -> None:
 #        Fonte di verita' condivisa dal filtro catalogo (offer-time) E dal
 #        ri-check a execution-time nel service (preview/confirm), per chiudere
 #        il gap TOCTOU: senza questo, l'unico gate sarebbe il catalogo all'offer-time.
-#        Due filtri: la blacklist dell'installazione, poi il permesso
-#        dell'endpoint gemello del tool.
+#        Tre filtri: la blacklist dell'installazione, il permesso
+#        dell'endpoint gemello del tool, il livello sull'assistente.
 # ⭐ Il permesso NON e' calcolato qui: lo decide `valuta_accesso_endpoint`, la
 #    stessa regola di `ZeroERPPermission` per la UI (brief-db-area-funzionale-
 #    assistente-ai §5.2). Fino al 2026-09-24 questa funzione ne era una seconda
@@ -51,6 +51,12 @@ def register_tools(tools: list[AITool]) -> None:
 #    fare cio' che l'operatore puo' fare dalla UI, e niente di piu': area dal
 #    model o da `area_funzionale`, `<metodo>_permission`, SUPER_ADMIN, ruolo
 #    disabilitato, override per oggetto, `skip_area_check`.
+# ⭐ Il terzo filtro e' il livello su `ai_assistant` (§5.3): LETTURA consulta,
+#    TUTTO anche agisce. Si chiede all'ingresso dell'assistente (`AIQueryView`)
+#    il tipo di accesso del TOOL (`view` se legge, quello del gemello se
+#    scrive), non quello della POST della domanda. Vale sempre il piu' stretto
+#    dei due livelli: `TUTTO` su `pratiche` e `LETTURA` sull'assistente crea
+#    pratiche dalla UI, non tramite l'assistente.
 def is_tool_allowed_for_user(
     user: Any,
     tool: AITool,
@@ -58,7 +64,8 @@ def is_tool_allowed_for_user(
     perm_cache: dict[str, Any] | None = None,
     disabled: set[str] | None = None,
 ) -> bool:
-    from apps.core.api.permissions import valuta_accesso_endpoint
+    from apps.ai_assistant.api.views import AIQueryView
+    from apps.core.api.permissions import ZeroERPPermission, valuta_accesso_endpoint
 
     if perm_cache is None:
         perm_cache = {}
@@ -70,10 +77,30 @@ def is_tool_allowed_for_user(
         return False
 
     # Filtro 2: la regola dell'endpoint gemello
-    return valuta_accesso_endpoint(
+    if not valuta_accesso_endpoint(
         user,
         tool.endpoint.view,
         method=tool.endpoint.metodo,
+        cache=perm_cache,
+    ).consentito:
+        return False
+
+    # Filtro 3: il livello sull'assistente, col tipo di accesso del tool, che
+    # e' quello del gemello (`view` se legge: e' la stessa regola di
+    # `tool.scrive`). Nel caso di un gemello protetto da un'azione, che non ha
+    # un tipo CRUD suo, il tipo lo da' comunque il verbo.
+    # ⛔ Un tipo che la catena non sa dire nega QUI: passato come `None` a
+    #    `valuta`, ricadrebbe sul `post_accesso = "view"` della domanda.
+    accesso_tool = ZeroERPPermission.tipo_accesso(
+        tool.endpoint.view, method=tool.endpoint.metodo,
+    )
+    if accesso_tool is None:
+        return False
+    return valuta_accesso_endpoint(
+        user,
+        AIQueryView,
+        method="POST",
+        accesso=accesso_tool,
         cache=perm_cache,
     ).consentito
 

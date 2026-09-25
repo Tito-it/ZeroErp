@@ -17,7 +17,7 @@ dei tool, configurazione) lo dice la
 Due cantieri successivi hanno cambiato le regole con cui si aggiunge un tool:
 
 * ✅ **Permessi di un tool = permessi del suo endpoint gemello** (2026-09-24,
-  [brief-db-area-funzionale-assistente-ai.md](brief-db-area-funzionale-assistente-ai.md)
+  [brief-db-area-funzionale-assistente-ai.md](../work-done/brief-db-area-funzionale-assistente-ai.md)
   §5.2). Un tool non dichiara più area, livello o azione: dichiara l'endpoint
   della UI che fa la stessa cosa (`endpoint=EndpointGemello(view, metodo)`), e
   il permesso si deriva da lì. Un tool **senza** gemello è un'eccezione da

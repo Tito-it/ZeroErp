@@ -67,21 +67,22 @@ POST delega a `ai_assistant_service.query()` che orchestra il flusso completo: v
 ## Regole
 
 - Il messaggio non puo' essere vuoto ne' superare 2000 caratteri.
-- Il catalogo strumenti e' filtrato per permessi dell'utente autenticato: se l'operatore non ha accesso all'area `pratiche`, il tool `cerca_pratiche` non e' disponibile.
+- Il catalogo strumenti e' filtrato per permessi dell'utente autenticato, con la regola dell'endpoint gemello di ogni tool **e** il livello sull'area `ai_assistant` (vedi [ai_tool_registry](ai_tool_registry.md)): se l'operatore non ha accesso all'area `pratiche`, il tool `cerca_pratiche` non e' disponibile; con `LETTURA` sull'assistente i tool di scrittura non sono offerti.
 - **Permessi ri-verificati a execution-time** (difesa in profondità, non solo all'offer-time): quando l'LLM invoca un tool, il service ri-controlla che l'utente possa usarlo (predicato unico `is_tool_allowed_for_user`) **prima** di preview/execute, e di nuovo alla conferma `__confirm__`. Chiude il TOCTOU (permesso revocato tra preview e conferma) e un tool_call per un tool fuori scope (injection/errore modello). I service chiamati dai tool non rifanno il check area-level (vive nel layer view, non attraversato dall'AI): il backstop è qui.
-- **Granularità come la UI** (area + azione fine): un tool può dichiarare `required_action` (codename azione di processo) speculare al `<action>_permission` dell'endpoint corrispondente. È verificato via `PermissionResolver.check_azione`. Es.: `cambia_stato_pratica` richiede l'azione `cambia_stato_pratica` come l'endpoint `ApiPraticaStato`.
+- **Granularità come la UI**: il permesso di un tool e' quello del suo endpoint gemello (`valuta_accesso_endpoint`), azione di processo compresa. Es.: `cambia_stato_pratica` ha per gemello `ApiPraticaStato` POST, quindi richiede l'azione `cambia_stato_pratica` come la UI.
+- **Le letture non scrivono, e lo garantisce il DB**: ogni tool di lettura e l'anteprima di ogni tool di scrittura girano in `transazione_sola_lettura`; una scrittura tentata li' dentro fallisce con `25006`. Fuori restano l'esecuzione confermata e l'INSERT in `dbops.ai_query_log`.
 - Il loop tool_call ha un limite di 5 iterazioni. Al superamento restituisce risposta parziale con `has_more: true`.
 - La conversazione in-memory ha un TTL di 15 minuti (configurabile via `AI_CONVERSATION_TTL`). Dopo la scadenza, il `conversation_id` non e' piu' valido e viene creata una nuova conversazione.
 - **Conferme di scrittura durabili in cache** (`django.core.cache` → Redis in prod): le conferme pendenti sopravvivono tra i worker gunicorn, con TTL nativo di 5 minuti. Chiave per scope `(conversazione, owner_user_id, owner_identita_id)`: una conferma per conversazione (un nuovo preview sovrascrive) e isolamento sicurezza nella chiave (un altro owner non vede/annulla la conferma altrui).
 - Il system prompt non contiene mai dati dal database — solo vocabolario e regole operative; i dati arrivano come `tool_result`. ⚠️ Questo è **igiene** (riduce injection diretta e invenzioni), **non** una protezione contro la prompt injection: per il modello `tool_result` e system prompt sono lo stesso flusso. La difesa vera è il *blast radius* — permessi + RLS + conferma sulle scritture (vedi [guida AI §4](../../../guide/integrazione-ai.md)).
 - Ogni interazione viene loggata in `dbops.ai_query_log` con `request_id`, strumenti chiamati, token consumati e durata. Il logging delle **letture** è best-effort (un errore non blocca la risposta); per le **scritture confermate** è **affidabile** (`reliable=True`): se l'audit fallisce viene emesso un **alert ERROR** (l'audit è anche il sistema di rilevamento anomalie). Retention via framework `dbops` cleanup (`cleanup_at`, regola `*all` 30gg default).
-- L'endpoint richiede `area_funzionale = ai_assistant` nel sistema permessi (`ZeroERPPermission`).
+- L'endpoint richiede `area_funzionale = ai_assistant` nel sistema permessi (`ZeroERPPermission`), in **lettura**: `post_accesso = "view"`, perche' una domanda e' una lettura anche se viaggia in una POST. Basta `LETTURA` per entrare; `BLOCCATO` risponde 403.
 - Guard `AI_ENABLED`: se `false`, l'endpoint restituisce `501` senza tentare alcuna operazione.
 
 ## Dipendenze DB
 
 - `dbops.ai_query_log` (tabella logging interazioni AI)
-- `script.fn_get_user_permissions_map` (filtro tool per permessi utente)
+- `script.fn_resolve_livello_area` / `fn_resolve_livello_oggetto` / `fn_check_azione_processo` via `PermissionResolver` (filtro tool per permessi utente)
 - `script.fn_get_parameter_full('AI_DISABLED_TOOLS')` (blacklist tool per installazione)
 
 ## Note di migrazione

@@ -19,7 +19,7 @@
 #   2) il gemello e' una APIView e implementa il metodo dichiarato
 #   3) il metodo e' uno che la regola sa tradurre in un tipo di accesso
 #   4) ogni permission class del gemello ha `valuta` (altrimenti nega sempre)
-#   5) conferma dichiarata ⇔ gemello di scrittura
+#   5) «scrive» si deriva dal gemello, e la derivazione distingue davvero
 #   6) le eccezioni senza gemello sono elencate per nome (oggi nessuna)
 # ------------------------------------------------------------
 
@@ -31,7 +31,7 @@ from rest_framework.views import APIView
 
 from apps.ai_assistant.services import tool_registry
 from apps.ai_assistant.tools.base import EndpointGemello
-from apps.core.api.permissions import ZeroERPPermission
+from apps.core.api.permissions import ZeroERPPermission, chiamata_in_scrittura
 
 # ⚠️ I tool che non hanno un endpoint gemello, ciascuno col motivo. Oggi
 #    nessuno: `AITool` pretende un `endpoint`. Un tool che non ne ha uno e'
@@ -89,15 +89,19 @@ class TestToolEndpointGemello(unittest.TestCase):
                         f"{tool.name}: {classe.__name__} non ha `valuta`",
                     )
 
-    # 5) La conferma resta dichiarata sul tool (§5.2, «restano com'erano»):
-    #    qui si prova che non contraddice il gemello. Un tool che scrive senza
-    #    conferma, o una lettura che chiede conferma, e' un gemello sbagliato
-    #    o una conferma sbagliata — in entrambi i casi, uno dei due mente.
-    def test_conferma_dichiarata_solo_sui_gemelli_di_scrittura(self) -> None:
+    # 5) Dal 2026-09-25 la conferma non si dichiara: `scrive` si DERIVA dal
+    #    gemello con la regola dei permessi (`chiamata_in_scrittura`, §5.3
+    #    punto 2), e la conferma e' «se e solo se scrive». Qui si prova che la
+    #    derivazione e' quella, e che non e' costante: un registro in cui
+    #    tutto legge (o tutto scrive) direbbe che la regola non guarda niente.
+    def test_scrive_si_deriva_dal_gemello(self) -> None:
         for tool in self.tools:
             with self.subTest(tool=tool.name):
-                scrive = tool.endpoint.metodo not in ("GET", "HEAD", "OPTIONS")
-                self.assertEqual(tool.requires_confirmation, scrive)
+                atteso = chiamata_in_scrittura(tool.endpoint.view, method=tool.endpoint.metodo)
+                self.assertEqual(tool.scrive, atteso)
+                self.assertEqual(tool.requires_confirmation, atteso)
+        self.assertTrue(any(t.scrive for t in self.tools))
+        self.assertTrue(any(not t.scrive for t in self.tools))
 
     # 6) L'elenco delle eccezioni nomina tool che esistono.
     def test_le_eccezioni_nominano_tool_registrati(self) -> None:

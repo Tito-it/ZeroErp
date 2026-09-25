@@ -80,7 +80,8 @@ from typing import Any
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
-from django.urls import get_resolver
+
+from apps.core.api.rotte import rotte_servite
 
 # Radice della documentazione backend: e' li' che si cercano le citazioni.
 DOCS = Path(settings.BASE_DIR).parent / "docs" / "it" / "backend"
@@ -152,29 +153,22 @@ def generica(citazione: str, *, assoluta: bool) -> bool:
     return "{*}" in coda or not assoluta
 
 
-# Scopo: tutte le rotte servite, dal resolver, con i metodi HTTP della view.
+# Scopo: tutte le rotte che esistono nel codice, con i metodi HTTP della view.
+#        Il cammino e' il BB `apps.core.api.rotte` (estratto il 2026-09-25,
+#        regola del 2), comprese le rotte montate a condizione: la
+#        documentazione copre il prodotto, non le flag di questa macchina.
 def leggi_rotte() -> dict[str, tuple[str, list[str]]]:
-    def cammina(resolver: Any, prefisso: str = "") -> list[tuple[str, list[str]]]:
-        fuori: list[tuple[str, list[str]]] = []
-        for pattern in resolver.url_patterns:
-            testo = prefisso + str(pattern.pattern)
-            if hasattr(pattern, "url_patterns"):
-                fuori += cammina(pattern, testo)
-                continue
-            cb = pattern.callback
-            cls = getattr(cb, "cls", None) or getattr(cb, "view_class", None)
-            metodi = [
-                m.upper() for m in ("get", "post", "put", "patch", "delete")
-                if cls is not None and hasattr(cls, m)
-            ]
-            fuori.append(("/" + testo, metodi))
-        return fuori
-
-    return {
-        norma(path): (path, metodi)
-        for path, metodi in cammina(get_resolver())
-        if path.startswith("/api/")
-    }
+    fuori: dict[str, tuple[str, list[str]]] = {}
+    for rotta in rotte_servite(anche_condizionali=True):
+        path = "/" + rotta.percorso
+        if not path.startswith("/api/"):
+            continue
+        metodi = [
+            m.upper() for m in ("get", "post", "put", "patch", "delete")
+            if rotta.view is not None and hasattr(rotta.view, m)
+        ]
+        fuori[norma(path)] = (path, metodi)
+    return fuori
 
 
 # Scopo: i path che la documentazione nomina. Ritorna due mappe: TUTTE le
