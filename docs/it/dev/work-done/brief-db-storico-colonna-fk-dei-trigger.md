@@ -4,17 +4,17 @@
 > nota sui codici errore (§10).
 > **Aperto:** 2026-09-25.
 > **Origine:** trovato strada facendo in
-> [brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md)
+> [brief-db-blocco-login-per-credenziale.md](../work-in-progress/brief-db-blocco-login-per-credenziale.md)
 > §11.5: un pgTAP modificava un parametro storicizzato e, sullo scratch, moriva
 > con `E_SNAPSHOT_CLOSE_ERROR`.
 >
-> **Stato:** ✅ **CHIUSO SUL LATO DB — applicato il 2026-09-25** su dbdev e su
+> **Stato:** ✅ **CHIUSO il 2026-09-25 — applicato** su dbdev e su
 > `zeroerp_ci` (`20260925-26`, `-27` `EXECUTED`). Verificato dopo l'apply sul
 > catalogo vivo di entrambi: **nessun** trigger di storico cerca una colonna che
 > la gemella non ha, il codice `E_STORICO_FK_COL_ASSENTE` è a catalogo, il
 > rubinetto è nel corpo vivo, il pgTAP owner non ha lasciato residui (§11).
-> pgTAP: il primo è verde; il secondo era rosso solo nella fixture, corretta e
-> da rilanciare (§11). Restano fuori, e non
+> pgTAP: ✅ **entrambi verdi su `zeroerp_ci`** (il secondo dopo la correzione
+> della fixture, §11). Restano fuori, e non
 > tengono aperto questo brief: la nota al backend (§10) e l'indice sulla colonna
 > FK delle gemelle, da aprire in un brief suo (§9).
 >
@@ -93,7 +93,7 @@ ricreata** dal provisioning:
   e `fn_ensure_storico_table` crea soltanto.
 
 ⇒ Per `parameters` è **dbdev** a essere fuori modello, non la CI. Stessa forma del
-§7 di [brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](brief-db-codici-ritirati-negli-argomenti-dei-trigger.md).
+§7 di [brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](../work-in-progress/brief-db-codici-ritirati-negli-argomenti-dei-trigger.md).
 
 ## 3. La fotografia (2026-09-25 — fatto datato, non un motivo)
 
@@ -270,13 +270,29 @@ Marcato `pgtap-runner: owner`: fa DDL (prima forma ammessa in `scripts/testpgtap
 
 ## 7. Ricadute su altri brief
 
-* [brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md)
+* [brief-db-blocco-login-per-credenziale.md](../work-in-progress/brief-db-blocco-login-per-credenziale.md)
   §11.5 rimanda qui.
 * `80_data/changelog/20260925-20-upsert-parameters-login` fa nascere i parametri
   di login con `storicizza = false`, e nell'intestazione cita questo difetto come
   seconda ragione. La prima ragione (coerenza con i due parametri fratelli) resta
   valida; la seconda cade quando questo brief è applicato. Da riallineare in quel
   brief, non qui.
+
+* **Trovato prima, il 2026-09-23**, da
+  [brief-db-fixture-che-costruiscono-giro-2.md](brief-db-fixture-che-costruiscono-giro-2.md)
+  §10 punto 2 e da
+  [migliorie-generali-da-test-valutazione.md](../work-in-progress/migliorie-generali-da-test-valutazione.md)
+  (Lotto 1): solo `parameters`, e le altre quattro scartate come falsi positivi
+  perché provate su righe non storicizzate. Entrambi ora rimandano qui.
+* **Il registro dei rossi**: `config/test-parameter-fk-surrogate-dispatch-v1.sql`
+  era in `baseline-rossi-scratch.tsv` e `baseline-rossi-ci.tsv` come `ASSERZIONE`
+  per questo difetto. ✅ Verde su `zeroerp_ci` (Tid, 2026-09-25) → tolto dal
+  registro dello **scratch**. ⏳ Dal registro della **CI** (GitHub) no: quello
+  lo scrive la CI dal log di una corsa vera (`pgtap-baseline-ci-rientrati.sh`),
+  e `zeroerp_ci` è lo scratch, non la CI (intestazione di
+  `scripts/pgtap-baseline.sh`). Esce alla prima corsa CI dopo la push.
+  Stesso esito per il gemello `config/test-parameter-fk-surrogate-vuoto-v1.sql`
+  (giro 2, §10 punto 2): ✅ verde, tolto dallo scratch, in attesa della CI.
 
 ## 8. Come è stato provato, e che cosa NON prova
 
@@ -346,7 +362,7 @@ gira come `zeroerp_app`, in `BEGIN … ROLLBACK`.
 
 > **Per**: team backend (`dev/backend-tid`). **Quando**: dopo l'apply dei
 > changeSet del 2026-09-25 (questo brief e
-> [brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md)).
+> [brief-db-blocco-login-per-credenziale.md](../work-in-progress/brief-db-blocco-login-per-credenziale.md)).
 
 Il catalogo dei codici errore ha **8 codici nuovi** che i due file del backend
 non portano ancora. Dopo l'apply su dbdev, `test_error_policies_divergenza_db`
@@ -409,12 +425,17 @@ Letto come applicazione sul catalogo vivo di dbdev e di `zeroerp_ci`:
     `nextval(...)`, su `zeroerp_ci` una colonna `IDENTITY`. `INCLUDING DEFAULTS`
     copia solo la prima.
   * ✅ Corretto con `INCLUDING IDENTITY`. Provato su entrambi i DB con una
-    tabella temporanea: l'INSERT senza `id` riceve un valore. ⏳ Da rilanciare.
-  * ⚠️ La divergenza di `id` è un'altra traccia della gemella di dbdev
-    **ricreata a mano** (§2): il provisioning la crea `BIGSERIAL`, la catena da
-    zero la porta a `IDENTITY`. Non tocca il comportamento, perché entrambe
-    generano l'`id`, ma dbdev resta fuori modello anche qui. Non sanata in
-    questo brief.
+    tabella temporanea: l'INSERT senza `id` riceve un valore. ✅ **Rilanciato
+    da Tid su `zeroerp_ci`: 7/7 verde.**
+  * ℹ️ **La divergenza di `id` non si sana: non è un difetto.** Nello schema
+    `storico` convivono per costruzione due forme di `id`: `IDENTITY` sulle
+    gemelle del 2025 (convertite da `20250829-02-migrazione_pk_da_nextval_a_identity`)
+    e `BIGSERIAL` su quelle del provisioning, cioè la forma di oggi. Fatto
+    datato (2026-09-25): 11/106 su dbdev, 12/105 su `zeroerp_ci`. L'unica
+    differenza fra le macchine è `parameters`: ricreata a mano su dbdev (§2), è
+    passata dal gruppo del 2025 a quello del provisioning. Entrambe generano
+    l'`id` e nessun lettore dipende dalla forma. Ha pesato solo sulla copia con
+    `LIKE` della fixture, corretta. ✅ **Decisione di Tid del 2026-09-25: non si sana, si lascia com'è.**
 
 ## Registro
 
@@ -423,3 +444,5 @@ Letto come applicazione sul catalogo vivo di dbdev e di `zeroerp_ci`:
 | 2026-09-25 | DB | Aperto. Creatore di `storico.parameters` su DB da zero trovato (albero `migrations/`, ancora incluso). dbdev fuori modello (DROP manuale). Censimento: 5 madri con argomento e colonna disallineati, 4 anche su dbdev. Strada A consigliata. |
 | 2026-09-25 | DB | Tid sceglie la strada A. Scritti `20260925-26` (rinomine, un DO sul catalogo vivo) e `-27` (rubinetto `E_STORICO_FK_COL_ASSENTE`), codice nel catalogo, due pgTAP, doc. Provato come app (§8); owner, apply e pgTAP a Tid. |
 | 2026-09-25 | Tid / DB | Applicato su dbdev e `zeroerp_ci`. Verifica sul catalogo vivo (§11): invariante pulita su entrambi. Brief chiuso lato DB; indice sulle gemelle spostato a un brief suo. |
+| 2026-09-25 | Tid | pgTAP verdi su `zeroerp_ci`: `test-storico-colonna-fk-dei-trigger-v1` e, corretta la fixture (`INCLUDING IDENTITY`), `test-storico-automazione-colonna-fk-v1` 7/7. |
+| 2026-09-25 | Tid | Brief chiuso. La doppia forma di `storico.*.id` (`IDENTITY` / `BIGSERIAL`) non si sana (§11). Restano fuori il push del backend (§10) e l'indice sulle gemelle (brief suo, §9). |

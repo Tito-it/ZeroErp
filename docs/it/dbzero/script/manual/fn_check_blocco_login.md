@@ -28,7 +28,7 @@ Il primo che scatta vince:
 | # | Controllo | Esito |
 | --- | --- | --- |
 | 1 | la credenziale è **bloccata dall'amministratore** | `E_CREDENZIALE_BLOCCATA` — «Accesso bloccato dall'amministratore.» |
-| 2 | **questa macchina** è frenata per troppi errori | `E_UTENTE_BLOCCATO`, con i minuti rimanenti nel contesto. Se il freno è già scaduto, la macchina riparte da zero e il controllo passa |
+| 2 | **questa macchina** è frenata per troppi errori | `E_UTENTE_BLOCCATO`: il messaggio dice fra quanti minuti riprovare (i minuti sono anche nel contesto). Se il freno è già scaduto, la macchina riparte da zero e il controllo passa |
 | 3 | la credenziale ha sbagliato troppe volte di fila e l'**attesa** non è finita | `E_LOGIN_ATTESA` — «riprovare fra N secondi» |
 
 Una credenziale che non ha mai sbagliato non ha una riga in `config.credenziali`:
@@ -45,5 +45,9 @@ errore di chi chiama.
   riga `OPERATORE` di `identita_digitali`; arriva la provenienza (la firma a un
   solo argomento non esiste più), il blocco dell'amministratore e l'attesa
   crescente. Prima, chi aveva solo il portale o lo shop non veniva mai frenato.
+* 2026-09-25 — `20260925-52`: il messaggio del freno porta i minuti rimanenti,
+  come quello dell'attesa porta i secondi. Prima diceva «Account temporaneamente
+  bloccato», ma il freno riguarda la sola postazione, e i minuti non arrivavano a
+  chi stava provando.
 
 {% include-markdown "signature-core.md" %}

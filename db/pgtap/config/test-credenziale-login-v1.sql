@@ -5,7 +5,7 @@
 -- Test: il login per CREDENZIALE e PROVENIENZA — freno sulla coppia, attesa
 --   crescente sulla credenziale, azzeramento, cambio password obbligatorio.
 --   Brief: brief-db-blocco-login-per-credenziale, sezioni 2-4 e 6.
---   ChangeSet: 20260925-04 … -11, -16, -17, -19 (e i seed -20, CLEANUP_AT id 21).
+--   ChangeSet: 20260925-04 … -11, -16, -17, -19, -52 (e i seed -20, CLEANUP_AT id 21).
 --
 -- ⭐ Casi COSTRUITI, non popolazione: ogni credenziale nasce nel test. Un
 --   auth_user nudo (nessuna identita') e' il caso piu' forte per «nessun filtro
@@ -20,7 +20,8 @@
 --   Il freno sulla provenienza
 --    1) credenziale senza riga: il check passa
 --    2) credenziale SENZA NESSUNA IDENTITA': il fallimento conta (tentativi = 1)
---    3) alla soglia dalla provenienza P1: il check da P1 -> E_UTENTE_BLOCCATO
+--    3) alla soglia dalla provenienza P1: il check da P1 -> E_UTENTE_BLOCCATO,
+--       con i minuti rimanenti nel messaggio (20260925-52)
 --    4) ⭐ stessa credenziale da P2: il check passa (il titolare entra dalla sua macchina)
 --    5) credenziale con veste OPERATORE, fallimenti da P1 e P2: una riga per
 --       provenienza, non per veste, e la credenziale li somma tutti
@@ -106,10 +107,12 @@ BEGIN
     END LOOP;
 END $$;
 
-SELECT throws_like(
+-- ⚠️ Un numero, non «qualcosa»: un %s rimasto letterale (segnaposto senza
+--   valore) passerebbe un LIKE su «riprovare fra % minuti» (20260925-52).
+SELECT throws_matching(
     $$ SELECT script.fn_check_blocco_login((SELECT nuda FROM _c), '203.0.113.1'::inet) $$,
-    '%temporaneamente bloccato%',
-    '3) alla soglia da P1: il check da P1 solleva E_UTENTE_BLOCCATO');
+    'da questa postazione: riprovare fra [0-9]+ minuti',
+    '3) alla soglia da P1: il check da P1 solleva E_UTENTE_BLOCCATO, con i minuti');
 
 SELECT lives_ok(
     $$ SELECT script.fn_check_blocco_login((SELECT nuda FROM _c), '203.0.113.2'::inet) $$,

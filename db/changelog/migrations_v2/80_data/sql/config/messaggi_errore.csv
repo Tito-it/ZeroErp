@@ -551,7 +551,7 @@ E_UI_PREFERENZA_VALIDAZIONE,it,Preferenza lista non valida.,757,,
 E_UI_PRESET_NON_TROVATO,it,Preset lista non trovato.,758,,
 E_UI_PRESET_VALIDAZIONE,it,Preset lista non valido.,759,,
 E_USER_DISABILITATO,it,Utente disabilitato. Contattare l'amministratore.,760,,
-E_UTENTE_BLOCCATO,it,Account temporaneamente bloccato per troppi tentativi.,761,,
+E_UTENTE_BLOCCATO,it,Troppi tentativi non riusciti da questa postazione: riprovare fra %s minuti.,761,"Dopo troppi tentativi non riusciti da questa postazione, l'accesso da qui e' sospeso per qualche minuto.","Attendere e riprovare; se la password e' dimenticata, usare il recupero della password."
 E_VALIDATION_INPUT,it,Parametro di input non valido.,762,,
 E_VENDITA_PREVENTIVO_NON_COLLEGATO,it,Il preventivo non e' collegato a una pratica: azione non disponibile.,763,,
 E_VENDITA_SMISTAMENTO_NON_ESEGUITO,it,Esegui lo smistamento della merce (genera ordine) prima di completare lo step.,764,,

@@ -1041,8 +1041,8 @@ sola coppia credenziale + provenienza, e da un'altra postazione si entra.
 sospeso per qualche minuto.»). Qui c'è la forma coi minuti, che il BE indicava
 come alternativa («servirebbe un `%s`… se la si vuole»): è la forma che il §2.4
 chiedeva dall'inizio («con i minuti rimanenti») ed è la stessa del gemello
-`E_LOGIN_ATTESA`. ❓ Da confermare (Tid). Se si vuole la frase chiusa, il `-52` si
-ritira prima dell'apply e resta la sola riga del CSV.
+`E_LOGIN_ATTESA`. ✅ Tid ha applicato il `-52` (2026-09-25): resta la forma coi
+minuti.
 
 ⚠️ **Ordine con il messaggio.** Il `%s` entra da `80_data`, che gira dopo
 `20_code`: il valore in più senza segnaposto è innocuo. L'ordine opposto (`%s`
@@ -1055,10 +1055,10 @@ la scrive il CSV: `plpgsql_check` 0 errori; `test-credenziale-login-v1` 22/22;
 `test-catalogo-messaggi-errore-completo` 7/7. **Controprova**: messaggio nuovo
 e funzione vecchia → test 3 rosso, con il `%s` letterale nel messaggio. Cancelli
 statici verdi. B-7 non cambia: nessuna famiglia di condizione toccata.
-**Non applicato.**
+✅ **Applicato da Tid il 2026-09-25, corsa pgTAP senza regressioni.**
 
-**Cosa chiede a BE e FE, dopo l'apply** (non prima: il ripiego non va avanti al
-catalogo):
+**Cosa chiede a BE e FE** — ⏳ da fare ora che il `-52` è applicato (non prima:
+il ripiego non va avanti al catalogo):
 
 | # | Dove | Cosa |
 | --- | --- | --- |
@@ -1072,8 +1072,9 @@ catalogo):
   scratch riallineato sul ponte django (§11.5), tutti i test verdi.
 - ❓ Aperta per Tid, fuori da questo brief: le FK del ponte django da
   `MARK_RAN` a `CONTINUE` (§11.5).
-- DB: le due note del backend su `E_UTENTE_BLOCCATO` (R-8) → §12.8: `-52`
-  scritto e provato, ⏳ apply (Tid), ❓ minuti sì/no; poi B-8 e F-1.
+- ✅ DB: le due note del backend su `E_UTENTE_BLOCCATO` (R-8) → §12.8: `-52`
+  applicato (Tid, 2026-09-25), nessuna regressione. ⏳ Commit di `-52`.
+- Backend/Frontend: B-8 e F-1 (§12.8).
 - DB, prossimo: **R-7** del piano BE/FE (la risposta del login non dice se lo
   username esiste). ❓ Prima serve la decisione (a) di R-7: hash semplice o HMAC
   con una chiave del backend per il nome tentato.
@@ -1105,6 +1106,7 @@ catalogo):
 | 2026-09-25 | DB | Cancello B-7 verde su scratch e dbdev: 0 accumuli, codici nuovi a una famiglia; sei blu di altri cantieri da allineare con `--update` (§12.5) |
 | 2026-09-25 | Tid | Baseline B-7 allineata; scratch riallineato sul ponte django; tutti i test verdi. `-51` committato |
 | 2026-09-25 | DB | R-8 (note del BE su `E_UTENTE_BLOCCATO`): scritto e provato `-52`, minuti nel messaggio e testo della postazione; pgTAP test 3 adeguato. Non applicato (§12.8) |
+| 2026-09-25 | Tid | `-52` applicato su dbdev e scratch (forma coi minuti); corsa pgTAP senza regressioni. Resta a BE/FE: B-8, F-1 |
 
 ---
 {% include-markdown "signature-core.md" %}
