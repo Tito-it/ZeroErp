@@ -11,11 +11,12 @@
 > - ⏳ **Collaudo a video**: copione in
 >   [collaudo-in-app-ui-permessi-operatore.md](collaudo-in-app-ui-permessi-operatore.md),
 >   da eseguire.
-> - ⏳ **pgTAP «ereditato = resolver»**: richiesto al team DB in
->   [brief-db-pgtap-permessi-ereditati.md](brief-db-pgtap-permessi-ereditati.md).
->   Il brief porta anche un difetto trovato il 2026-09-25: i resolver da
->   operatore contavano i profili delle **altre vesti** dell'utente (D-1 e D-2
->   decise da Tid lo stesso giorno).
+> - ✅ **pgTAP «ereditato = resolver»** (2026-09-25):
+>   [brief-db-pgtap-permessi-ereditati.md](../work-done/brief-db-pgtap-permessi-ereditati.md).
+>   L'ereditato ora sta a DB, i resolver lo chiamano e il backend lo legge;
+>   applicato, con la ricaduta BE fatta. Il brief ha corretto anche un difetto:
+>   i resolver da operatore contavano i profili delle **altre vesti**
+>   dell'utente (D-1, D-2, D-3).
 > - 🔴 **Tetto d'area**: aperto, senza decisione; ora è registrato in
 >   `.codex/PROJECT_CONTEXT.md` § «Aperto», così sopravvive alla chiusura di
 >   questo documento.

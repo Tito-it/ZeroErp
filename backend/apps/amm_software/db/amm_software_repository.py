@@ -947,23 +947,21 @@ class AmmSoftwareRepository:
     #        che ripete il profilo CONGELA la riga (da quel momento non segue
     #        piu' il reparto se il reparto cambia).
     #
-    # ⛔ NON e' `get_profilo_reparto`, e la differenza non e' cosmetica. Quello
-    #    legge il solo binding REPARTO per `unita_organizzativa_id`; i bindings
-    #    sono TRE — `AD_HOC` (priorita' 1, sull'identita'), `PORTALE` e
-    #    `REPARTO` (priorita' 2) — e i resolver prendono il primo per priorita'.
-    #    Per un utente con un binding AD_HOC quella lettura darebbe un valore
-    #    PLAUSIBILE E SBAGLIATO, su una schermata di sicurezza.
+    # ⭐ L'ereditato e' calcolato a DB, da `script.fn_get_permessi_ereditati_aree`
+    #    e `..._azioni`: sono la SEDE UNICA del passo 4 dei resolver
+    #    (`fn_resolve_livello_area`, `fn_check_azione_processo` e le due mappe
+    #    le CHIAMANO), quindi la colonna coincide col valore applicato per
+    #    costruzione. Qui non si riscrive ne' la raccolta dei profili ne' lo
+    #    spareggio: lo presidia il pgTAP `test-fn-get-permessi-ereditati-v1`
+    #    (brief-db-pgtap-permessi-ereditati §7).
+    # ⛔ NON e' `get_profilo_reparto`, che legge il solo binding REPARTO per
+    #    `unita_organizzativa_id`: i profili sono TRE (AD_HOC, REPARTO,
+    #    PORTALE di veste) e per un utente con un binding AD_HOC quella lettura
+    #    darebbe un valore PLAUSIBILE E SBAGLIATO, su una schermata di sicurezza.
     #
-    # ⭐ La sorgente e' `script.fn_get_profili_accesso_applicabili`, cioe' LA
-    #    STESSA funzione che usano `fn_resolve_livello_area` e
-    #    `fn_check_azione_processo`: l'insieme dei profili e le loro priorita'
-    #    non sono ricalcolati qui.
-    # ⚠️ Cio' che si ripete e' il `DISTINCT ON ... ORDER BY priorita`, cioe' lo
-    #    spareggio. E' il minimo duplicabile, ma resta una seconda scrittura di
-    #    un criterio: il presidio e' il test che, su un utente SENZA override,
-    #    confronta questo livello con `fn_resolve_livello_area` — senza override
-    #    la catena del resolver E' l'ereditato, quindi devono coincidere per
-    #    costruzione.
+    # Qui si aggiunge solo presentazione: le etichette del catalogo (JOIN su
+    # `aree_funzionali` / `azioni_processo`). `profilo_nome` e' il nome di
+    # contratto dell'endpoint per `profilo_descrizione`.
     #
     # ℹ️ Nessuna chiave `oggetti`: `config.profili_accesso_oggetti` non esiste.
     #    Per un model l'ereditato e' il livello della sua AREA, che il chiamante
@@ -971,32 +969,19 @@ class AmmSoftwareRepository:
     #    stessa domanda, con due posti in cui sbagliarla.
     # ℹ️ Voce ASSENTE = nessun profilo copre quell'area/azione ⇒ vale il default
     #    (`BLOCCATO` / azione negata). La lista vuota e' un dato, non un buco.
-    # ⚠️ PARITA' A PRIORITA' UGUALE: `PORTALE` e `REPARTO` valgono entrambi 2,
-    #    quindi un utente bindato a tutti e due ha due profili indistinguibili
-    #    per lo spareggio, e `DISTINCT ON` ne prende uno arbitrario — esattamente
-    #    come fa il resolver col suo `ORDER BY h.priorita LIMIT 1`. Le due
-    #    letture restano quindi coerenti fra loro, ma su quella coppia il
-    #    risultato non e' DETERMINATO: e' un'ambiguita' del modello dei
-    #    bindings, non di questa query, e va risolta li' (una terza chiave di
-    #    ordinamento, o priorita' distinte) se un giorno si presentera'.
     def get_permessi_ereditati(self, auth_user_id: int) -> dict[str, Any]:
         with connection.cursor() as cursor:
             cursor.execute(
-                """SELECT DISTINCT ON (paa.area_id)
-                          paa.area_id,
-                          af.codice        AS area_codice,
-                          af.descrizione   AS area_descrizione,
-                          paa.livello::text,
-                          pa.descrizione   AS profilo_nome,
-                          pa.tipo::text    AS profilo_tipo
-                     FROM script.fn_get_profili_accesso_applicabili(%s) h
-                     JOIN config.profili_accesso_aree paa
-                       ON paa.profilo_accesso_id = h.profilo_accesso_id
-                     JOIN config.profili_accesso pa
-                       ON pa.id = h.profilo_accesso_id
+                """SELECT e.area_id,
+                          af.codice               AS area_codice,
+                          af.descrizione          AS area_descrizione,
+                          e.livello::text         AS livello,
+                          e.profilo_descrizione   AS profilo_nome,
+                          e.profilo_tipo::text    AS profilo_tipo
+                     FROM script.fn_get_permessi_ereditati_aree(%s) e
                      JOIN config.aree_funzionali af
-                       ON af.id = paa.area_id
-                    ORDER BY paa.area_id, h.priorita""",
+                       ON af.id = e.area_id
+                    ORDER BY e.area_id""",
                 [auth_user_id],
             )
             cols_a = [c.name for c in cursor.description]
@@ -1004,24 +989,19 @@ class AmmSoftwareRepository:
 
         with connection.cursor() as cursor:
             cursor.execute(
-                """SELECT DISTINCT ON (paz.azione_id)
-                          paz.azione_id,
+                """SELECT e.azione_id,
                           ap.permission_codename,
-                          ap.descrizione   AS azione_descrizione,
-                          af.codice        AS area_codice,
-                          paz.abilitata,
-                          pa.descrizione   AS profilo_nome,
-                          pa.tipo::text    AS profilo_tipo
-                     FROM script.fn_get_profili_accesso_applicabili(%s) h
-                     JOIN config.profili_accesso_azioni paz
-                       ON paz.profilo_accesso_id = h.profilo_accesso_id
-                     JOIN config.profili_accesso pa
-                       ON pa.id = h.profilo_accesso_id
+                          ap.descrizione          AS azione_descrizione,
+                          af.codice               AS area_codice,
+                          e.abilitata,
+                          e.profilo_descrizione   AS profilo_nome,
+                          e.profilo_tipo::text    AS profilo_tipo
+                     FROM script.fn_get_permessi_ereditati_azioni(%s) e
                      JOIN config.azioni_processo ap
-                       ON ap.id = paz.azione_id
+                       ON ap.id = e.azione_id
                      JOIN config.aree_funzionali af
                        ON af.id = ap.area_id
-                    ORDER BY paz.azione_id, h.priorita""",
+                    ORDER BY e.azione_id""",
                 [auth_user_id],
             )
             cols_z = [c.name for c in cursor.description]

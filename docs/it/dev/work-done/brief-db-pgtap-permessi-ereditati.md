@@ -2,18 +2,25 @@
 
 > **Chi scrive:** backend (`dev/backend-tid`), 2026-09-25. **A chi:** Tid
 > (decisioni, §4), poi team DB (`dev/db-tid`) e backend per la ricaduta.
-> **Origine:** [piano-be-fe-ui-permessi-operatore.md](piano-be-fe-ui-permessi-operatore.md),
+> **Origine:** [piano-be-fe-ui-permessi-operatore.md](../work-in-progress/piano-be-fe-ui-permessi-operatore.md),
 > stato in testa: *«la versione durevole è un pgTAP, ed è da chiedere al team
 > DB»*. Analisi madre:
-> [analisi-ui-permessi-operatore.md](analisi-ui-permessi-operatore.md) §7.7.
+> [analisi-ui-permessi-operatore.md](../work-in-progress/analisi-ui-permessi-operatore.md) §7.7.
 > **Stato:** ✅ **D-1 e D-2 decise da Tid il 2026-09-25** (§4): come proposto.
 > ✅ **D-3 decisa da Tid lo stesso giorno** (§3-bis): il reparto vince sul
 > profilo di veste.
 > ✅ **DB scritto il 2026-09-25** (§7): sette changeSet `20260925-80` → `-86`
 > e il pgTAP `test-fn-get-permessi-ereditati-v1.sql` (27 test), provati in
-> transazione annullata sullo scratch. ⏳ **Da applicare e da far girare a
-> Tid** (§7.3), poi la ricaduta BE (§5, contratto al §7.1).
-> **Da leggere per primo:** §7.
+> transazione annullata sullo scratch. ✅ **Applicati** (i sette changeSet
+> sono in `databasechangelog`).
+> ✅ **Ricaduta BE fatta il 2026-09-25** (§5): repository e resolver leggono
+> le due funzioni del §7.1, nessuna copia dello spareggio resta nel backend.
+> FE invariato (contratto JSON identico).
+> 📁 **Spostato in `work-done/` il 2026-09-25**, su richiesta di Tid, a lavoro
+> DB e BE chiuso. Il collaudo a video ha un copione suo, in
+> `work-in-progress/`:
+> [collaudo-in-app-permessi-ereditati-veste-operatore.md](../work-in-progress/collaudo-in-app-permessi-ereditati-veste-operatore.md).
+> **Da leggere per primo:** §7 (consegna DB), poi §5.1 (consegna BE).
 >
 > **In una riga:** il pannello permessi mostra per ogni area e azione il valore
 > **ereditato** dal profilo, con una query del backend che ripete lo spareggio
@@ -124,7 +131,7 @@ spareggio `ORDER BY h.priorita LIMIT 1` sceglie **a caso** fra i due.
 
 ⛔ Non è un'ambiguità dei dati di dev: è la catena che non filtra la veste. Il
 `DEFAULT NULL` è una scelta **dichiarata** del 2026-04-20
-([sviluppo-multi-face-auth.md](../work-done/sviluppo-multi-face-auth.md),
+([sviluppo-multi-face-auth.md](sviluppo-multi-face-auth.md),
 «semantica legacy, nessun filtro veste»). Era pensata per i due chiamanti BE di
 allora, non per i resolver. Il gate di `fn_is_super_admin` invece è stato reso
 *operatore-only* proprio per evitare lo stesso sconfinamento su un utente
@@ -177,14 +184,55 @@ caso 5 del §2.1 fissa il comportamento deciso con D-1.
 
 ## 5. Ricaduta BE (la facciamo noi, dopo il DB)
 
-- `AmmSoftwareRepository.get_permessi_ereditati` → chiamata alle due
-  funzioni del §7.1; le due query spariscono. Il commento sulla parità a
-  priorità uguale **si toglie**: con D-3 la parità non esiste più.
-- Il test Django sull'SQL generato si riduce a *«chiama la funzione»*; il
-  confronto vero è il pgTAP.
-- Con D-1: `PermissionResolver.has_profilo_applicabile_per_area` e la view che
-  ispeziona il `target_user` vanno riletti, perché sono i due chiamanti del
-  `DEFAULT NULL` citati nel 2026-04. **Non** si toccano prima del DB.
+> ✅ **Fatta il 2026-09-25**, dopo l'apply di `-80` → `-86`.
+
+- ✅ `AmmSoftwareRepository.get_permessi_ereditati` → chiamata alle due
+  funzioni del §7.1, col solo `JOIN` di catalogo per le etichette; le due
+  query spariscono. Il commento sulla parità a priorità uguale **tolto**:
+  con D-3 la parità non esiste più. Chiavi dell'endpoint invariate
+  (`profilo_nome` = `profilo_descrizione`).
+- ✅ Il test Django sull'SQL generato si riduce a *«chiama la funzione, e non
+  riscrive lo spareggio»* (niente `DISTINCT ON`, niente `priorita`, niente
+  `fn_get_profili_accesso_applicabili`); il confronto vero è il pgTAP.
+- ✅ Con D-1: `PermissionResolver.has_profilo_applicabile_per_area` legge
+  `fn_get_permessi_ereditati_aree` invece dell'helper a 1 argomento (tutte le
+  vesti). I due chiamanti — il messaggio di diniego (già gated su
+  `OPERATORE`) e `permessi-effettivi` sul `target_user` — sono di contesto
+  operatore, e ora «l'area ha un profilo» dice la stessa cosa del passo 4 del
+  resolver. Un utente **senza** veste operatore riceve `has_profilo_reparto =
+  false`, coerente col nome del campo (nessun consumatore FE).
+- ✅ Binding provato con chiamata **reale** sul DB di sviluppo, in
+  transazione annullata. 📌 *Fatto datato:* utente 6, `pagamenti` = `TUTTO`
+  dal profilo `REPARTO` (prima `LETTURA` dal profilo cliente shop, §3).
+- ℹ️ Non toccato: `ui_repository.fetch_preset_base_snapshot` usa l'helper con
+  la veste della GUC e `ORDER BY priorita`, quindi segue già D-3 senza
+  modifiche. La sua replica della cascata dei preset è un debito già
+  dichiarato nel codice, fuori da questo brief.
+
+### 5.1 Consegna BE (2026-09-25)
+
+| File | Cosa |
+| --- | --- |
+| `backend/apps/amm_software/db/amm_software_repository.py` | `get_permessi_ereditati` legge `fn_get_permessi_ereditati_aree` / `_azioni` + `JOIN` di catalogo; commento riscritto (sede a DB, niente parità) |
+| `backend/apps/core/services/permissions_resolver.py` | `has_profilo_applicabile_per_area`: `EXISTS` su `fn_get_permessi_ereditati_aree` (veste OPERATORE), docstring allineata a D-1 |
+| `backend/apps/amm_software/tests/api/test_permessi_ereditati.py` | Test 5 riscritto: `test_query_non_riscrive_lo_spareggio` al posto di `test_query_sceglie_per_priorita`; test 4 sulle due funzioni nuove |
+| `backend/apps/core/tests/services/test_permissions_resolver.py` | `test_has_profilo_true`: la query usa `fn_get_permessi_ereditati_aree` e **non** l'helper a 1 argomento |
+| `backend/apps/amm_software/api/views.py` | Docstring di `PermessiEreditatiView`: priorità AD_HOC 1, REPARTO 2, PORTALE 3; sede a DB |
+| `frontend/src/amministrazione/api/amministrazione.js` | Solo il commento sulle priorità. Nessun cambio funzionale FE |
+
+**Prove:** 81 test Django verdi sui moduli toccati (`test_permessi_ereditati`,
+`test_permissions_resolver`, `test_permissions`, `test_permessi_effettivi_api`,
+`test_permissions_decisione_skip_area`); binding provato con chiamata reale
+sul DB di sviluppo (vedi sopra).
+
+**Resta:**
+
+- ⏳ il collaudo a video di questo cambio, nel suo copione:
+  [collaudo-in-app-permessi-ereditati-veste-operatore.md](../work-in-progress/collaudo-in-app-permessi-ereditati-veste-operatore.md)
+  (comincia col `kill -HUP` sul master gunicorn, senza il quale in app non
+  cambia niente). Resta aperto anche il collaudo del pannello
+  ([collaudo-in-app-ui-permessi-operatore.md](../work-in-progress/collaudo-in-app-ui-permessi-operatore.md));
+- ⏳ il commit, su richiesta di Tid.
 
 ---
 
@@ -292,8 +340,11 @@ Tutto **prima dell'apply**, sullo scratch `zeroerp_ci` come `zeroerp`
 (profili, binding, identità, risorse umane): la corsa come app non dovrebbe
 dire cose diverse.
 
-⏳ **A Tid:** apply di `-80` → `-86`, corsa del pgTAP nuovo e dei nove sopra,
-più i due presidi trasversali (`dbops/test-riferimenti-morti-v1`,
+✅ **A Tid — fatto il 2026-09-25:** apply di `-80` → `-86` (verificato dal
+backend: le sette righe sono in `databasechangelog`, le due funzioni nuove
+esistono) e corsa dei pgTAP (commit `f7d1a47b0`, *«Eseguiti test pgtap»*).
+L'elenco da far girare era: il pgTAP nuovo, i nove sopra e i due presidi
+trasversali (`dbops/test-riferimenti-morti-v1`,
 `script/test-rubinetto-primo-motivo-v1`: nessuna funzione nuova chiama
 l'helper del primo motivo).
 

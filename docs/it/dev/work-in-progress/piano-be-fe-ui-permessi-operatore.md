@@ -18,8 +18,9 @@
 > sviluppo (tutti gli utenti senza override: livelli coincidenti su tutte le
 > aree) e in suite è rimasta la forma sorella che questo repo usa per i criteri:
 > si legge l'**SQL generato** e si prova che usa `fn_get_profili_accesso_applicabili`
-> e che sceglie per `h.priorita`. ⇒ La versione durevole è un **pgTAP**, ed è da
-> chiedere al team DB.
+> e che sceglie per `h.priorita`. ⇒ La versione durevole è un **pgTAP**: ✅
+> fatta il 2026-09-25 ([brief](../work-done/brief-db-pgtap-permessi-ereditati.md)), e
+> l'ereditato è passato a DB — il backend chiama la funzione dei resolver.
 >
 > ⚠️ **Perimetro**: **nessun cambio di funzionalità dei permessi.** Il tetto
 > d'area resta **fuori** — è un difetto segnalato in §3 dell'analisi, non lavoro

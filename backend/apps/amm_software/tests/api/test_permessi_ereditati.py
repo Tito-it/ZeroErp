@@ -22,8 +22,8 @@ Indice test eseguiti:
  1) test_get_permessi_ereditati — GET ritorna aree e azioni col profilo che le fornisce
  2) test_get_permessi_ereditati_senza_profili — nessun profilo -> due liste vuote
  3) test_operatore_inesistente_solleva — l'esistenza si verifica PRIMA della lettura
- 4) test_query_usa_la_funzione_dei_resolver — non una lettura per uo_id
- 5) test_query_sceglie_per_priorita — lo spareggio e' quello dei resolver
+ 4) test_query_usa_la_funzione_dei_resolver — l'ereditato viene dal DB, non da un binding
+ 5) test_query_non_riscrive_lo_spareggio — nessuna seconda copia del passo 4
  6) test_nessuna_chiave_oggetti — l'ereditato di un model e' il livello dell'area
 """
 
@@ -121,12 +121,14 @@ class TestPermessiEreditatiView(TestCase):
 
 
 class TestFormaDellaQueryEreditati(TestCase):
-    """La query dice la stessa cosa dei resolver, o la colonna mente.
+    """La colonna «ereditato» legge la stessa funzione dei resolver.
 
-    Si legge l'SQL generato invece di interrogare un database: sul catalogo di
-    oggi — dove NON esiste nessun binding AD_HOC — la lettura giusta e quella
-    sbagliata darebbero lo stesso risultato, quindi un test sui dati sarebbe
-    verde per la ragione sbagliata.
+    L'ereditato sta a DB (`fn_get_permessi_ereditati_aree` / `..._azioni`),
+    sede unica del passo 4 di `fn_resolve_livello_area` e
+    `fn_check_azione_processo`, che la CHIAMANO. Che le due letture
+    coincidano lo prova il pgTAP `test-fn-get-permessi-ereditati-v1`; qui
+    resta da provare solo che il backend chiami quella funzione e non ne
+    scriva una seconda copia.
     """
 
     def _sql_eseguite(self) -> list[str]:
@@ -140,31 +142,31 @@ class TestFormaDellaQueryEreditati(TestCase):
             return [c.args[0] for c in cursor.execute.call_args_list]
 
     def test_query_usa_la_funzione_dei_resolver(self):
-        """⛔ La sorgente e' `fn_get_profili_accesso_applicabili`, non l'UO.
+        """⛔ La sorgente e' la funzione dell'ereditato, non l'UO.
 
         `get_profilo_reparto` legge il solo binding REPARTO per
-        `unita_organizzativa_id`. I bindings sono TRE (AD_HOC prio 1, PORTALE e
-        REPARTO prio 2): per un utente con un binding AD_HOC quella lettura
+        `unita_organizzativa_id`. I profili sono TRE (AD_HOC, REPARTO,
+        PORTALE di veste): per un utente con un binding AD_HOC quella lettura
         darebbe un valore plausibile e sbagliato, su una schermata di sicurezza.
         """
-        for sql in self._sql_eseguite():
-            self.assertIn("script.fn_get_profili_accesso_applicabili", sql)
+        sql_aree, sql_azioni = self._sql_eseguite()
+        self.assertIn("script.fn_get_permessi_ereditati_aree", sql_aree)
+        self.assertIn("script.fn_get_permessi_ereditati_azioni", sql_azioni)
+        for sql in (sql_aree, sql_azioni):
             self.assertNotIn("unita_organizzativa_id", sql)
 
-    def test_query_sceglie_per_priorita(self):
-        """Lo spareggio e' quello dei resolver: il profilo a priorita' minore.
+    def test_query_non_riscrive_lo_spareggio(self):
+        """Il backend non raccoglie profili e non sceglie fra loro.
 
-        I resolver fanno `ORDER BY h.priorita LIMIT 1` su una voce sola; qui la
-        forma d'insieme e' `DISTINCT ON (<voce>) ... ORDER BY <voce>, h.priorita`,
-        che e' lo stesso criterio applicato a tutte le voci in una volta.
-        ⚠️ E' l'unico pezzo di catena riscritto: se un giorno i due divergono,
-        e' da qui che si comincia a guardare.
+        Una `DISTINCT ON` o un `ORDER BY priorita` qui sarebbe una seconda
+        scrittura del passo 4: esattamente la copia che il pgTAP non vede, e
+        che torna a divergere dal resolver al primo cambio di regola (D-1 e
+        D-3 del 2026-09-25 l'avrebbero resa sbagliata in silenzio).
         """
-        sql_aree, sql_azioni = self._sql_eseguite()
-        self.assertIn("DISTINCT ON (paa.area_id)", sql_aree)
-        self.assertIn("ORDER BY paa.area_id, h.priorita", sql_aree)
-        self.assertIn("DISTINCT ON (paz.azione_id)", sql_azioni)
-        self.assertIn("ORDER BY paz.azione_id, h.priorita", sql_azioni)
+        for sql in self._sql_eseguite():
+            self.assertNotIn("fn_get_profili_accesso_applicabili", sql)
+            self.assertNotIn("DISTINCT ON", sql)
+            self.assertNotIn("priorita", sql)
 
     def test_nessuna_chiave_oggetti(self):
         """ℹ️ `config.profili_accesso_oggetti` non esiste.

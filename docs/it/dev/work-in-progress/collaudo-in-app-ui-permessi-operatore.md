@@ -111,7 +111,7 @@ decisione di Tid. Il collaudo prova solo che il pannello li fa vedere.
 
 | Esito | Allora |
 | --- | --- |
-| Tutto verde | Si segna qui la data. Quando il pgTAP del [brief DB](brief-db-pgtap-permessi-ereditati.md) è applicato, analisi e piano vanno in `work-done/` |
+| Tutto verde | Si segna qui la data. Il pgTAP del [brief DB](../work-done/brief-db-pgtap-permessi-ereditati.md) è applicato (2026-09-25): con questo verde **e** quello di [collaudo-in-app-permessi-ereditati-veste-operatore.md](collaudo-in-app-permessi-ereditati-veste-operatore.md), analisi e piano vanno in `work-done/` |
 | Rosso al §1.5 o al §2 | ⛔ Difetto funzionale, non grafico: si apre prima di qualunque altra cosa |
 | Rosso altrove | Si annota la riga e il comportamento visto; il fix va nel piano |
 

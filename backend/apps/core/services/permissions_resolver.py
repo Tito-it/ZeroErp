@@ -366,31 +366,30 @@ class PermissionResolver:
             una riga del profilo per quell'area — configurazione
             incompleta)
 
-        Delega a `script.fn_get_profili_accesso_applicabili` che
-        incapsula la catena multi-face (AD_HOC prio 1, PORTALE /
-        REPARTO prio 2). La join con `profili_accesso_aree` verifica
-        che almeno uno dei profili applicabili copra l'area
-        richiesta.
+        Delega a `script.fn_get_permessi_ereditati_aree`, la stessa
+        funzione che fa il passo 4 di `fn_resolve_livello_area`: un'area
+        e' «configurata» esattamente quando il resolver la trova nel
+        profilo. Include le righe a `BLOCCATO`, che sono una scelta del
+        profilo e non una sua assenza.
+
+        ⛔ Conta i soli profili della veste OPERATORE (D-1,
+        brief-db-pgtap-permessi-ereditati): un operatore che ha anche una
+        veste cliente non si porta il profilo PORTALE di quella veste.
+        La veste e' fissata nella funzione, non letta dalla GUC di chi
+        chiama: i due caller sono di contesto operatore
+          - permissions.py: gia' gated da ruolo_app == OPERATORE
+          - views.py: ispeziona target_user; filtrare sulla GUC
+            dell'admin corrente sarebbe semanticamente errato.
         """
         def _query() -> bool:
             with connection.cursor() as cursor:
-                # Chiamata 1-arg: post migration 20260421-* la vecchia
-                # firma e' stata droppata; resta solo la 2-arg con
-                # `p_ruolo_applicativo DEFAULT NULL` che, risolta con 1
-                # argomento, equivale a "nessun filtro veste" (comportamento
-                # legacy). Scelta coerente coi due caller:
-                #   - permissions.py: gia' gated da ruolo_app == OPERATORE
-                #   - views.py: ispeziona target_user; filtrare sulla GUC
-                #     dell'admin corrente sarebbe semanticamente errato.
                 cursor.execute(
                     """
                     SELECT EXISTS(
                         SELECT 1
-                          FROM script.fn_get_profili_accesso_applicabili(%s) prof
-                          JOIN config.profili_accesso_aree paa
-                            ON paa.profilo_accesso_id = prof.profilo_accesso_id
+                          FROM script.fn_get_permessi_ereditati_aree(%s) e
                           JOIN config.aree_funzionali af
-                            ON af.id = paa.area_id
+                            ON af.id = e.area_id
                          WHERE af.schema_db = %s
                     )
                     """,

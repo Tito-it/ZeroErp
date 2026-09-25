@@ -263,8 +263,8 @@ export function listUnitaOrganizzative() {
 
 // Livelli EREDITATI dal profilo: cosa l'operatore avrebbe senza override.
 // ⛔ Non e' `reparti/<uo_id>/profilo/`, che legge il solo binding REPARTO: i
-//    bindings sono tre (AD_HOC prio 1, PORTALE e REPARTO prio 2) e i resolver
-//    prendono il primo per priorita'. Alimenta la colonna «ereditato».
+//    bindings sono tre (AD_HOC prio 1, REPARTO prio 2, PORTALE di veste prio 3)
+//    e i resolver prendono il primo per priorita'. Alimenta la colonna «ereditato».
 // ℹ️ Nessuna chiave `oggetti`: per un model l'ereditato e' il livello della sua
 //    AREA, che sta gia' in `aree`.
 export function getPermessiEreditati(authUserId) {

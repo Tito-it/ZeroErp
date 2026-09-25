@@ -442,8 +442,8 @@ class PermissionResolverUnitaOrganizzativaTests(TestCase):
 
 
 class PermissionResolverHasProfiloTests(TestCase):
-    """Test per has_profilo_applicabile_per_area — EXISTS su
-    fn_get_profili_accesso_applicabili intersecato con profili_accesso_aree."""
+    """Test per has_profilo_applicabile_per_area — EXISTS sull'ereditato
+    d'area (`fn_get_permessi_ereditati_aree`, veste OPERATORE)."""
 
     # Scopo: Esiste un profilo applicabile per l'area -> True.
     @patch(_CONN)
@@ -453,15 +453,13 @@ class PermissionResolverHasProfiloTests(TestCase):
             _mock_user(), "vendite"
         )
         self.assertTrue(result)
-        # Verifica che la query referenzi la nuova funzione + tabella.
+        # ⛔ La query legge il passo 4 del resolver, non la raccolta
+        # dei profili senza veste: con `fn_get_profili_accesso_applicabili`
+        # a 1 argomento un operatore multi-veste conterebbe anche il
+        # profilo PORTALE della veste cliente (D-1).
         sql = cursor.execute.call_args[0][0]
-        self.assertIn("fn_get_profili_accesso_applicabili", sql)
-        self.assertIn("profili_accesso_aree", sql)
-        # Post migration 20260421-*: la vecchia firma 1-arg e' stata
-        # droppata, resta solo la 2-arg con DEFAULT NULL. La chiamata
-        # 1-arg risolve alla 2-arg con ruolo_applicativo=NULL (legacy,
-        # no filtro veste).
-        self.assertNotIn("NULL::config.ruolo_applicativo", sql)
+        self.assertIn("script.fn_get_permessi_ereditati_aree", sql)
+        self.assertNotIn("fn_get_profili_accesso_applicabili", sql)
 
     # Scopo: Nessun profilo applicabile per l'area -> False.
     @patch(_CONN)

@@ -2,9 +2,22 @@
 
 > Documento di pianificazione per l'evoluzione del sistema permessi oltre il livello model piatto.
 > Data creazione: 2026-04-22
-> Stato: **IN PIANIFICAZIONE**
+> Stato: **IN PIANIFICAZIONE — dormiente** (nessun lavoro dal 2026-04-22)
 > Prerequisito: v2 completata (in work-done/permessi-e-autorizzazioni-v2.md)
 > Guida architetturale: `docs/it/guide/architettura-permessi-e-autorizzazioni.md`
+>
+> 🔎 **Riletto il 2026-09-26 contro il codice.** Cosa è cambiato da aprile:
+>
+> - il pannello permessi è stato rifatto il 2026-09-05 (tutte le voci, colonna
+>   «ereditato», reset): la sezione UX qui sotto è aggiornata, e l'albero
+>   gerarchico è **scartato** (decisione di Tid: si resta nel drawer);
+> - il modello **piatto** su cui la v3 costruisce non è allineato: oggetti a
+>   catalogo che nessuno applica, e oggetti applicati che non sono a catalogo.
+>   Si sistema prima, in
+>   [brief-db-be-fe-catalogo-oggetti-permessi.md](brief-db-be-fe-catalogo-oggetti-permessi.md),
+>   che è ora un **prerequisito** della v3;
+> - la gerarchia padre/figlio dipende dal **tetto d'area**, difetto aperto e
+>   senza decisione (`.codex/PROJECT_CONTEXT.md` § «Aperto»).
 
 ---
 
@@ -44,19 +57,20 @@ Aggiungere un sotto-oggetto al sistema permessi richiede tre passi coordinati:
 
 ### 1. DB — migration Liquibase
 
-Aggiungere una riga in `config.area_model_overrides` per il sotto-model:
-
-```sql
-INSERT INTO config.area_model_overrides (app_label, model_name, area_id)
-VALUES ('anagrafiche', 'indirizzo', 1)  -- area_id 1 = anagrafiche
-ON CONFLICT DO NOTHING;
-```
+Aggiungere una riga al catalogo `config.area_model_overrides` per il sotto-model
+(es. `('anagrafiche', 'indirizzo')` sull'area `anagrafiche`). ⚠️ Nella forma che
+`linee-guida-sql §11.2` prescrive per i dati di `80_data`, non con un `INSERT`
+scritto a mano in una migration: la forma del seed del catalogo è in discussione
+nel [brief del catalogo](brief-db-be-fe-catalogo-oggetti-permessi.md) (D-3).
 
 Da questo momento il catalogo sa che `indirizzo` e' configurabile come oggetto autonomo.
 
 ### 2. BE — dichiarare `model_permission` sulla view Django
 
-Aggiungere l'attributo sulla view (o sulle view) che gestiscono il sotto-oggetto:
+Aggiungere l'attributo su **tutte** le view che leggono o scrivono il
+sotto-oggetto, non su una sola. ⛔ Un oggetto a catalogo con una sola rotta che
+lo applica (per esempio le sole note) fa mentire il pannello: l'override si
+imposta, e sul resto dell'oggetto vale l'area.
 
 ```python
 class ApiIndirizziList(DomainAPIView):
@@ -87,19 +101,32 @@ a seconda del profilo dell'operatore, indipendentemente dal drawer padre.
 
 ## Problema UX: la lista piatta non scala
 
-Con la v2 la configurazione degli override oggetto e' gestita nella tab Permessi
-del drawer operatore: una DataTable con colonne Model / Livello / Elimina + un form
-di aggiunta a fondo pagina.
+> ✅ **Superato in parte il 2026-09-05** (`analisi-ui-permessi-operatore.md`,
+> `piano-be-fe-ui-permessi-operatore.md`). La tab Permessi del drawer operatore
+> non è più una DataTable Model / Livello / Elimina con un form di aggiunta: è il
+> BB `MatriceOverride`, con **tutte** le voci del catalogo, lo stato
+> «Override» / «Ereditato», la colonna «ereditato» (per un oggetto: il livello
+> della sua area) e il reset che torna al valore ereditato.
 
-Funziona con 5-10 model. Con 20-30 model (e sotto-model) diventa:
+Dei quattro problemi di aprile ne restano due:
+- ~~Impossibile vedere a colpo d'occhio il profilo permessi di un operatore~~ — risolto
+- ~~Difficile capire quali override sono "attivi" vs "ereditati dall'area"~~ — risolto
 - Lista senza struttura visiva (non si capisce cosa e' padre e cosa e' figlio)
-- Impossibile vedere a colpo d'occhio il profilo permessi di un operatore
-- Difficile capire quali override sono "attivi" vs "ereditati dall'area"
-- Impossibile gestire dipendenze (se blocco `cliente`, cosa succede agli indirizzi?)
+- Impossibile gestire dipendenze (se blocco `cliente`, cosa succede agli indirizzi?).
+  ⚠️ È la domanda del **tetto d'area**, aperta a sé: oggi un override per oggetto
+  **sostituisce** il livello dell'area, non lo limita
 
 ---
 
 ## Proposta UX v3: interfaccia gerarchica
+
+> ⛔ **Scartata come forma il 2026-09-05** (decisione di Tid: nessun cambio di
+> funzionalità, si resta nel drawer con la matrice a righe piene). Le
+> caratteristiche per riga qui sotto (livello effettivo, ereditato contro
+> override, rimuovi override → ereditato) sono **già fatte** in forma piatta. Resta
+> valido il bisogno di mostrare padre e figlio, che arriva solo con i
+> sotto-oggetti: se e quando la v3 riparte, la gerarchia si innesta sulla
+> matrice, non su un componente nuovo.
 
 ### Struttura visiva ad albero
 
@@ -163,24 +190,20 @@ Piu' flessibile, supporta N:M. Un indirizzo puo' essere figlio sia di soggetto c
 
 ## Stato attivazione attuale (base per v3)
 
-I model gia' registrati e attivi con `model_permission` dichiarato:
+> 🔄 **Riscritto il 2026-09-26.** La tabella di aprile (7 model) era vecchia: il
+> catalogo oggi ha 12 oggetti, e non coincide con gli oggetti che BE e FE
+> applicano davvero. L'inventario per oggetto, con le quattro porte (catalogo,
+> BE, FE, pannello DB), sta **in un posto solo**: il §2 del
+> [brief del catalogo](brief-db-be-fe-catalogo-oggetti-permessi.md). Qui non si
+> ricopia, perché due copie divergerebbero al primo aggiornamento.
 
-| Model | app_label | Parent logici | FE attivato |
-|-------|-----------|--------------|-------------|
-| soggetto | anagrafiche | — | Si' |
-| cliente | anagrafiche | soggetto | Si' |
-| fornitore | anagrafiche | soggetto | Si' |
-| conto_bancario | anagrafiche | soggetto, cliente, fornitore | Si' |
-| articolo | catalogo | — | Si' |
-| unita_misura | catalogo | — | Si' |
-| promo_articolo | vendite | — | Si' |
-
-Non ancora registrati (candidati per v3):
+Candidati per la v3 **non ancora** a catalogo né applicati (sotto-oggetti veri):
 - `anagrafiche.indirizzo` — figlio di soggetto/cliente/fornitore
 - `anagrafiche.contatto` — figlio di soggetto/cliente/fornitore
-- `anagrafiche.billing_account` — autonomo (ora solo in catalogo)
-- `vendite.fattura`, `vendite.preventivo`, `vendite.listino`
-- `pratiche.pratica`
+
+(`billing_account`, `fattura`, `preventivo`, `listino` e `pratica`, candidati ad
+aprile, sono a catalogo dal seed `20260410-11`: vanno **applicati**, e lo fa il
+brief del catalogo.)
 
 ---
 
@@ -195,17 +218,23 @@ Non ancora registrati (candidati per v3):
 
 ### Backend
 
-- [ ] BE-1 — Endpoint `GET /api/v1/amm-software/lookup/model-overrides/` esteso con gerarchia
-- [ ] BE-2 — Endpoint `GET /api/v1/amm-software/operatori/{id}/permessi-effettivi-oggetti/`
-             che ritorna mappa completa (area + model + livello risolto + is_override) per la UI
-- [ ] BE-3 — Registrare `model_permission` sulle view mancanti man mano che i domini si completano
+- [ ] BE-1 — Endpoint `GET /api/v1/amm-software/lookup/model-overrides/` (esiste, piatto,
+             con `can_override`) esteso con gerarchia
+- [ ] BE-2 — ~~Endpoint `permessi-effettivi-oggetti`~~ — **coperto in parte**:
+             `GET /api/v1/core/users/{id}/permessi-effettivi/` restituisce già, per area,
+             i suoi oggetti col livello risolto; manca `is_override`. La matrice FE lo
+             ricava dagli override. Da riaprire solo se la gerarchia lo richiede
+- [x] BE-3 — ~~Registrare `model_permission` sulle view mancanti~~ — spostato nel
+             [brief del catalogo](brief-db-be-fe-catalogo-oggetti-permessi.md) §3.2
 
 ### Frontend
 
-- [ ] FE-1 — Componente `PermessiOggettiTree.vue` — albero gerarchico aree/model/sotto-model
-- [ ] FE-2 — Sostituire DataTable piatta in `OperatorePermessiTab` con il nuovo albero
+- [x] FE-1 — ~~Componente `PermessiOggettiTree.vue`~~ — scartato il 2026-09-05 (vedi
+             «Proposta UX v3»)
+- [x] FE-2 — ~~Sostituire la DataTable piatta~~ — fatto in altra forma: `MatriceOverride`
+             nel tab `OperatorePermessiTab` (2026-09-05)
 - [ ] FE-3 — Attivare `useReadonlyMode` sui drawer sotto-oggetto candidati
-             (IndirizziPanel, ContatiPanel quando implementato, ecc.)
+             (IndirizziPanel, ContattiPanel quando implementato, ecc.)
 - [ ] FE-4 — 1.9 differita: UI admin per gestire `area_model_overrides` (aggiunta/rimozione
              model dal catalogo) — bassa priorita', cambia raramente
 
@@ -214,5 +243,12 @@ Non ancora registrati (candidati per v3):
 ## Dipendenze
 
 - v2 completata ✅
-- Nessuna dipendenza bloccante — i tre passi (DB/BE/FE) per ogni sotto-oggetto
-  sono indipendenti e applicabili incrementalmente dominio per dominio
+- ⏳ **Modello piatto allineato**:
+  [brief-db-be-fe-catalogo-oggetti-permessi.md](brief-db-be-fe-catalogo-oggetti-permessi.md).
+  Un sotto-oggetto aggiunto oggi erediterebbe il disallineamento
+- 🔴 **Tetto d'area** (`.codex/PROJECT_CONTEXT.md` § «Aperto»): decide se un
+  figlio può essere più permissivo del padre. Senza, la gerarchia non ha una
+  semantica
+- I tre passi (DB/BE/FE) per ogni sotto-oggetto restano applicabili dominio per
+  dominio, **ma insieme**: catalogo, rotte e vista dello stesso oggetto nello
+  stesso rilascio

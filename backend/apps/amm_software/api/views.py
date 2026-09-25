@@ -287,8 +287,10 @@ class PermessiEreditatiView(AdminAPIView):
     perche' da quel momento non segue piu' il reparto quando il reparto cambia.
 
     ⛔ Non e' `reparti/<uo_id>/profilo/`: quello legge il solo binding REPARTO,
-    mentre i bindings sono tre (AD_HOC prio 1, PORTALE e REPARTO prio 2) e i
-    resolver prendono il primo per priorita'.
+    mentre i bindings sono tre (AD_HOC prio 1, REPARTO prio 2, PORTALE di
+    veste prio 3) e i resolver prendono il primo per priorita'. Il calcolo sta
+    a DB (`script.fn_get_permessi_ereditati_aree` / `..._azioni`), la stessa
+    funzione che i resolver chiamano.
     """
 
     @extend_schema(
