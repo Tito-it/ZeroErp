@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 — FK config.credenziali.auth_user_id -> django.auth_user.id
+#   Brief: brief-db-blocco-login-per-credenziale, sezione 2.2
+#
+# -- ON DELETE CASCADE — perche' ----------------------------------------------
+#   Lo stato della credenziale e' della credenziale: senza utente non ha senso,
+#   e non e' un registro. Le righe di provenienza seguono per CASCADE dalla
+#   madre (00_schema/20260925-02). ON UPDATE CASCADE come le sorelle.
+#
+# -- LA FORMA DI CASA PER LE FK VERSO DJANGO -----------------------------------
+#   Il DB puo' CHIAMARE django.* ma non DIPENDERNE strutturalmente, e una FK e'
+#   una dipendenza che si risolve alla CREATE. Quindi: 90_end + preCondition
+#   tableExists su django.auth_user + onFail MARK_RAN, come le 18 sorelle
+#   (ultima 20260921-02, auth_totp_device). ⚠️ Il prezzo, dichiarato: in CI
+#   Liquibase gira PRIMA di `manage.py migrate`, quindi li' la FK NON esiste e
+#   il changeSet resta segnato. Per questo i verbi che scrivono config.credenziali
+#   controllano da se' che l'auth_user esista (E_CREDENZIALE_NON_TROVATA), e il
+#   pgTAP del CASCADE salta dove la FK manca.
+#   Registro indici: 80_data/20260925-21 (consentito=false).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260925-22-fk-config-credenziali-auth-user-id-django-auth-user-mctit.yaml
+
+  - changeSet:
+      id: 20260925-22-fk-config-credenziali-auth-user-id-django-auth-user
+      author: mctit
+      comment: >
+        FK config.credenziali.auth_user_id -> django.auth_user.id, ON DELETE CASCADE: lo stato della
+        credenziale e' della credenziale. 90_end + MARK_RAN come le sorelle (in CI non esiste,
+        dichiarato). Brief: brief-db-blocco-login-per-credenziale §2.2.
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+            - tableExists:
+                schemaName: django
+                tableName: auth_user
+            - columnExists:
+                schemaName: config
+                tableName: credenziali
+                columnName: auth_user_id
+            - not:
+                - foreignKeyConstraintExists:
+                    schemaName: config
+                    foreignKeyName: fk_config_credenziali_auth_user
+      changes:
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: credenziali
+            baseColumnNames: auth_user_id
+            constraintName: fk_config_credenziali_auth_user
+            referencedTableSchemaName: django
+            referencedTableName: auth_user
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: credenziali
+            constraintName: fk_config_credenziali_auth_user

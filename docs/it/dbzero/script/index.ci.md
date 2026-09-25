@@ -14,6 +14,8 @@
 - [fn_available_actions_preventivo](manual/fn_available_actions_preventivo.md)
 - [fn_available_actions_reso](manual/fn_available_actions_reso.md) — (rev 2026-07-13)
 - [fn_available_actions_rettifica](manual/fn_available_actions_rettifica.md) — (scritta il 22-09-2026)
+- [fn_azzera_tentativi_credenziale](manual/fn_azzera_tentativi_credenziale.md) — (scritta il 25-09-2026)
+- [fn_blocca_credenziale](manual/fn_blocca_credenziale.md) — (scritta il 25-09-2026)
 - [fn_capability_promo_articolo](manual/fn_capability_promo_articolo.md)
 - [fn_change_user_emittenti_scope](manual/fn_change_user_emittenti_scope.md)
 - [fn_check_accredito_annullabile](manual/fn_check_accredito_annullabile.md) — (latest review 25-08-2026)
@@ -23,7 +25,7 @@
 - [fn_check_azione_processo](manual/fn_check_azione_processo.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_check_ba_cambio_emittente](manual/fn_check_ba_cambio_emittente.md) — (latest review 27-08-26)
 - [fn_check_ba_visible_for_emittenti](manual/fn_check_ba_visible_for_emittenti.md) — (latest review 18-08-26)
-- [fn_check_blocco_login](manual/fn_check_blocco_login.md)
+- [fn_check_blocco_login](manual/fn_check_blocco_login.md) — (riscritta il 25-09-2026)
 - [fn_check_commessa_annullabile](manual/fn_check_commessa_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-07-24)
 - [fn_check_commessa_chiudibile](manual/fn_check_commessa_chiudibile.md) — (rev 2026-08-21 — funzione rev 2026-07-24)
 - [fn_check_commessa_pronta_fatturazione](manual/fn_check_commessa_pronta_fatturazione.md) — (rev 2026-08-21)
@@ -73,6 +75,7 @@
 - [fn_get_contatto_default](manual/fn_get_contatto_default.md) — (latest review 25-03-26) La funzione **`script.fn_get_contatto_default`** restituisce **il contatto “di default”** per un determinato **soggetto** e, opzionalmente, per un determinato:
 - [fn_get_conto_bancario_predefinito](manual/fn_get_conto_bancario_predefinito.md) — (latest review 25-03-26)
 - [fn_get_default_by_param](manual/fn_get_default_by_param.md) — (latest update 21-12-25) Recuperare in modo dinamico un valore (tipicamente una **PK**) da una tabella qualsiasi, basandosi su un **codice parametro**.
+- [fn_get_deve_cambiare_password](manual/fn_get_deve_cambiare_password.md) — (scritta il 25-09-2026)
 - [fn_get_emittenti_scope_pk_ids](manual/fn_get_emittenti_scope_pk_ids.md)
 - [fn_get_emittenti_scope_sr_effettivo](manual/fn_get_emittenti_scope_sr_effettivo.md) — (latest review 18-08-26)
 - [fn_get_emittenti_scope_sr_ids](manual/fn_get_emittenti_scope_sr_ids.md) — (latest review 02-05-2026 — wrapper su `_pk_ids`)
@@ -113,8 +116,10 @@
 - [fn_guard_azione](manual/fn_guard_azione.md) — (scritta il 24-09-2026)
 - [fn_guard_soggetto_pf_pura](manual/fn_guard_soggetto_pf_pura.md) — (latest review 18-04-2026)
 - [fn_guard_soggetto_ruolo](manual/fn_guard_soggetto_ruolo.md) — (latest review 05-12-25) - **Verifica esistenza**     Controlla se esiste già un’associazione tra il soggetto e il codice interno del ruolo in `anagrafiche.soggetti_ruoli`.
+- [fn_guard_super_admin](manual/fn_guard_super_admin.md) — (scritta il 25-09-2026)
 - [fn_guard_utility_tipo_ruolo](manual/fn_guard_utility_tipo_ruolo.md) — (latest review 16-02-2026) `script.fn_guard_utility_tipo_ruolo` valida la coerenza tra `utility_id` e `tipo_ruolo_id` con semantica:
 - [fn_has_identita_attiva](manual/fn_has_identita_attiva.md) — (latest review 19-04-2026)
+- [fn_imposta_deve_cambiare_password](manual/fn_imposta_deve_cambiare_password.md) — (scritta il 25-09-2026)
 - [fn_indirizzi_obbligatori_mancanti](manual/fn_indirizzi_obbligatori_mancanti.md) — (rev 2026-07-11)
 - [fn_is_super_admin](manual/fn_is_super_admin.md) — (latest review 20-04-2026 — filtro OPERATORE)
 - [fn_job_run_end](manual/fn_job_run_end.md) — (latest review 18-06-2026 — registrazione run job headless)
@@ -123,12 +128,14 @@
 - [fn_log](manual/fn_log.md) — (rev 2026-08-21)
 - [fn_log_and_raise_error](manual/fn_log_and_raise_error.md) — (last review 24-04-2026)
 - [fn_log_error_only](manual/fn_log_error_only.md) — (latest review 23-11-25) * **Logging “silenzioso”**: inserisce una riga in `dbops.error_log` con contesto ricco, ma **non** solleva eccezioni. * **Separazione delle responsabilità**: differenzia chiaramente i casi di **solo tracciamento** da quelli di **error handling critico** (per cui usare `fn_log_and_raise_error`).
+- [fn_login_attesa_secondi](manual/fn_login_attesa_secondi.md) — (scritta il 25-09-2026)
+- [fn_login_parametri](manual/fn_login_parametri.md) — (scritta il 25-09-2026)
 - [fn_norm_testo](manual/fn_norm_testo.md) — (rev 2026-08-21)
 - [fn_norm_via](manual/fn_norm_via.md) — (rev 2026-08-21)
 - [fn_pgtap_emittente_operatore](manual/fn_pgtap_emittente_operatore.md) — (rev 2026-08-21)
 - [fn_pgtap_emittente_sr_operatore](manual/fn_pgtap_emittente_sr_operatore.md) — (rev 2026-08-21)
 - [fn_pgtap_set_contesto_operatore](manual/fn_pgtap_set_contesto_operatore.md) — (rev 2026-08-21)
-- [fn_registra_tentativo_login](manual/fn_registra_tentativo_login.md)
+- [fn_registra_tentativo_login](manual/fn_registra_tentativo_login.md) — (riscritta il 25-09-2026)
 - [fn_resolve_codice_postale](manual/fn_resolve_codice_postale.md) — Risolve il `codice_postale_id` con logica di fallback a due livelli. Unica source of truth per la logica CAP (prima nel watcher Vue).
 - [fn_resolve_emittente_fiscale_id](manual/fn_resolve_emittente_fiscale_id.md) — (rev 2026-08-22)
 - [fn_resolve_emittente_for_user](manual/fn_resolve_emittente_for_user.md)
@@ -136,6 +143,7 @@
 - [fn_resolve_livello_area](manual/fn_resolve_livello_area.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_resolve_livello_oggetto](manual/fn_resolve_livello_oggetto.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_oggetto`** risolve il livello di accesso per un singolo model Django (`app_label` + `model_name`).
 - [fn_ricalcola_prezzo_padre_da_componenti](manual/fn_ricalcola_prezzo_padre_da_componenti.md)
+- [fn_sblocca_credenziale](manual/fn_sblocca_credenziale.md) — (scritta il 25-09-2026)
 - [fn_scope_ba_ownership](manual/fn_scope_ba_ownership.md) — (latest review 20-04-2026 — ruolo-aware)
 - [fn_scope_ba_ownership_via_fattura](manual/fn_scope_ba_ownership_via_fattura.md) — (latest review 19-04-2026)
 - [fn_scope_cliente_ownership](manual/fn_scope_cliente_ownership.md) — (latest review 19-04-2026)

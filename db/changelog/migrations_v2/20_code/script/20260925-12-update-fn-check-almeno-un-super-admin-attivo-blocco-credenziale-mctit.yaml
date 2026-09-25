@@ -1,0 +1,121 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 — L'ANTI-LOCKOUT CONOSCE IL BLOCCO DELL'ADMIN:
+#   script.fn_check_almeno_un_super_admin_attivo()
+#   Brief: brief-db-blocco-login-per-credenziale, sezione 3.3
+#
+# ── ⭐ PERCHE' QUI E NON NEL VERBO ───────────────────────────────────
+#   Bloccare l'ultimo SUPER_ADMIN raggiungibile chiude fuori il sistema, come
+#   disattivarne l'identita' o il binding. La regola ha gia' una sede — questa
+#   funzione — e il manual del guard gemello lo prevedeva alla lettera:
+#   «evoluzione della condizione (es. aggiunta di ulteriori gate come
+#   bloccato_fino_a scaduto) va fatta SOLO LI' e propaga automaticamente».
+#   Il gate e' «la credenziale non e' bloccata dall'admin». Un controllo scritto
+#   a parte nel verbo sarebbe la seconda sede della stessa regola.
+#
+# ── ⚠️ CHI LA LEGGE, E COME ─────────────────────────────────────────
+#   La chiamano i guard anti-lockout su config.profili_accesso_bindings e su
+#   anagrafiche.identita_digitali (trigger INVOKER: girano come l'APP), e da
+#   20260925-18 quello su config.credenziali. LANGUAGE sql: legge
+#   config.credenziali come chi la chiama ⇒ l'app deve avere SELECT sulla
+#   tabella, ed e' per questo che la porta chiude solo le scritture.
+#
+# ── ⚠️ IL RESTO NON CAMBIA ───────────────────────────────────────────
+#   Stessi tre livelli di prima, stesso EXISTS; si aggiunge solo il quarto. ⚠️ Questa funzione
+#   NON guarda ruolo_applicativo = OPERATORE ne' la finestra valido_dal/_al,
+#   che fn_is_super_admin e fn_check_ultimo_super_admin_attivo guardano: e' una
+#   divergenza che c'era gia', fuori da questo lavoro, segnalata nel brief.
+#   Corpo preso dalla definizione viva (identica alla doc auto-generata,
+#   verificato 2026-09-25).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260925-12-update-fn-check-almeno-un-super-admin-attivo-blocco-credenziale-mctit.yaml
+
+  - changeSet:
+      id: 20260925-12-update-fn-check-almeno-un-super-admin-attivo-blocco-credenziale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_check_almeno_un_super_admin_attivo(): un SUPER_ADMIN la cui credenziale e'
+        bloccata dall'admin non e' raggiungibile. Il gate entra nella sede della regola anti-lockout
+        (come il suo manual prevedeva), e lo ereditano i guard su binding, identita' e — da -18 —
+        credenziali. Brief: brief-db-blocco-login-per-credenziale §3.3.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            { schemaName: config, tableName: credenziali }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_almeno_un_super_admin_attivo()
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Condizione di sicurezza: il sistema mantiene almeno un
+                  -- amministratore raggiungibile. Quattro livelli AND obbligatori:
+                  --   1) profilo_accesso.tipo = 'SUPER_ADMIN' (enum stabile) (+ attivo)
+                  --   2) binding attivo verso quel profilo, di tipo AD_HOC
+                  --      (identita_digitale_id valorizzato)
+                  --   3) identita_digitali attiva
+                  --   4) credenziale NON bloccata dall'amministratore
+                  --      (config.credenziali.bloccata_at; assenza della riga = non
+                  --      bloccata) — rev 2026-09-25, brief-db-blocco-login-per-credenziale
+                  -- Un unico EXISTS short-circuita: sufficiente trovare uno.
+                  -- rev 2026-06-29: tipo (enum) invece di codice (mutabile) -- §4a.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.profili_accesso           pa
+                        JOIN config.profili_accesso_bindings  pab
+                          ON pab.profilo_accesso_id = pa.id
+                        JOIN anagrafiche.identita_digitali    id
+                          ON id.id = pab.identita_digitale_id
+                       WHERE pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                         AND pa.attivo = true
+                         AND pab.attivo = true
+                         AND id.attivo  = true
+                         AND NOT EXISTS (
+                             SELECT 1
+                               FROM config.credenziali c
+                              WHERE c.auth_user_id = id.auth_user_id
+                                AND c.bloccata_at IS NOT NULL
+                         )
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_almeno_un_super_admin_attivo() IS
+                  'Ritorna true se esiste almeno un''identita attiva con binding attivo verso un profilo SUPER_ADMIN (identificato per tipo enum) la cui CREDENZIALE non e'' bloccata dall''amministratore (config.credenziali.bloccata_at; rev 2026-09-25). Usato dai guard anti-lockout su profili_accesso_bindings, identita_digitali e credenziali: e'' la sede unica della condizione «almeno un amministratore raggiungibile». LANGUAGE sql, legge config.credenziali come il chiamante (l''app ha SELECT). STABLE, fail-closed nessun raise. rev 2026-06-29: tipo invece di codice (§4a).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_almeno_un_super_admin_attivo()
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.profili_accesso           pa
+                        JOIN config.profili_accesso_bindings  pab
+                          ON pab.profilo_accesso_id = pa.id
+                        JOIN anagrafiche.identita_digitali    id
+                          ON id.id = pab.identita_digitale_id
+                       WHERE pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                         AND pa.attivo = true
+                         AND pab.attivo = true
+                         AND id.attivo  = true
+                  );
+              $function$;

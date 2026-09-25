@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 — L'ATTESA CRESCENTE IN UN POSTO SOLO: script.fn_login_attesa_secondi(...)
+#   Brief: brief-db-blocco-login-per-credenziale, sezione 2.4 e D-B2
+#
+# ── ⭐ LA REGOLA ─────────────────────────────────────────────────────
+#   Sotto il tetto, nessuna attesa. Dal tetto in su:
+#       attesa = LEAST(max, base × 2^(fallimenti − tetto))
+#   Al tetto esatto l'attesa e' la base; raddoppia a ogni fallimento in piu', e
+#   si ferma al massimo. ⭐ E' un freno che RALLENTA senza chiudere: il titolare
+#   aspetta al piu' `max` secondi fra un tentativo e l'altro, e ha sempre il
+#   reset (D-2).
+#
+# ── ⭐ PERCHE' UNA FUNZIONE A PARTE (regola del 2) ───────────────────
+#   La formula la usano il check (prima della password: «devi ancora
+#   aspettare?») e la registrazione (dopo: «quanto dovra' aspettare il
+#   prossimo?», nel jsonb di ritorno). Due copie della formula prima o poi
+#   rispondono in due modi: il login direbbe «riprova fra 8 secondi» e poi
+#   rifiuterebbe per 16.
+#
+# ── ⚠️ PURA SUI VALORI ──────────────────────────────────────────────
+#   Riceve i parametri invece di leggerli: e' provabile con input espliciti, e
+#   la lettura resta in script.fn_login_parametri. IMMUTABLE.
+#   L'esponente e' limitato a 30 prima della potenza: con un conteggio grande
+#   2^n uscirebbe dai double, e l'attesa e' comunque gia' al massimo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260925-05-create-fn-login-attesa-secondi-mctit.yaml
+
+  - changeSet:
+      id: 20260925-05-create-fn-login-attesa-secondi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_login_attesa_secondi(fallimenti, tetto, base, max): l'attesa crescente sulla
+        credenziale — zero sotto il tetto, poi LEAST(max, base * 2^(fallimenti - tetto)). Pura sui
+        valori, IMMUTABLE; regola del 2: la usano il check e la registrazione del login. Brief:
+        brief-db-blocco-login-per-credenziale §2.4.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_login_attesa_secondi(
+                  p_fallimenti          config.credenziali.fallimenti_consecutivi%TYPE,
+                  p_tetto               integer,
+                  p_attesa_base_secondi integer,
+                  p_attesa_max_secondi  integer
+              )
+              RETURNS integer
+              LANGUAGE plpgsql
+              IMMUTABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: quanti secondi deve aspettare il prossimo tentativo di una
+              --   credenziale con p_fallimenti fallimenti consecutivi. Zero sotto il
+              --   tetto; dal tetto in su raddoppia a partire dalla base, fino al massimo.
+              BEGIN
+                  IF COALESCE(p_fallimenti, 0) < p_tetto THEN
+                      RETURN 0;
+                  END IF;
+
+                  RETURN LEAST(
+                      p_attesa_max_secondi::numeric,
+                      p_attesa_base_secondi * power(2::numeric, LEAST(p_fallimenti - p_tetto, 30))
+                  )::integer;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_login_attesa_secondi(integer, integer, integer, integer) IS
+                  'Attesa crescente sulla credenziale (D-1 riletta, D-B2): zero sotto il tetto, poi LEAST(max, base * 2^(fallimenti - tetto)) — al tetto esatto la base, raddoppia a ogni fallimento, si ferma al massimo. Rallenta senza chiudere: il titolare aspetta al piu'' il massimo, e ha il reset. Pura sui valori (i parametri li legge script.fn_login_parametri), IMMUTABLE; regola del 2: la usano fn_check_blocco_login e fn_registra_tentativo_login. Brief: brief-db-blocco-login-per-credenziale §2.4.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_login_attesa_secondi(integer, integer, integer, integer);

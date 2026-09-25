@@ -15,7 +15,6 @@
 | attivo | boolean | NO | true |
 | valido_dal | date | NO | CURRENT_DATE |
 | valido_al | date | YES |  |
-| deve_cambiare_password | boolean | NO | false |
 | invito_inviato_at | timestamp with time zone | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
@@ -24,9 +23,6 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
-| tentativi_falliti | smallint | NO | 0 |
-| bloccato_fino_a | timestamp with time zone | YES |  |
-| totp_obbligatorio | boolean | NO | false |
 | tecnica | boolean | NO | false |
 
 ## 🔒 Vincoli
