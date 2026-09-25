@@ -3,11 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Catalogo aree funzionali del sistema permessi.
->  Ogni area corrisponde a uno schema DB; il mapping area-&gt;schema
->  e' automatico (Django risolve l'area dal db_table del model).
->  schema_db separato da codice per consentire rinomina label
->  senza impatto sullo schema fisico.
+> Catalogo delle aree funzionali del sistema permessi: l'unità a cui si concede un livello (BLOCCATO, LETTURA, TUTTO) nei profili di accesso e negli override utente. L'area si identifica con schema_db, la sua chiave tecnica, uguale a codice; codice_interno è il codice immutabile. Il backend ricava l'area di un endpoint dal db_table del model o, quando la view non ne ha uno, dal suo attributo area_funzionale: un'area non ha bisogno di uno schema fisico omonimo. Piano: brief-db-area-funzionale-assistente-ai, §4.1.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
