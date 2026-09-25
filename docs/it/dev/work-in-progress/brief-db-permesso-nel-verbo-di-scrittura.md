@@ -32,7 +32,7 @@
 
 ## 1. Il problema che resta dopo la sola lettura
 
-Il [brief-be-letture-in-transazione-sola-lettura.md](brief-be-letture-in-transazione-sola-lettura.md)
+Il [brief-be-letture-in-transazione-sola-lettura.md](../work-done/brief-be-letture-in-transazione-sola-lettura.md)
 fa garantire al DB che **una lettura non scriva**. Non copre il caso opposto: una
 richiesta di **scrittura** che il backend autorizza a chi non dovrebbe, per
 esempio un endpoint con il `post_permission` sbagliato, o un tool dell'assistente

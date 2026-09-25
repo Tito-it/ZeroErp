@@ -2,7 +2,7 @@
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-09-24. **A chi:** team backend.
 > **Origine:** approfondimento del §8 di
-> [brief-db-area-funzionale-assistente-ai.md](../work-done/brief-db-area-funzionale-assistente-ai.md).
+> [brief-db-area-funzionale-assistente-ai.md](brief-db-area-funzionale-assistente-ai.md).
 > **Decisione di Tid, 2026-09-24:** si fa **fra le prime cose**, insieme al brief
 > dell'assistente AI.
 >
@@ -14,16 +14,13 @@
 > montato su tutte le `GET`/`HEAD` delle API, e riusato dai tool dell'assistente.
 > ⇒ **Al DB:** un codice di errore registrato (§5).
 >
-> ⭐ **Stato al 2026-09-25:** il building block **esiste** —
-> `apps/core/db/sola_lettura.py::transazione_sola_lettura`, nato col brief
-> dell'assistente (§5.3.1 di quello), col presidio su DB vero
-> `core/tests/db/test_sola_lettura_db.py` (che copre anche il §4 punto 3: la
-> connessione dopo il blocco non è in sola lettura). Lo usano i tool
-> dell'assistente. **Restano** il montaggio su tutte le `GET`/`HEAD`, i
-> presìdi 1 e 2 del §4 e le eccezioni del §2.2.
-> 🟢 **Il codice del §5 è su dbdev** (2026-09-25; ⏳ scratch `zeroerp_ci` e
-> commit): il backend può rigenerare i due moduli dei codici (§5.1).
-
+> ✅ **CHIUSO il 2026-09-25.** Codice del §5 registrato dal DB (`501c5bcc8`);
+> backend: policy e ripiego, traduzione del `25006` alla sorgente nel BB
+> `transazione_sola_lettura`, montaggio su tutte le `GET`/`HEAD` delle API col
+> `SolaLetturaMiddleware` (ultimo della catena), i tre presìdi del §4, nessuna
+> eccezione dichiarata (§2.2), streaming verificato (§2.1 punto 6). Dettaglio nel
+> §7 e nel registro. Contratto:
+> [sola_lettura_middleware](../../../backend/core/manual/sola_lettura_middleware.md).
 ---
 
 ## 1. Il problema
@@ -97,7 +94,7 @@ divergenza che la regola del 2 previene.
 | | |
 | --- | --- |
 | ✅ **Garantisce** | che una richiesta classificata come lettura **non scriva nulla** sul DB, qualunque cosa faccia il codice che chiama |
-| ⛔ **Non garantisce** | che il backend **autorizzi** correttamente una scrittura: un `POST` con il permesso dichiarato male passa ancora. Quello è il compito del [brief-db-permesso-nel-verbo-di-scrittura.md](brief-db-permesso-nel-verbo-di-scrittura.md) |
+| ⛔ **Non garantisce** | che il backend **autorizzi** correttamente una scrittura: un `POST` con il permesso dichiarato male passa ancora. Quello è il compito del [brief-db-permesso-nel-verbo-di-scrittura.md](../work-in-progress/brief-db-permesso-nel-verbo-di-scrittura.md) |
 
 ## 4. I presìdi
 
@@ -145,6 +142,35 @@ dei due CSV. ✅ Caricato su dbdev (Tid, 2026-09-25); ⏳ scratch.
 `error_messages_fallback.py`; poi la traduzione del `25006` in
 `transazione_sola_lettura`, con il nome della view nel log.
 
+## 7. Com'è stato fatto (backend, 2026-09-25)
+
+| Richiesta | Fatto |
+| --- | --- |
+| §2 montaggio | `apps/core/middleware/sola_lettura_middleware.py`, **ultimo** in `MIDDLEWARE`: apre il blocco in `process_view` (subito prima della view) e lo chiude in `__call__`. Vale per ogni view, DRF o no: il middleware vede tutte le rotte. Fuori da `/api/` c'è solo `health` |
+| §2.1 punto 1 | per transazione: il blocco finisce con la richiesta; presidio 3 |
+| §2.1 punto 3 | `RequestLogMiddleware` e gli altri middleware stanno **fuori** (sono più esterni). ⚠️ Il blocco si chiude con **COMMIT**, non ROLLBACK: le GUC impostate durante la richiesta (utente, emittente) le legge `RequestLogMiddleware` dopo la view, e un ROLLBACK le cancellerebbe |
+| §2.1 punti 4-5 | GUC, `tx_id` e diario degli errori (`fn_log_error_only`, via dblink) funzionano dentro il blocco |
+| §2.1 punto 6 | una sola `FileResponse` (`EmailAllegatoDownloadView`): le letture DB avvengono nella view, lo streaming legge solo dal filesystem. La generazione documenti restituisce byte, non uno stream |
+| §2.2 eccezioni | attributo `scrittura_in_get = "<motivo>"` sulla view; elenco per nome nel presidio 2. **Nessuna** al 2026-09-25 |
+| §2.3 BB unico | `transazione_sola_lettura(chi=…)`: lo stesso per le GET e per i tool dell'assistente (`chi="tool:<nome>"`) |
+| §5 traduzione | alla **sorgente**, nel BB: un `execute_wrapper` trasforma il `25006` in `ServiceError` `E_SCRITTURA_IN_LETTURA`, scrive `chi` nel log e marca la transazione da annullare. Non è un `DatabaseError`, quindi nessuno dei cinque punti di traduzione degli errori DB lo può riscrivere col suo ripiego |
+| §4 presidio 1 e 3 | `core/tests/db/test_sola_lettura_middleware_db.py`: view **fabbricate** su un urlconf di prova, catena intera, fuori da una transazione |
+| §4 presidio 2 | `core/tests/middleware/test_sola_lettura_rotte.py`: dalle rotte registrate, con la decisione del middleware (`va_in_sola_lettura`, una sede sola) |
+
+**Quando non si apre**, per costruzione: connessione vietata (`SimpleTestCase`,
+la view è mockata) e transazione già aperta (i test che avvolgono il client in
+`transaction.atomic()`; in una richiesta vera non succede, e il presidio 1 gira
+dalla catena intera per accorgersene).
+
+**Come si sono cercate le GET che scrivono (§2.2).** Tutta la suite col DB vero
+(5381 test): nessuna. ⚠️ È un fatto datato e **parziale**: molti test sul DB
+avvolgono il client in una transazione, e lì il middleware salta. Per questo
+anche uno smoke sul server reale, con un token operatore: **tutte le 194 rotte
+`GET` delle API senza parametri nel percorso**, nessuna `E_SCRITTURA_IN_LETTURA`
+(l'unico 500 è `diagnostics/error-envelope`, che lo restituisce apposta). Le
+rotte con parametri (i dettagli) non sono state chiamate: una GET di dettaglio
+che scrive si vedrà in-app, come 500 col nome della view nel log.
+
 ## 6. Perimetro e rischio
 
 | | |
@@ -164,3 +190,5 @@ dei due CSV. ✅ Caricato su dbdev (Tid, 2026-09-25); ⏳ scratch.
 | 2026-09-25 | backend | Building block `transazione_sola_lettura` scritto e usato dai tool dell'assistente (regola del 2, ok Tid). Il montaggio sulle `GET` resta da fare |
 | 2026-09-25 | DB | §5 scritto: `E_SCRITTURA_IN_LETTURA` (`TECNICO`) e messaggio 1138 «Modifica dati non permessa.», frase chiusa e senza «autorizzazioni» (§5.1). Non applicato |
 | 2026-09-25 | Tid | Codice caricato su dbdev |
+| 2026-09-25 | backend | `error_policies_generated.py` rigenerato (una voce nuova, `E_SCRITTURA_IN_LETTURA` → `TECNICO`, nessuna classe cambiata, `--check` allineato) e ripiego «Modifica dati non permessa.» in `error_messages_fallback.py`. Il brief resta aperto: il codice non lo solleva ancora nessuno |
+| 2026-09-25 | backend | Montaggio fatto (§7): `SolaLetturaMiddleware`, traduzione del `25006` nel BB, tre presìdi, nessuna eccezione. Suite col DB vero e smoke sulle 194 GET senza parametri del server reale: nessuna GET che scrive. Brief chiuso e spostato in `work-done/` |

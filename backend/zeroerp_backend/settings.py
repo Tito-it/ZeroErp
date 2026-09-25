@@ -230,6 +230,10 @@ MIDDLEWARE = [
     'apps.core.middleware.request_log_middleware.RequestLogMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # ⛔ ULTIMO, e voluto: apre la sola lettura attorno alla SOLA view delle
+    # GET/HEAD delle API; tutti gli altri middleware (il log della richiesta
+    # per primo) restano fuori (brief-be-letture-in-transazione-sola-lettura).
+    'apps.core.middleware.sola_lettura_middleware.SolaLetturaMiddleware',
 ]
 
 ROOT_URLCONF = 'zeroerp_backend.urls'
