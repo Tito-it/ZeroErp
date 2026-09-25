@@ -251,6 +251,7 @@
     "contabilita": "Contabilità",
     "amm-software": "Amm. Software",
     "strumenti": "Strumenti",
+    "personale": "Personale",
     "collapse": "Comprimi",
     "expand": "Espandi",
     "back_home": "Home",
@@ -269,6 +270,9 @@
   "nav_menu": {
     "strumenti": {
       "code-lavoro": "Code di lavoro"
+    },
+    "personale": {
+      "email": "Email"
     },
     "amm-software": {
       "operatori": "Operatori",
@@ -1317,7 +1321,6 @@
     "email_template": "Template",
     "email_template_title": "Template email",
     "email_smtp_password_placeholder": "********",
-    "email_stato_tutti": "Tutti gli stati",
     "email_stato_sent": "Inviato",
     "email_stato_failed": "Fallito",
     "email_stato_pending": "In attesa",
@@ -5928,6 +5931,10 @@
       "non_letto": "Non è stato possibile leggere il saldo: riprova prima di concludere che non c'è nulla da pagare.",
       "livello_non_pronto": "Il saldo di questo livello non è ancora disponibile.",
       "include_riga_corrente": "L'importo in lavorazione comprende anche questa riga: a questo livello il saldo non sa escluderla."
+    },
+    "email_log": {
+      "stato": "Stato",
+      "stato_tutti": "Tutti gli stati"
     }
   },
   "fattura_lookup": {

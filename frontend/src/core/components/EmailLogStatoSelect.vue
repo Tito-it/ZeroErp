@@ -3,7 +3,10 @@
 // Sostituisce EMAIL_LOG_STATO + buildEmailLogStatoOptions hardcoded.
 // I 5 codici (SENT, PENDING, RETRY, FAILED, SIMULATA) sono enum gestiti dal log writer
 // EmailDispatchService. Single source of truth: BE
-// amm_software_service._EMAIL_LOG_STATI_VALIDI.
+// `email_constants.STATI_EMAIL_LOG_DESCRIZIONI`, servito da /core/email/log/stati/.
+// ⭐ In `core` dal 2026-09-26: lo usano il log dell'admin e quello
+//    dell'operatore. Prima leggeva un lookup `/amm-software/`, che per un
+//    operatore sarebbe stato un 403 dentro una schermata aperta.
 //
 // Thin wrapper su LookupSelect (B5 2026-06-05, regola del 2). Filtro tri-state:
 // include sempre la voce 'Tutti' (modelValue=null) via `include-all-option`.
@@ -12,8 +15,8 @@
 // Uso:
 //   <EmailLogStatoSelect v-model="filtroStato" />
 import { useI18n } from 'vue-i18n'
-import LookupSelect from '../../core/components/LookupSelect.vue'
-import { lookupEmailLogStati } from '../api/amministrazione'
+import LookupSelect from './LookupSelect.vue'
+import { lookupEmailLogStati } from '../api/email'
 
 defineProps({
   modelValue: { type: [String, null], default: null },
@@ -31,13 +34,12 @@ const { t } = useI18n()
   <LookupSelect
     :model-value="modelValue"
     :fetcher="lookupEmailLogStati"
-    lookup-key="amm.email_log_stati"
-    :transform="(r) => r.data.data"
+    lookup-key="core.email_log_stati"
     value-field="codice"
     :filter="false"
     :include-all-option="includeAllOption"
-    :all-label="t('amministrazione.email_stato_tutti')"
-    :placeholder="placeholder || t('amministrazione.email_stato_tutti')"
+    :all-label="t('core.email_log.stato_tutti')"
+    :placeholder="placeholder || t('core.email_log.stato_tutti')"
     :disabled="disabled"
     @update:model-value="(v) => emit('update:modelValue', v)"
     @change="(v) => emit('change', v)"

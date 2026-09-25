@@ -376,7 +376,11 @@ Risposta: bozza completa con oggetto/corpo pre-compilati (editabili dal frontend
 GET /api/v1/core/email/outbox/
 ```
 
-L'operatore vede solo le proprie bozze. Superuser vede tutte.
+Il perimetro **non** e' un filtro della view: lo applica la RLS (§Ambito e
+visibilita'). Una bozza `REPARTO` la vedono i colleghi del reparto, una
+`OPERATORE` solo il suo autore. ⚠️ Fino al 2026-09-25 la view filtrava per
+`creato_da_user_id` = chi chiede: era una seconda sede della regola, e
+nascondeva ai colleghi le bozze di reparto.
 Filtri: `stato`, `pratica_id`, `limit`, `offset`.
 
 ### Dettaglio / Modifica bozza
@@ -389,9 +393,11 @@ PATCH /api/v1/core/email/outbox/{id}/
 GET include lista allegati. PATCH accetta: `oggetto`, `corpo_html`, `corpo_testo`,
 `destinatari_cc`, `destinatario`. Solo bozze DRAFT sono modificabili.
 
-**Ownership check**: solo il creatore della bozza (o superuser) puo' accedere.
-Bozza o allegato inesistente e accesso negato escono tutti con `E_EMAIL_OP` —
-HTTP **400**, non 404/403.
+**Chi puo' accedere** lo decide la RLS, in lettura e in scrittura (§Ambito e
+visibilita'): una bozza fuori perimetro non si legge, quindi esce come
+inesistente. Dal 2026-09-25 non c'e' piu' un controllo di proprieta' nella view.
+Bozza o allegato inesistente (o fuori perimetro) escono con `E_EMAIL_OP` —
+HTTP **400**, non 404.
 ⚠️ Difetto noto (E-4): «non trovato» e «negato» escono come dato errato — vedi
 [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 ### Conferma e invia
@@ -404,6 +410,20 @@ Transizione: DRAFT → READY → **SENT** (SMTP riuscito), → **DRAFT** (SMTP f
 l'operatore puo' riprovare) oppure → **SIMULATA** (console mode: la mail e' stata
 mostrata, non spedita — dal 2026-09-11). Crea record in `email_log` con corpo dalla
 bozza (non dal template originale). Copia allegati su `email_log_id`.
+
+La riga di `email_log` porta l'**azienda** (`emittente_fiscale_id`) e l'**autore**
+(`creato_da_user_id`) **della bozza**, non di chi preme «invia»: un super admin
+che spedisce la bozza di un altro non ne diventa l'autore (D-5 di
+brief-db-email-visibilita-per-ambito). Sono le due colonne su cui la RLS del log
+decide chi rivede la mail. ⚠️ Fino al 2026-09-25 l'`INSERT` del log non scriveva
+nessuna delle due: ogni invio di una bozza non di sistema veniva rifiutato dal
+database.
+
+La mail parte **con i suoi allegati** (messaggio `multipart/mixed`). Un file che
+non si legge dallo storage fa fallire l'invio (`FAILED`, col motivo nel log):
+una mail non parte senza l'allegato promesso. ⚠️ Fino al 2026-09-25 gli allegati
+si salvavano e si agganciavano al log, ma la mail partiva senza. Il rilancio di
+una mail fallita (`send_pending_emails`) rilegge gli allegati dal log.
 
 Lo stato dell'invio e' nel log (`SENT`, `FAILED`, `SIMULATA`); lo stato outbox dice
 se l'operatore deve agire (DRAFT = da riprovare, SENT = completato).
@@ -432,8 +452,11 @@ le azioni pretendono `DRAFT`) — vedi [analisi difetti](../../../dev/work-in-pr
 POST /api/v1/core/email/outbox/{id}/cancel/
 ```
 
-Transizione: DRAFT → CANCELLED. Elimina i file allegati dallo storage (le righe di
-`config.email_allegato` restano).
+Transizione: DRAFT → CANCELLED. Toglie gli allegati: le righe di
+`config.email_allegato` **prima** di scrivere `CANCELLED`, nella stessa
+transazione (dopo, il database non le lascia piu' toccare), e i file dallo
+storage **dopo** il commit. ⚠️ Fino al 2026-09-25 si cancellavano i soli file, e
+le righe restavano a puntare a file inesistenti.
 
 ---
 
@@ -456,6 +479,10 @@ Campo: `file` (multipart). Validazioni:
 
 Storage: `{EMAIL_ATTACHMENTS_ROOT}/{anno}/{mese}/{uuid}.{ext}`
 
+Solo su una bozza `DRAFT`: altrimenti `E_EMAIL_ALLEGATO_NON_BOZZA` (409), il
+codice con cui la stessa regola la rifiuta il database — il controllo sta anche
+qui perche' il file si scrive su disco **prima** dell'`INSERT`.
+
 ### Lista allegati
 
 ```http
@@ -468,10 +495,12 @@ GET /api/v1/core/email/outbox/{id}/allegati/list/
 DELETE /api/v1/core/email/allegati/{allegato_id}/
 ```
 
-Elimina file fisico + record DB. Non controlla lo stato della bozza.
-⚠️ Difetto noto (F-2): si puo' eliminare anche l'allegato di una mail gia' spedita —
-all'invio l'allegato non viene copiato ma la **stessa** riga viene legata al log
-(`email_log_id`), quindi sparisce anche dal log — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+Elimina file fisico + record DB. Solo su una bozza `DRAFT`: lo applica il
+**database** (`config.trgfn_email_allegato_guard_solo_bozza`), che su una mail
+spedita, in partenza o annullata — o su un allegato che sta solo nel log —
+risponde `E_EMAIL_ALLEGATO_NON_BOZZA` (409) prima che il file venga toccato.
+✅ Chiude il difetto F-2 (2026-09-25): all'invio la **stessa** riga viene legata
+al log, e toglierla da una mail spedita la cancellava dalla sua storia.
 
 ### Download allegato
 
@@ -480,7 +509,7 @@ GET /api/v1/core/email/allegati/{allegato_id}/download/
 ```
 
 Ritorna `FileResponse` con `Content-Disposition: attachment`. Guard anti-path-traversal
-su `file_path`.
+su `file_path` (BB `percorso_allegato`, lo stesso dell'invio SMTP).
 
 ---
 
@@ -491,11 +520,32 @@ GET /api/v1/core/email/log/
 ```
 
 Il perimetro **non** e' un filtro della view: lo applica la RLS su
-`config.email_log`, per **emittente** (`fn_scope_ef_whitelist`); le email di ambito
-`SISTEMA` le legge solo un super admin (o il processo `send_pending_emails`).
+`config.email_log` per **ambito** ed **emittente** (§Ambito e visibilita'); in piu'
+il processo `send_pending_emails` vede le mail del suo perimetro, per poterle
+ritentare.
 Filtri: `search`, `stato`, `pratica_id`, `data_da`/`data_a` (`YYYY-MM-DD`), `limit`,
 `offset`. `search` e' la ricerca della lista `config.email_log` (stessa query): le
 colonne le decide il suo catalogo, e sotto 3 caratteri il termine non filtra.
+
+**Chi entra** (dal 2026-09-26, decisione di Tid): **ogni operatore** —
+`skip_area_check`, nessuna `area_funzionale`. Chi vede quale mail lo decide la
+RLS per ambito (sopra), e un livello d'area in piu' sarebbe una seconda regola
+accanto a quella del modello. ⛔ Vale per questa sola lettura: le bozze e
+l'invio restano sotto `config` finche' non esiste l'azione di processo
+`invia_email`.
+
+### Stati del log (lookup)
+
+```http
+GET /api/v1/core/email/log/stati/
+```
+
+Il vocabolario del filtro `stato`, stessa porta della lista. Risposta
+`{"data": {"results": [{codice, descrizione, ordering}, ...]}}`, nell'ordine
+dichiarato (`SENT` per primo). Sede: `email_constants.STATI_EMAIL_LOG_DESCRIZIONI`,
+confrontata col `CHECK` `chk_email_log_stato` da
+`core/tests/db/test_email_log_stati_guardrail.py`. ⚠️ Fino al 2026-09-26 stava
+in `/amm-software/lookup/email-log-stati/` (solo super admin).
 
 ---
 
@@ -534,11 +584,23 @@ Ogni email (outbox e log) ha un campo `ambito`:
 
 | Ambito | Significato | Visibilita' |
 | --- | --- | --- |
-| `SISTEMA` | Email infrastrutturali (inviti, reset) | Solo ADMIN |
-| `REPARTO` | Email del reparto (comunicazioni a clienti/fornitori) | Operatori dell'unita' organizzativa + ADMIN |
-| `OPERATORE` | Email personale dell'operatore | Solo il creatore + ADMIN |
+| `SISTEMA` | Email infrastrutturali (inviti, reset) | Solo super admin |
+| `REPARTO` | Email del reparto (comunicazioni a clienti/fornitori) | Operatori dell'unita' organizzativa + super admin |
+| `OPERATORE` | Email personale dell'operatore | Solo l'autore (`creato_da_user_id`) + super admin |
 
-Email con `pratica_id` sono visibili anche dalla scheda pratica.
+⭐ **La regola la applica il database, dal 2026-09-25**: le policy RLS di
+`config.email_log`, `config.email_outbox` e `config.email_allegato` passano tutte
+da `script.fn_scope_email_ambito`, in lettura e in scrittura. Su `REPARTO` e
+`OPERATORE` l'emittente della mail deve essere anche nel perimetro di chi guarda
+(`AND`). Gli allegati si vedono se si vede la bozza o il log a cui appartengono.
+Il backend non ne tiene una copia. Brief:
+[brief-db-email-visibilita-per-ambito](../../../dev/work-done/brief-db-email-visibilita-per-ambito.md).
+
+⚠️ `auth_user_id` **non** e' l'autore: e' l'utente **di cui la mail parla**
+(l'operatore invitato, l'utente del reset password).
+
+Email con `pratica_id` sono visibili anche dalla scheda pratica: ⏸ **regola del
+modello non ancora applicata**, rimandata al cantiere della scheda pratica (D-3).
 
 ## Management Command
 
@@ -588,6 +650,7 @@ Per ogni email in coda, usa l'`email_account_id` originale (non risolve da zero)
 | `apps/core/db/email_repository.py` | Repository: CRUD 5 tabelle + fn_resolve |
 | `apps/core/services/email_service.py` | EmailDispatchService: resolve, render, send |
 | `apps/core/services/email_outbox_service.py` | EmailOutboxService: bozze, allegati |
+| `apps/core/services/email_allegati_storage.py` | Radice e percorso degli allegati su disco (guard path traversal) |
 | `apps/amm_software/api/email_views.py` | API admin (account, template, log) |
 | `apps/core/api/email_views.py` | API operatore (outbox, allegati, log) |
 | `apps/core/management/commands/send_pending_emails.py` | Command coda email |

@@ -325,6 +325,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DOC_TIPO_NON_GESTITO": "Tipo di documento non gestito dal controllo di cancellazione: segnalalo, non e' una situazione che dipende dai tuoi dati.",
     "E_EMAIL": "Errore configurazione email.",
     "E_EMAIL_ADMIN": "Operazione sulla configurazione email non riuscita.",
+    "E_EMAIL_ALLEGATO_NON_BOZZA": (
+        "La mail non e' piu' in bozza: i suoi allegati si possono aggiungere, "
+        "modificare o togliere solo finche' e' in bozza."
+    ),
     "E_EMAIL_LOG_INESISTENTE": (
         "Impossibile registrare l'esito dell'invio: l'email indicata non esiste."
     ),

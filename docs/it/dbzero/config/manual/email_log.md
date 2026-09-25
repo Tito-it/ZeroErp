@@ -63,7 +63,7 @@ Perche' non uno dei quattro che c'erano gia':
 
 ⚠️ **E la seconda sede non e' aggirabile**: `EmailRepository.update_log_stato` instrada su quella funzione **ogni** chiusura di ambito `SISTEMA` — digest dei presidi e reset password — perche' la row level security rifiuta l'`UPDATE` diretto. Un valore aggiunto al solo `CHECK` resterebbe irraggiungibile proprio per quelle righe.
 
-⇒ Lo presidia `db/pgtap/config/test-fn-email-sistema.sql`, test 9. Il mirror lato backend (`_EMAIL_LOG_STATI_VALIDI`) ha un presidio suo, `test_email_log_stati_guardrail`.
+⇒ Lo presidia `db/pgtap/config/test-fn-email-sistema.sql`, test 9. Il mirror lato backend (`email_constants.STATI_EMAIL_LOG`) ha un presidio suo, `core/tests/db/test_email_log_stati_guardrail.py`.
 
 ---
 

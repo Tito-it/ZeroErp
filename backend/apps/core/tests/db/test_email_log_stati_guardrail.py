@@ -3,7 +3,10 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Il vocabolario di `config.email_log.stato` specchiato nel backend
-#        (`_EMAIL_LOG_STATI_VALIDI`) deve seguire il `CHECK` che lo possiede.
+#        (`STATI_EMAIL_LOG`, `core/services/email_constants.py`) deve seguire il
+#        `CHECK` che lo possiede. ⚠️ Fino al 2026-09-26 il vocabolario (e questo
+#        test) stavano in `amm_software`: scesi in `core` quando la lista del log
+#        si e' aperta a ogni operatore.
 #
 # ⛔ PERCHE' MANCAVA E PERCHE' CONTA. Quel `frozenset` alimenta il lookup che il
 #    frontend usa per filtrare il giornale delle email (`EmailLogStatoSelect`),
@@ -32,9 +35,9 @@ from __future__ import annotations
 
 from unittest import TestCase
 
-from apps.amm_software.services.amm_software_service import (
-    _EMAIL_LOG_STATI_DESCRIZIONI,
-    _EMAIL_LOG_STATI_VALIDI,
+from apps.core.services.email_constants import (
+    STATI_EMAIL_LOG,
+    STATI_EMAIL_LOG_DESCRIZIONI,
 )
 from apps.core.tests.db_e2e import richiedi_db_provvisto, valori_check
 
@@ -52,20 +55,20 @@ class EmailLogStatiGuardrail(TestCase):
     #    sembra coperta.
     def test_il_mirror_degli_stati_segue_il_check(self) -> None:
         self.assertEqual(
-            set(_EMAIL_LOG_STATI_VALIDI),
+            set(STATI_EMAIL_LOG),
             valori_check("config.email_log", "chk_email_log_stato"),
             "il vocabolario degli stati email nel backend non segue il CHECK del "
-            "database: allineare `_EMAIL_LOG_STATI_VALIDI` e la sua tabella di "
-            "descrizioni in apps/amm_software/services/amm_software_service.py.",
+            "database: allineare `STATI_EMAIL_LOG_DESCRIZIONI` in "
+            "apps/core/services/email_constants.py.",
         )
 
     # 2. ⚠️ La descrizione e' cio' che l'operatore LEGGE nel filtro: uno stato
     #    ammesso e senza frase esce dal select come codice grezzo, o non esce.
-    #    Il test gemello senza DB (`test_list_email_log_stati_coverage`) confronta
+    #    Il test gemello senza DB (`test_email_log_stati_lookup`) confronta
     #    le descrizioni col mirror; qui il mirror e' gia' quello del database,
     #    quindi la catena si chiude fino al CHECK.
     def test_ogni_stato_ammesso_ha_la_sua_descrizione(self) -> None:
-        descritti = {codice for codice, _testo, _ordine in _EMAIL_LOG_STATI_DESCRIZIONI}
+        descritti = {codice for codice, _testo, _ordine in STATI_EMAIL_LOG_DESCRIZIONI}
         dal_database = valori_check("config.email_log", "chk_email_log_stato")
         self.assertEqual(
             descritti, dal_database,

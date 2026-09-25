@@ -4,7 +4,23 @@
 # Doc: Python
 # Scopo: API email per operatori: outbox (bozze), allegati, log.
 #        Visibilita' basata su ambito e reparto dell'operatore.
-# Note: ⛔ Tutte le view stanno sotto l'area `config` — LETTURA per leggere,
+# Note: ⭐ CHI VEDE QUALE MAIL LO DECIDE IL DATABASE, non queste view: le policy
+#       RLS di `config.email_log`, `config.email_outbox` e
+#       `config.email_allegato` passano tutte da `script.fn_scope_email_ambito`
+#       (SISTEMA: super admin; REPARTO: stesso reparto; OPERATORE: l'autore;
+#       sempre in AND con l'emittente nel perimetro), in lettura e in scrittura.
+#       Una bozza o un allegato fuori perimetro qui arriva come «non trovato».
+#       ⛔ Fino al 2026-09-25 le view tenevano una seconda sede della regola
+#       (un controllo di proprieta' sulla bozza e il filtro
+#       `creato_da_user_id` della lista bozze): tolta con
+#       brief-db-email-visibilita-per-ambito §6.4.3 — e sbagliava, perche'
+#       negava ai colleghi le bozze di REPARTO.
+#       ⭐ ECCEZIONE, dal 2026-09-26 (Tid): la LISTA DEL LOG
+#       (`EmailLogOperatoreListView`, sola lettura) ha `skip_area_check` e la
+#       apre ogni operatore — le proprie mail e quelle del proprio reparto, per
+#       la RLS. Un livello d'area sopra sarebbe una seconda regola accanto a
+#       quella del modello. Brief: brief-db-email-visibilita-per-ambito §9.6.
+#       ⛔ Tutte le ALTRE view stanno sotto l'area `config` — LETTURA per leggere,
 #       TUTTO per preparare, modificare e SPEDIRE — per decisione di Tid
 #       (2026-09-12). Fino a quel giorno dichiaravano anche
 #       `skip_area_check = True`, che era MUTO (la catena legge lo skip solo se
@@ -30,47 +46,18 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.openapi_params import param_ricerca_full
-from apps.core.api.payload_validators import optional_int
+from apps.core.api.payload_validators import optional_int, parse_list_params
 from apps.core.api.success_responses import success_response
 from apps.core.db.email_repository import EmailRepository
-from apps.core.services.email_outbox_service import EmailOutboxService, _get_attachments_root
-from apps.core.services.email_constants import AMBITI_EMAIL
+from apps.core.services.email_allegati_storage import E_EMAIL_OP, percorso_allegato
+from apps.core.services.email_outbox_service import EmailOutboxService
+from apps.core.services.email_constants import AMBITI_EMAIL, elenco_stati_email_log
 from apps.core.services.auth_helpers import (
     extract_emittente_attivo_from_request,
 )
 from apps.core.services.error_manager import ErrorManager
 
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
-
-E_EMAIL_OP = "E_EMAIL_OP"
-
-
-# Scopo: Verifica che l'operatore possa accedere a una bozza outbox.
-#        Superuser bypassa. Altrimenti: l'operatore deve essere il creatore.
-# Scopo: Verifica che l'operatore possa accedere a un allegato.
-#        Risale all'outbox padre e applica ownership check.
-#        Se nessun outbox padre trovato, nega l'accesso (fail-closed).
-def _check_allegato_access(request: Request, repo: EmailRepository, allegato: dict[str, Any]) -> None:
-    if request.user.is_superuser:
-        return
-    outbox_id = allegato.get("email_outbox_id")
-    if outbox_id:
-        outbox = repo.get_outbox(outbox_id)
-        if outbox:
-            _check_outbox_access(request, outbox)
-            return
-    # Nessun outbox padre: nega accesso per sicurezza (fail-closed)
-    ErrorManager.require(False, code=E_EMAIL_OP, message="Non hai accesso a questo allegato.")
-
-
-def _check_outbox_access(request: Request, outbox: dict[str, Any]) -> None:
-    if request.user.is_superuser:
-        return
-    ErrorManager.require(
-        outbox.get("creato_da_user_id") == request.user.id,
-        code=E_EMAIL_OP,
-        message="Non hai accesso a questa bozza.",
-    )
 
 
 # ⭐ Il vocabolario vive in `services/email_constants.py`, non qui: lo usa anche
@@ -188,15 +175,13 @@ class EmailOutboxListView(DomainAPIView):
         responses={200: dict},
     )
     # Scopo: Lista bozze email con visibilita' per ambito/reparto.
+    # ⛔ Nessun filtro di perimetro qui: la visibilita' per ambito/reparto la
+    #    applica la RLS (vedi testa del file).
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         repo = EmailRepository()
 
-        # L'operatore vede le proprie bozze; la logica di visibilita'
-        # per ambito/reparto sara' raffinata quando il profilo utente
-        # includera' l'unita_organizzativa_id
         results, total = repo.list_outbox(
-            creato_da_user_id=request.user.id if not request.user.is_superuser else None,
             stato=qp.get("stato") or None,
             pratica_id=optional_int({"v": qp.get("pratica_id")}, "v"),
             limit=min(optional_int({"v": qp.get("limit")}, "v") or DEFAULT_LIMIT, MAX_LIMIT),
@@ -211,23 +196,21 @@ class EmailOutboxDetailView(DomainAPIView):
     area_funzionale = "config"
 
     @extend_schema(responses={200: dict})
-    # Scopo: Dettaglio bozza email con allegati. Verifica proprieta'.
+    # Scopo: Dettaglio bozza email con allegati.
     def get(self, request: Request, outbox_id: int) -> JsonResponse:
         repo = EmailRepository()
         result = repo.get_outbox(outbox_id)
         ErrorManager.require(result is not None, code=E_EMAIL_OP, message="Bozza non trovata.")
         assert result is not None
-        _check_outbox_access(request, result)
         return success_response(result)
 
     @extend_schema(responses={200: dict})
-    # Scopo: Modifica oggetto, corpo, CC di una bozza DRAFT. Verifica proprieta'.
+    # Scopo: Modifica oggetto, corpo, CC di una bozza DRAFT.
     def patch(self, request: Request, outbox_id: int) -> JsonResponse:
         repo = EmailRepository()
         outbox = repo.get_outbox(outbox_id)
         ErrorManager.require(outbox is not None, code=E_EMAIL_OP, message="Bozza non trovata.")
         assert outbox is not None
-        _check_outbox_access(request, outbox)
 
         data = request.data
         service = EmailOutboxService()
@@ -244,13 +227,12 @@ class EmailOutboxSendView(DomainAPIView):
     area_funzionale = "config"
 
     @extend_schema(responses={200: dict})
-    # Scopo: Conferma e invia una bozza email (DRAFT -> SENT). Verifica proprieta'.
+    # Scopo: Conferma e invia una bozza email (DRAFT -> SENT).
     def post(self, request: Request, outbox_id: int) -> JsonResponse:
         repo = EmailRepository()
         outbox = repo.get_outbox(outbox_id)
         ErrorManager.require(outbox is not None, code=E_EMAIL_OP, message="Bozza non trovata.")
         assert outbox is not None
-        _check_outbox_access(request, outbox)
 
         service = EmailOutboxService()
         result = service.confirm_and_send(outbox_id)
@@ -263,13 +245,12 @@ class EmailOutboxCancelView(DomainAPIView):
     area_funzionale = "config"
 
     @extend_schema(responses={200: dict})
-    # Scopo: Annulla una bozza email (DRAFT -> CANCELLED). Verifica proprieta'.
+    # Scopo: Annulla una bozza email (DRAFT -> CANCELLED).
     def post(self, request: Request, outbox_id: int) -> JsonResponse:
         repo = EmailRepository()
         outbox = repo.get_outbox(outbox_id)
         ErrorManager.require(outbox is not None, code=E_EMAIL_OP, message="Bozza non trovata.")
         assert outbox is not None
-        _check_outbox_access(request, outbox)
 
         service = EmailOutboxService()
         result = service.cancel_draft(outbox_id)
@@ -288,13 +269,12 @@ class EmailAllegatoUploadView(DomainAPIView):
     parser_classes = [MultiPartParser]
 
     @extend_schema(responses={200: dict})
-    # Scopo: Upload file allegato a una bozza DRAFT. Verifica proprieta'.
+    # Scopo: Upload file allegato a una bozza DRAFT.
     def post(self, request: Request, outbox_id: int) -> JsonResponse:
         repo = EmailRepository()
         outbox = repo.get_outbox(outbox_id)
         ErrorManager.require(outbox is not None, code=E_EMAIL_OP, message="Bozza non trovata.")
         assert outbox is not None
-        _check_outbox_access(request, outbox)
 
         uploaded = request.FILES.get("file")
         ErrorManager.require(uploaded is not None, code=E_EMAIL_OP, message="File non fornito.")
@@ -316,13 +296,12 @@ class EmailAllegatoListView(DomainAPIView):
     area_funzionale = "config"
 
     @extend_schema(responses={200: dict})
-    # Scopo: Lista allegati di una bozza outbox. Verifica proprieta'.
+    # Scopo: Lista allegati di una bozza outbox.
     def get(self, request: Request, outbox_id: int) -> JsonResponse:
         repo = EmailRepository()
         outbox = repo.get_outbox(outbox_id)
         ErrorManager.require(outbox is not None, code=E_EMAIL_OP, message="Bozza non trovata.")
         assert outbox is not None
-        _check_outbox_access(request, outbox)
         return success_response({"results": outbox.get("allegati", [])})
 
 
@@ -332,13 +311,12 @@ class EmailAllegatoDeleteView(DomainAPIView):
     area_funzionale = "config"
 
     @extend_schema(responses={204: None})
-    # Scopo: Elimina un allegato da una bozza. Verifica proprieta' outbox.
+    # Scopo: Elimina un allegato da una bozza.
     def delete(self, request: Request, allegato_id: int) -> JsonResponse:
         repo = EmailRepository()
         allegato = repo.get_allegato(allegato_id)
         ErrorManager.require(allegato is not None, code=E_EMAIL_OP, message="Allegato non trovato.")
         assert allegato is not None
-        _check_allegato_access(request, repo, allegato)
 
         service = EmailOutboxService()
         service.remove_attachment(allegato_id)
@@ -351,22 +329,15 @@ class EmailAllegatoDownloadView(DomainAPIView):
     area_funzionale = "config"
 
     @extend_schema(responses={200: bytes})
-    # Scopo: Download file allegato per ID. Verifica proprieta' outbox.
+    # Scopo: Download file allegato per ID.
     def get(self, request: Request, allegato_id: int) -> FileResponse:
         repo = EmailRepository()
         allegato = repo.get_allegato(allegato_id)
         ErrorManager.require(allegato is not None, code=E_EMAIL_OP, message="Allegato non trovato.")
         assert allegato is not None
-        _check_allegato_access(request, repo, allegato)
 
-        rel_path = allegato["file_path"]
-        root = _get_attachments_root()
-        abs_path = os.path.normpath(os.path.join(root, rel_path))
-        # Guard: previeni path traversal — il path risolto deve restare dentro root
-        ErrorManager.require(
-            abs_path.startswith(os.path.normpath(root)),
-            code=E_EMAIL_OP, message="Path allegato non valido.",
-        )
+        # Guard contro il path traversal nel BB condiviso con l'invio SMTP.
+        abs_path = percorso_allegato(allegato["file_path"])
         ErrorManager.require(os.path.exists(abs_path), code=E_EMAIL_OP, message="File non trovato su storage.")
 
         return FileResponse(
@@ -383,23 +354,31 @@ class EmailAllegatoDownloadView(DomainAPIView):
 
 
 # ⛔ LO SCOPE NON STA QUI, E NON VA AGGIUNTO: lo tiene la RLS su
-#    `config.email_log` — policy per `fn_scope_ef_whitelist(user,
-#    emittente_fiscale_id)`, e per l'ambito `SISTEMA` un super admin oppure lo
-#    scope del processo `send_pending_emails`. Un filtro applicativo qui sarebbe
-#    una SECONDA SEDE della stessa regola.
+#    `config.email_log` — `rls_email_log_ambito` → `script.fn_scope_email_ambito`
+#    (dal 2026-09-25: SISTEMA al super admin, REPARTO al reparto, OPERATORE
+#    all'autore, sempre in AND con l'emittente; piu' il processo
+#    `send_pending_emails`, che deve poter ritentare). Un filtro applicativo
+#    qui sarebbe una SECONDA SEDE della stessa regola.
 # ⚠️ Fino al 2026-09-11 il docstring diceva «per ambito/reparto», e i due
 #    parametri che il repository espone per quello (`ambito`,
-#    `unita_organizzativa_id`) non sono mai stati passati: lo scope che questa
-#    vista ha e' per EMITTENTE, non per reparto. La frase prometteva un filtro
-#    che non c'e' — corretta, non implementata (piano-be-fe-endpoint-senza-porta
-#    §1.1).
+#    `unita_organizzativa_id`) non sono mai stati passati: la frase prometteva
+#    un filtro che non c'era (piano-be-fe-endpoint-senza-porta §1.1). Dal
+#    2026-09-25 l'ambito e il reparto li applica la policy
+#    (brief-db-email-visibilita-per-ambito): la promessa e' vera, e la sede e'
+#    il database.
 # ⚠️ Il docstring resta UNA RIGA di proposito: drf-spectacular lo pubblica come
 #    descrizione dell'operazione nello schema OpenAPI, e le note di
 #    implementazione non appartengono a un contratto pubblico.
+# ⭐ `skip_area_check` e NESSUNA `area_funzionale` (i due insieme non
+#    convivono: lo skip sarebbe muto). E' una sola lettura, trasversale ai
+#    domini come il profilo o i lookup: le mail nascono da pratiche, vendite,
+#    inviti. Chi vede quale riga lo decide la RLS (sopra), non un'area.
+# ⛔ Non vale per le bozze: spedire resta sotto `config` finche' non esiste
+#    l'azione di processo `invia_email` (testa del file).
 class EmailLogOperatoreListView(DomainAPIView):
     """GET: log email inviate, nel perimetro dell'operatore."""
 
-    area_funzionale = "config"
+    skip_area_check = True
     is_search_endpoint = True
 
     @extend_schema(
@@ -414,20 +393,55 @@ class EmailLogOperatoreListView(DomainAPIView):
             OpenApiParameter(name="data_a", type=str, required=False, description="Data fine (YYYY-MM-DD)"),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
         ],
         responses={200: dict},
     )
-    # Scopo: Lista log email con filtro visibilita' per operatore.
+    # Scopo: Lista log email nel perimetro dell'operatore (lo tiene la RLS).
+    # ⛔ Fino al 2026-09-26 non leggeva `order_by`/`order_dir`: la lista
+    #    configurabile manda l'ordinamento della colonna cliccata, e qui veniva
+    #    ignorato in silenzio. Stessa lettura della gemella admin
+    #    (`amm_software/api/email_views.EmailLogListView`), stesso default DESC.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
+        p = parse_list_params(
+            qp, default_order="data_insert",
+            default_limit=DEFAULT_LIMIT, max_limit=MAX_LIMIT,
+        )
         repo = EmailRepository()
         results, total = repo.list_logs(
-            search=qp.get("search") or None,
+            search=p["search"],
             stato=qp.get("stato") or None,
             pratica_id=optional_int({"v": qp.get("pratica_id")}, "v"),
             data_da=qp.get("data_da") or None,
             data_a=qp.get("data_a") or None,
-            limit=min(optional_int({"v": qp.get("limit")}, "v") or DEFAULT_LIMIT, MAX_LIMIT),
-            offset=optional_int({"v": qp.get("offset")}, "v") or 0,
+            limit=p["limit"],
+            offset=p["offset"],
+            order_by=p["order_by"],
+            # `parse_list_params` normalizza il verso ad 'asc' (api.md): per un
+            # registro il default e' il piu' recente in cima, quindi il valore
+            # si legge GREZZO.
+            order_dir=qp.get("order_dir") or "desc",
         )
         return success_response({"count": total, "results": results})
+
+
+# ⭐ Il vocabolario del filtro «stato» della lista qui sopra: stessa porta
+#    (skip d'area, sola lettura), perche' chi puo' aprire la lista deve poter
+#    filtrare. Fino al 2026-09-26 stava in `/amm-software/lookup/email-log-stati/`
+#    (`AdminAPIView`): per un operatore sarebbe stato un 403 dentro una
+#    schermata aperta. Ritirato lo stesso giorno: una rotta, due schermate.
+# ⭐ Envelope `{"results": [...]}` (api.md, «L'envelope di un lookup»): la
+#    rotta admin rendeva la lista nuda e chi la consumava doveva ricordarsi un
+#    transform.
+class EmailLogStatiLookupView(DomainAPIView):
+    """GET: gli stati possibili di una mail nel log, per il filtro della lista."""
+
+    skip_area_check = True
+
+    @extend_schema(responses={200: dict})
+    # Scopo: Restituisce gli stati del log con la loro descrizione, in ordine.
+    def get(self, request: Request) -> JsonResponse:
+        del request
+        return success_response({"results": elenco_stati_email_log()})

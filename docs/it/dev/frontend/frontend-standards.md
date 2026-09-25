@@ -66,6 +66,11 @@ src/
   magazzino/          ← dominio magazzino
   pagamenti/          ← dominio pagamenti
   contabilita/        ← dominio contabilita'
+  strumenti/          ← viste operative trasversali (area `strumenti`)
+  personale/          ← le cose dell'OPERATORE, non di un'area (dal 2026-09-26):
+                        dominio SENZA `schemaDb`, quindi visibile a ogni
+                        operatore interno — la forma a video dello
+                        `skip_area_check` delle sue rotte BE. Oggi: le sue email
   router/             ← definizione rotte
   stores/             ← store Pinia globali (auth, ui, tabs, navigation, context)
   locales/            ← file i18n (it.json, en.json)

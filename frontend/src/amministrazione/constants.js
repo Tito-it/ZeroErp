@@ -61,31 +61,9 @@ export function buildLivelloOptions(t) {
 export const ROUNDING_DECIMALI_RANGE = { MIN: 0, MAX: 6 }
 
 // --- Email log stati ---
-// Fase 5 (LANDED): l'enum + le opzioni filtro arrivano dal lookup BE
-// /amm-software/lookup/email-log-stati/. Vedi EmailLogStatoSelect.vue
-// (wrapper riusabile cached con useGlobalLookup('amm.email_log_stati')).
-// Single source of truth lato BE: amm_software_service._EMAIL_LOG_STATI_VALIDI.
-//
-// `getEmailLogStatoSeverity` resta lato FE (puro mapping CSS, presentation).
-// ⛔ IL RIPIEGO SU 'info' NON E' UNA RETE, ed e' costato una riga di lavoro nel
-//    2026-09-11: 'info' e' anche la severity di PENDING, quindi uno stato nuovo
-//    non «cade su un default neutro» — esce IDENTICO a «in lavorazione».
-//    Su `SIMULATA` sarebbe stato il colmo: il valore nasce apposta per non dire
-//    «consegnata», e a video avrebbe detto «in corso».
-// ⇒ Ogni stato TERMINALE vuole il suo ramo. Il ripiego resta per non rompersi
-//    su un codice ignoto, ma va letto per quello che e': l'ultima spiaggia.
-
-// Scopo: Restituisce la severity PrimeVue per uno stato email log (puro CSS).
-export function getEmailLogStatoSeverity(stato) {
-  if (stato === 'SENT') return 'success'
-  if (stato === 'FAILED') return 'danger'
-  if (stato === 'RETRY') return 'warn'
-  // ⭐ SIMULATA: stampata a video, non spedita. Terminale e VOLUTA — quindi non
-  //    rossa (non e' un guasto) e non verde (non e' arrivata a nessuno).
-  //    Grigia, come la convenzione del progetto vuole per cio' che e' inerte.
-  if (stato === 'SIMULATA') return 'secondary'
-  return 'info' // PENDING o codice non riconosciuto
-}
+// ⭐ Dal 2026-09-26 in `core`: il select (`core/components/EmailLogStatoSelect`,
+// lookup /core/email/log/stati/) e il colore (`core/utils/severity.js`,
+// `statoEmailLogSeverity`). Li usano il log dell'admin e quello dell'operatore.
 
 // --- Severity mapping riusabili ---
 

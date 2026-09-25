@@ -119,16 +119,19 @@ class EmailPortaDiSistemaTests(TestCase):
                 """,
                 [str(auth_user_id), str(identita_id), str(identita_id)],
             )
+            # ⚠️ Una mail `OPERATORE` nomina il suo autore (D-5 di
+            #    brief-db-email-visibilita-per-ambito): qui e' l'utente del
+            #    contesto, che la scrive e la chiude.
             cur.execute(
                 """
                 INSERT INTO config.email_log
                     (destinatario, oggetto, corpo_inviato_html, stato,
-                     ambito, emittente_fiscale_id)
+                     ambito, emittente_fiscale_id, creato_da_user_id)
                 VALUES ('azienda@esempio.test', 'fattura', '<p>x</p>', 'PENDING',
-                        %s, %s)
+                        %s, %s, %s)
                 RETURNING id
                 """,
-                [AMBITO_OPERATORE, emittente_id],
+                [AMBITO_OPERATORE, emittente_id, auth_user_id],
             )
             log_id = cur.fetchone()[0]
 

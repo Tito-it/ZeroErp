@@ -322,10 +322,3 @@ export function lookupAuditSources() {
   return api.get(`${BASE}/lookup/audit-sources/`)
 }
 
-// Lookup statico stati email log (5 codici fissi: SENT/PENDING/RETRY/FAILED/
-// SIMULATA — quest'ultimo dal 2026-09-11: stampata a video, non spedita).
-// Single source of truth lato BE in amm_software_service._EMAIL_LOG_STATI_VALIDI.
-// Restituisce lista nuda di { codice, descrizione, ordering }.
-export function lookupEmailLogStati() {
-  return api.get(`${BASE}/lookup/email-log-stati/`)
-}

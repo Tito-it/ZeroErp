@@ -20,9 +20,15 @@
 >   chiamano `/core/email/`.
 > * ✅ **Scelta (a) di Tid, 2026-09-25** (§3.2): gli operatori vedono le mail
 >   del loro perimetro, a partire dalla sola lista.
-> * ⛔ **In attesa del DB**: la RLS applica solo l'emittente, non gli ambiti
->   `REPARTO`/`OPERATORE` che il modello dichiara (§3.3) ⇒
->   [brief-db-email-visibilita-per-ambito.md](brief-db-email-visibilita-per-ambito.md).
+> * ✅ **Il prerequisito è chiuso** (§3.3): dal 2026-09-25 la RLS applica gli
+>   ambiti `REPARTO`/`OPERATORE` su log, bozze e allegati, e dal 2026-09-26 il
+>   backend non ne tiene più una copia
+>   ([brief-db-email-visibilita-per-ambito.md](../work-done/brief-db-email-visibilita-per-ambito.md) §9).
+> * ✅ **§2.3 passi 1-4 fatti il 2026-09-26**: la lista del log è aperta a ogni
+>   operatore (skip d'area, decisione di Tid) nel dominio frontend nuovo
+>   «Personale», voce «Email». Dettaglio nel brief §9.6.
+> * ⏸ **§2.3 passo 5 — l'outbox**: resta sotto `config`, e aspetta l'azione di
+>   processo `invia_email` (D15).
 
 ---
 
@@ -170,9 +176,9 @@ La schermata dell'operatore **riusa** il codice lista `config.email_log`.
 | --- | --- | --- |
 | §1 — la risposta per le tredici rotte | ✅ chiusa 2026-09-11 | `migliorie-generali-BE-FE-…` D7 (la decisione) |
 | §2.4 — docstring di `EmailLogOperatoreListView` | ✅ corretto 2026-09-11, con il blocco «⛔ lo scope non sta qui» sopra la classe | `core/api/email_views.py` |
-| §2.3 passi 1-4 — client, store, view, rotta/menu | ⛔ **non iniziati** (ricontrollato: nessun uso di `/core/email/` in `frontend/src`) | — |
+| §2.3 passi 1-4 — client, store, view, rotta/menu | ✅ **fatti** 2026-09-26. ⚠️ Due scostamenti dal piano: la voce non è in un dominio d'area ma nel dominio nuovo «Personale» (senza area, come lo skip), e la view non è una copia di quella admin ma il BB `EmailLogLista` che le serve entrambe | `core/api/email.js`, `personale/`, `core/components/EmailLogLista.vue` |
 | §2.3 passo 5 — outbox | ⛔ non iniziato (per piano, dopo la lista) | — |
-| §2.4 — `/core/email/` in `api.md` | ⏸ in attesa della schermata, **per piano** | — |
+| §2.4 — `/core/email/` in `api.md` | ✅ 2026-09-26, con la schermata | `api.md` §Endpoint attivi |
 | §2.5 — ritiro `job-summary`, `manual-lookup` | ⏸ non deciso: entrambe le rotte sono ancora registrate | `core/api/urls_v1.py`, `anagrafiche/api/urls.py` |
 | §1 #10 — `rettifica-controllata` (N6) | ⏸ cantiere suo, non questo | — |
 
@@ -233,8 +239,11 @@ stesso emittente. Sull'outbox potrebbe anche **spedirne** la bozza.
 
 ⇒ ⛔ La correzione **non** va nella view: sarebbe la seconda sede del §1.1. Va
 nelle policy:
-[brief-db-email-visibilita-per-ambito.md](brief-db-email-visibilita-per-ambito.md)
+[brief-db-email-visibilita-per-ambito.md](../work-done/brief-db-email-visibilita-per-ambito.md)
 (decisioni D-1 → D-4 ✅ prese da Tid il 2026-09-25; il lavoro è del team DB). Il §2.3 riparte quando quel brief è chiuso.
+✅ **Chiuso**: DB il 2026-09-25, BE il 2026-09-26 (brief §9, che ha trovato anche
+un difetto preesistente: l'`INSERT` del log non scriveva l'emittente, quindi
+nessuna bozza non di sistema si poteva spedire).
 Allora resta una scelta BE: la sola **lista** può uscire dall'area `config`,
 perché il perimetro lo porta tutto la RLS; l'**outbox** resta sotto `config`
 fino all'azione `invia_email` (D15).
