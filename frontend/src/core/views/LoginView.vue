@@ -132,6 +132,12 @@ async function handleLogin() {
              componente con v-model="canale". -->
         <!-- <ChannelSelector v-model="canale" :disabled="loading" /> -->
 
+        <!-- Errore SOPRA i campi, fuori dal flusso (login-error--sopra): nel
+             flusso spingeva in basso pulsante e «Password dimenticata». -->
+        <div v-if="errorMessage" class="login-error login-error--sopra" role="alert">
+          {{ errorMessage }}
+        </div>
+
         <div class="field">
           <InputText
             id="username"
@@ -156,10 +162,6 @@ async function handleLogin() {
             autocomplete="current-password"
             fluid
           />
-        </div>
-
-        <div v-if="errorMessage" class="login-error">
-          {{ errorMessage }}
         </div>
 
         <Button
