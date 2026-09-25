@@ -21,11 +21,13 @@
 | user_update | character varying | YES |  |
 | multi_emittente | boolean | NO | false |
 | perimetro_emittente | boolean | NO | true |
+| ricerca_min_caratteri | smallint | NO | 3 |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_ui_lista_definizione_perimetro_coerente |  |
+| CHECK | chk_ui_lista_definizione_ricerca_min_caratteri |  |
 | PRIMARY KEY | lista_definizione_pkey | id |
 | UNIQUE | uq_ui_lista_definizione_codice | codice |
 

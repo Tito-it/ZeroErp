@@ -33,6 +33,7 @@ La tabella **`ui.lista_definizione`** è il **catalogo delle liste configurabili
 | `schema_dati` | Schema PostgreSQL cui appartiene la lista (es. `anagrafiche`) |
 | `vista_sql` | Nome della view sorgente dati; validato da trigger contro `pg_catalog.pg_class` |
 | `attivo` | Disattivazione logica senza cancellazione; il trigger di validazione salta se `FALSE` |
+| `ricerca_min_caratteri` | Quanti caratteri servono perché la ricerca libera filtri. È una proprietà della lista: le tabelle di configurazione a codici corti («KG», «FT») cercano da 1, gli archivi dalla soglia di progetto, 3 (il default). Si dichiara nel seed `lista_definizione.csv`; `CHECK >= 1`. La leggono la configurazione della schermata ([`fn_resolve_lista_config`](/dbzero/ui/funzioni/fn_resolve_lista_config)) e la ricerca del backend ([`fn_lista_da_codice`](/dbzero/ui/funzioni/fn_lista_da_codice)), dalla stessa riga |
 
 ---
 

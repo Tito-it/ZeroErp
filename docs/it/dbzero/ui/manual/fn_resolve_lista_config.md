@@ -12,9 +12,9 @@ Punto centrale di risoluzione della configurazione di una lista per un utente. A
 
 ```sql
 ui.fn_resolve_lista_config(
-  p_lista_codice         VARCHAR,
-  p_auth_user_id         INTEGER,
-  p_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE
+  p_lista_codice         ui.lista_definizione.codice%TYPE,
+  p_auth_user_id         ui.lista_preferenza_utente.auth_user_id%TYPE,
+  p_emittente_fiscale_id ui.lista_preset.emittente_fiscale_id%TYPE
 ) RETURNS JSONB
 ```
 
@@ -24,11 +24,11 @@ ui.fn_resolve_lista_config(
 |-----------|------|:---:|-------------|
 | `p_lista_codice` | `VARCHAR` | Sì | Codice lista (es. `anagrafiche.clienti`) |
 | `p_auth_user_id` | `INTEGER` | Sì | ID utente Django (`django.auth_user.id`) |
-| `p_emittente_fiscale_id` | `INTEGER` | No | ID emittente fiscale del contesto. NULL se non rilevante. |
+| `p_emittente_fiscale_id` | `BIGINT` | No | ID emittente fiscale del contesto. NULL se non rilevante. |
 
 ## Algoritmo (6 passi)
 
-**0. Risoluzione lista_id** — lookup `ui.lista_definizione` per codice. Errore `E_UI_LISTA_NON_TROVATA` se non trovata o non attiva.
+**0. La riga della lista** — letta una volta dal building block [`ui.fn_lista_da_codice`](/dbzero/ui/funzioni/fn_lista_da_codice), che solleva `E_UI_LISTA_NON_TROVATA` se la lista non c'è o è spenta. Da questa riga vengono `multi_emittente`, `perimetro_emittente` e `ricerca_min_caratteri`.
 
 **1. Profili applicabili** — chiama `script.fn_get_profili_accesso_applicabili(p_auth_user_id)` e costruisce `v_profili_ids[]`.
 
@@ -80,6 +80,7 @@ JSONB con le chiavi:
 | `ordinamento` | `jsonb[]` | Array `[{"col": "...", "dir": "asc/desc"}]` |
 | `filtri` | `jsonb` | Filtri preimpostati |
 | `pagina_dimensione` | `integer` | Righe per pagina |
+| `ricerca_min_caratteri` | `integer` | La soglia della ricerca libera della lista (`ui.lista_definizione.ricerca_min_caratteri`): sotto questo numero di caratteri il frontend non manda il termine. È la stessa colonna che legge la ricerca del backend |
 | `colonne_nuove` | `integer` | Numero di colonne aggiunte dal merge automatico (>0 = badge "aggiornato" nel frontend) |
 | `preset_aggiornato` | `boolean` | DEF-2: `TRUE` se il preset di base è stato modificato dopo lo snapshot della preferenza utente E l'utente non ha ancora ignorato l'aggiornamento (o il preset è cambiato di nuovo dopo l'ultimo ignore). `FALSE` in tutti gli altri casi: nessuna preferenza, `preset_base_id IS NULL`, snapshot allineato, ignore attivo. |
 
@@ -87,7 +88,7 @@ JSONB con le chiavi:
 
 ## Dipendenze
 
-- `ui.lista_definizione` — lookup lista per codice
+- [`ui.fn_lista_da_codice`](/dbzero/ui/funzioni/fn_lista_da_codice) — la riga della lista dal codice (passo 0)
 - `ui.lista_colonna` — catalogo colonne e flag sensibile/esportabile
 - `ui.lista_preset` + `ui.lista_preset_colonna` — configurazioni predefinite
 - `ui.lista_preferenza_utente` — preferenza personale

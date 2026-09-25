@@ -44,7 +44,7 @@ Il livello effettivo viene da [`ui.fn_lista_colonne_livello`](/dbzero/ui/funzion
 
 - **Nessun utente in sessione** (un comando, un job): nessun grant si applica, quindi le colonne **sensibili escono** e le altre restano.
 - **L'emittente fiscale non entra**: i permessi di colonna sono per profilo d'accesso, non per azienda.
-- **Lista inesistente o spenta**: errore `E_UI_LISTA_NON_TROVATA`, come per `fn_resolve_lista_config`.
+- **Lista inesistente o spenta**: errore `E_UI_LISTA_NON_TROVATA`, dal building block [`ui.fn_lista_da_codice`](/dbzero/ui/funzioni/fn_lista_da_codice), lo stesso di `fn_resolve_lista_config`.
 
 ## Caratteristiche
 
