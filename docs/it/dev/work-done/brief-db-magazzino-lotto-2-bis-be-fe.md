@@ -1,11 +1,11 @@
 # Brief DB — magazzino, Lotto 2-bis: ciò che il BE/FE del motore chiede al DB
 
 > **Destinatario:** team DB (`dev/db-tid`). **Chi scrive:** BE/FE, 2026-09-18.
-> **Origine:** [piano-be-fe-magazzino-lotto-2-motore.md](piano-be-fe-magazzino-lotto-2-motore.md)
+> **Origine:** [piano-be-fe-magazzino-lotto-2-motore.md](../work-in-progress/piano-be-fe-magazzino-lotto-2-motore.md)
 > §7 — scrivendo il piano del drawer e delle righe sono emerse **tre** cose che
 > il BE non può fare da sé senza riscrivere una regola del DB, più **due**
 > difese opzionali. Nessuna ridiscute il Lotto 2: ogni riga cita la decisione
-> da cui discende (D-L2-* del [brief del motore](../work-done/brief-db-magazzino-lotto-2-motore.md)).
+> da cui discende (D-L2-* del [brief del motore](brief-db-magazzino-lotto-2-motore.md)).
 > **Stato:** ✅ **LE TRE BLOCCANTI SONO FATTE, APPLICATE E VERDI — 2026-09-22.**
 > Sei changeSet `EXECUTED` su dbdev (i cinque del disegno alle 19:06, la rev
 > della vista del presidio C1 in serata), i quattro seed a catalogo, i pgTAP
@@ -32,7 +32,7 @@
 > (letti su `pg_trigger`). ⇒ Il **test 17 del guard non fa più `skip`**: adesso
 > misura davvero. A generarli è stata l'automazione chiamata da
 > `90_end/20260923-02`, il changeSet di un cantiere nato da una riga di questo
-> brief — [brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](brief-db-codici-ritirati-negli-argomenti-dei-trigger.md).
+> brief — [brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](../work-in-progress/brief-db-codici-ritirati-negli-argomenti-dei-trigger.md).
 > ✅ **pgTAP rilanciati da Tid, nessuna regressione; commit fatto** (`7d67d6d9d`).
 > ⇒ **Sul DB non resta niente di questo brief.**
 >
@@ -46,7 +46,10 @@
 > picker di riga propone i soli articoli gestiti a magazzino. Dettaglio e
 > presidi in coda, §«A BE/FE, quando il DB è applicato».
 > ⏳ **Resta il collaudo a video** (passo 7 del piano), che è di Tid: il
-> frontend non è stato provato in-app.
+> frontend non è stato provato in-app. Il copione è
+> [collaudo-in-app-magazzino-inventario-e-rettifica.md](../work-in-progress/collaudo-in-app-magazzino-inventario-e-rettifica.md).
+> 📦 **Archiviato in `work-done/` il 2026-09-25**: il brief non ha più niente
+> da consegnare; il collaudo vive nel suo documento.
 > ✅ Le cinque domande del piano (Q-1 … Q-5) erano decise da Tid il 2026-09-18:
 > lato BE/FE non restava niente in sospeso. Bloccavano parti **diverse** del
 > piano: R-1 il drawer (Pezzo 3), R-2 le righe (Pezzo 2), R-3 il gate di
@@ -469,7 +472,7 @@ test 2 torna rosso e nomina le righe giuste: la fotografia non lo ha reso cieco.
    nominavano un codice ritirato o inesistente e che **69 trigger vivi** lo
    sollevavano con il presidio verde. La bonifica ha chiamato l'automazione una
    volta, e nello stesso gesto ha armato anche questi due:
-   [brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](brief-db-codici-ritirati-negli-argomenti-dei-trigger.md).
+   [brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](../work-in-progress/brief-db-codici-ritirati-negli-argomenti-dei-trigger.md).
 6. ✅ **pgTAP e commit**: rilanciati da Tid il 23-09, **nessuna regressione**;
    commit `7d67d6d9d`. ⇒ Sul database non resta niente di questo brief.
 
@@ -503,7 +506,7 @@ ne è accorto solo un pgTAP.
 che 26 righe su 38 nominavano quel codice ritirato o uno inesistente, e che **69
 trigger vivi** lo sollevavano ancora con il presidio verde — il codice viaggia come
 argomento del trigger, e il controllo guardava i corpi delle funzioni.
-[brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](brief-db-codici-ritirati-negli-argomenti-dei-trigger.md).
+[brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](../work-in-progress/brief-db-codici-ritirati-negli-argomenti-dei-trigger.md).
 ⚠️ Quella bonifica arma **anche** i due lock di R-4: è l'automazione, chiamata una volta.
 
 ⚠️ **La `data` resta modificabile**, per decisione esplicita nella stessa
@@ -605,7 +608,7 @@ fa fallire niente*.
 ⚠️ **Una ricaduta trovata strada facendo, e non è di questo brief**: il test BE
 `test_il_codice_del_magazzino_e_lockato_e_il_duplicato_dice_il_campo` era rosso
 prima di toccare qualunque cosa. Il changeSet `90_end/20260923-02` (cantiere
-[codici ritirati negli argomenti dei trigger](brief-db-codici-ritirati-negli-argomenti-dei-trigger.md))
+[codici ritirati negli argomenti dei trigger](../work-in-progress/brief-db-codici-ritirati-negli-argomenti-dei-trigger.md))
 ha rigenerato i lock coi codici vivi, e `CODICE_NON_MODIFICABILE` — obsoleto dal
 2026-08-05 — è diventato `E_CODICE_NON_MODIFICABILE`: il test pinnava il vecchio.
 Allineato qui perché senza, la suite del dominio resta rossa. ⭐ Vale la pena

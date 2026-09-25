@@ -7,7 +7,7 @@
 > è rossa finché non arrivano) e rimanda a *«un brief BE/FE suo»* il resto:
 > *«il primo endpoint, il drawer dell'inventario, la lista movimenti — nasce
 > quando questa primitiva esiste»*. Esiste.
-> **Prerequisiti DB nuovi:** [brief-db-magazzino-lotto-2-bis-be-fe.md](brief-db-magazzino-lotto-2-bis-be-fe.md)
+> **Prerequisiti DB nuovi:** [brief-db-magazzino-lotto-2-bis-be-fe.md](../work-done/brief-db-magazzino-lotto-2-bis-be-fe.md)
 > (R-1 … R-7): ✅ **tutti applicati** — DB il 22/23-09, BE/FE il **23-09**.
 > **Stato (18-09, notte):** 🟡 **BE dei Pezzi 0, 1, 2 e 4 e FE dei Pezzi
 > 1, 4 e 3-senza-barra consegnati e verdi** (BE: 125 test `magazzino`+`catalogo`,
@@ -17,7 +17,8 @@
 > quattro regole del 2 dichiarate il 18-09 (due FE, due BE) sono **estratte il 18-09 stesso, in serata** (§11).
 > ✅ **Il passo 7 è scritto e verde il 2026-09-23** (Pezzo 3 con barra: le tre
 > transizioni dalla capability, «Registra» con la terna, il filtro del picker).
-> ⏳ Resta il **collaudo a video**, che è di Tid. ⚠️ Il FE non è stato provato a video:
+> ⏳ Resta il **collaudo a video**, che è di Tid: copione in
+> [collaudo-in-app-magazzino-inventario-e-rettifica.md](collaudo-in-app-magazzino-inventario-e-rettifica.md). ⚠️ Il FE non è stato provato a video:
 > serve una sessione con login. Lo stato per pezzo è in §0-bis; le decisioni prese
 > scrivendo sono in §11.
 >
@@ -323,7 +324,7 @@ digest settimanale finché il primo articolo non è marcato — è il caso volut
 
 ---
 
-## 7. Richieste al DB — [brief-db-magazzino-lotto-2-bis-be-fe.md](brief-db-magazzino-lotto-2-bis-be-fe.md)
+## 7. Richieste al DB — [brief-db-magazzino-lotto-2-bis-be-fe.md](../work-done/brief-db-magazzino-lotto-2-bis-be-fe.md)
 
 | # | Cosa | Chi aspetta | Perché non si fa nel BE |
 | --- | --- | --- | --- |
@@ -401,6 +402,7 @@ si modifica; `CONFIRM → DRAFT` riapre le righe.
 
 | Data | Cosa |
 | --- | --- |
+| 2026-09-25 | 📋 **Copione del collaudo a video** scritto a parte ([collaudo-in-app-magazzino-inventario-e-rettifica.md](collaudo-in-app-magazzino-inventario-e-rettifica.md)): il §8 a-g esteso, col dato da costruire misurato su `dbdev` (un solo magazzino a una ubicazione, nessun articolo con lotto, zero movimenti). Il brief 2-bis è archiviato in `work-done/`. Restano: il collaudo (Tid), poi §9 (doc) |
 | 2026-09-23 (sera) | 🔍 **Rilettura critica del passo 7** (richiesta di Tid). Corretti: (1) 🔴 «Registra» era condizionato a `stato_codice === 'CONFIRM'` — un `v-if` su `stato` a mano, e in DRAFT il pulsante spariva invece di stare spento con `non_confermato` (brief 2-bis): ora `can_change_state` (la matrice: falso solo su POSTED/CANCEL); (2) toast «Testata salvata» sul cambio di stato → `stato_cambiato`; (3) conferma «Vuoi annulla…» → etichetta citata; (4) `'\n'` in un ConfirmDialog non `pre-line`; (5) `_UNIQUE_CONSTRAINTS` ricopiava il nome del vincolo: ora da `INVENTARI.guard_riga_uniq`; (6) `check_i18n_keys.py` leggeva le fixture degli spec → esclusi `*.spec.js`/`*.test.js`. ⭐ **Q-5 fatto**: dopo un CONFIRM riuscito il piano si apre da solo. ⭐ `guard:capability` **ristretto** alle chiavi di `jsonb_build_object` (65 → 51: uscivano valori come `'danger'`, `'conferma'`), provato per mutazione. **Verde**: BE magazzino+catalogo, 20 test su DB vero, FE lint/guards/vitest 294, `check_i18n_keys` |
 | 2026-09-23 | ✅ **PASSO 7 — la barra del drawer, e con essa il brief 2-bis chiuso anche lato BE/FE.** Il DB aveva consegnato R-1…R-7 fra il 22 e il 23-09 (commit `ce91eb2d1`, `7d67d6d9d`, `9304f209c`); qui entra la metà che mancava. **BE**: `fn_capability` nella configurazione della famiglia (l'involucro, non il corpo parametrico), `get_capabilities` sul repository, il dettaglio che trasporta il blob **intatto** e legge `stato_info_key` da lì; `_UNIQUE_CONSTRAINTS` per il `23505` del duplicato (R-2); `E_MAGAZZINO_VALIDATION` al posto del generico (R-6); `E_MAG_DOCUMENTO_RIGA_NON_TROVATA` sul 404 della riga (R-7); `gestito_a_magazzino` sul lookup articoli (R-5); `genera_error_policies` rigenerato (4 voci, zero classi mosse) + 4 ripieghi senza segnaposto. **FE**: `mapAvailableActionsToDrawerActions` per le tre transizioni, «Registra» dalla terna `can_registra*` (spento col motivo, `action: registra_magazzino`), le conferme con label e icona **dal dato** (`danger` da solo avrebbe portato «Elimina» + cestino su un annullamento), il picker di riga col filtro tri-stato che `ArticoloLookup` aveva già; **dieci** chiavi i18n emesse dal DB — non otto, la check ne emette cinque di `registra_reason`. **Verde**: BE 5202 test (3 nuovi sul DB vero: la matrice, i tre motivi di «Registra», il duplicato), `ruff`, smoke 12/12; FE `vitest` 251, lint, `npm run guards`, `check_i18n_keys`, `vite build`. Gunicorn ricaricato. 🔴 **Limite dichiarato**: la barra non ha un presidio automatico lato FE (nessuno spec monta componenti, `@vue/test-utils` non è in progetto e non si aggiungono dipendenze senza l'ok di Tid) — regge il pinning dei **nomi** del blob lato BE. ⚠️ **Ricaduta non mia, sanata**: `test_il_codice_del_magazzino_e_lockato...` era rosso da prima, `CODICE_NON_MODIFICABILE` → `E_CODICE_NON_MODIFICABILE` dopo `90_end/20260923-02`. ⏳ **Prossimo passo: il collaudo a video di Tid**, poi §9 (doc) |
 | 2026-09-21 (sera) | ✅ **Il piano figlio è CHIUSO e archiviato** ([work-done](../work-done/piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md)): mirror `ui` applicato, collaudo in-app di Tid (magazzino + ubicazione; i lotti non provati a video), rilettura critica con tre bug muti corretti e tre BB per regola del 2 (`useAzioniAttivo`, `max_len` su `extract_optional_string`, `app-riepilogo-*`). Restano fuori da quel piano: P-4 `config.titoli_cortesia` (DB/Tid), `magazzino.lotti` nel pgTAP delle liste globali (DB), `apps.md` di magazzino |

@@ -77,7 +77,7 @@ nessuno lo scegliesse. La forma lo ha reso facile.
 ## 2. Il fatto che l'ha fatta emergere
 
 Scrivendo la barra del drawer di magazzino
-([brief-db-magazzino-lotto-2-bis-be-fe.md](../work-in-progress/brief-db-magazzino-lotto-2-bis-be-fe.md)
+([brief-db-magazzino-lotto-2-bis-be-fe.md](brief-db-magazzino-lotto-2-bis-be-fe.md)
 R-1, consegnato il 23-09) il drawer nuovo **non ha potuto usare il BB**
 `useEntityCapabilities`: il BB legge i flag dal dettaglio piatto
 (`detailRef.value?.[key]`), magazzino li riceve annidati.
