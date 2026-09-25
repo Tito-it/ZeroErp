@@ -63,7 +63,7 @@ ZeroErp/
 │   │   ├── ui/               # Liste configurabili: la configurazione è DATO, non DDL
 │   │   ├── vendite/          # App più attiva — pipeline fatturazione
 │   │   ├── acquisti/         # 🔵 PROSSIMO CANTIERE (Tid, 2026-09-11) — modello a DB, comportamento da scrivere
-│   │   ├── magazzino/        # 🔵 PROSSIMO CANTIERE (idem) — modello a DB curato, 0 test
+│   │   ├── magazzino/        # 🔵 CANTIERE APERTO (idem) — Lotto 2: primo carico da video (BE/FE 23-09), collaudo a video di Tid
 │   │   ├── storico/          # ⚠️ scheletro (13 file, 26 righe, 0 test) — nessuna decisione presa
 │   │   └── contabilita/      # ⛔ scheletro vuoto — schema DB vuoto, fuori perimetro per decisione
 │   ├── requirements.in       # Dipendenze dirette (editare qui)
@@ -191,9 +191,10 @@ Le due app **non sono scheletri congelati: sono il prossimo cantiere**, e la
 decisione è stata presa il 2026-09-11 rispondendo alla voce D11 di
 [migliorie-generali-BE-FE-da-test-valutazione.md](../docs/it/dev/work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md).
 
-Oggi hanno un **modello DB curato e zero comportamento applicativo**: 26 tabelle
-e 71 CHECK su `magazzino`, 9 tabelle e 42 FK su `acquisti`, 13 file Python e 0
-test per ciascuna.
+Al 2026-09-11 avevano un **modello DB curato e zero comportamento applicativo**:
+26 tabelle e 71 CHECK su `magazzino`, 9 tabelle e 42 FK su `acquisti`, 13 file
+Python e 0 test per ciascuna. ⚠️ Da allora `magazzino` ha il comportamento dei
+Lotti 1 e 2 (paragrafi sotto); `acquisti` è ancora a quel punto.
 
 ⭐ **Cosa comporta, ed è la ragione per cui sta scritto qui e non in un piano:**
 ogni decisione che si prende lavorando su `vendite` — envelope, capability di
@@ -237,7 +238,14 @@ ledger, check di disponibilità condivisa, inventario e rettifica,
 il suo brief dal **17-09** — `work-done/brief-db-magazzino-lotto-2-motore.md`,
 ✅ **quattordici D-L2 tutte decise da Tid il 17-09** (fra cui `magazzini.usa_ubicazioni`, `trasferimenti` = trasferimento interno, via `COUNTING`), ✅ **CONSEGNATO il 22-09 e ARCHIVIATO il 24-09**, dopo che la porta è stata completata coi verbi (paragrafo sotto) — era partito da
 `analisi-db-magazzino-carico-e-scarico.md` §8 e dalle sei lezioni in coda a §5
-del brief del Lotto 1. Il prerequisito deciso da Tid il 15-09 —
+del brief del Lotto 1. ✅ **Il lato BE/FE del Lotto 2 è consegnato a codice il
+23-09** (`work-done/piano-be-fe-magazzino-lotto-2-motore.md`): inventario e
+rettifica come **una** famiglia parametrica (lista, drawer, righe, piano,
+«Registra» dalla capability), disponibilità e registro dei movimenti; le richieste
+del piano al DB (R-1 … R-7) sono in `work-done/brief-db-magazzino-lotto-2-bis-be-fe.md`.
+Pagina API `docs/it/backend/magazzino/manual/api_magazzino.md` (25-09). ⏳ Resta il
+**collaudo a video** di Tid (`work-in-progress/collaudo-in-app-magazzino-inventario-e-rettifica.md`):
+il frontend non è mai stato aperto in-app. Il prerequisito deciso da Tid il 15-09 —
 `brief-db-emittente-di-default-un-bb-solo.md`, l'emittente di default come
 **building block unico** in `script`, montato su `magazzini`/`assets` e **al
 posto delle quattro copie di vendite**, ritirate nello stesso giro — è

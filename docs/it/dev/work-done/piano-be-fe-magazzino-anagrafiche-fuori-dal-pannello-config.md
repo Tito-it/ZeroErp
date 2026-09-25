@@ -43,11 +43,11 @@
 >   `EmittenteFiscaleRegistriTab`, `FamiglieDocumentoListView`.
 > * 🔵 `apps.md` di magazzino è ancora il template `${app}` (fuori da questo
 >   piano); la riga di §0-bis/§11 del
->   [piano Lotto 2](../work-in-progress/piano-be-fe-magazzino-lotto-2-motore.md) è scritta.
+>   [piano Lotto 2](piano-be-fe-magazzino-lotto-2-motore.md) è scritta.
 > * ⏳ **Commit** (Tid).
 >
 > Contesto: cantiere `acquisti + magazzino`, Lotto 2 «il motore»
-> ([piano-be-fe-magazzino-lotto-2-motore.md](../work-in-progress/piano-be-fe-magazzino-lotto-2-motore.md)).
+> ([piano-be-fe-magazzino-lotto-2-motore.md](piano-be-fe-magazzino-lotto-2-motore.md)).
 > Questo piano ne è un **figlio**: corregge una scelta del Pezzo 1 (§3.1 di quel
 > piano, `magazzino.lotti` nel pannello config) che a video non ha retto.
 

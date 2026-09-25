@@ -9,6 +9,9 @@ un magazzino ha un emittente e un indirizzo, un'ubicazione ha un magazzino, un
 tipo e un padre, un lotto ha un articolo e due date. Non sono vocabolari, e il
 drawer generico non sa renderli.
 
+Il documento interno (inventari, rettifiche), i lookup di riga e la
+consultazione dello stesso dominio sono in [api_magazzino.md](api_magazzino.md).
+
 Lista **offset-based** (`limit`/`offset`, `{count, results}`, la lingua di
 `<ListaConfigurabile>`), export CSV/XLSX sorella della lista, creazione,
 dettaglio e `PATCH` **per delta**. Nessuna azione di dominio: disattivare e' un
@@ -27,7 +30,7 @@ indistinguibile dall'inesistente (no-leak). ⛔ `lotti` **non** ha RLS: un lotto
 e' dell'articolo (brief Lotto 1 §4.3), e la lista lo pretende come filtro.
 
 Le regole del modello vivono nel database e qui **non si riscrivono**: il
-codice del magazzino e' lockato (`CODICE_NON_MODIFICABILE`), `usa_ubicazioni`
+codice del magazzino e' lockato (`E_CODICE_NON_MODIFICABILE`), `usa_ubicazioni`
 si cambia solo a registro vuoto (`E_MAG_MAGAZZINO_CON_GIACENZA`), la
 disattivazione con figli attivi e' rifiutata (`E_ATTIVO_BLOCK_CHILDREN_EXIST`),
 il padre dell'ubicazione e' dello stesso magazzino e senza cicli
@@ -126,7 +129,7 @@ radice —, la posizione, `attivo`, `meta`). ⛔ `magazzino_id` non e' fra le
 chiavi: un'ubicazione nasce nel suo magazzino (lock a DB).
 
 Il lookup `GET .../ubicazioni/lookup/` (le attive, per il form di riga) resta
-com'era.
+com'era: sta con gli altri due lookup di riga in [api_magazzino.md](api_magazzino.md).
 
 ### Lotti (figli dell'articolo)
 
@@ -169,10 +172,10 @@ Per delta (`codice`, `data_arrivo`, `data_scadenza` — `null` la toglie —,
 
 | codice | quando |
 |---|---|
-| `E_VALIDATION_INPUT` | payload o query rifiutati dal BE (campo nel contesto); FK/CHECK del DB tradotti col campo |
+| `E_MAGAZZINO_VALIDATION` (fino al 2026-09-23 il generico `E_VALIDATION_INPUT`, R-6) | payload o query rifiutati dal BE (campo nel contesto); FK/CHECK del DB tradotti col campo |
 | `E_ANAG_DUPLICATO` | `uq_magazzini_codice`, `uq_mag_ubicazioni_mag_codice`, `uq_mag_lotti_articolo_codice` — campo `codice` |
 | `E_MAG_MAGAZZINO_NON_TROVATO` · `E_MAG_UBICAZIONE_NON_TROVATA` · `E_MAG_LOTTO_NON_TROVATO` | i tre 404 (R-2 del brief DB) |
-| i codici del DB | `CODICE_NON_MODIFICABILE`, `E_MAG_MAGAZZINO_CON_GIACENZA`, `E_ATTIVO_BLOCK_CHILDREN_EXIST`, `E_MAG_UBICAZIONE_PADRE_*`, `E_MAG_UBICAZIONE_MAGAZZINO_IMMUTABILE`, `E_EMITTENTE_NON_RISOLTO`, `E_ATTIVO_REQUIRE`: passano **com'e'**, con la frase e il campo del catalogo |
+| i codici del DB | `E_CODICE_NON_MODIFICABILE`, `E_MAG_MAGAZZINO_CON_GIACENZA`, `E_ATTIVO_BLOCK_CHILDREN_EXIST`, `E_MAG_UBICAZIONE_PADRE_*`, `E_MAG_UBICAZIONE_MAGAZZINO_IMMUTABILE`, `E_EMITTENTE_NON_RISOLTO`, `E_ATTIVO_REQUIRE`: passano **com'e'**, con la frase e il campo del catalogo |
 
 ## Presidi
 

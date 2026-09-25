@@ -1,7 +1,7 @@
 # Brief DB — magazzino, Lotto 2-bis: ciò che il BE/FE del motore chiede al DB
 
 > **Destinatario:** team DB (`dev/db-tid`). **Chi scrive:** BE/FE, 2026-09-18.
-> **Origine:** [piano-be-fe-magazzino-lotto-2-motore.md](../work-in-progress/piano-be-fe-magazzino-lotto-2-motore.md)
+> **Origine:** [piano-be-fe-magazzino-lotto-2-motore.md](piano-be-fe-magazzino-lotto-2-motore.md)
 > §7 — scrivendo il piano del drawer e delle righe sono emerse **tre** cose che
 > il BE non può fare da sé senza riscrivere una regola del DB, più **due**
 > difese opzionali. Nessuna ridiscute il Lotto 2: ogni riga cita la decisione

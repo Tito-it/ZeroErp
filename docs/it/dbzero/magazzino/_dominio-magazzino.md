@@ -84,8 +84,7 @@ progetto: [Linee guida SQL — sezione 10](/linee-guida-sql#10-row-level-securit
 * l'**utility di storno** (Lotto 3): la porta sa già scrivere uno storno, manca il verbo che
   lo chiede dal documento;
 * le colonne «impegnata», «in arrivo» della disponibilità: arrivano con i satelliti che le
-  sanno riempire (acquisti);
-* `requires_lotto` nel **drawer** dell'articolo (BE/FE, richiesta del Lotto 2 §4.9).
+  sanno riempire (acquisti).
 
 ✅ **Non manca più, dal 22-09-2026**: la **capability** dei documenti interni
 (`script.fn_available_actions_inventario` / `_rettifica`), con la matrice degli
@@ -94,6 +93,15 @@ stati uscita dal guard in una sede che guard e pulsanti condividono
 che le due madri del posting sollevano
 (`script.fn_check_documento_interno_registrabile`). Era R-1 del Lotto 2-bis, e
 senza il drawer non aveva da dove prendere i propri pulsanti.
+
+✅ **Non manca più, dal 18-09-2026**: `requires_lotto` nel **drawer** dell'articolo
+(richiesta del Lotto 2 §4.9, Pezzo 0 del piano BE/FE).
+
+✅ **Non manca più, dal 23-09-2026**: il **lato applicativo** del Lotto 2 —
+inventario e rettifica da video (lista, drawer, righe, piano, «Registra» dalla
+capability), disponibilità e registro dei movimenti. Pagina API:
+[api_magazzino](/backend/magazzino/manual/api_magazzino). ⏳ Il collaudo a video
+è di Tid ([copione](/dev/work-in-progress/collaudo-in-app-magazzino-inventario-e-rettifica)).
 
 ---
 
@@ -109,3 +117,5 @@ senza il drawer non aveva da dove prendere i propri pulsanti.
 * 2026-09-18 — il Lotto 2: la porta (`fn_scrivi_movimento`), il `REVOKE` all'app sul registro
   (tre sedi), inventario e rettifica postati dalla porta, disponibilità, ricalcolo del valore,
   quattro spie in `dbops.presidi`, 27 codici `E_MAG_*`, dodici pgTAP nuovi.
+* 2026-09-22 → 25 — il Lotto 2-bis (capability, codici, `registra_magazzino`), i verbi
+  che controllano il permesso, e il lato BE/FE: il primo carico si fa da video.

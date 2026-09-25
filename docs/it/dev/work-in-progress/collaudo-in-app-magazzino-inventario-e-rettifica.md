@@ -2,7 +2,7 @@
 
 > **Cos'è.** Il copione della validazione a video: si tiene aperto accanto
 > all'applicazione e si spunta. Non è il piano: il *perché* sta in
-> [piano-be-fe-magazzino-lotto-2-motore.md](piano-be-fe-magazzino-lotto-2-motore.md)
+> [piano-be-fe-magazzino-lotto-2-motore.md](../work-done/piano-be-fe-magazzino-lotto-2-motore.md)
 > (§5, §8 — il copione in forma breve) e nel brief chiuso
 > [brief-db-magazzino-lotto-2-bis-be-fe.md](../work-done/brief-db-magazzino-lotto-2-bis-be-fe.md)
 > (R-1 … R-7). Qui c'è solo **cosa fare, cosa deve succedere, e cosa fare se

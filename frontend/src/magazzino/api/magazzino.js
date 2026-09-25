@@ -7,7 +7,7 @@
 //        segmenti), l'anteprima dei motivi di riga, i tre lookup di riga, le
 //        tre ANAGRAFICHE (magazzini, ubicazioni, lotti) e la consultazione
 //        (disponibilita', movimenti).
-// Note: Piano: docs/it/dev/work-in-progress/piano-be-fe-magazzino-lotto-2-motore.md
+// Note: Piano: docs/it/dev/work-done/piano-be-fe-magazzino-lotto-2-motore.md
 //       ⭐ Le rotte del documento interno prendono la FAMIGLIA come primo
 //       argomento (`'inventari'` | `'rettifiche'`, da `FAMIGLIA` di
 //       `vocabolari.js`): il backend le monta da una sola factory sotto
