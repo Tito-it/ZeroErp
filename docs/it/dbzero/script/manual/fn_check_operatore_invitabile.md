@@ -30,6 +30,7 @@ Tutte devono essere soddisfatte, in quest'ordine (il primo motivo vince):
 | 1 | `auth_user` esiste | `Utente non trovato` |
 | 2 | almeno una veste OPERATORE | `Nessuna identita OPERATORE` |
 | 3 | **nessuna** veste OPERATORE attiva | `Veste OPERATORE gia' attiva` |
+| 3-bis | **una sola** veste OPERATORE | `Piu' vesti OPERATORE spente: serve un intervento manuale` |
 | 4 | la veste nella sua finestra (`valido_dal`/`valido_al`) | `Identita fuori finestra temporale` |
 | 5 | `auth_user.email` valorizzata | `Nessun indirizzo email configurato` |
 
@@ -42,7 +43,11 @@ Tutte devono essere soddisfatte, in quest'ordine (il primo motivo vince):
 
 ⚠️ Il modello ammette piu' vesti OPERATORE spente sulla stessa credenziale
 (l'unicita' e' solo fra le attive; la madre dal 2026-09-25 non ne crea piu'):
-la funzione le **aggrega** invece di prenderne una a caso.
+la funzione le **aggrega** invece di prenderne una a caso. E con piu' di una
+(nessuna attiva) **non invita** (condizione 3-bis, dal 2026-09-25,
+`20260925-53`): l'invito riaccende **una** veste, e niente dice quale. Fino a
+quel giorno la funzione rispondeva «invitabile», e l'invito del backend poi
+rifiutava: il pulsante c'era e l'azione falliva.
 
 ## Caratteristiche
 

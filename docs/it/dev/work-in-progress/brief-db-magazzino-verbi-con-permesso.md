@@ -270,8 +270,8 @@ precisazioni venute scrivendolo, sul modello:
    che legge il proprietario da `pg_class` e chiede
    `pg_has_role(current_user, …, 'USAGE')`. La nostra sarebbe la seconda, quindi
    si estrae il building block `script.fn_is_proprietario_tabella(regclass)` e la
-   copia di `ui` passa da lì nello stesso giro. ⚠️ **L'estrazione tocca due
-   domini (`ui`, `magazzino`): serve l'«ok Tid»** (AGENTS.md, regola del 2).
+   copia di `ui` passa da lì nello stesso giro. **L'estrazione tocca due
+   domini (`ui`, `magazzino`)**: ✅ **ok Tid esplicito, 2026-09-25** (AGENTS.md, regola del 2).
 
 ## 5. I passi
 
@@ -350,6 +350,7 @@ repo.
 | 2026-09-24 (notte) | Tid | `-42` applicato (23:35), pgTAP della parte B lanciati: **verdi**. Verificato su dbdev: verbi eseguibili dall'app, primitiva e ricalcolo no. La porta è chiusa; restano P-6 e D-V1 |
 | 2026-09-24 (notte) | DB | **P-6 scritto**: nota del presidio in `presidi.csv` (una riga, da applicare coi mirror), il modello in `PROJECT_CONTEXT`. Il `COMMENT` della vista resta com'è, perché è vero. Resta D-V1 |
 | 2026-09-25 | Tid | **D-V1 decisa: strada A** |
-| 2026-09-25 | DB | **P-7 scritto e provato** (`20260925-37…-39`): GUC **e** proprietario in AND (precisazione 1 di §4), anche il guard delle righe (precisazione 2), BB estratto e copia di `ui` ritirata (precisazione 3, ⚠️ serve l'«ok Tid»: tocca due domini). pgTAP: uno nuovo, due adeguati |
+| 2026-09-25 | DB | **P-7 scritto e provato** (`20260925-37…-39`): GUC **e** proprietario in AND (precisazione 1 di §4), anche il guard delle righe (precisazione 2), BB estratto e copia di `ui` ritirata (precisazione 3: tocca due domini, ok Tid registrato sotto). pgTAP: uno nuovo, due adeguati |
 | 2026-09-25 | Tid | `-37…-39` applicati su `zeroerp_ci` (18:06); su dbdev `-37` (18:05) |
 | 2026-09-25 | Tid | `-38`, `-39` applicati anche su dbdev; corsa pgTAP: **nessuna regressione**. D-V1 chiusa, resta il commit |
+| 2026-09-25 | Tid | **ok esplicito** all'estrazione di `script.fn_is_proprietario_tabella` su due domini (`ui`, `magazzino`), regola del 2 |

@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R-7 — IL PASSO DEL FRENO, UNO SOLO PER LE DUE COPPIE: script.fn_login_freno_passo
+#   Brief: brief-db-blocco-login-per-credenziale, sezione 13.2
+#
+# ── ⭐ REGOLA DEL 2 ─────────────────────────────────────────────────
+#   Il passo del freno stava scritto dentro l'upsert di
+#   fn_registra_tentativo_login, sulla coppia credenziale + provenienza. Con R-7
+#   la stessa regola vale per la coppia nome tentato + provenienza: scritta due
+#   volte, prima o poi le due coppie frenerebbero in due modi diversi — e la
+#   differenza direbbe se il nome esiste, cioe' proprio l'oracolo che R-7 chiude.
+#   Qui la regola e' una: i due rami della registrazione la chiamano.
+#
+# ── LA REGOLA (invariata rispetto a 20260925-11) ─────────────────────
+#   - un freno SCADUTO riparte da 1 (questo fallimento), non somma;
+#   - altrimenti tentativi + 1 (una riga che non c'era: da 0);
+#   - alla soglia il freno e' adesso + blocco_minuti (anche se era gia'
+#     frenata: un fallimento durante il freno lo rinnova).
+#
+#   Pura sui valori: l'istante lo passa il chiamante (now() della transazione),
+#   cosi' si prova senza orologio. STABLE e non IMMUTABLE: timestamptz + interval
+#   dipende dal fuso della sessione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260925-59-create-fn-login-freno-passo-mctit.yaml
+
+  - changeSet:
+      id: 20260925-59-create-fn-login-freno-passo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_login_freno_passo(tentativi, bloccato_fino_a, adesso, max_tentativi, blocco_minuti):
+        il passo del freno sulla coppia chiave + provenienza dopo un fallimento — freno scaduto
+        riparte da 1, altrimenti +1, alla soglia freno fino ad adesso + minuti. Pura sui valori;
+        regola del 2: la usano i due rami di fn_registra_tentativo_login (credenziale e nome
+        tentato). Brief: brief-db-blocco-login-per-credenziale §13.2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_login_freno_passo(
+                  p_tentativi_prima       config.credenziali_provenienze.tentativi_falliti%TYPE,
+                  p_bloccato_fino_a_prima config.credenziali_provenienze.bloccato_fino_a%TYPE,
+                  -- Espliciti: l'istante non e' una colonna, e soglia e durata
+                  -- arrivano da script.fn_login_parametri (config.parameters, testo).
+                  p_adesso                timestamptz,
+                  p_max_tentativi         integer,
+                  p_blocco_minuti         integer
+              )
+              RETURNS TABLE(
+                  tentativi       config.credenziali_provenienze.tentativi_falliti%TYPE,
+                  bloccato_fino_a config.credenziali_provenienze.bloccato_fino_a%TYPE
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: lo stato della coppia chiave + provenienza dopo UN fallimento,
+              --   dato quello di prima (0 e NULL per una riga che non c'era).
+              DECLARE
+                  v_tentativi config.credenziali_provenienze.tentativi_falliti%TYPE;
+              BEGIN
+                  v_tentativi := CASE
+                                     WHEN p_bloccato_fino_a_prima IS NOT NULL
+                                      AND p_bloccato_fino_a_prima <= p_adesso THEN 1
+                                     ELSE COALESCE(p_tentativi_prima, 0) + 1
+                                 END;
+
+                  tentativi       := v_tentativi;
+                  bloccato_fino_a := CASE
+                                         WHEN v_tentativi >= p_max_tentativi
+                                         THEN p_adesso + make_interval(mins => p_blocco_minuti)
+                                     END;
+                  RETURN NEXT;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_login_freno_passo(integer, timestamptz, timestamptz, integer, integer) IS
+                  'Il passo del freno sulla coppia chiave + provenienza dopo un fallimento di login: un freno scaduto riparte da 1, altrimenti tentativi + 1 (0 per una riga nuova); alla soglia p_max_tentativi il freno dura fino a p_adesso + p_blocco_minuti (un fallimento durante il freno lo rinnova). Pura sui valori (l''istante lo passa il chiamante); STABLE per timestamptz + interval. Regola del 2: la usano i due rami di fn_registra_tentativo_login, credenziale e nome tentato (R-7): due copie frenerebbero in due modi e la differenza direbbe se il nome esiste. Brief: brief-db-blocco-login-per-credenziale §13.2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_login_freno_passo(integer, timestamptz, timestamptz, integer, integer);

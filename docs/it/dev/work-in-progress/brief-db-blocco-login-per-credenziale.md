@@ -1076,8 +1076,13 @@ il ripiego non va avanti al catalogo):
   applicato (Tid, 2026-09-25), nessuna regressione. ⏳ Commit di `-52`.
 - Backend/Frontend: B-8 e F-1 (§12.8).
 - DB, prossimo: **R-7** del piano BE/FE (la risposta del login non dice se lo
-  username esiste) → disegno nel §13; ❓ quattro decisioni per Tid (§13.5)
-  prima dei changeSet.
+  username esiste) → §13: ✅ decisioni di Tid (§13.5), `-55…-62` scritti e
+  provati (§13.6), ⏳ apply **insieme** alla PR del backend (B-9…B-12). Ordine
+  deciso da Tid: R-9, poi R-7, poi R-3 (richieste del piano BE/FE).
+- DB: **R-3** → §15: template scritti e provati, ⏳ apply con la PR del backend
+  (B-15, B-16).
+- DB: **R-9** → §14: `-53`, `-54` scritti e provati, ⏳ apply (Tid); poi B-13,
+  B-14, F-2.
 - Backend: §7 e §12.4, B-6 compreso (lotto L-3; R-3 con L-4).
 - Guida `architettura-multi-face-auth` §3.1 (del backend, §8), con la veste che
   nasce spenta e porta/profili sganciati.
@@ -1169,7 +1174,9 @@ normalizza in un modo, quello inesistente in un altro).
 | B-11 | ⚠️ i log `security.login_blocked user=%s`, `security.login_locked user=%s`, `security.veste_non_attiva user=%s` scrivono **il nome tentato in chiaro**: è lo stesso rischio che R-7 toglie dal DB (una password digitata come username finisce nel log). Proposta: nei log lo `auth_user_id` quando c'è, altrimenti un prefisso del digest |
 | B-12 | il tempo di risposta: il ramo del nome inesistente deve verificare comunque una password (Django lo fa già in `authenticate` con l'hasher di default); da confermare col test sul login vero |
 
-### 13.5 ❓ Decisioni per Tid, prima dei changeSet
+### 13.5 Decisioni per Tid, prima dei changeSet
+
+✅ **Tid, 2026-09-25: sì a tutte e quattro**, come proposte.
 
 1. **La chiave doppia** del §13.1 (credenziale se c'è, nome se non c'è), con il
    residuo dichiarato. Proposta: sì.
@@ -1179,6 +1186,140 @@ normalizza in un modo, quello inesistente in un altro).
    bloccata dall'admin: accettarlo e dichiararlo. Proposta: sì.
 4. **La forma** del §13.2: stesse funzioni con il parametro in più, due tabelle
    gemelle, calcolo del freno estratto. Proposta: sì.
+
+### 13.6 Esecuzione (2026-09-25)
+
+| Fase | ChangeSet | Cosa |
+| --- | --- | --- |
+| `00_schema/config` | `-55` | `config.nomi_tentati`: digest (`bytea`, `UNIQUE`, `CHECK` 32 byte), fallimenti consecutivi, ultimo fallimento, `cleanup_at` |
+| | `-56` | `config.nomi_tentati_provenienze`: la coppia nome + provenienza, gemella di `credenziali_provenienze`; FK `ON DELETE CASCADE` |
+| `20_code/config` | `-57`, `-58` | trigger alla nascita della scadenza (`dbops.trgfn_cleanup_at_alla_nascita`) sulle due tabelle |
+| `20_code/script` | `-59` | ⭐ `fn_login_freno_passo(tentativi, bloccato_fino_a, adesso, max, minuti)`: il passo del freno, puro sui valori, estratto dall'upsert del `-11` (regola del 2) |
+| | `-60` | `fn_check_blocco_login(p_auth_user_id, p_nome_digest, p_provenienza)`: chiave doppia, una decisione. `DROP` della `(integer, inet)` |
+| | `-61` | `fn_registra_tentativo_login(p_auth_user_id, p_nome_digest, p_provenienza, p_successo)`: due rami che chiamano il `-59`; un successo senza credenziale è una chiamata non valida. `DROP` della `(integer, inet, boolean)` |
+| `80_data` | CSV | `automation_rules_tbl.csv` righe 22 (`nomi_tentati_provenienze`, TTL 1 giorno come la coppia della credenziale) e 23 (`nomi_tentati`, TTL 30 giorni); `fk_index_policy_credenziali.csv` la FK nuova, `consentito = f` (coperta dall'`UNIQUE`) |
+| `90_end` | `-62` | la porta: all'app solo `SELECT` sulle due tabelle; stesse voci nel loop `ci_apply/20260205-41` e nel provisioning |
+
+⚠️ **Il digest è obbligatorio anche con la credenziale** (e allora non si legge):
+un check che lo pretendesse solo per i nomi inesistenti darebbe al backend un ramo
+in più da tenere uguale.
+
+⚠️ **Residuo della retention, dichiarato** (fatto datato, non motivo): dopo 30
+giorni senza errori il conto di un nome inesistente riparte, quello di una
+credenziale no (finché il titolare non entra). Per vederlo bisogna aspettare 30
+giorni, e l'ingresso del titolare azzera comunque la credenziale in momenti che
+chi attacca non conosce.
+
+**pgTAP.**
+
+- Nuovo `config/test-login-nome-inesistente-v1` (16): il passo del freno (1-4), il
+  nome che conta senza righe in `config.credenziali` (5-8), ⭐ **la parità** (9: la
+  stessa sequenza su una credenziale vera e su un nome inesistente dà gli stessi
+  ritorni e lo stesso rifiuto), freno e attesa del nome (10-12), chiamate non
+  valide (13-15), nome mai provato (16).
+- Adeguati alla firma: `test-credenziale-login-v1` (test 21 conta anche le firme
+  senza digest), `test-credenziale-blocco-admin-v1`, `test-credenziale-login-tempo-v1`,
+  `test-credenziali-porta-v1` (casi 11-13 sulle gemelle; il 5 conta
+  `fn_login_freno_passo`, il 9 i trigger nuovi).
+
+**Come è stato provato (2026-09-25).** Scratch `zeroerp_ci`, da owner, SQL
+estratto da `-55…-62` più le due regole come le scrive il CSV, transazioni
+ritirate: `test-login-nome-inesistente-v1` 16/16, `test-credenziale-login-v1` 22/22,
+`test-credenziale-blocco-admin-v1` 16/16, `test-credenziale-login-tempo-v1` 5/5,
+`test-credenziali-porta-v1` 10/13 — ⚠️ i tre rossi (3, 4, 13) provano il `42501`
+come app, e da owner sono rossi per costruzione (come nel §11.4). `plpgsql_check`
+nessun messaggio sulle tre funzioni; una firma per nome; cancelli statici verdi.
+**Non applicato.**
+
+⛔ **Si applica INSIEME alla PR del backend** (B-9, B-10): le due firme cambiano,
+e applicato da solo il `-60`/`-61` rompe il login del backend su dbdev.
+
+**Presidi trasversali da guardare nella corsa di Tid**: `test-riferimenti-morti-v1`
+(compila ogni funzione), e il B-7 (i codici non cambiano: nessun codice nuovo).
+
+## 14. R-9 — Il dettaglio operatore dice lo stato della veste (2026-09-25)
+
+**La richiesta** (`piano-be-fe-accessi-credenziale-e-vesti` §5 R-9, dal lotto
+L-3): il drawer non sa se la veste OPERATORE è accesa — `attivo` è della risorsa
+umana, `is_active` della credenziale (derivato da tutte le vesti) — e per
+distinguere «veste già attiva» dagli altri motivi del non invitabile dovrebbe
+leggere il testo. E il `JOIN` sulla veste è senza filtro: con più vesti spente
+il dettaglio esce in più righe.
+
+**Trovato strada facendo.** Con più vesti spente `fn_check_operatore_invitabile`
+rispondeva «invitabile», mentre l'invito del backend (`InvitoOperatoreService`)
+ne pretende **una** e rifiuta («richiede intervento manuale»): la capability
+offriva un pulsante che il verbo rifiutava. Capability e verbo devono dire la
+stessa cosa (linee-guida-sql §12), quindi il ramo entra nella check.
+
+| ChangeSet | Cosa |
+| --- | --- |
+| `20_code/script/20260925-53` | `fn_check_operatore_invitabile`: più di una veste OPERATORE (nessuna attiva) → non invitabile, motivo `Piu' vesti OPERATORE spente: serve un intervento manuale`. Contratto jsonb invariato |
+| `20_code/script/20260925-54` | `fn_get_operatore_detail`: la veste è **una** (`LATERAL … LIMIT 1`): quella attiva — al più una, per `uq_identita_digitali_auth_user_ruolo_attivo` — altrimenti la spenta più recente (`data_insert`, poi `id`). Colonna nuova in coda **`veste_attiva`** = lo stato di quella veste, `NULL` senza veste. `RETURNS TABLE` cambiato ⇒ `DROP` + `CREATE`; privilegi dai default, come il `-42` |
+
+**pgTAP**: `test-fn-check-operatore-invitabile` caso 12 (due vesti spente);
+`test-fn-get-operatore-detail` casi 5-7 (`veste_attiva`; attiva + spenta → una
+riga, l'attiva; due spente → una riga, `veste_attiva = false`, invito non
+offerto). Le copie spente si fabbricano nel test.
+
+**Come è stato provato (2026-09-25).** Scratch `zeroerp_ci`, da owner, SQL
+estratto, transazioni ritirate: `test-fn-check-operatore-invitabile` 12/12,
+`test-fn-get-operatore-detail` 7/7, e i tre pgTAP che leggono le due funzioni
+(`test-crea-operatore-riusa-credenziale-v1` 20, `test-emittente-denominazione-da-soggetto-v1`
+14, `test-credenziale-login-v1` 22) verdi senza modifiche. **Controprova** senza
+i changeSet: caso 12 rosso, casi 5-7 muoiono su `veste_attiva` inesistente.
+`plpgsql_check` nessun messaggio; cancelli statici verdi. Manual delle due
+funzioni aggiornati. **Non applicato.**
+
+**Cosa chiede al backend e al frontend** (dopo l'apply):
+
+| # | Dove | Cosa |
+| --- | --- | --- |
+| B-13 | `amm_software/types.py` `OperatoreDetailRow` | il campo `veste_attiva: bool \| None` (il repository legge per nome: nessun'altra modifica) |
+| F-2 | `OperatoreDrawer` | «veste già attiva» da `veste_attiva`, non dal testo di `invite_reason` |
+| B-14 | `InvitoOperatoreService` | il rifiuto «più vesti spente» ora lo dice già la check (`can_invite = false`): il `require` resta come difesa, ma il pulsante non si offre più |
+
+## 15. R-3 — I template d'invito: il nome utente e il flusso con un clic (2026-09-25)
+
+**La richiesta** (`piano-be-fe-accessi-credenziale-e-vesti` §5 R-3, esteso in L-3):
+l'invito operatore deve dire il **nome utente** (D-9); e i template
+`INVITO_OPERATORE` e `INVITO_PORTALE` dicono sempre «imposta la password», anche
+quando la credenziale ha già una password e l'attivazione è un clic (`is_cross`).
+`INVITO_SHOP` dichiarava `is_cross` fra le variabili, ma il testo non lo usava.
+
+**Il vincolo che decide la forma.** Il motore dei template
+(`EmailDispatchService.render_template`) sostituisce `{{chiave}}` e basta: non ha
+rami. Una variabile `is_cross` = «1»/«0» non può scegliere il testo. Le strade
+erano tre: (a) un template per flusso, scelto dal backend; (b) la frase passata
+come variabile dal backend (il testo delle email finirebbe nel codice);
+(c) i condizionali nel motore (un linguaggio di template da mantenere). ⭐ Scelta
+la (a): il testo resta dato, nel DB, e il backend sceglie solo **quale** codice.
+
+| Dove | Cosa |
+| --- | --- |
+| `email_template.csv` id 1 `INVITO_OPERATORE` | «Il tuo nome utente è {{username}}» (html e testo); `username` fra le variabili |
+| id 6 `INVITO_SHOP` | tolto `is_cross` dalle variabili: il testo non lo usa, e il ramo ora è un template |
+| id 7-9 `INVITO_OPERATORE_CROSS`, `INVITO_PORTALE_CROSS`, `INVITO_SHOP_CROSS` | il flusso con un clic: «hai già un accesso, non serve una password nuova, entra con le credenziali che usi già». L'operatore riceve anche lo username |
+
+Il CSV ha terminatori CRLF: le righe sono state riscritte una per una, le altre
+sono intatte (verificato: la riserializzazione di ogni riga intatta è identica).
+
+**Come è stato provato (2026-09-25).** Scratch, righe inserite come le scrive il
+CSV, transazione ritirata: le variabili usate in oggetto, html e testo dei sei
+template d'invito sono tutte fra le `variabili_disponibili`;
+`test-fn-resolve-email-template` 11/11. **Non applicato.**
+
+⛔ **Si applica insieme alla PR del backend.** Il motore lascia **letterale** un
+segnaposto senza valore: finché il backend non passa `username`, l'invito
+operatore mostrerebbe «{{username}}». I tre template `_CROSS` invece sono
+additivi e non cambiano niente finché nessuno li sceglie.
+
+**Cosa chiede al backend:**
+
+| # | Dove | Cosa |
+| --- | --- | --- |
+| B-15 | `InvitoOperatoreService` | passare `username` (lo dà già `get_nomi_credenziale`) alle variabili dell'invito |
+| B-16 | `PortaInvito` + `InvitoVesteService.spedisci` | un `template_cross` per porta, scelto quando `emissione.is_cross`; la variabile `is_cross` non serve più al testo |
 
 ## Registro
 
@@ -1206,6 +1347,11 @@ normalizza in un modo, quello inesistente in un altro).
 | 2026-09-25 | DB | R-8 (note del BE su `E_UTENTE_BLOCCATO`): scritto e provato `-52`, minuti nel messaggio e testo della postazione; pgTAP test 3 adeguato. Non applicato (§12.8) |
 | 2026-09-25 | Tid | `-52` applicato su dbdev e scratch (forma coi minuti); corsa pgTAP senza regressioni. Resta a BE/FE: B-8, F-1 |
 | 2026-09-25 | DB | R-7: disegno (§13) — chiave doppia (credenziale se c'è, digest del nome se non c'è), stesse due funzioni con un parametro, tabelle gemelle `nomi_tentati`, passo del freno estratto; il digest lo calcola il backend in ogni caso. Quattro decisioni per Tid |
+| 2026-09-25 | Tid | R-7: sì alle quattro decisioni del §13.5. Ordine: R-9, R-7, R-3 |
+| 2026-09-25 | DB | R-9 scritto e provato (§14): `-53` (più vesti spente → non invitabile, come il verbo del BE), `-54` (dettaglio su una veste, colonna `veste_attiva`). Non applicati |
+| 2026-09-25 | Tid → DB | `%TYPE` dimenticati in firma, DECLARE e RETURNS TABLE di `-53`/`-54` (copiati dalla doc auto-gen, che li scioglie): ripristinati dall'ultimo YAML ancorato (`20260802-21`), `deve_cambiare_password` su `config.credenziali`; stesso controllo su `-59…-61`. Prove rifatte, verdi |
+| 2026-09-25 | DB | R-7 scritto e provato (§13.6): `-55…-62`, due regole `CLEANUP_AT`, un pgTAP nuovo e quattro adeguati. Non applicato; da applicare con la PR del backend |
+| 2026-09-25 | DB | R-3 (§15): `INVITO_OPERATORE` con lo username; tre template `_CROSS` per il flusso con un clic (il motore non ha rami: un template per flusso). Non applicato; con la PR del backend (B-15, B-16) |
 
 ---
 {% include-markdown "signature-core.md" %}

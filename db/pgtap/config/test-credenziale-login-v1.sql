@@ -5,7 +5,10 @@
 -- Test: il login per CREDENZIALE e PROVENIENZA — freno sulla coppia, attesa
 --   crescente sulla credenziale, azzeramento, cambio password obbligatorio.
 --   Brief: brief-db-blocco-login-per-credenziale, sezioni 2-4 e 6.
---   ChangeSet: 20260925-04 … -11, -16, -17, -19, -52 (e i seed -20, CLEANUP_AT id 21).
+--   ChangeSet: 20260925-04 … -11, -16, -17, -19, -52, -59 … -61 (e i seed -20,
+--   CLEANUP_AT id 21). Dal R-7 le chiamate passano il digest del nome: qui la
+--   credenziale c'e' sempre, quindi il digest non si legge (i casi del nome
+--   inesistente stanno in test-login-nome-inesistente-v1.sql).
 --
 -- ⭐ Casi COSTRUITI, non popolazione: ogni credenziale nasce nel test. Un
 --   auth_user nudo (nessuna identita') e' il caso piu' forte per «nessun filtro
@@ -91,11 +94,11 @@ CREATE TEMP TABLE _op AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore()
 -- 1-5 Il freno sulla provenienza
 -- ============================================================
 SELECT lives_ok(
-    $$ SELECT script.fn_check_blocco_login((SELECT nuda FROM _c), '203.0.113.1'::inet) $$,
+    $$ SELECT script.fn_check_blocco_login((SELECT nuda FROM _c), sha256('pgtap-nome'::bytea), '203.0.113.1'::inet) $$,
     '1) credenziale senza riga: il check passa');
 
 SELECT is(
-    (script.fn_registra_tentativo_login((SELECT nuda FROM _c), '203.0.113.1'::inet, false) ->> 'tentativi')::integer,
+    (script.fn_registra_tentativo_login((SELECT nuda FROM _c), sha256('pgtap-nome'::bytea), '203.0.113.1'::inet, false) ->> 'tentativi')::integer,
     1,
     '2) credenziale senza nessuna identita'': il fallimento CONTA (prima non contava)');
 
@@ -103,28 +106,28 @@ SELECT is(
 DO $$
 BEGIN
     FOR i IN 2 .. (SELECT max_tentativi FROM _par) LOOP
-        PERFORM script.fn_registra_tentativo_login((SELECT nuda FROM _c), '203.0.113.1'::inet, false);
+        PERFORM script.fn_registra_tentativo_login((SELECT nuda FROM _c), sha256('pgtap-nome'::bytea), '203.0.113.1'::inet, false);
     END LOOP;
 END $$;
 
 -- ⚠️ Un numero, non «qualcosa»: un %s rimasto letterale (segnaposto senza
 --   valore) passerebbe un LIKE su «riprovare fra % minuti» (20260925-52).
 SELECT throws_matching(
-    $$ SELECT script.fn_check_blocco_login((SELECT nuda FROM _c), '203.0.113.1'::inet) $$,
+    $$ SELECT script.fn_check_blocco_login((SELECT nuda FROM _c), sha256('pgtap-nome'::bytea), '203.0.113.1'::inet) $$,
     'da questa postazione: riprovare fra [0-9]+ minuti',
     '3) alla soglia da P1: il check da P1 solleva E_UTENTE_BLOCCATO, con i minuti');
 
 SELECT lives_ok(
-    $$ SELECT script.fn_check_blocco_login((SELECT nuda FROM _c), '203.0.113.2'::inet) $$,
+    $$ SELECT script.fn_check_blocco_login((SELECT nuda FROM _c), sha256('pgtap-nome'::bytea), '203.0.113.2'::inet) $$,
     '4) stessa credenziale da P2: il check passa — il freno e'' della coppia, non del titolare');
 
 DO $$
 BEGIN
     FOR i IN 1 .. 3 LOOP
-        PERFORM script.fn_registra_tentativo_login((SELECT auth_user_id FROM _op), '203.0.113.1'::inet, false);
+        PERFORM script.fn_registra_tentativo_login((SELECT auth_user_id FROM _op), sha256('pgtap-nome'::bytea), '203.0.113.1'::inet, false);
     END LOOP;
     FOR i IN 1 .. 2 LOOP
-        PERFORM script.fn_registra_tentativo_login((SELECT auth_user_id FROM _op), '203.0.113.2'::inet, false);
+        PERFORM script.fn_registra_tentativo_login((SELECT auth_user_id FROM _op), sha256('pgtap-nome'::bytea), '203.0.113.2'::inet, false);
     END LOOP;
 END $$;
 
@@ -146,12 +149,12 @@ DO $$
 BEGIN
     FOR i IN 1 .. (SELECT tetto_credenziale FROM _par) LOOP
         PERFORM script.fn_registra_tentativo_login(
-            (SELECT attesa FROM _c), ('198.51.100.' || i)::inet, false);
+            (SELECT attesa FROM _c), sha256('pgtap-nome'::bytea), ('198.51.100.' || i)::inet, false);
     END LOOP;
 END $$;
 
 SELECT throws_like(
-    $$ SELECT script.fn_check_blocco_login((SELECT attesa FROM _c), '192.0.2.1'::inet) $$,
+    $$ SELECT script.fn_check_blocco_login((SELECT attesa FROM _c), sha256('pgtap-nome'::bytea), '192.0.2.1'::inet) $$,
     '%Troppi tentativi non riusciti: riprovare fra %secondi%',
     '6) al tetto da provenienze tutte diverse: nessun freno di coppia, ma l''attesa -> E_LOGIN_ATTESA');
 
@@ -192,7 +195,7 @@ SELECT is(
 -- ============================================================
 -- 12-13 Azzeramento (D-2)
 -- ============================================================
-SELECT script.fn_registra_tentativo_login((SELECT nuda FROM _c), '203.0.113.2'::inet, true);
+SELECT script.fn_registra_tentativo_login((SELECT nuda FROM _c), sha256('pgtap-nome'::bytea), '203.0.113.2'::inet, true);
 
 SELECT is(
     (SELECT format('%s|%s', c.fallimenti_consecutivi,
@@ -215,17 +218,17 @@ SELECT is(
 -- 14-16 Chiamate non valide
 -- ============================================================
 SELECT throws_like(
-    $$ SELECT script.fn_registra_tentativo_login((SELECT nuda FROM _c), NULL, false) $$,
+    $$ SELECT script.fn_registra_tentativo_login((SELECT nuda FROM _c), sha256('pgtap-nome'::bytea), NULL, false) $$,
     '%Chiamata non valida a script.fn_registra_tentativo_login%',
     '14) registrazione con provenienza NULL: E_AUTH_CHIAMATA_NON_VALIDA (NULL non e'' una chiave)');
 
 SELECT throws_like(
-    $$ SELECT script.fn_check_blocco_login((SELECT nuda FROM _c), NULL) $$,
+    $$ SELECT script.fn_check_blocco_login((SELECT nuda FROM _c), sha256('pgtap-nome'::bytea), NULL) $$,
     '%Chiamata non valida a script.fn_check_blocco_login%',
     '15) check con provenienza NULL: E_AUTH_CHIAMATA_NON_VALIDA');
 
 SELECT throws_like(
-    $$ SELECT script.fn_registra_tentativo_login((SELECT max(id) + 1000 FROM django.auth_user), '203.0.113.9'::inet, false) $$,
+    $$ SELECT script.fn_registra_tentativo_login((SELECT max(id) + 1000 FROM django.auth_user), sha256('pgtap-nome'::bytea), '203.0.113.9'::inet, false) $$,
     '%Credenziale non trovata%',
     '16) registrazione su un auth_user inesistente: E_CREDENZIALE_NON_TROVATA (in CI la FK non c''e'')');
 
@@ -264,10 +267,14 @@ SELECT is(
 SELECT is(
     (SELECT count(*)::integer FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'script'
-        AND (p.oid::regprocedure::text = 'script.fn_check_blocco_login(integer)'
-          OR p.oid::regprocedure::text = 'script.fn_registra_tentativo_login(integer,boolean)')),
+        AND p.oid::regprocedure::text IN (
+                'script.fn_check_blocco_login(integer)',
+                'script.fn_registra_tentativo_login(integer,boolean)',
+                -- senza il digest del nome (20260925-60/-61, R-7)
+                'script.fn_check_blocco_login(integer,inet)',
+                'script.fn_registra_tentativo_login(integer,inet,boolean)')),
     0,
-    '21) le firme vecchie, senza provenienza, non esistono piu'' (niente overload rimasti)');
+    '21) le firme vecchie (senza provenienza, senza digest del nome) non esistono piu''');
 
 -- ⚠️ Per ultimo: cambia un parametro (il ROLLBACK lo rimette).
 UPDATE config.parameters SET default_value = '' WHERE code = 'login_tetto_credenziale';

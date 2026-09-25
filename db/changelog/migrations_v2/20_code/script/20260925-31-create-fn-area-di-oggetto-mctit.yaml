@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 — L'AREA DI UN OGGETTO: script.fn_area_di_oggetto(p_app_label, p_model_name)
+#   Brief: brief-db-pannello-config-verbo-generico, sezione 3.2 (D-5, D-P1)
+#
+# -- LA REGOLA ------------------------------------------------------------------------------------
+#   L'area di un oggetto e' quella dichiarata in config.area_model_overrides, se
+#   l'oggetto ha un override; altrimenti e' app_label (area = schema, guida
+#   architettura-permessi §6.2). Restituisce la chiave dell'area (schema_db).
+#
+# -- UNA SEDE, NON DUE ----------------------------------------------------------------------------
+#   Oggi la stessa regola la scrive il backend in Python,
+#   PermissionResolver.get_area_schema_db (core/services/permissions_resolver.py),
+#   con la stessa query. Da qui la sede e' il DB: il guard sull'oggetto
+#   (20260925-32) la chiama, e il backend e' chiamato a fare lo stesso (brief §6).
+#   Finche' il backend non passa, le copie sono due, e il brief lo dichiara.
+#
+# -- LA FORMA -------------------------------------------------------------------------------------
+#   - Check pura, non solleva. Un'area che non e' a catalogo si restituisce com'e':
+#     a decidere e' fn_resolve_livello_area, che per un'area sconosciuta non
+#     concede niente (fail-closed). Stessa risposta del backend.
+#   - plpgsql e non sql: legge due tabelle di dominio, e il presidio dei
+#     riferimenti morti (plpgsql_check) vede solo il plpgsql.
+#   - %TYPE in firma, DECLARE e RETURNS (regola di Tid).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260925-31-create-fn-area-di-oggetto-mctit.yaml
+
+  - changeSet:
+      id: 20260925-31-create-fn-area-di-oggetto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_area_di_oggetto(p_app_label, p_model_name): la chiave dell'area (schema_db) di un
+        oggetto — l'override di config.area_model_overrides se c'e', altrimenti app_label. La
+        stessa regola di PermissionResolver.get_area_schema_db, che diventa la sede. Check pura,
+        STABLE, INVOKER. Brief: brief-db-pannello-config-verbo-generico, sezione 3.2.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: area_model_overrides
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_area_di_oggetto(
+                  p_app_label  config.area_model_overrides.app_label%TYPE,
+                  p_model_name config.area_model_overrides.model_name%TYPE
+              )
+              RETURNS config.aree_funzionali.schema_db%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: dire a quale area appartiene un oggetto (app_label, model_name):
+              --   l'override di area_model_overrides se c'e', altrimenti app_label
+              --   (area = schema). Restituisce la chiave dell'area, schema_db.
+              DECLARE
+                  v_area config.aree_funzionali.schema_db%TYPE;
+              BEGIN
+                  SELECT af.schema_db
+                    INTO v_area
+                    FROM config.area_model_overrides amo
+                    JOIN config.aree_funzionali af ON af.id = amo.area_id
+                   WHERE amo.app_label  = p_app_label
+                     AND amo.model_name = p_model_name;
+
+                  RETURN COALESCE(v_area, p_app_label);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_area_di_oggetto(character varying, character varying) IS
+                  'Check pura: la chiave dell''area (schema_db) a cui appartiene un oggetto '
+                  '(app_label, model_name). L''override di config.area_model_overrides se c''e'', '
+                  'altrimenti app_label (area = schema). Un''area non a catalogo si restituisce com''e'': '
+                  'decide fn_resolve_livello_area, che non concede niente. E'' la sede della regola che '
+                  'il backend scrive in PermissionResolver.get_area_schema_db (stessa query): il '
+                  'backend e'' chiamato a passare da qui. La chiama script.fn_guard_livello. STABLE, '
+                  'INVOKER. Brief: brief-db-pannello-config-verbo-generico, sezione 3.2.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_area_di_oggetto(character varying, character varying) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_area_di_oggetto(character varying, character varying);

@@ -2,27 +2,32 @@
 # ⚙️ Funzione `fn_check_blocco_login`
 
 ```sql
-CREATE FUNCTION fn_check_blocco_login(p_auth_user_id integer, p_provenienza inet)
+CREATE FUNCTION fn_check_blocco_login(p_auth_user_id integer, p_nome_digest bytea, p_provenienza inet)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_check_blocco_login(p_auth_user_id integer, p_provenienza inet)
+CREATE OR REPLACE FUNCTION script.fn_check_blocco_login(p_auth_user_id integer, p_nome_digest bytea, p_provenienza inet)
  RETURNS void
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
--- Scopo: prima della verifica della password, dire se questa credenziale
---   puo' provare da questa provenienza. Tre verifiche, il primo che
---   scatta vince: blocco dell'admin, freno sulla coppia, attesa crescente.
+-- Scopo: prima della verifica della password, dire se questo nome puo'
+--   provare da questa provenienza. La chiave e' la credenziale se il
+--   nome la trova, il nome tentato se no; poi, uguale per le due: blocco
+--   dell'admin (solo credenziale), freno sulla coppia, attesa crescente.
 DECLARE
-    v_credenziale_id    config.credenziali.id%TYPE;
+    -- Esplicito: e' config.credenziali.id OPPURE config.nomi_tentati.id,
+    -- secondo la chiave (entrambi bigint), non una colonna sola.
+    v_chiave_id         bigint;
     v_bloccata_at       config.credenziali.bloccata_at%TYPE;
     v_fallimenti        config.credenziali.fallimenti_consecutivi%TYPE;
     v_ultimo_fallimento config.credenziali.ultimo_fallimento_at%TYPE;
     v_bloccato_fino_a   config.credenziali_provenienze.bloccato_fino_a%TYPE;
+    -- Espliciti: parametri da script.fn_login_parametri (testo in
+    -- config.parameters) e valori calcolati, senza colonna.
     v_tetto             integer;
     v_attesa_base       integer;
     v_attesa_max        integer;
@@ -30,27 +35,49 @@ DECLARE
     v_riprova_da        timestamptz;
     v_rimanenti         integer;
 BEGIN
-    IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 OR p_provenienza IS NULL THEN
+    IF p_auth_user_id <= 0 OR p_provenienza IS NULL
+       OR p_nome_digest IS NULL OR octet_length(p_nome_digest) <> 32 THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'script.fn_check_blocco_login', 'E_AUTH_CHIAMATA_NON_VALIDA',
-            jsonb_build_object('p_auth_user_id', p_auth_user_id,
-                               'p_provenienza',  p_provenienza::text),
+            jsonb_build_object('p_auth_user_id',        p_auth_user_id,
+                               'p_provenienza',         p_provenienza::text,
+                               'nome_digest_lunghezza', octet_length(p_nome_digest)),
             NULL::uuid,
             VARIADIC ARRAY['script.fn_check_blocco_login',
-                           'credenziale e provenienza obbligatorie']);
+                           'provenienza e digest del nome (32 byte) obbligatori, credenziale positiva se data']);
     END IF;
 
-    SELECT c.id, c.bloccata_at, c.fallimenti_consecutivi, c.ultimo_fallimento_at
-      INTO v_credenziale_id, v_bloccata_at, v_fallimenti, v_ultimo_fallimento
-      FROM config.credenziali c
-     WHERE c.auth_user_id = p_auth_user_id;
+    -- La chiave, e il suo freno sulla coppia.
+    IF p_auth_user_id IS NOT NULL THEN
+        SELECT c.id, c.bloccata_at, c.fallimenti_consecutivi, c.ultimo_fallimento_at
+          INTO v_chiave_id, v_bloccata_at, v_fallimenti, v_ultimo_fallimento
+          FROM config.credenziali c
+         WHERE c.auth_user_id = p_auth_user_id;
 
-    -- Nessuna riga: nessun tentativo, non bloccata.
-    IF v_credenziale_id IS NULL THEN
+        SELECT p.bloccato_fino_a
+          INTO v_bloccato_fino_a
+          FROM config.credenziali_provenienze p
+         WHERE p.credenziale_id = v_chiave_id
+           AND p.provenienza    = p_provenienza;
+    ELSE
+        SELECT nt.id, nt.fallimenti_consecutivi, nt.ultimo_fallimento_at
+          INTO v_chiave_id, v_fallimenti, v_ultimo_fallimento
+          FROM config.nomi_tentati nt
+         WHERE nt.nome_digest = p_nome_digest;
+
+        SELECT p.bloccato_fino_a
+          INTO v_bloccato_fino_a
+          FROM config.nomi_tentati_provenienze p
+         WHERE p.nome_tentato_id = v_chiave_id
+           AND p.provenienza     = p_provenienza;
+    END IF;
+
+    -- Nessuna riga: nessun tentativo, non frenata.
+    IF v_chiave_id IS NULL THEN
         RETURN;
     END IF;
 
-    -- 1. Blocco dell'admin: non scade.
+    -- 1. Blocco dell'admin: non scade. Esiste solo sulla credenziale.
     IF v_bloccata_at IS NOT NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'script.fn_check_blocco_login', 'E_CREDENZIALE_BLOCCATA',
@@ -60,21 +87,24 @@ BEGIN
             VARIADIC ARRAY[]::text[]);
     END IF;
 
-    -- 2. Freno sulla coppia credenziale + provenienza.
-    SELECT p.bloccato_fino_a
-      INTO v_bloccato_fino_a
-      FROM config.credenziali_provenienze p
-     WHERE p.credenziale_id = v_credenziale_id
-       AND p.provenienza    = p_provenienza;
-
+    -- 2. Freno sulla coppia chiave + provenienza.
     IF v_bloccato_fino_a IS NOT NULL THEN
         IF v_bloccato_fino_a <= now() THEN
             -- Freno scaduto: la coppia riparte da zero.
-            DELETE FROM config.credenziali_provenienze p
-             WHERE p.credenziale_id = v_credenziale_id
-               AND p.provenienza    = p_provenienza;
+            IF p_auth_user_id IS NOT NULL THEN
+                DELETE FROM config.credenziali_provenienze p
+                 WHERE p.credenziale_id = v_chiave_id
+                   AND p.provenienza    = p_provenienza;
+            ELSE
+                DELETE FROM config.nomi_tentati_provenienze p
+                 WHERE p.nome_tentato_id = v_chiave_id
+                   AND p.provenienza     = p_provenienza;
+            END IF;
         ELSE
             -- I minuti vanno nel messaggio (a chi prova) e nel contesto (al log).
+            -- Il contesto (auth_user_id NULL per un nome inesistente) va al
+            --   log degli errori, non alla risposta: l'envelope porta codice,
+            --   messaggio e causa, uguali per le due chiavi.
             v_rimanenti := GREATEST(1,
                 CEIL(EXTRACT(EPOCH FROM (v_bloccato_fino_a - now())) / 60)::integer);
             PERFORM script.fn_log_and_raise_error(
@@ -88,7 +118,7 @@ BEGIN
         END IF;
     END IF;
 
-    -- 3. Attesa crescente sulla credenziale (da qualunque provenienza).
+    -- 3. Attesa crescente sulla chiave (da qualunque provenienza).
     IF v_fallimenti > 0 THEN
         SELECT lp.tetto_credenziale, lp.attesa_base_secondi, lp.attesa_max_secondi
           INTO v_tetto, v_attesa_base, v_attesa_max
@@ -116,8 +146,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION script.fn_check_blocco_login(p_auth_user_id integer, p_provenienza inet)
-IS 'Check del login, PRIMA della verifica della password, per CREDENZIALE e PROVENIENZA (M-4: nessun filtro su veste o ruolo). Nell''ordine, il primo che scatta vince: (1) blocco dell''admin -> E_CREDENZIALE_BLOCCATA, non scade; (2) freno sulla coppia credenziale + provenienza -> E_UTENTE_BLOCCATO con i minuti rimanenti nel messaggio e nel contesto, e un freno scaduto fa ripartire la coppia (riga cancellata); (3) attesa crescente sulla credenziale (fn_login_attesa_secondi) -> E_LOGIN_ATTESA con i secondi rimanenti. Nessuna riga in config.credenziali = passa. Credenziale NULL/<= 0 o provenienza NULL -> E_AUTH_CHIAMATA_NON_VALIDA. SECURITY DEFINER del PROPRIETARIO, non di un superuser, search_path bloccato; nessun guard di permesso, dichiarato (gira prima del login). Brief: brief-db-blocco-login-per-credenziale §2.4, §3.1, §12.8.';
+COMMENT ON FUNCTION script.fn_check_blocco_login(p_auth_user_id integer, p_nome_digest bytea, p_provenienza inet)
+IS 'Check del login, PRIMA della verifica della password, per NOME TENTATO e PROVENIENZA (R-7). La chiave e'' la credenziale quando p_auth_user_id e'' valorizzato, il nome tentato (config.nomi_tentati, per digest) quando e'' NULL: stessa decisione e stessi codici per le due, cosi'' la risposta non dice se il nome esiste. Nell''ordine, il primo che scatta vince: (1) blocco dell''admin -> E_CREDENZIALE_BLOCCATA, non scade, solo sulla credenziale (rivela l''esistenza del nome: accettato, §13.5 (b)); (2) freno sulla coppia chiave + provenienza -> E_UTENTE_BLOCCATO con i minuti rimanenti nel messaggio e nel contesto, e un freno scaduto fa ripartire la coppia (riga cancellata); (3) attesa crescente sulla chiave (fn_login_attesa_secondi) -> E_LOGIN_ATTESA con i secondi rimanenti. Nessuna riga = passa. Provenienza NULL, digest NULL o non di 32 byte, credenziale <= 0 -> E_AUTH_CHIAMATA_NON_VALIDA. Il digest lo calcola il backend (HMAC del nome normalizzato): il nome non entra mai. SECURITY DEFINER del PROPRIETARIO, search_path bloccato; nessun guard di permesso, dichiarato (gira prima del login). Brief: brief-db-blocco-login-per-credenziale §2.4, §3.1, §12.8, §13.';
 ```
 
 ---

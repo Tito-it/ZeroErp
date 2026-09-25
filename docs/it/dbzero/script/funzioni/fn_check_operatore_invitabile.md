@@ -15,10 +15,13 @@ CREATE OR REPLACE FUNCTION script.fn_check_operatore_invitabile(p_auth_user_id i
 AS $function$
 DECLARE
     -- Tipi espliciti: colonne di django.auth_user (niente %TYPE su Django).
-    v_trovato          boolean;
     v_email            VARCHAR(254);
+    -- Ancorata: e' il bool_or della colonna attivo delle vesti.
+    v_veste_attiva     anagrafiche.identita_digitali.attivo%TYPE;
+    -- Senza colonna di cui siano il riflesso: un flag «trovato», un
+    -- conteggio, un predicato calcolato sulla finestra.
+    v_trovato          boolean;
     v_n_vesti          integer;
-    v_veste_attiva     boolean;
     v_in_finestra      boolean;
 BEGIN
     -- =========================================================
@@ -32,6 +35,8 @@ BEGIN
     --   1. auth_user valido ed esistente
     --   2. almeno una veste OPERATORE
     --   3. nessuna veste OPERATORE gia' attiva (D-8)
+    --   3-bis. UNA sola veste OPERATORE: con piu' vesti spente
+    --      non si sa quale riaccendere (rev 20260925-53, R-9)
     --   4. la veste nella sua finestra temporale
     --   5. auth_user ha un indirizzo email
     --   ⛔ NON contano piu': last_login (D-8) e is_active
@@ -92,6 +97,18 @@ BEGIN
         );
     END IF;
 
+    -- ⛔ Rev 20260925-53 (R-9): piu' vesti spente e nessuna attiva.
+    --   L'invito riaccende UNA veste, e qui non c'e' una regola che dica
+    --   quale: il verbo del backend lo rifiuta gia'. La capability deve
+    --   dire lo stesso, o il pulsante si offre e il verbo fallisce.
+    IF v_n_vesti > 1 THEN
+        RETURN jsonb_build_object(
+            'invitabile', false,
+            'motivo', 'Piu'' vesti OPERATORE spente: serve un intervento manuale',
+            'email', v_email
+        );
+    END IF;
+
     IF NOT v_in_finestra THEN
         RETURN jsonb_build_object(
             'invitabile', false,
@@ -117,7 +134,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_operatore_invitabile(p_auth_user_id integer)
-IS 'Dice se un operatore puo'' ricevere l''invito che ACCENDE la sua veste OPERATORE. ⭐ Rev 20260925-43 (brief-db-blocco-login-per-credenziale §12; R-1 del piano BE/FE, D-8): regola unica dell''invito — la veste nasce spenta (fn_crea_operatore_v2) e la accende l''attivazione; il reinvito riapre una veste spenta (D-3). Invitabile se: credenziale esistente, almeno una veste OPERATORE, NESSUNA veste OPERATORE gia'' attiva (veste attiva -> rifiuto), veste nella sua finestra, email presente. Non contano piu'' last_login (D-8) ne'' is_active (derivato dalle vesti, false per costruzione con la sola veste spenta). Le vesti OPERATORE della credenziale si aggregano (il modello ne ammette piu'' d''una spenta). Ritorna jsonb {invitabile, motivo, email}; motivo lo legge fn_get_operatore_detail come invite_reason.';
+IS 'Dice se un operatore puo'' ricevere l''invito che ACCENDE la sua veste OPERATORE. ⭐ Rev 20260925-43 (brief-db-blocco-login-per-credenziale §12; R-1 del piano BE/FE, D-8): regola unica dell''invito — la veste nasce spenta (fn_crea_operatore_v2) e la accende l''attivazione; il reinvito riapre una veste spenta (D-3). Invitabile se: credenziale esistente, almeno una veste OPERATORE, NESSUNA veste OPERATORE gia'' attiva (veste attiva -> rifiuto), UNA SOLA veste OPERATORE (rev 20260925-53, R-9: con piu'' vesti spente non si sa quale riaccendere, e l''invito del backend lo rifiuta), veste nella sua finestra, email presente. Non contano piu'' last_login (D-8) ne'' is_active (derivato dalle vesti, false per costruzione con la sola veste spenta). Ritorna jsonb {invitabile, motivo, email}; motivo lo legge fn_get_operatore_detail come invite_reason.';
 ```
 
 ---

@@ -28,7 +28,7 @@
 --   produzione, e i casi non dipendono da chi c'era prima.
 --   ⛔ Cio' che il builder scrive si legge in un'istruzione SEPARATA.
 --
--- Indice test (1..4):
+-- Indice test (1..7):
 --   1. Multi super-admin -> can_disable=true sull'auth_user SA target
 --   2. Single super-admin -> can_disable=false + disable_reason valorizzata
 --   3. Demote bloccato (single SA) -> can_demote_super_admin=false
@@ -37,6 +37,10 @@
 --                                contiene 'attiva' (rev 2026-09-25: la regola
 --                                unica dell'invito, D-8 — last_login non
 --                                decide piu'; 20260925-43)
+--   5. veste_attiva = true per la veste accesa (rev 20260925-54, R-9)
+--   6. ⭐ veste attiva + una copia spenta: UNA riga, e mostra l'attiva
+--   7. ⭐ due vesti spente: UNA riga, veste_attiva=false, e l'invito non e'
+--      offerto (motivo di fn_check_operatore_invitabile, rev -53)
 --
 -- Niente SAVEPOINT (azzera il counter pgTAP).
 -- ------------------------------------------------------------
@@ -58,7 +62,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(4);
+SELECT plan(7);
 
 -- =========================================================
 -- Helper: disattiva tutti i binding SA attivi tranne quello passato.
@@ -160,7 +164,7 @@ SELECT is(
 --    ed evito interazioni con lo scenario 2/3).
 -- =========================================================
 CREATE TEMP TABLE _t_c4 AS
-SELECT auth_user_id AS au_id
+SELECT auth_user_id AS au_id, identita_id AS id_id
   FROM dbops.fn_pgtap_crea_operatore_umano('detail SA invito', p_super_admin := true);
 
 -- Email valorizzata + last_login != NULL: il rifiuto deve arrivare dalla
@@ -175,6 +179,55 @@ SELECT is(
        FROM script.fn_get_operatore_detail((SELECT au_id FROM _t_c4))),
     true,
     '4. Invite su veste gia'' attiva: can_invite=false + invite_reason cita "attiva"'
+);
+
+-- =========================================================
+-- 5-7) La veste mostrata e il suo stato (rev 20260925-54, R-9).
+--   Il modello ammette piu' vesti OPERATORE spente sulla stessa
+--   credenziale (l'unique vale solo WHERE attivo): prima il JOIN
+--   nudo dava una riga per veste. Le copie spente si fabbricano qui.
+-- =========================================================
+SELECT is(
+    (SELECT veste_attiva
+       FROM script.fn_get_operatore_detail((SELECT au_id FROM _t_c4))),
+    true,
+    '5. veste_attiva = true per la veste OPERATORE accesa'
+);
+
+INSERT INTO anagrafiche.identita_digitali
+       (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo, valido_dal)
+SELECT idg.soggetto_ruolo_id, idg.auth_user_id, idg.ruolo_applicativo, false, idg.valido_dal
+  FROM anagrafiche.identita_digitali idg
+ WHERE idg.id = (SELECT id_id FROM _t_c4);
+
+SELECT is(
+    (SELECT count(*) || '|' || bool_and(veste_attiva)
+       FROM script.fn_get_operatore_detail((SELECT au_id FROM _t_c4))),
+    '1|true',
+    '6. veste attiva + una spenta: UNA riga, e mostra quella attiva'
+);
+
+-- Un operatore non SA con la veste spenta, e una seconda veste spenta.
+CREATE TEMP TABLE _t_c7 AS
+SELECT auth_user_id AS au_id, identita_id AS id_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('detail due spente', p_super_admin := false);
+
+UPDATE anagrafiche.identita_digitali
+   SET attivo = false
+ WHERE id = (SELECT id_id FROM _t_c7);
+
+INSERT INTO anagrafiche.identita_digitali
+       (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo, valido_dal)
+SELECT idg.soggetto_ruolo_id, idg.auth_user_id, idg.ruolo_applicativo, false, idg.valido_dal
+  FROM anagrafiche.identita_digitali idg
+ WHERE idg.id = (SELECT id_id FROM _t_c7);
+
+SELECT is(
+    (SELECT count(*) || '|' || bool_and(NOT veste_attiva)
+                     || '|' || bool_and(NOT can_invite AND invite_reason ILIKE '%piu%vesti%')
+       FROM script.fn_get_operatore_detail((SELECT au_id FROM _t_c7))),
+    '1|true|true',
+    '7. due vesti spente: UNA riga, veste_attiva=false, invito non offerto'
 );
 
 SELECT * FROM finish();
