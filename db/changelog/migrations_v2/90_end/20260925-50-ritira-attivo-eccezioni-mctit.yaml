@@ -1,0 +1,43 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 — Ritiro, una volta, dei trigger ATTIVO delle FK a registro in
+#   dbops.automazione_attivo_eccezioni.
+#   Brief: brief-db-blocco-login-per-credenziale, sezione 12.3
+#
+# ── PERCHE' ANCHE QUI, SE LO FA GIA' IL MOTORE ─────────────────────────
+#   Il motore (20260925-48) ritira in testa a ogni giro. Ma su dbdev il giro
+#   lo fa il job pgAgent automations_attivo, la sera: fino ad allora i due
+#   trigger fra profili_accesso_bindings e identita_digitali restano, e un
+#   SUPER_ADMIN non si crea (la veste nasce spenta dal 20260925-42). Questo
+#   changeSet chiama la STESSA funzione subito, al migrate: nessuna seconda
+#   copia della regola.
+#   Su un database nuovo non trova niente (i trigger li genera ci_apply, che
+#   gira dopo e salta le eccezioni) e torna 0.
+# Una tantum: runOnChange false, niente preCondition (l'idempotenza la da' la
+# funzione: DROP … IF EXISTS).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260925-50-ritira-attivo-eccezioni-mctit.yaml
+
+  - changeSet:
+      id: 20260925-50-ritira-attivo-eccezioni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Chiama una volta dbops.fn_ritira_attivo_eccezioni(): su dbdev toglie subito i trigger ATTIVO
+        fra profili_accesso_bindings e identita_digitali, senza aspettare il job serale. Su un
+        database nuovo torna 0. Brief: brief-db-blocco-login-per-credenziale §12.3.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT dbops.fn_ritira_attivo_eccezioni();

@@ -2,16 +2,32 @@
 
 ### Scopo
 
-Orchestratore transazionale per la **creazione completa di un operatore**:
-crea l'utente Django, il soggetto persona fisica (se nuovo), la risorsa
-umana con identita digitale OPERATORE, l'eventuale binding SUPER_ADMIN
-e gli indirizzi RESID/DOMFISC opzionali.
+Orchestratore transazionale per la **creazione di un operatore**: la
+credenziale (riusata o creata), il soggetto persona fisica (se nuovo), la
+risorsa umana con la sua veste OPERATORE, l'eventuale binding SUPER_ADMIN e
+gli indirizzi di residenza e domicilio fiscale.
 
-Sostituisce `fn_crea_operatore` v1 (droppata in Fase 7, 2026-04-29):
-v1 aveva firma con `p_ruolo_sistema config.ruolo_sistema` (enum legacy).
-La v2 espone la stessa logica con **firma multi-face native**:
-`p_is_super_admin boolean` + `p_attivo boolean`, e chiama internamente
-`fn_crea_risorsa_umana_v2` invece di v1.
+Tre regole la governano, dal 2026-09-25
+(brief-db-blocco-login-per-credenziale §5.2 e §12):
+
+1. **Una persona, una credenziale** (D-6). Se l'email ha già una credenziale —
+   perché la persona è già cliente del portale o dello shop — la madre la
+   **riusa**: non ne tocca password, username e nome. La cerca
+   [`script.fn_get_auth_user_id_for_email`](/dbzero/script/funzioni/fn_get_auth_user_id_for_email),
+   senza distinguere maiuscole e minuscole. Solo se non c'è la crea
+   [`fn_crea_auth_user`](/dbzero/anagrafiche/manual/fn_crea_auth_user).
+2. **La veste OPERATORE nasce spenta**, sempre: la accende l'attivazione
+   dell'invito (regola unica dell'invito, uguale per ogni veste). Finché non è
+   accesa la credenziale nuova ha `is_active = false`, e l'operatore è
+   **invitabile** ([`fn_check_operatore_invitabile`](/dbzero/script/manual/fn_check_operatore_invitabile)).
+   Il binding SUPER_ADMIN nasce comunque attivo: porta e profili sono due
+   domande diverse, e i lettori dei permessi le chiedono entrambe (vedi
+   [automazione DB](/guide/automazione-db), §4.2 «Le eccezioni»).
+3. **Una credenziale che ha già una veste OPERATORE si rifiuta**, attiva o
+   spenta, con `E_CREDENZIALE_GIA_OPERATORE`: una veste spenta è un invito
+   pendente o un operatore disattivato, e il rimedio è il reinvito, non un
+   secondo operatore sulla stessa persona. Le vesti col ruolo `DISABILITATO`
+   non contano (il valore è in ritiro).
 
 > **Vedi anche**
 >
@@ -21,120 +37,77 @@ La v2 espone la stessa logica con **firma multi-face native**:
 > - [fn_crea_soggetto_pf](/dbzero/anagrafiche/manual/fn_crea_soggetto_pf)
 > - [fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/manual/fn_crea_indirizzo_soggetto)
 
-## Schema
+## Il contratto
 
-`anagrafiche` (orchestratore di dominio).
+Firma e ritorno sono nella doc auto-generata. Due cose da sapere:
 
-## Firma
+- ritorna `TABLE(auth_user_id, username, credenziale_riusata)`, e si legge con
+  `SELECT * FROM anagrafiche.fn_crea_operatore_v2(…)`. ⚠️ `SELECT fn(…)`
+  consegnerebbe la tupla intera in un campo solo: un valore plausibile e falso;
+- lo **username è quello effettivo**: su una credenziale riusata è il suo, non
+  quello passato. Con `credenziale_riusata = true` anche la **password passata
+  è ignorata**, e chi chiama deve dirlo a chi ha compilato il modulo.
 
-```sql
-anagrafiche.fn_crea_operatore_v2(
-    p_soggetto_id                    anagrafiche.soggetti.id%TYPE,
-    p_cognome                        anagrafiche.soggetti.cognome%TYPE,
-    p_nome                           anagrafiche.soggetti.nome%TYPE,
-    p_codice_fiscale                 anagrafiche.soggetti.codice_fiscale%TYPE,
-    p_username                       text,
-    p_email                          text,
-    p_password_hash                  text,
-    p_qualifica_id                   config.qualifiche.id%TYPE,
-    p_unita_organizzativa_id         config.unita_organizzative.id%TYPE,
-    p_data_nascita                   anagrafiche.soggetti.data_nascita%TYPE,
-    p_sesso                          anagrafiche.soggetti.sesso%TYPE,
-    p_is_super_admin                 boolean,
-    p_attivo                         anagrafiche.identita_digitali.attivo%TYPE,
-    p_valido_dal                     anagrafiche.risorse_umane.valido_dal%TYPE,
-    p_valido_al                      anagrafiche.risorse_umane.valido_al%TYPE,
-    p_comune_nascita_id              config.comuni.id%TYPE,
-    p_indirizzo_resid_dettaglio_id   anagrafiche.indirizzi_dettaglio.id%TYPE,
-    p_indirizzo_domfisc_dettaglio_id anagrafiche.indirizzi_dettaglio.id%TYPE
-) RETURNS integer
-```
+`p_username` e `p_password_hash` servono solo quando la credenziale va creata:
+li valida allora `fn_crea_auth_user`. L'email e la qualifica si validano
+sempre.
 
-Tutti i parametri hanno default `NULL` (eccetto `p_sesso` default `'M'`,
-`p_is_super_admin` default `false`, `p_attivo` default `true`,
-`p_valido_dal` default `CURRENT_DATE`).
+## I passi
 
-## Due flussi
+| Passo | Cosa |
+|---|---|
+| Guard | email e qualifica obbligatorie |
+| 1 — credenziale | cerca per email: se c'è, `FOR UPDATE` sulla riga (due creazioni sulla stessa persona si serializzano) e rifiuto se ha già una veste OPERATORE; altrimenti `fn_crea_auth_user` |
+| 2 — soggetto | flusso **A** (nessun `p_soggetto_id`: cognome, nome e CF obbligatori, `fn_crea_soggetto_pf`) o **B** (soggetto esistente, dev'essere persona fisica) |
+| 3 — risorsa umana | `fn_crea_risorsa_umana_v2(…, p_attivo := false)`: risorsa umana attiva, veste OPERATORE **spenta**, binding SUPER_ADMIN se richiesto |
+| 4 — indirizzi | se c'è `p_indirizzo_resid_dettaglio_id`: residenza e domicilio fiscale (fallback sulla residenza) |
 
-| Flusso | Trigger | Step principali |
-|---|---|---|
-| **A** — soggetto nuovo | `p_soggetto_id IS NULL` | guard cognome/nome/CF obbligatori → `fn_crea_soggetto_pf` → ... |
-| **B** — soggetto esistente | `p_soggetto_id` valorizzato | guard tipo PF → riusa il soggetto |
-
-In entrambi i flussi la sequenza completa è:
-
-1. Guard comuni: `p_username`, `p_email`, `p_password_hash`, `p_qualifica_id` obbligatori.
-2. **Step 1** — `fn_crea_auth_user`: crea l'utente Django con username/email/password hash + first_name/last_name.
-3. **Step 2** — biforcazione flusso A/B sul soggetto.
-4. **Step 3** — `fn_crea_risorsa_umana_v2(... p_is_super_admin, p_attivo, ...)`: building block che costruisce RU + identita OPERATORE (+ binding SA opzionale).
-5. **Step 4** (se `p_indirizzo_resid_dettaglio_id` valorizzato): `fn_crea_indirizzo_soggetto` per RESID + DOMFISC (DOMFISC fallback su RESID).
-
-Ritorna `auth_user.id` dell'utente creato.
-
-## Differenze vs v1 (droppata)
-
-| Aspetto | v1 (droppata 2026-04-29) | v2 (questa) |
-|---|---|---|
-| Firma capability | `p_ruolo_sistema config.ruolo_sistema` | `p_is_super_admin boolean` + `p_attivo boolean` |
-| Building block chiamato | `fn_crea_risorsa_umana` v1 | `fn_crea_risorsa_umana_v2` |
-| Stato attivo identita | non parametrizzabile (sempre attiva) | `p_attivo` propagato fino al building block |
-| Dipendenza enum legacy | sì (`config.ruolo_sistema`) | no — abilita `DROP TYPE` finale (Fase 7 step 9) |
+Tutto in un'istruzione: se un passo fallisce non resta niente, neppure sulla
+credenziale riusata.
 
 ## Codici errore
 
-Tutti via `script.fn_log_and_raise_error`:
-
 | Codice | Quando |
 |---|---|
-| `E_ADMIN_VALIDAZIONE` | parametri obbligatori mancanti, soggetto inesistente, soggetto non PF, qualifica non trovata, auth_user inesistente |
-| `E_ADMIN_UO_NON_TROVATA` | UO non esistente o disattiva (delegato da building block v2) |
+| `E_ADMIN_VALIDAZIONE` | email o qualifica mancanti; nel flusso A cognome, nome o CF mancanti; nel flusso B soggetto inesistente o non persona fisica |
+| `E_CREDENZIALE_GIA_OPERATORE` | l'email appartiene a una credenziale che ha già una veste OPERATORE (attiva o spenta) |
+| `E_CREDENZIALE_EMAIL_AMBIGUA` | più credenziali con la stessa email a meno delle maiuscole (dove l'indice unico non c'è) |
 
-(Errori del sub-call `fn_crea_auth_user`/`fn_crea_soggetto_pf`/`fn_crea_risorsa_umana_v2` propagati.)
-
-## Dipendenze
-
-- `anagrafiche.fn_crea_auth_user` (Django user)
-- `anagrafiche.fn_crea_soggetto_pf` (flusso A)
-- `anagrafiche.fn_crea_risorsa_umana_v2` (building block multi-face)
-- `anagrafiche.fn_crea_indirizzo_soggetto` (RESID/DOMFISC opzionali)
-- `script.fn_log_and_raise_error`
+Più quelli propagati da `fn_crea_auth_user`, `fn_crea_soggetto_pf` e
+`fn_crea_risorsa_umana_v2`.
 
 ## Chi la chiama
 
-- BE: `apps.amm_software.services.amm_software_service.create_operatore` (post-Fase 7 LANDED, chiama direttamente v2 con `p_is_super_admin`/`p_attivo`)
-- pgTAP: `db/pgtap/anagrafiche/test-fn-crea-operatore.sql` (post-Fase 7 step 4, in pending al momento della scrittura)
+- BE: `amm_software_repository.crea_operatore` (dal 2026-09-25 deve passare
+  senza `p_attivo` e leggere la `TABLE`: lotto L-3 del piano BE/FE).
+- DB: `dbops.fn_pgtap_crea_operatore_umano` (fixture pgTAP: dopo la madre fa
+  il passo dell'attivazione, accende la veste).
+- pgTAP: `test-fn-crea-operatore`, `test-crea-operatore-riusa-credenziale-v1`,
+  `test-risorse-umane-guard-identita-attiva-v1`,
+  `test-fn-check-operatore-invitabile`, `test-automazione-attivo-eccezioni-v1`.
 
-## Riferimenti
+## Storia
 
-- Migration: `db/changelog/migrations_v2/20_code/anagrafiche/20260429-13-create-fn-crea-operatore-v2-mctit.yaml`
-- Drop v1: `db/changelog/migrations_v2/20_code/anagrafiche/20260429-17-drop-fn-crea-operatore-v1-mctit.yaml`
-- Brief Fase 7: handoff BE refactor `analisi-refactor.frontend-amm-software` (2026-04-29 LANDED)
+- 2026-04-29: nasce la v2 (firma con `p_is_super_admin`), la v1 con l'enum
+  `config.ruolo_sistema` è ritirata.
+- 2026-09-25 (`20260925-42`): riuso della credenziale, veste spenta,
+  `p_attivo` fuori dalla firma, ritorno `TABLE`.
 
 ## Esempio
 
 ```sql
--- Onboarding nuovo operatore standard (flusso A — soggetto nuovo)
-SELECT anagrafiche.fn_crea_operatore_v2(
-    p_cognome           := 'Rossi',
-    p_nome              := 'Mario',
-    p_codice_fiscale    := 'RSSMRA80A01F205X',
-    p_username          := 'm.rossi',
-    p_email             := 'm.rossi@example.com',
-    p_password_hash     := '...',
-    p_qualifica_id      := 1,
-    p_data_nascita      := DATE '1980-01-01',
-    p_comune_nascita_id := 12345
-);
--- → ritorna auth_user.id del nuovo operatore
-
--- Promozione iniziale a super admin
-SELECT anagrafiche.fn_crea_operatore_v2(
-    p_cognome        := 'Bianchi', p_nome := 'Anna',
-    p_codice_fiscale := 'BNCNNA75A41L219Y',
-    p_username       := 'a.bianchi', p_email := 'a.bianchi@ex.com',
-    p_password_hash  := '...',
-    p_qualifica_id   := 1,
-    p_is_super_admin := true
-);
--- → operatore + binding SUPER_ADMIN
+-- Operatore nuovo (flusso A). Se l'email e' gia' di un cliente del portale,
+-- la credenziale e' la sua: credenziale_riusata = true, password ignorata.
+SELECT *
+  FROM anagrafiche.fn_crea_operatore_v2(
+         p_cognome           := 'Rossi',
+         p_nome              := 'Mario',
+         p_codice_fiscale    := 'RSSMRA80A01F205X',
+         p_username          := 'm.rossi',
+         p_email             := 'm.rossi@example.com',
+         p_password_hash     := '...',
+         p_qualifica_id      := 1,
+         p_is_super_admin    := false);
+-- → (auth_user_id, username effettivo, credenziale_riusata); veste spenta,
+--   l'operatore riceve l'invito che la accende.
 ```

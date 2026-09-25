@@ -1,0 +1,226 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Cinque gemelle in schema `storico` prendono il nome di colonna FK che il
+#   trigger di storico cerca. Brief: brief-db-storico-colonna-fk-dei-trigger
+#
+# ── IL DIFETTO, SUL MODELLO ────────────────────────────────────────────
+#
+#   script.trgfn_storico_generic riceve in TG_ARGV[0] il nome della colonna che
+#   lega la riga storica alla madre, e nel ramo di chiusura fa
+#       UPDATE storico.<tab> SET valid_to = … WHERE <TG_ARGV[0]> = <id> …
+#   L'argomento lo calcola dbops.fn_run_automations_storico: «<tabella>_id»,
+#   salvo eccezione STORICO_FK in automation_overrides_cols.csv. E' anche il nome
+#   con cui dbops.fn_ensure_storico_table crea una gemella quando manca.
+#
+#   Le gemelle nate a mano nel 2025 (albero `migrations/`, che su un DB da zero
+#   gira ancora: changelog-master-v2 → changelog-master → includeAll migrations)
+#   usano il SINGOLARE. Tre sono dichiarate nel registro (clienti, soggetti,
+#   parameter_overrides); queste cinque no:
+#
+#     madre                                   colonna viva                   → nome dell'automazione
+#     config.parameters                       parameter_id                   → parameters_id
+#     config.comuni                           comune_id                      → comuni_id
+#     anagrafiche.indirizzi                   indirizzo_id                   → indirizzi_id
+#     anagrafiche.indirizzi_dettaglio         indirizzo_dettaglio_id         → indirizzi_dettaglio_id
+#     anagrafiche.catasto_unita_immobiliari   catasto_unita_immobiliare_id   → catasto_unita_immobiliari_id
+#
+#   ⇒ Su ogni riga con storicizza = true l'UPDATE/DELETE della madre muore con
+#   E_SNAPSHOT_CLOSE_ERROR (42703, «la colonna … non esiste»). Provato il
+#   2026-09-25 su dbdev con un'unita' catastale, in transazione annullata.
+#
+# ── ⭐ PERCHE' SI RINOMINA LA COLONNA E NON SI DICHIARA L'ECCEZIONE ─────
+#
+#   Decisione di Tid del 2026-09-25 (brief §4, strada A):
+#   * il trigger e' GIA' montato col nome giusto, su dbdev e da zero: basta che la
+#     colonna esista. Nessun DDL su un trigger generato da ci_apply (§11.5);
+#   * nessun buco di ordine: questo gira in 00_schema, PRIMA di 80_data, quindi
+#     gli upsert di 80_data su config.parameters trovano uno storico che funziona.
+#     Un'eccezione nel CSV (80_data) avrebbe invece chiesto un DROP + rigenera in
+#     90_end, e in mezzo 80_data sarebbe morto sulle righe storicizzate;
+#   * un'eccezione in meno: la gemella si allinea al contratto del generatore.
+#
+# ── ⚠️ LE DUE MACCHINE PARTONO DA STATI DIVERSI ────────────────────────
+#
+#   Su dbdev storico.parameters ha GIA' parameters_id: e' stata droppata a mano
+#   (fuori da Liquibase) e ricreata dal provisioning. E' dbdev a essere fuori
+#   modello, non la CI. Per questo si legge il catalogo VIVO, tabella per
+#   tabella, e non si usa una preCondition MARK_RAN sul changeSet intero:
+#     * c'e' la vecchia e non la nuova  → si rinomina;
+#     * c'e' gia' la nuova              → niente da rinominare;
+#     * ci sono ENTRAMBE                → solleva: due colonne che dicono la
+#       stessa cosa, e quale sia quella vera lo decide una persona;
+#     * la gemella esiste senza nessuna delle due → solleva: nessun trigger
+#       potra' mai chiuderla;
+#     * la gemella non esiste           → niente: la creera' il provisioning,
+#       gia' col nome giusto.
+#
+#   In tutti i casi utili si allineano anche i NOMI che seguono la colonna, che
+#   la rinomina non tocca: il vincolo NOT NULL (in PostgreSQL 18 ha un nome, e
+#   oggi dbdev e CI lo chiamano in due modi diversi su indirizzi_dettaglio) e,
+#   per parameters, l'indice sulla FK. Il nome di arrivo e' quello che danno
+#   PostgreSQL (<tab>_<col>_not_null) e fn_ensure_storico_table
+#   (ix_<tab>_<col>_fk): cosi' due macchine con la stessa storia di modello hanno
+#   gli stessi nomi.
+#
+# ── LETTORI (censiti il 2026-09-25) ───────────────────────────────────
+#
+#   Nessuna funzione nomina queste colonne in chiaro; nessuna vista dipende da
+#   queste gemelle; dbops.audit_sources non le registra; backend e frontend non le
+#   citano. I lettori dinamici (dbops.fn_storico_risolvi_scope,
+#   script.fn_get_snapshot_as_of) calcolano il nome come il generatore: con la
+#   rinomina si ALLINEANO.
+#
+# ⚠️ Non si modifica il changeSet del 2025 che crea storico.parameters
+#   (migrations/00_bootstrap/20250729-11-…): e' mergiato, e il checksum si
+#   romperebbe. Questo gira dopo, su qualunque database.
+#
+# Presidio: db/pgtap/dbops/test-storico-colonna-fk-dei-trigger-v1.sql (per
+#   ogni trigger di storico, l'argomento e' una colonna della gemella).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/storico/20260925-26-rename-storico-colonna-fk-al-nome-dell-automazione-mctit.yaml
+
+  - changeSet:
+      id: 20260925-26-rename-storico-colonna-fk-al-nome-dell-automazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Cinque gemelle in schema storico nate nel 2025 col nome di colonna FK al
+        singolare (parameter_id, comune_id, indirizzo_id, indirizzo_dettaglio_id,
+        catasto_unita_immobiliare_id), mentre l'automazione STORICO monta il
+        trigger con <tabella>_id: ogni UPDATE/DELETE di una riga storicizzata
+        moriva con E_SNAPSHOT_CLOSE_ERROR. Rinomina al nome dell'automazione,
+        leggendo il catalogo vivo tabella per tabella (dbdev e un DB da zero
+        partono da stati diversi), e allinea i nomi del NOT NULL e dell'indice.
+        Brief: brief-db-storico-colonna-fk-dei-trigger.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $rinomina$
+              DECLARE
+                  r           record;
+                  v_sto       regclass;
+                  v_nuova     text;
+                  v_ha_old    boolean;
+                  v_ha_new    boolean;
+                  v_attnum    smallint;
+                  v_nome      text;
+                  v_atteso    text;
+              BEGIN
+                  FOR r IN
+                      SELECT *
+                        FROM (VALUES
+                          ('config',      'parameters',                'parameter_id'),
+                          ('config',      'comuni',                    'comune_id'),
+                          ('anagrafiche', 'indirizzi',                 'indirizzo_id'),
+                          ('anagrafiche', 'indirizzi_dettaglio',       'indirizzo_dettaglio_id'),
+                          ('anagrafiche', 'catasto_unita_immobiliari', 'catasto_unita_immobiliare_id')
+                        ) AS t(madre_schema, tab, vecchia)
+                  LOOP
+                      v_sto := to_regclass(format('storico.%I', r.tab));
+
+                      -- La gemella non c'e': la creera' il provisioning, gia' col
+                      -- nome dell'automazione. Niente da fare.
+                      IF v_sto IS NULL THEN
+                          RAISE NOTICE '20260925-26: storico.% non esiste, niente da rinominare', r.tab;
+                          CONTINUE;
+                      END IF;
+
+                      -- ⚠️ Il nome di arrivo e' il DEFAULT del generatore, non una
+                      --   chiamata a dbops.fn_get_override_col: questo e' 00_schema,
+                      --   e il registro delle eccezioni e' un seed di 80_data
+                      --   (linee-guida-sql §11.4). Che nessuna di queste cinque abbia
+                      --   un'eccezione lo presidia il pgTAP, dopo ci_apply.
+                      v_nuova := r.tab || '_id';
+
+                      SELECT EXISTS (SELECT 1 FROM pg_attribute
+                                      WHERE attrelid = v_sto AND attname = r.vecchia
+                                        AND attnum > 0 AND NOT attisdropped),
+                             EXISTS (SELECT 1 FROM pg_attribute
+                                      WHERE attrelid = v_sto AND attname = v_nuova
+                                        AND attnum > 0 AND NOT attisdropped)
+                        INTO v_ha_old, v_ha_new;
+
+                      IF v_ha_old AND v_ha_new THEN
+                          RAISE EXCEPTION
+                            '20260925-26: storico.% ha sia % sia %: quale delle due sia la FK vera lo decide una persona, non questo changeSet',
+                            r.tab, r.vecchia, v_nuova;
+                      ELSIF NOT v_ha_old AND NOT v_ha_new THEN
+                          RAISE EXCEPTION
+                            '20260925-26: storico.% non ha ne'' % ne'' %: il trigger di storico di %.% non potrebbe mai chiudere uno snapshot',
+                            r.tab, r.vecchia, v_nuova, r.madre_schema, r.tab;
+                      ELSIF v_ha_old THEN
+                          EXECUTE format('ALTER TABLE storico.%I RENAME COLUMN %I TO %I',
+                                         r.tab, r.vecchia, v_nuova);
+                          RAISE NOTICE '20260925-26: storico.%.% rinominata in %', r.tab, r.vecchia, v_nuova;
+                      ELSE
+                          RAISE NOTICE '20260925-26: storico.% ha gia'' %, niente da rinominare', r.tab, v_nuova;
+                      END IF;
+
+                      SELECT attnum INTO v_attnum
+                        FROM pg_attribute
+                       WHERE attrelid = v_sto AND attname = v_nuova AND NOT attisdropped;
+
+                      -- Il NOT NULL segue la colonna ma non il nome: lo si porta al
+                      -- nome che PostgreSQL gli darebbe oggi.
+                      v_atteso := format('%s_%s_not_null', r.tab, v_nuova);
+                      SELECT conname INTO v_nome
+                        FROM pg_constraint
+                       WHERE conrelid = v_sto AND contype = 'n' AND conkey = ARRAY[v_attnum];
+                      IF v_nome IS NOT NULL AND v_nome <> v_atteso
+                         AND NOT EXISTS (SELECT 1 FROM pg_constraint
+                                          WHERE conrelid = v_sto AND conname = v_atteso) THEN
+                          EXECUTE format('ALTER TABLE storico.%I RENAME CONSTRAINT %I TO %I',
+                                         r.tab, v_nome, v_atteso);
+                      END IF;
+
+                      -- L'indice monocolonna sulla FK, dove c'e', prende il nome che
+                      -- gli da' fn_ensure_storico_table. Non se ne crea uno dove
+                      -- manca: e' un'altra domanda (brief §9).
+                      v_atteso := format('ix_%s_%s_fk', r.tab, v_nuova);
+                      v_nome := NULL;
+                      SELECT i.relname INTO v_nome
+                        FROM pg_index x
+                        JOIN pg_class i ON i.oid = x.indexrelid
+                       WHERE x.indrelid = v_sto
+                         AND NOT x.indisprimary
+                         AND x.indnatts = 1
+                         AND x.indkey[0] = v_attnum
+                       ORDER BY i.relname
+                       LIMIT 1;
+                      IF v_nome IS NOT NULL AND v_nome <> v_atteso
+                         AND to_regclass(format('storico.%I', v_atteso)) IS NULL THEN
+                          EXECUTE format('ALTER INDEX storico.%I RENAME TO %I', v_nome, v_atteso);
+                      END IF;
+
+                      EXECUTE format(
+                        'COMMENT ON COLUMN storico.%I.%I IS %L',
+                        r.tab, v_nuova,
+                        format('Id della riga di %s.%s: FK logica, senza vincolo. Il nome e'' quello che '
+                               'l''automazione STORICO passa a script.trgfn_storico_generic '
+                               '(<tabella>_id): una gemella con un altro nome va dichiarata come '
+                               'STORICO_FK in dbops.automation_overrides_cols, o il trigger non '
+                               'chiude mai uno snapshot.', r.madre_schema, r.tab));
+                  END LOOP;
+              END
+              $rinomina$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Non si torna indietro, ed e' una scelta: il rollback rimetterebbe
+              --    le colonne al nome che il trigger NON cerca, cioe' ricreerebbe il
+              --    difetto. No-op dichiarato.
+              SELECT 1;

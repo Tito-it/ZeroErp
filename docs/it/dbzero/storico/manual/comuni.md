@@ -26,7 +26,7 @@ La tabella **`storico.comuni`** mantiene la cronologia completa dei record di **
    La trigger function `config.trgfn_comuni_upd_dlt_storico_comuni()` si attiva **BEFORE UPDATE OR DELETE** su `config.comuni` quando `storicizza = TRUE`.
 
 2. **Ricostruzione INSERT iniziale**
-   Anche se non esiste un record di `storico.comuni` per un dato `comune_id`, al primo **UPDATE** o **DELETE** viene creato automaticamente uno **snapshot iniziale** (tipo_operazione_id = 1) con i dati originali.
+   Anche se non esiste un record di `storico.comuni` per un dato `comuni_id`, al primo **UPDATE** o **DELETE** viene creato automaticamente uno **snapshot iniziale** (tipo_operazione_id = 1) con i dati originali.
 
 3. **Gestione valid_from/valid_to**
 

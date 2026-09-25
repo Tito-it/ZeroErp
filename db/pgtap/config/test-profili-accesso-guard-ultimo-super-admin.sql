@@ -165,32 +165,24 @@ CREATE TEMP TABLE _t_c3 AS SELECT * FROM pg_temp.mk_admin();
 
 SELECT pg_temp.disable_others((SELECT bind_id FROM _t_c3));
 
--- ⛔ TROVATO IL 2026-09-23, e il file lo diceva sbagliato: questo UPDATE NON
---   viene rifiutato da `E_PROFILO_ULTIMO_SUPER_ADMIN`. A parlare e' il guard
---   GENERICO delle figlie — `trgfn_prevent_deactivate_if_children` sul
---   trigger `trg_identita_digitali_a10_profili_accesso_bindings_block_…` —
---   che rifiuta qualunque identita' con un binding ATTIVO, super admin o no,
---   e scatta prima. Finche' l'asserzione era un `throws_ok(sql, NULL, NULL)`
---   il file era verde per l'errore sbagliato: il ramo specifico
---   sull'identita' non e' mai stato esercitato da questo test, e va capito
---   se sia raggiungibile (decisione dichiarata nel brief
---   brief-db-fixture-che-costruiscono-giro-2).
--- ⭐ Percio' l'asserzione pinna cio' che regge in entrambi i mondi — il
---   rifiuto con un errore di DOMINIO — e non la frase di chi lo solleva
---   oggi: un test che pinna il sintomo diventerebbe rosso il giorno della
---   riparazione.
-SELECT diag(
-    '3. oggi a rifiutare e'' il guard generico delle figlie, non E_PROFILO_ULTIMO_SUPER_ADMIN (misurato 2026-09-23)'
-);
-
-SELECT throws_ok(
+-- ⛔ TROVATO IL 2026-09-23: fino al 2026-09-25 questo UPDATE NON lo
+--   rifiutava `E_PROFILO_ULTIMO_SUPER_ADMIN`, ma il guard GENERICO delle
+--   figlie — `trgfn_prevent_deactivate_if_children` montato dall'automazione
+--   ATTIVO fra identita_digitali e profili_accesso_bindings — che rifiutava
+--   qualunque identita' con un binding attivo e scattava prima. Il ramo
+--   specifico sull'identita' non era raggiungibile, e l'asserzione era
+--   generica (P0001) per reggere in entrambi i mondi.
+-- ⭐ Rev 2026-09-25 (brief-db-blocco-login-per-credenziale §12.3): porta e
+--   profili si sono SGANCIATI — la coppia e' un'eccezione dichiarata in
+--   dbops.automazione_attivo_eccezioni e quel block non c'e' piu'. Il ramo
+--   specifico e' raggiungibile, e l'asserzione pinna la regola: E_PROFILO_ULTIMO_SUPER_ADMIN.
+SELECT throws_like(
     format(
         $sql$ UPDATE anagrafiche.identita_digitali SET attivo = false WHERE id = %s $sql$,
         (SELECT id_id FROM _t_c3)
     ),
-    'P0001',
-    NULL,
-    '3. Scenario lockout identita: disattivare l''ultima identita'' con SUPER_ADMIN e'' rifiutato con un errore di dominio'
+    '%zero SUPER_ADMIN attivi%',
+    '3. Scenario lockout identita: disattivare l''ultima identita'' con SUPER_ADMIN -> E_PROFILO_ULTIMO_SUPER_ADMIN'
 );
 
 SELECT * FROM finish();

@@ -2,228 +2,170 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test: script.fn_check_operatore_invitabile
---       Verifica le 7 condizioni di invitabilita' di un operatore.
+-- Test: script.fn_check_operatore_invitabile — la REGOLA UNICA dell'invito:
+--       si invita chi ha una veste OPERATORE SPENTA (l'invito la accende),
+--       una veste gia' attiva si rifiuta.
 --
--- Migrazione Fase 7 Chunk A (2026-04-29):
---   Pre-migrazione il test scriveva su anagrafiche.risorse_umane_auth_user
---   come tabella ponte legacy (con ruolo_sistema enum + attivo boolean).
---   Post-cutover §13.3 (19-04-2026) RAU e' diventata vista non-updatable
---   calcolata da identita_digitali + binding SUPER_ADMIN. Le UPDATE su
---   rau fallivano in CI dal cutover. Questa migrazione le sostituisce
---   con scritture dirette su identita_digitali (sorgente di verita'):
---     - rau.attivo=false  -> identita_digitali.attivo=false
---     - rau.ruolo_sistema='DISABILITATO'  -> id.ruolo_applicativo='DISABILITATO'
---     - rau.ruolo_sistema='OPERATIVO'     -> id.ruolo_applicativo='OPERATORE' + id.attivo=true
+-- ⭐ Riscritto il 2026-09-25 (brief-db-blocco-login-per-credenziale §12,
+--   changeSet 20260925-43; R-1 del piano BE/FE, D-8 dell'analisi accessi).
+--   Fino a quel giorno il check pretendeva il contrario — veste ATTIVA,
+--   is_active = true, last_login NULL — e il test lo inchiodava. Col P-2 la
+--   veste nasce spenta (20260925-42): con la regola vecchia un operatore
+--   appena creato non sarebbe mai stato invitabile.
+--   ⭐ E il test COSTRUISCE il suo operatore (dbops.fn_pgtap_crea_operatore_umano)
+--   invece di pescarne uno fra quelli che ci sono: la versione di prima
+--   prendeva «la prima identita' OPERATORE attiva non super admin» del
+--   database, e su un database senza operatori (la CI) non trovava niente.
 --
--- Filtro vergine "non-SA": il setup pesca un'identita OPERATORE attiva
--- SENZA binding SUPER_ADMIN, per evitare di scatenare il guard
--- anti-lockout ultimo SA (trgfn_identita_digitali_guard_ultimo_super_admin)
--- durante i test di disattivazione/disabilitazione (case 4, 5, 6).
---
--- Elenco test:
---  1) auth_user_id NULL → invitabile=false
---  2) auth_user_id <= 0 → invitabile=false
---  3) auth_user_id inesistente → invitabile=false, motivo 'Utente non trovato'
---  4) auth_user is_active=false → invitabile=false
---  5) identita.attivo=false → invitabile=false
---  6) auth_user senza email → invitabile=false
---  7) auth_user con last_login NOT NULL → invitabile=false
---  8) Operatore valido (tutte condizioni OK) → invitabile=true con email
---
--- Nota: il ramo `IF v_ruolo_applicativo = 'DISABILITATO'` nel body
--- della fn e' dead code post-cutover §13.3 — il LEFT JOIN su
--- identita_digitali filtra `ruolo_applicativo = 'OPERATORE'`, quindi
--- nessuna riga estratta puo' avere ruolo DISABILITATO. I percorsi
--- "operatore disabilitato" reali sono coperti dai casi 4 (is_active),
--- 5 (id.attivo) e dal caso "Nessuna identita OPERATORE" (riga
--- assente o ruolo_applicativo diverso da OPERATORE). Il vecchio
--- caso 6 che forzava ruolo_applicativo=DISABILITATO e' stato rimosso
--- in Fase 7 (la stringa attesa "%DISABILITATO%" non corrisponde piu'
--- al motivo restituito dalla fn).
+-- Elenco test (plan 11):
+--   Chiamate che non arrivano a nessuna credenziale
+--    1) auth_user_id NULL -> invitabile=false
+--    2) auth_user_id <= 0 -> invitabile=false
+--    3) auth_user_id inesistente -> 'Utente non trovato'
+--   La regola
+--    4) credenziale senza veste OPERATORE -> 'Nessuna identita OPERATORE'
+--    5) ⛔ veste OPERATORE gia' ATTIVA -> invitabile=false (D-8)
+--    6) ⭐ veste OPERATORE SPENTA -> invitabile=true, con l'email
+--    7) ... e is_active e' false (derivato dalle vesti): non conta
+--    8) ... e last_login valorizzato: non conta piu' (D-8)
+--    9) veste spenta fuori dalla sua finestra -> invitabile=false
+--   10) veste spenta, email vuota -> invitabile=false
+--   Il cablaggio
+--   11) la madre fn_crea_operatore_v2 lascia un operatore INVITABILE (la veste
+--       nasce spenta): e' la ragione per cui la regola si e' rovesciata
 -- ------------------------------------------------------------
 
 BEGIN;
 
--- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
---   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
---   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
---   file sarebbe verde per sottrazione. IMMEDIATE li riporta a scattare a fine
---   di ogni istruzione. In testa e non in coda: in coda scatterebbero dopo il
---   cleanup, su righe ormai cancellate.
+-- Contesto applicativo: il test gira come l'applicazione (ruolo OPERATORE +
+-- RLS attiva). Brief: brief-db-pgtap-runner-rls-baseline §8.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli
+--   (il COMMIT non arriva mai). In testa e non in coda.
 --   Brief: brief-db-pgtap-runner-rls-baseline §19.
 SET CONSTRAINTS ALL IMMEDIATE;
 
--- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
--- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
--- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
--- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
-
-SELECT plan(8);
+SELECT plan(11);
 
 -- ============================================================
--- 0. Setup: pesco una identita OPERATORE attiva "vergine" (senza
---    binding SUPER_ADMIN) per non scatenare guard ultimo-SA.
+-- Fixture: un operatore VERO (madre + invito accettato), non super admin —
+-- spegnerne la veste non tocca l'anti-lockout.
 -- ============================================================
+CREATE TEMP TABLE tmp_inv AS
+SELECT o.auth_user_id AS user_id, o.identita_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('invitabile', false) o;
 
-CREATE TEMP TABLE tmp_invito_ctx AS
-SELECT
-    id.auth_user_id           AS user_id,
-    id.id                     AS identita_id,
-    au.email                  AS original_email,
-    au.is_active              AS original_active,
-    au.last_login             AS original_last_login,
-    id.ruolo_applicativo::text AS original_ruolo_app,
-    id.attivo                 AS original_id_attivo
-FROM anagrafiche.identita_digitali id
-JOIN django.auth_user au ON au.id = id.auth_user_id
-WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-  AND id.attivo = true
-  AND NOT EXISTS (
-      SELECT 1
-        FROM config.profili_accesso_bindings pab
-        JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id
-       WHERE pab.identita_digitale_id = id.id
-         AND pab.attivo = true
-         AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
-  )
-ORDER BY id.id
-LIMIT 1;
-
--- Preparo l'operatore come invitabile:
--- email presente, is_active=true, last_login=NULL,
--- identita OPERATORE attiva, ruolo_applicativo='OPERATORE'.
-UPDATE django.auth_user
-   SET email = 'test.invito@pgtap.local',
-       is_active = true,
-       last_login = NULL
- WHERE id = (SELECT user_id FROM tmp_invito_ctx);
-
-UPDATE anagrafiche.identita_digitali
-   SET ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo,
-       attivo = true
- WHERE id = (SELECT identita_id FROM tmp_invito_ctx);
+-- Una credenziale NUDA: nessuna identita'.
+CREATE TEMP TABLE tmp_nuda AS
+SELECT anagrafiche.fn_crea_auth_user(
+           p_username      := '_pgtap_inv_nuda_' || substring(md5(clock_timestamp()::text) from 1 for 8),
+           p_email         := '_pgtap_inv_nuda_' || substring(md5(clock_timestamp()::text) from 1 for 8) || '@example.com',
+           p_password_hash := '!') AS user_id;
 
 -- ============================================================
--- 1) auth_user_id NULL → invitabile=false
+-- 1-3) Chiamate che non arrivano a nessuna credenziale
 -- ============================================================
-SELECT is(
-    (script.fn_check_operatore_invitabile(NULL))->>'invitabile',
-    'false',
-    'fn_check_operatore_invitabile(NULL) → invitabile=false'
-);
+SELECT is((script.fn_check_operatore_invitabile(NULL))->>'invitabile', 'false',
+          '1) auth_user_id NULL -> invitabile=false');
+
+SELECT is((script.fn_check_operatore_invitabile(-1))->>'invitabile', 'false',
+          '2) auth_user_id <= 0 -> invitabile=false');
+
+SELECT is((script.fn_check_operatore_invitabile(2147483000))->>'motivo', 'Utente non trovato',
+          '3) auth_user_id inesistente -> Utente non trovato');
 
 -- ============================================================
--- 2) auth_user_id <= 0 → invitabile=false
+-- 4) Credenziale senza nessuna veste OPERATORE
 -- ============================================================
-SELECT is(
-    (script.fn_check_operatore_invitabile(-1))->>'invitabile',
-    'false',
-    'fn_check_operatore_invitabile(-1) → invitabile=false'
-);
+SELECT is((script.fn_check_operatore_invitabile((SELECT user_id FROM tmp_nuda)))->>'motivo',
+          'Nessuna identita OPERATORE',
+          '4) credenziale senza veste OPERATORE -> Nessuna identita OPERATORE');
 
 -- ============================================================
--- 3) auth_user_id inesistente → invitabile=false
+-- 5) ⛔ Veste gia' ATTIVA (il builder la accende): rifiuto (D-8)
 -- ============================================================
-SELECT is(
-    (script.fn_check_operatore_invitabile(99999999))->>'motivo',
-    'Utente non trovato',
-    'fn_check_operatore_invitabile(99999999) → Utente non trovato'
-);
-
--- ============================================================
--- 4) is_active=false → invitabile=false
---    Nota: il trigger sync_auth_user_active si comporta in modo
---    inverso (auth_user.is_active deriva da identita.attivo). Per
---    forzare auth_user.is_active=false senza ribaltarlo dal sync
---    e' sufficiente fare l'UPDATE diretto: il trigger sync e' su
---    identita_digitali, non su auth_user.
--- ============================================================
-UPDATE django.auth_user
-   SET is_active = false
- WHERE id = (SELECT user_id FROM tmp_invito_ctx);
-
 SELECT ok(
-    (script.fn_check_operatore_invitabile(
-        (SELECT user_id FROM tmp_invito_ctx)
-    ))->>'motivo' LIKE '%is_active%',
-    '4) is_active=false → invitabile=false con motivo is_active'
-);
-
-UPDATE django.auth_user
-   SET is_active = true
- WHERE id = (SELECT user_id FROM tmp_invito_ctx);
+    (SELECT (NOT (r->>'invitabile')::boolean) AND r->>'motivo' ILIKE '%gia%attiva%'
+       FROM (SELECT script.fn_check_operatore_invitabile((SELECT user_id FROM tmp_inv)) AS r) x),
+    '5) veste OPERATORE gia'' attiva -> invitabile=false (D-8)');
 
 -- ============================================================
--- 5) identita.attivo=false → invitabile=false
---    Pre-Fase 7: UPDATE rau.attivo. Post-Fase 7: UPDATE
---    identita_digitali.attivo direttamente.
+-- 6-8) ⭐ Veste SPENTA: invitabile — e is_active, last_login non contano
 -- ============================================================
 UPDATE anagrafiche.identita_digitali
    SET attivo = false
- WHERE id = (SELECT identita_id FROM tmp_invito_ctx);
+ WHERE id = (SELECT identita_id FROM tmp_inv);
 
-SELECT ok(
-    (script.fn_check_operatore_invitabile(
-        (SELECT user_id FROM tmp_invito_ctx)
-    ))->>'motivo' LIKE '%non attiva%',
-    '5) identita.attivo=false → invitabile=false con motivo "non attiva"'
-);
+UPDATE django.auth_user
+   SET last_login = now()
+ WHERE id = (SELECT user_id FROM tmp_inv);
 
-UPDATE anagrafiche.identita_digitali
-   SET attivo = true
- WHERE id = (SELECT identita_id FROM tmp_invito_ctx);
+SELECT is(
+    (SELECT r->>'invitabile' || '|' || (r->>'email')
+       FROM (SELECT script.fn_check_operatore_invitabile((SELECT user_id FROM tmp_inv)) AS r) x),
+    'true|' || (SELECT email FROM django.auth_user WHERE id = (SELECT user_id FROM tmp_inv)),
+    '6) veste OPERATORE spenta -> invitabile=true, con l''email della credenziale');
+
+SELECT is(
+    (SELECT is_active FROM django.auth_user WHERE id = (SELECT user_id FROM tmp_inv)),
+    false,
+    '7) ...con is_active = false (la sola veste e'' spenta): non decide');
+
+SELECT isnt(
+    (SELECT last_login FROM django.auth_user WHERE id = (SELECT user_id FROM tmp_inv)),
+    NULL,
+    '8) ...e con last_login valorizzato: non decide piu'' (D-8)');
 
 -- ============================================================
--- 6) Senza email → invitabile=false
+-- 9) Veste spenta FUORI dalla sua finestra (comincia fra dieci giorni)
+-- ============================================================
+UPDATE anagrafiche.identita_digitali
+   SET valido_dal = CURRENT_DATE + 10
+ WHERE id = (SELECT identita_id FROM tmp_inv);
+
+SELECT ok(
+    (SELECT (NOT (r->>'invitabile')::boolean) AND r->>'motivo' ILIKE '%finestra%'
+       FROM (SELECT script.fn_check_operatore_invitabile((SELECT user_id FROM tmp_inv)) AS r) x),
+    '9) veste spenta fuori finestra -> invitabile=false');
+
+UPDATE anagrafiche.identita_digitali
+   SET valido_dal = CURRENT_DATE
+ WHERE id = (SELECT identita_id FROM tmp_inv);
+
+-- ============================================================
+-- 10) Veste spenta, email vuota
 -- ============================================================
 UPDATE django.auth_user
    SET email = ''
- WHERE id = (SELECT user_id FROM tmp_invito_ctx);
+ WHERE id = (SELECT user_id FROM tmp_inv);
 
 SELECT ok(
-    (script.fn_check_operatore_invitabile(
-        (SELECT user_id FROM tmp_invito_ctx)
-    ))->>'motivo' LIKE '%email%',
-    '6) email vuota → invitabile=false'
-);
-
-UPDATE django.auth_user
-   SET email = 'test.invito@pgtap.local'
- WHERE id = (SELECT user_id FROM tmp_invito_ctx);
+    (SELECT (NOT (r->>'invitabile')::boolean) AND r->>'motivo' ILIKE '%email%'
+       FROM (SELECT script.fn_check_operatore_invitabile((SELECT user_id FROM tmp_inv)) AS r) x),
+    '10) veste spenta ma email vuota -> invitabile=false');
 
 -- ============================================================
--- 7) last_login NOT NULL → invitabile=false
+-- 11) Il cablaggio: la madre lascia un operatore INVITABILE
 -- ============================================================
-UPDATE django.auth_user
-   SET last_login = now()
- WHERE id = (SELECT user_id FROM tmp_invito_ctx);
+SET CONSTRAINTS ALL DEFERRED;
+CREATE TEMP TABLE tmp_madre AS
+SELECT m.auth_user_id AS user_id
+  FROM anagrafiche.fn_crea_operatore_v2(
+           p_cognome                      := 'Invito',
+           p_nome                         := 'pgTAP',
+           p_codice_fiscale               := dbops.fn_pgtap_cf_libero(),
+           p_username                     := '_pgtap_inv_madre_' || substring(md5(clock_timestamp()::text) from 1 for 8),
+           p_email                        := '_pgtap_inv_madre_' || substring(md5(clock_timestamp()::text) from 1 for 8) || '@example.com',
+           p_password_hash                := 'pgtap-nessun-login',
+           p_qualifica_id                 := (SELECT q.id FROM config.qualifiche q WHERE q.codice_interno = 'DIPENDENTE'),
+           p_indirizzo_resid_dettaglio_id := dbops.fn_pgtap_crea_indirizzo_dettaglio('invitabile madre')) m;
+SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT ok(
-    (script.fn_check_operatore_invitabile(
-        (SELECT user_id FROM tmp_invito_ctx)
-    ))->>'motivo' LIKE '%login%',
-    '7) last_login NOT NULL → invitabile=false (gia'' loggato)'
-);
-
-UPDATE django.auth_user
-   SET last_login = NULL
- WHERE id = (SELECT user_id FROM tmp_invito_ctx);
-
--- ============================================================
--- 8) Tutte le condizioni OK → invitabile=true con email
--- ============================================================
-SELECT ok(
-    (script.fn_check_operatore_invitabile(
-        (SELECT user_id FROM tmp_invito_ctx)
-    ))->>'invitabile' = 'true'
-    AND
-    (script.fn_check_operatore_invitabile(
-        (SELECT user_id FROM tmp_invito_ctx)
-    ))->>'email' = 'test.invito@pgtap.local',
-    '8) Tutte condizioni OK → invitabile=true, email corretta'
-);
+SELECT is(
+    (script.fn_check_operatore_invitabile((SELECT user_id FROM tmp_madre)))->>'invitabile',
+    'true',
+    '11) la madre lascia la veste spenta: l''operatore appena creato e'' invitabile');
 
 SELECT * FROM finish();
 ROLLBACK;

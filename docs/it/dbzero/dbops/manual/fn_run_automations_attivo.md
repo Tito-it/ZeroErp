@@ -110,6 +110,17 @@ Nessuna modifica automatica viene applicata ai figli.
 
 ➡️ l’operazione viene **bloccata con errore** se il padre non è attivo.
 
+#### ⛔ Le eccezioni dichiarate (dal 2026-09-25)
+
+Le FK scritte in [`dbops.automazione_attivo_eccezioni`](/dbzero/dbops/manual/automazione_attivo_eccezioni)
+(schema e tabella della figlia, colonna FK, **motivo** obbligatorio) non si
+legano: per loro non nasce né il block né il require (passo 2.0 del ciclo
+delle FK; in dry run una riga di audit `ATTIVO_SKIP_ECCEZIONE`). E fuori dal
+dry run, in testa a ogni giro, il motore chiama
+[`dbops.fn_ritira_attivo_eccezioni`](/dbzero/dbops/manual/fn_ritira_attivo_eccezioni),
+che toglie i trigger già generati per quelle coppie: chi genera ritira.
+L'eccezione è **per FK**, non per tabella.
+
 ---
 
 ### Naming dei trigger

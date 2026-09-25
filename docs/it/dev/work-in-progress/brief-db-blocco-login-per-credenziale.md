@@ -3,13 +3,16 @@
 > **Tipo documento**: brief operativo **per il team DB** (`dev/db-tid`), con la
 > ricaduta sul backend al §7.
 >
-> **Data**: 2026-09-24 · **Stato**: 🟢 **P-1 APPLICATO il 2026-09-25** su dbdev e
-> sullo scratch `zeroerp_ci` (§11) — 25 changeSet `20260925-01…-25`. ⛔ **Il
-> backend va allineato subito** (§7, §11.3): finché non lo è, il login di dbdev
-> chiama firme che non esistono più. P-2 (§5) da fare.
+> **Data**: 2026-09-24 · **Stato**: 🟢 **P-1 APPLICATO il 2026-09-25** (§11,
+> `20260925-01…-25`). 🟢 **P-2 APPLICATO il 2026-09-25** (§12,
+> `20260925-40…-50`, commit `acc6385d5`): corsa pgTAP di Tid **senza
+> regressioni**. ⛔ **Il backend va allineato** (§7, §11.3, §12.4): la madre
+> dell'operatore ha firma e ritorno nuovi, e il check dell'invito ha la regola
+> rovesciata — finché non lo è, su dbdev la creazione dell'operatore dal
+> pannello è rotta.
 >
-> **Da leggere per primo**: §11 (cosa è stato fatto, cosa è cambiato rispetto al
-> disegno, cosa resta), poi §2 (la forma decisa) e §5 (il P-2).
+> **Da leggere per primo**: §12 (il P-2: cosa c'è, cosa è cambiato rispetto al
+> disegno, porta e profili, cosa chiede al backend), poi §11 (il P-1) e §2.
 >
 > **Due lavori, in quest'ordine**: **P-1** login, blocco e cambio password
 > (§2–§4); **P-2** email unica e riuso della credenziale (§5). Sono
@@ -748,7 +751,185 @@ freno: meglio un test marcato che una porta aperta.
 - ✅ Tid: P-1 applicato (2026-09-25). ⏳ Corsa pgTAP; scratch da riallineare
   sul ponte (§11.5).
 - Backend: §7.
-- DB: il **P-2** (§5).
+- DB: il **P-2** (§5) → §12.
+- ⛔ **P-2, trovato dalla corsa pgTAP del 2026-09-25: un operatore SUPER_ADMIN
+  non si può più creare.** `20260925-42` fa nascere la veste OPERATORE spenta
+  (`fn_crea_risorsa_umana_v2(…, p_attivo := false)`), ma la stessa funzione
+  scrive il binding SUPER_ADMIN in `config.profili_accesso_bindings` con
+  `attivo = true`, sempre. Il binding è figlio della veste, e la regola ATTIVO
+  (`trgfn_child_requires_active_parent`, differita) lo rifiuta: *«Padre non
+  attivo: figlio attivo non consentito»* (`E_ATTIVO_REQUIRE`).
+  - **Non è un difetto del test**: la regola scatta al `COMMIT`, quindi muore
+    anche la creazione dal pannello. Nel pgTAP scatta al
+    `SET CONSTRAINTS ALL IMMEDIATE` di `dbops.fn_pgtap_crea_operatore_umano`.
+  - Riprodotto il 2026-09-25 su dbdev come applicazione, in rollback: con
+    `p_super_admin = false` l'operatore nasce, con `true` muore.
+  - Tocca **ogni** pgTAP che costruisce un super admin con quell'helper:
+    `config/test-credenziale-blocco-admin-v1`, `script/test-fn-get-operatore-detail`,
+    `script/test-permessi-funzioni-risoluzione`,
+    `script/test-fn-check-ultimo-super-admin-attivo`, `script/test-fn-is-super-admin`,
+    `anagrafiche/test-billing-account-auto-link-ef`,
+    `anagrafiche/test-guard-albero-ba-omogeneo-v1`.
+  - ⛔ **Il rimedio NON è nell'helper.** Accendere la veste prima del
+    `SET CONSTRAINTS ALL IMMEDIATE` farebbe tornare verdi i test e lascerebbe
+    rotta la creazione vera.
+  - ❓ **Decisione per Tid: che cosa diventa il binding di un invito.** (a) Nasce
+    spento con la veste, e l'attivazione dell'invito accende veste **e** binding
+    creati dall'invito. Ma una riattivazione generica non deve riaccendere un
+    binding che un admin ha spento: serve distinguerli. (b) Il binding
+    SUPER_ADMIN non nasce all'invito ma all'attivazione, e l'invito ne porta
+    l'intenzione. (c) Il binding di una veste spenta è ammesso: vuol dire
+    toccare la regola ATTIVO per quel figlio, e il binding di una veste spenta
+    non concede niente solo se ogni lettore guarda anche la veste
+    (`fn_is_super_admin` la guarda).
+  - ✅ **Decisa da Tid il 2026-09-25: la (c), «sganciare porta e profili».**
+    Scritta e provata in `20260925-46…-50`: §12.3.
+
+## 12. Esecuzione del P-2 (2026-09-25)
+
+### 12.1 Cosa c'è
+
+| Fase | ChangeSet | Cosa | Stato |
+| --- | --- | --- | --- |
+| `20_code/script` | `-40` | ⭐ `fn_get_auth_user_id_for_email(p_email)`: la credenziale di un'email, **senza maiuscole**; email vuota → `NULL`; due credenziali con la stessa email → `E_CREDENZIALE_EMAIL_AMBIGUA` (building block, regola del 2) | applicato |
+| `20_code/anagrafiche` | `-41` | `fn_crea_auth_user`: il guard dell'email chiede al building block (`E_ADMIN_EMAIL_DUPLICATA` invariato) | applicato |
+| | `-42` | la madre `fn_crea_operatore_v2`: riusa la credenziale (D-6), veste OPERATORE **sempre spenta** (R-2), rifiuto `E_CREDENZIALE_GIA_OPERATORE`; `p_attivo` esce, ritorno `TABLE(auth_user_id, username, credenziale_riusata)` — `DROP` + `CREATE` | applicato |
+| `20_code/script` | `-43` | `fn_check_operatore_invitabile` sulla regola unica (R-1, D-8): invitabile chi ha la veste **spenta**; via `last_login`, `is_active`, il ramo `DISABILITATO` morto | applicato |
+| `20_code/dbops` | `-45` | il builder pgTAP legge la `TABLE` e fa il passo dell'attivazione (accende la veste) | applicato |
+| `90_end` | `-44` | indice unico `ix_auth_user_email_lower_unique` su `lower(email)` `WHERE email <> ''`, `onFail: CONTINUE`; **ritira** `ix_auth_user_email_unique` (`20260401-20`, distingueva le maiuscole: contenuto nel nuovo) | applicato |
+| `00_schema/dbops` | `-46` | registro `dbops.automazione_attivo_eccezioni` (§12.3) | applicato |
+| `20_code/dbops` | `-47`, `-48` | `fn_ritira_attivo_eccezioni()`; il motore `fn_run_automations_attivo` salta le eccezioni e ritira | applicato |
+| `80_data` | `-49` | mirror del registro, prima riga: binding → identità | applicato |
+| `90_end` | `-50` | ritiro una tantum (su dbdev i trigger ci sono già) | applicato |
+| *(CSV esistenti)* | — | codici 1130 `E_CREDENZIALE_EMAIL_AMBIGUA` (TECNICO), 1131 `E_CREDENZIALE_GIA_OPERATORE` (CONFLITTO_STATO) | applicati |
+
+⚠️ La numerazione salta da `-27` a `-40`: dal `-26` in su lavorava in parallelo
+il cantiere storico (`brief-db-storico-colonna-fk-dei-trigger`), e ho lasciato
+`-28…-39` a lui.
+
+### 12.2 Cosa è cambiato rispetto al disegno (§5), e perché
+
+1. ⭐ **Dentro anche R-1 e R-2 del piano BE/FE.** Il §5.2 chiedeva la veste
+   spenta **solo** sulla credenziale riusata. Ma il check dell'invito voleva
+   la veste **attiva** e `is_active = true`: l'operatore riusato non sarebbe
+   mai stato invitabile, e l'invito è l'unico modo di accenderlo. E due
+   comportamenti a seconda che la credenziale esista già sono due cicli di
+   vita, contro la regola unica decisa (analisi §4.2). Quindi: veste spenta
+   **sempre** (R-2), check rovesciato (R-1). R-3 (lo username nel template
+   dell'invito) resta al lotto L-4: tocca le variabili che passa il backend.
+2. **Il rifiuto è su una veste OPERATORE attiva *o spenta***, non solo attiva.
+   Con la veste che nasce spenta l'unique `WHERE attivo` alla creazione non
+   scatta mai: il duplicato passerebbe e scoppierebbe all'attivazione. E una
+   veste spenta è un invito pendente o un operatore disattivato: il rimedio è
+   il reinvito (D-3). Le vesti `DISABILITATO` non contano (R-5 le ritira).
+3. **I guard di username e password escono dalla madre**: erano copie di quelli
+   di `fn_crea_auth_user`, e sulla credenziale riusata sarebbero sbagliati.
+4. **Un building block per «la credenziale di un'email»**: la regola viveva in
+   `fn_crea_auth_user` (con le maiuscole), nel backend (`portale_repository`,
+   senza) e ora nella madre.
+5. **L'indice ritira il suo predecessore** (`ix_auth_user_email_unique`, che
+   nessuno citava), e ha una sola `preCondition` (la tabella): con
+   `onFail: CONTINUE`, una seconda «l'indice non esiste» falsa lascerebbe il
+   changeSet pendente per sempre. L'idempotenza la danno i `IF (NOT) EXISTS`.
+6. **Le email doppie non si scelgono**: dove l'indice non c'è (CI), il building
+   block solleva `E_CREDENZIALE_EMAIL_AMBIGUA` invece di prendere la prima.
+7. `FOR UPDATE` sulla credenziale riusata, prima del controllo delle vesti: due
+   creazioni sulla stessa persona si serializzano.
+
+### 12.3 ⭐ Porta e profili (decisione di Tid, 2026-09-25)
+
+**Il difetto.** Con la veste spenta, il binding SUPER_ADMIN nasceva attivo
+sotto un'identità spenta, e l'automazione ATTIVO — che lega
+`config.profili_accesso_bindings` a `anagrafiche.identita_digitali` in tutti e
+due i versi — lo rifiutava al `COMMIT`. Trovato in due posti lo stesso giorno:
+dalla prova pre-apply (`test-fn-get-operatore-detail`) e dalla corsa pgTAP di
+Tid (§11.6). ⚠️ Non dipendeva da R-2: anche il P-2 letterale del brief ci
+inciampava, sulla credenziale riusata. E con R-2 si sarebbe rotto anche
+assegnare **un profilo qualsiasi** a un operatore che non ha ancora accettato
+l'invito.
+
+**La decisione.** La veste attiva dice se la porta è aperta; il binding dice
+cosa si può fare dentro. Sono due domande, e i lettori dei permessi le chiedono
+già entrambe (verificato sui corpi: `fn_is_super_admin`,
+`fn_get_profili_accesso_applicabili`, `fn_check_almeno_un_super_admin_attivo`,
+`fn_check_ultimo_super_admin_attivo`). Quindi la coppia **esce dall'ATTIVO**.
+Guadagno collaterale: spegnere una veste non chiede più di spegnere prima i
+profili, e il reinvito (D-3) la riaccende con i profili che aveva.
+
+**La forma.** L'automazione non sapeva escludere una FK: il filtro esistente è
+per tabella, e toglierebbe anche le coppie giuste di `profili_accesso_bindings`
+(profili, unità organizzative). La guida lo diceva: rimettere un'esclusione per
+FK è «ricreare la tabella **e** il `NOT EXISTS` nel cursor — un cantiere».
+
+- `dbops.automazione_attivo_eccezioni` (`-46`): una FK per riga, **motivo
+  obbligatorio**; seed dal CSV (`-49`);
+- `dbops.fn_ritira_attivo_eccezioni()` (`-47`): toglie i trigger già generati,
+  riconoscendoli per **funzione e argomenti** (i nomi sono hashati);
+- il motore (`-48`) salta le coppie a registro e, in testa a ogni giro, chiama
+  il ritiro: chi genera ritira;
+- `90_end/-50` chiama il ritiro una volta, perché su dbdev il job delle
+  automazioni gira solo la sera.
+
+⚠️ **Non toccata**: la coppia gemella `identita_scope_bindings` →
+`identita_digitali`. Ha lo stesso legame ma oggi nessuna funzione né vista la
+legge o la scrive (solo il model Django e un backfill di aprile). Se diventerà
+viva, la domanda è la stessa, e la risposta è una riga nel registro.
+
+### 12.4 ⛔ Cosa chiede al backend (in aggiunta al §7)
+
+Su dbdev `-40…-45` **sono già applicati**: finché il backend non è allineato,
+la creazione dell'operatore dal pannello è rotta (passa `p_attivo`, legge un
+`integer`), e l'invito operatore segue la regola nuova.
+
+| # | Dove | Cosa |
+| --- | --- | --- |
+| B-1 | `amm_software_repository.crea_operatore` | senza `p_attivo`; `SELECT * FROM anagrafiche.fn_crea_operatore_v2(…)`; con `credenziale_riusata = true` la password dell'admin è **ignorata** e lo username è quello restituito: la risposta e l'`OperatoreDrawer` devono dirlo (§5.2 ricaduta 1) |
+| B-2 | invito e attivazione operatore (L-3) | l'invito non sovrascrive la password (A-1); l'**attivazione accende la veste** (A-3): senza, l'operatore creato non entra mai. `fn_check_operatore_invitabile` risponde già con la regola nuova: `motivo` nuovo `Veste OPERATORE gia' attiva`; spariti `Utente ha gia' effettuato login`, `Identita OPERATORE non attiva`, `Utente disattivato (is_active=false)` — ⚠️ `core/tests/services/test_invito_operatore.py:96` usa il testo vecchio in un mock |
+| B-3 | `PortaleRepository` (`portale_repository.py:114`) | la ricerca della credenziale per email chiama `script.fn_get_auth_user_id_for_email` invece di `LOWER(email) = LOWER(%s) LIMIT 1` (regola del 2; e il `LIMIT 1` sceglie a caso fra due credenziali) |
+| B-4 | codici | `E_CREDENZIALE_GIA_OPERATORE` (409, `campo = email`), `E_CREDENZIALE_EMAIL_AMBIGUA` (500): rigenerare `error_policies_generated.py` ed `error_messages_fallback.py` |
+| B-5 | `disabilita_operatore` | dopo `-50` spegnere una veste con binding attivi non è più respinto dal guard generico; l'ultimo SUPER_ADMIN lo protegge `E_PROFILO_ULTIMO_SUPER_ADMIN` |
+
+### 12.5 Come è stato provato
+
+Sullo scratch `zeroerp_ci`, da owner, in transazioni ritirate, con l'SQL
+**estratto** dai changeSet (la riga del seed `-49` generata dal CSV).
+
+| Prova | Esito |
+| --- | --- |
+| DDL `-40…-45` + codici (prima dell'apply di Tid) | passa; `plpgsql_check` 0 errori (avvisi: `STABLE` con `fn_log_and_raise_error`, come nel P-1; `v_ru_id` mai letto, preesistente) |
+| DDL `-46…-50` | passa; il ritiro toglie **esattamente** i due trigger della coppia, al secondo giro 0; il motore vero su `config`/`anagrafiche` non li rigenera; `plpgsql_check` 0 errori |
+| pgTAP nuovi: `test-credenziale-email-unica-v1` (9, uno saltato per ramo), `test-crea-operatore-riusa-credenziale-v1` (13), `test-automazione-attivo-eccezioni-v1` (8) | verdi |
+| pgTAP adeguati: `test-fn-crea-operatore` (12), `test-risorse-umane-guard-identita-attiva-v1` (8), `test-fn-check-operatore-invitabile` (11, riscritto: costruisce il suo operatore), `test-fn-get-operatore-detail` (4), `test-fn-is-super-admin` (8), `test-profili-accesso-guard-ultimo-super-admin` (3) | verdi |
+| pgTAP della tua lista §11.6 (super admin dal builder): `test-credenziale-blocco-admin-v1` (16), `test-permessi-funzioni-risoluzione` (34), `test-fn-check-ultimo-super-admin-attivo` (5), `test-billing-account-auto-link-ef` (4), `test-guard-albero-ba-omogeneo-v1` (12) | verdi dietro `-46…-50`, nessuna modifica |
+| cancelli statici (runOnChange, letterali, preCondition, trigger, grant batch, timestamp, preambolo pgTAP) | verdi |
+
+✅ **Dopo l'apply (Tid, 2026-09-25)**: `-40…-50` applicati su dbdev e scratch;
+**corsa pgTAP senza regressioni**. ⚠️ Una correzione di Tid a
+`test-automazione-attivo-eccezioni-v1` prima della corsa: il nome della tabella
+si componeva con `tgrelid::regclass::text`, che dipende dal `search_path` — come
+app, con `config` nel path, esce senza schema, e il test 4 era rosso (il 2 verde
+per coincidenza). Nella prova da owner, senza `config` nel path, il difetto non
+si vedeva: ora il nome si compone dal catalogo (`nspname || '.' || relname`).
+⚠️ Resta il rosso **dello scratch** su `config/test-fk-auth-user-ponte-django-v1`:
+non è del P-2 (nessun changeSet `-40…-50` tocca FK verso `django.auth_user`), è
+il ponte a metà del §11.5.
+⏳ Non ancora visti: il cancello B-7 (`codici-errore-baseline.sh`) e l'esito in
+CI (soprattutto `-44`, che lì salta per costruzione).
+
+**Due correzioni ai test dopo l'apply di `-40…-45`**, da errori miei nei file
+(non nei changeSet): la forma testuale dell'indice nel test 5 di
+`test-credenziale-email-unica-v1` (`pg_get_indexdef` chiude con `''::text)`),
+e in `test-crea-operatore-riusa-credenziale-v1` la credenziale riletta nella
+stessa istruzione che la scrive (snapshot di prima). Le versioni corrette sono
+quelle verdi della tabella.
+
+### 12.6 Cosa resta
+
+- ✅ Tid: `-40…-50` applicati, corsa pgTAP senza regressioni (2026-09-25).
+  ⏳ B-7; scratch da riallineare sul ponte django (§11.5).
+- Backend: §7 e §12.4 (lotto L-3; R-3 con L-4).
+- Guida `architettura-multi-face-auth` §3.1 (del backend, §8), con la veste che
+  nasce spenta e porta/profili sganciati.
 
 ## Registro
 
@@ -765,6 +946,9 @@ freno: meglio un test marcato che una porta aperta.
 | 2026-09-24 | BE | §2.4: classe dei due codici nuovi `NON_PERMESSO` (403), non 429 — la classe non esiste e il login FE intercetta il 429 prima del codice |
 | 2026-09-25 | DB | **P-1 scritto e provato** (§11): 25 changeSet `20260925-01…-25`, 4 pgTAP, manual. Correzioni al disegno: PK `id`, `SELECT` all'app, azzeramento per perimetro, due building block in più, anche `fn_check_ultimo_super_admin_attivo`, parametri `storicizza = f`. Non applicato |
 | 2026-09-25 | Tid | P-1 applicato su dbdev e scratch. Sullo scratch `test-fk-auth-user-ponte-django-v1` rosso: ponte django a metà (§11.5), rimedio sulla macchina e domanda su `MARK_RAN` → `CONTINUE` |
+| 2026-09-25 | DB | **P-2 scritto** (§12): `20260925-40…-45`, con dentro R-1 e R-2 del piano BE/FE (§12.2); codici 1130-1131; 2 pgTAP nuovi, 4 adeguati. Tid applica `-40…-45` durante la prova |
+| 2026-09-25 | DB + Tid | Binding SUPER_ADMIN su veste spenta rifiutato dall'ATTIVO (trovato dalla prova pre-apply e dalla corsa di Tid, §11.6). Tid decide: **porta e profili si sganciano**. Scritti e provati `-46…-50` (registro delle eccezioni ATTIVO, ritiro per funzione e argomenti, motore, seed, ritiro una tantum); adeguati `test-fn-is-super-admin` (caso 6) e `test-profili-accesso-guard-ultimo-super-admin` (caso 3). Non applicati |
+| 2026-09-25 | Tid | `-40…-50` applicati su dbdev e scratch; commit `acc6385d5`. Corretto `test-automazione-attivo-eccezioni-v1` (nome tabella da `regclass::text`, dipendente dal `search_path`). Corsa pgTAP **senza regressioni** (§12.5) |
 | 2026-09-25 | BE | §7 fatto per il P-1 (piano BE/FE §3.1-bis). Due note per il DB, nessuna urgente: `E_UTENTE_BLOCCATO` e' una frase chiusa, quindi i minuti del freno non arrivano all'operatore; e il testo «Account temporaneamente bloccato» ora descrive male un freno della sola provenienza |
 
 ---

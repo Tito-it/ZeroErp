@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 — QUALE CREDENZIALE HA QUESTA EMAIL: script.fn_get_auth_user_id_for_email(p_email)
+#   Brief: brief-db-blocco-login-per-credenziale, sezione 5 (D-6, D-9)
+#
+# ── ⭐ PERCHE' UN BUILDING BLOCK (regola del 2) ──────────────────────
+#   «La credenziale di questa email» si chiede in TRE punti, e oggi in due
+#   forme diverse:
+#     - anagrafiche.fn_crea_auth_user, guard di unicita': `email = TRIM(p_email)`
+#       (distingue le maiuscole — il difetto A-9 dell'analisi);
+#     - la madre anagrafiche.fn_crea_operatore_v2, che col P-2 riusa la
+#       credenziale esistente (D-6);
+#     - il backend, PortaleRepository (invito portale/shop):
+#       `LOWER(email) = LOWER(%s) LIMIT 1`.
+#   La regola ha una sede sola: questa. Il backend e' chiesto di chiamarla
+#   (brief sezione 7).
+#
+# ── LA REGOLA ────────────────────────────────────────────────────────
+#   - senza distinguere maiuscole e minuscole: lower(email) (D-9), la stessa
+#     espressione dell'indice unico di 90_end/20260925-44, che quindi la serve;
+#   - l'email in ingresso si confronta senza spazi ai bordi (fn_crea_auth_user
+#     la scrive gia' con TRIM);
+#   - ⚠️ «email valorizzata» vuol dire email <> '', non IS NOT NULL: nel
+#     modello di Django la colonna e' NOT NULL e l'email mancante e' la stringa
+#     vuota. Un'email vuota in ingresso NON e' una chiave: risposta NULL, mai
+#     «la prima credenziale senza email».
+#
+# ── ⛔ DUE CREDENZIALI CON LA STESSA EMAIL = ERRORE, NON LA PRIMA ─────
+#   L'indice unico le impedisce dove c'e'. Dove NON c'e' (CI: Liquibase gira
+#   prima di `manage.py migrate`, e l'indice e' onFail CONTINUE), e per le
+#   credenziali scritte da strade che non passano da qui, il modello le
+#   ammette. Sceglierne una (LIMIT 1, min(id)) sarebbe un'ambiguita' del
+#   modello travestita da scelta: si solleva E_CREDENZIALE_EMAIL_AMBIGUA
+#   (TECNICO: rimedia chi governa i dati, non l'operatore).
+#
+# ⚠️ plpgsql e tipi espliciti: nomina django.auth_user, che in CI non esiste
+#   quando gira Liquibase (niente LANGUAGE sql, niente %TYPE su Django).
+# INVOKER: l'app ha SELECT su django.auth_user (provision_db_roles.sql).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260925-40-create-fn-get-auth-user-id-for-email-mctit.yaml
+
+  - changeSet:
+      id: 20260925-40-create-fn-get-auth-user-id-for-email
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_get_auth_user_id_for_email(p_email): la credenziale di un'email, senza distinguere
+        maiuscole e minuscole (D-9). Email vuota o NULL -> NULL; due credenziali con la stessa
+        email -> E_CREDENZIALE_EMAIL_AMBIGUA. Building block (regola del 2): fn_crea_auth_user,
+        fn_crea_operatore_v2, backend dell'invito portale. Brief: brief-db-blocco-login-per-credenziale §5.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_auth_user_id_for_email(
+                  -- ⚠️ text e non %TYPE: e' django.auth_user.email (schema django
+                  --    assente in CI quando gira Liquibase).
+                  p_email text
+              )
+              RETURNS integer
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: dire quale credenziale (django.auth_user.id) porta questa email,
+              --   senza distinguere maiuscole e minuscole. NULL se nessuna.
+              -- Uso: v_auth_user_id := script.fn_get_auth_user_id_for_email(p_email);
+              DECLARE
+                  -- integer esplicito: e' django.auth_user.id (niente %TYPE su Django).
+                  v_id  integer;
+                  v_n   integer;
+              BEGIN
+                  -- Un'email vuota non e' una chiave: nessuna credenziale la «porta».
+                  IF p_email IS NULL OR btrim(p_email) = '' THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- ⭐ Stessa espressione e stesso predicato dell'indice unico
+                  --   ix_auth_user_email_lower_unique: lower(email) WHERE email <> ''.
+                  SELECT count(*), min(au.id)
+                    INTO v_n, v_id
+                    FROM django.auth_user au
+                   WHERE lower(au.email) = lower(btrim(p_email))
+                     AND au.email <> '';
+
+                  -- ⛔ Due credenziali con la stessa email: non se ne sceglie una.
+                  IF v_n > 1 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_auth_user_id_for_email',
+                          'E_CREDENZIALE_EMAIL_AMBIGUA',
+                          jsonb_build_object('email',        lower(btrim(p_email)),
+                                             'credenziali',  v_n),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_auth_user_id_for_email(text) IS
+                  'Building block: la credenziale (django.auth_user.id) che porta questa email, senza distinguere maiuscole e minuscole (D-9 di brief-db-blocco-login-per-credenziale: l''email e'' la chiave d''ingresso di portale e shop). Confronto lower(email) = lower(btrim(p_email)) su email <> '''': stessa espressione e stesso predicato dell''indice unico ix_auth_user_email_lower_unique, che la serve. Email NULL o vuota -> NULL (la stringa vuota e'' l''email mancante nel modello di Django, non una chiave). Due credenziali con la stessa email -> E_CREDENZIALE_EMAIL_AMBIGUA (TECNICO): dove l''indice non c''e'' (CI) il modello le ammette, e sceglierne una sarebbe un''ambiguita'', non una scelta. Consumatori: anagrafiche.fn_crea_auth_user (guard di unicita''), anagrafiche.fn_crea_operatore_v2 (riuso della credenziale, D-6), il backend dell''invito portale/shop. plpgsql e tipi espliciti perche'' nomina django.*. INVOKER, STABLE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_auth_user_id_for_email(text);

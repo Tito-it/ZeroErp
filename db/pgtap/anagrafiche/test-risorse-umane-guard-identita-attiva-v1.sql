@@ -17,7 +17,8 @@
 -- 1) riferimenti minimi: la funzione, il trigger montato su risorse_umane
 --    (BEFORE UPDATE OF attivo), il codice a catalogo con la sua classe
 -- 2) fixture: la madre fn_crea_operatore_v2 ha creato utente + identita'
---    OPERATORE attiva + risorsa umana (e l'helper li lega)
+--    OPERATORE + risorsa umana, e l'invito accettato ha acceso la veste
+--    (e l'helper li lega)
 -- 3) ⭐ RU con identita' attiva -> attivo=false RIFIUTATO (P0001)
 -- 4) ... e il codice viaggia nel canale CONSTRAINT: E_RISORSA_UMANA_IDENTITA_ATTIVA
 -- 5) ... e la frase nomina l'utente (lo username nel VARIADIC)
@@ -93,10 +94,15 @@ SELECT is(
 -- ============================================================
 -- Fixture: un operatore VERO, costruito dalla madre. CF valido gia' in uso
 -- nei test di anagrafiche (LCCRLD80A01L736X); username univoco per corsa.
+-- ⭐ Rev 2026-09-25 (brief-db-blocco-login-per-credenziale §12, 20260925-42):
+--   la madre ritorna una TABLE (si legge con FROM) e crea la veste OPERATORE
+--   SPENTA; in esercizio la accende l'attivazione dell'invito (il backend).
+--   Qui si fa lo stesso passo, subito dopo: la regola sotto prova e' quella
+--   dell'identita' ATTIVA.
 -- ============================================================
 CREATE TEMP TABLE tmp_guard_ctx AS
-SELECT
-    anagrafiche.fn_crea_operatore_v2(
+SELECT m.auth_user_id
+  FROM anagrafiche.fn_crea_operatore_v2(
         p_cognome                := 'Guard',
         p_nome                   := 'Prova',
         p_codice_fiscale         := 'LCCRLD80A01L736X',
@@ -107,7 +113,14 @@ SELECT
         p_unita_organizzativa_id := (SELECT id FROM config.unita_organizzative WHERE attivo ORDER BY id LIMIT 1),
         p_data_nascita           := DATE '1980-01-01',
         p_sesso                  := 'M'
-    ) AS auth_user_id;
+    ) m;
+
+-- L'invito accettato: la veste OPERATORE si accende.
+UPDATE anagrafiche.identita_digitali i
+   SET attivo = true
+  FROM tmp_guard_ctx c
+ WHERE i.auth_user_id = c.auth_user_id
+   AND i.ruolo_applicativo = 'OPERATORE';
 
 ALTER TABLE tmp_guard_ctx ADD COLUMN risorsa_umana_id bigint;
 UPDATE tmp_guard_ctx c

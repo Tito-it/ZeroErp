@@ -105,8 +105,8 @@ Le **regole** (`dbops.automation_rules_tbl`) dichiarano quale automazione applic
 Non tutte le tabelle seguono le convenzioni standard. Le tabelle di override permettono di gestire i casi speciali:
 
 * `automation_overrides_cols` — nomi colonna non standard (es. `attivo_flag` invece di `attivo`, FK storico diverse)
-* ⛔ **`automation_fk_exclusions` non esiste**: era la tabella delle coppie parent/child da escludere per la regola ATTIVO, e se n'è andata insieme alle funzioni trigger legacy a cui serviva.
-  ⚠️ **Non c'è nessun meccanismo di esclusione FK, e non c'è una tabella vuota da riempire**: per ritirare configurazione senza toccare il guard si usa `obsoleto_dal` (vedi [Mandare in pensione una voce di catalogo](/guide/uso-di-obsoleto)). Rimetterlo in piedi vorrebbe dire ricreare la tabella **e** re-inserire il `NOT EXISTS` nel cursor FK — cioè un cantiere, non una riga di seed. Un documento che dà quella tabella per esistente — anche solo «esiste ma è inerte» — è anteriore.
+* `automazione_attivo_eccezioni` — le **FK** che la regola ATTIVO non lega: per una riga (schema, tabella **figlia**, colonna FK) il motore non genera né il block sul padre né il require sul figlio, e ritira quelli già generati. Ogni riga porta il suo **motivo**, obbligatorio: un'eccezione senza perché è un buco nel framework. È **per FK, non per tabella**: le altre coppie della stessa figlia restano legate. Dettaglio in §4.2, «Le eccezioni».
+  ⚠️ Non è la vecchia `automation_fk_exclusions`, ritirata insieme alle funzioni trigger legacy a cui serviva: quella era un elenco muto, questa è un registro con il motivo e con il ritiro dei trigger. Nasce il 2026-09-25 (brief-db-blocco-login-per-credenziale §12.3). Per ritirare configurazione senza toccare il guard, invece, resta `obsoleto_dal` (vedi [Mandare in pensione una voce di catalogo](/guide/uso-di-obsoleto)).
 * `automation_cleanup_exclusions` — tabelle da escludere dal cleanup automatico
 * `automation_lock_columns` — colonne extra da bloccare per singola tabella
 
@@ -267,6 +267,12 @@ Molte tabelle hanno una colonna `attivo` per il soft-delete (disattivare un reco
 * Funzione: `dbops.trgfn_prevent_deactivate_if_children(child_schema, child_table, fk_col [, pk_col])`
 
 **Effetto:** se `OLD.attivo = true` e `NEW.attivo = false` e esistono figli FK → operazione **bloccata con errore**.
+
+**Le eccezioni: quando padre e figlio NON si legano sull'attivo.** Ci sono coppie in cui `attivo` sul padre e `attivo` sul figlio rispondono a due domande diverse, e legarle rende impossibile uno stato legittimo. Si dichiarano in [`dbops.automazione_attivo_eccezioni`](/dbzero/dbops/tabelle/automazione_attivo_eccezioni), una FK per riga col suo motivo (seed da `80_data`, CSV `dbops/automazione_attivo_eccezioni.csv`). Per quelle FK il motore non genera né il block né il require, e in testa a ogni giro chiama [`dbops.fn_ritira_attivo_eccezioni`](/dbzero/dbops/funzioni/fn_ritira_attivo_eccezioni), che toglie i trigger già generati riconoscendoli per **funzione e argomenti** (i nomi generati sono hashati). Il presidio è `db/pgtap/dbops/test-automazione-attivo-eccezioni-v1.sql`.
+
+| Figlia · FK | Perché |
+| --- | --- |
+| `config.profili_accesso_bindings.identita_digitale_id` | **porta e profili**: la veste attiva dice se la porta è aperta, il binding cosa si può fare una volta dentro. La veste OPERATORE nasce spenta (regola unica dell'invito) e deve poter avere i suoi profili prima di essere accesa; i lettori dei permessi chiedono già entrambe le cose |
 
 ### 4.3 OVERLAP (anti-sovrapposizione temporale)
 

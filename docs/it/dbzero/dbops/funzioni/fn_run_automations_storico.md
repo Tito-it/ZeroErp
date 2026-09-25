@@ -58,6 +58,11 @@ BEGIN
         Determina la colonna FK logica passata alla funzione trigger tramite:
         - override (dbops.fn_get_override_col) con chiave 'STORICO_FK'
         - fallback: <table_name>_id
+        ⛔ rev 2026-09-25: prima di montare il trigger si verifica che fk_col sia
+        una colonna della gemella; se non lo e' si solleva E_STORICO_FK_COL_ASSENTE.
+        Un trigger montato con una colonna che non c'e' muore alla prima chiusura
+        di uno snapshot, cioe' su ogni UPDATE/DELETE di una riga storicizzata
+        (brief-db-storico-colonna-fk-dei-trigger).
 
         Modalità DRY RUN
         ---------------
@@ -120,6 +125,32 @@ LOOP
         OR (exist_strat='BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rtab.rel, trg_name)
                                           OR dbops.fn_trigger_exists_by_function(rtab.rel,'script','trgfn_upd_dlt_storico_generic')))
         THEN
+          -- rev 2026-09-25 ⛔ Il rubinetto: l'argomento del trigger deve essere
+          --   una colonna della gemella. Il trigger lo scoprirebbe solo alla
+          --   prima chiusura di uno snapshot, respingendo la scrittura della
+          --   madre (E_SNAPSHOT_CLOSE_ERROR). Cinque gemelle del 2025 erano
+          --   nate col nome al singolare e senza eccezione STORICO_FK: qui si
+          --   sarebbero fermate alla nascita. Vale anche in dry run: un «verrebbe
+          --   creato» su un trigger rotto e' una risposta sbagliata.
+          --   Fuori dal blocco BEGIN/EXCEPTION sotto, che lo ribattezzerebbe
+          --   E_STORICO_UD.
+          IF NOT EXISTS (
+            SELECT 1
+              FROM pg_attribute a
+             WHERE a.attrelid = format('storico.%I', rtab.table_name)::regclass
+               AND a.attname  = fk_col
+               AND a.attnum   > 0
+               AND NOT a.attisdropped
+          ) THEN
+            PERFORM script.fn_log_and_raise_error(
+              'database', 'dbops.fn_run_automations_storico', 'E_STORICO_FK_COL_ASSENTE',
+              jsonb_build_object('table', rtab.schema_name||'.'||rtab.table_name,
+                                 'storico', 'storico.'||rtab.table_name,
+                                 'fk_col', fk_col),
+              NULL::uuid,
+              fk_col, 'storico.'||rtab.table_name, rtab.schema_name||'.'||rtab.table_name);
+          END IF;
+
           IF p_dry_run THEN
             PERFORM dbops.fn_audit_log_once(
               p_function_name => 'fn_run_automations_storico',
@@ -162,7 +193,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_run_automations_storico(p_exec_mode text, p_schemas text[], p_dry_run boolean)
-IS 'Automazione STORICO: monta il trigger generico di storicizzazione sulle tabelle che hanno la gemella in schema storico. rev 2026-09-01: RIMOSSO il ramo drop_legacy_ud, e con lui l''ultima chiave di params che questa regola leggeva (ora params vuoto). NON era una migrazione finita: era una pulizia PUNTATA SUL NOME SBAGLIATO. Cancellava trg_{table}_upd_storico e trg_{table}_dlt_storico, mentre i trigger legacy davvero creati dai changelog storici si chiamano trg_<tab>_upd_dlt_storico_<tab> e quelli di oggi trg_z90_{table}_storico_upd_dlt: tre forme diverse, e il DROP IF EXISTS non ha mai potuto agganciare nessuna delle altre due. Il flag era COALESCE(...,false), quindi il ramo non e'' mai stato eseguito nemmeno per sbaglio: si toglie una leva che prometteva una pulizia impossibile, non un comportamento. Fatto datato 2026-09-01, che conferma e non motiva: zero trigger di entrambe le forme legacy, 118 trigger storico tutti sulla convenzione z90. Richiesta: brief-db-richieste-aperte-dal-backend-2, coda C.';
+IS 'Automazione STORICO: monta il trigger generico di storicizzazione sulle tabelle che hanno la gemella in schema storico, passandogli la colonna FK della gemella (override STORICO_FK, altrimenti <tabella>_id). rev 2026-09-25: prima di montare il trigger verifica che quella colonna esista nella gemella, e se no solleva E_STORICO_FK_COL_ASSENTE: un trigger con una colonna che non c''e'' muore alla prima chiusura di uno snapshot, cioe'' su ogni UPDATE/DELETE di una riga storicizzata. Cinque gemelle del 2025 (parameters, comuni, indirizzi, indirizzi_dettaglio, catasto_unita_immobiliari) erano nate col nome al singolare e senza eccezione; rinominate da 20260925-26. Brief: brief-db-storico-colonna-fk-dei-trigger. rev 2026-09-01: rimosso il ramo drop_legacy_ud, una pulizia puntata su nomi di trigger che non sono mai esistiti (brief-db-richieste-aperte-dal-backend-2, coda C).';
 ```
 
 ---

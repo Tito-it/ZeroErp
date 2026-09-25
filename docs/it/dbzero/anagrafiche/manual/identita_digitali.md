@@ -154,6 +154,15 @@ speciale ma un **binding** tra l'identità e un profilo con
 * Il binding `SUPER_ADMIN` viene creato ed eliminato esplicitamente dai caller
   (`fn_crea_risorsa_umana`, `amm_software_repository`) su
   `config.profili_accesso_bindings`.
+* ⭐ **La veste OPERATORE nasce spenta** (dal 2026-09-25,
+  [fn_crea_operatore_v2](/dbzero/anagrafiche/manual/fn_crea_operatore_v2)):
+  la accende l'attivazione dell'invito, come per ogni veste. I suoi binding,
+  SUPER_ADMIN compreso, nascono invece attivi: **porta e profili non si
+  legano sull'`attivo`** (eccezione dichiarata in
+  [dbops.automazione_attivo_eccezioni](/dbzero/dbops/manual/automazione_attivo_eccezioni)),
+  e `fn_is_super_admin` vuole entrambe le cose. Una veste si spegne anche con
+  binding attivi, che restano per il reinvito; l'ultimo SUPER_ADMIN lo
+  protegge il guard anti-lockout dell'identità.
 
 ---
 
