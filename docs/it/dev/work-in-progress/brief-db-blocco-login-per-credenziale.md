@@ -1076,11 +1076,109 @@ il ripiego non va avanti al catalogo):
   applicato (Tid, 2026-09-25), nessuna regressione. ⏳ Commit di `-52`.
 - Backend/Frontend: B-8 e F-1 (§12.8).
 - DB, prossimo: **R-7** del piano BE/FE (la risposta del login non dice se lo
-  username esiste). ❓ Prima serve la decisione (a) di R-7: hash semplice o HMAC
-  con una chiave del backend per il nome tentato.
+  username esiste) → disegno nel §13; ❓ quattro decisioni per Tid (§13.5)
+  prima dei changeSet.
 - Backend: §7 e §12.4, B-6 compreso (lotto L-3; R-3 con L-4).
 - Guida `architettura-multi-face-auth` §3.1 (del backend, §8), con la veste che
   nasce spenta e porta/profili sganciati.
+
+## 13. R-7 — La risposta del login non dice se il nome esiste (disegno, 2026-09-25)
+
+**La richiesta** (`piano-be-fe-accessi-credenziale-e-vesti` §5 R-7, ✅ Tid): il
+freno e l'attesa valgono per il **nome tentato**, esista o no. Oggi un nome
+inesistente non conta nulla e risponde sempre 401, mentre uno esistente, dopo la
+soglia, risponde 403 `E_UTENTE_BLOCCATO`: bastano sei password per sapere se
+l'utente c'è. Il backend oggi chiama check e registrazione **solo** `if user:`
+(`auth_views.py`), quindi anche il numero di chiamate al DB distingue i due casi.
+
+### 13.1 ⭐ La chiave: la credenziale quando c'è, il nome quando non c'è
+
+| Il nome tentato… | Chiave del freno e dell'attesa | Perché |
+| --- | --- | --- |
+| corrisponde a una credenziale | la **credenziale**, come oggi | l'attesa crescente deve sommare i tentativi da **tutti** i nomi della stessa credenziale (username, e con L-4 l'email): con la chiave sul nome, chi attacca avrebbe il doppio dei tentativi. Il blocco dell'admin è della credenziale |
+| non corrisponde a niente | il **nome tentato** (il suo digest) | è l'unica cosa che c'è; stessa soglia, stesso tetto, stessi codici |
+
+⚠️ **Il residuo, dichiarato.** Chi conosce due nomi della stessa persona (lo
+username e l'email) e li prova entrambi vede i contatori sommarsi, dove per due
+nomi inesistenti resterebbero separati: impara che i due nomi sono **la stessa
+credenziale**. Per saperlo deve però già supporre che esistano entrambi. È
+un'informazione molto più stretta di «il nome esiste», e l'alternativa (chiave
+sempre sul nome) toglie l'attesa crescente sulla credenziale, che è la difesa
+contro l'attacco distribuito. Proposta: **accettarlo e dichiararlo**, come
+`E_CREDENZIALE_BLOCCATA` (punto (b) di R-7).
+
+### 13.2 La forma
+
+- **Stesse due funzioni, un parametro in più** (non due funzioni parallele):
+  `fn_check_blocco_login(p_auth_user_id, p_nome_digest, p_provenienza)` e
+  `fn_registra_tentativo_login(p_auth_user_id, p_nome_digest, p_provenienza,
+  p_successo)`. Il backend le chiama **sempre**, con `p_auth_user_id` `NULL`
+  quando il nome non trova niente: il DB sceglie la chiave, il backend non
+  ramifica. Firma nuova ⇒ `DROP` + `CREATE`, e il backend si allinea nella
+  stessa PR (come per il `-10`).
+- **Due tabelle nuove**, gemelle di quelle della credenziale e senza legami con
+  lei: `config.nomi_tentati` (digest `UNIQUE`, `fallimenti_consecutivi`,
+  `ultimo_fallimento_at`, `cleanup_at`) e `config.nomi_tentati_provenienze`
+  (FK `ON DELETE CASCADE`, `tentativi_falliti`, `bloccato_fino_a`,
+  `ultimo_fallimento_at`, `cleanup_at`). Nessuna riga in `config.credenziali` per
+  un nome che non è una credenziale (vincolo di R-7). Stessa postura della
+  coppia di oggi: `SELECT` all'app, scrittura solo dalle DEFINER.
+- ⭐ **Regola del 2: il calcolo non si copia.** Il passo del freno (tentativi +1,
+  o 1 se il freno è scaduto; freno alla soglia) e la decisione del check oggi
+  stanno scritti dentro le due funzioni. Con la seconda chiave diventerebbero due
+  copie: si estraggono in building block **puri sui valori**
+  (`fn_login_freno_passo`, accanto a `fn_login_attesa_secondi` che è già
+  condiviso), e i due rami li chiamano. Un freno che cambia regola la cambia per
+  le due chiavi insieme.
+- **Retention**: le due tabelle nuove entrano nella regola `CLEANUP_AT` (la
+  ricetta in quattro pezzi). Per `nomi_tentati` è nuova: la riga della
+  credenziale è permanente, quella di un nome inesistente no, e scade
+  dall'ultimo fallimento.
+- **Successo**: un nome inesistente non entra mai, quindi niente azzeramento
+  sul ramo del nome. Se più avanti quel nome diventa una credenziale, le righe
+  del nome restano inerti fino alla loro scadenza: il lookup trova la
+  credenziale e la chiave è quella.
+- ⚠️ `E_CREDENZIALE_NON_TROVATA` di `fn_registra_tentativo_login` resta
+  per un `p_auth_user_id` **valorizzato** e sbagliato (chiamata incoerente),
+  mai per un nome inesistente: quel caso ora ha la sua strada.
+
+### 13.3 Il digest: lo calcola il backend, in entrambi i casi di (a)
+
+Qualunque sia la risposta al punto (a), **il nome in chiaro non entra nel DB**:
+se il DB calcolasse l'hash, il nome passerebbe come parametro, nel contesto degli
+errori (`fn_log_and_raise_error` registra il contesto) e nei log del server.
+Quindi la firma DB è la stessa: `p_nome_digest bytea`, 32 byte, controllato in
+lunghezza (`E_AUTH_CHIAMATA_NON_VALIDA` altrimenti). **(a) resta una decisione
+tutta del backend**, e la raccomandazione è **HMAC-SHA256 con una chiave del
+backend** (setting, mai nel DB): con l'hash semplice, una password digitata nel
+campo username si ricava dal digest per forza bruta, perché le password umane
+hanno poca entropia; con l'HMAC serve anche la chiave. Ruotare la chiave azzera
+i contatori dei nomi inesistenti: è stato che dura minuti, niente si perde.
+
+⛔ **La normalizzazione è quella del lookup** e vive nello stesso posto del
+lookup (backend): oggi username esatto, con L-4 email senza maiuscole. Due
+normalizzazioni diverse riaprirebbero l'oracolo (il nome esistente si
+normalizza in un modo, quello inesistente in un altro).
+
+### 13.4 Cosa chiederà al backend
+
+| # | Cosa |
+| --- | --- |
+| B-9 | check e registrazione **sempre**, anche con `user` `None`, con il digest del nome normalizzato; niente più `if user:` attorno alle due chiamate |
+| B-10 | il digest (HMAC con chiave da setting, se (a) va così) in **un** helper, lo stesso per operatore, portale e shop |
+| B-11 | ⚠️ i log `security.login_blocked user=%s`, `security.login_locked user=%s`, `security.veste_non_attiva user=%s` scrivono **il nome tentato in chiaro**: è lo stesso rischio che R-7 toglie dal DB (una password digitata come username finisce nel log). Proposta: nei log lo `auth_user_id` quando c'è, altrimenti un prefisso del digest |
+| B-12 | il tempo di risposta: il ramo del nome inesistente deve verificare comunque una password (Django lo fa già in `authenticate` con l'hasher di default); da confermare col test sul login vero |
+
+### 13.5 ❓ Decisioni per Tid, prima dei changeSet
+
+1. **La chiave doppia** del §13.1 (credenziale se c'è, nome se non c'è), con il
+   residuo dichiarato. Proposta: sì.
+2. **(a)**: HMAC con chiave del backend. Proposta: sì. Non cambia il DB, ma
+   decide B-10.
+3. **(b)**: `E_CREDENZIALE_BLOCCATA` rivela l'esistenza solo per una credenziale
+   bloccata dall'admin: accettarlo e dichiararlo. Proposta: sì.
+4. **La forma** del §13.2: stesse funzioni con il parametro in più, due tabelle
+   gemelle, calcolo del freno estratto. Proposta: sì.
 
 ## Registro
 
@@ -1107,6 +1205,7 @@ il ripiego non va avanti al catalogo):
 | 2026-09-25 | Tid | Baseline B-7 allineata; scratch riallineato sul ponte django; tutti i test verdi. `-51` committato |
 | 2026-09-25 | DB | R-8 (note del BE su `E_UTENTE_BLOCCATO`): scritto e provato `-52`, minuti nel messaggio e testo della postazione; pgTAP test 3 adeguato. Non applicato (§12.8) |
 | 2026-09-25 | Tid | `-52` applicato su dbdev e scratch (forma coi minuti); corsa pgTAP senza regressioni. Resta a BE/FE: B-8, F-1 |
+| 2026-09-25 | DB | R-7: disegno (§13) — chiave doppia (credenziale se c'è, digest del nome se non c'è), stesse due funzioni con un parametro, tabelle gemelle `nomi_tentati`, passo del freno estratto; il digest lo calcola il backend in ogni caso. Quattro decisioni per Tid |
 
 ---
 {% include-markdown "signature-core.md" %}
