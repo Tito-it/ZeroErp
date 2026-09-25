@@ -16,9 +16,9 @@
 > raggiungibile **solo da un `SUPER_ADMIN`**: a nessun altro il permesso si può
 > concedere, perché manca la riga a cui appenderlo.
 >
-> ⭐ **Stato al 2026-09-25:** §4 (DB) ✅ **chiuso e applicato** (§4.4). §5.2
-> fatto (backend). **Resta al backend:** §5.3, presìdi 1, 3, 4 del §5.4, §5.5 —
-> niente più li blocca.
+> ⭐ **Stato al 2026-09-25 sera: ✅ CHIUSO.** §4 (DB) applicato (§4.4); §5.2 e
+> §5.3 fatti (§5.2.1, §5.3.1); i quattro presìdi del §5.4 ci sono; §5.5 fatto.
+> Archiviato in `work-done/` il 2026-09-25 (Tid).
 >
 > ⇒ **Al DB: una riga di catalogo** (§4).
 > ⇒ **Al backend: una sola regola dei permessi per UI e AI, e un significato per
@@ -378,7 +378,7 @@ Tre cose servono perché la tabella sia vera:
      della richiesta: il `tx_id` arriva via dblink (altra connessione),
      `request_log` si scrive dopo la risposta, `ATOMIC_REQUESTS` è spento.
    * È lo stesso meccanismo che il brief
-     [brief-be-letture-in-transazione-sola-lettura.md](brief-be-letture-in-transazione-sola-lettura.md)
+     [brief-be-letture-in-transazione-sola-lettura.md](../work-in-progress/brief-be-letture-in-transazione-sola-lettura.md)
      estende a **tutte** le `GET`: se il backend lo realizza come building block,
      i tool lo **usano**, non ne scrivono una copia (regola del 2).
 
@@ -388,6 +388,77 @@ controllo del tool, che viene ripetuto proprio al momento della conferma.
 
 ⛔ Questa parte **dipende dalla riga del §4**: fino ad allora l'area
 `ai_assistant` vale `BLOCCATO` per tutti tranne `SUPER_ADMIN`.
+
+#### 5.3.1 ✅ Fatto il 2026-09-25 (backend e frontend, `dev/backend-tid`)
+
+* **Punto 1 — l'ingresso chiede `view`.** Meccanismo generale in
+  `ZeroERPPermission`: la view dichiara `<chiave>_accesso` (stessa chiave di
+  `<chiave>_permission`), e `ZeroERPPermission.tipo_accesso` lo applica al posto
+  del verbo. `AIQueryView` dichiara `post_accesso = "view"`. Un valore fuori dai
+  quattro tipi **nega**, non ricade sul verbo.
+* **Punto 2 — «scrive» si deriva.** `chiamata_in_scrittura(view, method=)` =
+  tipo d'accesso ≠ `view`, fail-closed. `AITool.scrive` e
+  `AITool.requires_confirmation` sono **proprietà** derivate dal gemello: il
+  flag `requires_confirmation=True` scritto a mano sui tre tool di scrittura non
+  esiste più, e nemmeno la terza copia nel test del gemello, che ricalcolava
+  «scrive» dal metodo. ⚠️ **Scostamento dal testo del punto 2**, che diceva
+  «qualunque cosa diversa da `view`, **o un'azione di processo**»: un'azione
+  decide **chi** fa la chiamata, non **cosa** fa. Una `GET` protetta da
+  `get_permission` resta una lettura. Oggi non cambia niente (l'unico gemello
+  con un'azione è una `POST`), ma la regola è scritta così.
+* **Il livello sull'assistente** è il terzo filtro di `is_tool_allowed_for_user`:
+  `valuta_accesso_endpoint(user, AIQueryView, method="POST", accesso=<tipo del
+  tool>)`, con il nuovo parametro `accesso` di `valuta`. Il tipo è `view` per un
+  tool che legge, quello del gemello per uno che scrive. Stessa funzione per
+  offerta, esecuzione e conferma.
+* **Punto 3 — la sola lettura a DB.** Building block
+  `apps/core/db/sola_lettura.py::transazione_sola_lettura` (regola del 2
+  dichiarata in anticipo, ok Tid): transazione nuova, `SET TRANSACTION READ
+  ONLY` come prima istruzione, rifiuta di partire dentro una transazione già
+  aperta. Lo usa `ai_assistant_service` per i tool di lettura e per le
+  anteprime; restano fuori l'esecuzione confermata e `ai_query_log`. È il pezzo
+  che [brief-be-letture-in-transazione-sola-lettura.md](../work-in-progress/brief-be-letture-in-transazione-sola-lettura.md)
+  monterà su tutte le `GET`.
+  ⚠️ Un `25006` dentro un tool oggi arriva al modello come testo d'errore del
+  tool (e nel log), non come un codice registrato: `E_SCRITTURA_IN_LETTURA` è
+  del brief delle `GET`, e aspetta il DB.
+* **Fuori brief, deciso da Tid il 2026-09-25:** `GET /ai-assistant/status/`
+  dice `utilizzabile` (AI accesa **e** ingresso consentito, stessa regola di
+  `/query/`), e la topbar mostra la chat solo in quel caso. Senza, chi è
+  `BLOCCATO` vedeva il pulsante e prendeva un 403 alla prima domanda.
+* **Presìdi:** 3 → `ai_assistant/tests/services/test_livelli_assistente.py` (i
+  tre operatori, più `BLOCCATO` e l'ingresso); 4 →
+  `core/tests/db/test_sola_lettura_db.py` (DB vero: `25006`, la connessione
+  dopo il blocco non è in sola lettura, il rifiuto dentro una transazione
+  aperta) e, per **dove** il ciclo apre il blocco,
+  `test_ai_assistant_service.py` (test 12-13); il meccanismo in
+  `core/tests/api/test_permissions_tipo_accesso.py`.
+* **Documentazione (§5.5):** `api.md` (attributo `<metodo>_accesso`, voce AI
+  senza più il difetto), catalogo BB backend, manuali `api_ai_query`,
+  `api_ai_status`, `ai_tool_registry` (questo era ancora ai `required_*`), guida
+  `integrazione-ai.md`, `migliorie-generali…` D5.
+* ✅ **Presidio 1** (aree dichiarate contro catalogo), fatto dopo le due
+  decisioni di Tid del 2026-09-25 sera:
+  `core/tests/db/test_aree_dichiarate_a_catalogo.py`, su DB vero, confronta con
+  `schema_db` (non `codice`) le aree che la catena legge dalle view
+  (`_resolve_area`). Il test 0 pretende di vedere `AIQueryView` anche ad AI
+  spenta. Le due decisioni:
+  * **il cammino sull'URLconf** è un building block, `apps/core/api/rotte.py`,
+    e le tre copie sono ritirate nello stesso giro;
+  * **le rotte condizionali** sono dichiarate in `zeroerp_backend/urls.py`
+    (`ROTTE_CONDIZIONALI`), e da lì le monta l'URLconf e le legge il building
+    block (`anche_condizionali=True`).
+
+  Le due questioni, com'erano scritte prima della decisione:
+  * **Da dove si leggono le view.** Le classi instradate si ricavano oggi
+    con **tre** copie dello stesso cammino sull'URLconf
+    (`test_skip_area_check_registro`, `test_export_lista_codice_pari`,
+    `copertura_doc_api`): la quarta va estratta in un building block, e le
+    copie ritirate nello stesso giro (regola del 2).
+  * **Le rotte montate a condizione.** Con `AI_ENABLED=0`, come in CI, le rotte
+    dell'assistente non sono nell'URLconf, quindi un presidio letto dal percorso
+    reale non vedrebbe proprio `AIQueryView`, cioè il caso da cui il presidio
+    nasce.
 
 ### 5.4 I presìdi
 
@@ -457,12 +528,12 @@ query più l'area «Assistente AI» fra quelle assegnabili nel pannello dei prof
   * **Ogni `GET` in una transazione di sola lettura** — il DB garantisce che una
     lettura non scriva, per tutta la UI e non solo per l'AI. Fra le **prime
     cose** da fare, insieme a questo brief:
-    [brief-be-letture-in-transazione-sola-lettura.md](brief-be-letture-in-transazione-sola-lettura.md).
+    [brief-be-letture-in-transazione-sola-lettura.md](../work-in-progress/brief-be-letture-in-transazione-sola-lettura.md).
   * **Il permesso controllato nel verbo di scrittura** — una scrittura passa
     solo da una funzione DB che controlla azione o livello: protegge anche da
     un backend che autorizza la scrittura sbagliata, che la sola lettura non
     copre. Cantiere di architettura, con decisioni aperte:
-    [brief-db-permesso-nel-verbo-di-scrittura.md](brief-db-permesso-nel-verbo-di-scrittura.md).
+    [brief-db-permesso-nel-verbo-di-scrittura.md](../work-in-progress/brief-db-permesso-nel-verbo-di-scrittura.md).
   * ⛔ **Esclusa**: policy RLS di scrittura sul livello d'area. Una policy vede
     la tabella, non l'operazione — bloccherebbe l'operatore in `LETTURA` a cui è
     stata concessa un'azione — e le funzioni DEFINER la scavalcano. Il
@@ -486,3 +557,6 @@ query più l'area «Assistente AI» fra quelle assegnabili nel pannello dei prof
 | 2026-09-25 | Tid | Gemelli di `cerca_articoli` e `cerca_billing_account`: restano i lookup cross-dominio (§5.2.1). Corretto lo scope emittente di `cerca_billing_account` (PK → soggetto-ruolo), poi spostato nel service: view e tool passano l'utente (regola del 2, ok Tid) |
 | 2026-09-25 | DB | **§4 scritto e provato** (§4.4): riga 14 nel CSV del mirror `20260228-17`, i due `COMMENT` in `20260925-28` |
 | 2026-09-25 | Tid | **§4 applicato**, pgTAP verdi: il DB ha chiuso la sua parte. Il brief resta in WIP per il backend (§5.3, presìdi 1, 3, 4, §5.5) |
+| 2026-09-25 | backend + frontend | **§5.3 fatto**, presìdi 3 e 4, §5.5 (resoconto nel §5.3.1). Aggiunto su decisione di Tid `utilizzabile` in `status/` con la topbar che lo legge. Resta il presidio 1, con due decisioni aperte |
+| 2026-09-25 | Tid, poi backend | Decise le due questioni del presidio 1 (building block delle rotte, rotte condizionali dichiarate in `urls.py`). **Presidio 1 fatto: brief chiuso** |
+| 2026-09-25 | Tid | Archiviato in `work-done/` |

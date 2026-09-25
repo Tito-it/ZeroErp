@@ -144,8 +144,16 @@ urlpatterns = [
     path("api/v1/ui/", include("apps.ui.api.urls")),
 ]
 
-# Rotte AI assistant — incluse solo se AI_ENABLED=True
-if getattr(settings, "AI_ENABLED", False):
-    urlpatterns.append(
-        path("api/v1/ai-assistant/", include("apps.ai_assistant.api.urls_v1")),
-    )
+# Rotte montate solo se una flag e' accesa: (prefisso, urlconf, flag).
+# ⭐ E' la sede UNICA: da qui le monta questo file, e da qui le legge
+#    `apps.core.api.rotte.rotte_servite(anche_condizionali=True)`, cosi' i
+#    presidi del codice vedono anche le view che in CI (flag spenta) non sono
+#    instradate. Una rotta condizionale nuova si aggiunge qui, non con un `if`.
+ROTTE_CONDIZIONALI: tuple[tuple[str, str, str], ...] = (
+    # AI assistant: a flag spenta l'app non e' nemmeno in INSTALLED_APPS.
+    ("api/v1/ai-assistant/", "apps.ai_assistant.api.urls_v1", "AI_ENABLED"),
+)
+
+for _prefisso, _urlconf, _flag in ROTTE_CONDIZIONALI:
+    if getattr(settings, _flag, False):
+        urlpatterns.append(path(_prefisso, include(_urlconf)))

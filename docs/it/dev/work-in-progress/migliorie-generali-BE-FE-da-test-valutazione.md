@@ -181,7 +181,7 @@ CI senza toccare il workflow.
 | D2  | Backend senza analisi statica                                          | ✅ 09-09/10 — **in §9** · resta **D2-b** (type checker)                                          |
 | D3  | Lo schema OpenAPI si dichiara anonimo; `check --deploy` fuori dalla CI | ✅ D3-a — **in §9** · restano **D3-b**, **D3-c**                                                 |
 | D4  | `hint` trasportato e mai reso a video                                  | ✅ 09-09 — **in §9**                                                                             |
-| D5  | `area_funzionale = "ai_assistant"` non a catalogo                      | 🔵 **aperto**: brief scritto 09-11, **attende il DB**                                            |
+| D5  | `area_funzionale = "ai_assistant"` non a catalogo                      | ✅ 09-25: riga a catalogo (DB), livelli dell'assistente (BE/FE), presidio aree/catalogo           |
 | D6  | Il `count` che è un'eco                                                | ✅ 09-10 — **in §9**                                                                             |
 | D7  | Endpoint senza consumatore                                             | ✅ decisione 09-11 — **in §9** · resta **la schermata**                                          |
 | D8  | View sotto `KeepAlive` che caricano solo in `onMounted`                | ✅ 09-10 — **in §9**                                                                             |
@@ -256,6 +256,10 @@ perché no.
 
 ### D5 — `area_funzionale = "ai_assistant"`: un cancello che non si può aprire
 
+✅ **Chiusa il 2026-09-25**: la riga c'è (DB), i tre livelli hanno un
+significato (backend, brief §5.3) e il presidio aree/catalogo è scritto (brief
+§5.4). Il testo qui sotto è lo stato del 2026-09-11.
+
 🔵 **Aperto, attende il DB.** `AIQueryView` dichiara `area_funzionale =
 "ai_assistant"` e il catalogo `config.aree_funzionali` (13 righe) non la
 contiene: per `script.fn_resolve_livello_area` un'area fuori catalogo è
@@ -266,7 +270,7 @@ cui si accende, si accende rotta per tutti tranne uno.
 
 **Decisione di Tid, 2026-09-11**: l'assistente lo devono poter usare **anche gli
 operatori** ⇒ riga a catalogo, strada `AdminAPIView` esclusa. Brief:
-[brief-db-area-funzionale-assistente-ai.md](brief-db-area-funzionale-assistente-ai.md),
+[brief-db-area-funzionale-assistente-ai.md](../work-done/brief-db-area-funzionale-assistente-ai.md),
 che chiede anche di correggere il `COMMENT` della tabella (*«ogni area corrisponde
 a uno schema DB»*: già falso per `core` e `strumenti`). Il backend non ha niente
 da cambiare nel codice; appena la riga c'è, scrive il **presidio** che manca —
@@ -449,9 +453,13 @@ rumore del digest). E il perimetro dei dati — D2 e D3 del gemello — è roba 
 
 ### 🟠 La sostanza
 
-* [~] **D5** — 🔵 decisione presa e brief scritto il 2026-09-11, **attende il
-      DB**. Poi il presidio: test su DB provvisto che confronta le aree delle
-      view con il catalogo.
+* [x] **D5** — ✅ 2026-09-25: il DB ha messo `ai_assistant` a catalogo (riga
+      14) e il backend ha dato un significato ai tre livelli (brief §5.3:
+      l'ingresso chiede `view`, `LETTURA` consulta e `TUTTO` agisce, letture
+      in sola lettura a DB; la topbar mostra la chat solo a chi puo' usarla).
+      ✅ Anche il presidio: `core/tests/db/test_aree_dichiarate_a_catalogo.py`
+      confronta le aree delle view (rotte condizionali comprese) con
+      `config.aree_funzionali.schema_db`.
 * [x] **D6** — ✅ 2026-09-10: sonda `+1`, `troncato`, helper separati, test sul DB vero.
 * [x] **D7 (la decisione)** — ✅ 2026-09-11: piano §1, tredici rotte, due candidate al ritiro.
 * [~] **D7 (la schermata)** — 🔵 cantiere aperto il 2026-09-11: piano §2. Il 2026-09-25 Tid ha confermato la strada (a), cioè la schermata per gli operatori (piano §3.2). ⛔ È **ferma sul DB**: la RLS non applica gli ambiti `REPARTO`/`OPERATORE` (`brief-db-email-visibilita-per-ambito.md`).

@@ -52,14 +52,32 @@ class AITool(abc.ABC):
         input_schema: dict[str, Any],
         endpoint: EndpointGemello,
         route_template: dict[str, Any] | None = None,
-        requires_confirmation: bool = False,
     ) -> None:
         self.name = name
         self.description = description
         self.input_schema = input_schema
         self.endpoint = endpoint
         self.route_template = route_template
-        self.requires_confirmation = requires_confirmation
+
+    # Scopo: Il tool scrive? Si DERIVA dal gemello (`chiamata_in_scrittura`),
+    #        con la stessa regola che decide il tipo di accesso della UI.
+    # ⛔ Non si dichiara (brief-db-area-funzionale-assistente-ai §5.3 punto 2).
+    #    Fino al 2026-09-25 era `requires_confirmation=True` scritto a mano sui
+    #    tre tool di scrittura: un tool che scrive con il flag dimenticato
+    #    avrebbe scritto senza conferma, senza sola lettura a DB e col solo
+    #    livello `LETTURA` sull'assistente.
+    @property
+    def scrive(self) -> bool:
+        from apps.core.api.permissions import chiamata_in_scrittura
+
+        return chiamata_in_scrittura(self.endpoint.view, method=self.endpoint.metodo)
+
+    # Scopo: Il tool chiede conferma prima di eseguire: se e solo se scrive.
+    #        Nome del contratto col frontend (`requires_confirmation` nel
+    #        payload della preview), non una seconda regola.
+    @property
+    def requires_confirmation(self) -> bool:
+        return self.scrive
 
     # Scopo: Esegue il tool con i parametri forniti dall'LLM.
     #        Ogni sottoclasse deve implementare questo metodo.

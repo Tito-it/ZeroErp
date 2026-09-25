@@ -66,6 +66,15 @@ def _mock_view(action: str | None = None, area: str | None = None, queryset: obj
     del view.patch_permission
     del view.delete_permission
     del view.model_permission
+    # Idem per `<chiave>_accesso` (dal 2026-09-25): su un MagicMock
+    # l'attributo esisterebbe, e la catena lo leggerebbe come una
+    # dichiarazione non valida. Le chiavi si leggono dalla catena, non si
+    # ricopiano: un'action o un metodo nuovo resterebbero fuori in silenzio.
+    for chiave in (
+        *ZeroERPPermission.ACTION_REQUIRES,
+        *(metodo.lower() for metodo in ZeroERPPermission.METHOD_REQUIRES),
+    ):
+        delattr(view, f"{chiave}_accesso")
     return view
 
 

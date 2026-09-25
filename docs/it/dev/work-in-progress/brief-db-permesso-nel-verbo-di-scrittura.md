@@ -3,7 +3,7 @@
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-09-24. **A chi:** Tid (decisioni,
 > §7), poi team DB e backend.
 > **Origine:** approfondimento del §8 di
-> [brief-db-area-funzionale-assistente-ai.md](brief-db-area-funzionale-assistente-ai.md).
+> [brief-db-area-funzionale-assistente-ai.md](../work-done/brief-db-area-funzionale-assistente-ai.md).
 > **Stato:** ✅ **D-1 → D-5 decise da Tid il 2026-09-24** (§7). Questo brief è la
 > sede del **modello**; il lavoro si fa nei brief operativi — il primo è
 > [brief-db-magazzino-verbi-con-permesso.md](brief-db-magazzino-verbi-con-permesso.md)

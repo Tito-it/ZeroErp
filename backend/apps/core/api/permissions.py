@@ -12,6 +12,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -70,6 +72,10 @@ class EsitoPermesso:
 
 _CONSENTITO = EsitoPermesso(consentito=True)
 
+# I tipi di accesso CRUD che la catena conosce: quelli che il livello piu'
+# alto concede. Un `<chiave>_accesso` o un `accesso` fuori da qui si nega.
+_TIPI_ACCESSO: frozenset[str] = LIVELLO_MAP["TUTTO"]
+
 
 # Scopo: «Questo utente puo' fare questa chiamata a questa view?», senza una
 #        richiesta HTTP. Applica, in ordine e con la semantica AND di DRF, le
@@ -89,12 +95,15 @@ _CONSENTITO = EsitoPermesso(consentito=True)
 #            `queryset`, `model_permission`, `skip_area_check`).
 #            method — metodo HTTP ("GET", "POST", ...); action — l'action di un
 #            ViewSet, se c'e'. cache — la cache permessi per-richiesta.
+#            accesso — il tipo di accesso da chiedere AL POSTO di quello che
+#            il metodo dichiara (vedi `ZeroERPPermission.valuta`).
 def valuta_accesso_endpoint(
     user: Any,
     view: Any,
     *,
     method: str,
     action: str | None = None,
+    accesso: str | None = None,
     cache: dict[str, Any],
 ) -> EsitoPermesso:
     if not user or not user.is_authenticated:
@@ -108,10 +117,45 @@ def valuta_accesso_endpoint(
             return EsitoPermesso(
                 consentito=False, motivo=MotivoDiniego.PERMISSION_CLASS_NON_VALUTABILE,
             )
-        esito = valuta(user, view, method=method, action=action, cache=cache)
+        esito = valuta(
+            user, view, method=method, action=action, accesso=accesso, cache=cache,
+        )
         if not esito.consentito:
             return esito
     return _CONSENTITO
+
+
+# Scopo: La cache permessi DELLA RICHIESTA (L1 per-richiesta, pre-popolata
+#        dalla L2 Redis), da usare in un `with`: all'uscita, anche su
+#        eccezione, le voci aggiunte si salvano in Redis.
+# ⭐ Una sede sola per la coppia `_get_cache` / `_save_cache_to_redis`: chi
+#    decide un permesso fuori da `has_permission` (una view che chiede in
+#    anticipo l'esito di un'altra, un check di azione nel corpo) usa la STESSA
+#    cache della catena, invece di un `{}` che ririsolve tutto sul DB.
+@contextmanager
+def cache_permessi_richiesta(request: Request) -> Iterator[dict[str, Any]]:
+    cache = ZeroERPPermission._get_cache(request)
+    try:
+        yield cache
+    finally:
+        ZeroERPPermission._save_cache_to_redis(request)
+
+
+# Scopo: «Questa chiamata a questa view scrive?». Si DERIVA dal tipo di accesso
+#        che la catena chiede per la chiamata (`ZeroERPPermission.tipo_accesso`):
+#        scrive tutto cio' che non e' `view`.
+# ⭐ Una sede sola (brief-db-area-funzionale-assistente-ai §5.3 punto 2): la
+#    usano il livello sull'assistente (un tool che scrive chiede `TUTTO`), la
+#    conferma dei tool e la sola lettura a DB. Prima era un flag scritto a mano
+#    su ogni tool, piu' una terza copia nel test che lo ricalcolava dal metodo.
+# ⚠️ Un `<metodo>_permission` NON rende la chiamata una scrittura: decide CHI
+#    la fa, non COSA fa. Una `GET` protetta da un'azione resta una lettura.
+# ⛔ Fail-closed: una chiamata di cui la catena non sa dire il tipo si tratta
+#    come una scrittura — chiede di piu', non di meno.
+def chiamata_in_scrittura(
+    view: Any, *, method: str, action: str | None = None,
+) -> bool:
+    return ZeroERPPermission.tipo_accesso(view, method=method, action=action) != "view"
 
 
 class IsAdminZeroERP(BasePermission):
@@ -124,7 +168,8 @@ class IsAdminZeroERP(BasePermission):
     """
 
     # Scopo: La decisione, senza richiesta: SUPER_ADMIN o superuser Django
-    #        (coerenza con ZeroERPPermission). Metodo e action non contano.
+    #        (coerenza con ZeroERPPermission). Metodo, action e tipo di
+    #        accesso non contano.
     @classmethod
     def valuta(
         cls,
@@ -133,6 +178,7 @@ class IsAdminZeroERP(BasePermission):
         *,
         method: str,
         action: str | None = None,
+        accesso: str | None = None,
         cache: dict[str, Any],
     ) -> EsitoPermesso:
         if user.is_superuser:
@@ -150,22 +196,19 @@ class IsAdminZeroERP(BasePermission):
         if user.is_superuser:
             return True
 
-        cache = ZeroERPPermission._get_cache(request)
-        try:
+        with cache_permessi_richiesta(request) as cache:
             esito = self.valuta(
                 user, view, method=request.method or "", cache=cache,
             )
-            if esito.consentito:
-                return True
+        if esito.consentito:
+            return True
 
-            logger.warning(
-                "security.admin_denied user_id=%s path=%s",
-                user.id, request.path,
-            )
-            self.message = "Accesso riservato agli amministratori."
-            return False
-        finally:
-            ZeroERPPermission._save_cache_to_redis(request)
+        logger.warning(
+            "security.admin_denied user_id=%s path=%s",
+            user.id, request.path,
+        )
+        self.message = "Accesso riservato agli amministratori."
+        return False
 
 
 class ZeroERPPermission(BasePermission):
@@ -181,6 +224,9 @@ class ZeroERPPermission(BasePermission):
     - ``area_funzionale = "vendite"`` per indicare l'area quando non c'e' queryset
     - ``<action>_permission = "codename"`` per azioni di processo custom
       (es. ``post_permission = "genera_fatture_lotti"``)
+    - ``<action>_accesso = "view"`` per il tipo di accesso che il metodo chiede,
+      quando non e' quello del suo verbo HTTP (es. ``post_accesso = "view"``
+      per una lettura che viaggia in una POST)
     """
 
     # Mapping azione ViewSet -> tipo di accesso CRUD richiesto
@@ -204,6 +250,39 @@ class ZeroERPPermission(BasePermission):
         "DELETE": "delete",
     }
 
+    # Scopo: Il tipo di accesso CRUD (`view`/`add`/`change`/`delete`) che una
+    #        chiamata chiede al livello d'area. Per APIView dal metodo HTTP, per
+    #        ViewSet dall'action — salvo che la view dichiari
+    #        `<chiave>_accesso`, con la stessa chiave di `<chiave>_permission`.
+    # ⭐ Il verbo HTTP dice come VIAGGIA la chiamata, non sempre cosa FA. Una
+    #    domanda all'assistente e' una POST (il corpo non sta in una query
+    #    string) ed e' una lettura: senza la dichiarazione chiederebbe `add`, e
+    #    un operatore in `LETTURA` non potrebbe nemmeno fare una domanda
+    #    (brief-db-area-funzionale-assistente-ai §5.3 punto 1). E' una regola
+    #    generale, non un caso speciale per quella view.
+    # ⛔ Un valore dichiarato fuori dai quattro tipi rende `None`, cioe' nega:
+    #    un refuso non deve cadere sul default del metodo in silenzio.
+    # Ritorna: il tipo, o None se la catena non sa tradurre la chiamata.
+    @classmethod
+    def tipo_accesso(
+        cls, view: Any, *, method: str, action: str | None = None,
+    ) -> str | None:
+        chiave = action if action else (method.lower() if method else None)
+        if chiave:
+            dichiarato = getattr(view, f"{chiave}_accesso", None)
+            if dichiarato is not None:
+                return cls._tipo_valido(dichiarato)
+        if action:
+            return cls.ACTION_REQUIRES.get(action)
+        return cls.METHOD_REQUIRES.get(method or "")
+
+    # Scopo: Un tipo di accesso DICHIARATO (`<chiave>_accesso`) o PASSATO
+    #        (`valuta(accesso=...)`): se stesso se e' uno dei quattro, None
+    #        (cioe' nega) altrimenti. Una sede sola per le due porte.
+    @staticmethod
+    def _tipo_valido(tipo: str) -> str | None:
+        return tipo if tipo in _TIPI_ACCESSO else None
+
     # Scopo: La decisione, senza richiesta HTTP: tutto cio' che
     #        `has_permission` decide, e niente di cio' che comunica.
     #        Per APIView usa il metodo HTTP, per ViewSet l'action. Per azioni
@@ -213,6 +292,11 @@ class ZeroERPPermission(BasePermission):
     #    dell'AI): una regola sola, non due copie.
     # Parametri: view — classe o istanza; se ne leggono solo attributi
     #            dichiarativi, quindi va bene anche la classe.
+    #            accesso — il tipo di accesso da chiedere al posto di quello
+    #            della chiamata (`tipo_accesso`). Lo usa il filtro dei tool: il
+    #            livello sull'assistente si misura sul tipo del TOOL, non sulla
+    #            POST della domanda. ⚠️ Vale solo per il ramo CRUD: un
+    #            `<metodo>_permission` decide comunque da solo.
     @classmethod
     def valuta(
         cls,
@@ -221,6 +305,7 @@ class ZeroERPPermission(BasePermission):
         *,
         method: str,
         action: str | None = None,
+        accesso: str | None = None,
         cache: dict[str, Any],
     ) -> EsitoPermesso:
         # Django superuser bypass
@@ -249,10 +334,10 @@ class ZeroERPPermission(BasePermission):
                 )
 
         # CRUD standard: determina il tipo di accesso richiesto
-        if action:
-            required = cls.ACTION_REQUIRES.get(action)
+        if accesso is not None:
+            required = cls._tipo_valido(accesso)
         else:
-            required = cls.METHOD_REQUIRES.get(method or "")
+            required = cls.tipo_accesso(view, method=method, action=action)
 
         if required is None:
             # Fail-closed: azione sconosciuta senza *_permission -> nega.
@@ -311,10 +396,8 @@ class ZeroERPPermission(BasePermission):
         if user.is_superuser:
             return True
 
-        # Inizializza cache per-request (pre-popolata da Redis L2 se disponibile)
-        cache = self._get_cache(request)
-
-        try:
+        # Cache per-request (pre-popolata da Redis L2 se disponibile)
+        with cache_permessi_richiesta(request) as cache:
             esito = self.valuta(
                 user,
                 view,
@@ -325,8 +408,6 @@ class ZeroERPPermission(BasePermission):
             if not esito.consentito:
                 self._registra_diniego(request, view, esito, cache)
             return esito.consentito
-        finally:
-            self._save_cache_to_redis(request)
 
     # Scopo: Log di sicurezza e messaggio del 403 per un diniego di `valuta`.
     def _registra_diniego(
@@ -486,20 +567,17 @@ class PortaleBasePermission(BasePermission):
         if not user or not user.is_authenticated:
             return False
 
-        cache = ZeroERPPermission._get_cache(request)
-        try:
+        with cache_permessi_richiesta(request) as cache:
             ruolo = PermissionResolver.get_ruolo_applicativo(user, cache=cache)
-            if ruolo in RUOLI_PORTALE:
-                return True
+        if ruolo in RUOLI_PORTALE:
+            return True
 
-            logger.warning(
-                "security.portale_denied user_id=%s ruolo=%s path=%s",
-                user.id, ruolo, request.path,
-            )
-            self.message = "Accesso riservato agli utenti portale."
-            return False
-        finally:
-            ZeroERPPermission._save_cache_to_redis(request)
+        logger.warning(
+            "security.portale_denied user_id=%s ruolo=%s path=%s",
+            user.id, ruolo, request.path,
+        )
+        self.message = "Accesso riservato agli utenti portale."
+        return False
 
 
 class ShopBasePermission(BasePermission):
@@ -522,21 +600,18 @@ class ShopBasePermission(BasePermission):
             # Scopo: Endpoint pubblici (catalogo) ammettono anonimo.
             return True
 
-        cache = ZeroERPPermission._get_cache(request)
-        try:
+        with cache_permessi_richiesta(request) as cache:
             ruolo = PermissionResolver.get_ruolo_applicativo(user, cache=cache)
-            if ruolo in RUOLI_SHOP:
-                return True
+        if ruolo in RUOLI_SHOP:
+            return True
 
-            if ruolo == RUOLO_APPLICATIVO_DISABILITATO:
-                self.message = "Utente disabilitato."
-                return False
-
-            logger.warning(
-                "security.shop_denied user_id=%s ruolo=%s path=%s",
-                user.id, ruolo, request.path,
-            )
-            self.message = "Accesso riservato ai clienti shop."
+        if ruolo == RUOLO_APPLICATIVO_DISABILITATO:
+            self.message = "Utente disabilitato."
             return False
-        finally:
-            ZeroERPPermission._save_cache_to_redis(request)
+
+        logger.warning(
+            "security.shop_denied user_id=%s ruolo=%s path=%s",
+            user.id, ruolo, request.path,
+        )
+        self.message = "Accesso riservato ai clienti shop."
+        return False

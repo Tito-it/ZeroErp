@@ -51,7 +51,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import AdminAPIView, DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.permissions import ZeroERPPermission
+from apps.core.api.permissions import cache_permessi_richiesta
 from apps.core.api.success_responses import success_response
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.ui.services.lista_colonna_admin_service import (
@@ -91,16 +91,13 @@ def _require_any_action(request: Request, codenames: list[str]) -> None:
     user = request.user
     if user.is_superuser:
         return
-    cache = ZeroERPPermission._get_cache(request)
-    try:
+    with cache_permessi_richiesta(request) as cache:
         if PermissionResolver.is_super_admin(user, cache=cache):
             return
         for codename in codenames:
             if PermissionResolver.check_azione(user, codename, cache=cache):
                 return
-        raise PermissionDenied("Non hai i permessi per questa operazione.")
-    finally:
-        ZeroERPPermission._save_cache_to_redis(request)
+    raise PermissionDenied("Non hai i permessi per questa operazione.")
 
 
 # =================================================================
