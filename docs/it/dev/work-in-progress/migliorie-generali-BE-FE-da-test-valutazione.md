@@ -454,7 +454,7 @@ rumore del digest). E il perimetro dei dati — D2 e D3 del gemello — è roba 
       view con il catalogo.
 * [x] **D6** — ✅ 2026-09-10: sonda `+1`, `troncato`, helper separati, test sul DB vero.
 * [x] **D7 (la decisione)** — ✅ 2026-09-11: piano §1, tredici rotte, due candidate al ritiro.
-* [~] **D7 (la schermata)** — 🔵 cantiere aperto il 2026-09-11: piano §2.
+* [~] **D7 (la schermata)** — 🔵 cantiere aperto il 2026-09-11: piano §2. Il 2026-09-25 Tid ha confermato la strada (a), cioè la schermata per gli operatori (piano §3.2). ⛔ È **ferma sul DB**: la RLS non applica gli ambiti `REPARTO`/`OPERATORE` (`brief-db-email-visibilita-per-ambito.md`).
 * [x] **D8** — ✅ 2026-09-10: tre view, otto store, guard `check-keepalive-onactivated.mjs`.
 * [x] **D8-bis** — ✅ 2026-09-10: dati compagni in `onActivated`, con `force`.
 * [ ] **D9-a** — gli smoke in CI: prima insegnargli a fabbricarsi i soggetti, e
