@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `schema_db` E' LA CHIAVE TECNICA DELL'AREA, NON IL NOME DI UNO SCHEMA
+#   COMMENT su config.aree_funzionali e su config.aree_funzionali.schema_db
+#   Piano: brief-db-area-funzionale-assistente-ai, §4.1
+#
+# ── ⛔ COSA DICEVANO, E PERCHE' ERA FALSO ─────────────────────────
+#   Tabella: «ogni area corrisponde a uno schema DB», e «schema_db separato da
+#   codice per consentire rinomina label senza impatto sullo schema fisico».
+#   Colonna: «nome dello schema PostgreSQL associato».
+#   Il modello dice altro, in tre posti:
+#   * script.fn_resolve_livello_area cerca l'area SEMPRE per `schema_db`, nel
+#     ramo degli override e in quello dei profili: e' la chiave, non un'etichetta;
+#   * il pgTAP test-permessi-strutture-base vincola `schema_db = codice` su tutte
+#     le righe: non sono separati;
+#   * il backend ricava l'area dal db_table del model OPPURE dall'attributo
+#     `area_funzionale` della view, e il secondo modo non passa da nessuno schema.
+#   ⇒ Che l'area abbia uno schema fisico omonimo e' un caso particolare.
+#
+# ⚠️ Il testo non elenca le aree: un elenco dentro un commento e' una sede in
+#   piu' che nessuno aggiorna.
+# ⚠️ Solo `COMMENT`: nessuna struttura, nessun dato, nessun comportamento.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260925-28-comment-aree-funzionali-schema-db-chiave-tecnica-mctit.yaml
+
+  - changeSet:
+      id: 20260925-28-comment-aree-funzionali-schema-db-chiave-tecnica
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Corregge i COMMENT di config.aree_funzionali e della colonna schema_db: schema_db e'' la
+        chiave tecnica con cui backend e funzioni di risoluzione dei permessi identificano
+        l''area, uguale a codice, e coincide con uno schema fisico solo quando l''area ne ha uno.
+        Solo COMMENT. Piano: brief-db-area-funzionale-assistente-ai, §4.1.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: config
+            tableName: aree_funzionali
+            columnName: schema_db
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE config.aree_funzionali
+              IS 'Catalogo delle aree funzionali del sistema permessi: l''unità a cui si concede un livello (BLOCCATO, LETTURA, TUTTO) nei profili di accesso e negli override utente. L''area si identifica con schema_db, la sua chiave tecnica, uguale a codice; codice_interno è il codice immutabile. Il backend ricava l''area di un endpoint dal db_table del model o, quando la view non ne ha uno, dal suo attributo area_funzionale: un''area non ha bisogno di uno schema fisico omonimo. Piano: brief-db-area-funzionale-assistente-ai, §4.1.';
+
+              COMMENT ON COLUMN config.aree_funzionali.schema_db
+              IS 'Chiave tecnica dell''area, con cui il backend e le funzioni di risoluzione dei permessi la identificano; uguale a codice. Coincide con uno schema fisico quando l''area ne ha uno.';
+      rollback:
+        - empty: {}
