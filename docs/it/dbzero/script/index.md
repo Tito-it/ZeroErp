@@ -199,6 +199,7 @@
 - [fn_scope_ef_whitelist_via_rettifica](funzioni/fn_scope_ef_whitelist_via_rettifica.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_ef_whitelist_via_sr](funzioni/fn_scope_ef_whitelist_via_sr.md) — (rev 2026-06-01)
 - [fn_scope_ef_whitelist_via_trasferimento](funzioni/fn_scope_ef_whitelist_via_trasferimento.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
+- [fn_scope_email_ambito](funzioni/fn_scope_email_ambito.md)
 - [fn_scope_fornitore_ownership](funzioni/fn_scope_fornitore_ownership.md) — (latest review 18-04-2026)
 - [fn_scope_identita_processo](funzioni/fn_scope_identita_processo.md) — (latest review 05-09-2026)
 - [fn_scope_note_cliente](funzioni/fn_scope_note_cliente.md)

@@ -79,6 +79,16 @@ Ogni email ha un `ambito` che determina chi puo' consultarla:
 
 Le email con `pratica_id` valorizzato sono inoltre visibili dalla scheda pratica, indipendentemente dall'ambito.
 
+**Chi applica la regola.** La applica il database, con la policy `rls_email_log_ambito`. La regola sta in una funzione sola, [`script.fn_scope_email_ambito`](/dbzero/script/funzioni/fn_scope_email_ambito), la stessa delle bozze:
+
+* «admin» è il **super admin**;
+* «chi l'ha creata» è la colonna **`creato_da_user_id`**. ⚠️ Non è `auth_user_id`, che è l'utente di cui la mail *parla*: l'operatore invitato, l'utente del reset password;
+* sulle mail `REPARTO` e `OPERATORE` l'azienda (`emittente_fiscale_id`) deve essere anche nel perimetro di chi guarda: una mail di un'azienda che non si ha più in carico non si vede, nemmeno se la si è scritta;
+* il processo che spedisce la posta (`send_pending_emails`) vede le mail di ogni ambito, perché deve ritentarle. Sulle mail `REPARTO` e `OPERATORE` vede solo quelle delle aziende che segue;
+* una mail `REPARTO` deve indicare il reparto e una `OPERATORE` il suo autore: lo impongono due vincoli. Senza quella colonna la mail non la vedrebbe nessuno.
+
+⚠️ La regola della scheda pratica, qui sopra, **non è ancora applicata** dal database: si scriverà insieme alla scheda pratica.
+
 ---
 
 ### Corpo inviato fedele

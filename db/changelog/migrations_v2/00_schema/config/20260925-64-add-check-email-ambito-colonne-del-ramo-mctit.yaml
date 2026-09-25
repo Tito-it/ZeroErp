@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Le colonne che reggono un ramo di visibilita' devono essere un'AFFERMAZIONE.
+#   Brief: brief-db-email-visibilita-per-ambito §3 punto 5
+#
+# ── ⭐ PERCHE' SERVONO, PRIMA DELLE POLICY ──────────────────────────
+#   Il ramo REPARTO confronta `unita_organizzativa_id` con il reparto di chi
+#   guarda; il ramo OPERATORE confronta `creato_da_user_id` con chi guarda. Con
+#   la colonna a NULL il confronto e' falso e la riga non la vede nessuno
+#   tranne il super admin. E' fail-closed, ma e' una mail PERSA, e nessuno lo
+#   dice: la stessa trappola del default `SISTEMA`
+#   (work-done/brief-db-processi-automatici-residui-be).
+#   ⇒ L'ambito promette un pubblico: la riga deve portare la colonna che lo
+#     nomina, o non entra.
+#
+# ── CHE COSA C'ERA GIA' ────────────────────────────────────────────
+#   `chk_email_outbox_reparto_uo` (REPARTO ⇒ UO) c'era, sul solo outbox.
+#   Qui nascono le tre mancanti:
+#     * chk_email_log_reparto_uo          — gemella di quella dell'outbox
+#     * chk_email_log_operatore_creatore  — sulla colonna di 20260925-63
+#     * chk_email_outbox_operatore_creatore
+#   Forma `ambito <> X OR col IS NOT NULL`, la stessa di
+#   `chk_email_outbox_reparto_uo`: un CHECK condizionato, non un NOT NULL,
+#   perche' una mail di SISTEMA non ha autore ne' reparto.
+#
+# ⚠️ Per INSERT, a chi subisce la RLS risponde prima il `WITH CHECK` della
+#   policy (42501) e solo dopo il CHECK (23514): il pgTAP lo prova dal super
+#   admin, che passa la policy e arriva al vincolo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260925-64-add-check-email-ambito-colonne-del-ramo-mctit.yaml
+
+  - changeSet:
+      id: 20260925-64-add-check-email-ambito-colonne-del-ramo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Tre CHECK condizionati sull'ambito: REPARTO ⇒ unita_organizzativa_id sul
+        log (gemella di quella gia' sull'outbox), OPERATORE ⇒ creato_da_user_id
+        su log e outbox. Sono le colonne che reggono i rami di visibilita': a
+        NULL la mail non la vedrebbe nessuno. Brief:
+        brief-db-email-visibilita-per-ambito §3.5.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: config
+            tableName: email_log
+            columnName: creato_da_user_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.email_log
+                  ADD CONSTRAINT chk_email_log_reparto_uo
+                  CHECK (ambito <> 'REPARTO' OR unita_organizzativa_id IS NOT NULL);
+
+              ALTER TABLE config.email_log
+                  ADD CONSTRAINT chk_email_log_operatore_creatore
+                  CHECK (ambito <> 'OPERATORE' OR creato_da_user_id IS NOT NULL);
+
+              ALTER TABLE config.email_outbox
+                  ADD CONSTRAINT chk_email_outbox_operatore_creatore
+                  CHECK (ambito <> 'OPERATORE' OR creato_da_user_id IS NOT NULL);
+
+              COMMENT ON CONSTRAINT chk_email_log_reparto_uo ON config.email_log IS
+                  'Una mail di REPARTO nomina il reparto: e'' la colonna che regge il ramo '
+                  'REPARTO di rls_email_log_ambito. A NULL non la vedrebbe nessun '
+                  'operatore. Gemella di chk_email_outbox_reparto_uo. rev 2026-09-25.';
+
+              COMMENT ON CONSTRAINT chk_email_log_operatore_creatore ON config.email_log IS
+                  'Una mail di ambito OPERATORE nomina chi l''ha scritta: e'' la colonna '
+                  'che regge il ramo OPERATORE di rls_email_log_ambito. A NULL non la '
+                  'vedrebbe nemmeno il suo autore. rev 2026-09-25.';
+
+              COMMENT ON CONSTRAINT chk_email_outbox_operatore_creatore ON config.email_outbox IS
+                  'Una bozza di ambito OPERATORE nomina il suo proprietario: e'' la colonna '
+                  'che regge il ramo OPERATORE di rls_email_outbox_ambito. A NULL non la '
+                  'vedrebbe nemmeno chi l''ha preparata. rev 2026-09-25.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.email_outbox DROP CONSTRAINT IF EXISTS chk_email_outbox_operatore_creatore;
+              ALTER TABLE config.email_log    DROP CONSTRAINT IF EXISTS chk_email_log_operatore_creatore;
+              ALTER TABLE config.email_log    DROP CONSTRAINT IF EXISTS chk_email_log_reparto_uo;

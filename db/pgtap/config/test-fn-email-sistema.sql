@@ -173,10 +173,16 @@ DO $altrui$
 DECLARE
     v_id config.email_log.id%TYPE;
 BEGIN
+    -- ⚠️ Rev 2026-09-25: una mail OPERATORE nomina il suo autore
+    --   (chk_email_log_operatore_creatore, 20260925-64), e la policy la da'
+    --   solo a lui (20260925-66).
     INSERT INTO config.email_log
-        (destinatario, oggetto, stato, ambito, emittente_fiscale_id, contesto_json)
+        (destinatario, oggetto, stato, ambito, emittente_fiscale_id,
+         creato_da_user_id, contesto_json)
     VALUES ('azienda@example.invalid', 'pgtap', 'PENDING', 'OPERATORE',
-            script.fn_pgtap_emittente_operatore(), '{}'::jsonb)
+            script.fn_pgtap_emittente_operatore(),
+            NULLIF(current_setting('app.current_user_id', true), '')::integer,
+            '{}'::jsonb)
     RETURNING id INTO v_id;
     PERFORM set_config('pgtap.email_azienda', v_id::text, true);
 END

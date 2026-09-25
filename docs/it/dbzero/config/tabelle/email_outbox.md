@@ -38,6 +38,7 @@
 |------|------|---------|
 | CHECK | chk_email_outbox_ambito |  |
 | CHECK | chk_email_outbox_ambito_emittente |  |
+| CHECK | chk_email_outbox_operatore_creatore |  |
 | CHECK | chk_email_outbox_reparto_uo |  |
 | CHECK | chk_email_outbox_stato |  |
 | FOREIGN KEY | email_outbox_email_account_id_fkey | email_account_id |

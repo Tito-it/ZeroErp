@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Ponte django — FK config.email_log.creato_da_user_id -> django.auth_user.id
+#   Brief: brief-db-email-visibilita-per-ambito, D-5. Colonna: 20260925-63.
+#
+# -- LA FORMA DI CASA ------------------------------------------------------------
+#   Il DB puo' CHIAMARE django.* ma non DIPENDERNE: la FK nasce in 90_end con
+#   preCondition tableExists su django.auth_user e onFail MARK_RAN, come le
+#   undici di 20260921-02..-12. ⚠️ Il prezzo e' lo stesso, dichiarato: in CI
+#   Liquibase gira PRIMA di `manage.py migrate` e li' la FK non esiste. Il
+#   pgTAP config/test-fk-auth-user-ponte-django-v1 (test 1, l'invariante «nessun
+#   *_user_id di dominio senza FK») la pretende dove il ponte c'e'.
+#
+# -- ON DELETE RESTRICT ---------------------------------------------------------
+#   Chi ha scritto una mail: stessa ragione di email_outbox.creato_da_user_id
+#   (20260921-11). Un registro non perde l'autore perche' l'utente se ne va.
+#
+# -- L'INDICE -------------------------------------------------------------------
+#   consentito=false, riga aggiunta a fk_index_policy_auth_user.csv (mirror
+#   20260921-13): la regola di visibilita' e' una funzione per riga, non entra
+#   da un indice.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260925-70-fk-config-email-log-creato-da-user-id-django-auth-user-mctit.yaml
+
+  - changeSet:
+      id: 20260925-70-fk-config-email_log-creato_da_user_id-django-auth-user
+      author: mctit
+      comment: >
+        FK config.email_log.creato_da_user_id -> django.auth_user.id, ON DELETE
+        RESTRICT: chi ha scritto la mail. 90_end + MARK_RAN come le sorelle (in
+        CI non esiste, dichiarato). Brief: brief-db-email-visibilita-per-ambito.
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+            - tableExists:
+                schemaName: django
+                tableName: auth_user
+            - columnExists:
+                schemaName: config
+                tableName: email_log
+                columnName: creato_da_user_id
+            - not:
+                - foreignKeyConstraintExists:
+                    schemaName: config
+                    foreignKeyName: fk_config_email_log_creato_da_user
+      changes:
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: email_log
+            baseColumnNames: creato_da_user_id
+            constraintName: fk_config_email_log_creato_da_user
+            referencedTableSchemaName: django
+            referencedTableName: auth_user
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: RESTRICT
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: email_log
+            constraintName: fk_config_email_log_creato_da_user

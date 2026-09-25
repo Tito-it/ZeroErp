@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «Chi ha scritto la mail» sul log: la colonna che mancava.
+#   Brief: brief-db-email-visibilita-per-ambito §4.1, D-5 (Tid, 2026-09-25)
+#
+# ── ⛔ IL FATTO ────────────────────────────────────────────────────
+#   Il modello dice: una mail di ambito OPERATORE la vede SOLO CHI L'HA
+#   CREATA. Sul log non c'era una colonna che lo dicesse. `auth_user_id`
+#   sembrava quella, e non lo e': e' l'utente di cui la mail PARLA —
+#   l'operatore invitato, l'utente del reset password, quello indicato sulla
+#   bozza e copiato all'invio. Un ramo di visibilita' scritto su di lei
+#   avrebbe dato la mail al DESTINATARIO e l'avrebbe negata a chi l'ha scritta.
+#
+# ── ⭐ LA FORMA: la stessa dell'outbox ─────────────────────────────
+#   Stesso nome e stesso tipo di `config.email_outbox.creato_da_user_id`: e' la
+#   stessa informazione, e il ramo OPERATORE delle due policy e' la stessa
+#   regola (`script.fn_scope_email_ambito`, 20260925-65).
+#   ⚠️ Nessun DEFAULT dal GUC, per decisione (D-5): la valorizza chi scrive.
+#   Dalla bozza e' `email_outbox.creato_da_user_id` — che non e' per forza chi
+#   preme «invia» (un super admin puo' spedire la bozza di un altro) — e un
+#   DEFAULT avrebbe scritto il secondo al posto del primo.
+#   ⇒ Richiesta al backend, scritta nel brief (§6).
+#
+# ── IL RESTO ───────────────────────────────────────────────────────
+#   * Nullable: una mail di SISTEMA non ha un autore. Il legame con
+#     `ambito` lo mette il CHECK di 20260925-64, dove il dato si puo' fornire.
+#   * FK verso django.auth_user in 90_end (20260925-70), come le sorelle.
+#   * Si riscrivono anche i COMMENT delle due `auth_user_id` e di
+#     `email_outbox.creato_da_user_id`: la confusione nasceva dal non averli.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260925-63-add-column-email-log-creato-da-user-id-mctit.yaml
+
+  - changeSet:
+      id: 20260925-63-add-column-email-log-creato-da-user-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Aggiunge config.email_log.creato_da_user_id (chi ha scritto la mail),
+        gemella di config.email_outbox.creato_da_user_id: regge il ramo
+        OPERATORE della visibilita'. auth_user_id e' l'utente di cui la mail
+        parla, non il suo autore: i COMMENT lo dicono ora su entrambe le
+        tabelle. Brief: brief-db-email-visibilita-per-ambito, D-5.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: config
+                tableName: email_outbox
+                columnName: creato_da_user_id
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: email_log
+                    columnName: creato_da_user_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.email_log
+                  ADD COLUMN creato_da_user_id integer;
+
+              COMMENT ON COLUMN config.email_log.creato_da_user_id IS
+                  'Chi ha SCRITTO la mail (utente Django). Regge il ramo OPERATORE di '
+                  'rls_email_log_ambito: una mail di ambito OPERATORE la vede solo chi '
+                  'l''ha creata, piu'' il super admin. chk_email_log_operatore_creatore la '
+                  'rende obbligatoria su quell''ambito. ⛔ NON e'' auth_user_id, che e'' '
+                  'l''utente di cui la mail parla. La valorizza chi scrive: dalla bozza si '
+                  'copia email_outbox.creato_da_user_id (non chi preme invia), negli '
+                  'invii diretti e'' l''utente della richiesta. Gemella di '
+                  'config.email_outbox.creato_da_user_id. rev 2026-09-25.';
+
+              COMMENT ON COLUMN config.email_log.auth_user_id IS
+                  'L''utente di cui la mail PARLA: l''operatore invitato, l''utente del '
+                  'reset password, quello indicato sulla bozza e copiato all''invio. '
+                  '⛔ NON e'' chi l''ha scritta (quella e'' creato_da_user_id) e non regge '
+                  'nessun ramo di visibilita''. rev 2026-09-25.';
+
+              COMMENT ON COLUMN config.email_outbox.creato_da_user_id IS
+                  'Di chi e'' la BOZZA: l''utente che l''ha preparata. Regge il ramo '
+                  'OPERATORE di rls_email_outbox_ambito (solo lui, piu'' il super admin, la '
+                  'vede, la modifica e la spedisce); chk_email_outbox_operatore_creatore '
+                  'la rende obbligatoria su quell''ambito. All''invio si copia in '
+                  'config.email_log.creato_da_user_id. rev 2026-09-25.';
+
+              COMMENT ON COLUMN config.email_outbox.auth_user_id IS
+                  'L''utente di cui la mail PARLA, indicato da chi prepara la bozza; '
+                  'all''invio si copia in config.email_log.auth_user_id. ⛔ NON e'' il '
+                  'proprietario della bozza (quello e'' creato_da_user_id) e non regge '
+                  'nessun ramo di visibilita''. rev 2026-09-25.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.email_log DROP COLUMN IF EXISTS creato_da_user_id;
+              COMMENT ON COLUMN config.email_log.auth_user_id IS NULL;
+              COMMENT ON COLUMN config.email_outbox.creato_da_user_id IS NULL;
+              COMMENT ON COLUMN config.email_outbox.auth_user_id IS NULL;
