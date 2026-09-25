@@ -714,7 +714,7 @@ freno: meglio un test marcato che una porta aperta.
   è `parameter_id`: sullo scratch l'UPDATE di un parametro con `storicizza = t`
   (per esempio `SYSTEM_FUSO_ORARIO`, id 54) muore con `E_SNAPSHOT_CLOSE_ERROR`.
   Su dbdev lo stesso UPDATE passa. ➜ Analizzato in
-  [brief-db-storico-colonna-fk-dei-trigger.md](brief-db-storico-colonna-fk-dei-trigger.md):
+  [brief-db-storico-colonna-fk-dei-trigger.md](../work-done/brief-db-storico-colonna-fk-dei-trigger.md):
   il difetto tocca cinque tabelle, quattro anche su dbdev, ed è dbdev a essere
   fuori modello per `parameters`.
   ✅ *Presa in carico da un'altra sessione (Tid, 2026-09-25).*
@@ -741,7 +741,8 @@ freno: meglio un test marcato che una porta aperta.
   Non è un difetto del P-1 né del test (fa ciò per cui è scritto: «se una c'è e
   le altre no, è rosso»): è lo stato di una macchina. Rimedio proposto: sullo
   scratch togliere da `databasechangelog` le righe `MARK_RAN` del ponte e
-  rilanciare il migrate, così le FK nascono come su dbdev. ⏳ Da fare (Tid).
+  rilanciare il migrate, così le FK nascono come su dbdev. ✅ Fatto (Tid,
+  2026-09-25): scratch riallineato, test verde.
 - ❓ **La domanda di forma che c'è sotto — per Tid.** Con `onFail: MARK_RAN` una
   FK verso Django su un'**installazione nuova non nasce mai**: il changeSet si
   segna prima che la tabella esista e non si riprova. È la stessa ragione per cui
@@ -752,7 +753,7 @@ freno: meglio un test marcato che una porta aperta.
 
 ### 11.6 Cosa resta
 
-- ✅ Tid: P-1 applicato (2026-09-25). ⏳ Corsa pgTAP; scratch da riallineare
+- ✅ Tid: P-1 applicato (2026-09-25); corsa pgTAP verde; scratch riallineato
   sul ponte (§11.5).
 - Backend: §7.
 - DB: il **P-2** (§5) → §12.
@@ -917,11 +918,23 @@ si componeva con `tgrelid::regclass::text`, che dipende dal `search_path` — co
 app, con `config` nel path, esce senza schema, e il test 4 era rosso (il 2 verde
 per coincidenza). Nella prova da owner, senza `config` nel path, il difetto non
 si vedeva: ora il nome si compone dal catalogo (`nspname || '.' || relname`).
-⚠️ Resta il rosso **dello scratch** su `config/test-fk-auth-user-ponte-django-v1`:
-non è del P-2 (nessun changeSet `-40…-50` tocca FK verso `django.auth_user`), è
-il ponte a metà del §11.5.
-⏳ Non ancora visti: il cancello B-7 (`codici-errore-baseline.sh`) e l'esito in
-CI (soprattutto `-44`, che lì salta per costruzione).
+Il rosso **dello scratch** su `config/test-fk-auth-user-ponte-django-v1` non era
+del P-2 (nessun changeSet `-40…-50` tocca FK verso `django.auth_user`), era il
+ponte a metà del §11.5: ✅ scratch riallineato da Tid, test verde.
+✅ **Cancello B-7 verde (2026-09-25, dopo l'apply di `-40…-51`)**: lo scatto
+(`scripts/sql/codici_errore_famiglie_snapshot.sql`, in sola lettura come app) è
+identico su scratch e dbdev, e contro la baseline committata dà **0 accumuli e
+0 codici nati generici**. I codici del cantiere entrano con una famiglia sola:
+`E_AUTH_CHIAMATA_NON_VALIDA` (`PARAMETRO`), `E_CREDENZIALE_MOTIVO_OBBLIGATORIO`
+(`PARAMETRO`); `E_PERMESSO_NEGATO` diventa leggibile da `fn_guard_super_admin`
+con la sola `PARAMETRO`. ⚠️ Blu da allineare (`--update`), **non di questo
+cantiere**: nuovi a una famiglia `E_DATE_VALIDITA`, `E_DOC_PREZZO_PENDENTE`,
+`E_DOC_PREZZO_RIFIUTATO`; ristretto `E_DELETE_NOT_ALLOWED` (perde `ENUM`);
+rientrati `E_COMPONENTE_PREZZO_PENDENTE`, `E_DELETE_RIGA_DOC_NON_BOZZA` — dai
+changeSet del 22-24 settembre, la baseline era ferma al 18. ✅ Baseline allineata
+da Tid (2026-09-25).
+⏳ Non ancora visto: l'esito in CI (soprattutto `-44`, che lì salta per
+costruzione).
 
 **Due correzioni ai test dopo l'apply di `-40…-45`**, da errori miei nei file
 (non nei changeSet): la forma testuale dell'indice nel test 5 di
@@ -1006,11 +1019,64 @@ codici, un pgTAP; lato BE il dialog e il secondo invio (lotto L-3).
    controllo, e con `IMMEDIATE` parlerebbe il guard degli indirizzi (in
    esercizio scatta al `COMMIT`).
 
+### 12.8 Le note del backend su `E_UTENTE_BLOCCATO` (R-8 del piano BE/FE)
+
+**Le due note** (Registro, BE 2026-09-25; `piano-be-fe-accessi-credenziale-e-vesti`
+§3.1 e R-8, approvata da Tid): (1) la frase è chiusa, quindi i minuti del freno
+restano nel contesto e non arrivano a chi prova; (2) «Account temporaneamente
+bloccato» descrive un blocco dell'account, mentre dal `-10` il freno riguarda la
+sola coppia credenziale + provenienza, e da un'altra postazione si entra.
+
+**Cosa è scritto** — `20260925-52` e il catalogo:
+
+| Dove | Cosa |
+| --- | --- |
+| `20_code/script/20260925-52` | `fn_check_blocco_login`: il raise del freno passa i minuti come valore (`VARIADIC ARRAY[v_rimanenti::text]`), come quello di `E_LOGIN_ATTESA` passa i secondi. Corpo del `-10` dalla doc auto-gen, firma invariata (`CREATE OR REPLACE`) |
+| `messaggi_errore.csv` (id 761) | «Troppi tentativi non riusciti da questa postazione: riprovare fra %s minuti.», con causa e soluzione nuove (prima vuote) |
+| `codici_errore.csv` | la descrizione dice che il segnaposto sono i minuti |
+| pgTAP `test-credenziale-login-v1` | test 3 con `throws_matching` su `riprovare fra [0-9]+ minuti`: un `%s` rimasto letterale sarebbe rosso (un `LIKE` lo lascerebbe passare) |
+| `manual/fn_check_blocco_login` | riga del freno e Storia |
+
+⚠️ **Rispetto al testo di R-8.** R-8 proponeva una frase chiusa («…accesso
+sospeso per qualche minuto.»). Qui c'è la forma coi minuti, che il BE indicava
+come alternativa («servirebbe un `%s`… se la si vuole»): è la forma che il §2.4
+chiedeva dall'inizio («con i minuti rimanenti») ed è la stessa del gemello
+`E_LOGIN_ATTESA`. ❓ Da confermare (Tid). Se si vuole la frase chiusa, il `-52` si
+ritira prima dell'apply e resta la sola riga del CSV.
+
+⚠️ **Ordine con il messaggio.** Il `%s` entra da `80_data`, che gira dopo
+`20_code`: il valore in più senza segnaposto è innocuo. L'ordine opposto (`%s`
+senza valore) non alza `22023`: `fn_log_and_raise_error` salta `format()` e il
+`%s` esce **letterale** (è il presidio 4 di `test-catalogo-messaggi-errore-completo`).
+
+**Come è stato provato (2026-09-25).** Sullo scratch `zeroerp_ci`, da owner, in
+transazioni ritirate, con l'SQL estratto dal `-52` e la riga 761 aggiornata come
+la scrive il CSV: `plpgsql_check` 0 errori; `test-credenziale-login-v1` 22/22;
+`test-catalogo-messaggi-errore-completo` 7/7. **Controprova**: messaggio nuovo
+e funzione vecchia → test 3 rosso, con il `%s` letterale nel messaggio. Cancelli
+statici verdi. B-7 non cambia: nessuna famiglia di condizione toccata.
+**Non applicato.**
+
+**Cosa chiede a BE e FE, dopo l'apply** (non prima: il ripiego non va avanti al
+catalogo):
+
+| # | Dove | Cosa |
+| --- | --- | --- |
+| B-8 | `error_messages_fallback.py` | rigenerare: il ripiego di `E_UTENTE_BLOCCATO` diventa la frase nuova |
+| F-1 | `LoginView.resolveLoginError` | `E_UTENTE_BLOCCATO` passa da `ERROR_CODE_MAP` (chiave i18n) ai rifiuti che mostrano il `message` del DB, come `E_LOGIN_ATTESA`, con `auth.account_locked` come ripiego. Aggiornare il commento, che dice «frase chiusa» |
+
 ### 12.6 Cosa resta
 
 - ✅ Tid: `-40…-51` e i codici applicati, corse pgTAP verdi (2026-09-25).
-  ⏳ B-7 (`codici-errore-baseline.sh`); commit di `-51`; scratch da
-  riallineare sul ponte django (§11.5).
+  ✅ B-7 verde (§12.5), baseline allineata; `-51` committato (`64a1ad2f4`);
+  scratch riallineato sul ponte django (§11.5), tutti i test verdi.
+- ❓ Aperta per Tid, fuori da questo brief: le FK del ponte django da
+  `MARK_RAN` a `CONTINUE` (§11.5).
+- DB: le due note del backend su `E_UTENTE_BLOCCATO` (R-8) → §12.8: `-52`
+  scritto e provato, ⏳ apply (Tid), ❓ minuti sì/no; poi B-8 e F-1.
+- DB, prossimo: **R-7** del piano BE/FE (la risposta del login non dice se lo
+  username esiste). ❓ Prima serve la decisione (a) di R-7: hash semplice o HMAC
+  con una chiave del backend per il nome tentato.
 - Backend: §7 e §12.4, B-6 compreso (lotto L-3; R-3 con L-4).
 - Guida `architettura-multi-face-auth` §3.1 (del backend, §8), con la veste che
   nasce spenta e porta/profili sganciati.
@@ -1036,6 +1102,9 @@ codici, un pgTAP; lato BE il dialog e il secondo invio (lotto L-3).
 | 2026-09-25 | BE → Tid | §12.7: il riuso per sola email può collegare la veste all'accesso di un'altra persona. Tid decide: rifiuto dove provabile + consenso a DB. Scritto e provato `-51` (consenso come dichiarazione dell'id), codici 1132-1133, pgTAP 14-20. Non applicato |
 | 2026-09-25 | Tid | `-51` e codici 1132-1133 applicati su dbdev e scratch; test verdi. Lavoro DB del P-2 chiuso |
 | 2026-09-25 | BE | §7 fatto per il P-1 (piano BE/FE §3.1-bis). Due note per il DB, nessuna urgente: `E_UTENTE_BLOCCATO` e' una frase chiusa, quindi i minuti del freno non arrivano all'operatore; e il testo «Account temporaneamente bloccato» ora descrive male un freno della sola provenienza |
+| 2026-09-25 | DB | Cancello B-7 verde su scratch e dbdev: 0 accumuli, codici nuovi a una famiglia; sei blu di altri cantieri da allineare con `--update` (§12.5) |
+| 2026-09-25 | Tid | Baseline B-7 allineata; scratch riallineato sul ponte django; tutti i test verdi. `-51` committato |
+| 2026-09-25 | DB | R-8 (note del BE su `E_UTENTE_BLOCCATO`): scritto e provato `-52`, minuti nel messaggio e testo della postazione; pgTAP test 3 adeguato. Non applicato (§12.8) |
 
 ---
 {% include-markdown "signature-core.md" %}
