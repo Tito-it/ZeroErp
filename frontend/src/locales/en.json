@@ -794,7 +794,10 @@
     "activation_welcome": "Welcome! Set your password to activate your account.",
     "activation_success": "Account activated! Log in with your chosen password.",
     "activation_token_invalid": "This activation link is invalid or has expired. Contact the administrator.",
-    "activate_btn": "Activate account"
+    "activate_btn": "Activate account",
+    "activation_cross_welcome": "You are about to activate access to the management system with your existing credentials. No new password is required.",
+    "activate_cross_btn": "Activate access",
+    "activation_cross_success": "Access activated. Log in with your existing credentials."
   },
   "resolver": {
     "action_search": "Search",
@@ -1220,6 +1223,10 @@
     "disabilita_title": "Confirm disable",
     "disabilita_confirm": "Are you sure you want to disable this operator? Access will be revoked immediately.",
     "operatore_creato": "Operator created successfully",
+    "field_ultimo_accesso": "Last access",
+    "mai_entrato": "Never logged in",
+    "password_da_invito": "The operator chooses the password when activating the invitation: after saving, send the invitation from the detail.",
+    "credenziale_riusata": "This person already has an account: they will log in with the username “{username}” and their own password. The invitation will only activate the operator role.",
     "operatore_disabilitato": "Operator disabled",
     "riattiva_title": "Confirm reactivation",
     "riattiva_confirm": "Are you sure you want to reactivate this operator? Access will be restored.",

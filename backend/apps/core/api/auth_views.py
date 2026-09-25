@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User, update_last_login
 from django.db import DatabaseError
 from drf_spectacular.utils import extend_schema
 from rest_framework.exceptions import AuthenticationFailed
@@ -219,6 +219,12 @@ class AuditTokenObtainPairView(TokenObtainPairView):
                 _auth_repo.registra_tentativo_login(
                     user.id, provenienza=provenienza, successo=True,
                 )
+                # Ultimo accesso (D-8): della credenziale, a ogni login
+                # riuscito. Qui e non con `UPDATE_LAST_LOGIN` di SimpleJWT:
+                # quello lo scrive nel serializer PRIMA del controllo della
+                # veste, cioe' anche per chi ha la password giusta e nessun
+                # accesso a questa porta (E_VESTE_NON_ATTIVA).
+                update_last_login(None, user)
 
             user_id, jti = self._extract_claims(response)
             # §8.3.4: il MultiVesteTokenSerializer ha iniettato

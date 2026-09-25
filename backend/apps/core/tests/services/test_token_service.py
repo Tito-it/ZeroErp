@@ -9,7 +9,7 @@
 """
 Indice test eseguiti:
 1) TokenServiceTests.test_create_returns_plain_token
-2) TokenServiceTests.test_create_invalidates_previous
+2) TokenServiceTests.test_create_non_invalida_i_precedenti
 3) TokenServiceTests.test_validate_valid_token
 4) TokenServiceTests.test_validate_invalid_token
 5) TokenServiceTests.test_consume_valid_token
@@ -46,17 +46,20 @@ class TokenServiceTests(TestCase):
         # token_hash deve essere diverso dal token in chiaro
         self.assertNotEqual(call_kwargs["token_hash"], token)
 
-    # Scopo: Verifica che create invalidi token precedenti (lo fa il repository).
+    # Scopo: create NON invalida i token precedenti: quali spegnere lo decide
+    # il chiamante (per tipo, o per veste). La prova che nemmeno il repository
+    # lo fa e' sul DB vero: test_token_veste_db.
     @patch(_REPO)
-    def test_create_invalidates_previous(self, MockRepo):
+    def test_create_non_invalida_i_precedenti(self, MockRepo):
         repo = MockRepo.return_value
         repo.create.return_value = 2
 
         service = TokenService()
         service.create(tipo="INVITO_OPERATORE", auth_user_id=10)
 
-        # Il repository gestisce l'invalidazione internamente nella sua create
         repo.create.assert_called_once()
+        repo.invalidate_all.assert_not_called()
+        repo.invalidate_for_identita.assert_not_called()
 
     # Scopo: Verifica validate con token valido.
     @patch(_REPO)

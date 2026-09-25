@@ -115,3 +115,13 @@ JWT_CLAIM_SID = "sid"
 # «si lavora sempre dentro un emittente». Per gli altri ruoli applicativi
 # (portale, shop) il claim non viene emesso: non hanno emittente.
 JWT_CLAIM_EMITTENTE_ATTIVO_ID = "emittente_attivo_id"
+
+
+# ── Email di sistema delle credenziali ─────────────────────
+
+# Scopo: Il nome con cui le email di sistema (invito, reset password) firmano
+# il sistema, variabile `azienda` dei loro template. Una sede sola: era
+# scritto a mano in quattro punti. ⚠️ E' il nome del PRODOTTO, non quello
+# dell'azienda che lo usa: se i template dovranno dire il nome del cliente
+# installato, va letto da un dato (emittente, parametro), non scritto qui.
+NOME_SISTEMA_EMAIL = "ZeroErp"

@@ -28,6 +28,7 @@ from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.success_responses import success_response
 from apps.core.api.throttling import PasswordResetRateThrottle
 from apps.core.db.auth_repository import AuthRepository
+from apps.core.services.auth_constants import NOME_SISTEMA_EMAIL
 from apps.core.services.auth_helpers import apply_new_password, validate_and_extract_token
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
@@ -69,13 +70,16 @@ class PasswordResetRequestView(APIView):
             # Cerca utente attivo per username
             user = User.objects.filter(username=username, is_active=True).first()
             if user and user.email:
-                # Genera token reset
-                token_plain = _token_service.create(
-                    tipo=_RESET_TOKEN_TIPO,
-                    auth_user_id=user.id,
-                    scadenza_ore=_RESET_SCADENZA_ORE,
-                    meta={"richiesto_da": "self-service"},
-                )
+                # Genera token reset: vale solo l'ultimo link chiesto, e i
+                # precedenti si spengono nella stessa transazione del nuovo.
+                with transaction.atomic():
+                    _token_service.invalidate_all(_RESET_TOKEN_TIPO, user.id)
+                    token_plain = _token_service.create(
+                        tipo=_RESET_TOKEN_TIPO,
+                        auth_user_id=user.id,
+                        scadenza_ore=_RESET_SCADENZA_ORE,
+                        meta={"richiesto_da": "self-service"},
+                    )
 
                 # Risolvi reparto dell'operatore per account email mittente
                 uo_id = _auth_repo.get_unita_organizzativa_id(user.id)
@@ -92,7 +96,7 @@ class PasswordResetRequestView(APIView):
                         destinatario=user.email,
                         variabili={
                             "nome": user.first_name or user.username,
-                            "azienda": "ZeroErp",
+                            "azienda": NOME_SISTEMA_EMAIL,
                             "link": link,
                             "scadenza_ore": str(_RESET_SCADENZA_ORE),
                         },
@@ -192,7 +196,7 @@ class PasswordResetConfirmView(APIView):
                     destinatario=user.email,
                     variabili={
                         "nome": user.first_name or user.username,
-                        "azienda": "ZeroErp",
+                        "azienda": NOME_SISTEMA_EMAIL,
                         "data_cambio": datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M"),
                     },
                     unita_organizzativa_id=uo_id,

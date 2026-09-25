@@ -1,6 +1,6 @@
 # Guida — Risorse Umane e Accessi al Software
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 25 settembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -104,7 +104,7 @@ Campi chiave:
 * `auth_user_id`: l'account Django (`django.auth_user`, tabella creata e gestita dal migratore Django, non documentata in `dbzero`)
 * `ruolo_applicativo`: la veste (tabella sopra)
 * `attivo`, `valido_dal`, `valido_al`: stato e finestra di validita della veste
-* `deve_cambiare_password`, `invito_inviato_at`, `tentativi_falliti`, `bloccato_fino_a`: lo stato di sicurezza dell'accesso (vedi [Primo accesso e gestione credenziali](#primo-accesso-e-gestione-credenziali))
+* `invito_inviato_at`: quando è partito l'ultimo invito della veste (vedi [Primo accesso e gestione credenziali](#primo-accesso-e-gestione-credenziali)). Tentativi falliti, blocco e cambio password obbligatorio **non** sono della veste: sono della credenziale (`config.credenziali`), perché la password è una sola
 * `tecnica`: `false` per una persona, `true` per un **processo automatico** che opera nel sistema come utente ([R4](#r4--collegamento-a-django-solo-persona-fisica-pura))
 
 **«Admin» non e un ruolo: e un binding.** Non esiste un `ruolo_applicativo = 'ADMIN'` — l'accesso completo si esprime con il profilo `SUPER_ADMIN` legato all'identita su `config.profili_accesso_bindings`. La funzione [`script.fn_is_super_admin`](/dbzero/script/funzioni/fn_is_super_admin) e il punto unico che risponde alla domanda «questo utente e un super admin?».
@@ -340,50 +340,55 @@ l'accesso effettivo.
 ### Scelta architetturale: nessuna password comunicata
 
 In Zero ERP **nessuna password viene mai comunicata verbalmente o via messaggio**. L'admin non
-assegna una password all'operatore — il sistema genera un token monouso, lo invia via email,
-e l'operatore sceglie la propria password al primo accesso. Questa scelta elimina il rischio
+assegna una password all'operatore — nemmeno alla creazione: l'account nuovo nasce senza una
+password utilizzabile, il sistema genera un token monouso, lo invia via email, e l'operatore
+sceglie la propria password attivando l'accesso. Questa scelta elimina il rischio
 di password condivise, annotate su post-it o inviate in chiaro su canali non sicuri.
 
 ### Invito operatore
 
-Quando l'admin crea un operatore e decide di abilitarlo al software, il flusso e':
+L'invito è lo stesso per ogni veste (operatore, portale, shop): cambia solo la **porta** —
+il link, il template dell'email, i tipi di token. Per l'operatore:
 
 ```text
-1. Admin → Amm. Software → Operatori → seleziona operatore → "Invia invito"
+1. Admin → Amm. Software → Operatori → «Nuovo»: nome utente, email, qualifica
+   - la veste OPERATORE nasce SPENTA: nessuno entra prima di aver accettato
+   - se l'email è già di un account (la persona è, per esempio, cliente del
+     portale) si usa QUELL'account: una persona, un accesso. Il pannello lo
+     dice, con il nome utente che vale
    |
-2. Il sistema verifica le condizioni di invitabilita':
-   - l'account `auth_user` esiste e is_active = true
-   - l'identita digitale esiste, e attiva e non e DISABILITATO
-   - l'utente ha un indirizzo email configurato
-   - last_login IS NULL (non ha mai fatto login)
+2. Dettaglio operatore → «Invia invito» (compare quando il sistema lo ammette:
+   veste spenta, nella sua finestra di validità, email presente — altrimenti
+   il pannello dice perché)
    |
-3. Imposta una password temporanea casuale (MAI comunicata)
-4. Imposta il flag deve_cambiare_password = true
-5. Genera un token monouso tipo INVITO_OPERATORE (scadenza 72 ore)
-6. Invia email con link di attivazione
-7. Registra invito_inviato_at
+3. Il sistema genera un token monouso (72 ore) e lo invia via email:
+   - account senza password → il link chiede di sceglierla
+   - account che ha già una password → il link attiva con un clic
+   La password esistente non viene mai toccata.
    |
-8. L'operatore riceve l'email → clicca il link
+4. L'operatore clicca il link
+   - con la scelta della password: il token viene validato PRIMA, la password
+     DOPO; se è troppo debole il token resta valido e l'operatore riprova
    |
-9. Pagina attivazione: sceglie la propria password
-   - Il token viene validato PRIMA, la password DOPO
-   - Se la password e' troppo debole, il token resta valido e l'operatore riprova
-   |
-10. Account attivato → l'operatore fa login con la password scelta
+5. La veste si accende → l'operatore entra con il nome utente e la password
 ```
 
-**Reinvio invito**: se l'email non e' arrivata o il token e' scaduto, l'admin puo'
-reinviare l'invito. Il sistema invalida automaticamente il token precedente e ne genera
-uno nuovo.
+**Reinvio invito**: se l'email non è arrivata o il token è scaduto, l'admin rinvia
+l'invito. I token pendenti di quella veste vengono invalidati insieme all'emissione del
+nuovo: o tutti e due, o nessuno.
 
 **L'email di invito** viene inviata con l'account SMTP del reparto dell'operatore
 (se configurato) o con l'account di sistema. Il template e' personalizzabile per reparto
 (vedi [Guida Gestione Mail](/guide/gestione-mail)).
 
+**L'ultimo accesso** di un operatore è visibile nel suo dettaglio: si registra a ogni
+login riuscito.
+
 ### Cambio password obbligatorio
 
-Il flag `deve_cambiare_password` su `identita_digitali` forza l'operatore a cambiare
-password prima di poter usare il sistema. Il meccanismo e':
+Il cambio password obbligatorio è della **credenziale** (`config.credenziali`): la password
+è una sola per tutte le vesti della persona. Forza a cambiarla prima di poter usare il
+sistema. Il meccanismo e':
 
 1. **Al login**: se il flag e' attivo, la response JWT include `password_change_required: true`
 2. **Frontend**: il router guard redirect a `/change-password` e blocca ogni altra navigazione
@@ -396,13 +401,14 @@ password prima di poter usare il sistema. Il meccanismo e':
 Il middleware opera in **fail-closed**: se il DB non risponde durante il check, l'accesso
 viene bloccato (503) piuttosto che concesso.
 
-Il flag puo' essere impostato in tre scenari:
+Chi lo accende e chi lo spegne:
 
-| Scenario                   | Chi lo imposta             | Quando                         |
-| -------------------------- | -------------------------- | ------------------------------ |
-| Primo accesso              | `InvitoOperatoreService`   | Alla creazione dell'invito     |
-| Reset admin                | L'admin manualmente        | Quando vuole forzare un cambio |
-| Reset password dimenticata | `PasswordResetConfirmView` | Alla conferma del reset        |
+| Verso    | Chi                                                                  | Quando                                |
+| -------- | -------------------------------------------------------------------- | ------------------------------------- |
+| Acceso   | L'admin                                                              | Quando vuole forzare un cambio        |
+| Spento   | Cambio password, reset password dimenticata, attivazione di un invito | Quando la persona sceglie la password |
+
+L'invito **non** lo accende: la password la sceglie la persona nell'attivazione stessa.
 
 ### Cambio password volontario
 

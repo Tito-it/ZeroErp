@@ -27,8 +27,10 @@ class TokenService:
     def __init__(self) -> None:
         self._repo = TokenRepository()
 
-    # Scopo: Genera un token casuale, salva l'hash SHA-256 in DB,
-    #        invalida token precedenti dello stesso tipo/utente.
+    # Scopo: Genera un token casuale e ne salva l'hash SHA-256 in DB.
+    #        ⚠️ NON invalida i token precedenti: lo fa il chiamante, nella
+    #        stessa transazione (invalidate_all per tipo e credenziale,
+    #        invalidate_for_identita per una veste).
     #        Ritorna il token in chiaro (unica volta — non recuperabile).
     def create(
         self,
@@ -82,6 +84,13 @@ class TokenService:
     # Scopo: Invalida tutti i token di un tipo per un utente.
     def invalidate_all(self, tipo: str, auth_user_id: int) -> int:
         return self._repo.invalidate_all(tipo, auth_user_id)
+
+    # Scopo: Invalida i token pendenti di una sola veste (tipi della porta +
+    # `identita_id` nel meta). Vedi TokenRepository.invalidate_for_identita.
+    def invalidate_for_identita(
+        self, tipi: tuple[str, ...], auth_user_id: int, identita_id: int
+    ) -> int:
+        return self._repo.invalidate_for_identita(list(tipi), auth_user_id, identita_id)
 
     # Scopo: Calcola SHA-256 di un token in chiaro.
     @staticmethod

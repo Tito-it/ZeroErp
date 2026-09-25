@@ -564,18 +564,18 @@ class AmmSoftwareRepository:
                 [auth_user_id],
             )
 
-    # Scopo: Crea un operatore completo invocando l'orchestratore DB
-    # `anagrafiche.fn_crea_operatore_v2`. Chiama i building block: fn_crea_auth_user,
-    # fn_crea_soggetto_pf, fn_crea_risorsa_umana.
-    # Parametri Sprint 3: comune_nascita_id, indirizzo_resid_dettaglio_id,
-    # indirizzo_domfisc_dettaglio_id (normalizzati via stradario).
-    # Due flussi: soggetto_id NULL (crea soggetto nuovo) o valorizzato (usa esistente).
-    #
-    # Contract multi-face puro (Fase 7-DB step 6): la fn DB v2 accetta
-    # `p_is_super_admin bool` + `p_attivo bool` al posto del legacy
-    # `p_ruolo_sistema config.ruolo_sistema`. Il translator interno e'
-    # stato rimosso. Compat layer DB legacy chiuso.
-    # Ritorna l'auth_user_id del nuovo operatore.
+    # Scopo: Crea un operatore invocando la madre DB
+    # `anagrafiche.fn_crea_operatore_v2` (rev P-2, 20260925-42). Due flussi sul
+    # soggetto: soggetto_id NULL (crea il soggetto PF) o valorizzato (usa
+    # l'esistente). Due flussi sulla CREDENZIALE, decisi dal DB per email
+    # senza maiuscole (D-6: una persona, una credenziale):
+    #   - nuova: nasce con `password_hash` e `username`;
+    #   - RIUSATA: password, username e nome restano i suoi, e quelli passati
+    #     sono ignorati — il ritorno dice quale username vale davvero.
+    # ⛔ La veste OPERATORE nasce SEMPRE spenta: la accende l'attivazione
+    # dell'invito. Credenziale gia' operatore (veste attiva o spenta) →
+    # `E_CREDENZIALE_GIA_OPERATORE` dal DB.
+    # Ritorna {auth_user_id, username, credenziale_riusata}.
     def crea_operatore(
         self,
         *,
@@ -591,15 +591,15 @@ class AmmSoftwareRepository:
         data_nascita: str | None = None,
         sesso: str = "M",
         is_super_admin: bool = False,
-        attivo: bool = True,
         valido_dal: str | None = None,
         valido_al: str | None = None,
         comune_nascita_id: int | None = None,
         indirizzo_resid_dettaglio_id: int | None = None,
         indirizzo_domfisc_dettaglio_id: int | None = None,
-    ) -> int:
+    ) -> dict[str, Any]:
         sql = """
-            SELECT anagrafiche.fn_crea_operatore_v2(
+            SELECT auth_user_id, username, credenziale_riusata
+              FROM anagrafiche.fn_crea_operatore_v2(
                 p_soggetto_id                    := %s::uuid,
                 p_cognome                        := %s,
                 p_nome                           := %s,
@@ -612,7 +612,6 @@ class AmmSoftwareRepository:
                 p_data_nascita                   := %s::date,
                 p_sesso                          := %s,
                 p_is_super_admin                 := %s,
-                p_attivo                         := %s,
                 p_valido_dal                     := COALESCE(%s::date, CURRENT_DATE),
                 p_valido_al                      := %s::date,
                 p_comune_nascita_id              := %s,
@@ -625,7 +624,7 @@ class AmmSoftwareRepository:
             cognome, nome, codice_fiscale,
             username, email, password_hash,
             qualifica_id, unita_organizzativa_id,
-            data_nascita, sesso, is_super_admin, attivo,
+            data_nascita, sesso, is_super_admin,
             valido_dal, valido_al,
             comune_nascita_id,
             indirizzo_resid_dettaglio_id,
@@ -635,7 +634,11 @@ class AmmSoftwareRepository:
             cursor.execute(sql, params)
             row = cursor.fetchone()
             assert row is not None
-            return row[0]
+            return {
+                "auth_user_id": int(row[0]),
+                "username": row[1],
+                "credenziale_riusata": bool(row[2]),
+            }
 
     # Scopo: Lista unita' organizzative per dropdown filtro.
     def list_unita_organizzative(self) -> list[dict[str, Any]]:

@@ -10,10 +10,10 @@
 Indice test eseguiti:
  1) test_crea_operatore_success — POST crea operatore con successo (flusso A)
  2) test_crea_operatore_missing_cognome — POST senza cognome -> errore (flusso A)
- 3) test_crea_operatore_missing_password — POST senza password -> errore
+ 3) test_crea_operatore_password_rifiutata — POST con password -> errore (la sceglie l'operatore)
  4) test_crea_operatore_missing_cf — POST senza codice_fiscale -> errore (flusso A)
  5) test_crea_operatore_missing_qualifica — POST senza qualifica_id -> errore
- 6) test_crea_operatore_password_hashed — POST verifica che password venga hashata
+ 6) test_crea_operatore_senza_password_dell_admin — segnaposto non utilizzabile, riuso in risposta
  7) test_crea_operatore_permission_denied — OPERATIVO non puo' creare
  8) test_crea_operatore_with_sprint3_params — POST con comune_nascita e indirizzi
  9) test_crea_operatore_sprint3_params_optional — POST senza params Sprint 3 (retrocompatibile)
@@ -56,10 +56,13 @@ VALID_PAYLOAD = {
     "codice_fiscale": "BNCLCU90A01H501X",
     "username": "nuovo_op",
     "email": "nuovo@test.it",
-    "password": "SecurePass123!",
     "qualifica_id": 1,
     "unita_organizzativa_id": 10,
 }
+
+
+# Il ritorno della madre (P-2): credenziale, username effettivo, riuso.
+_CREATO = {"auth_user_id": 42, "username": "nuovo_op", "credenziale_riusata": False}
 
 
 def _make_admin_request(payload: dict) -> MagicMock:
@@ -98,17 +101,20 @@ class TestCreaOperatoreSuccess(TestCase):
         self.assertIn("handler", kwargs)
 
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
-    @patch("apps.amm_software.services.amm_software_service.make_password", return_value="hashed_pw")
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
-    def test_crea_operatore_password_hashed(
-        self, mock_parse, mock_idemp, mock_reqid, mock_make_pw, mock_repo_cls
+    def test_crea_operatore_senza_password_dell_admin(
+        self, mock_parse, mock_idemp, mock_reqid, mock_repo_cls
     ):
-        """POST verifica che password venga hashata prima di passare al DB."""
+        """La credenziale nuova nasce col segnaposto NON utilizzabile: la
+        password la sceglie l'operatore attivando l'invito (L-3). La risposta
+        dice se la credenziale e' stata riusata (D-6)."""
+        from django.contrib.auth.hashers import is_password_usable
+
         mock_parse.return_value = VALID_PAYLOAD
         mock_repo = MagicMock()
-        mock_repo.crea_operatore.return_value = 42
+        mock_repo.crea_operatore.return_value = _CREATO
         mock_repo.get_operatore_detail.return_value = SAMPLE_DETAIL
         mock_repo_cls.return_value = mock_repo
 
@@ -116,10 +122,11 @@ class TestCreaOperatoreSuccess(TestCase):
         request = _make_admin_request(VALID_PAYLOAD)
         response = view.post(request)
 
-        mock_make_pw.assert_called_once_with("SecurePass123!")
-        call_kwargs = mock_repo.crea_operatore.call_args
-        self.assertEqual(call_kwargs.kwargs["password_hash"], "hashed_pw")
         self.assertEqual(response.status_code, 200)
+        call_kwargs = mock_repo.crea_operatore.call_args.kwargs
+        self.assertFalse(is_password_usable(call_kwargs["password_hash"]))
+        self.assertNotIn("attivo", call_kwargs)
+        self.assertFalse(json.loads(response.content)["data"]["credenziale_riusata"])
 
 
 class TestCreaOperatoreValidation(TestCase):
@@ -143,9 +150,9 @@ class TestCreaOperatoreValidation(TestCase):
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
-    def test_crea_operatore_missing_password(self, mock_parse, mock_idemp, mock_reqid):
-        """POST senza password -> errore validazione."""
-        payload = {**VALID_PAYLOAD, "password": ""}
+    def test_crea_operatore_password_rifiutata(self, mock_parse, mock_idemp, mock_reqid):
+        """POST con password -> errore: la sceglie l'operatore all'attivazione."""
+        payload = {**VALID_PAYLOAD, "password": "SecurePass123!"}
         mock_parse.return_value = payload
 
         view = OperatoriListView()
@@ -199,17 +206,16 @@ class TestCreaOperatoreSprint3(TestCase):
     """POST /api/v1/amm-software/operatori/ — parametri Sprint 3."""
 
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
-    @patch("apps.amm_software.services.amm_software_service.make_password", return_value="hashed_pw")
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
     def test_crea_operatore_with_sprint3_params(
-        self, mock_parse, mock_idemp, mock_reqid, mock_make_pw, mock_repo_cls
+        self, mock_parse, mock_idemp, mock_reqid, mock_repo_cls
     ):
         """POST con comune_nascita_id e indirizzi — passati al repository."""
         mock_parse.return_value = VALID_PAYLOAD_SPRINT3
         mock_repo = MagicMock()
-        mock_repo.crea_operatore.return_value = 42
+        mock_repo.crea_operatore.return_value = _CREATO
         mock_repo.get_operatore_detail.return_value = SAMPLE_DETAIL
         mock_repo_cls.return_value = mock_repo
 
@@ -224,17 +230,16 @@ class TestCreaOperatoreSprint3(TestCase):
         self.assertEqual(call_kwargs["indirizzo_domfisc_dettaglio_id"], 102)
 
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
-    @patch("apps.amm_software.services.amm_software_service.make_password", return_value="hashed_pw")
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
     def test_crea_operatore_sprint3_params_optional(
-        self, mock_parse, mock_idemp, mock_reqid, mock_make_pw, mock_repo_cls
+        self, mock_parse, mock_idemp, mock_reqid, mock_repo_cls
     ):
         """POST senza parametri Sprint 3 — retrocompatibile, valori None."""
         mock_parse.return_value = VALID_PAYLOAD
         mock_repo = MagicMock()
-        mock_repo.crea_operatore.return_value = 42
+        mock_repo.crea_operatore.return_value = _CREATO
         mock_repo.get_operatore_detail.return_value = SAMPLE_DETAIL
         mock_repo_cls.return_value = mock_repo
 
@@ -253,7 +258,6 @@ VALID_PAYLOAD_FLOW_B = {
     "soggetto_id": "550e8400-e29b-41d4-a716-446655440000",
     "username": "op_existing",
     "email": "op@test.it",
-    "password": "SecurePass123!",
     "qualifica_id": 1,
     "unita_organizzativa_id": 10,
 }
@@ -263,17 +267,16 @@ class TestCreaOperatoreFlowB(TestCase):
     """POST /api/v1/amm-software/operatori/ — flusso B (soggetto esistente)."""
 
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
-    @patch("apps.amm_software.services.amm_software_service.make_password", return_value="hashed_pw")
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
     def test_crea_operatore_flow_b_soggetto_esistente(
-        self, mock_parse, mock_idemp, mock_reqid, mock_make_pw, mock_repo_cls
+        self, mock_parse, mock_idemp, mock_reqid, mock_repo_cls
     ):
         """POST con soggetto_id — flusso B: soggetto_id passato al repository."""
         mock_parse.return_value = VALID_PAYLOAD_FLOW_B
         mock_repo = MagicMock()
-        mock_repo.crea_operatore.return_value = 42
+        mock_repo.crea_operatore.return_value = _CREATO
         mock_repo.get_operatore_detail.return_value = SAMPLE_DETAIL
         mock_repo_cls.return_value = mock_repo
 
@@ -289,18 +292,17 @@ class TestCreaOperatoreFlowB(TestCase):
         self.assertIsNone(call_kwargs["codice_fiscale"])
 
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
-    @patch("apps.amm_software.services.amm_software_service.make_password", return_value="hashed_pw")
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
     def test_crea_operatore_flow_b_cognome_non_richiesto(
-        self, mock_parse, mock_idemp, mock_reqid, mock_make_pw, mock_repo_cls
+        self, mock_parse, mock_idemp, mock_reqid, mock_repo_cls
     ):
         """Flusso B: cognome vuoto e' accettato (soggetto gia' esiste)."""
         payload = {**VALID_PAYLOAD_FLOW_B, "cognome": ""}
         mock_parse.return_value = payload
         mock_repo = MagicMock()
-        mock_repo.crea_operatore.return_value = 42
+        mock_repo.crea_operatore.return_value = _CREATO
         mock_repo.get_operatore_detail.return_value = SAMPLE_DETAIL
         mock_repo_cls.return_value = mock_repo
 

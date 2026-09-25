@@ -8,11 +8,11 @@
 
 """
 Indice test eseguiti:
- 1) test_create_operatore_ok — happy path
+ 1) test_create_operatore_ok — happy path, credenziale col segnaposto non utilizzabile
  2) test_create_operatore_missing_cognome — campo obbligatorio mancante
- 3) test_create_operatore_missing_password — password vuota
+ 3) test_create_operatore_rifiuta_password — la password la sceglie l'operatore (L-3)
  4) test_create_operatore_missing_qualifica — qualifica mancante
- 5) test_create_operatore_password_hashed — password non in chiaro
+ 5) test_create_operatore_credenziale_riusata — la risposta dice il riuso (D-6)
  6) test_get_operatore_ok — dettaglio operatore
  7) test_get_operatore_not_found — id inesistente
  8) test_update_operatore_ok — aggiorna e invalida cache
@@ -63,76 +63,77 @@ REPO = "apps.amm_software.services.amm_software_service.AmmSoftwareRepository"
 INVALIDATE_USER = "apps.amm_software.services.amm_software_service.invalidate_user"
 INVALIDATE_DEPT = "apps.amm_software.services.amm_software_service.invalidate_department"
 BLACKLIST = "apps.amm_software.services.amm_software_service._blacklist_user_tokens"
-MAKE_PW = "apps.amm_software.services.amm_software_service.make_password"
 
 
 class TestCreateOperatore(TestCase):
-    """Test AmmSoftwareService.create_operatore()."""
+    """Test AmmSoftwareService.create_operatore() — regola unica dell'invito
+    (L-3): niente password dall'admin, veste spenta, credenziale riusata."""
 
-    @patch(MAKE_PW, return_value="hashed_pw")
-    @patch(REPO)
-    def test_create_operatore_ok(self, mock_repo_cls, mock_pw):
-        """Happy path: crea operatore, password hashata."""
+    _PAYLOAD = {
+        "cognome": "Rossi", "nome": "Mario", "codice_fiscale": "RSSMRA80A01H501Z",
+        "username": "mrossi", "email": "m@test.it", "qualifica_id": 1,
+    }
+
+    def _repo(self, mock_repo_cls, *, riusata=False):
         mock_repo = mock_repo_cls.return_value
-        mock_repo.crea_operatore.return_value = 1
-        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1, "username": "test"}
+        mock_repo.crea_operatore.return_value = {
+            "auth_user_id": 1, "username": "mrossi", "credenziale_riusata": riusata,
+        }
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1, "username": "mrossi"}
+        return mock_repo
+
+    # Scopo: Happy path: la credenziale nuova nasce col segnaposto NON
+    # utilizzabile (la password la sceglie la persona attivando l'invito).
+    @patch(REPO)
+    def test_create_operatore_ok(self, mock_repo_cls):
+        from django.contrib.auth.hashers import is_password_usable
+
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
-        result = AmmSoftwareService().create_operatore({
-            "cognome": "Rossi", "nome": "Mario", "codice_fiscale": "RSSMRA80A01H501Z",
-            "username": "mrossi", "email": "m@test.it", "password": "secret123",
-            "qualifica_id": 1,
-        })
+        mock_repo = self._repo(mock_repo_cls)
+        result = AmmSoftwareService().create_operatore(dict(self._PAYLOAD))
         self.assertEqual(result["auth_user_id"], 1)
-        mock_repo.crea_operatore.assert_called_once()
-        # Verifica password hashata
-        self.assertEqual(mock_repo.crea_operatore.call_args.kwargs["password_hash"], "hashed_pw")
+        self.assertFalse(result["credenziale_riusata"])
+        kwargs = mock_repo.crea_operatore.call_args.kwargs
+        self.assertFalse(is_password_usable(kwargs["password_hash"]))
+        self.assertNotIn("attivo", kwargs)
+
+    # Scopo: Email di una credenziale esistente (D-6): la risposta lo dice,
+    # perche' il pannello avvisi l'admin.
+    @patch(REPO)
+    def test_create_operatore_credenziale_riusata(self, mock_repo_cls):
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+        self._repo(mock_repo_cls, riusata=True)
+        result = AmmSoftwareService().create_operatore(dict(self._PAYLOAD))
+        self.assertTrue(result["credenziale_riusata"])
+
+    # Scopo: `password` nel payload e' rifiutata: un client che la manda
+    # crederebbe che valga.
+    @patch(REPO)
+    def test_create_operatore_rifiuta_password(self, mock_repo_cls):
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+        with self.assertRaises(ServiceError) as ctx:
+            AmmSoftwareService().create_operatore({**self._PAYLOAD, "password": "pw"})
+        self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
+        self.assertIn("password", ctx.exception.message)
+        mock_repo_cls.return_value.crea_operatore.assert_not_called()
 
     @patch(REPO)
     def test_create_operatore_missing_cognome(self, mock_repo_cls):
         """Cognome vuoto -> ServiceError."""
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError) as ctx:
-            AmmSoftwareService().create_operatore({
-                "cognome": "", "nome": "Mario", "codice_fiscale": "CF",
-                "username": "u", "email": "e@t.it", "password": "pw", "qualifica_id": 1,
-            })
+            AmmSoftwareService().create_operatore({**self._PAYLOAD, "cognome": ""})
         self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
-
-    @patch(REPO)
-    def test_create_operatore_missing_password(self, mock_repo_cls):
-        """Password vuota -> ServiceError."""
-        from apps.amm_software.services.amm_software_service import AmmSoftwareService
-        with self.assertRaises(ServiceError) as ctx:
-            AmmSoftwareService().create_operatore({
-                "cognome": "R", "nome": "M", "codice_fiscale": "CF",
-                "username": "u", "email": "e@t.it", "password": "", "qualifica_id": 1,
-            })
-        self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
+        self.assertIn("Cognome", ctx.exception.message)
 
     @patch(REPO)
     def test_create_operatore_missing_qualifica(self, mock_repo_cls):
         """Qualifica None -> ServiceError."""
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError) as ctx:
-            AmmSoftwareService().create_operatore({
-                "cognome": "R", "nome": "M", "codice_fiscale": "CF",
-                "username": "u", "email": "e@t.it", "password": "pw", "qualifica_id": None,
-            })
+            AmmSoftwareService().create_operatore({**self._PAYLOAD, "qualifica_id": None})
         self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
-
-    @patch(MAKE_PW, return_value="hashed")
-    @patch(REPO)
-    def test_create_operatore_password_hashed(self, mock_repo_cls, mock_pw):
-        """Verifica che make_password venga chiamato con la password raw."""
-        mock_repo = mock_repo_cls.return_value
-        mock_repo.crea_operatore.return_value = 1
-        mock_repo.get_operatore_detail.return_value = {}
-        from apps.amm_software.services.amm_software_service import AmmSoftwareService
-        AmmSoftwareService().create_operatore({
-            "cognome": "R", "nome": "M", "codice_fiscale": "CF",
-            "username": "u", "email": "e@t.it", "password": "mypassword", "qualifica_id": 1,
-        })
-        mock_pw.assert_called_once_with("mypassword")
+        self.assertIn("Qualifica", ctx.exception.message)
 
     # Scopo: Fase 1 multi-face — il payload con `ruolo_sistema` legacy e'
     # rifiutato (E_AMM_VALIDAZIONE) prima di toccare il repo.
@@ -140,47 +141,23 @@ class TestCreateOperatore(TestCase):
     def test_create_operatore_rifiuta_ruolo_sistema_legacy(self, mock_repo_cls):
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError) as ctx:
-            AmmSoftwareService().create_operatore({
-                "cognome": "R", "nome": "M", "codice_fiscale": "CF",
-                "username": "u", "email": "e@t.it", "password": "pw",
-                "qualifica_id": 1, "ruolo_sistema": "ADMIN",
-            })
+            AmmSoftwareService().create_operatore({**self._PAYLOAD, "ruolo_sistema": "ADMIN"})
         self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
         mock_repo_cls.return_value.crea_operatore.assert_not_called()
 
-    # Scopo: Fase 7 — il contract pubblico passa `is_super_admin` come bool
-    # al repo, niente piu' `ruolo_sistema` legacy esposto. La traduzione
-    # verso l'enum legacy della fn DB e' un dettaglio di
-    # `AmmSoftwareRepository._legacy_ruolo_from_contract` (privato).
-    @patch(MAKE_PW, return_value="hashed")
+    # Scopo: `is_super_admin` passa al repo come bool (default False).
     @patch(REPO)
-    def test_create_operatore_is_super_admin_passato_al_repo(
-        self, mock_repo_cls, _mock_pw
-    ):
-        mock_repo = mock_repo_cls.return_value
-        mock_repo.crea_operatore.return_value = 1
-        mock_repo.get_operatore_detail.return_value = {}
+    def test_create_operatore_is_super_admin_passato_al_repo(self, mock_repo_cls):
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
-        AmmSoftwareService().create_operatore({
-            "cognome": "R", "nome": "M", "codice_fiscale": "CF",
-            "username": "u", "email": "e@t.it", "password": "pw",
-            "qualifica_id": 1, "is_super_admin": True,
-        })
+        mock_repo = self._repo(mock_repo_cls)
+        AmmSoftwareService().create_operatore({**self._PAYLOAD, "is_super_admin": True})
         kwargs = mock_repo.crea_operatore.call_args.kwargs
         self.assertTrue(kwargs["is_super_admin"])
-        self.assertTrue(kwargs["attivo"])
         self.assertNotIn("ruolo_sistema", kwargs)
 
-        # Caso default: nessun flag -> is_super_admin=False, attivo=True.
         mock_repo.crea_operatore.reset_mock()
-        AmmSoftwareService().create_operatore({
-            "cognome": "R", "nome": "M", "codice_fiscale": "CF",
-            "username": "u", "email": "e@t.it", "password": "pw",
-            "qualifica_id": 1,
-        })
-        kwargs = mock_repo.crea_operatore.call_args.kwargs
-        self.assertFalse(kwargs["is_super_admin"])
-        self.assertTrue(kwargs["attivo"])
+        AmmSoftwareService().create_operatore(dict(self._PAYLOAD))
+        self.assertFalse(mock_repo.crea_operatore.call_args.kwargs["is_super_admin"])
 
 
 class TestGetOperatore(TestCase):

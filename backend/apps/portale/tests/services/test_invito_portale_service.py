@@ -18,7 +18,6 @@ Indice test eseguiti:
 7)  InvitoPortaleTests.test_cross_non_riattiva_identita_disattivata
 8)  InvitoPortaleTests.test_identita_gia_attiva_solleva
 9)  InvitoPortaleTests.test_identita_collegata_altro_auth_user_solleva
-10) InvitoPortaleTests.test_mask_email
 11) InvitoPortaleTests.test_build_display_name_pg_e_pf
 12) InvitoShopCustomerTests.test_invia_invito_shop_happy_path_invito
 13) InvitoShopCustomerTests.test_invia_invito_shop_cross_path
@@ -33,25 +32,19 @@ Indice test eseguiti:
 """
 
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from apps.core.services.service_errors import ServiceError
 
 _SVC_PATH = "apps.portale.services.invito_portale_service"
 _REPO = f"{_SVC_PATH}.PortaleRepository"
 _AUTH_REPO = f"{_SVC_PATH}.AuthRepository"
-_TOKEN_SVC = f"{_SVC_PATH}.TokenService"
-_EMAIL_SVC = f"{_SVC_PATH}.EmailDispatchService"
-_CONNECTION = f"{_SVC_PATH}.connection"
-_SETTINGS = f"{_SVC_PATH}.settings"
-
-
-def _mock_cursor_ctx(mock_conn):
-    """Scopo: Installa un context manager cursore mockato su `connection`."""
-    cursor = MagicMock()
-    mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
-    mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
-    return cursor
+# Token, email, link e firma sono del building block `invito_veste` (L-3):
+# il service lo costruisce, e i suoi collaboratori si fingono li'.
+_BB = "apps.core.services.invito_veste"
+_TOKEN_SVC = f"{_BB}.TokenService"
+_EMAIL_SVC = f"{_BB}.EmailDispatchService"
+_SETTINGS = f"{_BB}.settings"
 
 
 class InvitoPortaleTests(TestCase):
@@ -59,13 +52,12 @@ class InvitoPortaleTests(TestCase):
     # Scopo: Flusso invito cliente: auth_user nuovo + identita creata
     # disattivata + token INVITO + email inviata + timestamp aggiornato.
     @patch(_SETTINGS)
-    @patch(_CONNECTION)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
     @patch(_AUTH_REPO)
     @patch(_REPO)
     def test_invia_invito_cliente_happy_path(
-        self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
+        self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
         mock_settings.FRONTEND_URL = "https://localhost"
         repo = MockRepo.return_value
@@ -81,7 +73,7 @@ class InvitoPortaleTests(TestCase):
         }
         repo.find_auth_user_by_email.return_value = None  # utente nuovo
         repo.create_auth_user_portale.return_value = 200
-        repo.auth_user_ha_password.return_value = False  # segnaposto `!`
+        MockAuth.return_value.auth_user_ha_password.return_value = False  # segnaposto `!`
         repo.find_identita_portale.return_value = None  # identita nuova
         repo.create_identita_portale.return_value = 500
 
@@ -94,11 +86,9 @@ class InvitoPortaleTests(TestCase):
 
         MockEmail.return_value.send_email.return_value = (1, True)
 
-        _mock_cursor_ctx(mock_conn)  # UPDATE password + _get_display_name_of
 
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         svc = InvitoPortaleService()
-        svc._get_display_name_of = MagicMock(return_value="Admin Tid")
 
         result = svc.invia_invito_cliente(
             cliente_id=42,
@@ -141,13 +131,12 @@ class InvitoPortaleTests(TestCase):
 
     # Scopo: Flusso invito fornitore — stesso scheletro, ruolo FORNITORE_PORTALE.
     @patch(_SETTINGS)
-    @patch(_CONNECTION)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
     @patch(_AUTH_REPO)
     @patch(_REPO)
     def test_invia_invito_fornitore_happy_path(
-        self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
+        self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
         mock_settings.FRONTEND_URL = "https://localhost"
         repo = MockRepo.return_value
@@ -163,7 +152,7 @@ class InvitoPortaleTests(TestCase):
         }
         repo.find_auth_user_by_email.return_value = None
         repo.create_auth_user_portale.return_value = 201
-        repo.auth_user_ha_password.return_value = False
+        MockAuth.return_value.auth_user_ha_password.return_value = False
         repo.find_identita_portale.return_value = None
         repo.create_identita_portale.return_value = 501
 
@@ -172,11 +161,9 @@ class InvitoPortaleTests(TestCase):
         MockToken.return_value.create.return_value = "tk_xyz"
         MockEmail.return_value.send_email.return_value = (1, True)
 
-        _mock_cursor_ctx(mock_conn)
 
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         svc = InvitoPortaleService()
-        svc._get_display_name_of = MagicMock(return_value="Admin Tid")
 
         result = svc.invia_invito_fornitore(
             fornitore_id=77,
@@ -214,13 +201,12 @@ class InvitoPortaleTests(TestCase):
 
     # Scopo: Reinvio invalida token precedente prima di generare quello nuovo.
     @patch(_SETTINGS)
-    @patch(_CONNECTION)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
     @patch(_AUTH_REPO)
     @patch(_REPO)
     def test_reinvia_invalida_precedente(
-        self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
+        self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
         mock_settings.FRONTEND_URL = "https://localhost"
         repo = MockRepo.return_value
@@ -239,32 +225,29 @@ class InvitoPortaleTests(TestCase):
             "auth_user_id": 200,
             "attivo": False,
             "invito_inviato_at": None,
-            "deve_cambiare_password": False,
         }
         repo.find_auth_user_by_email.return_value = 200
         MockAuth.return_value.set_deve_cambiare_password.return_value = True
         MockAuth.return_value.set_invito_inviato_at.return_value = True
         MockToken.return_value.create.return_value = "new_tk"
         MockEmail.return_value.send_email.return_value = (1, True)
-        _mock_cursor_ctx(mock_conn)
 
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         svc = InvitoPortaleService()
-        svc._get_display_name_of = MagicMock(return_value="Admin")
 
         svc.reinvia_invito_cliente(
             cliente_id=42,
             email="admin@acme.test",
             invitato_da_user_id=1,
         )
-        # Post §8.4.1: reinvio invalida entrambi i tipi (INVITO + CROSS)
-        # per coprire il caso in cui l'invito precedente sia stato creato
-        # con uno dei due flow (auth_user nuovo vs esistente).
-        invalidate_calls = [
-            c.args for c in MockToken.return_value.invalidate_all.call_args_list
-        ]
-        self.assertIn(("INVITO_PORTALE", 200), invalidate_calls)
-        self.assertIn(("ATTIVAZIONE_PORTALE_CROSS", 200), invalidate_calls)
+        # Il reinvio invalida i token della VESTE (identita 500), entrambi i
+        # tipi della porta: l'invito precedente puo' essere nato in uno dei
+        # due flussi. Per veste e non per credenziale: cliente e fornitore
+        # portale condividono i tipi.
+        MockToken.return_value.invalidate_for_identita.assert_called_once_with(
+            ("INVITO_PORTALE", "ATTIVAZIONE_PORTALE_CROSS"), 200, 500,
+        )
+        MockToken.return_value.invalidate_all.assert_not_called()
 
     # Scopo: M-3 — reinvio a chi NON ha mai attivato: l'auth_user esiste
     # (l'ha creato il primo invito) ma ha ancora il segnaposto, e l'identita'
@@ -273,13 +256,12 @@ class InvitoPortaleTests(TestCase):
     # flusso si sceglieva da «l'auth_user e' stato appena creato» e questo
     # reinvio era impossibile.
     @patch(_SETTINGS)
-    @patch(_CONNECTION)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
     @patch(_AUTH_REPO)
     @patch(_REPO)
     def test_reinvio_a_chi_non_ha_mai_attivato_resta_invito(
-        self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
+        self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
         mock_settings.FRONTEND_URL = "https://localhost"
         repo = MockRepo.return_value
@@ -291,22 +273,19 @@ class InvitoPortaleTests(TestCase):
             "ragione_sociale": "ACME",
         }
         repo.find_auth_user_by_email.return_value = 200  # creato dal primo invito
-        repo.auth_user_ha_password.return_value = False  # mai attivato
+        MockAuth.return_value.auth_user_ha_password.return_value = False  # mai attivato
         repo.find_identita_portale.return_value = {
             "identita_id": 500,
             "auth_user_id": 200,
             "attivo": False,
             "invito_inviato_at": None,
-            "deve_cambiare_password": False,
         }
         MockAuth.return_value.set_invito_inviato_at.return_value = True
         MockToken.return_value.create.return_value = "tk_re"
         MockEmail.return_value.send_email.return_value = (1, True)
-        _mock_cursor_ctx(mock_conn)
 
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         svc = InvitoPortaleService()
-        svc._get_display_name_of = MagicMock(return_value="Admin")
 
         result = svc.reinvia_invito_cliente(
             cliente_id=42,
@@ -319,7 +298,7 @@ class InvitoPortaleTests(TestCase):
         self.assertEqual(
             MockToken.return_value.create.call_args.kwargs["tipo"], "INVITO_PORTALE"
         )
-        repo.auth_user_ha_password.assert_called_once_with(200)
+        MockAuth.return_value.auth_user_ha_password.assert_called_once_with(200)
         # L'identita' resta disattivata: la attiva il consumo del token.
         repo.riattiva_identita.assert_not_called()
         repo.create_auth_user_portale.assert_not_called()
@@ -336,13 +315,12 @@ class InvitoPortaleTests(TestCase):
     #    in attivazione cross)
     #  - L'attivazione (§8.4.2) attiva l'identita senza chiedere password.
     @patch(_SETTINGS)
-    @patch(_CONNECTION)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
     @patch(_AUTH_REPO)
     @patch(_REPO)
     def test_invia_invito_riusa_auth_user_esistente_flow_cross(
-        self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
+        self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
         mock_settings.FRONTEND_URL = "https://localhost"
         repo = MockRepo.return_value
@@ -354,18 +332,16 @@ class InvitoPortaleTests(TestCase):
             "ragione_sociale": "ACME",
         }
         repo.find_auth_user_by_email.return_value = 999  # auth_user gia' esistente
-        repo.auth_user_ha_password.return_value = True  # ... con una password vera
+        MockAuth.return_value.auth_user_ha_password.return_value = True  # ... con una password vera
         repo.find_identita_portale.return_value = None  # ma identita CLIENTE_PORTALE nuova
         repo.create_identita_portale.return_value = 501
 
         MockAuth.return_value.set_invito_inviato_at.return_value = True
         MockToken.return_value.create.return_value = "tk_cross"
         MockEmail.return_value.send_email.return_value = (1, True)
-        _mock_cursor_ctx(mock_conn)
 
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         svc = InvitoPortaleService()
-        svc._get_display_name_of = MagicMock(return_value="Admin")
 
         result = svc.invia_invito_cliente(
             cliente_id=42,
@@ -406,13 +382,12 @@ class InvitoPortaleTests(TestCase):
     # al consumo del token ATTIVAZIONE_PORTALE_CROSS (§8.4.2). Il test
     # verifica che nessun UPDATE di riattivazione venga emesso.
     @patch(_SETTINGS)
-    @patch(_CONNECTION)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
     @patch(_AUTH_REPO)
     @patch(_REPO)
     def test_cross_non_riattiva_identita_disattivata(
-        self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
+        self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
         mock_settings.FRONTEND_URL = "https://localhost"
         repo = MockRepo.return_value
@@ -424,7 +399,7 @@ class InvitoPortaleTests(TestCase):
             "ragione_sociale": "ACME",
         }
         repo.find_auth_user_by_email.return_value = 999  # esistente → flow CROSS
-        repo.auth_user_ha_password.return_value = True
+        MockAuth.return_value.auth_user_ha_password.return_value = True
         # Identita CROSS gia' creata in passato ma disattivata (invito
         # scaduto o revoca admin): riattivazione deve avvenire SOLO con
         # consumo del token CROSS.
@@ -433,16 +408,13 @@ class InvitoPortaleTests(TestCase):
             "auth_user_id": 999,
             "attivo": False,
             "invito_inviato_at": None,
-            "deve_cambiare_password": False,
         }
         MockAuth.return_value.set_invito_inviato_at.return_value = True
         MockToken.return_value.create.return_value = "tk_cross_reinv"
         MockEmail.return_value.send_email.return_value = (1, True)
-        _mock_cursor_ctx(mock_conn)
 
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         svc = InvitoPortaleService()
-        svc._get_display_name_of = MagicMock(return_value="Admin")
 
         svc.invia_invito_cliente(
             cliente_id=42,
@@ -461,13 +433,12 @@ class InvitoPortaleTests(TestCase):
     # portale, un nuovo invito non ha senso; per credenziali usa il reset
     # password self-service.
     @patch(_SETTINGS)
-    @patch(_CONNECTION)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
     @patch(_AUTH_REPO)
     @patch(_REPO)
     def test_identita_gia_attiva_solleva(
-        self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
+        self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
         mock_settings.FRONTEND_URL = "https://localhost"
         repo = MockRepo.return_value
@@ -484,13 +455,10 @@ class InvitoPortaleTests(TestCase):
             "auth_user_id": 999,
             "attivo": True,  # ← gia' attiva
             "invito_inviato_at": None,
-            "deve_cambiare_password": False,
         }
-        _mock_cursor_ctx(mock_conn)
 
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         svc = InvitoPortaleService()
-        svc._get_display_name_of = MagicMock(return_value="Admin")
 
         with self.assertRaises(ServiceError) as ctx:
             svc.invia_invito_cliente(
@@ -509,13 +477,12 @@ class InvitoPortaleTests(TestCase):
     # altro holder o bug di migrazione), il service NON deve ignorare la
     # divergenza — richiede intervento manuale.
     @patch(_SETTINGS)
-    @patch(_CONNECTION)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
     @patch(_AUTH_REPO)
     @patch(_REPO)
     def test_identita_collegata_altro_auth_user_solleva(
-        self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
+        self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
         mock_settings.FRONTEND_URL = "https://localhost"
         repo = MockRepo.return_value
@@ -534,13 +501,10 @@ class InvitoPortaleTests(TestCase):
             "auth_user_id": 888,
             "attivo": False,
             "invito_inviato_at": None,
-            "deve_cambiare_password": False,
         }
-        _mock_cursor_ctx(mock_conn)
 
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         svc = InvitoPortaleService()
-        svc._get_display_name_of = MagicMock(return_value="Admin")
 
         with self.assertRaises(ServiceError) as ctx:
             svc.invia_invito_cliente(
@@ -550,18 +514,6 @@ class InvitoPortaleTests(TestCase):
             )
         self.assertEqual(ctx.exception.code, "E_INVITO_PORTALE")
         repo.create_identita_portale.assert_not_called()
-
-    # Scopo: Maschera email per la response.
-    def test_mask_email(self) -> None:
-        from apps.portale.services.invito_portale_service import InvitoPortaleService
-        self.assertEqual(
-            InvitoPortaleService._mask_email("mario.rossi@acme.it"),
-            "m***@acme.it",
-        )
-        self.assertEqual(
-            InvitoPortaleService._mask_email("a@b.it"), "*@b.it",
-        )
-        self.assertEqual(InvitoPortaleService._mask_email(""), "***")
 
     # Scopo: Display name preferisce ragione_sociale; fallback PF cognome+nome.
     def test_build_display_name_pg_e_pf(self) -> None:
@@ -588,13 +540,12 @@ class InvitoShopCustomerTests(TestCase):
     # Scopo: Flow INVITO email nuova -> identita SHOP_CUSTOMER disattivata +
     # token INVITO_SHOP + template INVITO_SHOP + link /attivazione-shop.
     @patch(_SETTINGS)
-    @patch(_CONNECTION)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
     @patch(_AUTH_REPO)
     @patch(_REPO)
     def test_invia_invito_shop_happy_path_invito(
-        self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
+        self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
         mock_settings.FRONTEND_URL = "https://localhost"
         repo = MockRepo.return_value
@@ -608,7 +559,7 @@ class InvitoShopCustomerTests(TestCase):
         }
         repo.find_auth_user_by_email.return_value = None
         repo.create_auth_user_portale.return_value = 300
-        repo.auth_user_ha_password.return_value = False
+        MockAuth.return_value.auth_user_ha_password.return_value = False
         repo.find_identita_portale.return_value = None
         repo.create_identita_portale.return_value = 600
 
@@ -617,11 +568,9 @@ class InvitoShopCustomerTests(TestCase):
         MockToken.return_value.create.return_value = "tk_shop_new"
         MockEmail.return_value.send_email.return_value = (1, True)
 
-        _mock_cursor_ctx(mock_conn)
 
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         svc = InvitoPortaleService()
-        svc._get_display_name_of = MagicMock(return_value="Admin Tid")
 
         result = svc.invia_invito_shop_customer(
             cliente_id=42,
@@ -652,13 +601,12 @@ class InvitoShopCustomerTests(TestCase):
     # Scopo: Flow CROSS email esistente (operatore o altra veste) ->
     # identita SHOP_CUSTOMER disattivata + token ATTIVAZIONE_SHOP_CROSS.
     @patch(_SETTINGS)
-    @patch(_CONNECTION)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
     @patch(_AUTH_REPO)
     @patch(_REPO)
     def test_invia_invito_shop_cross_path(
-        self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
+        self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
         mock_settings.FRONTEND_URL = "https://localhost"
         repo = MockRepo.return_value
@@ -672,7 +620,7 @@ class InvitoShopCustomerTests(TestCase):
         }
         # Email gia' nota: l'auth_user esiste come operatore o altra veste.
         repo.find_auth_user_by_email.return_value = 999
-        repo.auth_user_ha_password.return_value = True
+        MockAuth.return_value.auth_user_ha_password.return_value = True
         repo.find_identita_portale.return_value = None  # nessuna SHOP ancora
         repo.create_identita_portale.return_value = 700
 
@@ -680,11 +628,9 @@ class InvitoShopCustomerTests(TestCase):
         MockToken.return_value.create.return_value = "tk_shop_cross"
         MockEmail.return_value.send_email.return_value = (1, True)
 
-        _mock_cursor_ctx(mock_conn)
 
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         svc = InvitoPortaleService()
-        svc._get_display_name_of = MagicMock(return_value="Admin Tid")
 
         result = svc.invia_invito_shop_customer(
             cliente_id=42,
@@ -711,13 +657,12 @@ class InvitoShopCustomerTests(TestCase):
     # Scopo: Reinvio invalida entrambi i token shop (INVITO_SHOP +
     # ATTIVAZIONE_SHOP_CROSS) per l'auth_user prima di rigenerare.
     @patch(_SETTINGS)
-    @patch(_CONNECTION)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
     @patch(_AUTH_REPO)
     @patch(_REPO)
     def test_reinvia_invito_shop_invalida_entrambi_token(
-        self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
+        self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
         mock_settings.FRONTEND_URL = "https://localhost"
         repo = MockRepo.return_value
@@ -732,21 +677,18 @@ class InvitoShopCustomerTests(TestCase):
         repo.find_identita_portale.return_value = {
             "identita_id": 700, "auth_user_id": 999,
             "attivo": False, "invito_inviato_at": None,
-            "deve_cambiare_password": False,
         }
         repo.find_auth_user_by_email.return_value = 999
         # Flow CROSS: la credenziale ha una password vera. Riprende l'identita
         # gia' presente e la lascia disattivata (la attiva il token).
-        repo.auth_user_ha_password.return_value = True
+        MockAuth.return_value.auth_user_ha_password.return_value = True
         MockAuth.return_value.set_invito_inviato_at.return_value = True
         MockToken.return_value.create.return_value = "tk_re"
         MockEmail.return_value.send_email.return_value = (1, True)
 
-        _mock_cursor_ctx(mock_conn)
 
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         svc = InvitoPortaleService()
-        svc._get_display_name_of = MagicMock(return_value="Admin")
 
         svc.reinvia_invito_shop_customer(
             cliente_id=42,
@@ -754,11 +696,9 @@ class InvitoShopCustomerTests(TestCase):
             invitato_da_user_id=1,
         )
 
-        # Verifica che entrambi i token shop siano invalidati.
-        invalidate_calls = MockToken.return_value.invalidate_all.call_args_list
-        tipi_invalidati = [c.args[0] for c in invalidate_calls]
-        self.assertIn("INVITO_SHOP", tipi_invalidati)
-        self.assertIn("ATTIVAZIONE_SHOP_CROSS", tipi_invalidati)
+        # Entrambi i tipi della porta shop, sulla sola veste.
+        args = MockToken.return_value.invalidate_for_identita.call_args.args
+        self.assertEqual(args[0], ("INVITO_SHOP", "ATTIVAZIONE_SHOP_CROSS"))
 
 
 # ── Stato + disattivazione veste (§6.2.4 + §6.2.6) ────────────────
@@ -822,12 +762,11 @@ class GetStatoAccessiTests(TestCase):
 class DisattivaVesteTests(TestCase):
     """Test soft-revoke veste cliente + fornitore."""
 
-    @patch(_CONNECTION)
     @patch(_TOKEN_SVC)
     @patch(_AUTH_REPO)
     @patch(_REPO)
     def test_disattiva_cliente_portale_attivo_invalida_token(
-        self, MockRepo, _MockAuth, MockToken, _mock_conn
+        self, MockRepo, _MockAuth, MockToken
     ):
         repo = MockRepo.return_value
         repo.get_cliente_info.return_value = {
@@ -838,7 +777,7 @@ class DisattivaVesteTests(TestCase):
         }
         repo.find_identita_portale.return_value = {
             "identita_id": 500, "auth_user_id": 10, "attivo": True,
-            "invito_inviato_at": None, "deve_cambiare_password": False,
+            "invito_inviato_at": None,
         }
         repo.disattiva_identita.return_value = True
 
@@ -852,11 +791,10 @@ class DisattivaVesteTests(TestCase):
         self.assertEqual(result["stato"], "DISATTIVO")
         self.assertEqual(result["identita_id"], 500)
         repo.disattiva_identita.assert_called_once_with(500)
-        # Token portale entrambi invalidati.
-        invalidate_calls = MockToken.return_value.invalidate_all.call_args_list
-        tipi_invalidati = [c.args[0] for c in invalidate_calls]
-        self.assertIn("INVITO_PORTALE", tipi_invalidati)
-        self.assertIn("ATTIVAZIONE_PORTALE_CROSS", tipi_invalidati)
+        # I token della veste (entrambi i tipi della porta) invalidati.
+        MockToken.return_value.invalidate_for_identita.assert_called_once_with(
+            ("INVITO_PORTALE", "ATTIVAZIONE_PORTALE_CROSS"), 10, 500,
+        )
 
     @patch(_REPO)
     def test_disattiva_cliente_nessuna_identita_noop(self, MockRepo):
@@ -878,12 +816,11 @@ class DisattivaVesteTests(TestCase):
         self.assertEqual(result["stato"], "NESSUNO")
         repo.disattiva_identita.assert_not_called()
 
-    @patch(_CONNECTION)
     @patch(_TOKEN_SVC)
     @patch(_AUTH_REPO)
     @patch(_REPO)
     def test_disattiva_fornitore_portale(
-        self, MockRepo, _MockAuth, MockToken, _mock_conn
+        self, MockRepo, _MockAuth, MockToken
     ):
         repo = MockRepo.return_value
         repo.get_fornitore_info.return_value = {
@@ -894,7 +831,7 @@ class DisattivaVesteTests(TestCase):
         }
         repo.find_identita_portale.return_value = {
             "identita_id": 600, "auth_user_id": 20, "attivo": True,
-            "invito_inviato_at": None, "deve_cambiare_password": False,
+            "invito_inviato_at": None,
         }
         repo.disattiva_identita.return_value = True
         from apps.portale.services.invito_portale_service import InvitoPortaleService
@@ -920,7 +857,7 @@ class DisattivaVesteTests(TestCase):
         # comunque invalida eventuali token residui (best-effort cleanup).
         repo.find_identita_portale.return_value = {
             "identita_id": 500, "auth_user_id": 10, "attivo": False,
-            "invito_inviato_at": None, "deve_cambiare_password": False,
+            "invito_inviato_at": None,
         }
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         result = InvitoPortaleService().disattiva_veste_cliente(
@@ -935,8 +872,6 @@ class DisattivaVesteTests(TestCase):
         repo.disattiva_identita.assert_not_called()
         # Best-effort cleanup: i token portale residui vengono comunque
         # invalidati (idempotente lato BE, no-op se non ce n'erano).
-        tipi_invalidati = [
-            c.args[0] for c in MockToken.return_value.invalidate_all.call_args_list
-        ]
-        self.assertIn("INVITO_PORTALE", tipi_invalidati)
-        self.assertIn("ATTIVAZIONE_PORTALE_CROSS", tipi_invalidati)
+        MockToken.return_value.invalidate_for_identita.assert_called_once_with(
+            ("INVITO_PORTALE", "ATTIVAZIONE_PORTALE_CROSS"), 10, 500,
+        )

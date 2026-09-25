@@ -3,7 +3,9 @@
 > **Tipo documento**: piano di lavoro backend + frontend (`dev/backend-tid`).
 >
 > **Data**: 2026-09-24 · **Stato**: 🟡 **IN CORSO** — ✅ L-0 fatto
-> (2026-09-24, §2); ✅ L-1 fatto (2026-09-25, §3.1-bis); gli altri lotti da fare.
+> (2026-09-24, §2); ✅ L-1 fatto (2026-09-25, §3.1-bis); 🟡 L-3 fatto tranne il
+> consenso al riuso, che aspetta la rev -51 in git (2026-09-25, §4.1-bis); gli
+> altri lotti da fare.
 > Le tre domande di §6 sono decise (Tid, 2026-09-24).
 >
 > **Da dove viene**: [analisi-accessi-credenziale-e-vesti.md](analisi-accessi-credenziale-e-vesti.md)
@@ -231,6 +233,24 @@ l'operatore è l'ultimo SUPER_ADMIN (capability, non un 409 a sorpresa).
 
 ### 4.1 L-3 — Una persona, una credenziale; invito e attivazione operatore
 
+> ⛔ **Stato al 2026-09-25 (verificato su dbdev dopo il P-2, commit
+> `acc6385d5`)**: il DB di L-3 è pronto (R-1, R-2, brief §12.4 B-1…B-5), il
+> backend no, e su dbdev **l'ingresso di un operatore nuovo è rotto in tre
+> punti in fila**, non in uno:
+> 1. **creazione** — `AmmSoftwareRepository.crea_operatore` passa `p_attivo` e
+>    legge un `integer`: «la funzione non esiste» (B-1);
+> 2. **invito** — `fn_check_operatore_invitabile` ora dice «invitabile» solo con
+>    la veste **spenta**, ma `InvitoOperatoreService.invia_invito` cerca poi la
+>    veste con `find_identita_attiva_for_ruoli`, cioè **attiva**: le due regole
+>    si escludono, e ogni invito risponde `E_INVITO` «Identita operatore non
+>    trovata o non attiva». ⚠️ Il brief (B-2) non lo nomina;
+> 3. **attivazione** — `AttivazioneView` non accende la veste (A-3): anche
+>    sistemati 1 e 2, l'operatore non entrerebbe mai.
+>
+> ⇒ B-1 da solo non basta: 1, 2 e 3 escono **insieme**. E con il riuso della
+> credenziale già vivo, l'invito che sovrascrive la password (A-1) oggi
+> distruggerebbe quella di un cliente portale: stessa urgenza.
+
 | Pezzo | Cosa cambia |
 | --- | --- |
 | `AmmSoftwareService.create_operatore` | gestisce la credenziale **riusata** (ritorno della madre, brief §5.2): se riusata, la password inserita dall'admin è ignorata e la risposta lo dice |
@@ -241,13 +261,82 @@ l'operatore è l'ultimo SUPER_ADMIN (capability, non un 409 a sorpresa).
 | Ultimo accesso (D-8) | il login riuscito scrive `auth_user.last_login` (SimpleJWT `UPDATE_LAST_LOGIN`, o esplicito nella view: la scelta dipende da quale dei due passa dal serializer multi-veste — da verificare nel lotto) |
 | FE | «Ultimo accesso» nel dettaglio operatore |
 
-⭐ **Regola del 2 da dichiarare prima di scrivere** (memoria di progetto):
-invito operatore e invito portale/shop diventano la **stessa** logica (credenziale,
-veste spenta, token, reinvio atomico). La sede naturale è un building block unico
-d'invito veste in `core`, con la configurazione per veste (`_VESTE_CONFIG`
-esiste già) — e con lui le **due** view di attivazione portale/shop, oggi copie
-all'80% (debito già dichiarato nel catalogo), più quella operatore. Si propone
-a Tid all'apertura del lotto, con l'elenco delle copie che si ritirano.
+⭐ **Regola del 2** — ✅ building block unico, ok Tid 2026-09-25.
+
+### 4.1-bis 🟡 L-3 fatto, tranne il consenso al riuso (2026-09-25)
+
+**Il building block** (`apps/core/services/invito_veste.py` +
+`apps/core/api/attivazione_veste_views.py`; FE `AttivazioneVestePage` +
+`core/api/attivazioneVeste.js`): operatore, portale e shop passano da una strada
+sola; fra le vesti cambia la **porta** (token, template, link, codici). Copie
+ritirate e dettaglio nel catalogo BB backend, sezione «Invito e attivazione di
+una veste».
+
+| Pezzo | Fatto |
+| --- | --- |
+| Creazione (B-1) | `crea_operatore` sulla madre P-2 (`SELECT … FROM fn_crea_operatore_v2`, senza `p_attivo`); la risposta porta `credenziale_riusata`. ⛔ L'admin **non sceglie più la password**: credenziale nuova col segnaposto non utilizzabile (regola unica §4.2 dell'analisi), `password` nel payload rifiutato; FE senza campi password e con l'avviso di riuso |
+| Invito (B-2, A-1, A-4) | sulla veste OPERATORE **spenta** (l'unica: più d'una → rifiuto), nessuna password toccata, flusso sulla credenziale, reinvio con i token **della veste** invalidati nella stessa transazione |
+| Attivazione (A-3) | accende la veste; `identita_id` obbligatorio; flusso con un clic anche per l'operatore (token nuovo `ATTIVAZIONE_OPERATORE_CROSS`) |
+| B-3 | `PortaleRepository.find_auth_user_by_email` → `script.fn_get_auth_user_id_for_email` |
+| B-4 | policy e ripieghi dei due codici P-2: già fatti dall'altra sessione |
+| D-8 | il login riuscito scrive `last_login` (nella view, **dopo** il controllo della veste: `UPDATE_LAST_LOGIN` lo scriverebbe anche per chi ha la password giusta e nessuna porta); FE «Ultimo accesso» |
+| FE drawer | «Invia invito» sulla capability `can_invite` del DB (il FE ricopiava `!last_login && is_active`, che con la veste spenta non era **mai** vero), motivo del DB se non invitabile |
+
+⭐ **Difetti trovati facendolo** (tutti chiusi nello stesso giro):
+
+- l'invalidazione dei token e lo stato «PENDING» erano **per credenziale**:
+  cliente e fornitore portale della stessa persona condividono i tipi, e il
+  reinvio dell'uno spegneva l'invito dell'altro → per **veste**
+  (`meta.identita_id`);
+- un token INVITO su una credenziale che **nel frattempo** ha una password
+  vera la sovrascriveva → la credenziale decide anche all'attivazione
+  (`richiede_password`);
+- le tre pagine FE di attivazione dicevano «link non valido» (e toglievano il
+  form) anche per una **password rifiutata dalla policy**: stesso codice
+  d'errore → la pagina ri-verifica il token;
+- `"azienda": "ZeroErp"` scritto a mano in quattro punti → `NOME_SISTEMA_EMAIL`.
+
+**Prove**: `apps/core/tests/services/test_invito_veste.py` (BB, 20),
+`test_invito_operatore` riscritto, cablaggio per porta nei test di portale e
+shop, `test_amm_software_service` / `test_crea_operatore` sul contratto nuovo;
+⭐ **sul DB vero** `test_login_credenziale_db.CicloOperatoreDbTests`: madre →
+invito → attivazione → login 200 + `last_login`, tutto costruito (chiude anche il
+«login riuscito preso da un superuser esistente» di §3.1-bis).
+
+⏸️ **Resta: il consenso al riuso (rev -51 della madre, brief §12.7).** Su
+dbdev la madre ha già `p_riusa_auth_user_id` ed `E_CREDENZIALE_DA_CONFERMARE` /
+`E_CREDENZIALE_ALTRA_PERSONA`, in git **non ancora**. Il backend chiama la madre
+per nome senza quel parametro, quindi va con tutte e due le versioni; oggi su
+dbdev una email già usata risponde `E_CREDENZIALE_DA_CONFERMARE`. Quando la -51
+è in git: `riusa_auth_user_id` nel payload di creazione → madre; FE dialog «questa
+email è di X: usare il suo accesso?» sul contesto del codice; il test
+`test_credenziale_riusata_un_clic_e_password_intatta` (oggi `skip` dichiarato)
+esercita il consenso.
+
+⭐ **Revisione critica del lotto (2026-09-25)** — quattro difetti, chiusi:
+
+- ⛔ **il «per veste» era vero solo coi mock**: `TokenRepository.create`
+  invalidava ancora per **tipo e credenziale**, quindi l'invito della veste
+  fornitore portale spegneva quello pendente della veste cliente della stessa
+  persona — il difetto che il lotto dichiarava chiuso. `create` ora non
+  invalida niente; l'emissione del BB invalida **sempre** i token della veste
+  (primo invito o reinvio: un link vivo per veste, via il flag `reinvio`), il
+  reset password invalida da sé nella propria transazione. Prova sul DB vero:
+  `apps/core/tests/db/test_token_veste_db.py`, **rossa** sul codice di prima;
+  chiude anche l'altra metà di F-3 (`invita` lasciava due link validi);
+- drawer operatore: il motivo del «non invitabile» si nascondeva con `u.attivo`,
+  che nel dettaglio è `risorse_umane.attivo` e non la veste — cioè proprio per
+  l'operatore appena creato. Ora si mostra sempre quando l'invito non è
+  ammesso (anche «veste già attiva»): vedi R-9;
+- pagina di attivazione: dopo il successo il pulsante restava attivo, e un
+  secondo clic, ri-verificando il token consumato, sostituiva l'esito con
+  «link non valido»;
+- pulizia: SQL di lettura del nome fuori dal service (`AuthRepository.get_nomi_credenziale`,
+  seconda copia di `_get_user_names` dell'operatore), `codiceErrore` morto in
+  `PORTE_ATTIVAZIONE`, `conPassword` restituito e mai letto, codice
+  `E_INVITO_PORTALE` riscritto a mano invece che preso dalla porta.
+
+⚠️ **Richieste nuove al DB** → §5 R-3 (esteso), R-9.
 
 ### 4.2 L-4 — Chiave d'ingresso per porta (D-9)
 
@@ -301,14 +390,15 @@ dipendono dalle vesti: possono partire da sole.
 
 | # | Richiesta | Per |
 | --- | --- | --- |
-| R-1 | `script.fn_check_operatore_invitabile`: via la condizione `last_login IS NULL` e «veste OPERATORE già attiva» come rifiuto; ⚠️ oggi pretende l'identità **attiva** per invitare — con la veste che nasce spenta va rovesciata | L-3, D-8 |
-| R-2 | La madre `fn_crea_operatore_v2` crea la veste OPERATORE **non attiva** anche per una credenziale **nuova** (il brief §5.2 lo chiede solo per quella riusata) | L-3 |
-| R-3 | Template `INVITO_OPERATORE` con la variabile del nome utente | L-4, D-9 |
+| R-1 | `script.fn_check_operatore_invitabile`: via la condizione `last_login IS NULL` e «veste OPERATORE già attiva» come rifiuto; ⚠️ oggi pretende l'identità **attiva** per invitare — con la veste che nasce spenta va rovesciata. ✅ **Consegnata nel P-2** (`20260925-43`, brief §12) | L-3, D-8 |
+| R-2 | La madre `fn_crea_operatore_v2` crea la veste OPERATORE **non attiva** anche per una credenziale **nuova** (il brief §5.2 lo chiede solo per quella riusata). ✅ **Consegnata nel P-2** (`20260925-42`, brief §12) | L-3 |
+| R-3 | Template `INVITO_OPERATORE` con la variabile del nome utente. ⚠️ **Esteso** (L-3, 2026-09-25): i template `INVITO_OPERATORE` e `INVITO_PORTALE` dicono sempre «imposta la password», anche nel flusso con un clic; il backend passa `is_cross` a tutti e tre (`INVITO_SHOP` lo dichiara già fra le variabili, ma il testo non lo usa). Serve il ramo «attiva l'accesso con le credenziali che hai già» | L-4, D-9, L-3 |
 | R-4 | La veste ricorda di essere stata **revocata** dall'admin (chi, quando), e la riattivazione self-service la rifiuta (sede della regola: DB) | L-5, D-4 |
 | R-5 | `DISABILITATO` **si ritira** come valore di `ruolo_applicativo` (§6 Q-2, deciso): la sua sorte nel tipo `config.ruolo_applicativo` e nei lettori (`fn_is_super_admin`, catena permessi, `trgfn_identita_digitali_guard_coerenza` che oggi lo esenta); le righe che oggi lo portano tornano al ruolo che avevano (dati di sviluppo, a mano) | L-5 |
 | R-6 | Una funzione di lettura dello stato di blocco dell'admin (`bloccata_at`, `bloccata_da`, `motivo_blocco`) per il dettaglio operatore: le tabelle sono chiuse all'app | L-2 |
 | R-7 | **La risposta del login non dipende dall'esistenza dello username** (✅ Tid, 2026-09-25). Oggi il freno e l'attesa hanno per chiave la **credenziale**: un nome inesistente non conta nulla e resta 401 per sempre, uno esistente dopo la soglia risponde 403 `E_UTENTE_BLOCCATO` (e oltre il tetto `E_LOGIN_ATTESA`) ⇒ chi prova sei password sa se l'utente esiste. La regola, sul modello: **il freno e l'attesa valgono per il NOME TENTATO**, esista o no. Per un nome inesistente, stessa soglia, stesso tetto, stessi codici, stesse due chiamate (check prima, registrazione dopo), così nemmeno il numero di chiamate al DB distingue i due casi. Vincoli: ⛔ il nome **non** si salva in chiaro (nel campo username finiscono anche delle password digitate lì per sbaglio): un hash del nome **normalizzato con la stessa regola del lookup** (oggi uguaglianza esatta sullo username; con L-4 email senza maiuscole, e la normalizzazione deve seguirla); righe con `cleanup_at` come `credenziali_provenienze`; nessuna riga in `config.credenziali` per un nome che non è una credenziale. La forma (tabella a parte o parametro nuovo delle stesse funzioni) la sceglie il DB. ⚠️ Due punti da decidere col brief: (a) hash semplice o HMAC con una chiave del backend: l'hash semplice di una password finita nel campo username si può attaccare offline; (b) `E_CREDENZIALE_BLOCCATA` continua a rivelare che il nome esiste, ma solo per una credenziale bloccata dall'admin, e al titolare quella frase serve per sapere a chi rivolgersi: proposta, **accettarlo e dichiararlo** | L-1 (chiusura) |
 | R-8 | Testo di `E_UTENTE_BLOCCATO` in `messaggi_errore.csv` (✅ Tid, 2026-09-25): oggi dice «Account temporaneamente bloccato per troppi tentativi.», ma il freno riguarda la sola **coppia credenziale + provenienza**, e da un'altra postazione si entra. Proposta: «Troppi tentativi non riusciti da questa postazione: accesso sospeso per qualche minuto.» (lo stesso testo della chiave i18n del login, §3.2). Il BE poi riallinea il ripiego in `error_messages_fallback.py`, **dopo** il changeSet: mai prima, o il ripiego sarebbe avanti rispetto al catalogo | L-1 (chiusura) |
+| R-9 | `script.fn_get_operatore_detail` porti lo stato della **veste** OPERATORE (es. `veste_attiva`): oggi `attivo` è quello della risorsa umana e `is_active` quello della credenziale (derivato da **tutte** le vesti), e il FE non ha come distinguere «veste già attiva» dagli altri motivi del non invitabile se non leggendo il testo. ⚠️ La join sulla veste OPERATORE è senza filtro: con più vesti OPERATORE spente (il modello le ammette) il dettaglio restituisce più righe | L-3 (drawer) |
 
 ---
 

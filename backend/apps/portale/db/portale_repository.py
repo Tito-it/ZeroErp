@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from django.contrib.auth.hashers import is_password_usable
 from django.db import connection
 
 
@@ -106,31 +105,17 @@ class PortaleRepository:
             cols = [c.name for c in cursor.description or []]
             return dict(zip(cols, row))
 
-    # Scopo: Verifica se esiste gia' un auth_user con la stessa email.
-    # Il vincolo UNIQUE su email e' a livello DB; questo check anticipa
-    # l'errore lato service con un codice di errore parlante.
+    # Scopo: La credenziale di un'email, senza distinguere maiuscole e
+    # minuscole. La regola vive nel DB (`script.fn_get_auth_user_id_for_email`,
+    # P-2): la stessa della madre dell'operatore, cosi' portale e operatore
+    # riconoscono la stessa persona. Due credenziali con la stessa email →
+    # `E_CREDENZIALE_EMAIL_AMBIGUA` dal DB (prima un `LIMIT 1` ne sceglieva
+    # una a caso). Email vuota o sconosciuta → None.
     def find_auth_user_by_email(self, email: str) -> int | None:
-        sql = "SELECT id FROM django.auth_user WHERE LOWER(email) = LOWER(%s) LIMIT 1"
         with connection.cursor() as cursor:
-            cursor.execute(sql, [email])
+            cursor.execute("SELECT script.fn_get_auth_user_id_for_email(%s)", [email])
             row = cursor.fetchone()
-            return int(row[0]) if row else None
-
-    # Scopo: Dice se l'auth_user ha una password VERA, cioe' una credenziale
-    # che la persona ha scelto (attivando un invito, come operatore, col
-    # reset). E' il discriminante dei due flussi d'invito: chi non ce l'ha
-    # deve sceglierla (INVITO), chi ce l'ha attiva solo la veste (CROSS).
-    # Un auth_user creato da un invito nasce col segnaposto `!`, che Django
-    # tratta come password non utilizzabile, e lo resta finche' l'invito non
-    # si attiva. ⛔ Non «l'utente e' stato appena creato»: al reinvio l'utente
-    # esiste gia' e non ha mai scelto niente (M-3 dell'analisi difetti).
-    # Utente inesistente = False.
-    def auth_user_ha_password(self, auth_user_id: int) -> bool:
-        sql = "SELECT password FROM django.auth_user WHERE id = %s"
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [auth_user_id])
-            row = cursor.fetchone()
-        return bool(row) and is_password_usable(row[0])
+            return int(row[0]) if row and row[0] is not None else None
 
     # Scopo: Crea una nuova riga auth_user per un portale user.
     # Username derivato da email (prefisso prima della @), con suffisso
@@ -201,24 +186,10 @@ class PortaleRepository:
             assert row is not None
             return int(row[0])
 
-    # Scopo: Attiva un'identita portale disattivata: al consumo del token
-    # d'invito, in entrambi i flussi (M-3, 2026-09-24). Estratta dal service per
-    # rispettare il pattern 3-layer: l'accesso DB sta nel repository, il
-    # service non emette SQL diretto.
-    def riattiva_identita(self, identita_id: int) -> bool:
-        sql = """
-            UPDATE anagrafiche.identita_digitali
-               SET attivo = true, data_update = now()
-             WHERE id = %s
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [identita_id])
-            return cursor.rowcount > 0
-
-    # Scopo: Disattiva un'identita senza eliminarla (soft revoke). Simmetrica
-    # a `riattiva_identita`. Serve all'admin per revocare una veste portale o
-    # shop a un cliente/fornitore senza perdere lo storico (l'identita potra'
-    # essere riattivata con nuovo invito o direttamente).
+    # Scopo: Disattiva un'identita senza eliminarla (soft revoke). Il verso
+    # opposto e' `AuthRepository.attiva_identita`, al consumo di un nuovo
+    # invito. Serve all'admin per revocare una veste portale o shop a un
+    # cliente/fornitore senza perdere lo storico.
     # Ritorna True se ha effettivamente aggiornato una riga (identita esisteva
     # e attivo era true o comunque la UPDATE e' passata).
     def disattiva_identita(self, identita_id: int) -> bool:
@@ -262,6 +233,9 @@ class PortaleRepository:
                 SELECT MAX(t.scadenza) AS token_scade_at
                   FROM config.token_monouso t
                   JOIN id_row r ON r.auth_user_id = t.auth_user_id
+                 -- Il token della VESTE, non della credenziale: cliente e
+                 -- fornitore portale condividono i tipi di token.
+                   AND t.meta ->> 'identita_id' = r.id::text
                  WHERE t.tipo = ANY(%s::text[])
                    AND t.utilizzato = false
                    AND t.scadenza > now()

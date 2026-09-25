@@ -2,181 +2,111 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Test unitari per InvitoOperatoreService e AttivazioneView.
-#        Mock DB e SMTP, compatibile CI senza database reale.
+# Scopo: Test unitari per InvitoOperatoreService: la parte dell'operatore
+#        (check del DB, veste spenta da invitare) e la consegna al building
+#        block `InvitoVeste` (emissione, reinvio, email). L'attivazione e'
+#        del BB: test_invito_veste. Mock DB e BB, compatibile CI.
 # ------------------------------------------------------------
 
 """
 Indice test eseguiti:
-1) InvitoTests.test_invia_invito_happy_path
-2) InvitoTests.test_invito_non_invitabile_raises
-3) InvitoTests.test_reinvia_invalida_precedente
-4) InvitoTests.test_mask_email
-5) AttivazioneTests.test_consume_valid_token
-6) AttivazioneTests.test_consume_invalid_raises
-7) AttivazioneTests.test_password_mismatch_raises
+1) InvitoTests.test_invia_invito_emette_sulla_veste_spenta
+2) InvitoTests.test_invito_non_tocca_la_password
+3) InvitoTests.test_non_invitabile_solleva_col_motivo_del_db
+4) InvitoTests.test_reinvio_e_la_stessa_strada
+5) InvitoTests.test_piu_vesti_spente_rifiuta
+6) InvitoTests.test_nessuna_veste_spenta_rifiuta
 """
 
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+from apps.core.services.invito_veste import PORTA_OPERATORE, EmissioneInvito
 from apps.core.services.service_errors import ServiceError
 
 _SVC_PATH = "apps.anagrafiche.services.invito_operatore_service"
-_AUTH_REPO = f"{_SVC_PATH}.AuthRepository"
-_TOKEN_SVC = f"{_SVC_PATH}.TokenService"
-_EMAIL_SVC = f"{_SVC_PATH}.EmailDispatchService"
-_CONNECTION = f"{_SVC_PATH}.connection"
-_SETTINGS = f"{_SVC_PATH}.settings"
+
+
+def _servizio(*, invitabile=True, motivo=None, vesti=None):
+    """Scopo: Il service con repository e BB finti. `vesti` = le OPERATORE."""
+    with patch(f"{_SVC_PATH}.AuthRepository") as MockAuth, \
+         patch(f"{_SVC_PATH}.InvitoVeste") as MockInvito:
+        from apps.anagrafiche.services.invito_operatore_service import InvitoOperatoreService
+        svc = InvitoOperatoreService()
+    auth = MockAuth.return_value
+    invito = MockInvito.return_value
+    auth.find_identita_per_ruolo.return_value = (
+        vesti if vesti is not None else [{"id": 700, "attivo": False}]
+    )
+    auth.get_unita_organizzativa_id.return_value = 5
+    invito.emetti.return_value = EmissioneInvito(token="tok", is_cross=False)
+    svc._check_invitabile = MagicMock(return_value={
+        "invitabile": invitabile, "motivo": motivo, "email": "mario@test.com",
+    })
+    auth.get_nomi_credenziale.return_value = {
+        "first_name": "Mario", "last_name": "Rossi", "username": "mrossi",
+    }
+    return svc, auth, invito
 
 
 class InvitoTests(TestCase):
 
-    # Scopo: Verifica flusso completo invito: check + password + token + email + flag.
-    @patch(_SETTINGS)
-    @patch(_CONNECTION)
-    @patch(_EMAIL_SVC)
-    @patch(_TOKEN_SVC)
-    @patch(_AUTH_REPO)
-    def test_invia_invito_happy_path(self, MockAuth, MockToken, MockEmail, mock_conn, mock_settings):
-        mock_settings.FRONTEND_URL = "https://localhost"
-        auth = MockAuth.return_value
-        token = MockToken.return_value
-        email = MockEmail.return_value
-
-        # Mock check invitabile
-        mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = ({"invitabile": True, "motivo": None, "email": "mario@test.com"},)
-        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
-        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
-
-        auth.get_unita_organizzativa_id.return_value = 5
-        # Post §8.4.1: il service risolve l'identita OPERATORE prima di
-        # propagare identita_id a set_invito_inviato_at. Il cambio password
-        # obbligatorio e' della credenziale (D-7): niente identita_id.
-        auth.find_identita_attiva_for_ruoli.return_value = {
-            "id": 700,
-            "soggetto_ruolo_id": 7,
-            "ruolo_applicativo": "OPERATORE",
-        }
-        auth.set_deve_cambiare_password.return_value = True
-        auth.set_invito_inviato_at.return_value = True
-        token.create.return_value = "invito_token_123"
-        email.send_email.return_value = (1, True)
-
-        from apps.anagrafiche.services.invito_operatore_service import InvitoOperatoreService
-        service = InvitoOperatoreService()
-        # Mock _get_user_display_name e _get_user_names
-        service._get_user_display_name = MagicMock(return_value="Admin Utente")
-        service._get_user_names = MagicMock(return_value={"first_name": "Mario", "last_name": "Rossi"})
-        service._check_invitabile = MagicMock(return_value={
-            "invitabile": True, "motivo": None, "email": "mario@test.com",
-        })
-
-        result = service.invia_invito(42, invitato_da_user_id=1)
+    # Scopo: Invito sulla veste OPERATORE spenta: emissione e spedizione del
+    # BB con la porta OPERATORE, email mascherata nella risposta.
+    def test_invia_invito_emette_sulla_veste_spenta(self):
+        svc, _, invito = _servizio()
+        result = svc.invia_invito(42, invitato_da_user_id=1)
 
         self.assertTrue(result["inviato"])
-        self.assertIn("***", result["email"])
-        auth.set_deve_cambiare_password.assert_called_once_with(42, True)
-        auth.set_invito_inviato_at.assert_called_once_with(42, identita_id=700)
-        token.create.assert_called_once()
-        email.send_email.assert_called_once()
+        self.assertEqual(result["email"], "m***@test.com")
+        kwargs = invito.emetti.call_args.kwargs
+        self.assertIs(invito.emetti.call_args.args[0], PORTA_OPERATORE)
+        self.assertEqual(kwargs["identita_id"], 700)
+        self.assertEqual(kwargs["ruolo_applicativo"], "OPERATORE")
+        spedisci = invito.spedisci.call_args.kwargs
+        self.assertEqual(spedisci["destinatario"], "mario@test.com")
+        self.assertEqual(spedisci["variabili"], {"nome": "Mario", "cognome": "Rossi"})
+        self.assertEqual(spedisci["unita_organizzativa_id"], 5)
 
-    # Scopo: Verifica che operatore non invitabile lanci errore.
-    @patch(_CONNECTION)
-    @patch(_EMAIL_SVC)
-    @patch(_TOKEN_SVC)
-    @patch(_AUTH_REPO)
-    def test_invito_non_invitabile_raises(self, MockAuth, MockToken, MockEmail, mock_conn):
-        from apps.anagrafiche.services.invito_operatore_service import InvitoOperatoreService
-        service = InvitoOperatoreService()
-        service._check_invitabile = MagicMock(return_value={
-            "invitabile": False, "motivo": "Utente ha gia' effettuato login", "email": "x@test.com",
-        })
+    # Scopo: A-1 — l'invito non sovrascrive la password e non accende il
+    # cambio obbligatorio: la credenziale puo' essere anche di un cliente.
+    def test_invito_non_tocca_la_password(self):
+        svc, auth, _ = _servizio()
+        with patch(f"{_SVC_PATH}.connection") as mock_conn:
+            svc.invia_invito(42, invitato_da_user_id=1)
+        mock_conn.cursor.assert_not_called()
+        auth.set_deve_cambiare_password.assert_not_called()
 
+    # Scopo: Il motivo del rifiuto e' quello del DB (regola nuova: veste gia'
+    # attiva), e non si emette niente.
+    def test_non_invitabile_solleva_col_motivo_del_db(self):
+        svc, _, invito = _servizio(invitabile=False, motivo="Veste OPERATORE gia' attiva")
+        with self.assertRaises(ServiceError) as ctx:
+            svc.invia_invito(42, invitato_da_user_id=1)
+        self.assertEqual(ctx.exception.code, "E_INVITO_OPERATORE")
+        self.assertIn("gia' attiva", ctx.exception.message)
+        invito.emetti.assert_not_called()
+
+    # Scopo: A-4 — il reinvio non invalida da se', fuori transazione: passa
+    # dalla stessa emissione del BB, che invalida i token della veste dentro
+    # la propria transazione.
+    def test_reinvio_e_la_stessa_strada(self):
+        svc, _, invito = _servizio()
+        svc.reinvia_invito(42, invitato_da_user_id=1)
+        invito.emetti.assert_called_once()
+        self.assertEqual(invito.emetti.call_args.kwargs["identita_id"], 700)
+        invito.invalida.assert_not_called()
+
+    # Scopo: Il modello ammette piu' vesti spente: non se ne sceglie una a caso.
+    def test_piu_vesti_spente_rifiuta(self):
+        svc, _, invito = _servizio(vesti=[{"id": 1, "attivo": False}, {"id": 2, "attivo": False}])
+        with self.assertRaises(ServiceError) as ctx:
+            svc.invia_invito(42, invitato_da_user_id=1)
+        self.assertIn("intervento manuale", ctx.exception.message)
+        invito.emetti.assert_not_called()
+
+    def test_nessuna_veste_spenta_rifiuta(self):
+        svc, _, invito = _servizio(vesti=[{"id": 1, "attivo": True}])
         with self.assertRaises(ServiceError):
-            service.invia_invito(42, invitato_da_user_id=1)
-
-    # Scopo: Verifica che reinvia invalidi token precedenti.
-    @patch(_SETTINGS)
-    @patch(_CONNECTION)
-    @patch(_EMAIL_SVC)
-    @patch(_TOKEN_SVC)
-    @patch(_AUTH_REPO)
-    def test_reinvia_invalida_precedente(self, MockAuth, MockToken, MockEmail, mock_conn, mock_settings):
-        mock_settings.FRONTEND_URL = "https://localhost"
-        token = MockToken.return_value
-        auth = MockAuth.return_value
-        email = MockEmail.return_value
-        token.invalidate_all.return_value = 1
-        token.create.return_value = "nuovo_token"
-        auth.get_unita_organizzativa_id.return_value = None
-        # Post §8.4.1: serve identita OPERATORE per set_*.
-        auth.find_identita_attiva_for_ruoli.return_value = {
-            "id": 700,
-            "soggetto_ruolo_id": 7,
-            "ruolo_applicativo": "OPERATORE",
-        }
-        auth.set_deve_cambiare_password.return_value = True
-        auth.set_invito_inviato_at.return_value = True
-        email.send_email.return_value = (1, True)
-
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
-        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
-
-        from apps.anagrafiche.services.invito_operatore_service import InvitoOperatoreService
-        service = InvitoOperatoreService()
-        service._check_invitabile = MagicMock(return_value={
-            "invitabile": True, "motivo": None, "email": "mario@test.com",
-        })
-        service._get_user_display_name = MagicMock(return_value="Admin")
-        service._get_user_names = MagicMock(return_value={"first_name": "Mario", "last_name": ""})
-
-        service.reinvia_invito(42, invitato_da_user_id=1)
-
-        token.invalidate_all.assert_called_once_with("INVITO_OPERATORE", 42)
-
-    # Scopo: Verifica mascheramento email.
-    def test_mask_email(self):
-        from apps.anagrafiche.services.invito_operatore_service import InvitoOperatoreService
-        self.assertEqual(InvitoOperatoreService._mask_email("mario@test.com"), "m***@test.com")
-        self.assertEqual(InvitoOperatoreService._mask_email("a@test.com"), "*@test.com")
-        self.assertEqual(InvitoOperatoreService._mask_email("x"), "***")
-        self.assertEqual(InvitoOperatoreService._mask_email(""), "***")
-
-
-class AttivazioneTests(TestCase):
-
-    # Scopo: Verifica che token valido attivi l'account.
-    @patch("apps.core.api.attivazione_view._auth_repo")
-    @patch("apps.core.api.attivazione_view._token_service")
-    @patch("apps.core.api.attivazione_view.User")
-    @patch("apps.core.api.attivazione_view.validate_password")
-    @patch("apps.core.api.attivazione_view.get_client_ip", return_value="10.0.0.1")
-    def test_consume_valid_token(self, mock_ip, mock_validate, MockUser, mock_token, mock_auth):
-        mock_token.consume.return_value = 42
-        mock_user = MagicMock()
-        mock_user.id = 42
-        MockUser.objects.filter.return_value.first.return_value = mock_user
-        mock_auth.set_deve_cambiare_password.return_value = True
-
-        # Verifica che consume venga chiamato
-        result = mock_token.consume("token123", "INVITO_OPERATORE", ip="10.0.0.1")
-        self.assertEqual(result, 42)
-
-    # Scopo: Verifica che token invalido lanci errore.
-    def test_consume_invalid_raises(self):
-        from apps.core.services.error_manager import ErrorManager
-        with self.assertRaises(ServiceError):
-            ErrorManager.require(False, code="E_TOKEN", message="Token non valido.")
-
-    # Scopo: Verifica che password non corrispondenti lancino errore.
-    def test_password_mismatch_raises(self):
-        from apps.core.services.error_manager import ErrorManager
-        with self.assertRaises(ServiceError):
-            ErrorManager.require(
-                "abc" == "xyz",
-                code="E_ATTIVAZIONE",
-                message="La nuova password e la conferma non coincidono.",
-            )
+            svc.invia_invito(42, invitato_da_user_id=1)
+        invito.emetti.assert_not_called()

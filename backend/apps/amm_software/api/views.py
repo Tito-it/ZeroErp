@@ -94,7 +94,11 @@ class OperatoriListView(AdminAPIView):
         description=(
             "Due flussi: se soggetto_id presente, associa soggetto esistente "
             "(cognome/nome/CF non richiesti). Se assente, crea soggetto PF nuovo "
-            "(cognome/nome/CF obbligatori)."
+            "(cognome/nome/CF obbligatori). La veste operatore nasce spenta: la "
+            "accende l'attivazione dell'invito, dove la persona sceglie la "
+            "password (`password` non e' ammesso). Se l'email e' gia' di una "
+            "credenziale, la si riusa: `credenziale_riusata` e `username` "
+            "nella risposta lo dicono."
         ),
         request=inline_serializer(name="OperatoriCreateReq", fields={
             "soggetto_id": serializers.CharField(required=False, help_text="UUID soggetto esistente (flusso B). Se assente, crea nuovo (flusso A)."),
@@ -103,7 +107,6 @@ class OperatoriListView(AdminAPIView):
             "codice_fiscale": serializers.CharField(required=False, help_text="Obbligatorio solo flusso A."),
             "username": serializers.CharField(),
             "email": serializers.CharField(),
-            "password": serializers.CharField(),
             "qualifica_id": serializers.IntegerField(),
             "is_super_admin": serializers.BooleanField(required=False),
             "unita_organizzativa_id": serializers.IntegerField(required=False),
