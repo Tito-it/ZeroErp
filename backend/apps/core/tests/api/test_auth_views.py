@@ -17,6 +17,9 @@ Indice test eseguiti:
  7) AuditAuthViewsTests.test_refresh_username_non_risolvibile_fail_open
  8) AuditAuthViewsTests.test_veste_non_attiva_non_registra_tentativo
  9) AuditAuthViewsTests.test_base_astratta_guard_solleva_assertion
+ 9b) AuditAuthViewsTests.test_login_senza_provenienza_rifiuta_senza_cercare_l_utente
+ 9c) AuditAuthViewsTests.test_login_fallito_registra_con_la_provenienza
+ 9d) AuditAuthViewsTests.test_login_riuscito_registra_e_legge_il_flag_della_credenziale
 10) ExtractIdentitaIdFromRefreshTests.test_none_returns_none
 11) ExtractIdentitaIdFromRefreshTests.test_empty_string_returns_none
 12) ExtractIdentitaIdFromRefreshTests.test_invalid_token_fail_open
@@ -37,6 +40,10 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from rest_framework.response import Response
+# ⛔ Quello di DRF: e' cio' che solleva davvero il serializer di SimpleJWT
+# (la classe omonima di SimpleJWT ne e' una sottoclasse, e con lei il test
+# era verde mentre la view non contava nessun fallimento).
+from rest_framework.exceptions import AuthenticationFailed
 
 from apps.core.api.auth_views import (
     AdminTokenRefreshView,
@@ -53,12 +60,22 @@ from apps.core.services.auth_constants import (
     RUOLO_APPLICATIVO_OPERATORE,
     RUOLO_APPLICATIVO_SHOP_CUSTOMER,
 )
+from apps.core.services.service_errors import ServiceError
 
 _SERVICE = "apps.core.api.auth_views.session_audit_service"
 _SET_GUCS = "apps.core.api.auth_views.set_jwt_gucs"
+_GET_IP = "apps.core.api.auth_views.get_client_ip"
+_IP = "203.0.113.7"
 
 
 class AuditAuthViewsTests(TestCase):
+
+    # La provenienza la ricava il BB `get_client_ip` (provato in
+    # test_request_context): qui si fissa, le request sono MagicMock.
+    def setUp(self):
+        patcher = patch(_GET_IP, return_value=_IP)
+        self.mock_get_ip = patcher.start()
+        self.addCleanup(patcher.stop)
 
     # Scopo: Verifica che login con successo chiami record_login con user_id e jti.
     @patch(f"{_SERVICE}.record_login")
@@ -279,8 +296,82 @@ class AuditAuthViewsTests(TestCase):
             view.post(request)
 
         # check_blocco_login si', registra_tentativo_login NO.
-        mock_repo.check_blocco_login.assert_called_once_with(42)
+        mock_repo.check_blocco_login.assert_called_once_with(42, provenienza=_IP)
         mock_repo.registra_tentativo_login.assert_not_called()
+
+    # Scopo: Senza provenienza il freno non si applica: il login si rifiuta
+    # (fail-closed) PRIMA di cercare l'utente, cosi' la risposta non dice se
+    # lo username esiste, e il DB non riceve mai una provenienza NULL.
+    @patch("apps.core.api.auth_views._auth_repo")
+    @patch.object(AuditTokenObtainPairView, "_find_user")
+    @patch("rest_framework_simplejwt.views.TokenObtainPairView.post")
+    def test_login_senza_provenienza_rifiuta_senza_cercare_l_utente(
+        self, mock_super_post, mock_find_user, mock_repo
+    ):
+        self.mock_get_ip.return_value = None
+        request = MagicMock()
+        request.data = {"username": "tid"}
+
+        with self.assertRaises(ServiceError) as ctx:
+            AdminTokenView().post(request)
+
+        self.assertEqual(ctx.exception.code, "E_AUTH_CHIAMATA_NON_VALIDA")
+        mock_find_user.assert_not_called()
+        mock_repo.check_blocco_login.assert_not_called()
+        mock_repo.registra_tentativo_login.assert_not_called()
+        mock_super_post.assert_not_called()
+
+    # Scopo: Password sbagliata → il fallimento si registra sulla coppia
+    # credenziale + provenienza.
+    @patch("apps.core.api.auth_views._auth_repo")
+    @patch.object(AuditTokenObtainPairView, "_find_user")
+    @patch("rest_framework_simplejwt.views.TokenObtainPairView.post")
+    def test_login_fallito_registra_con_la_provenienza(
+        self, mock_super_post, mock_find_user, mock_repo
+    ):
+        mock_find_user.return_value = MagicMock(id=42, username="tid")
+        mock_repo.registra_tentativo_login.return_value = {
+            "bloccato": False, "attesa_secondi": 0,
+        }
+        mock_super_post.side_effect = AuthenticationFailed()
+        request = MagicMock()
+        request.data = {"username": "tid"}
+
+        with self.assertRaises(AuthenticationFailed):
+            AdminTokenView().post(request)
+
+        mock_repo.check_blocco_login.assert_called_once_with(42, provenienza=_IP)
+        mock_repo.registra_tentativo_login.assert_called_once_with(
+            42, provenienza=_IP, successo=False,
+        )
+
+    # Scopo: Login riuscito → successo registrato sulla coppia; il cambio
+    # password obbligatorio si legge dalla CREDENZIALE (D-7), senza veste.
+    @patch(f"{_SERVICE}.record_login")
+    @patch.object(AuditTokenObtainPairView, "_extract_claims", return_value=(42, "jti-abc"))
+    @patch.object(AuditTokenObtainPairView, "_find_user")
+    @patch("apps.core.api.auth_views._auth_repo")
+    @patch("rest_framework_simplejwt.views.TokenObtainPairView.post")
+    @patch(_SET_GUCS)
+    def test_login_riuscito_registra_e_legge_il_flag_della_credenziale(
+        self, _mock_set_gucs, mock_super_post, mock_repo,
+        mock_find_user, _mock_extract, _mock_record_login,
+    ):
+        mock_find_user.return_value = MagicMock(id=42, username="tid")
+        mock_repo.get_deve_cambiare_password.return_value = True
+        mock_super_post.return_value = Response(
+            {"access": "tok.en.jwt", "refresh": "ref.tok.en"}, status=200,
+        )
+        request = MagicMock()
+        request._request = MagicMock()
+
+        response = AdminTokenView().post(request)
+
+        mock_repo.registra_tentativo_login.assert_called_once_with(
+            42, provenienza=_IP, successo=True,
+        )
+        mock_repo.get_deve_cambiare_password.assert_called_once_with(42)
+        self.assertTrue(response.data["password_change_required"])
 
     # Scopo: Verifica il guard di astrazione. Chiamare direttamente
     # AuditTokenObtainPairView().post() senza subclasse -> AssertionError.

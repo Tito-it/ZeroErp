@@ -67,11 +67,9 @@ class IdentitaDigitale(models.Model):
     attivo = models.BooleanField(default=True)
     valido_dal = models.DateField(null=True, blank=True)
     valido_al = models.DateField(null=True, blank=True)
-    deve_cambiare_password = models.BooleanField(default=False)
     invito_inviato_at = models.DateTimeField(null=True, blank=True)
-    tentativi_falliti = models.SmallIntegerField(default=0)
-    bloccato_fino_a = models.DateTimeField(null=True, blank=True)
-    totp_obbligatorio = models.BooleanField(default=False)
+    # Tentativi falliti, blocco, cambio password obbligatorio e TOTP sono
+    # della CREDENZIALE, non della veste: config.credenziali (2026-09-25).
     storicizza = models.BooleanField(default=True)
     meta = models.JSONField(default=dict)
     data_insert = models.DateTimeField(auto_now_add=True)

@@ -54,7 +54,7 @@ class InvitoOperatoreService:
         email = check["email"]
 
         # Risolve l'identita OPERATORE dell'auth_user (post modello 1:N
-        # §8.4.1: `set_deve_cambiare_password`/`set_invito_inviato_at`
+        # §8.4.1: `set_invito_inviato_at` e il meta del token
         # richiedono identita_id esplicito per puntare la veste corretta
         # invece di colpire la "prima attiva trovata"). L'invito operatore
         # assume invariante 1 sola identita OPERATORE per auth_user,
@@ -81,10 +81,10 @@ class InvitoOperatoreService:
                     [make_password(temp_password), auth_user_id],
                 )
 
-            # 3. Imposta flag deve_cambiare_password sull'identita OPERATORE
-            self._auth_repo.set_deve_cambiare_password(
-                auth_user_id, True, identita_id=identita_id
-            )
+            # 3. Obbligo di cambio password: e' della CREDENZIALE (D-7).
+            # ⚠️ Con la password sovrascritta al passo 2 (A-1, lo chiude L-3)
+            # vale per tutte le vesti della credenziale, non solo l'operatore.
+            self._auth_repo.set_deve_cambiare_password(auth_user_id, True)
 
             # 4. Genera token invito
             token_plain = self._token_service.create(

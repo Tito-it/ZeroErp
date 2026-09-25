@@ -28,7 +28,6 @@ from apps.core.api.throttling import PasswordResetRateThrottle
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services.auth_helpers import (
     apply_new_password,
-    extract_identita_id_from_token_meta,
     validate_and_extract_token,
 )
 from apps.core.services.error_manager import ErrorManager
@@ -84,7 +83,7 @@ class AttivazioneView(APIView):
             )
 
             # Valida token SENZA consumarlo
-            auth_user_id, meta = validate_and_extract_token(
+            auth_user_id, _ = validate_and_extract_token(
                 token, _INVITO_TOKEN_TIPO, E_ATTIVAZIONE, _token_service,
             )
 
@@ -99,11 +98,6 @@ class AttivazioneView(APIView):
             except DjangoValidationError as exc:
                 ErrorManager.require(False, code=E_ATTIVAZIONE, message=" ".join(exc.messages))
 
-            # identita_id dal meta del token (iniettato da
-            # InvitoOperatoreService §8.4.1): punta la veste OPERATORE,
-            # non una veste arbitraria.
-            identita_id = extract_identita_id_from_token_meta(meta)
-
             # Consuma token + applica password + reset flag (atomico, senza blacklist)
             ip = get_client_ip(request._request if hasattr(request, "_request") else request)
             with transaction.atomic():
@@ -111,7 +105,6 @@ class AttivazioneView(APIView):
                 apply_new_password(
                     user,
                     new_password,
-                    identita_id=identita_id,
                     blacklist_tokens=False,
                     auth_repo=_auth_repo,
                 )

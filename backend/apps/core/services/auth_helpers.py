@@ -121,22 +121,15 @@ def validate_and_extract_token(
     return token_result
 
 
-# Scopo: Applica nuova password, resetta flag deve_cambiare_password,
+# Scopo: Applica nuova password, spegne il cambio password obbligatorio,
 #        opzionalmente blacklista tutti i refresh token JWT precedenti.
 #        Tutto in un'unica transazione atomica.
-# Post modello 1:N (§8.4.1) il flag `deve_cambiare_password` e' per veste
-# (ogni identita_digitali ha il proprio); `identita_id` kw-only:
-#   - valorizzato: reset flag solo sulla veste specifica (es. cambio
-#     password autenticato tocca la veste del JWT corrente, attivazione
-#     invito tocca la veste che si sta attivando).
-#   - None: reset flag su tutte le identita attive dell'utente (semantica
-#     corretta per password reset self-service — l'utente non ha una
-#     veste corrente, sta rientrando su tutto il suo account).
+# L'obbligo di cambio password e' della CREDENZIALE (D-7): la password e' una
+# sola, quindi averla cambiata lo spegne per tutte le vesti.
 def apply_new_password(
     user: User,
     new_password: str,
     *,
-    identita_id: int | None = None,
     blacklist_tokens: bool = True,
     auth_repo: AuthRepository | None = None,
 ) -> None:
@@ -144,9 +137,7 @@ def apply_new_password(
     with transaction.atomic():
         user.set_password(new_password)
         user.save(update_fields=["password"])
-        repo.set_deve_cambiare_password(
-            user.id, False, identita_id=identita_id
-        )
+        repo.set_deve_cambiare_password(user.id, False)
 
         if blacklist_tokens:
             for ot in OutstandingToken.objects.filter(user=user):

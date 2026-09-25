@@ -126,6 +126,13 @@ class MiddlewareTests(TestCase):
 class AuthViewTests(TestCase):
     """Test che il login aggiunga il flag password_change_required."""
 
+    # Il login chiede la provenienza (IP fidato): qui si fissa, la request e'
+    # un MagicMock. La regola dell'IP e' provata in test_request_context.
+    def setUp(self):
+        patcher = patch("apps.core.api.auth_views.get_client_ip", return_value="203.0.113.7")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     # Scopo: Verifica che la response del login includa il flag se attivo.
     @patch(f"{_AUTH_REPO}.get_deve_cambiare_password", return_value=True)
     @patch(f"{_AUTH_REPO}.registra_tentativo_login", return_value={"bloccato": False})
