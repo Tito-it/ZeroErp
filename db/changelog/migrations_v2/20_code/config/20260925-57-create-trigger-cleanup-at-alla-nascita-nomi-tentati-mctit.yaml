@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R-7 — LA SCADENZA NASCE CON LA RIGA: config.nomi_tentati
+#   Brief: brief-db-blocco-login-per-credenziale, sezione 13
+#
+#   Terzo dei quattro pezzi della retention (colonna, regola CLEANUP_AT con
+#   base ultimo_fallimento_at, trigger alla nascita, nessun guard sul DELETE da
+#   aprire): senza, una riga nuova resterebbe a cleanup_at NULL fino al job
+#   notturno. Al rinnovo ci pensa script.fn_registra_tentativo_login. Stampo di
+#   20260925-19 (config.credenziali_provenienze).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260925-57-create-trigger-cleanup-at-alla-nascita-nomi-tentati-mctit.yaml
+
+  - changeSet:
+      id: 20260925-57-create-trigger-cleanup-at-alla-nascita-nomi-tentati
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Trigger trg_nomi_tentati_m50_cleanup_at_ins (BEFORE INSERT,
+        dbops.trgfn_cleanup_at_alla_nascita): la scadenza di una riga nasce con la riga, dalla
+        regola CLEANUP_AT (base ultimo_fallimento_at). Brief: brief-db-blocco-login-per-credenziale §13.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: config, tableName: nomi_tentati }
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'dbops' AND p.proname = 'trgfn_cleanup_at_alla_nascita';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_nomi_tentati_m50_cleanup_at_ins ON config.nomi_tentati;
+              CREATE TRIGGER trg_nomi_tentati_m50_cleanup_at_ins
+                  BEFORE INSERT ON config.nomi_tentati
+                  FOR EACH ROW
+                  EXECUTE FUNCTION dbops.trgfn_cleanup_at_alla_nascita();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_nomi_tentati_m50_cleanup_at_ins ON config.nomi_tentati;

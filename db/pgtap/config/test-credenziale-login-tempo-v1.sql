@@ -45,7 +45,7 @@ CREATE OR REPLACE FUNCTION pg_temp.alla_soglia(p_uid integer, p_prov inet) RETUR
 LANGUAGE plpgsql AS $$
 BEGIN
     FOR i IN 1 .. (SELECT max_tentativi FROM _par) LOOP
-        PERFORM script.fn_registra_tentativo_login(p_uid, p_prov, false);
+        PERFORM script.fn_registra_tentativo_login(p_uid, sha256('pgtap-nome'::bytea), p_prov, false);
     END LOOP;
 END $$;
 
@@ -68,7 +68,7 @@ SELECT pg_temp.mk_cred('check') AS via_check, pg_temp.mk_cred('diretta') AS dire
 -- ============================================================
 SELECT pg_temp.alla_soglia((SELECT via_check FROM _c), '203.0.113.20'::inet);
 SELECT pg_temp.scadi_freno((SELECT via_check FROM _c), '203.0.113.20'::inet);
-SELECT script.fn_check_blocco_login((SELECT via_check FROM _c), '203.0.113.20'::inet);
+SELECT script.fn_check_blocco_login((SELECT via_check FROM _c), sha256('pgtap-nome'::bytea), '203.0.113.20'::inet);
 
 SELECT is(
     (SELECT count(*)::integer FROM config.credenziali_provenienze p
@@ -82,7 +82,7 @@ SELECT pg_temp.scadi_freno((SELECT diretta FROM _c), '203.0.113.21'::inet);
 
 SELECT is(
     (SELECT format('%s|%s', r ->> 'tentativi', r ->> 'bloccato')
-       FROM (SELECT script.fn_registra_tentativo_login((SELECT diretta FROM _c), '203.0.113.21'::inet, false) AS r) x),
+       FROM (SELECT script.fn_registra_tentativo_login((SELECT diretta FROM _c), sha256('pgtap-nome'::bytea), '203.0.113.21'::inet, false) AS r) x),
     '1|false',
     '2) freno scaduto, senza il check: la registrazione riparte da 1 invece di frenare al primo errore');
 
@@ -92,7 +92,7 @@ SELECT is(
 DO $$
 BEGIN
     FOR i IN 1 .. (SELECT tetto_credenziale FROM _par) LOOP
-        PERFORM script.fn_registra_tentativo_login((SELECT attesa FROM _c), ('198.51.100.' || i)::inet, false);
+        PERFORM script.fn_registra_tentativo_login((SELECT attesa FROM _c), sha256('pgtap-nome'::bytea), ('198.51.100.' || i)::inet, false);
     END LOOP;
 END $$;
 
@@ -102,7 +102,7 @@ UPDATE config.credenziali
  WHERE auth_user_id = (SELECT attesa FROM _c);
 
 SELECT throws_like(
-    $$ SELECT script.fn_check_blocco_login((SELECT attesa FROM _c), '192.0.2.30'::inet) $$,
+    $$ SELECT script.fn_check_blocco_login((SELECT attesa FROM _c), sha256('pgtap-nome'::bytea), '192.0.2.30'::inet) $$,
     '%riprovare fra %secondi%',
     '3) a un secondo dalla fine dell''attesa: ancora E_LOGIN_ATTESA');
 
@@ -111,18 +111,18 @@ UPDATE config.credenziali
  WHERE auth_user_id = (SELECT attesa FROM _c);
 
 SELECT lives_ok(
-    $$ SELECT script.fn_check_blocco_login((SELECT attesa FROM _c), '192.0.2.30'::inet) $$,
+    $$ SELECT script.fn_check_blocco_login((SELECT attesa FROM _c), sha256('pgtap-nome'::bytea), '192.0.2.30'::inet) $$,
     '4) attesa trascorsa: il check passa (rallenta, non chiude)');
 
 -- ============================================================
 -- 5 Rinnovo della scadenza
 -- ============================================================
-SELECT script.fn_registra_tentativo_login((SELECT rinnovo FROM _c), '203.0.113.40'::inet, false);
+SELECT script.fn_registra_tentativo_login((SELECT rinnovo FROM _c), sha256('pgtap-nome'::bytea), '203.0.113.40'::inet, false);
 UPDATE config.credenziali_provenienze p
    SET cleanup_at = now() - interval '10 days'
   FROM config.credenziali c
  WHERE c.id = p.credenziale_id AND c.auth_user_id = (SELECT rinnovo FROM _c);
-SELECT script.fn_registra_tentativo_login((SELECT rinnovo FROM _c), '203.0.113.40'::inet, false);
+SELECT script.fn_registra_tentativo_login((SELECT rinnovo FROM _c), sha256('pgtap-nome'::bytea), '203.0.113.40'::inet, false);
 
 SELECT is(
     (SELECT p.cleanup_at FROM config.credenziali_provenienze p

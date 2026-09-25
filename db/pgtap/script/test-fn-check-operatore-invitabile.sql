@@ -17,7 +17,7 @@
 --   prendeva «la prima identita' OPERATORE attiva non super admin» del
 --   database, e su un database senza operatori (la CI) non trovava niente.
 --
--- Elenco test (plan 11):
+-- Elenco test (plan 12):
 --   Chiamate che non arrivano a nessuna credenziale
 --    1) auth_user_id NULL -> invitabile=false
 --    2) auth_user_id <= 0 -> invitabile=false
@@ -33,6 +33,10 @@
 --   Il cablaggio
 --   11) la madre fn_crea_operatore_v2 lascia un operatore INVITABILE (la veste
 --       nasce spenta): e' la ragione per cui la regola si e' rovesciata
+--   Piu' vesti (rev 20260925-53, R-9)
+--   12) due vesti OPERATORE spente sulla stessa credenziale -> invitabile=false:
+--       l'invito ne riaccende UNA e non si sa quale (il verbo del backend lo
+--       rifiuta gia'; la capability deve dire lo stesso)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -46,7 +50,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   Brief: brief-db-pgtap-runner-rls-baseline §19.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(11);
+SELECT plan(12);
 
 -- ============================================================
 -- Fixture: un operatore VERO (madre + invito accettato), non super admin —
@@ -166,6 +170,27 @@ SELECT is(
     (script.fn_check_operatore_invitabile((SELECT user_id FROM tmp_madre)))->>'invitabile',
     'true',
     '11) la madre lascia la veste spenta: l''operatore appena creato e'' invitabile');
+
+-- ============================================================
+-- 12) Due vesti OPERATORE spente sulla stessa credenziale (rev 20260925-53)
+--     La seconda e' una copia spenta della prima: il modello la ammette
+--     (l'unique vale solo WHERE attivo). Email ripristinata, cosi' il
+--     rifiuto non puo' venire dal caso 10.
+-- ============================================================
+UPDATE django.auth_user
+   SET email = '_pgtap_inv_due_' || substring(md5(clock_timestamp()::text) from 1 for 8) || '@example.com'
+ WHERE id = (SELECT user_id FROM tmp_inv);
+
+INSERT INTO anagrafiche.identita_digitali
+       (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo, valido_dal)
+SELECT idg.soggetto_ruolo_id, idg.auth_user_id, idg.ruolo_applicativo, false, idg.valido_dal
+  FROM anagrafiche.identita_digitali idg
+ WHERE idg.id = (SELECT identita_id FROM tmp_inv);
+
+SELECT ok(
+    (SELECT (NOT (r->>'invitabile')::boolean) AND r->>'motivo' ILIKE '%piu%vesti OPERATORE spente%'
+       FROM (SELECT script.fn_check_operatore_invitabile((SELECT user_id FROM tmp_inv)) AS r) x),
+    '12) due vesti OPERATORE spente -> invitabile=false, motivo proprio');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -76,6 +76,19 @@
 #   trigger INVOKER anti-lockout. Forward su dev: `90_end/20260925-24`; terza
 #   sede lo stesso blocco del provisioning; pgTAP
 #   `db/pgtap/config/test-credenziali-porta-v1.sql`.
+#   ⭐ Dal 2026-09-25 anche le gemelle del NOME TENTATO (R-7, sezione 13):
+#   `config.nomi_tentati` e `config.nomi_tentati_provenienze`, stessa porta.
+#
+# ── ⭐ LA PORTA DEL PANNELLO DI CONFIGURAZIONE (dal 2026-09-25) ─────────────
+#   Brief: brief-db-pannello-config-verbo-generico, sezione 3.5
+#   `magazzino.causali` e `config.tabelle_gestibili` entrano in
+#   `v_tabelle_sola_lettura_app`: le causali le scrive il verbo generico
+#   config.fn_pannello_scrivi (livello TUTTO sull'oggetto), la lista la scrive
+#   solo il seed (e' una porta: il verbo scrive come proprietario su ogni tabella
+#   che vi compare). Forward su dev: `90_end/20260925-34`; terza sede il blocco
+#   del provisioning; pgTAP `db/pgtap/config/test-pannello-porta-v1.sql`.
+#   Forward su dev `90_end/20260925-62`, stesso blocco del provisioning, stesso
+#   pgTAP.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -151,7 +164,14 @@ databaseChangeLog:
                   'magazzino.movimenti',
                   'magazzino.valore_giacenza',
                   'config.credenziali',
-                  'config.credenziali_provenienze'
+                  'config.credenziali_provenienze',
+                  'config.nomi_tentati',
+                  'config.nomi_tentati_provenienze',
+                  -- ⭐ Dal 2026-09-25 il PANNELLO: le causali di magazzino le scrive
+                  --   il verbo config.fn_pannello_scrivi, e la lista delle tabelle
+                  --   gestibili e' una porta (brief-db-pannello-config-verbo-generico §3.5).
+                  'magazzino.causali',
+                  'config.tabelle_gestibili'
                 ];
                 -- ⭐ Tabelle SENZA DELETE per l'applicazione (la forma per tabella
                 --   di v_schemi_senza_delete): un blocco di magazzino si chiude

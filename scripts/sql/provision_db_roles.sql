@@ -223,9 +223,24 @@ WHERE to_regclass(t.nome) IS NOT NULL
 --   scrivono solo le funzioni DEFINER del proprietario. Stesso elenco di
 --   `v_tabelle_sola_lettura_app` nel loop 20260205-41 e del forward
 --   90_end/20260925-24; `db/pgtap/config/test-credenziali-porta-v1.sql` lo dice
---   se non lo fa.
+--   se non lo fa. Dal 2026-09-25 anche le gemelle del NOME TENTATO (R-7):
+--   `config.nomi_tentati` e `config.nomi_tentati_provenienze`, forward
+--   90_end/20260925-62.
 SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
-FROM (VALUES ('config.credenziali'), ('config.credenziali_provenienze')) AS t(nome)
+FROM (VALUES ('config.credenziali'), ('config.credenziali_provenienze'),
+             ('config.nomi_tentati'), ('config.nomi_tentati_provenienze')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
+-- ⭐ LA PORTA DEL PANNELLO DI CONFIGURAZIONE (dal 2026-09-25): brief
+--   brief-db-pannello-config-verbo-generico, sezione 3.5. `magazzino.causali` la
+--   scrive solo il verbo config.fn_pannello_scrivi; `config.tabelle_gestibili` e'
+--   la lista del verbo, e la scrive solo il seed. Stesso elenco di
+--   `v_tabelle_sola_lettura_app` nel loop 20260205-41 e del forward
+--   90_end/20260925-34; `db/pgtap/config/test-pannello-porta-v1.sql` lo dice se
+--   non lo fa.
+SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('magazzino.causali'), ('config.tabelle_gestibili')) AS t(nome)
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 

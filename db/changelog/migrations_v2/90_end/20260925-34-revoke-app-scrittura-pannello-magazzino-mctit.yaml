@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-4 — LA PORTA: magazzino.causali e la lista config.tabelle_gestibili in sola lettura per l'app
+#   Brief: brief-db-pannello-config-verbo-generico, sezione 3.5 (D-3 punto 4, D-P4)
+#   Modello: brief-db-permesso-nel-verbo-di-scrittura, D-1 — i domini nuovi nascono con la
+#   porta chiusa, gli altri ci passano uno alla volta.
+#
+# ── ⭐ COSA FA ───────────────────────────────────────────────────────
+#   · magazzino.causali: l'unica tabella di magazzino rimasta nel pannello (D-P2
+#     toglie magazzini e ubicazioni, che hanno la RLS). Da qui la scrive solo il
+#     verbo config.fn_pannello_scrivi, con il livello TUTTO sull'oggetto
+#     ('magazzino', 'causali'): chi ha TUTTO solo su Configurazione non crea
+#     piu' causali di magazzino. Nessun altro codice la scrive come app (censito
+#     il 2026-09-25: backend nessuno; pgTAP uno solo, al runner owner).
+#   · config.tabelle_gestibili: la lista E' una porta. Il verbo scrive come
+#     proprietario su ogni tabella che vi compare; se l'app potesse scriverla,
+#     potrebbe aggiungerci una tabella chiusa e scriverla attraverso il verbo.
+#   Il SELECT resta su tutte e due: il lookup e il backend leggono.
+#
+# ── ⚠️ MAGAZZINO RESTA UN DOMINIO A META' (D-P4) ────────────────────
+#   magazzini e ubicazioni hanno endpoint propri che scrivono con SQL diretto:
+#   si chiudono coi loro verbi, in un brief del cantiere magazzino.
+#
+# ── 🔴 TRE SEDI (linee-guida §11.8) ─────────────────────────────────
+#   · QUESTO changeSet, che agisce subito su dev;
+#   · v_tabelle_sola_lettura_app nel loop 90_end/ci_apply/20260205-41;
+#   · il blocco «POSTURA DICHIARATA» di scripts/sql/provision_db_roles.sql.
+#   Le tiene allineate db/pgtap/config/test-pannello-porta-v1.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260925-34-revoke-app-scrittura-pannello-magazzino-mctit.yaml
+
+  - changeSet:
+      id: 20260925-34-revoke-app-scrittura-pannello-magazzino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La porta del pannello: a zeroerp_app SELECT soltanto su magazzino.causali (la scrive il verbo
+        config.fn_pannello_scrivi) e su config.tabelle_gestibili (la lista e' una porta). Postura
+        resa stabile dal loop 20260205-41 e dal provisioning. Brief:
+        brief-db-pannello-config-verbo-generico §3.5.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: magazzino
+                tableName: causali
+            - tableExists:
+                schemaName: config
+                tableName: tabelle_gestibili
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $porta$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: skip porta del pannello.';
+                      RETURN;
+                  END IF;
+
+                  -- Le causali di magazzino: l'applicazione legge, scrive il verbo del pannello.
+                  GRANT  SELECT                 ON TABLE magazzino.causali        TO   zeroerp_app;
+                  REVOKE INSERT, UPDATE, DELETE ON TABLE magazzino.causali        FROM zeroerp_app;
+                  -- La lista: l'applicazione legge, la scrive solo il seed.
+                  GRANT  SELECT                 ON TABLE config.tabelle_gestibili TO   zeroerp_app;
+                  REVOKE INSERT, UPDATE, DELETE ON TABLE config.tabelle_gestibili FROM zeroerp_app;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Senza togliere le voci dal loop 20260205-41 e dal provisioning la
+              -- passata ci_apply successiva richiude la porta.
+              GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE magazzino.causali        TO zeroerp_app;
+              GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE config.tabelle_gestibili TO zeroerp_app;

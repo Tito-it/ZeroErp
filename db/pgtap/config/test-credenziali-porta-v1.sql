@@ -7,6 +7,8 @@
 --   ChangeSet: 90_end/20260925-24 (forward), 90_end/ci_apply/20260205-41
 --   (v_tabelle_sola_lettura_app), scripts/sql/provision_db_roles.sql (POSTURA
 --   DICHIARATA); 90_end/20260925-22 (FK con CASCADE), -25 (DROP colonne).
+--   R-7 (sezione 13): 90_end/20260925-62 e le stesse due sedi per le gemelle del
+--   nome tentato; 20260925-57/-58 (retention alla nascita), -59 (passo del freno).
 --
 -- ⭐ E' il presidio che tiene allineate le TRE sedi della postura (linee-guida
 --   §11.8): verde su dev col solo forward, rosso su un database ricostruito se
@@ -16,7 +18,10 @@
 --   colonna che esiste (su una assente risponderebbe 42703, rosso per il motivo
 --   sbagliato).
 --
--- Elenco test (plan 10):
+-- ⚠️ 3, 4 e 13 provano il 42501 COME APP: da owner (la prova dell'SQL estratto
+--   prima dell'apply) sono rossi per costruzione, verdi solo nel runner.
+--
+-- Elenco test (plan 13):
 --    1) config.credenziali: all'app SELECT si', INSERT/UPDATE/DELETE no
 --    2) config.credenziali_provenienze: idem
 --    3) come app, UPDATE di config.credenziali -> 42501
@@ -28,12 +33,18 @@
 --    9) i due trigger della credenziale ci sono (anti-lockout, retention)
 --   10) cancellare l'auth_user si porta via lo stato (CASCADE) — skip() dove la
 --       FK non esiste (CI: Liquibase gira prima di manage.py migrate)
+--   Le gemelle del nome tentato (R-7)
+--   11) config.nomi_tentati: all'app SELECT si', INSERT/UPDATE/DELETE no
+--   12) config.nomi_tentati_provenienze: idem
+--   13) come app, INSERT in config.nomi_tentati -> 42501
+--   (il 5 conta anche fn_login_freno_passo, il 9 anche i due trigger alla
+--   nascita delle gemelle)
 -- ------------------------------------------------------------
 BEGIN;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(10);
+SELECT plan(13);
 
 -- ============================================================
 -- 1-4 La porta
@@ -71,13 +82,14 @@ SELECT p.oid, p.proname, p.prosecdef, pg_get_userbyid(p.proowner) AS proprietari
                      'fn_azzera_tentativi_credenziale', 'fn_imposta_deve_cambiare_password',
                      'fn_blocca_credenziale', 'fn_sblocca_credenziale',
                      'fn_get_deve_cambiare_password', 'fn_guard_super_admin',
-                     'fn_login_parametri', 'fn_login_attesa_secondi');
+                     'fn_login_parametri', 'fn_login_attesa_secondi',
+                     'fn_login_freno_passo');
 
 SELECT is(
     (SELECT string_agg(proname || '=' || CASE WHEN prosecdef THEN 'DEFINER' ELSE 'INVOKER' END, ',' ORDER BY proname) FROM _fn),
     'fn_azzera_tentativi_credenziale=DEFINER,fn_blocca_credenziale=DEFINER,fn_check_blocco_login=DEFINER,'
     'fn_get_deve_cambiare_password=INVOKER,fn_guard_super_admin=INVOKER,fn_imposta_deve_cambiare_password=DEFINER,'
-    'fn_login_attesa_secondi=INVOKER,fn_login_parametri=INVOKER,fn_registra_tentativo_login=DEFINER,'
+    'fn_login_attesa_secondi=INVOKER,fn_login_freno_passo=INVOKER,fn_login_parametri=INVOKER,fn_registra_tentativo_login=DEFINER,'
     'fn_sblocca_credenziale=DEFINER',
     '5) scrivono le DEFINER, leggono e sorvegliano le INVOKER (una firma per nome: niente overload rimasti)');
 
@@ -108,9 +120,12 @@ SELECT is(
     (SELECT string_agg(tgname, ',' ORDER BY tgname) FROM pg_trigger
       WHERE NOT tgisinternal
         AND tgname IN ('trg_credenziali_a10_guard_ultimo_super_admin_ins_upd',
-                       'trg_credenziali_provenienze_m50_cleanup_at_ins')),
-    'trg_credenziali_a10_guard_ultimo_super_admin_ins_upd,trg_credenziali_provenienze_m50_cleanup_at_ins',
-    '9) i due trigger della credenziale: anti-lockout e retention alla nascita');
+                       'trg_credenziali_provenienze_m50_cleanup_at_ins',
+                       'trg_nomi_tentati_m50_cleanup_at_ins',
+                       'trg_nomi_tentati_provenienze_m50_cleanup_at_ins')),
+    'trg_credenziali_a10_guard_ultimo_super_admin_ins_upd,trg_credenziali_provenienze_m50_cleanup_at_ins,'
+    'trg_nomi_tentati_m50_cleanup_at_ins,trg_nomi_tentati_provenienze_m50_cleanup_at_ins',
+    '9) i trigger della credenziale (anti-lockout, retention alla nascita) e quelli di retention delle gemelle del nome');
 
 -- ============================================================
 -- 10 CASCADE (solo dove la FK c'e')
@@ -120,7 +135,7 @@ INSERT INTO django.auth_user (username, password, is_active, is_staff, is_superu
 VALUES ('_pgtap_porta_' || substring(md5(clock_timestamp()::text) from 1 for 8),
         '!', true, false, false, '', '', '', now());
 CREATE TEMP TABLE _u AS SELECT max(id) AS id FROM django.auth_user WHERE username LIKE '\_pgtap\_porta\_%';
-SELECT script.fn_registra_tentativo_login((SELECT id FROM _u), '203.0.113.50'::inet, false);
+SELECT script.fn_registra_tentativo_login((SELECT id FROM _u), sha256('pgtap-nome'::bytea), '203.0.113.50'::inet, false);
 
 CREATE TEMP TABLE _fk AS
 SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_config_credenziali_auth_user') AS c;
@@ -136,6 +151,27 @@ SELECT CASE
             0,
             '10) cancellare l''auth_user si porta via lo stato della credenziale (e le provenienze, per CASCADE dalla madre)')
 END;
+
+-- ============================================================
+-- 11-13 Le gemelle del nome tentato (R-7): la stessa porta
+-- ============================================================
+SELECT is(
+    (SELECT format('%s|%s', has_table_privilege('zeroerp_app', 'config.nomi_tentati', 'SELECT')::text,
+                   has_table_privilege('zeroerp_app', 'config.nomi_tentati', 'INSERT, UPDATE, DELETE')::text)),
+    'true|false',
+    '11) config.nomi_tentati: all''app SELECT si'', nessuna scrittura');
+
+SELECT is(
+    (SELECT format('%s|%s', has_table_privilege('zeroerp_app', 'config.nomi_tentati_provenienze', 'SELECT')::text,
+                   has_table_privilege('zeroerp_app', 'config.nomi_tentati_provenienze', 'INSERT, UPDATE, DELETE')::text)),
+    'true|false',
+    '12) config.nomi_tentati_provenienze: all''app SELECT si'', nessuna scrittura');
+
+SELECT throws_ok(
+    $$ INSERT INTO config.nomi_tentati (nome_digest, ultimo_fallimento_at)
+       SELECT sha256('pgtap-porta'::bytea), now() WHERE false $$,
+    '42501', NULL,
+    '13) come app, INSERT in config.nomi_tentati: permesso negato');
 
 SELECT * FROM finish();
 ROLLBACK;

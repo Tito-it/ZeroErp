@@ -3,6 +3,7 @@
 ## 📚 Tabelle
 
 ## ⚙️ Funzioni
+- [fn_area_di_oggetto](funzioni/fn_area_di_oggetto.md) — (scritta il 25-09-2026)
 - [fn_arrotonda_importo](funzioni/fn_arrotonda_importo.md) — Arrotondare un importo secondo i **decimali** e il **metodo** configurati, in **un punto solo** per tutto il database.
 - [fn_audit_summary](funzioni/fn_audit_summary.md)
 - [fn_available_actions_commessa](funzioni/fn_available_actions_commessa.md) — (latest review 16-06-2026) Espone le **capability del ciclo di vita di una commessa** per il detail/stato API: quali azioni di stato l'utente può eseguire e cosa può modificare. Mirror del pattern `fn_available_actions_ordine` / `_offerta` / `_contratto` / `_preventivo`, **senza azioni applicative** (il push è *verso* la commessa, non un'azione della commessa).
@@ -120,6 +121,7 @@
 - [fn_gruppi_di_commessa_nel_lotto](funzioni/fn_gruppi_di_commessa_nel_lotto.md) — (latest review 2026-09-08)
 - [fn_gruppi_trascinati_da_uscita](funzioni/fn_gruppi_trascinati_da_uscita.md) — (latest review 2026-09-08)
 - [fn_guard_azione](funzioni/fn_guard_azione.md) — (scritta il 24-09-2026)
+- [fn_guard_livello](funzioni/fn_guard_livello.md) — (scritta il 25-09-2026)
 - [fn_guard_soggetto_pf_pura](funzioni/fn_guard_soggetto_pf_pura.md) — (latest review 18-04-2026)
 - [fn_guard_soggetto_ruolo](funzioni/fn_guard_soggetto_ruolo.md) — (latest review 05-12-25) - **Verifica esistenza**     Controlla se esiste già un’associazione tra il soggetto e il codice interno del ruolo in `anagrafiche.soggetti_ruoli`.
 - [fn_guard_super_admin](funzioni/fn_guard_super_admin.md) — (scritta il 25-09-2026)
@@ -136,6 +138,7 @@
 - [fn_log_and_raise_error](funzioni/fn_log_and_raise_error.md) — (last review 24-04-2026)
 - [fn_log_error_only](funzioni/fn_log_error_only.md) — (latest review 23-11-25) * **Logging “silenzioso”**: inserisce una riga in `dbops.error_log` con contesto ricco, ma **non** solleva eccezioni. * **Separazione delle responsabilità**: differenzia chiaramente i casi di **solo tracciamento** da quelli di **error handling critico** (per cui usare `fn_log_and_raise_error`).
 - [fn_login_attesa_secondi](funzioni/fn_login_attesa_secondi.md) — (scritta il 25-09-2026)
+- [fn_login_freno_passo](funzioni/fn_login_freno_passo.md) — (scritta il 25-09-2026)
 - [fn_login_parametri](funzioni/fn_login_parametri.md) — (scritta il 25-09-2026)
 - [fn_norm_testo](funzioni/fn_norm_testo.md) — (rev 2026-08-21)
 - [fn_norm_via](funzioni/fn_norm_via.md) — (rev 2026-08-21)

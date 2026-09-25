@@ -9,7 +9,7 @@ CREATE FUNCTION fn_get_operatore_detail(p_auth_user_id integer)
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_operatore_detail(p_auth_user_id integer)
- RETURNS TABLE(auth_user_id integer, username character varying, email character varying, first_name character varying, last_name character varying, soggetto_cognome text, soggetto_nome text, soggetto_id uuid, ragione_sociale_completa text, codice_fiscale text, is_super_admin boolean, ruolo_applicativo text, is_active boolean, unita_organizzativa_id integer, unita_organizzativa_nome text, risorsa_umana_id bigint, attivo boolean, valido_dal text, valido_al text, override_aree_count bigint, override_azioni_count bigint, emittenti_count bigint, emittenti_descrizione text, last_login timestamp with time zone, invito_inviato_at timestamp with time zone, deve_cambiare_password boolean, can_invite boolean, invite_reason text, can_disable boolean, disable_reason text, can_demote_super_admin boolean, demote_reason text)
+ RETURNS TABLE(auth_user_id integer, username character varying, email character varying, first_name character varying, last_name character varying, soggetto_cognome text, soggetto_nome text, soggetto_id uuid, ragione_sociale_completa text, codice_fiscale text, is_super_admin boolean, ruolo_applicativo text, is_active boolean, unita_organizzativa_id integer, unita_organizzativa_nome text, risorsa_umana_id bigint, attivo boolean, valido_dal text, valido_al text, override_aree_count bigint, override_azioni_count bigint, emittenti_count bigint, emittenti_descrizione text, last_login timestamp with time zone, invito_inviato_at timestamp with time zone, deve_cambiare_password boolean, can_invite boolean, invite_reason text, can_disable boolean, disable_reason text, can_demote_super_admin boolean, demote_reason text, veste_attiva boolean)
  LANGUAGE plpgsql
  STABLE
 AS $function$
@@ -31,6 +31,17 @@ BEGIN
     --   ef.descrizione e' caduto sia nel valore sia nell'ORDER BY
     --   dell'aggregazione: lasciarlo nell'ORDER BY avrebbe
     --   ordinato l'elenco per un campo non piu' mostrato.
+    --
+    -- Rev 20260925-54 (R-9 del piano BE/FE):
+    --   UNA veste OPERATORE, non un JOIN: il modello ne ammette piu'
+    --   d'una spenta (l'unique vale solo WHERE attivo), e il JOIN
+    --   nudo restituiva una riga per veste. Si mostra quella attiva
+    --   (al piu' una, per l'unique), altrimenti la spenta piu'
+    --   recente. Con piu' vesti spente l'invito non e' offerto
+    --   (fn_check_operatore_invitabile, rev -53).
+    --   veste_attiva: lo stato di QUELLA veste (NULL se non ce n'e'
+    --   nessuna). Ne' attivo (risorsa umana) ne' is_active
+    --   (credenziale, derivato da tutte le vesti) lo dicevano.
     -- =========================================================
     RETURN QUERY
     WITH ctx AS (
@@ -84,11 +95,18 @@ BEGIN
              WHEN NOT ctx.is_sa  THEN NULL
              WHEN ctx.is_last_sa THEN 'Ultimo SUPER_ADMIN attivo: la rimozione del binding causerebbe il lockout del sistema'
              ELSE NULL
-        END                                                    AS demote_reason
+        END                                                    AS demote_reason,
+        id.attivo                                              AS veste_attiva
       FROM django.auth_user au
-      LEFT JOIN anagrafiche.identita_digitali id
-        ON id.auth_user_id      = au.id
-       AND id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+      LEFT JOIN LATERAL (
+          SELECT idg.soggetto_ruolo_id, idg.ruolo_applicativo,
+                 idg.attivo, idg.invito_inviato_at
+            FROM anagrafiche.identita_digitali idg
+           WHERE idg.auth_user_id      = au.id
+             AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+           ORDER BY idg.attivo DESC, idg.data_insert DESC, idg.id DESC
+           LIMIT 1
+      ) id ON true
       LEFT JOIN anagrafiche.soggetti_ruoli sr
         ON sr.id = id.soggetto_ruolo_id
       LEFT JOIN anagrafiche.risorse_umane ru
@@ -120,7 +138,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_operatore_detail(p_auth_user_id integer)
-IS 'Riga di dettaglio operatore + 6 capability per il drawer admin (Fase 1 P1 2026-04-29; Fase 7 cleanup 2026-04-29: rimossa call interna fn_get_ruolo_sistema E rimossa colonna ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''). Migra in DB la query inline da Python e calcola capability via funzioni esistenti come single source of truth: fn_check_operatore_invitabile, fn_is_super_admin, fn_check_ultimo_super_admin_attivo. emittenti_descrizione aggrega la ragione_sociale_completa dei soggetti emittenti (Fase 1 cantiere emittente 2026-08-02: caduto il fallback su emittenti_fiscali.descrizione, valore e ORDER BY). LANGUAGE plpgsql STABLE. La colonna deve_cambiare_password e'' della CREDENZIALE (D-7, rev 2026-09-25): si legge da script.fn_get_deve_cambiare_password.';
+IS 'Riga di dettaglio operatore + 6 capability per il drawer admin (Fase 1 P1 2026-04-29; Fase 7 cleanup 2026-04-29: rimossa call interna fn_get_ruolo_sistema E rimossa colonna ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''). Migra in DB la query inline da Python e calcola capability via funzioni esistenti come single source of truth: fn_check_operatore_invitabile, fn_is_super_admin, fn_check_ultimo_super_admin_attivo. emittenti_descrizione aggrega la ragione_sociale_completa dei soggetti emittenti (Fase 1 cantiere emittente 2026-08-02: caduto il fallback su emittenti_fiscali.descrizione, valore e ORDER BY). LANGUAGE plpgsql STABLE. La colonna deve_cambiare_password e'' della CREDENZIALE (D-7, rev 2026-09-25): si legge da script.fn_get_deve_cambiare_password. Rev 20260925-54 (R-9): UNA riga anche con piu'' vesti OPERATORE — quella attiva, altrimenti la spenta piu'' recente (data_insert, poi id) — e la colonna veste_attiva, lo stato di quella veste (NULL senza veste OPERATORE).';
 ```
 
 ---

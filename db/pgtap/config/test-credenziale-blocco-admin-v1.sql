@@ -114,18 +114,18 @@ SELECT is(
     '6) SUPER_ADMIN blocca: la riga porta quando, chi (dalla GUC) e perche'' (ripulito)');
 
 SELECT throws_like(
-    $$ SELECT script.fn_check_blocco_login((SELECT bersaglio FROM _t), '203.0.113.10'::inet) $$,
+    $$ SELECT script.fn_check_blocco_login((SELECT bersaglio FROM _t), sha256('pgtap-nome'::bytea), '203.0.113.10'::inet) $$,
     '%Accesso bloccato dall''amministratore%',
     '7) il login e'' rifiutato: E_CREDENZIALE_BLOCCATA');
 
 SELECT throws_like(
-    $$ SELECT script.fn_check_blocco_login((SELECT bersaglio FROM _t), '2001:db8::1'::inet) $$,
+    $$ SELECT script.fn_check_blocco_login((SELECT bersaglio FROM _t), sha256('pgtap-nome'::bytea), '2001:db8::1'::inet) $$,
     '%Accesso bloccato dall''amministratore%',
     '8) ...da qualunque provenienza: il blocco e'' della credenziale');
 
 SELECT script.fn_azzera_tentativi_credenziale((SELECT bersaglio FROM _t));
 SELECT throws_like(
-    $$ SELECT script.fn_check_blocco_login((SELECT bersaglio FROM _t), '203.0.113.10'::inet) $$,
+    $$ SELECT script.fn_check_blocco_login((SELECT bersaglio FROM _t), sha256('pgtap-nome'::bytea), '203.0.113.10'::inet) $$,
     '%Accesso bloccato dall''amministratore%',
     '9) l''azzeramento dei tentativi (il reset) non toglie il blocco dell''admin (D-B3)');
 
@@ -141,7 +141,7 @@ SELECT throws_like(
 SELECT pg_temp.agisci((SELECT auth_user_id FROM _sa));
 SELECT script.fn_sblocca_credenziale((SELECT bersaglio FROM _t));
 SELECT lives_ok(
-    $$ SELECT script.fn_check_blocco_login((SELECT bersaglio FROM _t), '203.0.113.10'::inet) $$,
+    $$ SELECT script.fn_check_blocco_login((SELECT bersaglio FROM _t), sha256('pgtap-nome'::bytea), '203.0.113.10'::inet) $$,
     '11) SUPER_ADMIN sblocca: il login passa');
 
 SELECT lives_ok(

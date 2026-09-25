@@ -74,7 +74,8 @@ Tabella a riga singola (0 righe se `p_auth_user_id` non esiste o è `NULL`/≤0)
 | `ruolo_applicativo` | `TEXT` | `id.ruolo_applicativo::text` (enum `config.ruolo_applicativo`) |
 | `is_super_admin` | `BOOLEAN` | `script.fn_is_super_admin(au.id)` (GUC-aware) |
 | `invito_inviato_at` | `anagrafiche.identita_digitali.invito_inviato_at%TYPE` | `id.invito_inviato_at` |
-| `deve_cambiare_password` | `anagrafiche.identita_digitali.deve_cambiare_password%TYPE` | `id.deve_cambiare_password` |
+| `deve_cambiare_password` | `BOOLEAN` | `script.fn_get_deve_cambiare_password(au.id)`: il flag e' della **credenziale** (D-7, dal 2026-09-25) |
+| `veste_attiva` | `BOOLEAN` | `id.attivo`: lo stato della veste OPERATORE mostrata; `NULL` se non ce n'e' nessuna (dal 2026-09-25, `20260925-54`) |
 
 ### Override e perimetro
 
@@ -110,9 +111,19 @@ Tabella a riga singola (0 righe se `p_auth_user_id` non esiste o è `NULL`/≤0)
   [feedback_django_refs_in_liquibase](/dev/work-done/refactor-operatore-emittenti#7bis6)).
   Wrapping minimo: `BEGIN ... RETURN QUERY ... END`.
 * **Read-only**, nessun side effect.
-* `LEFT JOIN` su `identita_digitali`: utenti senza identità OPERATORE
-  vengono comunque ritornati (campi anagrafici a `NULL`), capability
-  comunque calcolate sull'`auth_user`.
+* **Una veste OPERATORE, non un JOIN** (dal 2026-09-25, `20260925-54`):
+  il modello ammette più vesti OPERATORE spente sulla stessa credenziale
+  (l'unicità vale solo fra le attive), e il `JOIN` di prima restituiva una
+  riga per veste. Si mostra quella **attiva** (al più una), altrimenti la
+  **spenta più recente** (`data_insert`, poi `id`). Con più vesti spente
+  l'invito non è offerto, e `invite_reason` dice perché.
+* `veste_attiva` è lo stato di **quella** veste: né `attivo` (della risorsa
+  umana) né `is_active` (della credenziale, derivato da tutte le vesti) lo
+  dicono. Serve al drawer per distinguere «veste già attiva» dagli altri
+  motivi del non invitabile senza leggere il testo.
+* Utenti senza identità OPERATORE vengono comunque ritornati (campi
+  anagrafici a `NULL`, `veste_attiva` `NULL`), capability comunque calcolate
+  sull'`auth_user`.
 * **0 righe** se `p_auth_user_id` non esiste o è `NULL` / ≤0 (semantica
   lookup-by-id, coerente col Python originale; nessun raise).
 

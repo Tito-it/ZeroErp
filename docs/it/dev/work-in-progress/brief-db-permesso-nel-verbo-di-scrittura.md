@@ -238,4 +238,5 @@ migrare.
 | 2026-09-24 | Tid | D-5 decisa: il verbo dichiara l'oggetto, il BB rispetta gli override; correzione del gate in `fn_resolve_livello_oggetto` nel brief operativo di magazzino (§2.4) |
 | 2026-09-25 | DB | Stato riscritto in testa: porta del Lotto 2 committata (`f2e724b47`), D-V1 ancora aperta; `fn_guard_livello` e il verbo del pannello (D-3) non iniziati; registrato il secondo caso del modello (credenziali, `fn_guard_super_admin`, §4.1) |
 | 2026-09-25 | Tid, DB | D-V1 del brief di magazzino decisa (strada A) e scritta: nasce `script.fn_is_proprietario_tabella`, il modo in cui un guard riconosce di essere attraversato da un verbo |
+| 2026-09-25 | DB | Scritto il brief operativo della D-3 (verbo generico del pannello), con cinque decisioni a Tid |
 | 2026-09-25 | BE | Stato del passo 2a riscritto: P-7 committato (`1d92ae6a2`), P-6 arrivato al DB, §6 del brief di magazzino fatto dal backend (da committare). Aperti: 1 (`fn_guard_livello`), 2b (D-3), 3 |
