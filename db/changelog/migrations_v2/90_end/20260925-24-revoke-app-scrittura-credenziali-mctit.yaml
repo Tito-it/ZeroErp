@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 — LA PORTA DELLE TABELLE DELLA CREDENZIALE
+#   Brief: brief-db-blocco-login-per-credenziale, sezione 2.2
+#   Modello: brief-db-permesso-nel-verbo-di-scrittura, D-1 — i domini nuovi
+#   nascono con la porta chiusa.
+#
+# ── ⭐ COSA FA ───────────────────────────────────────────────────────
+#   A zeroerp_app SOLO SELECT su config.credenziali e
+#   config.credenziali_provenienze: scrivono soltanto le funzioni DEFINER del
+#   proprietario (fn_registra_tentativo_login, fn_check_blocco_login,
+#   fn_azzera_tentativi_credenziale, fn_imposta_deve_cambiare_password,
+#   fn_blocca/fn_sblocca_credenziale). «Il backend non scrive lo stato della
+#   credenziale» diventa un fatto, non una disciplina.
+#
+# ── ⚠️ PERCHE' IL SELECT RESTA ──────────────────────────────────────
+#   script.fn_check_almeno_un_super_admin_attivo e' LANGUAGE sql e la chiamano
+#   i guard anti-lockout su identita_digitali e profili_accesso_bindings,
+#   trigger INVOKER che girano come l'APP: legge config.credenziali con i suoi
+#   privilegi. Il modello del verbo chiude le scritture, non le letture. Il
+#   backend comunque legge attraverso fn_get_deve_cambiare_password, non da qui.
+#
+# ── 🔴 TRE SEDI, COME OGNI POSTURA PIU' STRETTA (linee-guida §11.8) ──
+#   · QUESTO changeSet, che agisce subito su dev (dove ci_apply non gira da solo);
+#   · l'elenco v_tabelle_sola_lettura_app del loop 90_end/ci_apply/20260205-41,
+#     che a ogni passata rifa' i GRANT e senza l'eccezione annullerebbe questo;
+#   · il blocco «POSTURA DICHIARATA» di scripts/sql/provision_db_roles.sql, che
+#     gira DOPO ci_apply ed e' l'ultima parola.
+#   Le tiene allineate db/pgtap/config/test-credenziali-porta-v1.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260925-24-revoke-app-scrittura-credenziali-mctit.yaml
+
+  - changeSet:
+      id: 20260925-24-revoke-app-scrittura-credenziali
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La porta delle tabelle della credenziale: a zeroerp_app SELECT soltanto su config.credenziali e
+        config.credenziali_provenienze (REVOKE INSERT, UPDATE, DELETE: scrivono solo le funzioni
+        DEFINER). Il SELECT resta per fn_check_almeno_un_super_admin_attivo, chiamata da trigger
+        INVOKER. Postura resa stabile dal loop 20260205-41 e dal provisioning. Brief:
+        brief-db-blocco-login-per-credenziale §2.2.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: credenziali
+            - tableExists:
+                schemaName: config
+                tableName: credenziali_provenienze
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $porta$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: skip porta delle credenziali.';
+                      RETURN;
+                  END IF;
+
+                  -- Lo stato della credenziale: l'applicazione legge, scrivono i verbi.
+                  GRANT  SELECT                 ON TABLE config.credenziali             TO   zeroerp_app;
+                  REVOKE INSERT, UPDATE, DELETE ON TABLE config.credenziali             FROM zeroerp_app;
+                  GRANT  SELECT                 ON TABLE config.credenziali_provenienze TO   zeroerp_app;
+                  REVOKE INSERT, UPDATE, DELETE ON TABLE config.credenziali_provenienze FROM zeroerp_app;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Senza togliere le voci dal loop 20260205-41 e dal provisioning la
+              -- passata ci_apply successiva richiude la porta.
+              GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE config.credenziali             TO zeroerp_app;
+              GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE config.credenziali_provenienze TO zeroerp_app;

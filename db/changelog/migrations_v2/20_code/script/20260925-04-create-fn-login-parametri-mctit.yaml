@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 — I PARAMETRI DEL LOGIN IN UNA LETTURA SOLA: script.fn_login_parametri()
+#   Brief: brief-db-blocco-login-per-credenziale, sezione 2.4 e D-B2
+#
+# ── ⭐ PERCHE' UN BUILDING BLOCK (regola del 2) ──────────────────────
+#   I cinque parametri li leggono DUE funzioni: fn_check_blocco_login (il
+#   freno e l'attesa, prima della password) e fn_registra_tentativo_login
+#   (dopo). Scritta in entrambe, la lettura sarebbe due copie della stessa
+#   regola — e in particolare dello stesso modo di reagire a un parametro
+#   mancante.
+#
+# ── ⛔ NIENTE RIPIEGO NEL CODICE ─────────────────────────────────────
+#   La versione di prima leggeva `COALESCE(default_value, 5)` e `…, 15)`: il
+#   valore di seed scritto una seconda volta, nel codice, dove nessuno lo
+#   rilegge quando cambia il CSV. Qui un parametro assente, vuoto o non intero
+#   positivo solleva E_CONFIG_MANCANTE: e' un'installazione rotta, e meglio un
+#   login che dice perche' di un freno tarato a caso. Stampo di
+#   script.fn_data_operativa (default NUDO, fail-loud).
+#
+# ── ⚠️ IL DEFAULT NUDO, NON LA CASCATA ──────────────────────────────
+#   script.fn_get_parameter_full risolverebbe override per utente, gruppo,
+#   sessione: la protezione del login non si personalizza per chi la subisce,
+#   e prima del login l'utente non e' nemmeno noto. Come prima: globali.
+#
+# INVOKER: legge config.parameters, che l'app legge gia'. La chiamano le
+# funzioni DEFINER del login.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260925-04-create-fn-login-parametri-mctit.yaml
+
+  - changeSet:
+      id: 20260925-04-create-fn-login-parametri
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_login_parametri(): i cinque parametri del login (freno sulla provenienza e attesa
+        crescente sulla credenziale) in una lettura sola, dal default nudo di config.parameters;
+        un parametro assente, vuoto o non intero positivo solleva E_CONFIG_MANCANTE (niente ripiego
+        nel codice). Regola del 2: la usano fn_check_blocco_login e fn_registra_tentativo_login.
+        Brief: brief-db-blocco-login-per-credenziale §2.4.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            { schemaName: config, tableName: parameters }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_login_parametri()
+              RETURNS TABLE (
+                  max_tentativi       integer,
+                  blocco_minuti       integer,
+                  tetto_credenziale   integer,
+                  attesa_base_secondi integer,
+                  attesa_max_secondi  integer
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: i parametri del login, dal default nudo di config.parameters.
+              --   Fail-loud: un parametro assente, vuoto o non intero positivo e' una
+              --   installazione rotta (E_CONFIG_MANCANTE), mai un valore di ripiego.
+              DECLARE
+                  -- ⚠️ text[] esplicito: `%TYPE[]` non e' sintassi valida.
+                  v_codici text[] := ARRAY[
+                      'login_max_tentativi_falliti',
+                      'login_blocco_minuti',
+                      'login_tetto_credenziale',
+                      'login_attesa_base_secondi',
+                      'login_attesa_max_secondi'];
+                  v_codice config.parameters.code%TYPE;
+                  v_valori jsonb;
+              BEGIN
+                  SELECT jsonb_object_agg(p.code, p.default_value)
+                    INTO v_valori
+                    FROM config.parameters p
+                   WHERE p.code = ANY (v_codici);
+
+                  FOREACH v_codice IN ARRAY v_codici LOOP
+                      IF COALESCE(v_valori ->> v_codice, '') !~ '^[1-9][0-9]{0,5}$' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'script.fn_login_parametri', 'E_CONFIG_MANCANTE',
+                              jsonb_build_object('config',    'config.parameters',
+                                                 'parametro', v_codice,
+                                                 'valore',    v_valori ->> v_codice),
+                              NULL::uuid,
+                              VARIADIC ARRAY[format('parametro %s (intero positivo)', v_codice)]);
+                      END IF;
+                  END LOOP;
+
+                  max_tentativi       := (v_valori ->> 'login_max_tentativi_falliti')::integer;
+                  blocco_minuti       := (v_valori ->> 'login_blocco_minuti')::integer;
+                  tetto_credenziale   := (v_valori ->> 'login_tetto_credenziale')::integer;
+                  attesa_base_secondi := (v_valori ->> 'login_attesa_base_secondi')::integer;
+                  attesa_max_secondi  := (v_valori ->> 'login_attesa_max_secondi')::integer;
+                  RETURN NEXT;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_login_parametri() IS
+                  'I parametri del login in una lettura sola (regola del 2: la usano fn_check_blocco_login e fn_registra_tentativo_login): login_max_tentativi_falliti e login_blocco_minuti (freno sulla coppia credenziale + provenienza), login_tetto_credenziale, login_attesa_base_secondi e login_attesa_max_secondi (attesa crescente sulla credenziale). Default NUDO di config.parameters, non la cascata di override: la protezione del login non si personalizza, e prima del login l''utente non e'' noto. Fail-loud: un parametro assente, vuoto o non intero positivo solleva E_CONFIG_MANCANTE, mai un ripiego nel codice. Brief: brief-db-blocco-login-per-credenziale §2.4.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_login_parametri();

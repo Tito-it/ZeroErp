@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 — LA RETENTION DELLE PROVENIENZE: trigger alla nascita su config.credenziali_provenienze
+#   Brief: brief-db-blocco-login-per-credenziale, sezione 2.5
+#
+# ── ⭐ I QUATTRO PEZZI DI UN REGISTRO CHE SCADE ─────────────────────
+#   1. la colonna cleanup_at (00_schema/20260925-02);
+#   2. la regola CLEANUP_AT in automation_rules_tbl.csv (id 21), con
+#      base_ts_column = ultimo_fallimento_at e ttl_days = 1: la sede unica del
+#      termine;
+#   3. QUESTO trigger alla nascita, sul building block generico
+#      dbops.trgfn_cleanup_at_alla_nascita (legge la regola via
+#      dbops.fn_cleanup_at_params): scrive cleanup_at all'INSERT;
+#   4. nessun guard sul DELETE che respinga il purge: la tabella non ne ha.
+#   ⚠️ In piu', perche' la riga si AGGIORNA a ogni fallimento e il trigger alla
+#   nascita non la rivede: fn_registra_tentativo_login ricalcola cleanup_at
+#   nel ramo ON CONFLICT, leggendo il termine dalla stessa regola.
+#
+# Fase _m50_ come i precedenti (vendite, 20260918-33). DROP IF EXISTS + CREATE:
+# il trigger non e' generato da ci_apply, quindi il nome e' nostro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260925-19-create-trigger-cleanup-at-alla-nascita-credenziali-provenienze-mctit.yaml
+
+  - changeSet:
+      id: 20260925-19-create-trigger-cleanup-at-alla-nascita-credenziali-provenienze
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Trigger trg_credenziali_provenienze_m50_cleanup_at_ins (BEFORE INSERT,
+        dbops.trgfn_cleanup_at_alla_nascita): la scadenza di una riga di provenienza nasce con la
+        riga, dalla regola CLEANUP_AT (base ultimo_fallimento_at). Terzo dei quattro pezzi della
+        retention; al rinnovo ci pensa fn_registra_tentativo_login. Brief:
+        brief-db-blocco-login-per-credenziale §2.5.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: config, tableName: credenziali_provenienze }
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'dbops' AND p.proname = 'trgfn_cleanup_at_alla_nascita';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_credenziali_provenienze_m50_cleanup_at_ins ON config.credenziali_provenienze;
+              CREATE TRIGGER trg_credenziali_provenienze_m50_cleanup_at_ins
+                  BEFORE INSERT ON config.credenziali_provenienze
+                  FOR EACH ROW
+                  EXECUTE FUNCTION dbops.trgfn_cleanup_at_alla_nascita();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_credenziali_provenienze_m50_cleanup_at_ins ON config.credenziali_provenienze;

@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 — FK config.credenziali.bloccata_da -> django.auth_user.id
+#   Brief: brief-db-blocco-login-per-credenziale, sezioni 2.2 e 3.3
+#
+# -- ON DELETE NO ACTION — perche' --------------------------------------------
+#   bloccata_da e' l'AUTORE del blocco dell'admin. SET NULL non si puo': il
+#   CHECK chk_credenziali_blocco vuole il blocco tutto o niente, e un blocco
+#   senza autore non e' piu' una decisione. CASCADE toglierebbe lo stato di
+#   un'ALTRA credenziale. ⇒ Cancellare un amministratore che ha bloccato qualcuno
+#   e' rifiutato finche' quel blocco c'e': prima si sblocca (o si riblocca a nome
+#   di un altro). Gli utenti del progetto si disattivano, non si cancellano.
+#
+# -- LA FORMA DI CASA PER LE FK VERSO DJANGO -----------------------------------
+#   90_end + preCondition tableExists su django.auth_user + onFail MARK_RAN, come
+#   le 18 sorelle (ultima 20260921-02). ⚠️ In CI la FK NON esiste: Liquibase gira
+#   prima di `manage.py migrate`. Il verbo di blocco scrive bloccata_da dalla GUC
+#   di chi agisce, che fn_guard_super_admin ha gia' riconosciuto come SUPER_ADMIN
+#   (quindi un auth_user che esiste).
+#   Registro indici: 80_data/20260925-21 (consentito=false).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260925-23-fk-config-credenziali-bloccata-da-django-auth-user-mctit.yaml
+
+  - changeSet:
+      id: 20260925-23-fk-config-credenziali-bloccata-da-django-auth-user
+      author: mctit
+      comment: >
+        FK config.credenziali.bloccata_da -> django.auth_user.id, ON DELETE NO ACTION: l'autore di un
+        blocco non si cancella finche' il blocco c'e' (SET NULL violerebbe chk_credenziali_blocco).
+        90_end + MARK_RAN come le sorelle. Brief: brief-db-blocco-login-per-credenziale §2.2, §3.3.
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+            - tableExists:
+                schemaName: django
+                tableName: auth_user
+            - columnExists:
+                schemaName: config
+                tableName: credenziali
+                columnName: bloccata_da
+            - not:
+                - foreignKeyConstraintExists:
+                    schemaName: config
+                    foreignKeyName: fk_config_credenziali_bloccata_da_auth_user
+      changes:
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: credenziali
+            baseColumnNames: bloccata_da
+            constraintName: fk_config_credenziali_bloccata_da_auth_user
+            referencedTableSchemaName: django
+            referencedTableName: auth_user
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: credenziali
+            constraintName: fk_config_credenziali_bloccata_da_auth_user

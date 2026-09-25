@@ -110,9 +110,13 @@ e il legame col processo vive in
   * `CLIENTE_PORTALE` / `SHOP_CUSTOMER` → tipo `CL` (cliente)
   * `FORNITORE_PORTALE` → tipo `FO` (fornitore)
   * `API_CLIENT` / `DISABILITATO` → nessun vincolo specifico
-* **Stato di lockout e MFA per-identita**: `tentativi_falliti`,
-  `bloccato_fino_a` e `totp_obbligatorio` sono per-record (per-veste), non
-  per-user: un lockout sul portale non blocca lo shop dello stesso user.
+* **Tentativi sbagliati, blocco e cambio password obbligatorio NON sono della
+  veste** (dal 2026-09-25): la password è una sola e vale per tutte le porte,
+  quindi quello stato appartiene alla **credenziale** e sta in
+  [config.credenziali](/dbzero/config/tabelle/credenziali). Fino a quel giorno
+  `tentativi_falliti`, `bloccato_fino_a`, `deve_cambiare_password` e
+  `totp_obbligatorio` stavano qui, una copia per veste, e il login contava solo
+  la riga `OPERATORE`: chi aveva solo il portale o lo shop non veniva mai frenato.
 * **`auth_user.is_active` = OR sulle identita**: l'utente Django resta
   globalmente attivo se esiste almeno un'identita utilizzabile (cfr.
   [fn_sync_auth_user_is_active](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_is_active)).
@@ -126,12 +130,14 @@ e il legame col processo vive in
 | `attivo`                 | `true`         | Soft flag. Se `false`, `auth_user.is_active` viene sincronizzato a `false` (gestione tramite `fn_sync_auth_user_is_active`).                                |
 | `valido_dal`             | `CURRENT_DATE` | Inizio validità.                                                                                                                                            |
 | `valido_al`              | NULL           | Fine validità (NULL = aperto). Scaduto → identità non utilizzabile.                                                                                         |
-| `deve_cambiare_password` | `false`        | Se `true`, il middleware Django forza il cambio password al prossimo login.                                                                                 |
 | `invito_inviato_at`      | NULL           | Timestamp dell'ultimo invito di attivazione inviato (token monouso `INVITO_PORTALE`).                                                                       |
-| `tentativi_falliti`      | `0`            | Contatore tentativi login KO consecutivi. Reset a 0 al login riuscito o allo scadere del blocco (§4.6.A.1).                                                 |
-| `bloccato_fino_a`        | NULL           | Timestamp fino al quale l'identità è bloccata per troppi falliti. `fn_check_blocco_login` effettua auto-unlock quando `bloccato_fino_a < now()` (§4.6.A.1). |
-| `totp_obbligatorio`      | `false`        | Flag MFA: se `true`, il login richiede TOTP. Generalizzato cross-ruolo (§4.6.A.1).                                                                          |
 | `storicizza`             | `true`         | Flag opt-out per lo snapshot storico automatico (`trgfn_storico_generic`).                                                                                  |
+
+⚠️ Dal 2026-09-25 (`20260925-25`) `deve_cambiare_password`, `tentativi_falliti`,
+`bloccato_fino_a` e `totp_obbligatorio` non sono più qui: i primi tre sono della
+credenziale ([config.credenziali](/dbzero/config/tabelle/credenziali)),
+`totp_obbligatorio` non l'aveva mai letto nessuno e, quando il secondo fattore si
+farà, sarà anch'esso della credenziale.
 
 ---
 

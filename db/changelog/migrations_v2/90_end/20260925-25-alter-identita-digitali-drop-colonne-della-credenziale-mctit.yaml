@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 — LE COLONNE DELLA CREDENZIALE ESCONO DALLA VESTE
+#   anagrafiche.identita_digitali: DROP di tentativi_falliti, bloccato_fino_a,
+#   deve_cambiare_password, totp_obbligatorio
+#   Brief: brief-db-blocco-login-per-credenziale, sezione 4 (D-1, D-7, D-10)
+#
+# 🔴🔴 DA APPLICARE SOLO INSIEME ALLA PR DEL BACKEND 🔴🔴
+#   Il backend legge queste colonne con SQL diretto (AuthRepository
+#   get/set_deve_cambiare_password, PortaleRepository.find_identita_portale e
+#   create_identita_portale, ProfileActivateShopView) e dal model
+#   IdentitaDigitale (managed=False: l'ORM le seleziona tutte). Applicato da
+#   solo, rompe ogni lettura di un'identita'. ⚠️ Vale anche per le funzioni del
+#   login a firma nuova (20_code/20260925-10, -11): tutto il P-1 va applicato
+#   con la PR del backend (brief §6).
+#
+# ── ⭐ PERCHE' NELLO STESSO CANTIERE ─────────────────────────────────
+#   Non c'e' produzione: nessuna doppia sede nel modello. Da 20260925-01..-17
+#   lo stato della credenziale sta in config.credenziali, e le colonne qui sono
+#   gia' senza nessun lettore a DB (censito pg_proc.prosrc e pg_depend,
+#   2026-09-25: dipendono solo i loro DEFAULT e i NOT NULL, che cadono con loro;
+#   nessuna vista). totp_obbligatorio esce ora (D-10): nessuno lo ha mai letto,
+#   e quando il TOTP si fara' l'obbligo sara' della credenziale.
+#
+# ── ⚠️ PERCHE' IN 90_end E NON IN 00_schema ─────────────────────────
+#   Su un database ricostruito da zero l'ordine e' per FASE: 00_schema, 20_code,
+#   80_data, 90_end. 80_data/changelog/20260419-80-backfill-identita-digitali-
+#   operatori SCRIVE queste colonne e ha una preCondition HALT che le pretende
+#   (columnExists tentativi_falliti): con il DROP in 00_schema, da zero, il
+#   migrate morirebbe li'. In 90_end il DROP gira dopo. Su dev quel changeSet e'
+#   gia' girato; e' runOnChange con validCheckSums ANY e non rigira finche'
+#   nessuno ne tocca il file — ⛔ che quindi non si tocca.
+#   Nessun changeSet di 90_end le nomina (censito 2026-09-25).
+#
+# ── ⚠️ STORICO ──────────────────────────────────────────────────────
+#   storico.identita_digitali tiene lo snapshot in jsonb: le versioni passate
+#   conservano i valori, quelle future non li hanno. Nessuna colonna da togliere.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260925-25-alter-identita-digitali-drop-colonne-della-credenziale-mctit.yaml
+
+  - changeSet:
+      id: 20260925-25-alter-identita-digitali-drop-colonne-della-credenziale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        DROP di tentativi_falliti, bloccato_fino_a, deve_cambiare_password e totp_obbligatorio da
+        anagrafiche.identita_digitali: lo stato della credenziale sta in config.credenziali
+        (D-1, D-7), totp_obbligatorio non l'ha mai letto nessuno (D-10). In 90_end perche' da zero
+        80_data/20260419-80 le pretende. ⚠️ Da applicare insieme alla PR del backend. Brief:
+        brief-db-blocco-login-per-credenziale §4.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: credenziali
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+                     AND p.prosrc ~ 'identita_digitali\.(tentativi_falliti|bloccato_fino_a|deve_cambiare_password|totp_obbligatorio)';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.identita_digitali
+                  DROP COLUMN IF EXISTS tentativi_falliti,
+                  DROP COLUMN IF EXISTS bloccato_fino_a,
+                  DROP COLUMN IF EXISTS deve_cambiare_password,
+                  DROP COLUMN IF EXISTS totp_obbligatorio;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.identita_digitali
+                  ADD COLUMN IF NOT EXISTS tentativi_falliti      smallint    NOT NULL DEFAULT 0,
+                  ADD COLUMN IF NOT EXISTS bloccato_fino_a        timestamptz,
+                  ADD COLUMN IF NOT EXISTS deve_cambiare_password boolean     NOT NULL DEFAULT false,
+                  ADD COLUMN IF NOT EXISTS totp_obbligatorio      boolean     NOT NULL DEFAULT false;

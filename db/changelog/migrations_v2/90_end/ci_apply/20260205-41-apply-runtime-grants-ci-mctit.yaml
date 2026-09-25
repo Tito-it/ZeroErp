@@ -66,6 +66,16 @@
 #   ricalcolo entrano in `v_fn_riservate` (brief-db-magazzino-verbi-con-permesso,
 #   P-4). Il forward su dev è `90_end/20260924-42`, la terza sede lo stesso blocco
 #   del provisioning, lo stesso pgTAP pinna l'esito (test 17-18).
+#
+# ── ⭐ LA PORTA DELLO STATO DELLA CREDENZIALE (dal 2026-09-25) ──────────────
+#   Brief: brief-db-blocco-login-per-credenziale, sezione 2.2
+#   `config.credenziali` e `config.credenziali_provenienze` entrano in
+#   `v_tabelle_sola_lettura_app`: tentativi, freni, blocco dell'admin e cambio
+#   password obbligatorio li scrivono solo le funzioni DEFINER del proprietario.
+#   Il SELECT resta: lo legge fn_check_almeno_un_super_admin_attivo (sql) dai
+#   trigger INVOKER anti-lockout. Forward su dev: `90_end/20260925-24`; terza
+#   sede lo stesso blocco del provisioning; pgTAP
+#   `db/pgtap/config/test-credenziali-porta-v1.sql`.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -133,9 +143,15 @@ databaseChangeLog:
                 --   DEFINER (magazzino.fn_scrivi_movimento) e il ricalcolo: è la
                 --   porta di D-L2-b. Voci `schema.tabella`.
                 --   Brief: brief-db-magazzino-lotto-2-motore, sezione 4.1.
+                --   ⭐ Dal 2026-09-25 anche lo stato della CREDENZIALE: scrivono solo
+                --   le funzioni DEFINER del login e dei verbi di blocco; il SELECT resta
+                --   per fn_check_almeno_un_super_admin_attivo (sql, chiamata da trigger
+                --   INVOKER). Brief: brief-db-blocco-login-per-credenziale §2.2.
                 v_tabelle_sola_lettura_app text[] := ARRAY[
                   'magazzino.movimenti',
-                  'magazzino.valore_giacenza'
+                  'magazzino.valore_giacenza',
+                  'config.credenziali',
+                  'config.credenziali_provenienze'
                 ];
                 -- ⭐ Tabelle SENZA DELETE per l'applicazione (la forma per tabella
                 --   di v_schemi_senza_delete): un blocco di magazzino si chiude

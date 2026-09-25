@@ -33,8 +33,6 @@ DECLARE
     v_valido_al               anagrafiche.risorse_umane.valido_al%TYPE;
     v_ru_attivo               anagrafiche.risorse_umane.attivo%TYPE;
     v_risorse_umane           jsonb;
-    -- Flag autenticazione avanzata
-    v_deve_cambiare_password  anagrafiche.identita_digitali.deve_cambiare_password%TYPE;
     -- Blocco soggetto
     v_soggetto                jsonb;
     -- Blocco emittente
@@ -96,7 +94,6 @@ BEGIN
            id.attivo,
            id.valido_dal,
            id.valido_al,
-           id.deve_cambiare_password,
            ru.id,
            ru.soggetto_ruolo_id,
            ru.qualifica_id,
@@ -116,7 +113,6 @@ BEGIN
            v_identita_attiva,
            v_identita_val_dal,
            v_identita_val_al,
-           v_deve_cambiare_password,
            v_risorsa_umana_id,
            v_soggetto_ruolo_id,
            v_qualifica_id,
@@ -382,7 +378,9 @@ BEGIN
         'permessi_area',            script.fn_get_user_permissions_map(p_auth_user_id),
         'azioni_abilitate',         script.fn_get_user_actions_map(p_auth_user_id),
         'permessi_oggetto',         script.fn_get_user_object_permissions_map(p_auth_user_id),
-        'deve_cambiare_password',   COALESCE(v_deve_cambiare_password, false)
+        -- rev 2026-09-25 (D-7): il flag e' della CREDENZIALE, e il default
+        -- dell'assenza vive solo in fn_get_deve_cambiare_password.
+        'deve_cambiare_password',   script.fn_get_deve_cambiare_password(p_auth_user_id)
     );
 
     RETURN v_result;
@@ -390,7 +388,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_profile(p_auth_user_id integer)
-IS 'Profilo utente completo (JSONB). Post Fase 7 step 3 (29-04-2026): rimossa la chiave ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''. Top-level ruolo_applicativo GUC-aware (20260421-05); is_super_admin context-aware (20260421-03/04). Richiede identita OPERATORE (raise E_ADMIN_VALIDAZIONE altrimenti). La chiave emittente.emittente_descrizione porta la ragione_sociale_completa del soggetto emittente (Fase 1 cantiere emittente 2026-08-02: prima leggeva emittenti_fiscali.descrizione nuda, cioe'' l''etichetta interna).';
+IS 'Profilo utente completo (JSONB). Post Fase 7 step 3 (29-04-2026): rimossa la chiave ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''. Top-level ruolo_applicativo GUC-aware (20260421-05); is_super_admin context-aware (20260421-03/04). Richiede identita OPERATORE (raise E_ADMIN_VALIDAZIONE altrimenti). La chiave emittente.emittente_descrizione porta la ragione_sociale_completa del soggetto emittente (Fase 1 cantiere emittente 2026-08-02: prima leggeva emittenti_fiscali.descrizione nuda, cioe'' l''etichetta interna). La chiave deve_cambiare_password e'' della CREDENZIALE (D-7, rev 2026-09-25): si legge da script.fn_get_deve_cambiare_password, non piu'' dall''identita OPERATORE.';
 ```
 
 ---

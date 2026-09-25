@@ -3,11 +3,13 @@
 > **Tipo documento**: brief operativo **per il team DB** (`dev/db-tid`), con la
 > ricaduta sul backend al §7.
 >
-> **Data**: 2026-09-24 · **Stato**: 🟢 **PRONTO PER IL TEAM DB** — nessun
-> changeSet; tutte le decisioni prese (§9, Tid, 2026-09-24).
+> **Data**: 2026-09-24 · **Stato**: 🟢 **P-1 APPLICATO il 2026-09-25** su dbdev e
+> sullo scratch `zeroerp_ci` (§11) — 25 changeSet `20260925-01…-25`. ⛔ **Il
+> backend va allineato subito** (§7, §11.3): finché non lo è, il login di dbdev
+> chiama firme che non esistono più. P-2 (§5) da fare.
 >
-> **Da leggere per primo**: §2 (la forma decisa), §5 (email e creazione
-> dell'operatore) e §9 (le decisioni di dettaglio).
+> **Da leggere per primo**: §11 (cosa è stato fatto, cosa è cambiato rispetto al
+> disegno, cosa resta), poi §2 (la forma decisa) e §5 (il P-2).
 >
 > **Due lavori, in quest'ordine**: **P-1** login, blocco e cambio password
 > (§2–§4); **P-2** email unica e riuso della credenziale (§5). Sono
@@ -116,6 +118,9 @@ dell'admin ha un autore registrato.
 **`<schema>.credenziali`** — 1:1 con `django.auth_user`. Schema a scelta del
 team DB; il precedente è `config.auth_totp_device` (anche lui 1:1), con una
 differenza voluta: qui la PK **è** `auth_user_id`, senza `id` surrogato.
+⚠️ *Corretto in esecuzione (§11.2): le linee guida (§2-§4) vogliono la PK `id`
+ed evitano le chiavi composte — `id` + `UNIQUE (auth_user_id)`, come
+`auth_totp_device`; la figlia punta a `credenziali.id`.*
 
 | Colonna | Note |
 | --- | --- |
@@ -161,7 +166,11 @@ Per entrambe:
   ([brief-db-permesso-nel-verbo-di-scrittura.md](brief-db-permesso-nel-verbo-di-scrittura.md),
   D-1): `zeroerp_app` non ha `INSERT`/`UPDATE`/`DELETE` né `SELECT` diretti.
   Legge e scrive **solo** attraverso le funzioni del §3, `SECURITY DEFINER` del
-  proprietario. Il loop dei grant di `ci_apply` non deve riaprirle (vedi
+  proprietario. ⚠️ *Corretto in esecuzione (§11.2): il `SELECT` all'app
+  **resta**. `fn_check_almeno_un_super_admin_attivo` è `LANGUAGE sql` e la
+  chiamano trigger `INVOKER` che girano come l'app: senza `SELECT` i guard
+  anti-lockout su identità e binding si romperebbero. Il modello del verbo
+  chiude le scritture, non le letture; il backend legge comunque dalle funzioni.* Il loop dei grant di `ci_apply` non deve riaprirle (vedi
   linee-guida-sql §11.8, e quanto fatto per `magazzino.movimenti`).
 
 ### 2.3 La riga nasce alla prima scrittura
@@ -250,14 +259,19 @@ trigger alla nascita non la rivede; il verbo di registrazione **ricalcola**
 TTL proposto: 1 giorno.
 
 Un successo o un reset **cancellano** le righe di provenienza della credenziale:
-non c'è niente da ricordare.
+non c'è niente da ricordare. ⚠️ *Corretto in esecuzione (§11.2): un **accesso
+riuscito** cancella solo la coppia da cui si è entrati; il **reset** le cancella
+tutte.*
 
 ---
 
 ## 3. Le funzioni
 
 Tutte `SECURITY DEFINER` del proprietario, `search_path` fissato, `%TYPE` in
-firma, `DECLARE` e `RETURNS` sulle colonne delle tabelle nuove.
+firma, `DECLARE` e `RETURNS` sulle colonne delle tabelle nuove. ⚠️ *In
+esecuzione: `DEFINER` quelle che **scrivono**; `INVOKER` i lettori e i guard
+(`fn_get_deve_cambiare_password`, `fn_guard_super_admin`, `fn_login_parametri`,
+`fn_login_attesa_secondi`), perché l'app legge le tabelle (§11.2).*
 
 ### 3.1 Il login — senza identità di chi agisce
 
@@ -287,7 +301,11 @@ blocco dell'admin né `deve_cambiare_password`.
 
 **Una regola, tre chiamanti**: il ramo «successo» di
 `fn_registra_tentativo_login`, il reset password riuscito (backend), e nessun
-altro. ⚠️ Non si riusa `fn_registra_tentativo_login(uid, …, true)` dal reset:
+altro. ⚠️ *Corretto in esecuzione (§11.2): la firma è
+`fn_azzera_tentativi_credenziale(p_auth_user_id, p_provenienza DEFAULT NULL)`.
+Con la provenienza (accesso riuscito) cancella la **sola** coppia da cui si è
+entrati: il freno sulla macchina di chi attacca resta, altrimenti ogni login del
+titolare le regalerebbe tentativi nuovi. Senza (reset) le cancella tutte.* ⚠️ Non si riusa `fn_registra_tentativo_login(uid, …, true)` dal reset:
 un reset non è un tentativo di login, e il nome mentirebbe nel giornale.
 
 ⚠️ **Nome**: nella prima versione era «sblocco». Ora «sblocca» è il verbo
@@ -368,7 +386,9 @@ vuoto, e va scritta in modo che lo sia):
 - contatori e blocchi ripartono da zero.
 
 **Ordine dei changeSet**: tabelle, funzioni, lettori ripuntati e migrazione dei
-valori prima; il `DROP COLUMN` **per ultimo**, nel suo changeSet. ⚠️ Su dbdev,
+valori prima; il `DROP COLUMN` **per ultimo**, nel suo changeSet. ⚠️ *In
+esecuzione (§11.3): a rompere il backend non è solo il `DROP`, ma già la firma
+nuova delle due funzioni del login — il P-1 intero va applicato con la PR BE.* ⚠️ Su dbdev,
 fra l'apply del `DROP` e l'allineamento del backend, il login si rompe:
 `auth_repository` legge quelle colonne con SQL diretto. La PR DB e la PR backend
 entrano **insieme** in `Tito-dev`.
@@ -448,7 +468,9 @@ violazione dell'unique `(auth_user_id, ruolo_applicativo) WHERE attivo`.
 ## 6. Test (pgTAP) — casi costruiti, non popolazione
 
 File nuovo: oggi nessun test copre queste funzioni. I soggetti e le credenziali
-il test se li fabbrica.
+il test se li fabbrica. ⚠️ *In esecuzione i casi P-1 sono in quattro file
+(§11.4); il test 1 «sola veste portale» è coperto da quello più forte, la
+credenziale **senza nessuna identità**: il codice non legge più le vesti.*
 
 **Freno sulla provenienza**
 
@@ -534,14 +556,23 @@ il test se li fabbrica.
   **senza** `identita_id` (D-7) e **senza** SQL diretto: il login, il
   middleware, `apply_new_password` (cambio, reset, attivazione), l'invito
   operatore.
-- Il reset password riuscito chiama `fn_azzera_tentativi_credenziale`.
+- Il reset password riuscito chiama `fn_azzera_tentativi_credenziale(uid)`
+  **senza** provenienza (tutte le coppie). L'accesso riuscito non la chiama: ci
+  pensa `fn_registra_tentativo_login(uid, provenienza, true)`.
+- `fn_registra_tentativo_login` restituisce anche `attesa_secondi`; il check può
+  rispondere `E_CREDENZIALE_BLOCCATA`, `E_UTENTE_BLOCCATO` (minuti nel contesto),
+  `E_LOGIN_ATTESA` (secondi nel messaggio e nel contesto) ed
+  `E_AUTH_CHIAMATA_NON_VALIDA` (provenienza mancante). Cinque codici nuovi in
+  `codici_errore.csv` (§11.1): `error_policies_generated.py` e
+  `error_messages_fallback.py` vanno rigenerati.
 - Blocco dell'admin: endpoint in `amm_software` (`AdminAPIView`, cioè
   SUPER_ADMIN, la stessa regola del verbo: D-B1); al blocco, **blacklist di
   tutte le sessioni** della credenziale.
 - Lettori di `identita_digitali` che perdono le colonne:
   `PortaleRepository.find_identita_portale` (`portale_repository.py:95`),
   `PortaleRepository.create_identita_portale`, `ProfileActivateShopView`,
-  `invito_portale_service`; `IdentitaDigitale` (model) perde le tre colonne.
+  `invito_portale_service`; `IdentitaDigitale` (model) perde le **quattro**
+  colonne (anche `totp_obbligatorio`, D-10).
 - P-2: `create_operatore` gestisce la credenziale riusata; invito operatore
   senza sovrascrittura della password; attivazione operatore che accende la
   veste (§5.2); login e reset di portale e shop per email (D-9);
@@ -551,6 +582,11 @@ il test se li fabbrica.
 - Test aggiornati.
 
 ## 8. Documentazione
+
+✅ *Fatto il 2026-09-25 per la parte DB: manual di `config.credenziali` (il
+modello, una sede sola), `config.credenziali_provenienze`, delle funzioni nuove e
+riscritte, del guard; `identita_digitali.md` e il manual del guard sulle identità
+riscritti. Resta al backend la guida `architettura-multi-face-auth.md` §3.1.*
 
 - manual di `fn_check_blocco_login` e `fn_registra_tentativo_login`, e i loro
   `COMMENT ON FUNCTION`: da riscrivere; manual delle funzioni nuove;
@@ -565,7 +601,7 @@ il test se li fabbrica.
 | # | Domanda | Decisione |
 | --- | --- | --- |
 | **D-B1** | Chi può bloccare e sbloccare una credenziale | ✅ **Tid, 2026-09-24: SUPER_ADMIN** — la gestione accessi è `amm_software`, che non è un'area del catalogo ma una porta per soli SUPER_ADMIN; il verbo chiede la stessa regola, con il building block nuovo `script.fn_guard_super_admin` (§3.3). Nessuna area né azione nuova |
-| **D-B2** | Valori dell'attesa crescente | ✅ **come proposto** — tetto 20 fallimenti consecutivi, base 2 s, massimo 60 s: parametri nuovi in `parameters.csv`, globali come gli altri due |
+| **D-B2** | Valori dell'attesa crescente | ✅ **come proposto** — tetto 20 fallimenti consecutivi, base 2 s, massimo 60 s: parametri nuovi in `parameters.csv`, globali come gli altri due. ⚠️ *In esecuzione in un CSV dedicato, `parameters_login.csv` (id 57-59): `parameters.csv` è un mirror dormiente (vedi `20260825-12`)* |
 | **D-B3** | Il reset password toglie anche il blocco dell'admin? | ✅ **come proposto** — **no** (§2.4) |
 | **D-B4** | Esentare dall'attesa le provenienze da cui la credenziale è già entrata? | ✅ **come proposto** — non ora: aggiunge una memoria delle provenienze buone. Si riprende se il limite del §2.4 diventa un problema reale |
 | **D-B5** | Dove nasce l'indice unico su `lower(email)` di `django.auth_user` | ✅ **Tid, 2026-09-24 — corretta la prima proposta** (migration Django): nel progetto non ne esistono, il DDL è solo Liquibase. ⇒ changeSet `90_end` con `onFail: CONTINUE`, lavoro del team DB (§5.1) |
@@ -581,6 +617,139 @@ il test se li fabbrica.
   da riprendere col backend.
 - Captcha o altri controlli nel frontend (decisione del 2026-09-24).
 
+## 11. Esecuzione del P-1 (2026-09-25)
+
+### 11.1 Cosa c'è — applicato il 2026-09-25 (dbdev e scratch)
+
+| Fase | ChangeSet | Cosa |
+| --- | --- | --- |
+| `00_schema/config` | `-01`, `-02` | `config.credenziali`, `config.credenziali_provenienze` |
+| | `-03` | `deve_cambiare_password` = OR sulle identità **attive**, riga solo dove vale `true` |
+| `20_code/script` | `-04`, `-05` | ⭐ `fn_login_parametri()` e `fn_login_attesa_secondi(…)`: building block nuovi (regola del 2, §11.2) |
+| | `-06` | `fn_guard_super_admin` (D-B1) |
+| | `-07`, `-08` | `fn_get_deve_cambiare_password`, `fn_imposta_deve_cambiare_password` |
+| | `-09` | `fn_azzera_tentativi_credenziale(uid, provenienza DEFAULT NULL)` |
+| | `-10`, `-11` | `fn_check_blocco_login(uid, provenienza)`, `fn_registra_tentativo_login(uid, provenienza, esito)` — DROP delle firme vecchie |
+| | `-12`, `-13` | `fn_check_almeno_un_super_admin_attivo` **e** `fn_check_ultimo_super_admin_attivo` conoscono il blocco dell'admin |
+| | `-14`, `-15` | `fn_blocca_credenziale`, `fn_sblocca_credenziale` |
+| | `-16`, `-17` | `fn_get_user_profile`, `fn_get_operatore_detail` leggono il flag dalla credenziale |
+| `20_code/config` | `-18` | guard anti-lockout sul blocco (`AFTER INSERT OR UPDATE OF bloccata_at`) |
+| | `-19` | trigger alla nascita di `cleanup_at` sulle provenienze |
+| `80_data` | `-20` | parametri 57-59 (`parameters_login.csv`, CSV dedicato) |
+| | `-21` | policy indici delle tre FK (`fk_index_policy_credenziali.csv`, tutte `consentito=false`) |
+| | *(CSV esistenti)* | 5 codici e messaggi (id 1122-1126): `E_AUTH_CHIAMATA_NON_VALIDA`, `E_CREDENZIALE_NON_TROVATA`, `E_CREDENZIALE_MOTIVO_OBBLIGATORIO`, `E_CREDENZIALE_BLOCCATA`, `E_LOGIN_ATTESA`; regola `CLEANUP_AT` id 21 (TTL 1 giorno) |
+| `90_end` | `-22`, `-23` | FK verso `django.auth_user` (`auth_user_id` CASCADE, `bloccata_da` NO ACTION), `MARK_RAN` |
+| | `-24` | la porta (+ loop `ci_apply/20260205-41` + `provision_db_roles.sql`) |
+| | `-25` | ⛔ DROP delle quattro colonne da `identita_digitali` |
+
+### 11.2 Cosa è cambiato rispetto al disegno, e perché
+
+1. **PK `id` + `UNIQUE (auth_user_id)`** e figlia su `credenziale_id`: le linee
+   guida (§2-§4) vogliono la surrogata ed evitano le chiavi composte.
+2. **All'app resta il `SELECT`** (non «nessun privilegio»):
+   `fn_check_almeno_un_super_admin_attivo` è `LANGUAGE sql` e la chiamano
+   trigger `INVOKER` come l'app. Il modello del verbo chiude le scritture.
+3. ⭐ **L'azzeramento ha un perimetro.** Trovato scrivendo il pgTAP: se un accesso
+   riuscito cancellasse *tutte* le provenienze, il freno sulla macchina di chi
+   attacca sparirebbe a ogni login del titolare. Accesso riuscito → la sola
+   coppia; reset → tutte (la password è cambiata).
+4. **Due building block in più** per la regola del 2: la lettura dei cinque
+   parametri (`fn_login_parametri`, fail-loud: la versione di prima aveva
+   `COALESCE(…, 5)` e `…, 15)`, il seed scritto una seconda volta nel codice) e la
+   formula dell'attesa (`fn_login_attesa_secondi`), usate da check e registrazione.
+5. **Anche `fn_check_ultimo_super_admin_attivo`** conosce il blocco: decide le
+   capability del drawer Operatore, e se dissentisse dal guard il drawer
+   offrirebbe «disabilita» che poi verrebbe rifiutato.
+6. **`bloccata_da` con `ON DELETE NO ACTION`**: `SET NULL` violerebbe il CHECK
+   «blocco tutto o niente», `CASCADE` toglierebbe lo stato di un'altra
+   credenziale. Cancellare un admin che ha bloccato qualcuno è rifiutato finché
+   il blocco c'è.
+7. **I tre parametri nuovi con `storicizza = f`**, come i due fratelli (id 9, 10).
+
+### 11.3 ⛔ Da applicare insieme alla PR del backend
+
+Non solo il DROP (`-25`): già `-10` e `-11` tolgono le firme che il backend chiama
+(`check_blocco_login(uid)`, `registra_tentativo_login(uid, esito)`). Applicato da
+solo, il P-1 rompe il login su dbdev.
+
+### 11.4 Come è stato provato (2026-09-25)
+
+Sullo scratch `zeroerp_ci`, da owner, in transazioni ritirate: l'SQL **estratto**
+dai 25 changeSet, in ordine di fase (i `loadUpdateData` e le
+`addForeignKeyConstraint` resi in SQL equivalente; codici e messaggi inseriti come
+righe nuove).
+
+| Prova | Esito |
+| --- | --- |
+| DDL di tutti i changeSet | passa |
+| `plpgsql_check` sulle 13 funzioni nuove o riscritte | 0 errori (12 avvisi «STABLE ma VOLATILE»: `fn_log_and_raise_error`, la stessa forma di `fn_get_user_profile`) |
+| `config/test-credenziale-login-v1.sql` | 22/22 |
+| `config/test-credenziale-blocco-admin-v1.sql` | 16/16 |
+| `config/test-credenziali-porta-v1.sql` | 8/10 — ⚠️ i test 3-4 (`42501` come app) sono **rossi da owner per costruzione**: verdi solo come app |
+| `config/test-credenziale-login-tempo-v1.sql` (marcato `owner`, motivo nel file) | 5/5 |
+| 10 pgTAP esistenti che toccano le funzioni cambiate | identici asserzione per asserzione, con e senza il P-1 |
+| cancello B-7 (famiglie dei codici) | verde: i codici nuovi hanno una famiglia sola; `E_CONFIG_MANCANTE` e `E_PERMESSO_NEGATO` restano nella loro |
+| cancelli statici (runOnChange, letterali, timestamp, preCondition, trigger, grant batch, preambolo pgTAP) | verdi |
+
+⚠️ **Non provato qui, resta a Tid**: la corsa pgTAP vera come app, e l'esito sul
+database ricostruito (la porta nelle tre sedi, le FK `MARK_RAN`).
+
+⚠️ **Il file `owner`** (`test-credenziale-login-tempo-v1.sql`): per provare «freno
+scaduto» e «attesa trascorsa» la fixture deve retrodatare tabelle chiuse all'app.
+Un helper `DEFINER` che lo facesse sarebbe chiamabile in esercizio e azzererebbe il
+freno: meglio un test marcato che una porta aperta.
+
+### 11.5 Trovato strada facendo, fuori perimetro
+
+- ⚠️ **Storico di `config.parameters` rotto su un database ricostruito.** Il
+  trigger `trg_parameters_z90_storico_upd_dlt` è montato con
+  `trgfn_storico_generic('parameters_id')`, ma la colonna di `storico.parameters`
+  è `parameter_id`: sullo scratch l'UPDATE di un parametro con `storicizza = t`
+  (per esempio `SYSTEM_FUSO_ORARIO`, id 54) muore con `E_SNAPSHOT_CLOSE_ERROR`.
+  Su dbdev lo stesso UPDATE passa. ➜ Analizzato in
+  [brief-db-storico-colonna-fk-dei-trigger.md](brief-db-storico-colonna-fk-dei-trigger.md):
+  il difetto tocca cinque tabelle, quattro anche su dbdev, ed è dbdev a essere
+  fuori modello per `parameters`.
+  ✅ *Presa in carico da un'altra sessione (Tid, 2026-09-25).*
+- `fn_check_almeno_un_super_admin_attivo` non guarda `ruolo_applicativo =
+  OPERATORE` né la finestra `valido_dal`/`valido_al`, che `fn_is_super_admin` e
+  `fn_check_ultimo_super_admin_attivo` guardano: divergenza preesistente, non
+  toccata.
+- ⚠️ **Lo scratch ha il «ponte django» a metà, e
+  `config/test-fk-auth-user-ponte-django-v1.sql` è rosso lì** (asserzioni 1 e
+  2), non in CI. Il test si accende se esiste **almeno una** FK verso
+  `django.auth_user`, e allora le pretende tutte. Sullo scratch, nato da zero, le
+  18 FK storiche del ponte sono `MARK_RAN` (Liquibase girava prima di
+  `manage.py migrate`) e non esistono; le due di questo cantiere (`-22`, `-23`)
+  sono state applicate dopo, a tabella Django presente, e sono `EXECUTED`. Una
+  sola FK accende il test, che trova 16 colonne scoperte. Misurato il
+  2026-09-25 (fatto datato, non motivo):
+
+  | Database | FK del ponte | Test |
+  | --- | --- | --- |
+  | CI, da zero | nessuna (tutte `MARK_RAN`, anche `-22`/`-23`) | 3 `skip` |
+  | dbdev | tutte (23) | verde |
+  | scratch | 1 di 17 sulle colonne del test | **rosso** |
+
+  Non è un difetto del P-1 né del test (fa ciò per cui è scritto: «se una c'è e
+  le altre no, è rosso»): è lo stato di una macchina. Rimedio proposto: sullo
+  scratch togliere da `databasechangelog` le righe `MARK_RAN` del ponte e
+  rilanciare il migrate, così le FK nascono come su dbdev. ⏳ Da fare (Tid).
+- ❓ **La domanda di forma che c'è sotto — per Tid.** Con `onFail: MARK_RAN` una
+  FK verso Django su un'**installazione nuova non nasce mai**: il changeSet si
+  segna prima che la tabella esista e non si riprova. È la stessa ragione per cui
+  l'indice sull'email (D-B5) usa `onFail: CONTINUE`, che salta senza segnare e
+  riprova al migrate successivo. Da valutare se portare a `CONTINUE` tutte le FK
+  del ponte (le 18 storiche e `-22`/`-23`): sarebbe un cambio della forma di
+  casa, fuori da questo brief. I changeSet del P-1 restano nella forma di casa.
+
+### 11.6 Cosa resta
+
+- ✅ Tid: P-1 applicato (2026-09-25). ⏳ Corsa pgTAP; scratch da riallineare
+  sul ponte (§11.5).
+- Backend: §7.
+- DB: il **P-2** (§5).
+
 ## Registro
 
 | Data | Chi | Cosa |
@@ -589,12 +758,13 @@ il test se li fabbrica.
 | 2026-09-24 | DB | Analisi critica: forma della riga da chiudere, backend senza SQL diretto sulla tabella, azzeramento in un posto solo, `%TYPE`, lettore mancante (`find_identita_portale`), storico e trigger di `identita_digitali` a ogni fallimento, blocco usabile da uno sconosciuto |
 | 2026-09-24 | BE | Aggiunti D-6, D-9, D-10 (§2.5–§2.6 e test 9–10 della prima versione), su `Tito-dev` |
 | 2026-09-24 | Tid | D-1 riletta: blocco vero solo come atto autorizzato; freno automatico sulla coppia credenziale + provenienza; oltre il tetto attesa crescente, solo DB e backend. Brief riscritto (§2–§8) |
-
 | 2026-09-24 | DB | Fusione dopo il fast forward su `Tito-dev`: le aggiunte del BE entrano nella forma nuova come P-2 (§5), con tre correzioni — email vuota `''` e non `NULL`; indice su tabella Django che in CI non esisterebbe (D-B5); le tre ricadute del riuso (password dell'admin, sovrascrittura all'invito, attivazione che accende la veste). FK verso `django.auth_user` nella forma di casa (`90_end` + `MARK_RAN`) |
 | 2026-09-24 | Tid | D-B1…D-B5 decise come proposto. D-B5: l'indice sull'email è una migration Django, quindi lavoro del backend (§7); il DB fa il guard di `fn_crea_auth_user` e i test |
 | 2026-09-24 | Tid | ⚠️ D-B5 **corretta**: nessuna migration Django nel progetto, il DDL è Liquibase → `90_end` con `onFail: CONTINUE`, team DB. D-B1 riaperta: l'area indicata (`amm_software`) non è un'area del catalogo |
 | 2026-09-24 | Tid | D-B1 decisa: blocco e sblocco solo da SUPER_ADMIN (la regola di `amm_software`); building block `fn_guard_super_admin`, per regola del 2 (due verbi) |
 | 2026-09-24 | BE | §2.4: classe dei due codici nuovi `NON_PERMESSO` (403), non 429 — la classe non esiste e il login FE intercetta il 429 prima del codice |
+| 2026-09-25 | DB | **P-1 scritto e provato** (§11): 25 changeSet `20260925-01…-25`, 4 pgTAP, manual. Correzioni al disegno: PK `id`, `SELECT` all'app, azzeramento per perimetro, due building block in più, anche `fn_check_ultimo_super_admin_attivo`, parametri `storicizza = f`. Non applicato |
+| 2026-09-25 | Tid | P-1 applicato su dbdev e scratch. Sullo scratch `test-fk-auth-user-ponte-django-v1` rosso: ponte django a metà (§11.5), rimedio sulla macchina e domanda su `MARK_RAN` → `CONTINUE` |
 
 ---
 {% include-markdown "signature-core.md" %}

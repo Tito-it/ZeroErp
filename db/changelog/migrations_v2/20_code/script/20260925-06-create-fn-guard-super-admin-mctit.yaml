@@ -1,0 +1,103 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 — IL VERBO CHE CHIEDE SUPER_ADMIN: script.fn_guard_super_admin(p_auth_user_id)
+#   Brief: brief-db-blocco-login-per-credenziale, sezione 3.3 e D-B1
+#   Modello: brief-db-permesso-nel-verbo-di-scrittura (una scrittura = un verbo)
+#
+# ── ⭐ PERCHE' SUPER_ADMIN E NON UN'AZIONE DI PROCESSO (D-B1) ─────────
+#   La gestione degli accessi e' `amm_software`, che NON e' un'area del
+#   catalogo (config.aree_funzionali): e' un'app del backend, le sue view sono
+#   AdminAPIView e lasciano entrare solo i SUPER_ADMIN. Un'azione non avrebbe
+#   un'area a cui appartenere, e dal lato backend nessuno la leggerebbe. Il
+#   verbo chiede la stessa regola della porta.
+#
+# ── ⭐ PERCHE' UN BUILDING BLOCK (regola del 2) ──────────────────────
+#   Oggi nessun verbo del DB rifiuta chi non e' SUPER_ADMIN (l'unica funzione
+#   che nega fn_is_super_admin e' la fixture fn_pgtap_set_contesto_operatore),
+#   e i verbi che lo chiedono nascono in DUE (fn_blocca_credenziale,
+#   fn_sblocca_credenziale). Gemello di script.fn_guard_azione.
+#
+# ── UNA REGOLA, DUE PUNTI DI APPLICAZIONE ───────────────────────────
+#   Il guard NON riscrive la regola: chiede a script.fn_is_super_admin, la
+#   stessa del backend, che ha gia' il gate di contesto (fuori dalla veste
+#   OPERATORE risponde false). Qui si solleva quando la risposta e' no.
+#
+# ── ⛔ UTENTE NULL = NEGATO ──────────────────────────────────────────
+#   Fail-closed, con 'senza_utente' nel contesto, come fn_guard_azione. Il
+#   codice e' lo stesso, E_PERMESSO_NEGATO: e' lo stesso rifiuto che da' il
+#   backend (403), e l'operatore legge la stessa frase.
+#
+# L'utente arriva come PARAMETRO (linee-guida §10.4): il verbo legge
+# app.current_user_id e lo passa. INVOKER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260925-06-create-fn-guard-super-admin-mctit.yaml
+
+  - changeSet:
+      id: 20260925-06-create-fn-guard-super-admin
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_guard_super_admin(p_auth_user_id): il guard con cui un verbo di scrittura chiede
+        SUPER_ADMIN. Chiede a script.fn_is_super_admin (la stessa regola del backend, gate di
+        contesto compreso) e solleva E_PERMESSO_NEGATO se la risposta e' no, anche a utente NULL
+        (fail-closed). Gemello di fn_guard_azione; regola del 2 (fn_blocca_credenziale,
+        fn_sblocca_credenziale). INVOKER. Brief: brief-db-blocco-login-per-credenziale §3.3, D-B1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_is_super_admin';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_guard_super_admin(
+                  -- ⚠️ integer esplicito: e' django.auth_user.id, e su colonne di Django
+                  --    niente %TYPE (lo schema django in CI non c'e' quando gira Liquibase).
+                  p_auth_user_id integer
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: chiedere SUPER_ADMIN nella prima riga di un verbo di scrittura.
+              --   La regola la decide script.fn_is_super_admin (la stessa del backend);
+              --   qui si solleva quando la risposta e' no.
+              -- Uso: PERFORM script.fn_guard_super_admin(
+              --          NULLIF(current_setting('app.current_user_id', true), '')::integer);
+              BEGIN
+                  -- NULL (utente NULL) vale no: fail-closed.
+                  IF p_auth_user_id IS NULL
+                     OR NOT COALESCE(script.fn_is_super_admin(p_auth_user_id), false) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_guard_super_admin', 'E_PERMESSO_NEGATO',
+                          jsonb_build_object('richiesto',    'SUPER_ADMIN',
+                                             'auth_user_id', p_auth_user_id,
+                                             'senza_utente', p_auth_user_id IS NULL),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_guard_super_admin(integer) IS
+                  'Guard dei verbi di scrittura che chiedono SUPER_ADMIN (modello «una scrittura = un verbo»; D-B1 di brief-db-blocco-login-per-credenziale: la gestione accessi e'' amm_software, che non e'' un''area del catalogo ma una porta per soli SUPER_ADMIN). La regola NON e'' qui: la decide script.fn_is_super_admin, la stessa del backend, gate di contesto compreso (fuori dalla veste OPERATORE risponde false). Risposta no -> E_PERMESSO_NEGATO (NON_PERMESSO, lo stesso codice del backend), anche a utente NULL: fail-closed, con senza_utente nel contesto. Gemello di script.fn_guard_azione. L''utente arriva come parametro: il chiamante legge app.current_user_id (linee-guida-sql §10.4). INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_guard_super_admin(integer);

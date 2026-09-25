@@ -14,11 +14,14 @@ CREATE OR REPLACE FUNCTION script.fn_check_almeno_un_super_admin_attivo()
  STABLE
 AS $function$
     -- Condizione di sicurezza: il sistema mantiene almeno un
-    -- amministratore raggiungibile. Tre livelli AND obbligatori:
+    -- amministratore raggiungibile. Quattro livelli AND obbligatori:
     --   1) profilo_accesso.tipo = 'SUPER_ADMIN' (enum stabile) (+ attivo)
     --   2) binding attivo verso quel profilo, di tipo AD_HOC
     --      (identita_digitale_id valorizzato)
     --   3) identita_digitali attiva
+    --   4) credenziale NON bloccata dall'amministratore
+    --      (config.credenziali.bloccata_at; assenza della riga = non
+    --      bloccata) — rev 2026-09-25, brief-db-blocco-login-per-credenziale
     -- Un unico EXISTS short-circuita: sufficiente trovare uno.
     -- rev 2026-06-29: tipo (enum) invece di codice (mutabile) -- §4a.
     SELECT EXISTS (
@@ -32,11 +35,17 @@ AS $function$
            AND pa.attivo = true
            AND pab.attivo = true
            AND id.attivo  = true
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM config.credenziali c
+                WHERE c.auth_user_id = id.auth_user_id
+                  AND c.bloccata_at IS NOT NULL
+           )
     );
 $function$
 
 COMMENT ON FUNCTION script.fn_check_almeno_un_super_admin_attivo()
-IS 'Ritorna true se esiste almeno un''identita attiva con binding attivo verso un profilo SUPER_ADMIN (identificato per tipo enum). Usato dai guard anti-lockout su profili_accesso_bindings e identita_digitali. STABLE, fail-closed nessun raise. rev 2026-06-29: tipo invece di codice (§4a).';
+IS 'Ritorna true se esiste almeno un''identita attiva con binding attivo verso un profilo SUPER_ADMIN (identificato per tipo enum) la cui CREDENZIALE non e'' bloccata dall''amministratore (config.credenziali.bloccata_at; rev 2026-09-25). Usato dai guard anti-lockout su profili_accesso_bindings, identita_digitali e credenziali: e'' la sede unica della condizione «almeno un amministratore raggiungibile». LANGUAGE sql, legge config.credenziali come il chiamante (l''app ha SELECT). STABLE, fail-closed nessun raise. rev 2026-06-29: tipo invece di codice (§4a).';
 ```
 
 ---

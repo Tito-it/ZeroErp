@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 — IL BLOCCO VERO E' UN ATTO AUTORIZZATO: script.fn_blocca_credenziale(p_auth_user_id, p_motivo)
+#   Brief: brief-db-blocco-login-per-credenziale, sezione 3.3 (D-1 riletta, D-B1, D-B3)
+#
+# ── ⭐ PERCHE' UN VERBO ──────────────────────────────────────────────
+#   Decisione di Tid del 2026-09-24: le password sbagliate FRENANO chi le
+#   prova, e basta; chiudere una credenziale e' una DECISIONE, e le decisioni
+#   hanno un autore. Il blocco vale su tutte le porte, non scade, e il reset
+#   password non lo toglie (D-B3): lo toglie solo fn_sblocca_credenziale.
+#
+# ── ⭐ PRIMA RIGA: SUPER_ADMIN (D-B1) ────────────────────────────────
+#   script.fn_guard_super_admin(chi agisce): la gestione accessi e'
+#   amm_software, porta per soli SUPER_ADMIN, e il verbo chiede la stessa
+#   regola. Chi agisce si legge da app.current_user_id con l'espressione dei
+#   verbi di magazzino; NULL = negato.
+#
+# ── ⭐ ANTI-LOCKOUT: NON QUI ─────────────────────────────────────────
+#   Bloccare l'ultimo SUPER_ADMIN raggiungibile lo rifiuta il guard sulla
+#   tabella (config.trgfn_credenziali_guard_ultimo_super_admin, 20260925-18),
+#   che chiede alla sede della regola, fn_check_almeno_un_super_admin_attivo.
+#   Nessun controllo scritto qui: sarebbe la seconda sede. Bloccare se' stessi
+#   segue la stessa regola, nessun divieto in piu'.
+#
+# ── ⚠️ UN SECONDO BLOCCO AGGIORNA ────────────────────────────────────
+#   Su una credenziale gia' bloccata il verbo riscrive chi, quando e perche':
+#   la tabella tiene l'ultimo stato. La storia dei blocchi, se servira', andra'
+#   in un registro di eventi, non nello storico della riga (brief §2.2).
+#
+# SECURITY DEFINER del PROPRIETARIO (l'app ha solo SELECT), search_path
+# bloccato. La sessione della richiesta porta le GUC del backend, che il
+# guard legge attraverso fn_is_super_admin.
+# ⚠️ Nessuna sessione da chiudere qui: la blacklist dei token al blocco e' del
+# backend (brief §7).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260925-14-create-fn-blocca-credenziale-mctit.yaml
+
+  - changeSet:
+      id: 20260925-14-create-fn-blocca-credenziale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_blocca_credenziale(p_auth_user_id, p_motivo): il blocco vero di una credenziale,
+        atto autorizzato (D-1 riletta). Prima riga fn_guard_super_admin (D-B1); motivo obbligatorio;
+        scrive bloccata_at/_da/motivo in upsert. Vale su tutte le porte, non scade, il reset non lo
+        toglie (D-B3). L'anti-lockout lo applica il guard sulla tabella (-18). SECURITY DEFINER del
+        proprietario. Brief: brief-db-blocco-login-per-credenziale §3.3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: config, tableName: credenziali }
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_guard_super_admin';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_blocca_credenziale(
+                  p_auth_user_id integer,
+                  p_motivo       config.credenziali.motivo_blocco%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: bloccare una credenziale su tutte le porte, per decisione di un
+              --   SUPER_ADMIN. Non scade; lo toglie solo script.fn_sblocca_credenziale.
+              DECLARE
+                  v_utente integer;
+              BEGIN
+                  -- Prima riga: chi agisce dev'essere SUPER_ADMIN (D-B1).
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_super_admin(v_utente);
+
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_blocca_credenziale', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_auth_user_id', 'valore', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_blocca_credenziale',
+                                         'credenziale assente o non valida']);
+                  END IF;
+
+                  IF p_motivo IS NULL OR btrim(p_motivo) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_blocca_credenziale', 'E_CREDENZIALE_MOTIVO_OBBLIGATORIO',
+                          jsonb_build_object('campo', 'motivo', 'auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  IF NOT EXISTS (SELECT 1 FROM django.auth_user au WHERE au.id = p_auth_user_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_blocca_credenziale', 'E_CREDENZIALE_NON_TROVATA',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  INSERT INTO config.credenziali AS c
+                         (auth_user_id, bloccata_at, bloccata_da, motivo_blocco)
+                  VALUES (p_auth_user_id, now(), v_utente, btrim(p_motivo))
+                  ON CONFLICT (auth_user_id) DO UPDATE
+                     SET bloccata_at   = EXCLUDED.bloccata_at,
+                         bloccata_da   = EXCLUDED.bloccata_da,
+                         motivo_blocco = EXCLUDED.motivo_blocco;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_blocca_credenziale(integer, text) IS
+                  'Blocco VERO di una credenziale, atto autorizzato (D-1 riletta: le password sbagliate frenano chi le prova, chiudere e'' una decisione con un autore). Prima riga script.fn_guard_super_admin(app.current_user_id) (D-B1: la gestione accessi e'' amm_software, porta per soli SUPER_ADMIN). Motivo obbligatorio (E_CREDENZIALE_MOTIVO_OBBLIGATORIO); credenziale inesistente -> E_CREDENZIALE_NON_TROVATA. Scrive bloccata_at/bloccata_da/motivo_blocco in upsert: vale su tutte le porte, non scade, il reset password non lo toglie (D-B3); un secondo blocco riscrive l''ultimo stato. L''anti-lockout lo applica il guard su config.credenziali, che chiede a fn_check_almeno_un_super_admin_attivo. SECURITY DEFINER del PROPRIETARIO, non di un superuser, search_path bloccato. La blacklist delle sessioni e'' del backend. Brief: brief-db-blocco-login-per-credenziale §3.3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_blocca_credenziale(integer, text);

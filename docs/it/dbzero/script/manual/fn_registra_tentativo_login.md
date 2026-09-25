@@ -1,91 +1,57 @@
-# fn_registra_tentativo_login
+## 📘 Documentazione Concettuale – Funzione `script.fn_registra_tentativo_login()`
 
-### Scopo
+> 👀 **Vedi anche**
+>
+> **Il modello (tre regole):** [config.credenziali](/dbzero/config/tabelle/credenziali)
+>
+> **La gemella, prima della password:** [fn_check_blocco_login](/dbzero/script/funzioni/fn_check_blocco_login)
 
-Registra l'esito di un tentativo di login e gestisce il blocco temporaneo.
-Da chiamare **DOPO** la verifica credenziali nel flusso di autenticazione.
+---
 
-- Login riuscito: reset contatore a 0, rimuove blocco
-- Login fallito: incrementa contatore
-  - Se contatore >= max (da `config.parameters`): imposta blocco temporaneo
+### 🎯 Scopo Principale
+(riscritta il 25-09-2026)
 
-## Schema
+Registra **com'è andato** un tentativo di accesso, dopo la verifica della
+password. Riceve la credenziale, la provenienza (l'IP di chi chiama) e l'esito.
 
-`script` (funzione cross-dominio)
+**Accesso riuscito** → azzera i fallimenti di fila della credenziale e toglie il
+freno **sulla sola macchina** da cui si è entrati
+([fn_azzera_tentativi_credenziale](/dbzero/script/funzioni/fn_azzera_tentativi_credenziale)).
+Il freno sulle altre macchine resta.
 
-## Firma
+**Password sbagliata** → due conti, nello stesso giro:
 
-```sql
-script.fn_registra_tentativo_login(
-    p_auth_user_id  anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE,
-    p_successo      boolean
-) RETURNS jsonb
-```
+1. la **credenziale**: un fallimento di fila in più, e l'orario. Serve
+   all'attesa crescente, che guarda gli errori da qualunque macchina;
+2. la **coppia credenziale + macchina**: un tentativo in più; alla soglia
+   (`login_max_tentativi_falliti`) la macchina è frenata per
+   `login_blocco_minuti`. Se il freno era già scaduto, riparte da uno.
 
-## Parametri
+Ogni credenziale conta, anche una che non ha nessuna porta attiva: la password
+c'è.
 
-| Parametro | Tipo | Obbligatorio | Descrizione |
-|-----------|------|:------------:|-------------|
-| `p_auth_user_id` | `risorse_umane_auth_user.auth_user_id%TYPE` | Si | ID utente Django (`auth_user.id`) |
-| `p_successo` | boolean | Si | `true` = login riuscito, `false` = fallito |
+---
 
-## Valore di ritorno
+### Cosa restituisce
 
-JSONB con la seguente struttura:
+Un oggetto JSON:
 
-```json
-{
-    "bloccato": false,
-    "minuti_rimanenti": 0,
-    "tentativi": 0
-}
-```
+| Campo | Significato |
+| --- | --- |
+| `bloccato` | la macchina è appena stata frenata |
+| `minuti_rimanenti` | la durata del freno, se `bloccato` |
+| `tentativi` | gli errori di fila **da questa macchina** |
+| `attesa_secondi` | quanto dovrà aspettare il prossimo tentativo della credenziale |
 
-| Chiave | Tipo | Descrizione |
-|--------|------|-------------|
-| `bloccato` | boolean | `true` se l'utente e' stato bloccato con questo tentativo |
-| `minuti_rimanenti` | integer | Minuti di blocco (0 se non bloccato) |
-| `tentativi` | integer | Numero tentativi falliti consecutivi (0 dopo reset) |
+Errori: credenziale inesistente → `E_CREDENZIALE_NON_TROVATA`; parametri mancanti
+→ `E_AUTH_CHIAMATA_NON_VALIDA`.
 
-## Caratteristiche
+---
 
-- **VOLATILE**: modifica dati
-- Guard: `p_auth_user_id NULL` o `<= 0` → ritorna `{bloccato: false, ...}`
-- Se nessun record ponte → ritorna senza modifiche
+### Storia
 
-## Parametri config.parameters
+* 2026-09-25 — riscritta (`20260925-11`): lo stato è della credenziale, arriva la
+  provenienza (la firma a due argomenti non esiste più) e `attesa_secondi`. Prima,
+  senza una riga `OPERATORE` in `identita_digitali` il tentativo non contava.
 
-| Code | Default | Descrizione |
-|------|---------|-------------|
-| `login_max_tentativi_falliti` | 5 | Tentativi prima del blocco |
-| `login_blocco_minuti` | 15 | Durata blocco in minuti |
-
-Modificabili dall'admin senza deploy — il DB li legge a ogni chiamata.
-
-## Flusso completo
-
-```text
-1. POST /api/v1/auth/login/ { username, password }
-2. fn_check_blocco_login(auth_user_id)        → blocco attivo? errore 403
-3. Verifica credenziali Django (authenticate)
-4. fn_registra_tentativo_login(auth_user_id, successo_o_fallimento)
-   → Se successo: reset, rilascia JWT
-   → Se fallimento: ritorna { bloccato, tentativi, minuti }
-     → Frontend mostra messaggio appropriato
-```
-
-## Esempi
-
-```sql
--- Login riuscito: reset
-SELECT script.fn_registra_tentativo_login(42, true);
--- {"bloccato": false, "minuti_rimanenti": 0, "tentativi": 0}
-
--- Login fallito (primo tentativo)
-SELECT script.fn_registra_tentativo_login(42, false);
--- {"bloccato": false, "minuti_rimanenti": 0, "tentativi": 1}
-
--- Login fallito (quinto tentativo, blocco attivato)
-SELECT script.fn_registra_tentativo_login(42, false);
--- {"bloccato": true, "minuti_rimanenti": 15, "tentativi": 5}
-```
+{% include-markdown "signature-core.md" %}

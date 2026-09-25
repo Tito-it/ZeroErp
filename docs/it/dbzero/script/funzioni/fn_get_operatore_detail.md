@@ -67,7 +67,8 @@ BEGIN
         ef_agg.descrizione                                     AS emittenti_descrizione,
         au.last_login,
         id.invito_inviato_at,
-        id.deve_cambiare_password,
+        -- rev 2026-09-25 (D-7): il flag e' della CREDENZIALE.
+        script.fn_get_deve_cambiare_password(au.id),
         (ctx.inv_jsonb ->> 'invitabile')::boolean              AS can_invite,
         ctx.inv_jsonb ->> 'motivo'                             AS invite_reason,
         NOT ctx.is_last_sa                                     AS can_disable,
@@ -119,7 +120,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_operatore_detail(p_auth_user_id integer)
-IS 'Riga di dettaglio operatore + 6 capability per il drawer admin (Fase 1 P1 2026-04-29; Fase 7 cleanup 2026-04-29: rimossa call interna fn_get_ruolo_sistema E rimossa colonna ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''). Migra in DB la query inline da Python e calcola capability via funzioni esistenti come single source of truth: fn_check_operatore_invitabile, fn_is_super_admin, fn_check_ultimo_super_admin_attivo. emittenti_descrizione aggrega la ragione_sociale_completa dei soggetti emittenti (Fase 1 cantiere emittente 2026-08-02: caduto il fallback su emittenti_fiscali.descrizione, valore e ORDER BY). LANGUAGE plpgsql STABLE.';
+IS 'Riga di dettaglio operatore + 6 capability per il drawer admin (Fase 1 P1 2026-04-29; Fase 7 cleanup 2026-04-29: rimossa call interna fn_get_ruolo_sistema E rimossa colonna ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''). Migra in DB la query inline da Python e calcola capability via funzioni esistenti come single source of truth: fn_check_operatore_invitabile, fn_is_super_admin, fn_check_ultimo_super_admin_attivo. emittenti_descrizione aggrega la ragione_sociale_completa dei soggetti emittenti (Fase 1 cantiere emittente 2026-08-02: caduto il fallback su emittenti_fiscali.descrizione, valore e ORDER BY). LANGUAGE plpgsql STABLE. La colonna deve_cambiare_password e'' della CREDENZIALE (D-7, rev 2026-09-25): si legge da script.fn_get_deve_cambiare_password.';
 ```
 
 ---

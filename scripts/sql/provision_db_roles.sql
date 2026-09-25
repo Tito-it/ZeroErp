@@ -216,6 +216,19 @@ FROM (VALUES ('magazzino.movimenti_attesi')) AS t(nome)
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 
+-- ⭐ LA PORTA DELLO STATO DELLA CREDENZIALE (dal 2026-09-25): brief
+--   brief-db-blocco-login-per-credenziale, sezione 2.2. `config.credenziali` e
+--   `config.credenziali_provenienze` sono in SOLA LETTURA per l'applicazione:
+--   tentativi, freni, blocco dell'admin e cambio password obbligatorio li
+--   scrivono solo le funzioni DEFINER del proprietario. Stesso elenco di
+--   `v_tabelle_sola_lettura_app` nel loop 20260205-41 e del forward
+--   90_end/20260925-24; `db/pgtap/config/test-credenziali-porta-v1.sql` lo dice
+--   se non lo fa.
+SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('config.credenziali'), ('config.credenziali_provenienze')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
 -- ⭐ E LA PORTA SULLE FUNZIONI (dal 2026-09-24): brief
 --   brief-db-magazzino-verbi-con-permesso, sezione 2.3 (P-4). La primitiva e il
 --   ricalcolo del valore sono RISERVATE: l'app li raggiunge solo dai verbi
