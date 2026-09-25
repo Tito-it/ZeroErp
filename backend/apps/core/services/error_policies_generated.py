@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 919, di cui 98 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 922, di cui 98 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -349,6 +349,10 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CORE_VALIDATION": "DATO_ERRATO",
     # Login rifiutato da script.fn_check_blocco_login: la credenziale e' bloccata dall'amministratore (config.credenziali.bloccata_at, D-1 riletta, D-B1). Vale su tutte le porte, non scade e il reset password non la toglie (D-B3). ⚠️ 403 e NON 429, come E_UTENTE_BLOCCATO: il login del frontend intercetta il 429 prima di leggere il codice (e' il throttle per IP). Frase chiusa. Nasce il 2026-09-25 (brief-db-blocco-login-per-credenziale).
     "E_CREDENZIALE_BLOCCATA": "NON_PERMESSO",
+    # script.fn_get_auth_user_id_for_email ha trovato PIU' credenziali (django.auth_user) con la stessa email a meno delle maiuscole. L'indice unico ix_auth_user_email_lower_unique le impedisce dove c'e'; dove non c'e' (CI: nasce in 90_end con onFail CONTINUE, dopo Django) il modello le ammette, e sceglierne una sarebbe un'ambiguita', non una scelta. TECNICO: rimedia chi governa i dati (unire o correggere a mano le credenziali), non l'operatore. Frase chiusa: email e numero viaggiano nel contesto (il messaggio puo' arrivare a un utente non autenticato del portale). Nasce il 2026-09-25 (brief-db-blocco-login-per-credenziale, P-2).
+    "E_CREDENZIALE_EMAIL_AMBIGUA": "TECNICO",
+    # anagrafiche.fn_crea_operatore_v2: l'email indicata appartiene a una credenziale che ha GIA' una veste OPERATORE, attiva o spenta (invito pendente, operatore disattivato). Con la veste che nasce spenta l'unique WHERE attivo non scatterebbe alla creazione e il duplicato scoppierebbe all'attivazione; e il rimedio e' il (re)invito, non un secondo operatore sulla stessa persona. Gemello di E_ADMIN_EMAIL_DUPLICATA (CONFLITTO_STATO). Il segnaposto e' l'email scritta dall'amministratore; campo = email nel contesto. Nasce il 2026-09-25 (brief-db-blocco-login-per-credenziale, P-2, D-6).
+    "E_CREDENZIALE_GIA_OPERATORE": "CONFLITTO_STATO",
     # script.fn_blocca_credenziale senza motivo: il blocco dell'amministratore e' una decisione con un autore e una ragione (D-1 riletta). campo = motivo nel contesto. Il CHECK chk_credenziali_blocco resta come rete. Nasce il 2026-09-25 (brief-db-blocco-login-per-credenziale).
     "E_CREDENZIALE_MOTIVO_OBBLIGATORIO": "DATO_ERRATO",
     # La credenziale indicata (django.auth_user.id) non esiste: la sollevano i verbi che scrivono config.credenziali (fn_registra_tentativo_login, fn_imposta_deve_cambiare_password, fn_blocca/fn_sblocca_credenziale), perche' la FK verso django.auth_user in CI non esiste (90_end, MARK_RAN) e senza il controllo lo stesso errore sarebbe un 23503 su dev e una riga orfana in CI. Frase chiusa: l'id viaggia nel contesto. Nasce il 2026-09-25 (brief-db-blocco-login-per-credenziale).
@@ -1222,6 +1226,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_STORICIZZAZIONE": "TECNICO",
     # ⚠️ RITIRATO il 2026-08-07
     "E_STORICO_DLT": "TECNICO",
+    # dbops.fn_run_automations_storico: la colonna FK che l'automazione passerebbe a script.trgfn_storico_generic (override STORICO_FK, altrimenti <tabella>_id) non esiste nella gemella storico.<tabella>. Un trigger cosi' muore alla prima chiusura di uno snapshot, respingendo ogni UPDATE/DELETE di una riga storicizzata della madre (E_SNAPSHOT_CLOSE_ERROR). Solleva e ferma ci_apply: e' un difetto di struttura. Si sana rinominando la colonna della gemella o dichiarando l'eccezione in automation_overrides_cols.csv. ASSENTE e non NOT_FOUND: non e' un 404. Nasce il 2026-09-25 (brief-db-storico-colonna-fk-dei-trigger).
+    "E_STORICO_FK_COL_ASSENTE": "TECNICO",
     # ⚠️ Finisce per NOT_FOUND e non e' un 404: non manca un record · richiesto, il provisioning dello storico non riesce a determinare · la PK della tabella padre. Stesso inganno di · `E_SNAPSHOT_ID_NOT_FOUND` (§15.1).
     "E_STORICO_PARENT_PK_NOT_FOUND": "TECNICO",
     "E_STORICO_PROVISION": "TECNICO",
