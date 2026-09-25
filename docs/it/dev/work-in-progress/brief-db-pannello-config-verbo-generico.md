@@ -5,12 +5,16 @@
 > **Origine:** decisione **D-3** di
 > [brief-db-permesso-nel-verbo-di-scrittura.md](brief-db-permesso-nel-verbo-di-scrittura.md)
 > (§7.1), con la **D-5** per la forma del permesso. È il secondo brief operativo
-> del modello, dopo [brief-db-magazzino-verbi-con-permesso.md](brief-db-magazzino-verbi-con-permesso.md).
-> **Stato:** ✅ **D-P1 → D-P5 decise da Tid il 2026-09-25, tutte sulla proposta** (§4).
-> ✅ **Lato DB scritto, provato e applicato da Tid su dbdev il 2026-09-25 (19:16)**
-> (`20260925-29…-34`, §5): la lista, i due building block, il verbo, la porta su `causali`.
-> I COMMENT vivi coincidono coi file. ✅ **Corsa pgTAP di Tid verde.** ⏳ Resta il backend
-> (§6), poi il frontend; e il commit del lato DB.
+> del modello, dopo [brief-db-magazzino-verbi-con-permesso.md](../work-done/brief-db-magazzino-verbi-con-permesso.md).
+> **Stato al 2026-09-25 (sera):**
+>
+> | Parte | Stato |
+> | --- | --- |
+> | Decisioni | ✅ **D-P1 → D-P7 decise da Tid** (§4): D-P1…D-P5 sulla proposta del DB, D-P6 e D-P7 sulla proposta del backend (§4.1) |
+> | DB | ✅ `20260925-29…-34` applicati su dbdev (19:16), pgTAP verdi, committato (`7f3208a58`). 🔴 **Resta la D-P6**: 19 righe con `pannello = true` che non devono stare nel pannello, fra cui `config.profili_accesso` (§4.1) — **richiesta al team DB** |
+> | Backend | ✅ **§6 fatto, non committato** (`dev/backend-tid`): verbo, lista a DB, `REL_CONSENTITE` ritirata, area da `fn_area_di_oggetto`, 403 sull'oggetto nella forma della D-P7. Suite verde (§6) |
+> | Frontend | 🟡 **A metà** (§6): `enti_incasso` tolta dal registro (D-P2); il registro `config-tables.js` **resta** finché la D-P6 non è fatta (D-P5 sospesa); un punto aperto sul salvataggio senza modifiche |
+> | Aperto | ❓ `config.aree_funzionali` nel pannello (§4.1) — da decidere |
 >
 > **In una riga:** il pannello «Gestione tabelle» scrive su 87 tabelle con SQL
 > costruito nel backend, e chiede sempre il livello `TUTTO` sull'area
@@ -174,7 +178,47 @@ tutte endpoint propri.
 | **D-P2** | Le quattro tabelle con RLS (`magazzini`, `ubicazioni`, `enti_incasso`, `listini`) | ✅ **DECISA da Tid il 2026-09-25, sulla proposta:** **Escono dal pannello e restano nelle tendine** (`pannello = false`, `lookup = true`). Il verbo generico non sa rimettere un perimetro senza ricopiare le policy (§3.4); tutte e quattro hanno già endpoint propri |
 | **D-P3** | Una chiave del payload che non è una colonna | ✅ **DECISA da Tid il 2026-09-25, sulla proposta:** **Rifiuto** con un codice registrato, invece dello scarto silenzioso di oggi (AGENTS: non normalizzare in silenzio). Cambia il comportamento per un client che manda campi in più: da dire al frontend |
 | **D-P4** | `magazzino.magazzini` e `ubicazioni`: chi li chiude | ✅ **DECISA da Tid il 2026-09-25, sulla proposta:** **Un brief a sé del cantiere magazzino**, con i loro verbi (perimetro come in `fn_posta_*`). Questo brief chiude solo `causali`. Finché non si fa, `magazzino` è un dominio **a metà** (§5 del modello), e la sua guida lo deve dire con l'elenco |
-| **D-P5** | La terza copia della lista, `config-tables.js` nel frontend | ✅ **DECISA da Tid il 2026-09-25, sulla proposta:** **Si ritira** a favore della lista a DB, con le etichette dalle chiavi i18n per convenzione. Decisione da prendere col team FE: qui la si segnala |
+| **D-P5** | La terza copia della lista, `config-tables.js` nel frontend | ✅ **DECISA da Tid il 2026-09-25, sulla proposta:** **Si ritira** a favore della lista a DB, con le etichette dalle chiavi i18n per convenzione. Decisione da prendere col team FE: qui la si segnala. ⚠️ **Sospesa fino alla D-P6** (§4.1): ritirare il registro oggi metterebbe a video 19 tabelle che non devono stare nel pannello |
+| **D-P6** | Le righe con `pannello = true` che il pannello non deve gestire (§4.1) | ✅ **DECISA da Tid il 2026-09-25 (sera), sulla proposta del backend:** **`pannello = false` su tutte e 19, `lookup` resta `true`.** Richiesta al team DB: si corregge il CSV `tabelle_gestibili.csv`, nessun changeSet di codice |
+| **D-P7** | Il 403 del backend sull'**oggetto della riga**, quando l'oggetto dipende dall'URL (§4.1) | ✅ **DECISA da Tid il 2026-09-25 (sera), sulla proposta del backend:** **un aggancio nella catena di `ZeroERPPermission`**: la view dichiara come ricava l'oggetto dalla richiesta, e la catena chiede il livello su quell'oggetto al posto dell'area fissa. Vale per **scritture e letture** del pannello (`TUTTO` e `LETTURA` sull'oggetto). Senza richiesta — la valutazione sulla sola classe, come per i tool dell'assistente — nega. Lavoro del backend |
+
+### 4.1 D-P6 e D-P7 — cosa ha trovato il backend (2026-09-25, sera)
+
+**D-P6 — la lista del pannello è più larga di quella gestita.** Il CSV ha
+`pannello = true` su 83 righe: è la copia di `REL_CONSENTITE`, cioè di ciò che il
+backend **accettava** in scrittura, non di ciò che il pannello **mostra**. Il
+registro del frontend ne mostra 65 (64 senza `pagamenti.enti_incasso`, che esce
+per la D-P2). Le 19 in più, in due gruppi:
+
+| Gruppo | Tabelle | Perché fuori dal pannello |
+| --- | --- | --- |
+| **Hanno una casa propria**, con endpoint che scrivono e il loro cancello | `config.profili_accesso` (`amm_software`, solo SUPER_ADMIN), `ui.lista_definizione` (`ui`, solo SUPER_ADMIN), `config.email_account` (credenziali SMTP, `email_repository`), `vendite.famiglie_documento` (`famiglie_repository`), `anagrafiche.categorie_clienti` (`categorie_clienti_repository`), `catalogo.uom_tipi` (`catalogo_repository`) | Il pannello sarebbe una **seconda strada** per scriverle, che salta il cancello della prima |
+| **Vocabolari di sistema**, caricati dal seed in `80_data` e letti dal codice per codice | `config.esiti_flussi_pratiche`, `config.listini_tipologie`, `config.modi_approvvigionamento`, `config.nature_doc_fiscale`, `config.nature_vendita`, `config.registri_giornale`, `config.stati_doc_offerte`, `config.stati_fornitore`, `config.tipi_titolo_iva`, `documenti.render_engine_documento`, `documenti.tipi_asset_documento`, `documenti.tipi_documento_output`, `documenti.tipi_file_documento` | Li possiede il CSV: una modifica dal pannello cambierebbe un codice che il dominio interpreta, o sparirebbe al migrate successivo |
+
+⛔ **Il caso che l'ha fatta emergere**: `config.profili_accesso` risolve sull'area
+`config`. Oggi, e anche col verbo, chi ha `TUTTO` su Configurazione modifica i
+**profili di permesso** con una chiamata diretta all'API del pannello, cioè si alza
+i privilegi senza passare dal cancello SUPER_ADMIN di `amm_software`. Il frontend
+lo nascondeva solo perché non elencava la tabella. È un difetto del modello, non
+del verbo: il verbo applica fedelmente una lista sbagliata.
+
+**Richiesta al team DB:** `pannello = false` sulle 19 righe nel CSV
+`80_data/sql/config/tabelle_gestibili.csv`, e un presidio pgTAP che lo fissi almeno
+per `config.profili_accesso` (la riga il cui errore alza i privilegi). Resteranno 64
+righe nel pannello, le stesse del registro del frontend, che a quel punto si ritira
+(D-P5).
+
+❓ **Aperto, non deciso**: `config.aree_funzionali` è nel pannello (anche nel
+registro del frontend) e sta sull'area `config`. È il catalogo delle aree su cui
+poggiano i permessi: chi ha `TUTTO` su Configurazione può modificarlo. Da decidere
+se appartenga alla stessa famiglia di `profili_accesso`.
+
+**D-P7 — il 403 del backend.** Il §6 chiede che l'endpoint chieda «lo stesso
+livello sulla stessa area» del verbo. Le quattro view del pannello dichiaravano
+`area_funzionale = "config"` fisso, e la catena legge solo attributi di classe.
+Scartata l'alternativa di un controllo nel corpo di POST e PATCH lasciando `config`
+sulla classe: il backend chiederebbe `TUTTO` su Configurazione **e** sull'oggetto,
+mentre il DB chiede solo l'oggetto — due regole per la stessa scrittura.
 
 ## 5. I passi
 
@@ -192,29 +236,22 @@ tutte endpoint propri.
 
 ## 6. Ricadute sul backend e sul frontend
 
-* **Il repository del pannello chiama il verbo** al posto dell'SQL costruito:
-  `create_record` e `update_record` diventano una chiamata. Le mappe dei vincoli
-  (`_mappe_vincoli`) restano: gli errori del DB arrivano come oggi.
-* **`REL_CONSENTITE` si ritira nello stesso giro**: lookup e pannello leggono la
-  lista dal DB. Una sede sola.
-* **L'area di un oggetto la dà `script.fn_area_di_oggetto`**: la risoluzione in
-  Python (`permissions_resolver`, `area_model_overrides`) la chiama invece di
-  rifarla.
-* ⚠️ **Effetto voluto sul comportamento** (§7.1 del modello): chi aveva `TUTTO`
-  solo su Configurazione non scrive più le tabelle degli altri domini dal
-  pannello. Qualche profilo andrà rivisto; non siamo in produzione.
-* Il 403 del backend resta: il controllo dell'endpoint chiede lo stesso livello
-  sulla stessa area, prima di aprire la transazione.
-* Test Django: nessuno oggi scrive davvero sul DB dal pannello; ne serve uno per
-  il percorso nuovo.
-* **I codici nuovi** (`E_PANNELLO_*`) vanno nel catalogo generato del backend
-  (`error_policies_generated.py`). `E_PANNELLO_RIGA_NON_TROVATA` prende il posto di
-  `E_ANAG_NOT_FOUND` per l'aggiornamento di una riga che non c'è.
-* ⚠️ **Il frontend non deve mandare campi in più** (D-P3): una chiave che non è una
-  colonna scrivibile ora è `E_PANNELLO_CAMPO_NON_AMMESSO`, non viene più ignorata.
-  `context.campo` dice quale.
-* Le quattro tabelle con RLS escono dal pannello (D-P2): il registro del frontend e
-  l'elenco delle tabelle del pannello le devono togliere; nelle tendine restano.
+Stato al 2026-09-25 (sera), tutto **non committato** su `dev/backend-tid`.
+
+| Richiesta | Stato |
+| --- | --- |
+| **Il repository del pannello chiama il verbo** al posto dell'SQL costruito; le mappe dei vincoli (`_mappe_vincoli`) restano | ✅ `ConfigCrudRepository.scrivi_record` → `config.fn_pannello_scrivi`; il payload arriva intero, i campi estranei li rifiuta il DB |
+| **`REL_CONSENTITE` si ritira nello stesso giro**: lookup e pannello leggono la lista dal DB | ✅ BB `TabelleGestibiliRepository` (`core/db/tabelle_gestibili_repository.py`): `voce(rel)`, `rel_lookup()`, `voci_pannello()`. Le 87 voci verificate identiche alla costante prima di toglierla |
+| **L'area di un oggetto la dà `script.fn_area_di_oggetto`** | ✅ `PermissionResolver.get_area_schema_db` la chiama: la query riscritta in Python è sparita |
+| **Il 403 del backend resta**, sullo stesso livello e sulla stessa area del verbo | ✅ Forma **D-P7**: la view dichiara `oggetto_permesso_da_richiesta()` (il mixin del pannello, letto dalla lista), `ZeroERPPermission.valuta` chiede il livello su quell'oggetto, in lettura e in scrittura; `None` (rel fuori dal pannello) ricade sull'area della classe e il service risponde 400; valutata sulla sola classe nega (`OGGETTO_SENZA_RICHIESTA`). Attributo documentato in api.md |
+| ⚠️ **Effetto voluto** (§7.1 del modello): chi ha `TUTTO` solo su Configurazione non scrive più le tabelle degli altri domini | ✅ Provato sul DB vero (riga sotto). Qualche profilo andrà rivisto; non siamo in produzione |
+| **Test Django** che scrivano davvero sul DB dal pannello | ✅ `core/tests/db/test_pannello_verbo_db` (7, opt-in `ZEROERP_TEST_DB_E2E=1`): porta chiusa su `causali`, crea e modifica col verbo, campo rifiutato col suo nome, riga assente, tabella del solo lookup; e i **due punti di applicazione** sullo stesso operatore costruito — con `LETTURA` sull'oggetto `magazzino.causali` la catena lascia leggere e non scrivere, e il verbo rifiuta da solo con `E_PERMESSO_NEGATO`; con `TUTTO` passano entrambi. La catena, a resolver mockato: `core/tests/api/test_views_config_crud` (7) |
+| **I codici nuovi** (`E_PANNELLO_*`) nel catalogo generato; `E_PANNELLO_RIGA_NON_TROVATA` al posto di `E_ANAG_NOT_FOUND` | ✅ Policy e ripieghi rigenerati; `E_PANNELLO_RIGA_NON_TROVATA` anche per il dettaglio. ⚠️ `test_error_policies_divergenza_db` è rosso per `E_SCRITTURA_IN_LETTURA`, che arriva dal commit DB `501c5bcc8` (brief-be-letture-in-transazione-sola-lettura) non ancora nel branch: si rigenera dopo il merge, non prima |
+| ⚠️ **Il frontend non deve mandare campi in più** (D-P3) | ✅ Verificato: `GenericConfigDrawer` costruisce il payload solo dalle colonne del metadata, che esclude `id`, audit, generate e identity `ALWAYS` come il verbo. 🟡 **Aperto**: in modifica il drawer manda solo il delta, quindi «Salva» senza modifiche manda `{}` → `E_PANNELLO_DATI_VUOTI` (prima era «Record non trovato»). Il drawer deve non chiamare, o spegnere «Salva», quando il delta è vuoto |
+| Le quattro tabelle con RLS **escono dal pannello** (D-P2) | ✅ `pagamenti.enti_incasso` tolta dal registro del frontend (le altre tre non c'erano); l'elenco del backend legge `pannello` |
+| **Il registro del frontend si ritira** (D-P5) | ⏸️ **Sospeso fino alla D-P6**: oggi `GET /core/config/tables/` elenca le 83 righe `pannello = true`, comprese le 19 che non devono esserci, e il registro è l'unico filtro a video. ⛔ Il filtro è solo a video: le scritture su quelle 19 dall'API passano finché il CSV non è corretto |
+| 🔴 **Richiesta al team DB (revisione del 2026-09-25): le colonne scrivibili in una sede** | Le colonne che il pannello non scrive stanno in **due** posti: la costante `c_escluse` (più generate e identity `ALWAYS`) dentro `config.fn_pannello_scrivi`, e `_EXCLUDED_COLUMNS` più lo stesso filtro in `config_metadata_repository`. Se divergono, il form offre un campo che il salvataggio respinge. Proposta: una funzione, per esempio `config.fn_pannello_colonne_scrivibili(p_tabella) → text[]`, che il verbo usa al passo 2 e il metadata legge; il backend ritira la sua costante nello stesso giro. Fino ad allora la doppia sede è dichiarata nel codice |
+| 🔴 **Richiesta al team DB (revisione del 2026-09-25): `pannello` implica `lookup`** | Il pannello elenca le righe col lookup generico, quindi una riga con `pannello = true` e `lookup = false` sarebbe un pannello che risponde 400. Oggi è vero solo per come è scritto il CSV: nessun `CHECK` lo impone. Proposta: `CHECK (NOT pannello OR lookup)` su `config.tabelle_gestibili` |
 
 ---
 
@@ -227,3 +264,9 @@ tutte endpoint propri.
 | 2026-09-25 | DB | **P-0 → P-6 lato DB scritti e provati** (`20260925-29…-34`), non applicati. Emersi: `vendite.stati_commessa` senza default sull'`id`; `vendite.listini` ha già la chiave `('vendite','listino')`; `ui.lista_definizione` ha un'area non a catalogo (solo SUPER_ADMIN, coerente coi suoi endpoint); la lista stessa va chiusa all'app |
 | 2026-09-25 | Tid | `-29…-34` applicati su dbdev (19:16), mirror dei codici compreso. Verificato: COMMENT vivi uguali ai file, 87 righe (83 nel pannello), porta chiusa su `causali` e sulla lista |
 | 2026-09-25 | Tid | Corsa pgTAP: **test verdi**. Lato DB chiuso; resta il backend (§6) |
+| 2026-09-25 | BE | Verificato su dbdev: `EXECUTE` dell'app sul verbo e su `fn_area_di_oggetto`, `causali` e la lista in sola lettura, `config.iva` ancora scrivibile. Trovate 19 righe `pannello = true` fuori dal pannello del frontend, fra cui `config.profili_accesso` (privilegi alzabili dal pannello) |
+| 2026-09-25 | Tid | D-P6 decisa (le 19 escono dal pannello: richiesta al DB, §4.1) e D-P7 decisa (aggancio nella catena dei permessi, scritture e letture). D-P5 sospesa fino alla D-P6. Aperta la domanda su `config.aree_funzionali` |
+| 2026-09-25 | BE | **§6 scritto, non committato** (working tree di `dev/backend-tid`). `REL_CONSENTITE` ritirata: lookup, metadata e pannello leggono `config.tabelle_gestibili` (BB `TabelleGestibiliRepository`; le 87 voci verificate identiche alla costante prima di toglierla). Il pannello scrive **solo** col verbo (`ConfigCrudRepository.scrivi_record`), payload intero: i campi estranei li rifiuta il DB. `PermissionResolver.get_area_schema_db` chiama `fn_area_di_oggetto` (copie tornate a una). `E_PANNELLO_RIGA_NON_TROVATA` anche per il dettaglio. Il metadata esclude colonne generate e identity `ALWAYS`, come il verbo. Policy rigenerata (i quattro `E_PANNELLO_*`) e ripieghi. FE: `pagamenti.enti_incasso` tolta dal registro (D-P2). ⚠️ Il 403 sull'oggetto e' un mixin nelle view (`_PermessoSullOggettoMixin`, `check_permissions`), scritto prima della D-P7: da riportare alla sua forma. Prove: `test_pannello_verbo_db`, `test_views_config_crud`, `test_config_panel_registro_db` |
+| 2026-09-25 | BE | **D-P7 applicata** (non committato): `ZeroERPPermission.valuta` legge `oggetto_permesso_da_richiesta()` dalla view e chiede il livello su quell'oggetto, con l'area di `fn_area_di_oggetto`; `None` ricade sull'area della classe; sulla sola classe nega con `OGGETTO_SENZA_RICHIESTA`. Il mixin del pannello non sovrascrive piu' `check_permissions`: dichiara l'oggetto e basta. Prove: `test_views_config_crud` (la catena, resolver mockato) e, sul DB vero, `test_pannello_verbo_db` 6-7 — un operatore COSTRUITO con `LETTURA` sull'oggetto `magazzino.causali` legge e non scrive, e il verbo lo rifiuta da solo con `E_PERMESSO_NEGATO`; con `TUTTO` passano catena e verbo. Suite intera verde (5164); `test_error_policies_divergenza_db` rosso per `E_SCRITTURA_IN_LETTURA`, del commit DB `501c5bcc8` (altro brief, non ancora nel branch): atteso, non rigenerato |
+| 2026-09-25 | BE | Brief riallineato: stato in testa per parte, §6 con lo stato di ogni richiesta. Verificato il frontend: il payload del drawer generico viene dal metadata (nessun campo estraneo); **aperto** il «Salva» senza modifiche, che ora è `E_PANNELLO_DATI_VUOTI` |
+| 2026-09-25 | BE | Revisione critica del non committato. Corretti: `_find_user` ingoiava ogni eccezione (un guasto del DB diventava «nome inesistente» e saltava il controllo del blocco dell'admin: ora fail-closed, test 9h); rimosso `get_editable_column_names`, rimasto senza chiamanti; il test delle rel del frontend nominava due rel a mano, ora le legge dal sorgente (80). Due richieste nuove al DB nel §6: colonne scrivibili in una sede, `CHECK (NOT pannello OR lookup)` |

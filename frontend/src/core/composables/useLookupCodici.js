@@ -45,7 +45,7 @@ export function fetchLookupCodici(rel, { includiObsoleti = true, pageSize = LOOK
 /**
  * Lookup generico di un `rel`, nella cache condivisa per chiave.
  *
- * @param {string} rel - `schema.tabella` in whitelist (`REL_CONSENTITE`)
+ * @param {string} rel - `schema.tabella` nella lista del lookup (`config.tabelle_gestibili`)
  * @param {Object} opzioni
  * @param {boolean} opzioni.includiObsoleti - default true (tutto); `false` =
  *   la «selezione per il nuovo», senza le voci con `obsoleto_dal <= oggi`

@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 924, di cui 98 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 928, di cui 98 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -874,6 +874,14 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PAGAMENTI_CHIAMATA_NON_VALIDA": "TECNICO",
     # Validazione del payload delle API di pagamenti (distinte, righe, abbinamento, sistemazioni): un campo obbligatorio che manca, un importo non finito, uno stato che non e' fra quelli chiedibili. Nasce il 2026-08-25 (S5-1 del cantiere incassi, richiesta del backend) come GEMELLO per dominio di E_VENDITE_VALIDATION / E_PRATICA_VALIDATION / E_DOCUMENTI_VALIDATION: fino a qui il service di pagamenti ripiegava sul generico E_VALIDATION_INPUT, che e' registrato e risolve 400 ma non dice DI CHI e' l'errore - e un codice che non nomina il suo dominio rende inutile cercare per codice quando si vuole sapere quante volte un form di quel dominio ha respinto qualcosa. DATO_ERRATO perche' il rimedio ce l'ha in mano una persona: correggere il campo. Il nome finisce in _VALIDATION e non in _VALIDAZIONE perche' a catalogo la prima forma e' la maggioranza (17 contro 13): la scelta e' di uniformare in avanti, non di aggiungere un terzo verso. Il messaggio NON ha segnaposti: la frase specifica la passa il backend accanto al codice.
     "E_PAGAMENTI_VALIDATION": "DATO_ERRATO",
+    # config.fn_pannello_scrivi, passo 2: il payload contiene una chiave che non e' una colonna scrivibile della tabella (inesistente, oppure id, audit, tx_id, storicizza, uid, generata o identity ALWAYS). Decisione D-P3 di Tid: si RIFIUTA, non si scarta in silenzio come faceva il backend. context.campo = la chiave (la prima in ordine alfabetico). Nasce il 2026-09-25 (brief-db-pannello-config-verbo-generico, sezione 3.3).
+    "E_PANNELLO_CAMPO_NON_AMMESSO": "DATO_ERRATO",
+    # config.fn_pannello_scrivi, passo 2: p_dati non e' un oggetto jsonb o e' vuoto, quindi non c'e' niente da scrivere. Il backend scartava in silenzio un payload vuoto (INSERT che non faceva niente, UPDATE che diventava «non trovato»): ora si dice. Nasce il 2026-09-25 (brief-db-pannello-config-verbo-generico, sezione 3.3, D-P3).
+    "E_PANNELLO_DATI_VUOTI": "DATO_ERRATO",
+    # config.fn_pannello_scrivi, passo 3: UPDATE di una riga con un id che non esiste nella tabella. Prima il backend dava E_ANAG_NOT_FOUND per lo stesso caso. Nasce il 2026-09-25 (brief-db-pannello-config-verbo-generico, sezione 3.3).
+    "E_PANNELLO_RIGA_NON_TROVATA": "NON_TROVATO",
+    # config.fn_pannello_scrivi, passo 0: la tabella chiesta non e' in config.tabelle_gestibili con pannello = true, oppure non esiste, oppure ha la RLS attiva (il verbo, SECURITY DEFINER, non sa rimettere un perimetro: D-P2). TECNICO: il pannello offre solo le tabelle della lista, quindi a sbagliare e' il chiamante. Nel contesto in_lista, esiste, rls dicono quale dei tre. Nasce il 2026-09-25 (brief-db-pannello-config-verbo-generico, sezione 3.3).
+    "E_PANNELLO_TABELLA_NON_AMMESSA": "TECNICO",
     # ⚠️ RITIRATO il 2026-08-07
     "E_PARAMETER_DEFAULT_TIPO_SOGGETTO_INVALID": "DATO_ERRATO",
     # Framework FK-surrogata config.parameter_fk_surrogate (DB 2026-05-02): · dispatcher su parameters/parameter_overrides che valida default_value · contro la chiave naturale stabile (di norma codice_interno) della · tabella di catalogo target. Sostituisce il guard ad-hoc deprecato · E_PARAMETER_DEFAULT_TIPO_SOGGETTO_INVALID (mantenuto a livello DB · per retro-compat ma non mappato qui: i nuovi inserimenti finiscono · sempre sui codici 422/423 del framework).

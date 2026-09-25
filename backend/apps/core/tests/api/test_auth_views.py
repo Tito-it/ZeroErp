@@ -20,6 +20,10 @@ Indice test eseguiti:
  9b) AuditAuthViewsTests.test_login_senza_provenienza_rifiuta_senza_cercare_l_utente
  9c) AuditAuthViewsTests.test_login_fallito_registra_con_la_provenienza
  9d) AuditAuthViewsTests.test_login_riuscito_registra_e_legge_il_flag_della_credenziale
+ 9e) AuditAuthViewsTests.test_nome_inesistente_check_e_registrazione_sul_nome
+ 9f) AuditAuthViewsTests.test_nome_con_spazi_trova_la_credenziale_come_authenticate
+ 9g) AuditAuthViewsTests.test_nome_assente_nessuna_chiamata_al_db
+ 9h) AuditAuthViewsTests.test_guasto_nella_ricerca_ferma_il_login
 10) ExtractIdentitaIdFromRefreshTests.test_none_returns_none
 11) ExtractIdentitaIdFromRefreshTests.test_empty_string_returns_none
 12) ExtractIdentitaIdFromRefreshTests.test_invalid_token_fail_open
@@ -38,6 +42,8 @@ Indice test eseguiti:
 
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
+
+from django.db import DatabaseError
 
 from rest_framework.response import Response
 # ⛔ Quello di DRF: e' cio' che solleva davvero il serializer di SimpleJWT
@@ -60,12 +66,14 @@ from apps.core.services.auth_constants import (
     RUOLO_APPLICATIVO_OPERATORE,
     RUOLO_APPLICATIVO_SHOP_CUSTOMER,
 )
+from apps.core.services.nome_tentato import digest_nome_tentato
 from apps.core.services.service_errors import ServiceError
 
 _SERVICE = "apps.core.api.auth_views.session_audit_service"
 _SET_GUCS = "apps.core.api.auth_views.set_jwt_gucs"
 _GET_IP = "apps.core.api.auth_views.get_client_ip"
 _IP = "203.0.113.7"
+_DIGEST_TID = digest_nome_tentato("tid")
 
 
 class AuditAuthViewsTests(TestCase):
@@ -190,6 +198,7 @@ class AuditAuthViewsTests(TestCase):
         )
         request = MagicMock()
         request._request = MagicMock()
+        request.data = {"username": "alice"}
 
         view = AdminTokenView()
         view.post(request)
@@ -296,7 +305,9 @@ class AuditAuthViewsTests(TestCase):
             view.post(request)
 
         # check_blocco_login si', registra_tentativo_login NO.
-        mock_repo.check_blocco_login.assert_called_once_with(42, provenienza=_IP)
+        mock_repo.check_blocco_login.assert_called_once_with(
+            42, nome_digest=_DIGEST_TID, provenienza=_IP,
+        )
         mock_repo.registra_tentativo_login.assert_not_called()
 
     # Scopo: Senza provenienza il freno non si applica: il login si rifiuta
@@ -340,9 +351,11 @@ class AuditAuthViewsTests(TestCase):
         with self.assertRaises(AuthenticationFailed):
             AdminTokenView().post(request)
 
-        mock_repo.check_blocco_login.assert_called_once_with(42, provenienza=_IP)
+        mock_repo.check_blocco_login.assert_called_once_with(
+            42, nome_digest=_DIGEST_TID, provenienza=_IP,
+        )
         mock_repo.registra_tentativo_login.assert_called_once_with(
-            42, provenienza=_IP, successo=False,
+            42, nome_digest=_DIGEST_TID, provenienza=_IP, successo=False,
         )
 
     # Scopo: Login riuscito → successo registrato sulla coppia; il cambio
@@ -364,14 +377,110 @@ class AuditAuthViewsTests(TestCase):
         )
         request = MagicMock()
         request._request = MagicMock()
+        request.data = {"username": "tid"}
 
         response = AdminTokenView().post(request)
 
         mock_repo.registra_tentativo_login.assert_called_once_with(
-            42, provenienza=_IP, successo=True,
+            42, nome_digest=_DIGEST_TID, provenienza=_IP, successo=True,
         )
         mock_repo.get_deve_cambiare_password.assert_called_once_with(42)
         self.assertTrue(response.data["password_change_required"])
+
+    # Scopo: R-7 — un nome che non trova una credenziale passa dalle STESSE
+    # due chiamate, con la credenziale vuota e l'impronta del nome: la chiave
+    # la sceglie il DB. E il nome in chiaro non finisce nel log (B-11).
+    @patch("apps.core.api.auth_views._auth_repo")
+    @patch.object(AuditTokenObtainPairView, "_find_user", return_value=None)
+    @patch("rest_framework_simplejwt.views.TokenObtainPairView.post")
+    def test_nome_inesistente_check_e_registrazione_sul_nome(
+        self, mock_super_post, _mock_find_user, mock_repo
+    ):
+        nome = "Password-Digitata-Per-Sbaglio!"
+        digest = digest_nome_tentato(nome)
+        mock_repo.registra_tentativo_login.return_value = {
+            "bloccato": True, "tentativi": 5, "minuti_rimanenti": 15,
+            "attesa_secondi": 0,
+        }
+        mock_super_post.side_effect = AuthenticationFailed()
+        request = MagicMock()
+        request.data = {"username": nome}
+
+        with self.assertLogs("security", level="WARNING") as log:
+            with self.assertRaises(AuthenticationFailed):
+                AdminTokenView().post(request)
+
+        mock_repo.check_blocco_login.assert_called_once_with(
+            None, nome_digest=digest, provenienza=_IP,
+        )
+        mock_repo.registra_tentativo_login.assert_called_once_with(
+            None, nome_digest=digest, provenienza=_IP, successo=False,
+        )
+        testo = "\n".join(log.output)
+        self.assertIn("security.login_locked", testo)
+        self.assertIn(f"nome={digest.hex()[:12]}", testo)
+        self.assertNotIn(nome, testo)
+
+    # Scopo: Il nome si normalizza come lo normalizza il serializer (spazi
+    # tolti): « tid » deve trovare la credenziale di «tid» e avere la sua
+    # impronta. Prima il lookup usava il valore grezzo e con uno spazio
+    # davanti blocco, freno e attesa non si controllavano.
+    @patch("apps.core.api.auth_views._auth_repo")
+    @patch.object(AuditTokenObtainPairView, "_find_user")
+    @patch("rest_framework_simplejwt.views.TokenObtainPairView.post")
+    def test_nome_con_spazi_trova_la_credenziale_come_authenticate(
+        self, mock_super_post, mock_find_user, mock_repo
+    ):
+        mock_find_user.return_value = MagicMock(id=42, username="tid")
+        mock_repo.registra_tentativo_login.return_value = {"bloccato": False}
+        mock_super_post.side_effect = AuthenticationFailed()
+        request = MagicMock()
+        request.data = {"username": "  tid "}
+
+        with self.assertRaises(AuthenticationFailed):
+            AdminTokenView().post(request)
+
+        mock_find_user.assert_called_once_with("tid")
+        mock_repo.check_blocco_login.assert_called_once_with(
+            42, nome_digest=_DIGEST_TID, provenienza=_IP,
+        )
+
+    # Scopo: Senza un nome valido la richiesta non e' un tentativo: il
+    # serializer rispondera' 400 senza guardare la password. Nessuna chiamata
+    # al DB, e la risposta non dipende da nessuna credenziale.
+    @patch("apps.core.api.auth_views._auth_repo")
+    @patch.object(AuditTokenObtainPairView, "_find_user")
+    @patch("rest_framework_simplejwt.views.TokenObtainPairView.post")
+    def test_nome_assente_nessuna_chiamata_al_db(
+        self, mock_super_post, mock_find_user, mock_repo
+    ):
+        mock_super_post.return_value = Response({"username": ["obbligatorio"]}, status=400)
+        for dati in ({}, {"username": ""}, {"username": "   "}, {"username": ["x"]}):
+            with self.subTest(dati=dati):
+                request = MagicMock()
+                request.data = dati
+                AdminTokenView().post(request)
+        mock_find_user.assert_not_called()
+        mock_repo.check_blocco_login.assert_not_called()
+        mock_repo.registra_tentativo_login.assert_not_called()
+
+    # Scopo: Un guasto del DB mentre si cerca la credenziale NON e' «nome
+    # inesistente»: l'errore sale e il login si ferma, senza controlli ne'
+    # tentativi sul nome e senza arrivare ad `authenticate`. Prima un
+    # `except Exception` lo ingoiava, e il blocco dell'admin non si guardava.
+    @patch("apps.core.api.auth_views._auth_repo")
+    @patch("apps.core.api.auth_views.User.objects.filter", side_effect=DatabaseError("giu'"))
+    @patch("rest_framework_simplejwt.views.TokenObtainPairView.post")
+    def test_guasto_nella_ricerca_ferma_il_login(
+        self, mock_super_post, _mock_filter, mock_repo
+    ):
+        request = MagicMock()
+        request.data = {"username": "tid", "password": "x"}
+        with self.assertRaises(DatabaseError):
+            AdminTokenView().post(request)
+        mock_repo.check_blocco_login.assert_not_called()
+        mock_repo.registra_tentativo_login.assert_not_called()
+        mock_super_post.assert_not_called()
 
     # Scopo: Verifica il guard di astrazione. Chiamare direttamente
     # AuditTokenObtainPairView().post() senza subclasse -> AssertionError.

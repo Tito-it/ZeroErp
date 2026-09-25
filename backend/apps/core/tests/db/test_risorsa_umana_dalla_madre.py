@@ -224,9 +224,12 @@ class RisorsaUmanaDallaMadreTests(TestCase):
             with patch("apps.core.services.permissions_cache.cache") as cache_finta:
                 permissions_cache.invalidate_department(uo_id)
 
-            cache_finta.delete_many.assert_called_once()
-            chiavi = cache_finta.delete_many.call_args[0][0]
+            # Dal 2026-09-24 (M-1) si invalida per GENERAZIONE: una generazione
+            # nuova per ogni utente del reparto, non piu' `delete_many` delle
+            # chiavi (che col contesto di sessione non sono piu' una per utente).
+            cache_finta.set_many.assert_called_once()
+            chiavi = cache_finta.set_many.call_args[0][0]
             # La chiave la compone il BB, non questo test: ricopiarne il formato
             # renderebbe verde-per-caso un cambio di prefisso.
-            self.assertIn(permissions_cache._cache_key(auth_user_id), chiavi)
+            self.assertIn(permissions_cache._gen_key(auth_user_id), chiavi)
             transaction.set_rollback(True)

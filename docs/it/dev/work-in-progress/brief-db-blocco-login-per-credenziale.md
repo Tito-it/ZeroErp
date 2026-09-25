@@ -14,6 +14,9 @@
 > parametro nuovo **in coda**, con default, alla madre — la chiamata per nome
 > del backend resta valida, ma sull'email già in uso ora chiede la conferma).
 > **Il lavoro DB del P-2 è chiuso**: resta il backend (§12.6).
+> 🟢 **R-7, R-9, R-3 applicati su dbdev il 2026-09-25 (19:16, `-53…-62` e i
+> template) e backend scritto lo stesso giorno, non ancora committato**
+> (B-9…B-16: §13.4, §14, §15; registro in fondo).
 >
 > **Da leggere per primo**: §12 (il P-2: cosa c'è, cosa è cambiato rispetto al
 > disegno, porta e profili, cosa chiede al backend), poi §11 (il P-1) e §2.
@@ -327,7 +330,7 @@ chi legge il backend.
 | `fn_sblocca_credenziale(p_auth_user_id)` | stessa prima riga; azzera i tre campi |
 
 - Chi agisce si legge da `app.current_user_id`, come nei verbi di magazzino
-  ([brief-db-magazzino-verbi-con-permesso.md](brief-db-magazzino-verbi-con-permesso.md) §2.1).
+  ([brief-db-magazzino-verbi-con-permesso.md](../work-done/brief-db-magazzino-verbi-con-permesso.md) §2.1).
 - ⭐ **Perché SUPER_ADMIN e non un'azione di processo** (D-B1): la gestione
   degli accessi oggi è `amm_software`, che **non è un'area** del catalogo: è
   un'app del backend, le sue view sono `AdminAPIView` e lasciano entrare solo
@@ -1321,6 +1324,63 @@ additivi e non cambiano niente finché nessuno li sceglie.
 | B-15 | `InvitoOperatoreService` | passare `username` (lo dà già `get_nomi_credenziale`) alle variabili dell'invito |
 | B-16 | `PortaInvito` + `InvitoVesteService.spedisci` | un `template_cross` per porta, scelto quando `emissione.is_cross`; la variabile `is_cross` non serve più al testo |
 
+## 16. I motivi del dettaglio operatore viaggiano come frasi (revisione del backend, 2026-09-25)
+
+**Da dove viene.** Revisione critica del codice non committato di R-9: nel
+drawer dell'operatore (`OperatoreDrawer.vue`, `inviteReason`) il frontend, quando
+`veste_attiva` è vero, **sostituisce** il motivo del DB con un testo suo
+(`amministrazione.accesso_gia_attivo`); negli altri casi mostra `invite_reason`
+così come arriva.
+
+### 16.1 Il problema, sul modello
+
+`script.fn_get_operatore_detail` restituisce **tre** capability, e tutte e tre
+portano il motivo come **frase italiana composta nel DB**, non come codice:
+
+| Capability | Motivo | Da dove viene |
+| --- | --- | --- |
+| `can_invite` | `invite_reason` | `fn_check_operatore_invitabile` → `motivo` (6 frasi: «Utente non trovato», «Nessuna identita OPERATORE», «Veste OPERATORE gia' attiva», «Piu' vesti OPERATORE spente…», «Identita fuori finestra temporale», «Nessun indirizzo email configurato») |
+| `can_disable` | `disable_reason` | letterale nel `CASE` di `fn_get_operatore_detail` («Ultimo SUPER_ADMIN attivo: disabilitarlo…») |
+| `can_demote_super_admin` | `demote_reason` | letterale nel `CASE` di `fn_get_operatore_detail` («Ultimo SUPER_ADMIN attivo: la rimozione del binding…») |
+
+È contro la regola del trasporto delle capability (api.md §«Capability di riga»,
+linee-guida-sql §12): *il testo del motivo non viaggia mai nel payload; va un
+codice macchina e la chiave i18n*. Le conseguenze:
+
+1. **L'interfaccia inglese mostra frasi italiane**: i motivi non passano da
+   `$t()`, e nessuno li può tradurre senza un changeSet.
+2. **Il frontend traduce un caso solo, deducendolo.** Per «veste già attiva» non
+   legge il motivo: guarda `veste_attiva` e ne ricava il testo. È una **seconda
+   copia** della regola «veste attiva ⇒ non invitabile» fuori dalla sua sede.
+   Oggi coincide col DB solo per l'**ordine** dei motivi (con la veste attiva le
+   condizioni 1 e 2 sono per forza vere, quindi il primo motivo è il 3): se
+   l'ordine cambiasse, a video comparirebbe un motivo diverso da quello del DB.
+3. **Un client non può distinguere i motivi** se non confrontando stringhe
+   italiane.
+
+### 16.2 Cosa si chiede
+
+**Al team DB:**
+
+- `fn_check_operatore_invitabile`: accanto a `motivo` (o al suo posto, da
+  decidere) un **codice macchina** per ogni condizione e la sua **chiave i18n**,
+  nella forma di una famiglia già in servizio (api.md: `<flag>_reason` +
+  `<flag>_reason_key`, famiglia 1);
+- `fn_get_operatore_detail`: la stessa cosa per `invite_reason`,
+  `disable_reason` e `demote_reason` — i letterali dei due `CASE` diventano codici;
+- il pgTAP della funzione pinna i codici, non le frasi.
+
+**Al backend / frontend, dopo il changeSet:**
+
+- `OperatoreDrawer.vue`: **ritirare** il ramo `veste_attiva` di `inviteReason` e
+  rendere i tre motivi con la chiave (`labelOrCode`: chiave mancante ⇒ si vede il
+  codice, non un tooltip vuoto); le chiavi nuove in `it.json` e `en.json`;
+- `OperatoreDetailRow` (`amm_software/types.py`): i campi nuovi.
+
+❓ **Da decidere (Tid):** se `motivo` testuale resta per compatibilità o si
+ritira nello stesso giro. Non siamo in produzione: la proposta è ritirarlo, una
+sede sola.
+
 ## Registro
 
 | Data | Chi | Cosa |
@@ -1352,6 +1412,8 @@ additivi e non cambiano niente finché nessuno li sceglie.
 | 2026-09-25 | Tid → DB | `%TYPE` dimenticati in firma, DECLARE e RETURNS TABLE di `-53`/`-54` (copiati dalla doc auto-gen, che li scioglie): ripristinati dall'ultimo YAML ancorato (`20260802-21`), `deve_cambiare_password` su `config.credenziali`; stesso controllo su `-59…-61`. Prove rifatte, verdi |
 | 2026-09-25 | DB | R-7 scritto e provato (§13.6): `-55…-62`, due regole `CLEANUP_AT`, un pgTAP nuovo e quattro adeguati. Non applicato; da applicare con la PR del backend |
 | 2026-09-25 | DB | R-3 (§15): `INVITO_OPERATORE` con lo username; tre template `_CROSS` per il flusso con un clic (il motore non ha rami: un template per flusso). Non applicato; con la PR del backend (B-15, B-16) |
+| 2026-09-25 | BE | **B-9…B-16 scritti, non committati**, dopo l'apply delle 19:16 (che aveva rotto il login su dbdev: firme a due e tre argomenti tolte). B-9/B-10: il login chiama check e registrazione **sempre**, con `nome_tentato.digest_nome_tentato` (HMAC-SHA256, chiave da `SECRET_KEY` con sale proprio via `salted_hmac`, nessuna variabile d'ambiente nuova). ⭐ **Trovato strada facendo**: lo username si normalizzava in due modi — il serializer toglie gli spazi, il lookup no — e con « tid» blocco dell'admin, freno e attesa **non si controllavano** mentre `authenticate("tid")` faceva entrare. Ora il nome si legge dal campo del serializer (una normalizzazione sola, §13.3). B-11: nei log `user_id=` o un prefisso dell'impronta, mai il nome. B-12: `ModelBackend` verifica comunque una password (`check_password_with_timing_attack_mitigation`); le chiamate al DB sono le stesse nei due casi. B-13: `veste_attiva` nel tipo e nel drawer (F-2). B-14: nessun codice (la check lo dice gia'). B-15/B-16: `username` nell'invito operatore, `template_cross` per porta, `is_cross` tolto dalle variabili. Prove: `test_login_credenziale_db` (parita' del nome inesistente, spazi che non aggirano il freno, `veste_attiva` nel ciclo operatore), `test_template_invito_db` (ogni segnaposto dei sei template riceve un valore) |
+| 2026-09-25 | BE | §16: i motivi del dettaglio operatore (`invite_reason`, `disable_reason`, `demote_reason`) viaggiano come frasi italiane; il drawer ne traduce uno solo deducendolo da `veste_attiva` (seconda copia della regola, giusta oggi solo per l'ordine dei motivi). Richiesta al DB: codici + chiavi i18n |
 
 ---
 {% include-markdown "signature-core.md" %}

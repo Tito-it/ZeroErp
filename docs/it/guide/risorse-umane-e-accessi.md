@@ -480,15 +480,19 @@ in DB, non e' mai visibile nell'API, non e' mai loggato.
 
 Il sistema protegge il login con tre meccanismi complementari:
 
-#### Blocco per utente (tentativi falliti)
+#### Tentativi falliti: freno, attesa, blocco
 
-Dopo N tentativi falliti consecutivi, l'utente viene bloccato temporaneamente.
-Il blocco si resetta automaticamente alla scadenza o al login riuscito.
+Lo stato è della **credenziale**, non della veste: la password è una sola e
+vale per tutte le porte. Tre regole, prima di guardare la password: il
+**blocco** dell'amministratore, il **freno** sulla provenienza dopo N password
+sbagliate di fila, l'**attesa** crescente sulla credenziale. Valgono anche per
+un nome che non esiste, così la risposta non dice se il nome c'è. Il modello
+completo è in [Architettura multi-face §3.1-bis](/guide/architettura-multi-face-auth#31-bis-la-credenziale-tentativi-freno-blocco).
 
-* [`script.fn_check_blocco_login(auth_user_id)`](/dbzero/script/funzioni/fn_check_blocco_login) — verifica se l'utente e' bloccato
-* [`script.fn_registra_tentativo_login(auth_user_id, successo)`](/dbzero/script/funzioni/fn_registra_tentativo_login) — registra l'esito
-* `identita_digitali.tentativi_falliti` — contatore
-* `identita_digitali.bloccato_fino_a` — timestamp fine blocco
+* [`script.fn_check_blocco_login`](/dbzero/script/funzioni/fn_check_blocco_login) — le tre regole, prima della password
+* [`script.fn_registra_tentativo_login`](/dbzero/script/funzioni/fn_registra_tentativo_login) — l'esito del tentativo
+* `config.credenziali`, `config.credenziali_provenienze` — lo stato della credenziale
+* `config.nomi_tentati`, `config.nomi_tentati_provenienze` — lo stato di un nome che non è una credenziale
 
 #### Throttle per IP (rate limiting)
 

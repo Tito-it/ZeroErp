@@ -5,7 +5,9 @@
 > **Data**: 2026-09-24 · **Stato**: 🟡 **IN CORSO** — ✅ L-0 fatto
 > (2026-09-24, §2); ✅ L-1 fatto (2026-09-25, §3.1-bis); 🟡 L-3 fatto tranne il
 > consenso al riuso, che aspetta la rev -51 in git (2026-09-25, §4.1-bis); gli
-> altri lotti da fare.
+> altri lotti da fare. ✅ **R-3, R-7, R-9 lato BE/FE scritti il 2026-09-25**,
+> non committati (brief DB §13–§15 e registro). ⚠️ La rev `-51` ora è in git
+> (`64a1ad2f4`): il consenso al riuso di L-3 si può fare.
 > Le tre domande di §6 sono decise (Tid, 2026-09-24).
 >
 > **Da dove viene**: [analisi-accessi-credenziale-e-vesti.md](analisi-accessi-credenziale-e-vesti.md)

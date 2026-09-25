@@ -308,21 +308,20 @@ class PermissionResolver:
 
     @classmethod
     def get_area_schema_db(cls, app_label: str, model_name: str) -> str:
-        """Scopo: Determina lo schema_db dell'area per un model.
-        1. Controlla override in area_model_overrides
-        2. Altrimenti usa app_label (che corrisponde allo schema)."""
+        """Scopo: Determina lo schema_db dell'area per un model: l'eccezione
+        di `area_model_overrides`, altrimenti `app_label` (area = schema).
+
+        ⛔ La regola e' di `script.fn_area_di_oggetto`, la stessa che usa il
+        guard dei verbi (`fn_guard_livello`): fino al 2026-09-25 qui c'era la
+        stessa query riscritta, cioe' una seconda sede della regola
+        (brief-db-pannello-config-verbo-generico §6)."""
         with connection.cursor() as cursor:
             cursor.execute(
-                """
-                SELECT af.schema_db
-                  FROM config.area_model_overrides amo
-                  JOIN config.aree_funzionali af ON af.id = amo.area_id
-                 WHERE amo.app_label = %s AND amo.model_name = %s
-                """,
+                "SELECT script.fn_area_di_oggetto(%s, %s)",
                 [app_label, model_name],
             )
             row = cursor.fetchone()
-        return row[0] if row else app_label
+        return row[0] if row and row[0] else app_label
 
     @classmethod
     def get_unita_organizzativa_id(

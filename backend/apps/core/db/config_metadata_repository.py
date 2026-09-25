@@ -17,13 +17,20 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db.dbops_repository import LOOKUP_COLONNE_VALORE, REL_CONSENTITE
+from apps.core.db.dbops_repository import LOOKUP_COLONNE_VALORE
+from apps.core.db.tabelle_gestibili_repository import TabelleGestibiliRepository
 
 # Colonne di sistema da escludere — audit, transazione, storicizzazione, e le
 # identita' tecniche che scrive il DB (`uid` con default `uuidv7()`): un campo
 # che l'operatore non deve compilare non si mostra come obbligatorio.
 # ⚠️ Regola, non elenco: una colonna il cui default e' una FUNZIONE e che non
 # e' mai un dato dell'operatore. Oggi `uid` e' la sola.
+# ⛔ DUE SEDI, dichiarate (2026-09-25): la stessa lista e' la costante
+# `c_escluse` del verbo `config.fn_pannello_scrivi`, che RIFIUTA le colonne
+# che qui si nascondono. Se divergono, il form offre un campo che il
+# salvataggio respinge (o nasconde uno che si potrebbe scrivere). Chiesto al
+# team DB di esporre le colonne scrivibili con una funzione che il verbo e
+# questo metadata leggano entrambi (brief-db-pannello-config-verbo-generico §6).
 _EXCLUDED_COLUMNS = frozenset({
     "data_insert", "user_insert", "data_update", "user_update",
     "tx_id", "storicizza", "uid",
@@ -134,10 +141,16 @@ class ConfigMetadataRepository:
         if cache_key in _cache:
             return _cache[cache_key]
 
+        # ⛔ Fuori anche le colonne che il DB calcola da se' (generate, identity
+        # ALWAYS, salvo `id`): il verbo del pannello le RIFIUTA
+        # (`E_PANNELLO_CAMPO_NON_AMMESSO`), quindi mostrarle nel form sarebbe
+        # offrire un campo che il salvataggio respinge. Stessa regola del verbo.
         sql = """
             SELECT column_name, data_type, is_nullable, column_default
               FROM information_schema.columns
              WHERE table_schema = %s AND table_name = %s
+               AND is_generated <> 'ALWAYS'
+               AND (identity_generation IS DISTINCT FROM 'ALWAYS' OR column_name = 'id')
              ORDER BY ordinal_position
         """
         with connection.cursor() as cursor:
@@ -145,6 +158,7 @@ class ConfigMetadataRepository:
             rows = cursor.fetchall()
             cursor.execute(_SQL_FK, [schema, table])
             fk_per_colonna = {r[0]: (r[1], r[2]) for r in cursor.fetchall()}
+        rel_lookup = TabelleGestibiliRepository().rel_lookup()
 
         columns = []
         for row in rows:
@@ -157,7 +171,7 @@ class ConfigMetadataRepository:
             # colonna target e' fra quelle che il lookup restituisce, il campo
             # diventa una `LookupSelect` (con `valueField` = colonna target),
             # altrimenti resta un valore a mano — e lo dichiara. Lo sa il BE
-            # (`REL_CONSENTITE`, `LOOKUP_COLONNE_VALORE`), non il FE: esce
+            # (`config.tabelle_gestibili`, `LOOKUP_COLONNE_VALORE`), non il FE: esce
             # come flag. ⛔ Il flag a `true` con una colonna che il lookup non
             # porta sarebbe una select che salva `undefined`.
             references, references_column = fk_per_colonna.get(col_name, (None, None))
@@ -179,16 +193,12 @@ class ConfigMetadataRepository:
                 "references": references,
                 "references_column": references_column,
                 "references_lookup": (
-                    references in REL_CONSENTITE and references_column in LOOKUP_COLONNE_VALORE
+                    references in rel_lookup and references_column in LOOKUP_COLONNE_VALORE
                 ),
             })
 
         _cache[cache_key] = columns
         return columns
-
-    # Scopo: Restituisce solo i nomi delle colonne gestibili (per SELECT/INSERT/UPDATE).
-    def get_editable_column_names(self, schema: str, table: str) -> list[str]:
-        return [c["name"] for c in self.get_table_columns(schema, table) if not c["is_pk"]]
 
     # Scopo: Restituisce tutti i nomi colonne incluso id (per SELECT).
     def get_all_column_names(self, schema: str, table: str) -> list[str]:

@@ -16,8 +16,9 @@
 #   1. `has_attivo` assente = True: `t.attivo` in proiezione e nel predicato
 #   2. `has_attivo: False`: `NULL::boolean AS attivo`, nessun predicato su
 #      `attivo`, e `attivo_only=True` (il DEFAULT dell'API) non filtra niente
-#   3. ogni rel specializzata e' anche in `REL_CONSENTITE` (una specializzata
-#      fuori whitelist non si raggiunge: sarebbe una riga di config morta)
+#   3. [DB vero] ogni rel specializzata e' anche nel lookup della lista a DB
+#      (`config.tabelle_gestibili.lookup`): fuori lista non si raggiunge, e
+#      sarebbe una riga di config morta
 #   4. [DB vero] ogni rel specializzata risponde: la colonna extra c'e', il
 #      contratto generico e' intero, e su `config.registri_giornale`
 #      `etichetta_key` e' nel namespace del catalogo e `attivo` e' NULL
@@ -30,12 +31,15 @@ from django.test import SimpleTestCase
 
 from apps.core.db.dbops_repository import (
     _LOOKUP_SPECIALIZZATE,
-    REL_CONSENTITE,
     DbopsRepository,
 )
+from apps.core.db.tabelle_gestibili_repository import TabelleGestibiliRepository
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 
 _CONN = "apps.core.db.dbops_repository.connection"
+# La lista delle rel ammesse sta a DB: nei test di composizione dell'SQL si
+# ammette tutto, il controllo vero lo prova il test 3.
+_AMMESSA = "apps.core.db.dbops_repository._richiedi_rel_lookup"
 _CONTRATTO = {"id", "codice", "codice_interno", "descrizione", "attivo", "codice_stabile"}
 
 
@@ -51,10 +55,11 @@ def _leggi(rel: str, **kw) -> tuple[list[dict], int]:
     return DbopsRepository().list_lookup_codici(rel=rel, **kw)
 
 
+@patch(_AMMESSA)
 class LookupSpecializzateComposizioneTests(SimpleTestCase):
     # 1. Senza il flag la tabella ha `attivo`: proiezione e predicato come sempre.
     @patch(_CONN)
-    def test_senza_flag_attivo_entra_nell_sql(self, conn) -> None:
+    def test_senza_flag_attivo_entra_nell_sql(self, conn, _ammessa) -> None:
         cursor = _cursore_vuoto(conn)
         _leggi("catalogo.unita_misura", attivo_only=True)
         sql = cursor.execute.call_args.args[0]
@@ -64,7 +69,7 @@ class LookupSpecializzateComposizioneTests(SimpleTestCase):
     # 2. Col flag a False `attivo` non esiste: NULL in proiezione, niente
     #    predicato — e il default `attivo_only=True` non deve svuotare la lista.
     @patch(_CONN)
-    def test_has_attivo_false_non_nomina_la_colonna(self, conn) -> None:
+    def test_has_attivo_false_non_nomina_la_colonna(self, conn, _ammessa) -> None:
         cursor = _cursore_vuoto(conn)
         _leggi("config.registri_giornale", attivo_only=True, includi_obsoleti=False)
         sql, params = cursor.execute.call_args.args
@@ -75,10 +80,6 @@ class LookupSpecializzateComposizioneTests(SimpleTestCase):
         self.assertIn("t.codice_interno ILIKE", sql)
         self.assertFalse(params["includi_obsoleti"])
 
-    # 3. Una specializzata si raggiunge solo dalla whitelist.
-    def test_ogni_specializzata_e_in_whitelist(self) -> None:
-        fuori = sorted(set(_LOOKUP_SPECIALIZZATE) - REL_CONSENTITE)
-        self.assertEqual(fuori, [], f"specializzate non raggiungibili: {fuori}")
 
 
 class LookupSpecializzateDbTests(TestCase):
@@ -88,6 +89,11 @@ class LookupSpecializzateDbTests(TestCase):
     def setUpClass(cls) -> None:
         super().setUpClass()
         richiedi_db_provvisto()
+
+    # 3. Una specializzata si raggiunge solo dalla lista a DB.
+    def test_ogni_specializzata_e_nella_lista(self) -> None:
+        fuori = sorted(set(_LOOKUP_SPECIALIZZATE) - TabelleGestibiliRepository().rel_lookup())
+        self.assertEqual(fuori, [], f"specializzate non raggiungibili: {fuori}")
 
     # 4. Il contratto si attraversa per intero: ogni rel, coi default dell'API
     #    (`attivo_only=True`, `includi_obsoleti=True`) e con la ricerca.

@@ -596,8 +596,8 @@ Tabelle:
 
 Lookup whitelist:
 
-- `config.profili_accesso` aggiunta a `REL_CONSENTITE` in
-  `apps.core.db.dbops_repository` per popolare i Select profilo nei
+- `config.profili_accesso` nella lista del lookup generico
+  (`config.tabelle_gestibili`, colonna `lookup`) per popolare i Select profilo nei
   drawer admin via lookup generico
   `GET /api/v1/core/lookup/codici/?rel=config.profili_accesso`.
 

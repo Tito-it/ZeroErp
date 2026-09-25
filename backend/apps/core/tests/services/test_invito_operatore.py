@@ -65,7 +65,12 @@ class InvitoTests(TestCase):
         self.assertEqual(kwargs["ruolo_applicativo"], "OPERATORE")
         spedisci = invito.spedisci.call_args.kwargs
         self.assertEqual(spedisci["destinatario"], "mario@test.com")
-        self.assertEqual(spedisci["variabili"], {"nome": "Mario", "cognome": "Rossi"})
+        # Lo username entra fra le variabili (D-9, B-15): senza valore il
+        # template mostrerebbe «{{username}}» letterale.
+        self.assertEqual(
+            spedisci["variabili"],
+            {"nome": "Mario", "cognome": "Rossi", "username": "mrossi"},
+        )
         self.assertEqual(spedisci["unita_organizzativa_id"], 5)
 
     # Scopo: A-1 — l'invito non sovrascrive la password e non accende il

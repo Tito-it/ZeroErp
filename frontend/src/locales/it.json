@@ -1213,6 +1213,7 @@
     "select_emittenti": "Seleziona emittenti",
     "invita_operatore": "Invia invito",
     "reinvia_invito": "Reinvia invito",
+    "accesso_gia_attivo": "Accesso gia' attivo: l'invito non serve.",
     "invito_inviato": "Invito inviato",
     "invito_inviato_il": "Invito inviato il {data}",
     "invito_confirm_title": "Conferma invio invito",

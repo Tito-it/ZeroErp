@@ -72,7 +72,13 @@ class InvitoOperatoreService:
             identita_id=identita_id,
             destinatario=email,
             invitato_da_user_id=invitato_da_user_id,
-            variabili={"nome": nomi.get("first_name", ""), "cognome": nomi.get("last_name", "")},
+            # Il nome utente (D-9): il template lo scrive, e senza valore il
+            # motore lascerebbe il segnaposto letterale «{{username}}».
+            variabili={
+                "nome": nomi.get("first_name", ""),
+                "cognome": nomi.get("last_name", ""),
+                "username": nomi.get("username", ""),
+            },
             # Reparto dell'operatore: sceglie la casella mittente.
             unita_organizzativa_id=self._auth_repo.get_unita_organizzativa_id(auth_user_id),
         )

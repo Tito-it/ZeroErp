@@ -52,6 +52,7 @@ class MotivoDiniego(StrEnum):
     AZIONE_SCONOSCIUTA = "azione_sconosciuta"
     AREA_NON_DEFINITA = "area_non_definita"
     LIVELLO_INSUFFICIENTE = "livello_insufficiente"
+    OGGETTO_SENZA_RICHIESTA = "oggetto_senza_richiesta"
 
 
 # Scopo: L'esito di una decisione di permesso, con cio' che serve a chi la
@@ -227,6 +228,10 @@ class ZeroERPPermission(BasePermission):
     - ``<action>_accesso = "view"`` per il tipo di accesso che il metodo chiede,
       quando non e' quello del suo verbo HTTP (es. ``post_accesso = "view"``
       per una lettura che viaggia in una POST)
+    - ``oggetto_permesso_da_richiesta(self) -> (app_label, model_name) | None``
+      quando l'oggetto dipende dalla richiesta (una tabella nel path): il
+      livello si chiede su quell'oggetto e sulla sua area; ``None`` ricade
+      sull'area della classe. Valutata sulla classe, senza richiesta, nega
     """
 
     # Mapping azione ViewSet -> tipo di accesso CRUD richiesto
@@ -343,6 +348,26 @@ class ZeroERPPermission(BasePermission):
             # Fail-closed: azione sconosciuta senza *_permission -> nega.
             return EsitoPermesso(consentito=False, motivo=MotivoDiniego.AZIONE_SCONOSCIUTA)
 
+        # L'oggetto che la RICHIESTA nomina (una rotta con la tabella nel path):
+        # se la view lo dichiara, decide lui oggetto e area (D-P7 del
+        # brief-db-pannello-config-verbo-generico).
+        # ⛔ Sulla sola classe — i tool dell'assistente — la richiesta non c'e',
+        #    e l'area della classe non e' quella dell'oggetto: si nega.
+        risolvi_oggetto = getattr(view, "oggetto_permesso_da_richiesta", None)
+        if risolvi_oggetto is not None:
+            if isinstance(view, type):
+                return EsitoPermesso(
+                    consentito=False, motivo=MotivoDiniego.OGGETTO_SENZA_RICHIESTA,
+                )
+            oggetto = risolvi_oggetto()
+            if oggetto is not None:
+                app_label_r, model_name_r = oggetto
+                area_r = PermissionResolver.get_area_schema_db(app_label_r, model_name_r)
+                livello = PermissionResolver.get_livello_oggetto(
+                    user, app_label_r, model_name_r, area_r, cache=cache
+                )
+                return cls._esito_livello(livello, required, area_r, ruolo_app)
+
         # Determina area funzionale dal model o dall'attributo della view
         area_schema_db = cls._resolve_area(view, cache)
         if area_schema_db is None:
@@ -372,12 +397,21 @@ class ZeroERPPermission(BasePermission):
                 user, area_schema_db, cache=cache
             )
 
+        return cls._esito_livello(livello, required, area_schema_db, ruolo_app)
+
+    # Scopo: Il livello risolto concede il tipo di accesso richiesto? Una sede
+    #        per i due rami di `valuta` (oggetto della richiesta, area/model
+    #        della classe).
+    @staticmethod
+    def _esito_livello(
+        livello: str, required: str, area: str, ruolo_app: str | None,
+    ) -> EsitoPermesso:
         allowed_actions = LIVELLO_MAP.get(livello, frozenset())
         if required not in allowed_actions:
             return EsitoPermesso(
                 consentito=False,
                 motivo=MotivoDiniego.LIVELLO_INSUFFICIENTE,
-                area=area_schema_db,
+                area=area,
                 livello=livello,
                 richiesto=required,
                 ruolo_app=ruolo_app,

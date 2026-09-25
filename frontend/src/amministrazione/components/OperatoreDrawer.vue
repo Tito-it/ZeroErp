@@ -85,14 +85,15 @@ const emailEditInvalid = ref(false)
 // 2026-09-25 era `!last_login && is_active`, e con la veste che nasce spenta
 // (`is_active` falso) il pulsante non compariva mai.
 const canInvite = computed(() => isEdit.value && store.currentOperatore?.can_invite === true)
-// Scopo: Perche' l'invito non si puo' mandare: il motivo del DB, sempre, anche
-// «veste gia' attiva». ⛔ Non filtrarlo con una colonna del dettaglio: `attivo`
-// e' della risorsa umana, non della veste, e nasconderlo con quella lo
-// toglieva proprio all'operatore appena creato; lo stato della veste il
-// dettaglio non lo porta.
+// Scopo: Perche' l'invito non si puo' mandare. Con la veste gia' accesa lo
+// dice `veste_attiva` (R-9), non il testo del DB; negli altri casi il motivo
+// del DB. ⛔ Non `attivo` (e' della risorsa umana: nasconderlo con quella lo
+// toglieva proprio all'operatore appena creato) ne' `is_active` (e' della
+// credenziale, acceso da qualunque veste).
 const inviteReason = computed(() => {
   const u = store.currentOperatore
   if (!isEdit.value || !u || canInvite.value) return ''
+  if (u.veste_attiva === true) return t('amministrazione.accesso_gia_attivo')
   return u.invite_reason || ''
 })
 const hasBeenInvited = computed(() => !!store.currentOperatore?.invito_inviato_at)

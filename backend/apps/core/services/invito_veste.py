@@ -68,6 +68,11 @@ class PortaInvito:
     token_invito: str
     token_cross: str
     template: str
+    # Il template del flusso con un clic (credenziale che ha gia' una
+    # password): un testo diverso, non un ramo dentro lo stesso testo — il
+    # motore dei template sostituisce `{{chiave}}` e basta (brief
+    # blocco-login §15, B-16). Il testo resta dato, nel DB.
+    template_cross: str
     link_path: str
     codice_invito: str
     codice_attivazione: str
@@ -85,6 +90,7 @@ PORTA_OPERATORE = PortaInvito(
     token_invito="INVITO_OPERATORE",
     token_cross="ATTIVAZIONE_OPERATORE_CROSS",
     template="INVITO_OPERATORE",
+    template_cross="INVITO_OPERATORE_CROSS",
     link_path="/attivazione",
     codice_invito="E_INVITO_OPERATORE",
     codice_attivazione="E_ATTIVAZIONE",
@@ -95,6 +101,7 @@ PORTA_PORTALE = PortaInvito(
     token_invito="INVITO_PORTALE",
     token_cross="ATTIVAZIONE_PORTALE_CROSS",
     template="INVITO_PORTALE",
+    template_cross="INVITO_PORTALE_CROSS",
     link_path="/attivazione-portale",
     codice_invito="E_INVITO_PORTALE",
     codice_attivazione="E_ATTIVAZIONE_PORTALE",
@@ -105,6 +112,7 @@ PORTA_SHOP = PortaInvito(
     token_invito="INVITO_SHOP",
     token_cross="ATTIVAZIONE_SHOP_CROSS",
     template="INVITO_SHOP",
+    template_cross="INVITO_SHOP_CROSS",
     link_path="/attivazione-shop",
     codice_invito="E_INVITO_PORTALE",
     codice_attivazione="E_ATTIVAZIONE_SHOP",
@@ -228,7 +236,9 @@ class InvitoVeste:
         link = f"{settings.FRONTEND_URL}{porta.link_path}/{emissione.token}"
         try:
             self._email_service.send_email(
-                codice_template=porta.template,
+                # Il flusso sceglie il TESTO: «scegli la password» (nuovo) o
+                # «entra con le credenziali che usi gia'» (un clic).
+                codice_template=porta.template_cross if emissione.is_cross else porta.template,
                 destinatario=destinatario,
                 variabili={
                     **variabili,
@@ -236,9 +246,6 @@ class InvitoVeste:
                     "link": link,
                     "scadenza_ore": str(porta.scadenza_ore),
                     "invitato_da": nome_visualizzato(invitato_da_user_id, self._auth_repo),
-                    # Il template distingue «scegli la password» (nuovo) da
-                    # «attiva l'accesso» (credenziale con password vera).
-                    "is_cross": "1" if emissione.is_cross else "0",
                 },
                 unita_organizzativa_id=unita_organizzativa_id,
                 ambito="SISTEMA",

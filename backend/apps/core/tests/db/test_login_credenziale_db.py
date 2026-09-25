@@ -30,7 +30,11 @@ Indice test eseguiti:
 3) RepositoryCredenzialeDbTests.test_azzeramento_del_reset_toglie_tutti_i_freni
 4) RepositoryCredenzialeDbTests.test_deve_cambiare_password_della_credenziale
 5) RepositoryCredenzialeDbTests.test_provenienza_mancante_e_un_errore_del_chiamante
+5b) RepositoryCredenzialeDbTests.test_nome_inesistente_frenato_sulla_sua_impronta
+5c) RepositoryCredenzialeDbTests.test_successo_senza_credenziale_e_un_errore_del_chiamante
 6) LoginViewDbTests.test_password_sbagliata_401_poi_freno_403_solo_da_quella_provenienza
+6b) LoginViewDbTests.test_nome_inesistente_stesse_risposte_di_una_credenziale
+6c) LoginViewDbTests.test_nome_con_spazi_non_aggira_il_freno
 7) LoginViewDbTests.test_attesa_crescente_403_con_i_secondi_nel_messaggio
 8) CicloOperatoreDbTests.test_operatore_nuovo_crea_invita_attiva_entra
 9) CicloOperatoreDbTests.test_credenziale_riusata_un_clic_e_password_intatta
@@ -52,10 +56,15 @@ from rest_framework.test import APIClient
 from apps.core.api.throttling import LoginRateThrottle, PasswordResetRateThrottle
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services.db_error_fields import structured_db_error_code
+from apps.core.services.nome_tentato import digest_nome_tentato
 from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
 
 _PASSWORD = "Giusta-Per-Il-Test-2026!"
 _URL_LOGIN = "/api/v1/admin/token/"
+# Con la credenziale il DB non legge l'impronta, ma la pretende (brief §13.6):
+# un check che la volesse solo per i nomi inesistenti darebbe al backend un
+# ramo in piu' da tenere uguale.
+_IMPRONTA = digest_nome_tentato("impronta-non-letta-con-la-credenziale")
 
 
 # Scopo: I parametri del login come li legge il DB (sede unica dei numeri).
@@ -107,20 +116,20 @@ class RepositoryCredenzialeDbTests(_TransazioneAnnullata):
         n = _parametri()["max_tentativi"]
         for _ in range(n):
             esito = self.repo.registra_tentativo_login(
-                uid, provenienza="198.51.100.1", successo=False,
+                uid, nome_digest=_IMPRONTA, provenienza="198.51.100.1", successo=False,
             )
         self.assertTrue(esito["bloccato"])
         self.assertIn("attesa_secondi", esito)
 
         self.assertEqual(
             self._codice_errore(
-                lambda: self.repo.check_blocco_login(uid, provenienza="198.51.100.1")
+                lambda: self.repo.check_blocco_login(uid, nome_digest=_IMPRONTA, provenienza="198.51.100.1")
             ),
             "E_UTENTE_BLOCCATO",
         )
         self.assertIsNone(
             self._codice_errore(
-                lambda: self.repo.check_blocco_login(uid, provenienza="198.51.100.2")
+                lambda: self.repo.check_blocco_login(uid, nome_digest=_IMPRONTA, provenienza="198.51.100.2")
             )
         )
 
@@ -130,18 +139,18 @@ class RepositoryCredenzialeDbTests(_TransazioneAnnullata):
         n = _parametri()["max_tentativi"]
         for prov in ("198.51.100.1", "198.51.100.2"):
             for _ in range(n):
-                self.repo.registra_tentativo_login(uid, provenienza=prov, successo=False)
+                self.repo.registra_tentativo_login(uid, nome_digest=_IMPRONTA, provenienza=prov, successo=False)
 
-        self.repo.registra_tentativo_login(uid, provenienza="198.51.100.2", successo=True)
+        self.repo.registra_tentativo_login(uid, nome_digest=_IMPRONTA, provenienza="198.51.100.2", successo=True)
 
         self.assertIsNone(
             self._codice_errore(
-                lambda: self.repo.check_blocco_login(uid, provenienza="198.51.100.2")
+                lambda: self.repo.check_blocco_login(uid, nome_digest=_IMPRONTA, provenienza="198.51.100.2")
             )
         )
         self.assertEqual(
             self._codice_errore(
-                lambda: self.repo.check_blocco_login(uid, provenienza="198.51.100.1")
+                lambda: self.repo.check_blocco_login(uid, nome_digest=_IMPRONTA, provenienza="198.51.100.1")
             ),
             "E_UTENTE_BLOCCATO",
         )
@@ -151,13 +160,13 @@ class RepositoryCredenzialeDbTests(_TransazioneAnnullata):
         uid = _nuova_credenziale().id
         n = _parametri()["max_tentativi"]
         for _ in range(n):
-            self.repo.registra_tentativo_login(uid, provenienza="198.51.100.1", successo=False)
+            self.repo.registra_tentativo_login(uid, nome_digest=_IMPRONTA, provenienza="198.51.100.1", successo=False)
 
         self.repo.azzera_tentativi_credenziale(uid)
 
         self.assertIsNone(
             self._codice_errore(
-                lambda: self.repo.check_blocco_login(uid, provenienza="198.51.100.1")
+                lambda: self.repo.check_blocco_login(uid, nome_digest=_IMPRONTA, provenienza="198.51.100.1")
             )
         )
 
@@ -174,7 +183,45 @@ class RepositoryCredenzialeDbTests(_TransazioneAnnullata):
     def test_provenienza_mancante_e_un_errore_del_chiamante(self):
         uid = _nuova_credenziale().id
         self.assertEqual(
-            self._codice_errore(lambda: self.repo.check_blocco_login(uid, provenienza=None)),
+            self._codice_errore(lambda: self.repo.check_blocco_login(uid, nome_digest=_IMPRONTA, provenienza=None)),
+            "E_AUTH_CHIAMATA_NON_VALIDA",
+        )
+
+    # Scopo: R-7 — un nome che non trova una credenziale conta sulla sua
+    # impronta: alla soglia la provenienza e' frenata, un'altra no.
+    def test_nome_inesistente_frenato_sulla_sua_impronta(self):
+        impronta = digest_nome_tentato(f"nessuno_{uuid.uuid4().hex}")
+        n = _parametri()["max_tentativi"]
+        for _ in range(n):
+            esito = self.repo.registra_tentativo_login(
+                None, nome_digest=impronta, provenienza="198.51.100.3", successo=False,
+            )
+        self.assertTrue(esito["bloccato"])
+        self.assertEqual(
+            self._codice_errore(
+                lambda: self.repo.check_blocco_login(
+                    None, nome_digest=impronta, provenienza="198.51.100.3",
+                )
+            ),
+            "E_UTENTE_BLOCCATO",
+        )
+        self.assertIsNone(
+            self._codice_errore(
+                lambda: self.repo.check_blocco_login(
+                    None, nome_digest=impronta, provenienza="198.51.100.4",
+                )
+            )
+        )
+
+    # Scopo: Un nome inesistente non entra mai: un successo senza credenziale
+    # e' una chiamata rotta, e il DB la rifiuta.
+    def test_successo_senza_credenziale_e_un_errore_del_chiamante(self):
+        self.assertEqual(
+            self._codice_errore(
+                lambda: self.repo.registra_tentativo_login(
+                    None, nome_digest=_IMPRONTA, provenienza="198.51.100.5", successo=True,
+                )
+            ),
             "E_AUTH_CHIAMATA_NON_VALIDA",
         )
 
@@ -240,6 +287,43 @@ class LoginViewDbTests(_ViewVere):
         self.assertEqual(r.status_code, 403)
         self.assertEqual(r.json()["error"]["code"], "E_VESTE_NON_ATTIVA")
 
+    # ⭐ R-7, la parita': la stessa sequenza su un nome che non esiste da' le
+    # stesse risposte che su una credenziale vera — n volte 401, poi 403
+    # E_UTENTE_BLOCCATO. Prima il nome inesistente rispondeva 401 per sempre.
+    def test_nome_inesistente_stesse_risposte_di_una_credenziale(self):
+        nome = f"nessuno_{uuid.uuid4().hex[:12]}"
+        n = _parametri()["max_tentativi"]
+        for i in range(n):
+            r = self._login(nome, "sbagliata", "198.51.100.12")
+            self.assertEqual(r.status_code, 401, f"tentativo {i + 1}")
+
+        r = self._login(nome, "sbagliata", "198.51.100.12")
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.json()["error"]["code"], "E_UTENTE_BLOCCATO")
+
+    # Scopo: Il nome passa dalla normalizzazione del serializer (spazi tolti),
+    # come in `authenticate`: con uno spazio davanti la credenziale frenata
+    # resta frenata. Fino al 2026-09-25 il lookup usava il valore grezzo, non
+    # trovava la credenziale e non la controllava, e la password giusta
+    # arrivava fino alla veste (E_VESTE_NON_ATTIVA).
+    def test_nome_con_spazi_non_aggira_il_freno(self):
+        user = _nuova_credenziale()
+        p = _parametri()
+        n = p["max_tentativi"]
+        if p["tetto_credenziale"] <= n:
+            self.skipTest(
+                f"tetto_credenziale ({p['tetto_credenziale']}) <= max_tentativi ({n}): "
+                "l'attesa sulla credenziale copre il freno di coppia"
+            )
+        for _ in range(n):
+            self.assertEqual(
+                self._login(user.username, "sbagliata", "198.51.100.13").status_code, 401,
+            )
+
+        r = self._login(f"  {user.username} ", _PASSWORD, "198.51.100.13")
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.json()["error"]["code"], "E_UTENTE_BLOCCATO")
+
     def test_attesa_crescente_403_con_i_secondi_nel_messaggio(self):
         user = _nuova_credenziale()
         p = _parametri()
@@ -303,6 +387,14 @@ class CicloOperatoreDbTests(_ViewVere):
         link = self.email.send_email.call_args.kwargs["variabili"]["link"]
         return link.rsplit("/", 1)[1]
 
+    # Scopo: `veste_attiva` dal repository vero (colonna di fn_get_operatore_detail, R-9).
+    def _veste_attiva(self, auth_user_id: int) -> bool | None:
+        from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
+
+        dettaglio = AmmSoftwareRepository().get_operatore_detail(auth_user_id)
+        assert dettaglio is not None
+        return dettaglio["veste_attiva"]
+
     def _richiede_password(self, token: str) -> bool:
         dati = APIClient().get(f"/api/v1/auth/attivazione-validate/{token}/").json()["data"]
         self.assertTrue(dati["valid"])
@@ -313,6 +405,8 @@ class CicloOperatoreDbTests(_ViewVere):
         creato = self._crea(email=f"{nome}@example.invalid", username=nome)
         self.assertFalse(creato["credenziale_riusata"])
         uid = creato["auth_user_id"]
+        # R-9: il dettaglio dice lo stato della VESTE, che nasce spenta.
+        self.assertIs(self._veste_attiva(uid), False)
 
         # Prima dell'attivazione non si entra: la password non esiste ancora.
         self.assertEqual(self._login(nome, _PASSWORD, "198.51.100.30").status_code, 401)
@@ -327,6 +421,7 @@ class CicloOperatoreDbTests(_ViewVere):
         r = self._login(nome, _PASSWORD, "198.51.100.30")
         self.assertEqual(r.status_code, 200, r.content)
         self.assertIsNotNone(User.objects.get(id=uid).last_login)  # D-8
+        self.assertIs(self._veste_attiva(uid), True)
 
     # ⏸️ Dichiarato, non a vuoto: su dbdev la madre e' gia' alla rev -51 (brief
     # §12.7, il riuso vuole il CONSENSO: `p_riusa_auth_user_id`, altrimenti
