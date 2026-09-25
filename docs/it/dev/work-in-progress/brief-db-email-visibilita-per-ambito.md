@@ -6,10 +6,11 @@
 > §3. Il 2026-09-25 Tid ha scelto la strada **(a)**: gli operatori devono poter
 > vedere le mail del loro perimetro, a partire dalla sola lista.
 > **Stato:** ✅ **D-1 → D-5 decise da Tid il 2026-09-25** (§4, §4.1).
-> 🟡 **DB scritto il 2026-09-25, NON applicato** (§6): changeSet
-> `20260925-63..-70` e cinque pgTAP. **Tocca a Tid**: apply e corsa pgTAP
-> (§6.3). Poi tocca al **BE**, che ha tre richieste (§6.4), una delle quali
-> rompe un test Django finché non la si fa. ⛔ È il **prerequisito della
+> 🟡 **DB applicato il 2026-09-25 su dbdev e su `zeroerp_ci`** (§6): changeSet
+> `20260925-63..-70` e cinque pgTAP. ⛔ Aperto un rosso **solo sullo scratch**,
+> `test-fk-auth-user-ponte-django-v1`, che aspetta una decisione di Tid (§6.5).
+> Poi tocca al **BE**, che ha tre richieste (§6.4). Una di queste rompe un test
+> Django finché non la si fa. ⛔ È il **prerequisito della
 > schermata operatore**: il BE/FE non parte finché questo brief non è chiuso.
 > **Da leggere per primo: §6.**
 >
@@ -235,10 +236,9 @@ change Liquibase e non SQL.
   * `rls/test-rls-email-outbox-ambito` 3/3, `config/test-fn-email-sistema`
     12/12, `dbops/test-presidi-debito-dichiarato` 8/8,
     `rls/test-rls-perimetro-scoperto` 8/8;
-  * `config/test-fk-auth-user-ponte-django-v1`: sullo scratch **salta** (ponte
-    assente), come in CI. ⚠️ Con la FK scritta a mano era 0/3: artefatto della
-    prova, perché una sola FK fa credere al test che il ponte ci sia. Su dbdev
-    il test 1 (l'invariante) **pretende** la FK del `-70`, ed è giusto così.
+  * `config/test-fk-auth-user-ponte-django-v1`: con la FK del `-70` era 0/3.
+    ⛔ **L'avevo scritto come «artefatto della prova», ed era sbagliato**: è
+    esattamente il rosso che lo scratch ha dato dopo l'apply (§6.5).
 * Cancelli statici verdi: `runOnChange`, preambolo pgTAP, letterali SQL,
   timestamp, preCondition/seed, DDL su trigger, GRANT batch.
 
@@ -277,7 +277,42 @@ change Liquibase e non SQL.
    di REPARTO ai colleghi. Con la policy chiusa, la sede è la policy (§2).
    Va fatto insieme al §5.
 
-### 6.5 A margine, fuori da questo giro
+### 6.5 ⛔ Dopo l'apply: `test-fk-auth-user-ponte-django-v1` rosso solo su `zeroerp_ci`
+
+Tid, 2026-09-25 sera. Letto dal `databasechangelog` e da `pg_constraint` dello
+scratch:
+
+* le undici FK del ponte (`20260921-02..-12`) sono **`MARK_RAN`**. Lo scratch è
+  stato ricostruito da zero, e in quel momento `django.auth_user` non esisteva;
+* poi il migrate di Django ha creato la tabella, e il `-70` è arrivato dopo con
+  un update incrementale. Ha trovato la tabella: **`EXECUTED`**;
+* ⇒ sullo scratch c'è **una** FK del ponte su dodici. Il test pretende «tutto
+  il ponte o niente»: con una FK sola decide che il ponte c'è, e trova le altre
+  undici mancanti. Fa quello per cui è scritto.
+
+**Dove vale, e dove no:**
+
+* **CI (GitHub)**: ricostruisce da zero a ogni corsa, quindi anche il `-70` è
+  `MARK_RAN` e il test salta. Nessuna regressione;
+* **dbdev**: il ponte c'è intero (`EXECUTED`), e il test è verde con la tredicesima;
+* **scratch**, e ⚠️ **qualunque installazione fatta come lui** (Liquibase da
+  zero, poi Django, poi aggiornamenti): ogni FK del ponte aggiunta dopo
+  l'installazione nasce, mentre le vecchie no. Il `-70` è solo la prima a farlo
+  vedere. Il difetto sta nel `MARK_RAN` del ponte: segna le FK come fatte e non
+  torna più a crearle.
+
+**Le due strade** — decisione di Tid:
+
+1. **Niente di strutturale**: il rosso resta solo sullo scratch, e sparisce alla
+   prossima ricostruzione da zero (il `-70` diventa `MARK_RAN` come le altre).
+   Costo zero, ma il difetto delle installazioni reali resta.
+2. **Convergenza del ponte**: un changeSet di `90_end` `runAlways` che, se
+   `django.auth_user` esiste, crea le FK del ponte mancanti (idempotente, dopo
+   un controllo degli orfani). Ripara lo scratch e ogni installazione. È
+   lavoro della voce V-7 (valutazione-modello-di-dominio-db), non di questo
+   brief.
+
+### 6.6 A margine, fuori da questo giro
 
 * La FK `email_allegato → email_outbox` è `ON DELETE CASCADE`: cancellare una
   bozza già spedita porta via gli allegati che il log referenzia ancora (§4.1).
