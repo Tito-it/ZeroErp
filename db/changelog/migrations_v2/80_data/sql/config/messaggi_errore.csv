@@ -922,3 +922,4 @@ E_PANNELLO_TABELLA_NON_AMMESSA,it,La tabella %s non si gestisce dal pannello di 
 E_PANNELLO_DATI_VUOTI,it,Non c'è nessun campo da salvare.,1135,Il salvataggio non conteneva nessun valore da scrivere.,Compilare almeno un campo e salvare di nuovo.
 E_PANNELLO_CAMPO_NON_AMMESSO,it,Il campo %s non si può salvare da qui.,1136,"Il salvataggio conteneva un campo che questa tabella non ha, oppure che non si scrive a mano.","Togliere il campo e salvare di nuovo. Se l'errore arriva dall'applicazione, segnalarlo a chi sviluppa."
 E_PANNELLO_RIGA_NON_TROVATA,it,La riga %s non esiste più.,1137,La riga da modificare non c'è: può essere stata tolta nel frattempo.,Ricaricare l'elenco e riprovare.
+E_SCRITTURA_IN_LETTURA,it,Modifica dati non permessa.,1138,"Un'operazione che doveva solo leggere ha tentato di modificare dei dati: è un difetto dell'applicazione, non dei permessi dell'utente.",Segnalare l'errore a chi sviluppa indicando la pagina in cui è comparso.
