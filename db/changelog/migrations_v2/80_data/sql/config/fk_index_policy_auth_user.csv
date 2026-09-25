@@ -10,3 +10,4 @@ config,email_log,fk_config_email_log_auth_user,t,CREATE INDEX IF NOT EXISTS ix_e
 config,email_outbox,fk_config_email_outbox_auth_user,f,CREATE INDEX IF NOT EXISTS ix_email_outbox_auth_user_id ON config.email_outbox(auth_user_id);,f,mctit,2026-09-21 00:00:00+02
 config,email_outbox,fk_config_email_outbox_creato_da_user,f,CREATE INDEX IF NOT EXISTS ix_email_outbox_creato_da_user_id ON config.email_outbox(creato_da_user_id);,f,mctit,2026-09-21 00:00:00+02
 vendite,event_log,fk_vendite_event_log_auth_user,f,CREATE INDEX IF NOT EXISTS ix_event_log_auth_user_id ON vendite.event_log(auth_user_id);,f,mctit,2026-09-21 00:00:00+02
+config,email_log,fk_config_email_log_creato_da_user,f,CREATE INDEX IF NOT EXISTS ix_email_log_creato_da_user_id ON config.email_log(creato_da_user_id);,f,mctit,2026-09-25 00:00:00+02

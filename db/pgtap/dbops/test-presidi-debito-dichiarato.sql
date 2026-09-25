@@ -56,10 +56,15 @@ SELECT col_default_is('dbops', 'processi_bersagli', 'debito_dichiarato', 'false'
 -- ============================================================
 -- ⛔ Non un NOT NULL, e la ragione sta nella tabella stessa: un'email di
 --   SISTEMA — reset password, alert — non ha un emittente e non puo' averlo.
+-- ⚠️ Rev 2026-09-25: con il proprietario della bozza. Dal 20260925-64 una bozza
+--   OPERATORE senza proprietario viola anche chk_email_outbox_operatore_creatore:
+--   senza questa colonna il 23514 arriverebbe da due vincoli, e il test sarebbe
+--   verde anche con il CHECK dell'emittente sparito.
 SELECT throws_ok(
     $$INSERT INTO config.email_outbox
-          (ambito, destinatario, oggetto, corpo_html, stato)
-      VALUES ('OPERATORE', 'pgtap@example.invalid', 'pgtap', '<p/>', 'DRAFT')$$,
+          (ambito, destinatario, oggetto, corpo_html, stato, creato_da_user_id)
+      VALUES ('OPERATORE', 'pgtap@example.invalid', 'pgtap', '<p/>', 'DRAFT',
+              NULLIF(current_setting('app.current_user_id', true), '')::integer)$$,
     '23514',
     NULL,
     '2. un''email non di SISTEMA senza emittente si ferma'

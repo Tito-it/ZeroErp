@@ -23,6 +23,12 @@ La tabella `config.email_allegato` traccia i **file allegati** alle email. I fil
 
 ---
 
+### Chi vede un allegato
+
+Un allegato si vede se si vede la sua email: la bozza (`email_outbox_id`) **o** il log (`email_log_id`). Dopo l'invio l'allegato è legato a entrambe. La regola dell'ambito resta quella delle due tabelle madri, e il database la applica passando da loro (policy `rls_email_allegato_ambito`). Un allegato senza nessuna delle due non lo vede nessuno, e non si può scrivere.
+
+---
+
 ### Origine
 
 | Valore     | Significato                                                               |

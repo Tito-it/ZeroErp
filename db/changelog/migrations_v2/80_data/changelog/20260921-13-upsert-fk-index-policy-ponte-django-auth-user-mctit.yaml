@@ -34,6 +34,13 @@
 #   coperta e salta (GUARDIA 1). Non e' una scelta sull'indice: e' non
 #   toglierne uno che c'e'.
 #
+# -- rev 2026-09-25: una riga in piu' -------------------------------------------
+#   config.email_log.creato_da_user_id (20260925-63, FK 20260925-70): chi ha
+#   scritto la mail, gemella di quella dell'outbox e decisa come lei ->
+#   consentito=false (la regola di visibilita' e' una funzione per riga, non
+#   entra da un indice; nessuna lista legge per autore).
+#   Brief: brief-db-email-visibilita-per-ambito.
+#
 # -- CSV DEDICATO, come 20260913-12 e 20260914-17 ----------------------------
 #   fk_index_policy.csv e' un mirror di gennaio, dormiente: svegliarlo
 #   rilegge 200 righe. La riga di deroga alla regola «una tabella, un CSV» e'
@@ -101,4 +108,6 @@ databaseChangeLog:
                  'fk_config_user_override_aree_auth_user', 'fk_config_user_override_azioni_auth_user',
                  'fk_config_user_override_oggetti_auth_user', 'fk_config_email_log_auth_user',
                  'fk_config_email_outbox_auth_user', 'fk_config_email_outbox_creato_da_user',
-                 'fk_vendite_event_log_auth_user');
+                 'fk_vendite_event_log_auth_user',
+                 -- rev 2026-09-25 (20260925-70): la dodicesima.
+                 'fk_config_email_log_creato_da_user');

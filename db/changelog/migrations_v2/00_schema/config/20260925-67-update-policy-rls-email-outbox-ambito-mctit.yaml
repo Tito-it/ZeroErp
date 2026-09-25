@@ -1,0 +1,136 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# rls_email_outbox_ambito — la bozza di un collega non si apre piu'.
+#   Brief: brief-db-email-visibilita-per-ambito §2, §3
+#   Sostituisce il corpo di 20260905-33 (letto da pg_policy, non dallo YAML).
+#
+# ── ⛔ IL DIFETTO, PIU' GRAVE CHE SUL LOG ───────────────────────────
+#   Stesso ELSE dell'emittente per REPARTO e OPERATORE, ma su una policy
+#   FOR ALL di una tabella di BOZZE: la bozza OPERATORE di un collega della
+#   stessa azienda si poteva leggere, modificare e SPEDIRE. Lo impediva solo
+#   l'area `config` sulle view (D15, 2026-09-12).
+#
+# ── ⭐ LA FORMA ─────────────────────────────────────────────────────
+#   La stessa regola del log, dalla stessa funzione
+#   (`script.fn_scope_email_ambito`, 20260925-65), con due differenze:
+#     * il proprietario della bozza e' `creato_da_user_id` — lo scrive
+#       EmailPrepareView con l'utente della richiesta, e il COMMENT della
+#       colonna ora lo dice (20260925-63). `auth_user_id` e' l'utente di cui la
+#       mail parla, e non regge niente;
+#     * nessun processo: sull'outbox non entra nessuna macchina
+#       (20260905-33), e un permesso che nessun codice esercita non si collauda.
+#       Il parametro resta al suo DEFAULT (NULL).
+#   USING e WITH CHECK identici: una bozza OPERATORE si scrive solo come
+#   propria, una REPARTO solo per il proprio reparto.
+#
+# Verifica: db/pgtap/rls/test-rls-email-outbox-ambito.sql,
+#           db/pgtap/rls/test-rls-email-ambito-reparto-operatore.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260925-67-update-policy-rls-email-outbox-ambito-mctit.yaml
+
+  - changeSet:
+      id: 20260925-67-update-policy-rls-email-outbox-ambito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Riscrive rls_email_outbox_ambito sulla regola di
+        script.fn_scope_email_ambito: la bozza OPERATORE la vede, modifica e
+        spedisce solo chi l'ha preparata (creato_da_user_id), la REPARTO chi e'
+        nello stesso reparto; emittente in AND, super admin ovunque, nessun
+        processo. Brief: brief-db-email-visibilita-per-ambito.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+               JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_scope_email_ambito'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_email_outbox_ambito ON config.email_outbox;
+
+              CREATE POLICY rls_email_outbox_ambito ON config.email_outbox
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      -- ⚠️ Nessun processo: sull'outbox non entra nessuna
+                      --   macchina (20260905-33).
+                      AND script.fn_scope_email_ambito(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              ambito,
+                              emittente_fiscale_id,
+                              unita_organizzativa_id,
+                              creato_da_user_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_email_ambito(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              ambito,
+                              emittente_fiscale_id,
+                              unita_organizzativa_id,
+                              creato_da_user_id)
+                  );
+
+              COMMENT ON POLICY rls_email_outbox_ambito ON config.email_outbox IS
+                  'RLS per AMBITO sulle bozze, gate OPERATORE fail-closed. La regola e'' '
+                  'script.fn_scope_email_ambito, la stessa di rls_email_log_ambito: '
+                  'SISTEMA = super admin; REPARTO = chi e'' nello stesso reparto; '
+                  'OPERATORE = il proprietario della bozza, creato_da_user_id (NON '
+                  'auth_user_id, che e'' l''utente di cui la mail parla). Su REPARTO e '
+                  'OPERATORE l''emittente resta un cancello in AND; il super admin passa '
+                  'ovunque. Nessun processo: sull''outbox non entra nessuna macchina '
+                  '(20260905-33). Stessa regola in USING e WITH CHECK. ⛔ Fino al '
+                  '2026-09-25 REPARTO e OPERATORE cadevano nel ramo dell''emittente, e la '
+                  'bozza di un collega si poteva leggere, modificare e spedire. Brief: '
+                  'brief-db-email-visibilita-per-ambito.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristina il corpo di 20260905-33.
+              DROP POLICY IF EXISTS rls_email_outbox_ambito ON config.email_outbox;
+              CREATE POLICY rls_email_outbox_ambito ON config.email_outbox
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND CASE
+                          WHEN ambito = 'SISTEMA' THEN
+                              script.fn_is_super_admin(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer)
+                          ELSE
+                              script.fn_scope_ef_whitelist(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  emittente_fiscale_id)
+                          END
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND CASE
+                          WHEN ambito = 'SISTEMA' THEN
+                              script.fn_is_super_admin(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer)
+                          ELSE
+                              script.fn_scope_ef_whitelist(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  emittente_fiscale_id)
+                          END
+                  );

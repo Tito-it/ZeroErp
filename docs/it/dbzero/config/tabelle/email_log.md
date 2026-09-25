@@ -32,14 +32,18 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | emittente_fiscale_id | bigint | YES |  |
+| creato_da_user_id | integer | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_email_log_ambito |  |
 | CHECK | chk_email_log_ambito_emittente |  |
+| CHECK | chk_email_log_operatore_creatore |  |
+| CHECK | chk_email_log_reparto_uo |  |
 | CHECK | chk_email_log_stato |  |
 | FOREIGN KEY | fk_config_email_log_auth_user | auth_user_id |
+| FOREIGN KEY | fk_config_email_log_creato_da_user | creato_da_user_id |
 | FOREIGN KEY | fk_email_log_email_account | email_account_id |
 | FOREIGN KEY | fk_email_log_email_template | email_template_id |
 | FOREIGN KEY | fk_email_log_emittente_fiscale | emittente_fiscale_id |

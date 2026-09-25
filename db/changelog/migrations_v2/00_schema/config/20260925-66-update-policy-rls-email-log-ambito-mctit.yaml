@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# rls_email_log_ambito — i rami REPARTO e OPERATORE, finalmente distinti.
+#   Brief: brief-db-email-visibilita-per-ambito §2, §3, §3.1
+#   Sostituisce il corpo di 20260905-43 (letto da pg_policy, non dallo YAML).
+#
+# ── ⛔ IL DIFETTO ──────────────────────────────────────────────────
+#   La policy aveva due rami: SISTEMA e «tutto il resto». REPARTO e OPERATORE
+#   cadevano nello stesso ELSE, dove l'unico cancello era l'emittente: un
+#   operatore leggeva la mail OPERATORE di un collega della stessa azienda. Il
+#   difetto era nascosto perche' al log arrivava solo chi ha l'area `config`.
+#
+# ── ⭐ LA FORMA NUOVA ───────────────────────────────────────────────
+#   Il corpo della regola sta in `script.fn_scope_email_ambito` (20260925-65),
+#   la stessa che chiama la policy dell'outbox. Qui resta:
+#     * il gate `app.ruolo_applicativo = 'OPERATORE'`, come prima;
+#     * le colonne della riga, passate per nome;
+#     * il codice del processo, `send_pending_emails`: su QUESTA tabella il
+#       processo legge e aggiorna righe di ogni ambito (§3.1). Il letterale
+#       resta nel testo della policy, ed e' quello che il test 5 di
+#       test-rls-email-log-ambito.sql cerca.
+#   USING e WITH CHECK identici: una riga OPERATORE si scrive solo col proprio
+#   utente, una REPARTO solo per il proprio reparto.
+#
+# ⚠️ Il backend deve valorizzare `creato_da_user_id` (20260925-63) prima di
+#   scrivere una mail OPERATORE: senza, il WITH CHECK la respinge. Richiesta nel
+#   brief, §6.
+#
+# Verifica: db/pgtap/rls/test-rls-email-log-ambito.sql,
+#           db/pgtap/rls/test-rls-email-ambito-reparto-operatore.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260925-66-update-policy-rls-email-log-ambito-mctit.yaml
+
+  - changeSet:
+      id: 20260925-66-update-policy-rls-email-log-ambito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Riscrive rls_email_log_ambito: REPARTO e OPERATORE non cadono piu'
+        nell'ELSE dell'emittente. La regola e' in script.fn_scope_email_ambito
+        (stesso reparto / chi l'ha creata, emittente in AND, super admin), con
+        send_pending_emails ammesso su tutti gli ambiti perche' qui il processo
+        legge e aggiorna. Brief: brief-db-email-visibilita-per-ambito.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+               JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_scope_email_ambito'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_email_log_ambito ON config.email_log;
+
+              CREATE POLICY rls_email_log_ambito ON config.email_log
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_email_ambito(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              ambito,
+                              emittente_fiscale_id,
+                              unita_organizzativa_id,
+                              creato_da_user_id,
+                              -- ⭐ Portare e' leggere: il processo ripesca e
+                              --   chiude le righe di OGNI ambito.
+                              'send_pending_emails')
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_email_ambito(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              ambito,
+                              emittente_fiscale_id,
+                              unita_organizzativa_id,
+                              creato_da_user_id,
+                              'send_pending_emails')
+                  );
+
+              COMMENT ON POLICY rls_email_log_ambito ON config.email_log IS
+                  'RLS per AMBITO, gate OPERATORE fail-closed. La regola e'' '
+                  'script.fn_scope_email_ambito, la stessa di rls_email_outbox_ambito: '
+                  'SISTEMA = super admin; REPARTO = chi e'' nello stesso reparto; '
+                  'OPERATORE = chi l''ha creata (creato_da_user_id, NON auth_user_id). '
+                  'Su REPARTO e OPERATORE l''emittente resta un cancello in AND, e il '
+                  'super admin passa ovunque. ⭐ QUI e non sull''outbox entra anche '
+                  'l''identita'' tecnica di send_pending_emails, su tutti gli ambiti: e'' '
+                  'questa la tabella che il processo legge e aggiorna, e portare e'' '
+                  'leggere — senza, una mail REPARTO o OPERATORE fallita non verrebbe '
+                  'ritentata e una coda vuota e'' identica a «niente da fare». Stessa '
+                  'regola in USING e WITH CHECK. Fino al 2026-09-25 REPARTO e OPERATORE '
+                  'cadevano nel ramo dell''emittente: un operatore leggeva la mail '
+                  'OPERATORE di un collega. Brief: brief-db-email-visibilita-per-ambito.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristina il corpo di 20260905-43.
+              DROP POLICY IF EXISTS rls_email_log_ambito ON config.email_log;
+              CREATE POLICY rls_email_log_ambito ON config.email_log
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND CASE
+                          WHEN ambito = 'SISTEMA' THEN
+                              script.fn_is_super_admin(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer)
+                              OR script.fn_scope_identita_processo(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  'send_pending_emails')
+                          ELSE
+                              script.fn_scope_ef_whitelist(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  emittente_fiscale_id)
+                          END
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND CASE
+                          WHEN ambito = 'SISTEMA' THEN
+                              script.fn_is_super_admin(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer)
+                              OR script.fn_scope_identita_processo(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  'send_pending_emails')
+                          ELSE
+                              script.fn_scope_ef_whitelist(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  emittente_fiscale_id)
+                          END
+                  );
