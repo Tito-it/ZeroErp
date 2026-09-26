@@ -938,3 +938,72 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 938,55,codice,Codice,"Codice della famiglia, modificabile: e quello che si mostra e si cerca",codice,identificatore,string,,150,5,left,Identificazione,1,f,f,t,t,f,t,2026-09-24 00:00:00,mctit,vendite.famiglie_documento.col_codice,100
 939,26,data_insert,Data inserimento,Data e ora di creazione dell articolo,data_insert,informazione,datetime,datetime_short,150,90,center,Audit,1,f,t,t,f,f,t,2026-09-26 00:00:00,mctit,common.data_insert,10
 940,26,data_update,Data aggiornamento,Data e ora dell ultima modifica dell articolo,data_update,informazione,datetime,datetime_short,150,95,center,Audit,1,f,t,t,f,f,t,2026-09-26 00:00:00,mctit,common.data_update,5
+941,83,dispositivo,Dispositivo,Browser e sistema ricavati dallo user agent; in export la stringa grezza,user_agent,identificatore,string,,200,10,left,,,f,f,t,t,f,t,2026-09-27 00:00:00,mctit,sessions.device,100
+942,83,ip_address,Indirizzo IP,Indirizzo dell'ultimo evento della sessione; vuoto se non rilevato,ip_address,informazione,string,,140,20,left,,,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,sessions.ip_address,60
+943,83,data_ultimo_evento,Ultimo accesso,Ultimo login o rinnovo del token; a video come tempo trascorso,data_ultimo_evento,informazione,datetime,datetime_short,150,30,center,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,sessions.last_access,90
+944,83,data_inizio,Inizio sessione,Primo login della sessione; vuota se quell'evento non e' piu' nel registro,data_inizio,informazione,datetime,datetime_short,150,40,center,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,sessions.col_data_inizio,30
+945,83,azioni,Azioni,,,azione,string,,100,999,center,,,f,f,f,f,f,t,2026-09-27 00:00:00,mctit,common.col_azioni,100
+946,84,progressivo_sorgente,N.,Numero progressivo del documento nella sua sorgente (1 = il primo emesso),progressivo_sorgente,identificatore,numeric,,80,10,right,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,documenti.lista.col_progressivo,100
+947,84,generato_at,Generato il,Istante di generazione del documento,generato_at,informazione,datetime,datetime_short,150,20,center,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,documenti.lista.col_generato_at,90
+948,84,titolo,Titolo,,titolo,informazione,string,,260,30,left,,,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,documenti.lista.col_titolo,80
+949,84,nome_file,Nome file,Nome del file PDF prodotto,nome_file,informazione,string,,200,40,left,,,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,documenti.lista.col_nome_file,40
+950,84,stato,Stato,GENERATO · ARCHIVIATO · ANNULLATO,stato,informazione,string,,120,50,center,,,t,t,t,f,f,t,2026-09-27 00:00:00,mctit,documenti.lista.col_stato,85
+951,84,originale,Originale,Il file originale e' conservato? No = documento anteriore alla conservazione dei file: si usa la ristampa fedele,has_file_principale,informazione,boolean,yesno,110,60,center,,,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,documenti.lista.col_originale,60
+952,84,azioni,Azioni,,,azione,string,,70,999,center,,,f,f,f,f,f,t,2026-09-27 00:00:00,mctit,common.col_azioni,100
+953,85,sequenza,#,Posizione del flusso nella pratica,sequenza,identificatore,numeric,,60,10,right,Identificazione,1,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,pratiche.flusso_col_seq,100
+954,85,template_flusso,Template,Il passo del percorso da cui nasce il flusso,template_flusso_descrizione,informazione,string,,200,20,left,Identificazione,1,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,pratiche.flusso_col_template,95
+955,85,stato,Stato,Stato corrente del flusso (catalogo config.stati_flussi_pratiche),stato_descrizione,informazione,string,,130,30,center,Stato,2,t,t,t,f,f,t,2026-09-27 00:00:00,mctit,pratiche.col_stato,92
+956,85,esito,Esito,Esito registrato alla chiusura (catalogo config.esiti_flussi_pratiche); vuoto finche' il flusso e' aperto,esito_descrizione,informazione,string,,140,40,left,Stato,2,t,t,t,f,f,t,2026-09-27 00:00:00,mctit,pratiche.flusso_col_esito,70
+957,85,data_scadenza,Scadenza,Vuota = nessuna scadenza,data_scadenza,informazione,date,date_short,110,50,center,Stato,2,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,pratiche.col_data_scadenza,80
+958,85,note_esito,Note esito,,note_esito,informazione,string,,240,60,left,Stato,2,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,pratiche.flusso_note_esito,20
+959,85,risorsa_umana,Operatore,Operatore a cui e' assegnato lo step; vuoto = non assegnato,risorsa_umana_display,informazione,string,,180,70,left,Assegnazione,3,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,pratiche.flusso_assegnatario,40
+960,85,unita_organizzativa,Reparto,Reparto a cui e' assegnato lo step,unita_organizzativa_descrizione,informazione,string,,150,80,left,Assegnazione,3,t,t,t,f,f,t,2026-09-27 00:00:00,mctit,pratiche.flusso_reparto,35
+961,85,data_insert,Data inserimento,Quando il flusso e' stato creato,data_insert,informazione,datetime,datetime_short,150,90,center,Audit,4,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,common.data_insert,10
+962,86,emittente_codice,Codice,Codice dell'emittente fiscale,emittente_codice,identificatore,string,,140,10,left,,,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,amministrazione.matrice_utilities_ruoli.usage_col_codice,100
+963,86,emittente_descrizione,Ragione sociale,Ragione sociale del soggetto dell'emittente fiscale,emittente_descrizione,informazione,string,,260,20,left,,,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,amministrazione.matrice_utilities_ruoli.usage_col_ragione_sociale,95
+964,86,emittente_attivo,Attivo,Emittente fiscale attivo,emittente_attivo,informazione,boolean,yesno,100,30,center,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,common.attivo,60
+965,86,override_attivo,Override attivo,Parametri dell'emittente per la utility attivi o disattivati,override_attivo,informazione,boolean,yesno,120,40,center,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,amministrazione.matrice_utilities_ruoli.usage_col_override_attivo,50
+966,87,descrizione,Reparto,Nome del reparto (unita' organizzativa),descrizione,identificatore,string,,260,10,left,,,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,amministrazione.col_reparto,100
+967,87,codice,Codice,Codice del reparto,codice,informazione,string,,140,20,left,,,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,amministrazione.col_codice_reparto,40
+968,87,profilo_aree_count,Profilo,Profilo di accesso configurato: aree presenti nel profilo del reparto,profilo_aree_count,informazione,numeric,,140,30,center,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,amministrazione.col_profilo,80
+969,87,operatori_count,Operatori,Operatori attivi assegnati al reparto,operatori_count,informazione,numeric,number,110,40,right,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,amministrazione.col_operatori,70
+970,88,versione,N.,Numero progressivo della versione nel template,versione,identificatore,numeric,,70,10,right,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,config.modelli_documenti.versioni.col_versione,100
+971,88,titolo,Titolo,Titolo della versione,titolo,informazione,string,,260,20,left,,,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,config.modelli_documenti.versioni.col_titolo,95
+972,88,stato,Stato,BOZZA / PUBBLICATA / OBSOLETA,stato,informazione,string,,120,30,center,,,t,t,t,f,f,t,2026-09-27 00:00:00,mctit,config.modelli_documenti.versioni.col_stato,90
+973,88,valido_dal,Valido dal,Obbligatoria sulle versioni pubblicate,valido_dal,informazione,date,date_short,110,40,center,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,config.modelli_documenti.versioni.col_valido_dal,70
+974,88,valido_al,Valido al,Vuota = senza scadenza,valido_al,informazione,date,date_short,110,50,center,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,config.modelli_documenti.versioni.col_valido_al,60
+975,88,attivo,Attivo,Versione attiva o disattivata,attivo,informazione,boolean,yesno,90,60,center,,,t,t,t,f,f,t,2026-09-27 00:00:00,mctit,common.attivo,50
+976,88,data_update,Data aggiornamento,Data e ora dell'ultima modifica della versione,data_update,informazione,datetime,datetime_short,150,70,center,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,common.data_update,10
+977,88,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-09-27 00:00:00,mctit,common.col_azioni,100
+978,89,rev,Rev,Numero di revisione,rev,identificatore,numeric,,70,10,center,Identificazione,1,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_rev,100
+979,89,numero,Numero,Numero o codice del documento della revisione,numero,informazione,string,,140,20,left,Identificazione,1,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_numero,40
+980,89,data,Data,Data del documento: del preventivo o di emissione dell offerta (vuota in bozza),data,informazione,date,date_short,110,30,center,Identificazione,1,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_data,80
+981,89,stato,Stato,Stato della revisione,stato_descrizione,informazione,string,,130,40,center,Stato,2,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_stato,90
+982,89,attiva,Attiva,Revisione viva: non superata da una successiva e non abortita,is_attiva,informazione,boolean,yesno,90,50,center,Stato,2,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_attiva,70
+983,89,totale,Totale,Totale del documento,totale_documento,informazione,numeric,currency_eur,130,60,right,Importi,3,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_totale,75
+984,89,stato_codice_interno,Cod. Stato,Codice interno dello stato per la severita del Tag FE,stato_codice_interno,informazione,string,,80,130,left,Stato,2,f,f,f,f,f,t,2026-09-27 00:00:00,mctit,,5
+985,90,rev,Rev,Numero di revisione,revisione_numero,identificatore,numeric,,70,10,center,Identificazione,1,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_rev,100
+986,90,numero,Numero,Numero o codice del documento della revisione,codice,informazione,string,,140,20,left,Identificazione,1,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_numero,40
+987,90,data,Data,Data del documento: del preventivo o di emissione dell offerta (vuota in bozza),data_emissione,informazione,date,date_short,110,30,center,Identificazione,1,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_data,80
+988,90,stato,Stato,Stato della revisione,stato_descrizione,informazione,string,,130,40,center,Stato,2,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_stato,90
+989,90,attiva,Attiva,Revisione viva: non superata da una successiva e non abortita,is_attiva,informazione,boolean,yesno,90,50,center,Stato,2,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_attiva,70
+990,90,stato_codice_interno,Cod. Stato,Codice interno dello stato per la severita del Tag FE,stato_codice_interno,informazione,string,,80,130,left,Stato,2,f,f,f,f,f,t,2026-09-27 00:00:00,mctit,,5
+991,91,descrizione,Descrizione,Nome della regione,descrizione,identificatore,string,,240,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,geo.col_descrizione,100
+992,91,stato,Stato,Lo stato (nazione) a cui appartiene la regione,stato_descrizione,informazione,string,,200,20,left,Territorio,2,t,t,t,f,f,t,2026-09-27 00:00:00,mctit,geo.col_stato,85
+993,92,sigla,Sigla,Sigla automobilistica della provincia,sigla,identificatore,string,,90,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,geo.col_sigla,100
+994,92,descrizione,Descrizione,Nome della provincia,descrizione,identificatore,string,,240,20,left,Identificazione,1,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,geo.col_descrizione,95
+995,92,regione,Regione,La regione a cui appartiene la provincia,regione_descrizione,informazione,string,,200,30,left,Territorio,2,t,t,t,f,f,t,2026-09-27 00:00:00,mctit,geo.col_regione,85
+996,93,descrizione,Descrizione,Nome dello stato,descrizione,identificatore,string,,240,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,geo.col_descrizione,100
+997,93,codice_iso2,ISO2,Codice ISO 3166-1 alpha-2,codice_iso2,informazione,string,,80,20,left,Codici,2,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,geo.col_iso2,90
+998,93,codice_iso3,ISO3,Codice ISO 3166-1 alpha-3,codice_iso3,informazione,string,,80,30,left,Codici,2,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,geo.col_iso3,70
+999,93,continente,Continente,Il continente dello stato,continente,informazione,string,,160,40,left,Territorio,3,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,geo.col_continente,60
+1000,93,sigla_stato,Sigla,Sigla dello stato,sigla_stato,informazione,string,,90,50,left,Codici,2,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,geo.col_sigla,30
+1001,93,codice_telefonico,Prefisso tel.,Prefisso telefonico internazionale,codice_telefonico,informazione,string,,110,60,left,Codici,2,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,geo.col_telefono,20
+1002,94,descrizione,Comune,Nome del comune,descrizione,identificatore,string,,260,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_comune,100
+1003,94,provincia_sigla,Provincia,Sigla della provincia del comune,provincia_sigla,informazione,string,,100,20,left,Territorio,2,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_provincia,85
+1004,94,provincia,Nome provincia,Nome esteso della provincia del comune,provincia_descrizione,informazione,string,,200,25,left,Territorio,2,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_provincia_nome,30
+1005,94,regione,Regione,La regione del comune,regione_descrizione,informazione,string,,200,30,left,Territorio,2,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_regione,60
+1006,95,codice,CAP,Codice di avviamento postale,codice,identificatore,string,,100,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_cap,100
+1007,95,comune,Comune,Il comune servito dal CAP,comune_descrizione,informazione,string,,260,20,left,Territorio,2,t,t,t,t,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_comune,90
+1008,96,descrizione,Descrizione,Tipo di strada (via o piazza o altro),descrizione,identificatore,string,,260,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_descrizione,100
+1009,96,attivo,Stato,Tipo di strada attivo o disattivato,attivo,informazione,boolean,yesno,100,20,center,Stato,2,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_attivo,60

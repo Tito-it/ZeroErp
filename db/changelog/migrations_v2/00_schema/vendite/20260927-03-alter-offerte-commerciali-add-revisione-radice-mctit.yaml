@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CATENA DELLE REVISIONI DI UN'OFFERTA PRENDE UN NOME — passo 1 di 4
+#   Brief: brief-db-liste-datatable-grezze.md §3.2 (decisione di Tid, 2026-09-27)
+#
+#   Un'offerta revisionata e' una CATENA: rev.1 -> rev.2 -> ... Oggi la catena
+#   esiste solo come puntatore al passo precedente (`revisione_padre_id`), e
+#   `codice` e' UNIQUE per revisione: per sapere quali righe sono «la stessa
+#   offerta» bisogna risalire la catena con una CTE ricorsiva, che oggi il
+#   backend scrive da se' (offerte_repository.list_revisioni). Il preventivo,
+#   documento gemello, la catena la nomina gia': `numero` condiviso fra le
+#   revisioni, UNIQUE (numero, rev).
+#
+#   `revisione_radice_id` e' l'identita' della catena: l'id della rev.1, su se'
+#   stessa per la rev.1 e ereditato dal padre per ogni revisione successiva. E'
+#   un fatto della riga, fissato alla nascita e mai piu' mosso:
+#     - passo 1 (questo): la colonna, NUDA — senza FK ne' NOT NULL, che
+#       arrivano al passo 4 dopo la bonifica;
+#     - passo 2 (20_code, -04): il trigger BEFORE INSERT che la deriva;
+#     - passo 3 (-05): la bonifica del pregresso;
+#     - passo 4 (-06): NOT NULL + FK + indice via policy.
+#   L'immutabilita' (di questa colonna e di `revisione_padre_id`) sta nel
+#   registro dei lock, 80_data/sql/dbops/automation_lock_columns.csv.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260927-03-alter-offerte-commerciali-add-revisione-radice-mctit.yaml
+
+  - changeSet:
+      id: 20260927-03-alter-offerte-commerciali-add-revisione-radice
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Passo 1 di 4 della catena delle revisioni di vendite.offerte_commerciali: colonna
+        revisione_radice_id (bigint, nuda). Brief: brief-db-liste-datatable-grezze.md §3.2.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: offerte_commerciali
+            columnName: revisione_padre_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.offerte_commerciali
+                ADD COLUMN IF NOT EXISTS revisione_radice_id bigint;
+
+              COMMENT ON COLUMN vendite.offerte_commerciali.revisione_radice_id IS
+                'Identita'' della catena delle revisioni: l''id della rev.1 (su se'' stessa per la rev.1, '
+                'ereditato dal padre per ogni revisione successiva). La deriva il trigger '
+                'trg_offerte_commerciali_a10_default_revisione_radice_ins alla nascita, e un valore '
+                'passato dal chiamante non conta; dopo e'' immutabile (automation_lock_columns). '
+                'Le revisioni della stessa offerta sono le righe con la stessa radice: gemello di '
+                '`numero` sui preventivi. Brief: brief-db-liste-datatable-grezze §3.2 (2026-09-27).';
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.offerte_commerciali
+                DROP COLUMN IF EXISTS revisione_radice_id;

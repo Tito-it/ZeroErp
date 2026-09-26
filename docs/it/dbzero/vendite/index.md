@@ -343,6 +343,7 @@
 - [trgfn_listini_versioni_guard_transizione_stato](funzioni/trgfn_listini_versioni_guard_transizione_stato.md) — (latest review 26-04-2026)
 - [trgfn_logs_guard_delete](funzioni/trgfn_logs_guard_delete.md) — (rev 2026-09-18 — Passo D di `analisi-osservabilita-log.md`)   La funzione trigger **`vendite.trgfn_logs_guard_delete()`** protegge i log funzionali (`fatture_log`, `fatturazione_lotti_log`) dalla cancellazione **accidentale**, distinguendo però fra **cancellare la storia** e **ritirare ciò che è scaduto**.
 - [trgfn_lotto_fatture_guard_stato_coerente](funzioni/trgfn_lotto_fatture_guard_stato_coerente.md) — (rev 2026-08-21)
+- [trgfn_offerte_commerciali_default_revisione_radice](funzioni/trgfn_offerte_commerciali_default_revisione_radice.md)
 - [trgfn_offerte_commerciali_default_valuta](funzioni/trgfn_offerte_commerciali_default_valuta.md) — (rev 2026-08-21)
 - [trgfn_offerte_commerciali_gen_codice](funzioni/trgfn_offerte_commerciali_gen_codice.md) — (rev 2026-08-21)
 - [trgfn_offerte_commerciali_guard_emittente_ba](funzioni/trgfn_offerte_commerciali_guard_emittente_ba.md) — (rev 2026-07-13)

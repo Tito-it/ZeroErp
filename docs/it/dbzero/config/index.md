@@ -132,6 +132,7 @@
 - [fn_get_aliquota_iva](funzioni/fn_get_aliquota_iva.md) — (latest review 10-02-2026)   La funzione **`config.fn_get_aliquota_iva()`** restituisce l’aliquota IVA applicando l’eventuale override definito in `config.iva_stati` per lo Stato specificato.
 - [fn_get_natura_doc_fiscale_id](funzioni/fn_get_natura_doc_fiscale_id.md) — (rev 2026-08-18)
 - [fn_get_stati_doc_fiscale](funzioni/fn_get_stati_doc_fiscale.md) — (latest review 24-01-2026) La funzione **`config.fn_get_stati_doc_fiscale`** restituisce gli stati validi per **LOTTO** o **FATTURA**, con eventuale filtro sulle **transizioni ammesse**.
+- [fn_pannello_colonne_scrivibili](funzioni/fn_pannello_colonne_scrivibili.md) — (scritta il 27-09-2026)
 - [fn_pannello_scrivi](funzioni/fn_pannello_scrivi.md) — (scritta il 25-09-2026)
 - [fn_resolve_email_account](funzioni/fn_resolve_email_account.md) — Risolve l'account SMTP da utilizzare per l'invio di una email, dato il reparto (unita' organizzativa) del contesto. Implementa una catena di fallback a 2 livelli per garantire che ci sia sempre un account disponibile.
 - [fn_resolve_email_template](funzioni/fn_resolve_email_template.md) — Risolve il template email da utilizzare per un dato codice, reparto, tipo prestazione e lingua. Implementa una catena di fallback a 5 livelli che permette di specializzare i testi per reparto e tipo pratica mantenendo sempre un default di sistema.
@@ -159,4 +160,8 @@
 ## 🔍 Views
 - [vw_codici_errore](views/vw_codici_errore.md) — (rev 2026-08-21)
 - [vw_codici_errore_identita](views/vw_codici_errore_identita.md) — (rev 2026-08-21)
+- [vw_codici_postali_lista](views/vw_codici_postali_lista.md)
+- [vw_comuni_lista](views/vw_comuni_lista.md)
 - [vw_email_in_coda](views/vw_email_in_coda.md) — (latest review 11-09-2026)
+- [vw_province_lista](views/vw_province_lista.md)
+- [vw_regioni_lista](views/vw_regioni_lista.md)

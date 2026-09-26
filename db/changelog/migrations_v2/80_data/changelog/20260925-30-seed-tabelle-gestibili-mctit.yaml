@@ -19,13 +19,31 @@
 #   - pannello = false sulle quattro con RLS (D-P2): magazzino.magazzini,
 #     magazzino.ubicazioni, pagamenti.enti_incasso, vendite.listini. Restano nelle
 #     tendine, escono dal pannello: hanno gia' endpoint propri.
+#   - pannello = false su altre 19 righe (D-P6, 2026-09-27): la lista del pannello
+#     e' cio' che il pannello GESTISCE, non cio' che REL_CONSENTITE accettava.
+#     Due famiglie: le tabelle con una casa propria e il suo cancello
+#     (config.profili_accesso, ui.lista_definizione, config.email_account,
+#     vendite.famiglie_documento, anagrafiche.categorie_clienti, catalogo.uom_tipi),
+#     dove il pannello sarebbe una seconda strada che salta il cancello — per
+#     profili_accesso un'escalation di privilegi; e i vocabolari di sistema che
+#     possiede il seed e il codice legge per codice (config.esiti_flussi_pratiche,
+#     listini_tipologie, modi_approvvigionamento, nature_doc_fiscale,
+#     nature_vendita, registri_giornale, stati_doc_offerte, stati_fornitore,
+#     tipi_titolo_iva; documenti.render_engine_documento, tipi_asset_documento,
+#     tipi_documento_output, tipi_file_documento). Restano nelle tendine.
+#   - pannello = false su config.aree_funzionali (2026-09-27, decisione di Tid): e'
+#     il catalogo delle aree su cui poggiano i permessi, e schema_db e' la chiave
+#     con cui il DB li risolve. Dal pannello chi ha TUTTO su Configurazione
+#     staccherebbe profili e override di un'area intera. La sua gestione va in
+#     amm_software (SUPER_ADMIN), come profili_accesso.
 #   - L'oggetto e' (schema, nome tabella) per convenzione (D-P1), TRANNE dove il
 #     catalogo ha gia' una chiave: vendite.listini e' l'oggetto
 #     ('vendite', 'listino') di area_model_overrides. catalogo.unita_misura coincide
 #     gia' con la convenzione.
 #   - ui.lista_definizione: l'oggetto ('ui', 'lista_definizione') ha area 'ui', che
-#     NON e' a catalogo: dal pannello la scrive solo il SUPER_ADMIN, come dai suoi
-#     endpoint (views_admin, SUPER_ADMIN-only). Voluto, e il pgTAP lo prova.
+#     NON e' a catalogo. Fino alla D-P6 stava nel pannello (scrivibile dal solo
+#     SUPER_ADMIN); dal 2026-09-27 e' fuori, e ogni riga del pannello ha un'area a
+#     catalogo senza eccezioni (pgTAP test-pannello-porta-v1, 7).
 #
 # ⚠️ Gli id sono FISSI e un INSERT con id esplicito non avanza la sequence: il
 #   secondo change la riallinea a ogni passata, senza `dbms:` (runOnChange +
@@ -45,7 +63,7 @@ databaseChangeLog:
       failOnError: true
       comment: >
         Seed config.tabelle_gestibili: le 87 tabelle di REL_CONSENTITE, tutte nel lookup, nel
-        pannello tranne le quattro con RLS (D-P2); oggetto (schema, nome tabella) salvo
+        pannello 63 (fuori le quattro con RLS, D-P2, le 19 della D-P6 e config.aree_funzionali); oggetto (schema, nome tabella) salvo
         vendite.listini = ('vendite', 'listino'). Mirror loadUpdateData. Brief:
         brief-db-pannello-config-verbo-generico, sezione 3.1.
       preConditions:

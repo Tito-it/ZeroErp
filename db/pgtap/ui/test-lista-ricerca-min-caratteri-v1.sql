@@ -25,7 +25,7 @@
 --  13) BB, lista spenta: E_UI_LISTA_NON_TROVATA
 --  14) risolutore, lista inesistente: ancora E_UI_LISTA_NON_TROVATA (ora dal BB)
 --  15) ricerca libera, lista inesistente: ancora E_UI_LISTA_NON_TROVATA (dal BB)
---  16) ⭐ il seed: le liste a 1 sono ESATTAMENTE le quattordici dichiarate
+--  16) ⭐ il seed: le liste a 1 sono ESATTAMENTE le diciassette dichiarate (14 + 3 dal 2026-09-27)
 --      (elenco, non conteggio)
 --
 -- Scopo:
@@ -185,8 +185,12 @@ SELECT set_eq(
            ('anagrafiche.categorie_clienti'), ('anagrafiche.categorie_clienti_listini'),
            ('documenti.template_documenti'), ('documenti.template_asset'),
            ('vendite.registri_numerazione'), ('vendite.famiglie_documento'),
-           ('amm.processi')$$,
-  '16) ⭐ le liste a 1 sono esattamente le quattordici di configurazione');
+           ('amm.processi'),
+           -- ⭐ 2026-09-27 (brief-db-liste-datatable-grezze, righe 5 e 9): si
+           --   cerca anche su codici di due caratteri — la sigla della
+           --   provincia, l'ISO2 dello stato, il codice del reparto.
+           ('amm.reparti'), ('config.province'), ('config.stati')$$,
+  '16) ⭐ le liste a 1 sono esattamente le diciassette dichiarate (codici corti)');
 
 SELECT * FROM finish();
 ROLLBACK;

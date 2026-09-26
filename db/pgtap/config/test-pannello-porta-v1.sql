@@ -5,7 +5,7 @@
 -- Test: la PORTA del pannello di configurazione e il presidio della sua lista.
 --   Brief: brief-db-pannello-config-verbo-generico, sezioni 3.1 e 3.5.
 --
--- Elenco test (plan 7):
+-- Elenco test (plan 9):
 --   La porta (tre sedi: forward 90_end/20260925-34, loop 20260205-41, provisioning)
 --    1) magazzino.causali: all'app SELECT si', nessuna scrittura
 --    2) config.tabelle_gestibili: all'app SELECT si', nessuna scrittura (la lista e' una porta)
@@ -15,20 +15,27 @@
 --    5) la lista non e' vuota, e ogni riga risolve una tabella con la colonna id
 --    6) nessuna riga del pannello ha la RLS (D-P2: il verbo generico non sa
 --       rimettere un perimetro)
---    7) l'area di ogni riga del pannello e' a catalogo, tranne ui.lista_definizione
---       (area 'ui' non a catalogo: la scrive solo il SUPER_ADMIN, dichiarato)
+--    7) l'area di ogni riga del pannello e' a catalogo, senza eccezioni (fino alla
+--       D-P6 lo era ui.lista_definizione, area 'ui': dal 2026-09-27 e' fuori)
+--    8) ⛔ config.profili_accesso e config.aree_funzionali NON sono nel pannello
+--       (D-P6, 2026-09-27): stanno sull'area config, e dal pannello chi ha TUTTO su
+--       Configurazione cambierebbe i permessi (profili; la chiave schema_db con cui
+--       si risolvono) saltando il cancello SUPER_ADMIN di amm_software
+--    9) il CHECK chk_tabelle_gestibili_pannello_implica_lookup c'e' ed e' validato:
+--       una tabella del pannello e' anche nel lookup, da cui il pannello la elenca
 --
 -- ⚠️ Gira come l'APPLICAZIONE: 1-4 sono veri solo li' (da proprietario rossi per
 --   costruzione). Il 4 scrive con `WHERE false`: il privilegio si controlla lo
 --   stesso, e da proprietario non entra nessuna riga che sporchi i presidi dopo. I presidi 5-7 leggono la
 --   lista che il seed di CATALOGO semina (nessun context): su un database
---   ricostruito da zero non e' vuota, e il 5 lo pretende.
+--   ricostruito da zero non e' vuota, e il 5 lo pretende. L'8 pretende che le
+--   righe ci siano: una riga assente non e' «fuori dal pannello», e' un seed rotto.
 -- ------------------------------------------------------------
 BEGIN;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(7);
+SELECT plan(9);
 
 SELECT is(
     format('%s|%s', has_table_privilege('zeroerp_app', 'magazzino.causali', 'SELECT')::text,
@@ -80,8 +87,24 @@ SELECT is(
       WHERE tg.pannello
         AND NOT EXISTS (SELECT 1 FROM config.aree_funzionali af
                          WHERE af.schema_db = script.fn_area_di_oggetto(tg.app_label, tg.model_name))),
-    'ui.lista_definizione',
-    '7) ogni riga del pannello ha un''area a catalogo, tranne ui.lista_definizione (solo SUPER_ADMIN, dichiarato)');
+    '',
+    '7) ogni riga del pannello ha un''area a catalogo, senza eccezioni');
+
+SELECT is(
+    (SELECT string_agg(format('%s=%s|%s', tg.codice_interno, tg.lookup::text, tg.pannello::text),
+                       ',' ORDER BY tg.codice_interno)
+       FROM config.tabelle_gestibili tg
+      WHERE tg.codice_interno IN ('config.profili_accesso', 'config.aree_funzionali')),
+    'config.aree_funzionali=true|false,config.profili_accesso=true|false',
+    '8) profili_accesso e aree_funzionali: nelle tendine si'', nel pannello no (niente permessi cambiati dal pannello)');
+
+SELECT is(
+    (SELECT format('%s|%s', c.contype::text, c.convalidated::text)
+       FROM pg_constraint c
+      WHERE c.conrelid = 'config.tabelle_gestibili'::regclass
+        AND c.conname = 'chk_tabelle_gestibili_pannello_implica_lookup'),
+    'c|true',
+    '9) CHECK pannello => lookup presente e validato (il pannello elenca dal lookup)');
 
 SELECT * FROM finish();
 ROLLBACK;

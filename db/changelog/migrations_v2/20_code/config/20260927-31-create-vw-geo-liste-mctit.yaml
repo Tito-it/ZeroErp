@@ -1,0 +1,131 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE LISTE GEOGRAFICHE LEGGONO UNA VISTA — e il database ne valida le colonne
+#   Brief: brief-db-liste-datatable-grezze.md §8 punto 6 (Tid, 2026-09-27)
+#
+#   Delle sei liste geografiche, stati e toponomastica leggono la tabella con
+#   gli stessi nomi di colonna e dichiarano `vista_sql`; regioni, province,
+#   comuni e CAP compongono la riga con dei JOIN nel repository
+#   (anagrafiche/db/geo_repository.py) e non avevano un oggetto contro cui
+#   validare i `campo_sorgente`. Decisione di Tid: il controllo su tutte e sei.
+#
+#   ⛔ NON viste «di validazione» accanto alla query: una vista che il backend
+#   non legge puo' divergere dalla query, e il controllo passerebbe su un
+#   oggetto che la lista non usa (e' l'avvertenza di
+#   backend/apps/core/tests/db/test_lista_proiezione_campo_sorgente.py). Queste
+#   sono le viste DI LISTA, come `vw_*_lista` di vendite: il repository le
+#   legge al posto dei suoi JOIN (richiesta al BE, §4.1 del brief).
+#
+#   Le colonne sono la proiezione di oggi del repository, piu' gli id che i
+#   filtri usano. ⭐ `province.descrizione`/`sigla` sono `character(n)`: qui
+#   escono con TRIM ovunque, come gia' faceva la query delle province — la
+#   lista comuni oggi restituiva la sigla con gli spazi in coda.
+#   Cataloghi globali senza RLS: `security_invoker=on` resta per convenzione
+#   (una vista che nasce senza e' un bypass il giorno in cui la RLS arriva).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260927-31-create-vw-geo-liste-mctit.yaml
+
+  - changeSet:
+      id: 20260927-31-create-vw-geo-liste
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Viste di lista config.vw_regioni_lista, vw_province_lista, vw_comuni_lista,
+        vw_codici_postali_lista: la proiezione delle liste geografiche, letta dal
+        repository e dichiarata in ui.lista_definizione.vista_sql. Brief:
+        brief-db-liste-datatable-grezze.md §8 punto 6.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: comuni
+            - tableExists:
+                schemaName: config
+                tableName: codici_postali
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW config.vw_regioni_lista
+              WITH (security_invoker = on) AS
+              SELECT r.id,
+                     r.descrizione,
+                     r.stato_id,
+                     s.descrizione AS stato_descrizione
+                FROM config.regioni r
+                JOIN config.stati s ON s.id = r.stato_id;
+
+              COMMENT ON VIEW config.vw_regioni_lista IS
+                'Vista di lista delle regioni (ui.lista_definizione config.regioni): la riga che il '
+                'repository consegna, cosi'' il database valida i campo_sorgente contro le colonne vere. '
+                'Brief: brief-db-liste-datatable-grezze §8 punto 6 (2026-09-27).';
+
+              CREATE OR REPLACE VIEW config.vw_province_lista
+              WITH (security_invoker = on) AS
+              SELECT p.id,
+                     TRIM(p.descrizione) AS descrizione,
+                     TRIM(p.sigla)       AS sigla,
+                     p.regione_id,
+                     r.descrizione       AS regione_descrizione
+                FROM config.province p
+                LEFT JOIN config.regioni r ON r.id = p.regione_id;
+
+              COMMENT ON VIEW config.vw_province_lista IS
+                'Vista di lista delle province (ui.lista_definizione config.province). descrizione e '
+                'sigla sono character(n) nella tabella: qui escono con TRIM. Brief: '
+                'brief-db-liste-datatable-grezze §8 punto 6 (2026-09-27).';
+
+              CREATE OR REPLACE VIEW config.vw_comuni_lista
+              WITH (security_invoker = on) AS
+              SELECT c.id,
+                     c.descrizione,
+                     c.provincia_id,
+                     TRIM(p.sigla)       AS provincia_sigla,
+                     TRIM(p.descrizione) AS provincia_descrizione,
+                     p.regione_id,
+                     r.descrizione       AS regione_descrizione
+                FROM config.comuni c
+                LEFT JOIN config.province p ON p.id = c.provincia_id
+                LEFT JOIN config.regioni r  ON r.id = p.regione_id;
+
+              COMMENT ON VIEW config.vw_comuni_lista IS
+                'Vista di lista dei comuni (ui.lista_definizione config.comuni). Sigla e nome della '
+                'provincia con TRIM (character(n) nella tabella). Brief: '
+                'brief-db-liste-datatable-grezze §8 punto 6 (2026-09-27).';
+
+              CREATE OR REPLACE VIEW config.vw_codici_postali_lista
+              WITH (security_invoker = on) AS
+              SELECT cp.id,
+                     cp.codice,
+                     cp.comune_id,
+                     c.descrizione AS comune_descrizione
+                FROM config.codici_postali cp
+                JOIN config.comuni c ON c.id = cp.comune_id;
+
+              COMMENT ON VIEW config.vw_codici_postali_lista IS
+                'Vista di lista dei codici postali (ui.lista_definizione config.codici_postali). '
+                'Brief: brief-db-liste-datatable-grezze §8 punto 6 (2026-09-27).';
+
+              GRANT SELECT ON config.vw_regioni_lista        TO zeroerp_app;
+              GRANT SELECT ON config.vw_province_lista       TO zeroerp_app;
+              GRANT SELECT ON config.vw_comuni_lista         TO zeroerp_app;
+              GRANT SELECT ON config.vw_codici_postali_lista TO zeroerp_app;
+      rollback:
+        - sql:
+            sql: |
+              DROP VIEW IF EXISTS config.vw_codici_postali_lista;
+              DROP VIEW IF EXISTS config.vw_comuni_lista;
+              DROP VIEW IF EXISTS config.vw_province_lista;
+              DROP VIEW IF EXISTS config.vw_regioni_lista;

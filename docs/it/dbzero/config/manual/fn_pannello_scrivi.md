@@ -5,6 +5,8 @@
 > **La lista che legge:** [config.tabelle_gestibili](/dbzero/config/tabelle/tabelle_gestibili)
 >
 > **Il permesso:** [script.fn_guard_livello](/dbzero/script/funzioni/fn_guard_livello)
+>
+> **Le colonne che scrive:** [config.fn_pannello_colonne_scrivibili](/dbzero/config/funzioni/fn_pannello_colonne_scrivibili)
 
 ---
 
@@ -32,14 +34,18 @@ Configurazione non modifica più le causali di magazzino.
 | 2 | ogni campo è una colonna che si può scrivere a mano | `E_PANNELLO_CAMPO_NON_AMMESSO`, con il campo |
 | 3 | in modifica, la riga esiste | `E_PANNELLO_RIGA_NON_TROVATA` |
 
-Non si scrivono a mano: `id`, le colonne di audit, `tx_id`, `storicizza`, `uid`,
-le colonne calcolate. ⭐ Un campo che non va bene si **rifiuta**, non si
+Quali colonne si scrivono lo dice `config.fn_pannello_colonne_scrivibili`, che
+legge anche il backend per decidere i campi del form: la regola sta in un posto
+solo (dal 27-09-2026). ⭐ Un campo che non va bene si **rifiuta**, non si
 ignora: prima il backend lo scartava in silenzio, e un salvataggio sbagliato
 sembrava riuscito.
 
 Si scrivono solo i campi mandati: gli altri tengono il valore di prima (o il
 default, per una riga nuova). I valori li converte il database, secondo il tipo
 di ogni colonna.
+
+La riga che il verbo restituisce ha l'`id` e le colonne scrivibili: gli stessi
+campi del form.
 
 Le regole della tabella (i suoi trigger: audit, codici immutabili, `attivo`,
 guard di dominio) valgono come sempre, e i loro rifiuti arrivano col loro

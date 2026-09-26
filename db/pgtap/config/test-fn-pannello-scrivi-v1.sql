@@ -27,8 +27,9 @@
 --   ⭐ Il livello e' sull'oggetto della riga
 --   10) TUTTO su config NON basta per magazzino.causali -> E_PERMESSO_NEGATO
 --   11) ...con TUTTO sull'oggetto ('magazzino', 'causali') si scrive
---   12) ui.lista_definizione: l'area 'ui' non e' a catalogo, TUTTO su config non
---       basta (la scrive solo il SUPER_ADMIN, come dai suoi endpoint)
+--   12) ⛔ config.profili_accesso, con TUTTO su config -> E_PANNELLO_TABELLA_NON_AMMESSA
+--       (D-P6: il pannello non e' una seconda strada per i profili di permesso;
+--       fino al 2026-09-27 qui c'era ui.lista_definizione, uscita anch'essa)
 --   La forma
 --   13) SECURITY DEFINER del proprietario, search_path bloccato
 --   14) l'app la esegue, PUBLIC no
@@ -138,10 +139,10 @@ SELECT is(pg_temp.codice_di($q$ SELECT config.fn_pannello_scrivi('magazzino.caus
     'PASSA',
     '11) ...con TUTTO sull''oggetto (''magazzino'', ''causali'') si scrive');
 
-SELECT is(pg_temp.codice_di($q$ SELECT config.fn_pannello_scrivi('ui.lista_definizione',
-                                   (SELECT min(id) FROM ui.lista_definizione), '{"descrizione":"x"}') $q$),
-    'E_PERMESSO_NEGATO',
-    '12) ui.lista_definizione: area ''ui'' non a catalogo, TUTTO su config non basta (solo SUPER_ADMIN)');
+SELECT is(pg_temp.codice_di($q$ SELECT config.fn_pannello_scrivi('config.profili_accesso',
+                                   (SELECT min(id) FROM config.profili_accesso), '{"descrizione":"x"}') $q$),
+    'E_PANNELLO_TABELLA_NON_AMMESSA',
+    '12) ⛔ config.profili_accesso: TUTTO su Configurazione non apre il pannello sui profili di permesso (D-P6)');
 
 -- ============================================================
 -- 13-14 La forma
