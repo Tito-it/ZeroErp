@@ -1038,7 +1038,7 @@ Registrato come **R-11**.
 > prima di tutto come «che cosa gira solo di notte?». Proposta (decisa da Tid,
 > D4 del brief sotto): lanciare almeno i **corpi** dei job una volta in CI dopo
 > `ci_apply`, anche senza pgAgent. ✅ Aperto il 26-09:
-> [brief-db-job-notturni-in-ci.md](../work-in-progress/brief-db-job-notturni-in-ci.md).
+> [brief-db-job-notturni-in-ci.md](brief-db-job-notturni-in-ci.md).
 > Brief: [brief-db-lock-di-colonna-fuori-registro.md](brief-db-lock-di-colonna-fuori-registro.md).
 
 ---

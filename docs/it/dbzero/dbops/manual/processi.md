@@ -114,6 +114,8 @@ il run che il comando lanciato scrive sotto il **proprio** processo (origine
 * `meta`: estensioni JSONB.
 * `tolleranza_minuti` / `segno_di_vita` (dal 2026-09-11): il **contratto di
   liveness** — sezione sotto. Solo sui `COMMAND`.
+* `ci_ordine` / `ci_procedura` / `ci_esclusione` (dal 2026-09-26): la
+  **convergenza in CI** — sezione sotto. Solo sui processi con un job pgAgent.
 
 ---
 
@@ -169,10 +171,37 @@ corsie), `listen_cambio_reparto` `SESSIONE`, `run_fatturazione_batch` `NULL`.
 
 ---
 
+### ⭐ La convergenza in CI — i job pgAgent girano anche dove pgAgent non c'è
+
+In CI `85_pgagent` è `MARK_RAN`: i job non esistono. Quello che **solo** un job
+fa, sulla CI non si vedrebbe mai. Per questo ogni processo che ha un job pgAgent
+(`jobname_pgagent` valorizzato) dichiara **una** di due cose (CHECK
+`chk_processi_convergenza_ci`):
+
+| Dichiarazione | Colonne | Che cosa succede |
+| --- | --- | --- |
+| è **strutturale** | `ci_ordine` + `ci_procedura` | `90_end/ci_apply/20260926-10` fa `CALL ci_procedura` in ordine di `ci_ordine`, e pretende una riga riuscita nel giornale dei run (non un salto) |
+| resta **fuori** | `ci_esclusione` | il perché, in chiaro: job operativo su dati e orologio, oppure con un giro suo altrove |
+
+* `ci_procedura` è scritta **per esteso con la firma**
+  (`maintenance.proc_automations_attivo_job()`), non dedotta dal codice:
+  `apply_storicizza_weekly` chiama `proc_apply_storicizza_defaults_job`.
+* L'ordine conta: la shadow di storico prima del suo trigger, l'insieme della
+  storicizzazione prima del `DEFAULT` che lo consuma, ATTIVO prima del lock.
+* ⚠️ La procedura deve registrare nel giornale **sotto il codice del processo**
+  (`p_jobname` = `codice`): è da lì che il giro di CI riconosce che è andata.
+
+Presidio: pgTAP `dbops/test-processi-convergenza-ci`. Brief:
+`brief-db-job-notturni-in-ci`.
+
+---
+
 ### Come si registra un processo nuovo
 
 1. Una riga nel **seed** `80_data/sql/dbops/processi.csv` — è catalogo, non
    dato di macchina: si cambia dal CSV, mai con una `UPDATE` diretta.
+   Se ha un **job pgAgent**, la riga dichiara `ci_ordine` + `ci_procedura`
+   oppure `ci_esclusione` (sezione sopra): senza, il CHECK la rifiuta.
 2. Se è di **dominio**, una riga in
    [processi_bersagli](/dbzero/dbops/manual/processi_bersagli) per ogni tabella
    che tocca, con il percorso che porta all'emittente.

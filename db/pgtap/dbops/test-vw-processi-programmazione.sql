@@ -111,22 +111,31 @@ SELECT col_is_null('dbops', 'processi', 'jobname_pgagent',
 
 -- ⛔ Due processi sullo stesso job renderebbero ambiguo di chi e' la corsa che
 --   quel job produce.
+-- rev 2026-09-26: la riga dichiara ci_esclusione, altrimenti chk_processi_-
+--   convergenza_ci (23514) scatterebbe PRIMA dell'UNIQUE e il test misurerebbe
+--   il vincolo sbagliato (brief-db-job-notturni-in-ci).
 SELECT throws_ok(
-    $$INSERT INTO dbops.processi (id, codice, descrizione, classe, canale, jobname_pgagent)
+    $$INSERT INTO dbops.processi (id, codice, descrizione, classe, canale, jobname_pgagent,
+                                  ci_esclusione)
       VALUES (9701, 'PGTAP-JOB-DOPPIO', 'prova', 'MANUTENZIONE', 'PGAGENT',
               (SELECT jobname_pgagent FROM dbops.processi
-                WHERE jobname_pgagent IS NOT NULL ORDER BY codice LIMIT 1))$$,
+                WHERE jobname_pgagent IS NOT NULL ORDER BY codice LIMIT 1),
+              'pgTAP: processo di prova')$$,
     '23505',
     NULL,
     '2. due processi non possono dichiarare lo stesso job pgAgent'
 );
 
 -- ⚠️ Una stringa vuota passerebbe per un legame dichiarato e non lo e'.
-SELECT throws_ok(
-    $$INSERT INTO dbops.processi (id, codice, descrizione, classe, canale, jobname_pgagent)
-      VALUES (9702, 'PGTAP-JOB-VUOTO', 'prova', 'MANUTENZIONE', 'PGAGENT', '   ')$$,
-    '23514',
-    NULL,
+-- rev 2026-09-26: prima era throws_ok(…, '23514'), che dal 26-09 passava anche
+--   per chk_processi_convergenza_ci — VERDE PER COINCIDENZA. Ora la riga
+--   dichiara ci_esclusione e il test nomina il vincolo che misura.
+SELECT throws_like(
+    $$INSERT INTO dbops.processi (id, codice, descrizione, classe, canale, jobname_pgagent,
+                                  ci_esclusione)
+      VALUES (9702, 'PGTAP-JOB-VUOTO', 'prova', 'MANUTENZIONE', 'PGAGENT', '   ',
+              'pgTAP: processo di prova')$$,
+    '%chk_processi_jobname_pgagent_non_vuoto%',
     '3. un nome vuoto non e'' «nessun job»: si rifiuta'
 );
 

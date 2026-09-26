@@ -17,7 +17,7 @@
 > casi (§3).
 > ✅ **CHIUSO il 2026-09-26 e spostato in `work-done/`.** Tid ha confermato il
 > codice dedicato su `user_emittenti_fiscali` (§5). D4 continua in
-> [brief-db-job-notturni-in-ci.md](../work-in-progress/brief-db-job-notturni-in-ci.md).
+> [brief-db-job-notturni-in-ci.md](brief-db-job-notturni-in-ci.md).
 >
 > **In una riga.** Il giro notturno `fn_run_automations_drop_lock_trg` decide
 > che una tabella «non ha niente da bloccare» leggendo **solo il registro**, ma
@@ -317,4 +317,4 @@ di prova).
 | ✅ | Tid | pgTAP verdi, nessuna regressione, 26-09 |
 | ✅ | — | §3.2 e §3.3 chiusi dal log dei job |
 | ✅ | Tid | codice dedicato su `user_emittenti_fiscali` confermato, 26-09 (§5) |
-| ✅ | — | D4 aperto il 26-09: [brief-db-job-notturni-in-ci.md](../work-in-progress/brief-db-job-notturni-in-ci.md) |
+| ✅ | — | D4 aperto il 26-09: [brief-db-job-notturni-in-ci.md](brief-db-job-notturni-in-ci.md) |
