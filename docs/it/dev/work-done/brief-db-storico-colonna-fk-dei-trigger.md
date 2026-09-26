@@ -94,7 +94,7 @@ ricreata** dal provisioning:
   e `fn_ensure_storico_table` crea soltanto.
 
 ⇒ Per `parameters` è **dbdev** a essere fuori modello, non la CI. Stessa forma del
-§7 di [brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](../work-in-progress/brief-db-codici-ritirati-negli-argomenti-dei-trigger.md).
+§7 di [brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](brief-db-codici-ritirati-negli-argomenti-dei-trigger.md).
 
 ## 3. La fotografia (2026-09-25 — fatto datato, non un motivo)
 

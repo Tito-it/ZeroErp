@@ -27,8 +27,12 @@
 > `E_CODICE_NON_MODIFICABILE`, i quattro commenti non nominano più il codice
 > ritirato né i trigger di `catalogo.articoli` che non esistono più.
 >
-> 🔵 **Resta aperta** solo **una domanda sul modello** — dbdev ha perso dei
-> trigger di lock che il DB da zero ha, §7.
+> ✅ **CHIUSO il 2026-09-26 e spostato in `work-done/`.** La domanda sul modello
+> di §7 (i lock spariti da dbdev e la convergenza «trigger vivo = registro»)
+> passa a un brief suo:
+> [brief-db-lock-di-colonna-fuori-registro.md](../work-in-progress/brief-db-lock-di-colonna-fuori-registro.md).
+> Lì c'è anche la causa, trovata il 26-09: **non** era dev fuori modello, era il
+> giro notturno che su CI non gira.
 >
 > **In una riga.** Un codice ritirato quarantanove giorni fa è ancora sollevato
 > da **69 trigger su 68 tabelle in 8 schemi**, e il presidio che esiste apposta
@@ -232,7 +236,7 @@ colonne lockate dopo sono le stesse di prima, più quelle che il registro dichia
 Applicata la bonifica (08:10 del 23-09), `catalogo/test-articoli-seed-uom-base-lock`
 è andato rosso al **test 3**:
 
-```
+```text
 # Failed test 3: "3) trigger trg_articoli_a10_protect_uom_id_upd presente su catalogo.articoli"
 ```
 
@@ -293,7 +297,17 @@ droppa, e il runner non li ricrea perché il registro non li conosce. Su **dbdev
 invece non c'erano più. Nessun changeSet li toglie e il runner di drop lavora
 solo sul nome da template, quindi sono stati tolti fuori da Liquibase, da chi non
 si sa. Il censimento su dev non li ha visti.
-⇒ **È dev a essere fuori modello, non la CI.** Anche la frase del changeSet «da
+⇒ **È dev a essere fuori modello, non la CI.**
+⛔ **Corretto il 2026-09-26: le due frasi qui sopra sono false.** Il runner di
+drop, `dbops.fn_run_automations_drop_lock_trg`, con `existence_strategy = BOTH`
+cerca **anche per funzione**: droppa ogni trigger su `script.trgfn_lock_columns`
+di una tabella senza `codice_interno` e senza righe attive nel registro, anche
+se è scritto a mano. Gira ogni notte alle 21:10 nel job pgAgent, che esiste
+solo su dbdev perché `85_pgagent` in CI è `MARK_RAN`. Quindi dev non è fuori
+modello: è l'unico ambiente dove il modello gira per intero. Il seguito è in
+[brief-db-lock-di-colonna-fuori-registro.md](../work-in-progress/brief-db-lock-di-colonna-fuori-registro.md).
+
+Anche la frase del changeSet «da
 zero il censimento torna vuoto» era falsa: i lock scritti a mano in `20_code`
 esistono già alla prima passata (intestazione corretta, solo commenti `#`,
 checksum invariato).
@@ -376,11 +390,16 @@ codice ritirato continua a risolversi) e il commento storico dell'e2e.
 
 ### 🔍 Resta una domanda sul MODELLO, non un residuo di questo giro
 
+> ➡️ **Passata il 2026-09-26 a
+> [brief-db-lock-di-colonna-fuori-registro.md](../work-in-progress/brief-db-lock-di-colonna-fuori-registro.md)**,
+> con la causa di `iva_stati` e `fatture` trovata. Il testo qui sotto resta com'era
+> il 23-09.
+
 **dbdev ha perso dei trigger di lock che il database da zero ha.** Misurato il
 23-09 confrontando i due cataloghi: dev **89** trigger di lock, `zeroerp_ci`
 **90**, e la differenza è una sola tabella —
 
-```
+```text
 vendite.fatture → trg_fatture_a10_lock_natura_doc_upd (natura_doc_id, E_COLONNA_NON_MODIFICABILE)
 ```
 
