@@ -46,6 +46,8 @@ import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import Drawer from 'primevue/drawer'
 import AppDialog from '../../core/components/AppDialog.vue'
+// DataTable grezza: righe della distinta base dell'articolo padre (Gruppo B,
+// Tid 02-09). Non RigheMasterDetailTable: la BoM si chiude a data, non si elimina.
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Message from 'primevue/message'

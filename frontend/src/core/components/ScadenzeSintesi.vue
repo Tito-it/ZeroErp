@@ -18,6 +18,8 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Column from 'primevue/column'
+// DataTable grezza: è il piano rate del documento (`dettaglio.scadenze`, prop del
+// padre), mostrato per intero in un popover — righe del master, non una lista.
 import DataTable from 'primevue/datatable'
 import Popover from 'primevue/popover'
 

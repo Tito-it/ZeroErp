@@ -1483,7 +1483,7 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ✅ 01-08 | `config/components/TemplateAssetSearchTable.vue` | 8 | sì |
 | ✅ 01-08 | `pratiche/components/PraticheSearchTable.vue` | 8 | sì |
 | ✅ 03-08 | `strumenti/components/CodaLavoriTab.vue` | 8 | sì |
-| ⏸ dec.4 | `vendite/components/ContrattiBillingAccountDrawer.vue` | 8 | — |
+| ✅ 26-09 | `vendite/components/ContrattiBillingAccountDrawer.vue` | 8 | sì — `vendite.contratti` filtrata sul cliente, `useDrawerTabLista` + store `contrattiCliente`; la «decisione 4» non serviva: l'endpoint era gia' paginato e filtrava per cliente. Chiuso anche il troncamento a 50 righe e il filtro di stato fatto sul client |
 | ✅ 01-08 | `vendite/components/PromoArticoliSearchTable.vue` | 8 | sì |
 | ⏸ dec.4 | `vendite/offerte/components/OffertaEccezioniDrawer.vue` | 8 | — |
 | ✅ 01-08 | `amministrazione/components/CategorieClientiListiniSearchTable.vue` | 9 | sì |
@@ -2544,7 +2544,7 @@ un wrapper sottile da estrarre alla seconda occorrenza
 | ☐ | `amministrazione/views/RepartiProfiloView.vue` | 3 |
 | ☐ | `core/components/ScadenzeSintesi.vue` | 3 |
 | ☐ | `amministrazione/views/PermessiRiepilogoView.vue` | 4 |
-| ☐ | `catalogo/components/UomConversioniDrawer.vue` | 4 |
+| ✅ 26-09 → **Gruppo A** | `catalogo/components/UomConversioniDrawer.vue` | 4 | criterio in tre domande: le conversioni hanno endpoint e lista loro (`catalogo.conversioni_uom`). Convertito con `useDrawerTabLista` + store `uomConversioni`, fattore modificabile nello slot `cell-fattore`; chiuso il troncamento a 200 righe |
 | ☐ | `core/components/SessioniAttivePanel.vue` | 4 |
 | ☐ | `vendite/components/AlertScadenzeWidget.vue` | 4 |
 | ☐ | `vendite/components/ApplicaVariazioneDialog.vue` | 4 |

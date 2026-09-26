@@ -20,6 +20,8 @@ import { chiaveEtichettaTabella } from '../utils/campoConfig'
 import { useDrawerState } from '../composables/useDrawerState'
 import GenericConfigDrawer from './GenericConfigDrawer.vue'
 import PageActionsBar from './PageActionsBar.vue'
+// DataTable grezza: le colonne non stanno in un catalogo, le descrive
+// `/metadata/` a runtime per la tabella di configurazione scelta.
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'

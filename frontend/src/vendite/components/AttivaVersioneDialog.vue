@@ -17,6 +17,8 @@ import { changeVersioneStato, updateVersione } from '../api/listini'
 import { displayDate, toDateString, parseIsoDate } from '../../core/utils/date'
 import { DATE_FORMAT } from '../../core/constants'
 import AppDialog from '../../core/components/AppDialog.vue'
+// DataTable grezza: anteprima dry_run delle versioni che l'attivazione
+// chiuderebbe, dentro il dialog di conferma — non paginata, non configurabile.
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Message from 'primevue/message'

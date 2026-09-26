@@ -26,6 +26,8 @@ import { useRigheSelezioneQta } from '../../../_shared/righe/useRigheSelezioneQt
 import { useOrdiniStore } from '../../stores/ordini'
 import { formatNumber } from '../../../../core/utils/format'
 import Checkbox from 'primevue/checkbox'
+// DataTable grezza: sono le RIGHE dell'ordine (store.loadRighe) su cui si sceglie
+// cosa evadere, nel dialog d'azione — dettaglio del documento, non una lista.
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputNumber from 'primevue/inputnumber'

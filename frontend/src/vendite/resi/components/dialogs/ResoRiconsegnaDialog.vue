@@ -24,6 +24,8 @@ import { watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
+// DataTable grezza: sono le RIGHE del reso da ri-consegnare (store.loadRighe),
+// scelte e quantificate nel dialog d'azione — dettaglio del documento.
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputNumber from 'primevue/inputnumber'

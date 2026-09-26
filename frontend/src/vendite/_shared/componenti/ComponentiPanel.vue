@@ -53,6 +53,8 @@ import {
   STATO_APPROVAZIONE,
 } from '../../constants'
 
+// DataTable grezza: sono i componenti BoM della riga padre (sotto-righe del
+// documento, o `initialData` di anteprima), con prezzo editabile sulla cella.
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
