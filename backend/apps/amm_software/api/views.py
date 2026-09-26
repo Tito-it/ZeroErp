@@ -98,7 +98,10 @@ class OperatoriListView(AdminAPIView):
             "accende l'attivazione dell'invito, dove la persona sceglie la "
             "password (`password` non e' ammesso). Se l'email e' gia' di una "
             "credenziale, la si riusa: `credenziale_riusata` e `username` "
-            "nella risposta lo dicono."
+            "nella risposta lo dicono. Il riuso vuole il consenso: senza "
+            "`riusa_auth_user_id` (o con un altro id) risponde 409 "
+            "`E_CREDENZIALE_DA_CONFERMARE`; si rimanda con l'id della "
+            "credenziale confermata."
         ),
         request=inline_serializer(name="OperatoriCreateReq", fields={
             "soggetto_id": serializers.CharField(required=False, help_text="UUID soggetto esistente (flusso B). Se assente, crea nuovo (flusso A)."),
@@ -110,6 +113,7 @@ class OperatoriListView(AdminAPIView):
             "qualifica_id": serializers.IntegerField(),
             "is_super_admin": serializers.BooleanField(required=False),
             "unita_organizzativa_id": serializers.IntegerField(required=False),
+            "riusa_auth_user_id": serializers.IntegerField(required=False, help_text="Consenso al riuso: l'id della credenziale gia' esistente per l'email, confermato dall'admin."),
         }),
         responses={200: inline_serializer(name="OperatoriCreateResp", fields={"data": serializers.DictField()})},
     )

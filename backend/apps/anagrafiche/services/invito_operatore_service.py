@@ -24,6 +24,7 @@ from apps.core.db._helpers import jsonb_out
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.invito_veste import PORTA_OPERATORE, InvitoVeste, maschera_email
 
 logger = logging.getLogger("security")
@@ -44,6 +45,11 @@ class InvitoOperatoreService:
     # l'unica OPERATORE spenta della credenziale. I token pendenti della veste
     # si invalidano sempre nella transazione del nuovo (BB, A-4): `reinvio`
     # serve solo al log.
+    # ⛔ Il rifiuto NON compone il testo col motivo (§16 del brief
+    # blocco-login, 2026-09-27): il DB manda `reason` (codice macchina) e
+    # `reason_key` (chiave i18n), non una frase. Il messaggio e' quello del
+    # catalogo; codice e chiave viaggiano nel contesto, per il log. A video il
+    # perche' lo dice gia' il drawer, dalla stessa check (`invite_reason*`).
     def invia_invito(
         self, auth_user_id: int, invitato_da_user_id: int, *, reinvio: bool = False
     ) -> dict[str, Any]:
@@ -51,7 +57,12 @@ class InvitoOperatoreService:
         ErrorManager.require(
             check.get("invitabile", False),
             code=E_INVITO,
-            message=check.get("motivo") or "Operatore non invitabile.",
+            message=ErrorPolicyRegistry.resolve(E_INVITO).user_message,
+            context={
+                "auth_user_id": auth_user_id,
+                "reason": check.get("reason"),
+                "reason_key": check.get("reason_key"),
+            },
         )
         email = check["email"]
         identita_id = self._veste_da_invitare(auth_user_id)
@@ -119,11 +130,14 @@ class InvitoOperatoreService:
         )
         return int(spente[0]["id"])
 
-    # Scopo: Chiama fn_check_operatore_invitabile e ritorna il risultato JSONB.
+    # Scopo: Chiama fn_check_operatore_invitabile e ritorna il risultato JSONB
+    # `{invitabile, reason, reason_key, email}` (dal `20260927-01`).
+    # Il ripiego ha la stessa forma: non invitabile, senza un motivo del DB da
+    # riportare (nessun codice inventato qui).
     def _check_invitabile(self, auth_user_id: int) -> dict[str, Any]:
         with connection.cursor() as cursor:
             cursor.execute("SELECT script.fn_check_operatore_invitabile(%s)", [auth_user_id])
             row = cursor.fetchone()
             if row and row[0]:
                 return jsonb_out(row[0])
-        return {"invitabile": False, "motivo": "Errore verifica invitabilita'."}
+        return {"invitabile": False, "reason": None, "reason_key": None, "email": None}

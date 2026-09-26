@@ -12,7 +12,7 @@
 Indice test eseguiti:
 1) InvitoTests.test_invia_invito_emette_sulla_veste_spenta
 2) InvitoTests.test_invito_non_tocca_la_password
-3) InvitoTests.test_non_invitabile_solleva_col_motivo_del_db
+3) InvitoTests.test_non_invitabile_solleva_col_codice_del_db
 4) InvitoTests.test_reinvio_e_la_stessa_strada
 5) InvitoTests.test_piu_vesti_spente_rifiuta
 6) InvitoTests.test_nessuna_veste_spenta_rifiuta
@@ -27,7 +27,7 @@ from apps.core.services.service_errors import ServiceError
 _SVC_PATH = "apps.anagrafiche.services.invito_operatore_service"
 
 
-def _servizio(*, invitabile=True, motivo=None, vesti=None):
+def _servizio(*, invitabile=True, reason=None, reason_key=None, vesti=None):
     """Scopo: Il service con repository e BB finti. `vesti` = le OPERATORE."""
     with patch(f"{_SVC_PATH}.AuthRepository") as MockAuth, \
          patch(f"{_SVC_PATH}.InvitoVeste") as MockInvito:
@@ -41,7 +41,8 @@ def _servizio(*, invitabile=True, motivo=None, vesti=None):
     auth.get_unita_organizzativa_id.return_value = 5
     invito.emetti.return_value = EmissioneInvito(token="tok", is_cross=False)
     svc._check_invitabile = MagicMock(return_value={
-        "invitabile": invitabile, "motivo": motivo, "email": "mario@test.com",
+        "invitabile": invitabile, "reason": reason, "reason_key": reason_key,
+        "email": "mario@test.com",
     })
     auth.get_nomi_credenziale.return_value = {
         "first_name": "Mario", "last_name": "Rossi", "username": "mrossi",
@@ -82,14 +83,24 @@ class InvitoTests(TestCase):
         mock_conn.cursor.assert_not_called()
         auth.set_deve_cambiare_password.assert_not_called()
 
-    # Scopo: Il motivo del rifiuto e' quello del DB (regola nuova: veste gia'
-    # attiva), e non si emette niente.
-    def test_non_invitabile_solleva_col_motivo_del_db(self):
-        svc, _, invito = _servizio(invitabile=False, motivo="Veste OPERATORE gia' attiva")
+    # Scopo: Il rifiuto porta il messaggio del catalogo e, nel contesto, il
+    # codice e la chiave del DB (§16: il DB non manda piu' una frase), e non
+    # si emette niente.
+    def test_non_invitabile_solleva_col_codice_del_db(self):
+        svc, _, invito = _servizio(
+            invitabile=False,
+            reason="VESTE_GIA_ATTIVA",
+            reason_key="amministrazione.operatori.invito_reason.veste_gia_attiva",
+        )
         with self.assertRaises(ServiceError) as ctx:
             svc.invia_invito(42, invitato_da_user_id=1)
         self.assertEqual(ctx.exception.code, "E_INVITO_OPERATORE")
-        self.assertIn("gia' attiva", ctx.exception.message)
+        self.assertEqual(ctx.exception.message, "Operatore non invitabile.")
+        self.assertEqual(ctx.exception.context["reason"], "VESTE_GIA_ATTIVA")
+        self.assertEqual(
+            ctx.exception.context["reason_key"],
+            "amministrazione.operatori.invito_reason.veste_gia_attiva",
+        )
         invito.emetti.assert_not_called()
 
     # Scopo: A-4 — il reinvio non invalida da se', fuori transazione: passa

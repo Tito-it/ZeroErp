@@ -13,6 +13,7 @@ Indice test eseguiti:
  3) test_create_operatore_rifiuta_password — la password la sceglie l'operatore (L-3)
  4) test_create_operatore_missing_qualifica — qualifica mancante
  5) test_create_operatore_credenziale_riusata — la risposta dice il riuso (D-6)
+ 5a) test_create_operatore_consenso_al_riuso — `riusa_auth_user_id` arriva al repo, assente = None
  6) test_get_operatore_ok — dettaglio operatore
  7) test_get_operatore_not_found — id inesistente
  8) test_update_operatore_ok — aggiorna e invalida cache
@@ -134,6 +135,18 @@ class TestCreateOperatore(TestCase):
         self._repo(mock_repo_cls, riusata=True)
         result = AmmSoftwareService().create_operatore(dict(self._PAYLOAD))
         self.assertTrue(result["credenziale_riusata"])
+
+    # Scopo: Il consenso al riuso (`20260925-51`) e' una dichiarazione del
+    # client: il service la trasporta com'e' e, assente, non la inventa (la
+    # prima chiamata DEVE andare senza, perche' la madre chieda conferma).
+    @patch(REPO)
+    def test_create_operatore_consenso_al_riuso(self, mock_repo_cls):
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+        mock_repo = self._repo(mock_repo_cls, riusata=True)
+        AmmSoftwareService().create_operatore(dict(self._PAYLOAD))
+        self.assertIsNone(mock_repo.crea_operatore.call_args.kwargs["riusa_auth_user_id"])
+        AmmSoftwareService().create_operatore({**self._PAYLOAD, "riusa_auth_user_id": "42"})
+        self.assertEqual(mock_repo.crea_operatore.call_args.kwargs["riusa_auth_user_id"], 42)
 
     # Scopo: `password` nel payload e' rifiutata: un client che la manda
     # crederebbe che valga.
@@ -371,7 +384,7 @@ class TestDisabilitaOperatore(TestCase):
 
     # Scopo: Preview `can_disable=false` -> short-circuit Python con
     # E_PROFILO_ULTIMO_SUPER_ADMIN, niente round-trip DB. Il `disable_reason`
-    # del detail (it-IT free-form da DB) propaga nel `detail` dell'errore.
+    # e' un codice macchina (§16): NON finisce nel `detail`, sta nel contesto.
     @patch(REPO)
     def test_disabilita_operatore_ultimo_super_admin_preview(self, mock_repo_cls):
         mock_repo = mock_repo_cls.return_value
@@ -379,12 +392,15 @@ class TestDisabilitaOperatore(TestCase):
             "auth_user_id": 1,
             "is_super_admin": True,
             "can_disable": False,
-            "disable_reason": "E' l'ultimo super admin attivo.",
+            "disable_reason": "ULTIMO_SUPER_ADMIN",
+            "disable_reason_key": "amministrazione.operatori.disabilita_reason.ultimo_super_admin",
         }
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError) as ctx:
             AmmSoftwareService().disabilita_operatore(1)
         self.assertEqual(ctx.exception.code, "E_PROFILO_ULTIMO_SUPER_ADMIN")
+        self.assertNotIn("ULTIMO_SUPER_ADMIN", ctx.exception.detail or "")
+        self.assertEqual(ctx.exception.context["reason"], "ULTIMO_SUPER_ADMIN")
         # disabilita_operatore del repo NON deve essere chiamato (short-circuit)
         mock_repo.disabilita_operatore.assert_not_called()
 

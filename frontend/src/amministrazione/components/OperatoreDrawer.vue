@@ -19,6 +19,7 @@ import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { capitalizeWords } from '../../core/utils/string'
 import { isEmailValid } from '../../core/utils/validators'
 import { useNotify } from '../../core/composables/useNotify'
+import { bloccoAttivo, motivoBloccoRiga } from '../../core/utils/bloccoMotivo'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import SoggettoResolver from '../../anagrafiche/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
@@ -40,7 +41,7 @@ import Button from 'primevue/button'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const store = useOperatoriStore()
 const { execute, loading, campiErrati } = useApiHandler()
 const { confirmAction } = useConfirmAction()
@@ -86,17 +87,28 @@ const emailEditInvalid = ref(false)
 // 2026-09-25 era `!last_login && is_active`, e con la veste che nasce spenta
 // (`is_active` falso) il pulsante non compariva mai.
 const canInvite = computed(() => isEdit.value && store.currentOperatore?.can_invite === true)
-// Scopo: Perche' l'invito non si puo' mandare. Con la veste gia' accesa lo
-// dice `veste_attiva` (R-9), non il testo del DB; negli altri casi il motivo
-// del DB. ⛔ Non `attivo` (e' della risorsa umana: nasconderlo con quella lo
-// toglieva proprio all'operatore appena creato) ne' `is_active` (e' della
-// credenziale, acceso da qualunque veste).
-const inviteReason = computed(() => {
-  const u = store.currentOperatore
-  if (!isEdit.value || !u || canInvite.value) return ''
-  if (u.veste_attiva === true) return t('amministrazione.accesso_gia_attivo')
-  return u.invite_reason || ''
-})
+// Scopo: Perche' l'invito non si puo' mandare: il motivo del DB
+// (`invite_reason` codice + `invite_reason_key`, §16 del brief blocco-login),
+// reso dal BB `bloccoMotivo` (chiave mancante ⇒ si vede il codice).
+// ⛔ Nessun ramo su `veste_attiva`: dedurne «accesso gia' attivo» era una
+// seconda copia della regola, giusta solo per l'ordine dei motivi del DB.
+// Scopo: La frase del motivo di un verbo, '' quando l'azione e' ammessa.
+function motivoSeBloccato(bloccato, prefisso) {
+  return bloccato ? motivoBloccoRiga(t, te, store.currentOperatore, prefisso) : ''
+}
+const inviteReason = computed(() =>
+  motivoSeBloccato(isEdit.value && !!store.currentOperatore && !canInvite.value, 'invite'))
+// Scopo: Spegnere l'accesso e togliere il super admin all'ultimo SUPER_ADMIN
+// attivo: il DB li rifiuta (trigger), il dettaglio lo dice prima
+// (`can_disable`, `can_demote_super_admin`). Stato ⇒ controllo spento col
+// motivo. `can_demote_super_admin` NULL = azione non applicabile: acceso
+// (`bloccoAttivo` guarda il flag `=== false`).
+const disableBloccato = computed(() =>
+  isEdit.value && bloccoAttivo(store.currentOperatore, 'disable', 'can_disable'))
+const demoteBloccato = computed(() =>
+  isEdit.value && bloccoAttivo(store.currentOperatore, 'demote', 'can_demote_super_admin'))
+const disableReason = computed(() => motivoSeBloccato(disableBloccato.value, 'disable'))
+const demoteReason = computed(() => motivoSeBloccato(demoteBloccato.value, 'demote'))
 const hasBeenInvited = computed(() => !!store.currentOperatore?.invito_inviato_at)
 
 // Multi-face auth Stage B: il vecchio radio ruolo_sistema (ADMIN/OPERATIVO/
@@ -447,16 +459,19 @@ const suVisibile = gestoreVisibile(emit, onClose)
           <template v-if="isEdit">
             <div class="form-field">
               <div class="operatore-toggle-row">
-                <ToggleSwitch v-model="form.is_super_admin" input-id="tg-super-admin" />
+                <ToggleSwitch v-model="form.is_super_admin" input-id="tg-super-admin"
+                  :disabled="demoteBloccato" />
                 <label for="tg-super-admin" class="operatore-toggle-label">
                   <span>{{ t('amministrazione.is_super_admin.label') }}</span>
                   <small class="operatore-toggle-help">{{ t('amministrazione.is_super_admin.help') }}</small>
                 </label>
               </div>
+              <small v-if="demoteReason" class="app-field-hint">{{ demoteReason }}</small>
             </div>
             <div class="form-field">
               <div class="operatore-toggle-row">
                 <ToggleSwitch v-model="form.attivo" input-id="tg-attivo"
+                  :disabled="disableBloccato"
                   :invalid="campiErrati.includes('attivo')"
                 />
                 <label for="tg-attivo" class="operatore-toggle-label">
@@ -464,6 +479,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
                   <small class="operatore-toggle-help">{{ t('amministrazione.accesso_attivo.help') }}</small>
                 </label>
               </div>
+              <small v-if="disableReason" class="app-field-hint">{{ disableReason }}</small>
             </div>
           </template>
 
