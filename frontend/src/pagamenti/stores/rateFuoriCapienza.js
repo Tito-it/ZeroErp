@@ -58,15 +58,18 @@ export const useRateFuoriCapienzaStore = defineStore(
       order_dir: 'desc',
     })
 
-    // `ricercaFull` (la lista cerca?) e `ricercaMinCaratteri` (da quanti
-    // caratteri?) le dichiara il BB di stato.
-    const { items, totalRecords, loading, hasSearched, ricercaFull, ricercaMinCaratteri, fetchList } =
-      useListaEmptyStateFetch({
-        filters,
-        buildParams,
-        fetchPage: listRateFuoriCapienza,
-        alwaysFetch: true,
-      })
+    // `lista`: lo stato del BB, esposto INTERO nel `return` (`...lista`).
+    // ⛔ Non si elencano i suoi ref a mano: un ref nuovo del BB (com'e'
+    //    successo con `ricercaFull`, `ricercaMinCaratteri`,
+    //    `ricercaCambiaLaRichiesta`) arriverebbe solo agli store che lo
+    //    ricordano — e senza errore sugli altri.
+    const lista = useListaEmptyStateFetch({
+      filters,
+      buildParams,
+      fetchPage: listRateFuoriCapienza,
+      alwaysFetch: true,
+    })
+    const { fetchList } = lista
 
     // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
     // nascita, e come si riportano li' («Pulisci filtri»).
@@ -75,7 +78,8 @@ export const useRateFuoriCapienzaStore = defineStore(
     })
 
     return {
-      items, totalRecords, loading, hasSearched, filters, fetchList, ricercaFull, ricercaMinCaratteri,
+      ...lista,
+      filters,
       chiaviFiltro, filtriDefault, azzeraFiltri,
     }
   },

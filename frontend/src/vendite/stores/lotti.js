@@ -106,7 +106,12 @@ export const useLottiStore = defineStore('vendite-lotti', () => {
 
   // `alwaysFetch: true`: il registro lotti non e' una lista che parte vuota in
   // attesa di una ricerca — e' la fotografia di un mese, e il mese c'e' sempre.
-  const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
+  // `lista`: lo stato del BB, esposto INTERO nel `return` (`...lista`).
+  // ⛔ Non si elencano i suoi ref a mano: un ref nuovo del BB (com'e'
+  //    successo con `ricercaFull`, `ricercaMinCaratteri`,
+  //    `ricercaCambiaLaRichiesta`) arriverebbe solo agli store che lo
+  //    ricordano — e senza errore sugli altri.
+  const lista = useListaEmptyStateFetch({
     filters,
     alwaysFetch: true,
     // ⛔ Qui e non nel `fetchPage` qui sotto: il BB invoca l'hook DOPO il guard
@@ -131,6 +136,7 @@ export const useLottiStore = defineStore('vendite-lotti', () => {
     },
     fetchPage: listLotti,
   })
+  const { fetchList } = lista
 
   // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
   // nascita, e come si riportano li' («Pulisci filtri»).
@@ -147,9 +153,9 @@ export const useLottiStore = defineStore('vendite-lotti', () => {
   })
 
   return {
-    items, totalRecords, loading, hasSearched, filters,
+    ...lista,
+    filters,
     stati, annullatiCount,
-    fetchList,
     chiaviFiltro, filtriDefault, filtriNeutri, azzeraFiltri,
   }
 }, {

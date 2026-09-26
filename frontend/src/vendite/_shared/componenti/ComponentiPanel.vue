@@ -49,7 +49,6 @@ import {
 import { formatCurrency, formatNumber, PRICE_EPSILON } from '../../../core/utils/format'
 import { useAuthStore } from '../../../stores/auth'
 import {
-  ORIGINE_PREZZO,
   PRICING_ACTIONS,
   STATO_APPROVAZIONE,
 } from '../../constants'
@@ -331,9 +330,11 @@ async function onSalvaPrezzo(comp) {
     return
   }
   try {
+    // `origine_prezzo` NON si manda: un prezzo scritto dall'operatore e'
+    // MANUALE per definizione, e lo scrive il backend (contratto PATCH dei
+    // componenti, 2026-09-26). Mandarlo ora e' un 400.
     await fetcher.update(props.rigaId, comp.id, {
       prezzo_unitario: nuovoPrezzo,
-      origine_prezzo: ORIGINE_PREZZO.MANUALE,
     })
     notify.success(t(localizedKey('prezzo_aggiornato')))
     const next = { ...prezzoEditato.value }

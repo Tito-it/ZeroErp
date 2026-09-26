@@ -18,7 +18,7 @@ from typing import Any
 from apps.core.db.token_repository import TokenRepository
 from apps.core.services.error_manager import ErrorManager
 
-E_TOKEN = "E_TOKEN"
+E_TOKEN = "E_TOKEN"  # noqa: S105 — codice errore, non un segreto
 
 
 class TokenService:

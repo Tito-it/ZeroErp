@@ -18,8 +18,16 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import RicercaFull, add_ricerca_full_condition, rows_to_list
-from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
+from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
+    rows_to_list,
+    sql_order_clause,
+)
+from apps.core.db.sql_write_helpers import (
+    execute_dynamic_insert,
+    execute_dynamic_update,
+)
 from apps.core.services.error_manager import ErrorManager
 
 
@@ -213,19 +221,30 @@ EVENTO_DOCUMENTO_CREATE_COLUMNS: tuple[str, ...] = (
     "meta",
 )
 
-_DOCUMENTO_GENERATO_COLUMN_TYPES: dict[str, str] = {
-    "context_json": "jsonb",
-    "meta": "jsonb",
-}
+# Colonne jsonb delle scritture dinamiche, dichiarate al BB (`jsonb=`).
+# ⭐ Regola decisa da Tid il 2026-09-26: una STRINGA destinata a una colonna
+#    jsonb e' TESTO JSON, non uno scalare stringa — dict/list il BB li
+#    serializza da solo. Fino a quel giorno queste tre tabelle passavano da
+#    `to_write_param` (sempre `json.dumps`): una stringa sarebbe diventata lo
+#    scalare `"..."`. Oggi i chiamanti passano solo dict (`context_json` e'
+#    il `json.loads` del contesto canonico, `detail`/`meta` letterali), quindi
+#    nessun valore scritto cambia.
+_DOCUMENTO_GENERATO_JSONB: tuple[str, ...] = ("context_json", "meta")
+_DOCUMENTO_GENERATO_FILE_JSONB: tuple[str, ...] = ("meta",)
+_EVENTO_DOCUMENTO_JSONB: tuple[str, ...] = ("detail", "meta")
+_TEMPLATE_JSONB: tuple[str, ...] = ("meta",)
+_ASSET_JSONB: tuple[str, ...] = ("meta",)
+_VERSIONE_JSONB: tuple[str, ...] = ("context_schema", "meta")
 
-_DOCUMENTO_GENERATO_FILE_COLUMN_TYPES: dict[str, str] = {
-    "meta": "jsonb",
-}
-
-_EVENTO_DOCUMENTO_COLUMN_TYPES: dict[str, str] = {
-    "detail": "jsonb",
-    "meta": "jsonb",
-}
+# Colonne di `template_documenti_versioni` le cui stringhe NON si strippano
+# (`letterali=` del BB, 2026-09-26): sono il CORPO del template, dove uno
+# spazio o un a-capo ai bordi e' contenuto (un `<pre>`, un blocco markdown
+# indentato), non rumore d'input.
+_VERSIONE_LETTERALI: tuple[str, ...] = (
+    "html_template",
+    "css_template",
+    "markdown_template",
+)
 
 
 # Whitelist colonne ammesse in INSERT su template_asset.
@@ -420,8 +439,18 @@ class DocumentiRepository:
                 detail=f"ammesse={sorted(TEMPLATES_ORDER_COLUMNS.keys())!r}",
             )
             raise  # unreachable, per type checker
-        order_column = TEMPLATES_ORDER_COLUMNS[order_by]
-        safe_order_dir = "DESC" if order_dir.lower() == "desc" else "ASC"
+        # ⛔ Direzione dal BB (`sql_order_clause`), non da un confronto scritto
+        #    qui: fino al 2026-09-26 `"DESC" if order_dir.lower() == "desc" else
+        #    "ASC"` trasformava in ASC, in silenzio, qualunque valore estraneo.
+        #    Ora `?order_dir=giu` e' un 400, e i NULL stanno dove starebbe lo
+        #    zero come in ogni altra lista. La colonna e' gia' stata verificata
+        #    sopra col codice di dominio: `rifiuta_fuori_whitelist` lo dichiara,
+        #    e `default` e' il `default_order` della view.
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=TEMPLATES_ORDER_COLUMNS, default="t.codice", tiebreak="t.id",
+            rifiuta_fuori_whitelist=True,
+        )
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -457,7 +486,7 @@ class DocumentiRepository:
             SELECT {_TEMPLATES_PROJECTION}
             {_TEMPLATES_FROM}
             {where_clause}
-            ORDER BY {order_column} {safe_order_dir}, t.id {safe_order_dir}
+            ORDER BY {ordinamento}
             LIMIT %s OFFSET %s
         """
 
@@ -550,50 +579,33 @@ class DocumentiRepository:
     # Mutazioni testata template (Tranche E)
     # =================================================================
 
-    # Scopo: INSERT testata template usando solo colonne whitelisted in
+    # Scopo: INSERT testata template col BB `execute_dynamic_insert`, whitelist
     #        TEMPLATE_CREATE_COLUMNS. Eventuali violazioni UNIQUE/CHECK/FK
     #        vengono propagate al service che le mappa via map_integrity_error.
+    #        ⛔ Dal 2026-09-26 una chiave fuori whitelist e' `RuntimeError`, non
+    #        piu' uno scarto silenzioso: il service valida le chiavi del payload
+    #        (`validate_allowed_keys`, 400) prima di arrivare qui.
+    #        ⚠️ Fino a quel giorno `meta` (dict da `optional_meta`) arrivava
+    #        nudo al cursor: psycopg non adatta un dict, quindi ogni create con
+    #        `meta` era un 500. Il BB lo serializza (`::jsonb`).
     def create_template(self, data: dict[str, Any]) -> int:
-        cols: list[str] = []
-        vals: list[Any] = []
-        for col in TEMPLATE_CREATE_COLUMNS:
-            if col in data:
-                cols.append(col)
-                vals.append(data[col])
-        placeholders = ["%s"] * len(cols)
-        sql = f"""
-            INSERT INTO documenti.template_documenti ({", ".join(cols)})
-            VALUES ({", ".join(placeholders)})
-            RETURNING id
-        """  # noqa: S608 — colonne whitelisted, valori parametrici
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+        riga = execute_dynamic_insert(
+            "documenti.template_documenti", data,
+            allowed=TEMPLATE_CREATE_COLUMNS, jsonb=_TEMPLATE_JSONB,
+        )
+        return int(riga["id"])
 
-    # Scopo: UPDATE testata template sui soli campi presenti in `data`.
-    #        Ritorna True se almeno una riga aggiornata, False se id assente
-    #        (il service traduce in 404). Le immutabili (output/sorgente/emittente)
-    #        sono escluse dalla whitelist TEMPLATE_UPDATE_COLUMNS.
+    # Scopo: UPDATE testata template sui soli campi presenti in `data` (BB
+    #        `execute_dynamic_update`). Ritorna True se almeno una riga
+    #        aggiornata, False se id assente (il service traduce in 404) o
+    #        `data` vuoto. Le immutabili (output/sorgente/emittente) sono escluse
+    #        dalla whitelist TEMPLATE_UPDATE_COLUMNS: il service le rifiuta con
+    #        un 400 parlante, qui sarebbero `RuntimeError`.
     def update_template(self, template_id: int, data: dict[str, Any]) -> bool:
-        set_parts: list[str] = []
-        vals: list[Any] = []
-        for col in TEMPLATE_UPDATE_COLUMNS:
-            if col in data:
-                set_parts.append(f"{col} = %s")
-                vals.append(data[col])
-        if not set_parts:
-            return False
-        vals.append(int(template_id))
-        sql = f"""
-            UPDATE documenti.template_documenti
-               SET {", ".join(set_parts)}
-             WHERE id = %s
-        """  # noqa: S608 — colonne whitelisted, valori parametrici
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return cursor.rowcount > 0
+        return execute_dynamic_update(
+            "documenti.template_documenti", int(template_id), data,
+            allowed=TEMPLATE_UPDATE_COLUMNS, jsonb=_TEMPLATE_JSONB,
+        )
 
     # =================================================================
     # Mutazioni versione template (Tranche F)
@@ -619,51 +631,42 @@ class DocumentiRepository:
             assert row is not None
             return int(row[0])
 
-    # Scopo: INSERT versione template usando solo colonne whitelisted in
-    #        VERSIONE_CREATE_COLUMNS. `validita` (daterange) e' STORED generated
-    #        column (PG 18) calcolata da `valido_dal`/`valido_al`. Eventuali
-    #        violazioni unique/check vengono propagate al service.
+    # Scopo: INSERT versione template (BB `execute_dynamic_insert`) sulle
+    #        colonne di VERSIONE_CREATE_COLUMNS. `validita` (daterange) e'
+    #        STORED generated column (PG 18) calcolata da `valido_dal`/
+    #        `valido_al`. Eventuali violazioni unique/check vengono propagate
+    #        al service. None scrive NULL (il clone azzera le date cosi').
+    # ⭐ 2026-09-26: migrato sul BB con `letterali=` sui corpi del template
+    #    (`_VERSIONE_LETTERALI`): uno spazio ai bordi di un HTML/CSS/markdown e'
+    #    contenuto, e il CLONE copia il testo del sorgente cosi' com'e'.
+    #    `context_schema`/`meta` in `jsonb=`: dal payload arrivano dict (fino a
+    #    quel giorno andavano nudi al cursor, che non li sa adattare: 500); dal
+    #    clone arriva il TESTO letto dal DB (la connessione Django rende il
+    #    jsonb come stringa), che e' testo JSON e passa cosi' com'e'.
+    #    ⛔ Una chiave fuori whitelist e' `RuntimeError`, non piu' uno scarto
+    #    silenzioso: il service valida le chiavi del payload (400) e compone
+    #    da se' `template_documento_id`/`versione`/`stato`.
     def create_versione(self, data: dict[str, Any]) -> int:
-        cols: list[str] = []
-        vals: list[Any] = []
-        for col in VERSIONE_CREATE_COLUMNS:
-            if col in data:
-                cols.append(col)
-                vals.append(data[col])
-        placeholders = ["%s"] * len(cols)
-        sql = f"""
-            INSERT INTO documenti.template_documenti_versioni ({", ".join(cols)})
-            VALUES ({", ".join(placeholders)})
-            RETURNING id
-        """  # noqa: S608 — colonne whitelisted, valori parametrici
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+        riga = execute_dynamic_insert(
+            "documenti.template_documenti_versioni", data,
+            allowed=VERSIONE_CREATE_COLUMNS, jsonb=_VERSIONE_JSONB,
+            letterali=_VERSIONE_LETTERALI,
+        )
+        return int(riga["id"])
 
-    # Scopo: UPDATE versione sui soli campi presenti in `data`. Il trigger
-    #        DB A1 (protect_pubblicata) blocca l'update se OLD.stato='PUBBLICATA'
+    # Scopo: UPDATE versione sui soli campi presenti in `data` (BB
+    #        `execute_dynamic_update`, stesse `jsonb`/`letterali` del create).
+    #        False se `data` vuoto o id assente. Il trigger DB A1
+    #        (protect_pubblicata) blocca l'update se OLD.stato='PUBBLICATA'
     #        — defense-in-depth: il service controlla lo stato, ma il DB
-    #        rifiuta comunque le modifiche.
+    #        rifiuta comunque le modifiche. Le immutabili (template, numero,
+    #        stato) sono fuori da VERSIONE_UPDATE_COLUMNS: `RuntimeError`.
     def update_versione(self, versione_id: int, data: dict[str, Any]) -> bool:
-        set_parts: list[str] = []
-        vals: list[Any] = []
-        for col in VERSIONE_UPDATE_COLUMNS:
-            if col in data:
-                set_parts.append(f"{col} = %s")
-                vals.append(data[col])
-        if not set_parts:
-            return False
-        vals.append(int(versione_id))
-        sql = f"""
-            UPDATE documenti.template_documenti_versioni
-               SET {", ".join(set_parts)}
-             WHERE id = %s
-        """  # noqa: S608 — colonne whitelisted, valori parametrici
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return cursor.rowcount > 0
+        return execute_dynamic_update(
+            "documenti.template_documenti_versioni", int(versione_id), data,
+            allowed=VERSIONE_UPDATE_COLUMNS, jsonb=_VERSIONE_JSONB,
+            letterali=_VERSIONE_LETTERALI,
+        )
 
     # Scopo: Hard DELETE versione. Il trigger DB A2 (block_delete) rifiuta
     #        l'operazione se OLD.stato in ('PUBBLICATA','OBSOLETA') o se
@@ -730,8 +733,13 @@ class DocumentiRepository:
                 detail=f"ammesse={sorted(ASSET_ORDER_COLUMNS.keys())!r}",
             )
             raise  # unreachable
-        order_column = ASSET_ORDER_COLUMNS[order_by]
-        safe_order_dir = "DESC" if order_dir.lower() == "desc" else "ASC"
+        # ⛔ Direzione dal BB, come `list_templates` (2026-09-26): prima un
+        #    valore estraneo diventava ASC in silenzio.
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=ASSET_ORDER_COLUMNS, default="a.codice", tiebreak="a.id",
+            rifiuta_fuori_whitelist=True,
+        )
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -762,7 +770,7 @@ class DocumentiRepository:
             SELECT {_ASSET_PROJECTION}
             {_ASSET_FROM}
             {where_clause}
-            ORDER BY {order_column} {safe_order_dir}, a.id {safe_order_dir}
+            ORDER BY {ordinamento}
             LIMIT %s OFFSET %s
         """
 
@@ -802,29 +810,21 @@ class DocumentiRepository:
             results = rows_to_list(cursor)
         return results[0] if results else None
 
-    # Scopo: INSERT asset usando solo colonne whitelisted in
+    # Scopo: INSERT asset col BB `execute_dynamic_insert`, whitelist
     #        ASSET_CREATE_COLUMNS. `validita` (daterange) e' STORED generated
     #        column (PG 18) calcolata da `valido_dal`/`valido_al`. Il vincolo
     #        unique (emittente_fiscale_id, sha256) garantisce dedup natural:
     #        re-upload dello stesso file -> IntegrityError mappato.
+    #        ⚠️ Lo strip del BB tocca anche `sha256`/`storage_key`/`file_name`:
+    #        li calcola il service (digest esadecimale, chiave composta, nome
+    #        gia' ripulito da `_sanitize_file_name`), nessuno ha spazi ai bordi.
+    #        `meta` come in `create_template` (prima del 2026-09-26: 500).
     def create_asset(self, data: dict[str, Any]) -> int:
-        cols: list[str] = []
-        vals: list[Any] = []
-        for col in ASSET_CREATE_COLUMNS:
-            if col in data:
-                cols.append(col)
-                vals.append(data[col])
-        placeholders = ["%s"] * len(cols)
-        sql = f"""
-            INSERT INTO documenti.template_asset ({", ".join(cols)})
-            VALUES ({", ".join(placeholders)})
-            RETURNING id
-        """  # noqa: S608 — colonne whitelisted, valori parametrici
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+        riga = execute_dynamic_insert(
+            "documenti.template_asset", data,
+            allowed=ASSET_CREATE_COLUMNS, jsonb=_ASSET_JSONB,
+        )
+        return int(riga["id"])
 
     # Scopo: Lookup tipo asset (id, codice_interno, attivo). Usato dal
     #        service admin per validare MIME contro whitelist Python
@@ -847,27 +847,16 @@ class DocumentiRepository:
     # Scopo: UPDATE asset sui soli campi metadati editabili (no file).
     #        Il trigger DB A4 (protect_file) blocca comunque qualsiasi
     #        UPDATE su storage_key/sha256/file_size/mime/file_name come
-    #        guardrail finale: ASSET_UPDATE_COLUMNS le esclude per design.
+    #        guardrail finale: ASSET_UPDATE_COLUMNS le esclude per design, e dal
+    #        2026-09-26 passarle qui e' `RuntimeError` (BB), non uno scarto
+    #        silenzioso: il service le rifiuta prima con un 400.
     def update_asset_metadati(
         self, asset_id: int, data: dict[str, Any]
     ) -> bool:
-        set_parts: list[str] = []
-        vals: list[Any] = []
-        for col in ASSET_UPDATE_COLUMNS:
-            if col in data:
-                set_parts.append(f"{col} = %s")
-                vals.append(data[col])
-        if not set_parts:
-            return False
-        vals.append(int(asset_id))
-        sql = f"""
-            UPDATE documenti.template_asset
-               SET {", ".join(set_parts)}
-             WHERE id = %s
-        """  # noqa: S608 — colonne whitelisted, valori parametrici
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return cursor.rowcount > 0
+        return execute_dynamic_update(
+            "documenti.template_asset", int(asset_id), data,
+            allowed=ASSET_UPDATE_COLUMNS, jsonb=_ASSET_JSONB,
+        )
 
     # =================================================================
     # Resolve template + versione per render (Tranche I)
@@ -951,7 +940,7 @@ class DocumentiRepository:
             SELECT COUNT(*)
             FROM documenti.template_documenti t
             WHERE {where_clause}
-        """
+        """  # noqa: S608 — WHERE da condizioni letterali, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             row = cursor.fetchone()
@@ -1019,83 +1008,55 @@ class DocumentiRepository:
             assert row is not None
             return int(row[0])
 
-    # Scopo: INSERT documento generato. Usa solo colonne whitelisted in
-    #        DOCUMENTO_GENERATO_CREATE_COLUMNS. Ritorna (id, uid). I trigger
-    #        DB calcolano `tx_id` (Decisione 76), audit, validita e
+    # Scopo: INSERT documento generato col BB `execute_dynamic_insert`,
+    #        whitelist DOCUMENTO_GENERATO_CREATE_COLUMNS. Ritorna (id, uid). I
+    #        trigger DB calcolano `tx_id` (Decisione 76), audit, validita e
     #        coerenza testata; il CHECK A coerenza blocca incongruenze
     #        (output/template/versione/sorgente_tipo/emittente).
+    #        ⛔ Dal 2026-09-26 una chiave fuori whitelist e' `RuntimeError`: i
+    #        dict li compone l'orchestratore (`document_generation_service`),
+    #        mai dal payload del client.
+    #        ⚠️ Lo strip del BB tocca anche gli hash (`context_hash`,
+    #        `template_hash`, `pdf_hash`): digest esadecimali calcolati dal
+    #        service, senza spazi ai bordi — lo strip non li cambia.
     def create_documento_generato(
         self, data: dict[str, Any]
     ) -> tuple[int, str]:
-        cols: list[str] = []
-        vals: list[Any] = []
-        placeholders: list[str] = []
-        for col in DOCUMENTO_GENERATO_CREATE_COLUMNS:
-            if col in data:
-                column_type = _DOCUMENTO_GENERATO_COLUMN_TYPES.get(col, "text")
-                cols.append(col)
-                vals.append(to_write_param(data[col], column_type))
-                placeholders.append(sql_placeholder(column_type))
-        sql = f"""
-            INSERT INTO documenti.documenti_generati ({", ".join(cols)})
-            VALUES ({", ".join(placeholders)})
-            RETURNING id, uid
-        """  # noqa: S608 — colonne whitelisted, valori parametrici
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0]), str(row[1])
+        riga = execute_dynamic_insert(
+            "documenti.documenti_generati", data,
+            allowed=DOCUMENTO_GENERATO_CREATE_COLUMNS,
+            jsonb=_DOCUMENTO_GENERATO_JSONB,
+            returning="id, uid",
+        )
+        return int(riga["id"]), str(riga["uid"])
 
-    # Scopo: INSERT file persistito collegato al documento generato. Ritorna
-    #        l'id riga. Vincoli rilevanti DDL: `is_principale` partial-unique
-    #        per documento (un solo principale per doc), unique
-    #        `(documento_generato_id, file_tipo_id, ordinamento)`.
+    # Scopo: INSERT file persistito collegato al documento generato (BB
+    #        `execute_dynamic_insert`). Ritorna l'id riga. Vincoli rilevanti
+    #        DDL: `is_principale` partial-unique per documento (un solo
+    #        principale per doc), unique `(documento_generato_id, file_tipo_id,
+    #        ordinamento)`.
     def create_documento_generato_file(self, data: dict[str, Any]) -> int:
-        cols: list[str] = []
-        vals: list[Any] = []
-        placeholders: list[str] = []
-        for col in DOCUMENTO_GENERATO_FILE_CREATE_COLUMNS:
-            if col in data:
-                column_type = _DOCUMENTO_GENERATO_FILE_COLUMN_TYPES.get(col, "text")
-                cols.append(col)
-                vals.append(to_write_param(data[col], column_type))
-                placeholders.append(sql_placeholder(column_type))
-        sql = f"""
-            INSERT INTO documenti.documenti_generati_file ({", ".join(cols)})
-            VALUES ({", ".join(placeholders)})
-            RETURNING id
-        """  # noqa: S608 — colonne whitelisted, valori parametrici
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+        riga = execute_dynamic_insert(
+            "documenti.documenti_generati_file", data,
+            allowed=DOCUMENTO_GENERATO_FILE_CREATE_COLUMNS,
+            jsonb=_DOCUMENTO_GENERATO_FILE_JSONB,
+        )
+        return int(riga["id"])
 
-    # Scopo: INSERT evento timeline append-only. Decisione 76: NO `tx_id`
-    #        esplicito (la popola l'automation regola 4). Il caller passa
-    #        `evento_tipo` ∈ {GENERATO, SCARICATO, STORAGE_ORPHAN} (set chiuso
-    #        v1). I guard DB A5/A6 bloccano UPDATE/DELETE successivi.
+    # Scopo: INSERT evento timeline append-only (BB `execute_dynamic_insert`).
+    #        Decisione 76: NO `tx_id` esplicito (la popola l'automation regola
+    #        4) — fuori da EVENTO_DOCUMENTO_CREATE_COLUMNS, quindi passarla qui
+    #        e' `RuntimeError` (fino al 2026-09-26 veniva scartata in silenzio).
+    #        Il caller passa `evento_tipo` ∈ {GENERATO, SCARICATO, ...} (set
+    #        chiuso dal CHECK DB). I guard DB A5/A6 bloccano UPDATE/DELETE
+    #        successivi.
     def emit_evento_documento(self, data: dict[str, Any]) -> int:
-        cols: list[str] = []
-        vals: list[Any] = []
-        placeholders: list[str] = []
-        for col in EVENTO_DOCUMENTO_CREATE_COLUMNS:
-            if col in data:
-                column_type = _EVENTO_DOCUMENTO_COLUMN_TYPES.get(col, "text")
-                cols.append(col)
-                vals.append(to_write_param(data[col], column_type))
-                placeholders.append(sql_placeholder(column_type))
-        sql = f"""
-            INSERT INTO documenti.documenti_generati_eventi ({", ".join(cols)})
-            VALUES ({", ".join(placeholders)})
-            RETURNING id
-        """  # noqa: S608 — colonne whitelisted, valori parametrici
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+        riga = execute_dynamic_insert(
+            "documenti.documenti_generati_eventi", data,
+            allowed=EVENTO_DOCUMENTO_CREATE_COLUMNS,
+            jsonb=_EVENTO_DOCUMENTO_JSONB,
+        )
+        return int(riga["id"])
 
     # Scopo: Lookup tipo file per codice_interno (es. 'PDF_FINALE'). Match
     #        sulla colonna IMMUTABILE codice_interno (non `codice`, che e'

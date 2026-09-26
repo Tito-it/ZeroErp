@@ -25,6 +25,11 @@
 6. test_una_direzione_esplicita_vince_anche_su_una_colonna_data
 7. test_default_clause_non_prende_una_seconda_direzione
 8. test_default_e_default_clause_si_escludono
+9. test_rigido_rifiuta_una_colonna_fuori_whitelist   (estensione 2026-09-26)
+10. test_rigido_rifiuta_una_direzione_estranea
+11. test_rigido_ammette_i_valori_validi_e_il_non_indicato
+12. test_una_direzione_estranea_e_rifiutata_anche_nel_modo_storico (2026-09-26)
+13. test_la_direzione_assente_prende_il_default_su_ogni_ramo
 """
 
 from __future__ import annotations
@@ -136,10 +141,90 @@ class SqlOrderClauseTests(unittest.TestCase):
         # ⛔ Solleva invece di scegliere: passarli entrambi significa che chi
         #    scrive non sa quale dei due sta usando, e un BB che decide al posto
         #    suo trasforma un dubbio in un ordinamento sbagliato silenzioso.
-        with self.assertRaises(ValueError):
+        with self.assertRaises(RuntimeError):
             sql_order_clause(
                 None, None, colonne=_COLONNE,
                 default="t.codice", default_clause="t.codice DESC", tiebreak="t.id",
             )
-        with self.assertRaises(ValueError):
+        with self.assertRaises(RuntimeError):
             sql_order_clause(None, None, colonne=_COLONNE, tiebreak="t.id")
+
+    # 9-11. `rifiuta_fuori_whitelist=True` (2026-09-26): per i repository il cui
+    #       service ha GIA' validato — li' un valore estraneo e' un errore di
+    #       programmazione, e il ripiego sul default lo nasconderebbe.
+    def test_rigido_rifiuta_una_colonna_fuori_whitelist(self) -> None:
+        with self.assertRaises(RuntimeError):
+            sql_order_clause(
+                "t.codice; DROP", "asc", colonne=_COLONNE,
+                default="t.codice", tiebreak="t.id", rifiuta_fuori_whitelist=True,
+            )
+
+    def test_rigido_rifiuta_una_direzione_estranea(self) -> None:
+        for grezzo in ("ASC NULLS LAST", "sideways", "desc;"):
+            with self.subTest(valore=grezzo), self.assertRaises(ValueError):
+                sql_order_clause(
+                    "codice", grezzo, colonne=_COLONNE,
+                    default="t.codice", tiebreak="t.id", rifiuta_fuori_whitelist=True,
+                )
+
+    def test_rigido_ammette_i_valori_validi_e_il_non_indicato(self) -> None:
+        self.assertEqual(
+            sql_order_clause(
+                "data_evento", " DESC ", colonne=_COLONNE,
+                default="t.codice", tiebreak="t.id", rifiuta_fuori_whitelist=True,
+            ),
+            "t.data_evento DESC NULLS LAST, t.id DESC",
+        )
+        # Non indicato: il default, come nel modo storico.
+        self.assertEqual(
+            sql_order_clause(
+                None, None, colonne=_COLONNE, default="t.codice",
+                default_desc=True, tiebreak="t.id", rifiuta_fuori_whitelist=True,
+            ),
+            "t.codice DESC NULLS LAST, t.id DESC",
+        )
+        # ⚠️ Il modo storico NON e' cambiato sulla COLONNA: fuori whitelist
+        #    ripiega ancora (la direzione, indicata e valida, resta rispettata).
+        self.assertEqual(
+            sql_order_clause(
+                "boh", "desc", colonne=_COLONNE, default="t.codice", tiebreak="t.id",
+            ),
+            "t.codice DESC NULLS LAST, t.id DESC",
+        )
+
+    # 12. ⛔ Decisione Tid 2026-09-26: la DIREZIONE estranea e' rifiutata anche
+    #     senza `rifiuta_fuori_whitelist`, e su ogni ramo — colonna scelta,
+    #     colonna fuori whitelist che ripiega sul default, `default_clause`.
+    #     Prima diventava ASC in silenzio. Il flag resta per la sola colonna.
+    def test_una_direzione_estranea_e_rifiutata_anche_nel_modo_storico(self) -> None:
+        rami = {
+            "colonna": {"order_by": "codice", "default": "t.codice"},
+            "fuori_whitelist": {"order_by": "boh", "default": "t.codice"},
+            "assente": {"order_by": None, "default": "t.codice"},
+            "default_clause": {"order_by": None, "default_clause": "t.a DESC, t.b ASC"},
+        }
+        for nome, kw in rami.items():
+            order_by = kw.pop("order_by")
+            with self.subTest(ramo=nome), self.assertRaisesRegex(ValueError, "order_dir_invalid"):
+                sql_order_clause(
+                    order_by, "giu", colonne=_COLONNE, tiebreak="t.id", **kw,
+                )
+
+    # 13. L'ASSENZA resta ammessa e prende il default del ramo.
+    def test_la_direzione_assente_prende_il_default_su_ogni_ramo(self) -> None:
+        for assente in (None, "", "  "):
+            with self.subTest(valore=assente):
+                self.assertEqual(
+                    sql_order_clause(
+                        "data_evento", assente, colonne=_COLONNE, default="t.codice",
+                        tiebreak="t.id", colonne_desc=("data_evento",),
+                    ),
+                    "t.data_evento DESC NULLS LAST, t.id DESC",
+                )
+                self.assertEqual(
+                    sql_order_clause(
+                        None, assente, colonne=_COLONNE,
+                        default_clause="t.a DESC, t.b ASC", tiebreak="t.id",
+                    ),
+                    "t.a DESC, t.b ASC, t.id ASC",
+                )

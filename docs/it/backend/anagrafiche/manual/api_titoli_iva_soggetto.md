@@ -110,9 +110,9 @@ vedeva, e nessuno poteva accorgersene. Il cap è stato **rimosso**.
 
 - Query string: `limit` / `offset` / `order_by` / `order_dir`
   (`parse_list_params`, `default_order="eccedenza"`).
-- ⚠️ `order_dir` si legge **grezzo** (`qp_str`), non da `parse_list_params`, che
-  lo normalizza ad `"asc"` e annullerebbe il default DESC: la lista deve aprirsi
-  dalla **più grave**.
+- `order_dir` dal bundle: assente è `None` (dal 2026-09-26 `parse_list_params`
+  non lo normalizza più ad `"asc"`), e decide il default DESC: la lista deve
+  aprirsi dalla **più grave**.
 - Risposta: `{ "results": [...], "count": N }` — pagina e totale in **una**
   valutazione (`COUNT(*) OVER()` via `fetch_paged_with_total`), con
   `fallback_count_sql` per il rientro su una pagina stantia. ⚠️ Senza quel

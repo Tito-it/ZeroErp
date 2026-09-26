@@ -23,6 +23,13 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
 )
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
+
+
+# Colonne jsonb di `vendite.promo_articoli`, dichiarate al BB: una stringa li'
+# e' testo JSON (regola Tid 2026-09-26). Il service manda sempre un dict
+# (`optional_meta`).
+_JSONB_COLS: tuple[str, ...] = ("meta",)
 
 
 # Whitelist colonne ammesse per ORDER BY (SQL injection safe).
@@ -154,7 +161,7 @@ class PromoArticoliRepository:
                 SELECT COUNT(*)
                   {_FROM_JOINS}
                 {where_clause}
-                """,  # noqa: S608
+                """,
                 params,
             )
             row = cursor.fetchone()
@@ -168,7 +175,7 @@ class PromoArticoliRepository:
                 {where_clause}
                  ORDER BY {ordinamento}
                  LIMIT %s OFFSET %s
-                """,  # noqa: S608
+                """,
                 params + [safe_limit, safe_offset],
             )
             results = rows_to_list(cursor)
@@ -183,7 +190,7 @@ class PromoArticoliRepository:
                 SELECT {_SELECT_COLS}
                   {_FROM_JOINS}
                  WHERE p.id = %s
-                """,  # noqa: S608
+                """,
                 [record_id],
             )
             return row_to_dict(cursor)
@@ -203,68 +210,52 @@ class PromoArticoliRepository:
     # Mutazioni
     # =================================================================
 
-    # Scopo: Inserisce una nuova promo usando colonne whitelisted.
-    #        `validita` NON scrivibile: trigger la calcola da valido_dal/al.
-    def create_promo(self, data: dict[str, Any]) -> int:
-        write_cols = (
-            "codice",
-            "descrizione",
-            "articolo_id",
-            "uom_id",
-            "tipo_variazione",
-            "valore_variazione",
-            "valido_dal",
-            "valido_al",
-            "meta",
-            "attivo",
-        )
-        cols: list[str] = []
-        vals: list[Any] = []
-        placeholders: list[str] = []
-        for col in write_cols:
-            if col in data:
-                cols.append(col)
-                # articolo_id e' uuid, serve cast esplicito.
-                placeholders.append("%s::uuid" if col == "articolo_id" else "%s")
-                vals.append(data[col])
-        sql = f"""
-            INSERT INTO vendite.promo_articoli ({", ".join(cols)})
-            VALUES ({", ".join(placeholders)})
-            RETURNING id
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+    # Colonne scrivibili in create. `validita` NON c'e': la calcola il trigger
+    # da valido_dal/al.
+    # ⭐ 2026-09-26: la composizione a mano (`write_cols` + `if col in data`)
+    #    e' ritirata a favore del BB core. Il filtro SCARTAVA IN SILENZIO le
+    #    chiavi fuori lista: ora e' `RuntimeError`, e il contratto
+    #    dell'operatore lo tiene il service (mapper espliciti
+    #    `_build_create_data`/`_build_update_data` dopo `validate_allowed_keys`).
+    CREATE_COLUMNS: frozenset[str] = frozenset({
+        "codice",
+        "descrizione",
+        "articolo_id",
+        "uom_id",
+        "tipo_variazione",
+        "valore_variazione",
+        "valido_dal",
+        "valido_al",
+        "meta",
+        "attivo",
+    })
 
-    # Scopo: Aggiorna una promo sui soli campi forniti. `codice`, `articolo_id`,
-    #        `uom_id` sono immutabili lato service. Il repo non impone: consente
-    #        al service di scegliere la policy.
-    def update_promo(self, record_id: int, data: dict[str, Any]) -> bool:
-        write_cols = (
-            "descrizione",
-            "tipo_variazione",
-            "valore_variazione",
-            "valido_dal",
-            "valido_al",
-            "meta",
-            "attivo",
+    # Colonne scrivibili in update: `codice`, `articolo_id`, `uom_id` assenti
+    # (immutabili). La policy per stato della promo (iniziata = campi
+    # ristretti) resta del service.
+    UPDATE_COLUMNS: frozenset[str] = frozenset({
+        "descrizione",
+        "tipo_variazione",
+        "valore_variazione",
+        "valido_dal",
+        "valido_al",
+        "meta",
+        "attivo",
+    })
+
+    # Scopo: Inserisce una nuova promo sulle colonne whitelisted.
+    #        `articolo_id` e' uuid: cast esplicito come prima della migrazione.
+    def create_promo(self, data: dict[str, Any]) -> int:
+        riga = execute_dynamic_insert(
+            "vendite.promo_articoli", data,
+            allowed=self.CREATE_COLUMNS, jsonb=_JSONB_COLS,
+            casts={"articolo_id": "uuid"},
         )
-        set_parts: list[str] = []
-        vals: list[Any] = []
-        for col in write_cols:
-            if col in data:
-                set_parts.append(f"{col} = %s")
-                vals.append(data[col])
-        if not set_parts:
-            return False
-        vals.append(record_id)
-        sql = f"""
-            UPDATE vendite.promo_articoli
-               SET {", ".join(set_parts)}
-             WHERE id = %s
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return cursor.rowcount > 0
+        return int(riga["id"])
+
+    # Scopo: Aggiorna una promo sui soli campi forniti.
+    def update_promo(self, record_id: int, data: dict[str, Any]) -> bool:
+        return execute_dynamic_update(
+            "vendite.promo_articoli", record_id, data,
+            allowed=self.UPDATE_COLUMNS, jsonb=_JSONB_COLS,
+        )

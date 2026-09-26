@@ -107,7 +107,7 @@ def list_enti_incasso(
     _valida_tipo(tipo, obbligatorio=False)
     order_by, order_dir = validate_order_params(
         order_by or "codice",
-        (order_dir or "asc").lower(),
+        order_dir or "asc",
         allowed_columns=frozenset(ENTI_INCASSO_SORT_COLUMNS),
         error_code=E_VALIDAZIONE,
         function_name=f"{_FN}.list_enti_incasso",

@@ -220,6 +220,8 @@ export function useListaStoreCore({
     // caratteri?): dichiarate dal BB di stato (vedi li').
     ricercaFull, ricercaMinCaratteri,
     fetchList: fetchListBase, svuota,
+    // Il termine nuovo cambia la richiesta? Lo chiede `useSearchTable`.
+    ricercaCambiaLaRichiesta,
   } = useListaEmptyStateFetch({
     filters,
     alwaysFetch: !startsEmpty,
@@ -273,7 +275,7 @@ export function useListaStoreCore({
 
   const esposto = {
     items, totalRecords, loading, hasSearched, filters,
-    ricercaFull, ricercaMinCaratteri,
+    ricercaFull, ricercaMinCaratteri, ricercaCambiaLaRichiesta,
     // Alzata da chi conosce il motivo (oggi solo il cancello di perimetro
     // emittente, in `useListaConfigurabilePage`): finche' e' true la lista non
     // interroga il backend. Si scrive nei DUE versi, mai una volta sola.

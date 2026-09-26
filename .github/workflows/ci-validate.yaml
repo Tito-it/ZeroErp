@@ -39,6 +39,7 @@ on:
       - db/**
       - backend/**
       - requirements/**
+      - requirements.txt
       - scripts/**
       - .github/workflows/ci-validate.yaml
   pull_request:
@@ -47,6 +48,7 @@ on:
       - db/**
       - backend/**
       - requirements/**
+      - requirements.txt
       - scripts/**
       - .github/workflows/ci-validate.yaml
 
@@ -144,7 +146,23 @@ jobs:
         #     `pre_commit==4.6.2` / `PyYAML==6.0.3`, perche' sono le ultime su
         #     PyPI. La divergenza compare alla prima versione nuova, e nessuno
         #     se ne accorgerebbe.
-        run: pip install -c requirements.txt pre-commit PyYAML
+        run: pip install -c requirements.txt pre-commit PyYAML pip-audit
+
+      - name: Audit dipendenze Python (pip-audit)
+        # Controlla i pin contro i database di vulnerabilita' note (PyPI/OSV).
+        # ⭐ Acceso il 2026-09-26 a ZERO: backend e root puliti con entrambi i
+        #    database. Dependabot AVVISA dopo il merge; questo passo FERMA la
+        #    PR che porta un pin vulnerabile — per esempio un `pip-compile` che
+        #    ritorna a una versione vecchia, il caso di `cryptography` 49.x
+        #    chiuso a mano il 2026-08-08.
+        # ⚠️ `--no-deps --disable-pip`: i due file sono gia' pin completi, non
+        #    serve risolverli in un venv temporaneo (che costerebbe un install).
+        # ⚠️ Un CVE pubblicato su un pin che NON cambia non arriva qui: il
+        #    workflow gira solo sui cambi. Quel caso resta a Dependabot.
+        run: |
+          pip-audit --no-deps --disable-pip \
+            -r backend/requirements.txt \
+            -r requirements.txt
 
       - name: Cache pre-commit
         uses: actions/cache@v5

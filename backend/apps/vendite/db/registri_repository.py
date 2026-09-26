@@ -43,6 +43,7 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
 )
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, sql_set_clause
 
 # Whitelist colonne ammesse per ORDER BY: chiave = `campo_sorgente` del catalogo
 # `vendite.registri_numerazione` (e' quello che <ListaConfigurabile> invia come
@@ -147,6 +148,14 @@ _CAMPI_UPDATE: tuple[str, ...] = (
     "suffisso",
     "lunghezza_numero",
 )
+
+# ⛔ PREFISSO E SUFFISSO NON SI STRIPPANO (2026-09-26, migrazione ai BB core di
+#    scrittura, che strippano ogni stringa). Sono PEZZI DEL NUMERO stampato:
+#    `"FT "` + `"12"` e' una forma, `"FT"` + `"12"` e' un'altra — uno spazio
+#    ai bordi e' contenuto, non rumore, e toglierlo in silenzio cambierebbe
+#    la numerazione senza che l'operatore l'abbia chiesto. Le altre stringhe
+#    (codice, descrizione, serie...) si strippano come ovunque.
+_CAMPI_LETTERALI: tuple[str, ...] = ("prefisso", "suffisso")
 
 # ⭐ I DUE VERBI, LETTI IN UNA QUERY SOLA (brief §9.2, misurato: 9,161 ms
 #    sull'intera tabella). Non serve nessuna vista nuova e non si chiamano le
@@ -288,7 +297,7 @@ class RegistriRepository:
              WHERE {" AND ".join(conditions)}
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
-        """  # noqa: S608
+        """
         params.extend([limit, offset])
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
@@ -312,7 +321,7 @@ class RegistriRepository:
             {_LATERAL_BLOCCHI}
              WHERE r.id = %s
                AND (%s::bigint[] IS NULL OR r.emittente_soggetto_ruolo_id = ANY(%s))
-        """  # noqa: S608
+        """
         with connection.cursor() as cursor:
             cursor.execute(sql, [registro_id, emittenti_sr_ids, emittenti_sr_ids])
             riga = row_to_dict(cursor)
@@ -362,18 +371,19 @@ class RegistriRepository:
         emittente_soggetto_ruolo_id: int,
         dati: dict[str, Any],
     ) -> int:
-        colonne = [c for c in _CAMPI_CREATE if c in dati]
-        campi = ["emittente_soggetto_ruolo_id", *colonne]
-        segnaposti = ", ".join(["%s"] * len(campi))
-        sql = f"""
-            INSERT INTO vendite.registri_fatturazione ({", ".join(campi)})
-            VALUES ({segnaposti})
-            RETURNING id
-        """  # noqa: S608
-        params = [emittente_soggetto_ruolo_id, *[dati[c] for c in colonne]]
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.fetchone()[0]
+        # ⭐ BB core `execute_dynamic_insert` (2026-09-26): la whitelist e'
+        #    RIGIDA — una chiave fuori `_CAMPI_CREATE` e' `RuntimeError`, non
+        #    piu' uno scarto silenzioso. Il 400 educato lo da' il service
+        #    (`_verifica_chiavi`), che il contratto lo controlla prima.
+        # ⚠️ L'emittente si scrive PER ULTIMO nel dict: e' quello del
+        #    contesto, e nessuna chiave del payload lo puo' sovrascrivere.
+        riga = execute_dynamic_insert(
+            "vendite.registri_fatturazione",
+            {**dati, "emittente_soggetto_ruolo_id": emittente_soggetto_ruolo_id},
+            allowed=("emittente_soggetto_ruolo_id", *_CAMPI_CREATE),
+            letterali=_CAMPI_LETTERALI,
+        )
+        return riga["id"]
 
     # Scopo: aggiorna le colonne ammesse. Ritorna il numero di righe toccate,
     #        cosi' il service distingue «non esiste / fuori perimetro» da «fatto».
@@ -385,20 +395,23 @@ class RegistriRepository:
         emittenti_sr_ids: list[int] | None,
         dati: dict[str, Any],
     ) -> int:
-        colonne = [c for c in _CAMPI_UPDATE if c in dati]
-        if not colonne or (emittenti_sr_ids is not None and not emittenti_sr_ids):
+        if not dati or (emittenti_sr_ids is not None and not emittenti_sr_ids):
             return 0
-        set_sql = ", ".join(f"{c} = %s" for c in colonne)
+        # ⭐ BB core `sql_set_clause` (2026-09-26): il WHERE resta qui perche'
+        #    porta lo SCOPE emittente, che `execute_dynamic_update` (WHERE id e
+        #    basta) non sa scrivere. Whitelist RIGIDA: una chiave fuori
+        #    `_CAMPI_UPDATE` e' `RuntimeError` — il service l'ha gia' rifiutata
+        #    con un 400 (`_verifica_chiavi`).
+        set_sql, params = sql_set_clause(
+            dati, allowed=_CAMPI_UPDATE, letterali=_CAMPI_LETTERALI,
+        )
         sql = f"""
             UPDATE vendite.registri_fatturazione
                SET {set_sql}
              WHERE id = %s
                AND (%s::bigint[] IS NULL OR emittente_soggetto_ruolo_id = ANY(%s))
-        """  # noqa: S608
-        params = [
-            *[dati[c] for c in colonne],
-            registro_id, emittenti_sr_ids, emittenti_sr_ids,
-        ]
+        """  # noqa: S608 — set_sql dal BB sql_set_clause (colonne in whitelist _CAMPI_UPDATE, valori come parametri)
+        params += [registro_id, emittenti_sr_ids, emittenti_sr_ids]
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return cursor.rowcount

@@ -423,7 +423,7 @@ def connetti():
             m = re.match(r"\s*(?:export\s+)?([A-Z_]+)=(.*)", riga)
             if m:
                 env[m.group(1)] = m.group(2).strip().strip("'\"")
-    g = lambda k, d=None: os.environ.get(k) or env.get(k) or d  # noqa: E731
+    g = lambda k, d=None: os.environ.get(k) or env.get(k) or d
     return psycopg.connect(
         host=g("DB_HOST", "localhost"), port=g("DB_PORT", "5432"),
         dbname=g("DB_NAME"), user=g("DB_USER"), password=g("DB_PASSWORD"),
@@ -653,7 +653,7 @@ def righe_csv(nome_csv: str) -> dict[tuple, dict]:
 def prossimo_id(conn, nome_csv: str, campo: str = "id") -> int:
     da_csv = max((int(k[0]) for k in righe_csv(nome_csv) if k[0]), default=0)
     with conn.cursor() as cur:
-        cur.execute(f"SELECT COALESCE(MAX({campo}), 0) FROM {CSV_SEED[nome_csv]['tabella']}")
+        cur.execute(f"SELECT COALESCE(MAX({campo}), 0) FROM {CSV_SEED[nome_csv]['tabella']}")  # noqa: S608 — tabella dalla costante CSV_SEED, colonna dal default letterale 'id'; script CLI, nessun valore nel testo
         da_db = cur.fetchone()[0] or 0
     return max(da_csv, int(da_db)) + 1
 
@@ -664,13 +664,13 @@ def righe_db(conn, id_lista: int) -> dict[str, dict[tuple, dict]]:
     fuori: dict[str, dict[tuple, dict]] = {}
     interrogazioni = {
         "lista_definizione.csv": (
-            f"SELECT {', '.join(CAMPI_DEF)} FROM ui.lista_definizione WHERE id = %s",
+            f"SELECT {', '.join(CAMPI_DEF)} FROM ui.lista_definizione WHERE id = %s",  # noqa: S608 — colonne dalla costante CAMPI_DEF, id_lista come parametro
             CAMPI_DEF),
         "lista_colonna.csv": (
-            f"SELECT {', '.join(CAMPI_COL)} FROM ui.lista_colonna WHERE lista_id = %s "
+            f"SELECT {', '.join(CAMPI_COL)} FROM ui.lista_colonna WHERE lista_id = %s "  # noqa: S608 — colonne dalla costante CAMPI_COL, id_lista come parametro
             "ORDER BY ordine_default, id", CAMPI_COL),
         "lista_preset.csv": (
-            f"SELECT {', '.join(CAMPI_PRESET)} FROM ui.lista_preset WHERE lista_id = %s "
+            f"SELECT {', '.join(CAMPI_PRESET)} FROM ui.lista_preset WHERE lista_id = %s "  # noqa: S608 — colonne dalla costante CAMPI_PRESET, id_lista come parametro
             "ORDER BY id", CAMPI_PRESET),
         "lista_preset_colonna.csv": (
             "SELECT pc.preset_id, pc.colonna_id, pc.ordine, pc.visibile, pc.fissata "
@@ -1123,7 +1123,7 @@ def verifica_ordinamento(solo: str | None = None) -> int:
         if default_rotti:
             print(f"      ordinamento di APERTURA del preset        : {'; '.join(default_rotti)}")
 
-    plurale = lambda n, s, p: f"{n} {s if n == 1 else p}"  # noqa: E731
+    plurale = lambda n, s, p: f"{n} {s if n == 1 else p}"
     print()
     if saltate:
         print(f"[X] {plurale(saltate, 'lista non verificata', 'liste non verificate')}: "

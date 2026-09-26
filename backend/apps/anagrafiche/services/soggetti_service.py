@@ -17,7 +17,13 @@ from apps.core.api.payload_validators import optional_int
 from apps.core.services.error_manager import ErrorManager
 from apps.anagrafiche.db.conti_bancari_repository import ContiBancariRepository
 from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
-from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
+from apps.anagrafiche.db.soggetti_repository import (
+    CONTATTO_UPDATE_COLS,
+    INDIRIZZO_RUOLO_UPDATE_COLS,
+    SOGGETTO_UPDATE_ALIAS,
+    SOGGETTO_UPDATE_COLS,
+    SoggettiRepository,
+)
 from apps.anagrafiche.db.titoli_iva_repository import TitoliIvaRepository
 from apps.core.db.lookup_repository import LookupRepository
 from apps.anagrafiche.error_codes import (
@@ -37,6 +43,7 @@ from apps.anagrafiche.services.contatti_service import (
     classify_contatto_payload,
     missing_required_fields,
 )
+from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.service_errors import ServiceError
 
 
@@ -54,6 +61,19 @@ _LOOKUP_MAX_LIMIT = 50
 _FLAG_FISCALI_SOGGETTO: tuple[str, ...] = ("split_payment", "cliente_pa")
 # Dominio ammesso, speculare al CHECK ('S','N') delle due colonne.
 _FLAG_FISCALI_VALORI: frozenset[str] = frozenset({"S", "N"})
+
+# Contratti delle PATCH (chiavi ammesse nel payload), validati QUI con 400
+# `E_ANAG_VALIDAZIONE` (2026-09-26): dal passaggio ai BB di scrittura il
+# repository rifiuta con `RuntimeError` (500) ogni colonna fuori whitelist, e
+# fino a quel giorno la SCARTAVA in silenzio — un salvataggio che «riusciva»
+# senza aver scritto il campo. Partono dalle colonne scrivibili del repository:
+# oggi coincidono, e un contratto piu' stretto si scrive restringendo qui.
+_UPDATE_SOGGETTO_KEYS: frozenset[str] = SOGGETTO_UPDATE_COLS | frozenset(SOGGETTO_UPDATE_ALIAS)
+_UPDATE_CONTATTO_KEYS: frozenset[str] = CONTATTO_UPDATE_COLS
+_UPDATE_INDIRIZZO_RUOLO_KEYS: frozenset[str] = INDIRIZZO_RUOLO_UPDATE_COLS
+
+# Validator stateless del dominio (solo il codice errore): condivisibile.
+_V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
 
 
 class SoggettiService:
@@ -183,6 +203,9 @@ class SoggettiService:
 
     # Scopo: Aggiorna campi soggetto.
     def update_soggetto(self, soggetto_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        _V.validate_allowed_keys(
+            payload, allowed=_UPDATE_SOGGETTO_KEYS, message="Payload soggetto non valido.",
+        )
         dati = self._normalizza_flag_fiscali(payload)
         return update_with_dedup(
             lambda: self._repo.update_soggetto(soggetto_id, dati),
@@ -254,9 +277,46 @@ class SoggettiService:
     # Scopo: Aggiorna contatto esistente con verifica ownership.
     def update_contatto(self, contatto_id: int, payload: dict[str, Any],
                         soggetto_id: str | None = None) -> dict[str, Any]:
+        _V.validate_allowed_keys(
+            payload, allowed=_UPDATE_CONTATTO_KEYS, message="Payload contatto non valido.",
+        )
         updated = self._repo.update_contatto(contatto_id, payload, soggetto_id=soggetto_id)
         ErrorManager.require(updated, code=E_ANAG_NOT_FOUND,
                              message="Contatto non trovato.")
+        return {"updated": True}
+
+    # Scopo: Aggiorna un contatto del RUOLO con ownership check sul ruolo.
+    # ⚠️ Fino al 2026-09-26 la view chiamava il repository direttamente con
+    #    `request.data`: nessuno validava le chiavi, e il repository scartava in
+    #    silenzio quelle fuori lista. Ora il contratto sta qui (400).
+    def update_contatto_ruolo(
+        self, soggetto_ruolo_id: int, contatto_id: int, payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        _V.validate_allowed_keys(
+            payload, allowed=_UPDATE_CONTATTO_KEYS, message="Payload contatto non valido.",
+        )
+        updated = self._repo.update_contatto(
+            contatto_id, payload, soggetto_ruolo_id=soggetto_ruolo_id,
+        )
+        ErrorManager.require(updated, code=E_ANAG_NOT_FOUND,
+                             message="Contatto non trovato o non appartiene al ruolo.")
+        return {"updated": True}
+
+    # Scopo: Aggiorna un indirizzo del RUOLO con ownership check sul ruolo.
+    #        Stessa storia di `update_contatto_ruolo`: la view scriveva
+    #        `request.data` direttamente nel repository (2026-09-26).
+    def update_indirizzo_ruolo(
+        self, soggetto_ruolo_id: int, indirizzo_id: int, payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        _V.validate_allowed_keys(
+            payload, allowed=_UPDATE_INDIRIZZO_RUOLO_KEYS,
+            message="Payload indirizzo non valido.",
+        )
+        updated = self._repo.update_indirizzo_ruolo(indirizzo_id, soggetto_ruolo_id, payload)
+        ErrorManager.require(
+            updated, code=E_ANAG_NOT_FOUND,
+            message="Indirizzo non trovato o non appartiene al ruolo.",
+        )
         return {"updated": True}
 
     # Scopo: Elimina contatto con ownership check.

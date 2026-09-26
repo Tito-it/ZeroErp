@@ -324,14 +324,12 @@ def crea_pratica(
         message="emittente_fiscale_id obbligatorio e > 0",
         context={"field": "emittente_fiscale_id"},
     )
-    assert emittente_fiscale_id > 0
     ErrorManager.require(
         tipo_prestazione_id > 0,
         code="E_PRATICA_VALIDATION",
         message="tipo_prestazione_id obbligatorio e > 0",
         context={"field": "tipo_prestazione_id"},
     )
-    assert tipo_prestazione_id > 0
     # Priorita' opzionale: se assente si applica il default NORMALE risolto
     # per codice_interno (mai id hardcodato — feedback_no_hardcoded_ids).
     if priorita_id is not None:
@@ -341,7 +339,6 @@ def crea_pratica(
             message="priorita_id deve essere > 0",
             context={"field": "priorita_id"},
         )
-        assert priorita_id > 0
 
     # Validazione coerenza contesto anagrafico (stesse regole del trigger DB,
     # qui per dare errori user-friendly via ServiceError). Modello a due rami
@@ -424,7 +421,6 @@ def aggiorna_pratica(pratica_id: int, data: dict[str, Any]) -> None:
         code="E_INVALID_ID",
         message="pratica_id deve essere > 0",
     )
-    assert pratica_id > 0
 
     repo = PraticheRepository()
     # Verifica esistenza pratica.
@@ -447,7 +443,6 @@ def cambia_stato_pratica(pratica_id: int, nuovo_stato: str) -> None:
         code="E_INVALID_ID",
         message="pratica_id deve essere > 0",
     )
-    assert pratica_id > 0
     ErrorManager.require(
         bool(nuovo_stato),
         code="E_PRATICA_VALIDATION",
@@ -478,7 +473,6 @@ def assegna_pratica(
         code="E_INVALID_ID",
         message="pratica_id deve essere > 0",
     )
-    assert pratica_id > 0
 
     repo = PraticheRepository()
     update_data: dict[str, Any] = {}
@@ -579,7 +573,6 @@ def crea_flusso(
         code="E_INVALID_ID",
         message="pratica_id deve essere > 0",
     )
-    assert pratica_id > 0
     ErrorManager.require(
         template_flusso_id is not None and template_flusso_id > 0,
         code="E_FLUSSO_VALIDATION",
@@ -628,7 +621,6 @@ def assegna_flusso(
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
 
     update_data: dict[str, Any] = {}
     if set_risorsa:
@@ -655,7 +647,6 @@ def avvia_flusso(flusso_id: int, *, user: str | None = None) -> dict[str, Any] |
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
 
     repo = PraticheRepository()
     # Config esito del template (20260617-01): modalita_esito + esito_default.
@@ -751,7 +742,6 @@ def completa_flusso(
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
     _require_esito_valido(esito)
     _completa_flusso_validato(
         flusso_id, esito=esito, note_esito=note_esito, user=user, meta=meta,
@@ -779,7 +769,6 @@ def avvia_e_completa_flusso(
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
     # Valida l'esito PRIMA di qualsiasi scrittura: niente avvio "orfano" (flusso
     # lasciato IN_CORSO) se l'esito e' fuori dominio.
     _require_esito_valido(esito)
@@ -859,7 +848,6 @@ def cambia_stato_flusso(
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
     ErrorManager.require(
         bool(nuovo_stato),
         code="E_FLUSSO_VALIDATION",
@@ -884,7 +872,6 @@ def verifica_prerequisiti(
         code="E_INVALID_ID",
         message="pratica_id deve essere > 0",
     )
-    assert pratica_id > 0
 
     repo = PraticheRepository()
     return repo.check_prerequisiti(pratica_id, template_flusso_id)
@@ -904,7 +891,6 @@ def get_percorso(pratica_id: int) -> list[dict[str, Any]]:
         code="E_INVALID_ID",
         message="pratica_id deve essere > 0",
     )
-    assert pratica_id > 0
     return PraticheRepository().get_percorso_pratica(pratica_id)
 
 
@@ -932,7 +918,6 @@ def dispatch_handler(flusso_id: int, *, user: str | None = None) -> dict[str, An
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
 
     flusso = _flusso_per_dispatch(flusso_id)
     if flusso is None:
@@ -1135,7 +1120,6 @@ def sospendi_pratica(
         code="E_INVALID_ID",
         message="pratica_id deve essere > 0",
     )
-    assert pratica_id > 0
     ErrorManager.require(
         bool(motivo and motivo.strip()),
         code="E_PRATICA_VALIDATION",
@@ -1193,7 +1177,6 @@ def riattiva_pratica(pratica_id: int, *, data_fine: str | None = None) -> None:
         code="E_INVALID_ID",
         message="pratica_id deve essere > 0",
     )
-    assert pratica_id > 0
 
     repo = PraticheRepository()
 
@@ -1276,7 +1259,6 @@ def pratica_di_flusso(flusso_id: int) -> int:
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
     pratica_id = PraticheRepository().get_pratica_di_flusso(flusso_id)
     ErrorManager.require(
         pratica_id is not None,
@@ -1305,13 +1287,11 @@ def sospendi_flusso(
         code="E_INVALID_ID",
         message="pratica_id deve essere > 0",
     )
-    assert pratica_id > 0
     ErrorManager.require(
         flusso_id > 0,
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
     ErrorManager.require(
         bool(motivo and motivo.strip()),
         code="E_FLUSSO_VALIDATION",
@@ -1353,13 +1333,11 @@ def riattiva_flusso(pratica_id: int, flusso_id: int) -> None:
         code="E_INVALID_ID",
         message="pratica_id deve essere > 0",
     )
-    assert pratica_id > 0
     ErrorManager.require(
         flusso_id > 0,
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
 
     repo = PraticheRepository()
     verifica_flusso_pratica(repo, pratica_id, flusso_id)
@@ -1408,7 +1386,6 @@ def get_formule_tempo(tipo_prestazione_id: int) -> list[dict[str, Any]]:
         code="E_INVALID_ID",
         message="tipo_prestazione_id deve essere > 0",
     )
-    assert tipo_prestazione_id > 0
 
     repo = PraticheRepository()
     return repo.list_formule_tempo(tipo_prestazione_id)
@@ -1429,13 +1406,11 @@ def get_coda_lavoro(
         code="E_INVALID_ID",
         message="risorsa_umana_id deve essere > 0",
     )
-    assert risorsa_umana_id > 0
     ErrorManager.require(
         emittente_fiscale_id > 0,
         code="E_INVALID_ID",
         message="emittente_fiscale_id deve essere > 0",
     )
-    assert emittente_fiscale_id > 0
 
     repo = PraticheRepository()
     return repo.list_coda_lavoro(risorsa_umana_id, emittente_fiscale_id)
@@ -1453,13 +1428,11 @@ def prendi_in_carico(flusso_id: int, risorsa_umana_id: int) -> bool:
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
     ErrorManager.require(
         risorsa_umana_id > 0,
         code="E_INVALID_ID",
         message="risorsa_umana_id deve essere > 0",
     )
-    assert risorsa_umana_id > 0
 
     repo = PraticheRepository()
     try:
@@ -1480,7 +1453,6 @@ def list_operatori_reparto(unita_organizzativa_id: int) -> list[dict[str, Any]]:
         code="E_INVALID_ID",
         message="unita_organizzativa_id deve essere > 0",
     )
-    assert unita_organizzativa_id > 0
 
     repo = PraticheRepository()
     return repo.list_operatori_reparto(unita_organizzativa_id)
@@ -1509,19 +1481,16 @@ def crea_competenza_flusso(
         code="E_INVALID_ID",
         message="template_flusso_id deve essere > 0",
     )
-    assert template_flusso_id > 0
     ErrorManager.require(
         unita_organizzativa_id > 0,
         code="E_INVALID_ID",
         message="unita_organizzativa_id deve essere > 0",
     )
-    assert unita_organizzativa_id > 0
     ErrorManager.require(
         risorsa_umana_id > 0,
         code="E_INVALID_ID",
         message="risorsa_umana_id deve essere > 0",
     )
-    assert risorsa_umana_id > 0
 
     repo = PraticheRepository()
     return repo.create_competenza_flusso({
@@ -1540,7 +1509,6 @@ def elimina_competenza_flusso(competenza_id: int) -> None:
         code="E_INVALID_ID",
         message="competenza_id deve essere > 0",
     )
-    assert competenza_id > 0
 
     repo = PraticheRepository()
     deleted = repo.delete_competenza_flusso(competenza_id)

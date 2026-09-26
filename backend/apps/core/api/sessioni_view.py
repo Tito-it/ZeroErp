@@ -10,23 +10,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
-import jwt
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
 from rest_framework.response import Response
 from apps.core.api.base_views import DomainAPIView
-from rest_framework_simplejwt.token_blacklist.models import (
-    BlacklistedToken,
-    OutstandingToken,
-)
 
 from apps.core.api.success_responses import success_response
 from apps.core.db.session_audit_repository import SessionAuditRepository
 from apps.core.services import session_audit_service
 from apps.core.services.auth_constants import JWT_CLAIM_SID
+from apps.core.services.revoca_token import blocca_token_sessioni
 from apps.core.services.service_errors import ServiceError
 
 
@@ -34,59 +28,6 @@ from apps.core.services.service_errors import ServiceError
 def _get_current_sid(request: Request) -> str | None:
     auth = request.auth
     return str(auth.get(JWT_CLAIM_SID, "")) if auth else None
-
-
-# Scopo: blocca i token JWT delle sessioni scelte da `vale_sid`, e ritorna
-#        quanti token le APPARTENGONO — non quanti ne ha scritti adesso.
-#
-# ⛔ La differenza fra i due conteggi e' l'IDEMPOTENZA, e la prima stesura di
-#    questo helper l'aveva persa: contando le sole scritture, revocare una
-#    sessione i cui token erano gia' tutti bloccati tornava zero, e il
-#    chiamante rispondeva «sessione non trovata» a un gesto che aveva gia'
-#    funzionato (un doppio click bastava). Chi chiede «questa sessione
-#    esiste?» non sta chiedendo «ho scritto qualcosa?».
-#
-# ⭐ Estratto il 2026-09-04: le due view di revoca facevano lo STESSO giro —
-#    scorri gli `OutstandingToken` dell'utente, decodifica, guarda il `sid`,
-#    blacklista — con due difetti diversi ciascuna, che e' il modo in cui due
-#    copie si presentano quando le trovi.
-#
-# ⛔ Il `try` copre SOLO la decodifica. Nella copia della revoca singola
-#    avvolgeva anche la scrittura: un errore di `get_or_create` veniva
-#    inghiottito, `found` restava falso e l'operatore leggeva «sessione non
-#    trovata» su una sessione che c'era — un guasto travestito da 404.
-#
-# ⚠️ Una query per i token gia' bloccati e una `bulk_create`, non una
-#    `get_or_create` per token: sul database di sviluppo l'utente ha ~1400
-#    token storici, e la forma per-token erano ~1400 SELECT per revocarne uno.
-#
-# ⚠️ `vale_sid` riceve sempre una stringa (mai `None`): il claim assente arriva
-#    qui come `""` e i chiamanti non devono ripetere il controllo.
-def _blocca_token_sessioni(user_id: int, vale_sid: Callable[[str], bool]) -> int:
-    gia_bloccati = set(
-        BlacklistedToken.objects.filter(token__user_id=user_id).values_list(
-            "token_id", flat=True
-        )
-    )
-    da_bloccare: list[BlacklistedToken] = []
-    corrispondenti = 0
-    for ot in OutstandingToken.objects.filter(user_id=user_id):
-        try:
-            payload = jwt.decode(
-                ot.token, options={"verify_exp": False, "verify_signature": False}
-            )
-        except Exception:
-            continue
-        if not vale_sid(str(payload.get(JWT_CLAIM_SID, "") or "")):
-            continue
-        corrispondenti += 1
-        # Gia' bloccato: conta come «esiste», non come «da scrivere».
-        if ot.id not in gia_bloccati:
-            da_bloccare.append(BlacklistedToken(token=ot))
-
-    if da_bloccare:
-        BlacklistedToken.objects.bulk_create(da_bloccare, ignore_conflicts=True)
-    return corrispondenti
 
 
 class SessioniAttiveListView(DomainAPIView):
@@ -147,7 +88,7 @@ class SessioneRevocaView(DomainAPIView):
         # ⚠️ Zero token con quel sid = la sessione non esiste. Se invece i suoi
         #    token c'erano ed erano gia' bloccati, la risposta resta 204: una
         #    revoca ripetuta e' idempotente, non un errore.
-        if _blocca_token_sessioni(request.user.id, lambda s: s == sid) == 0:
+        if blocca_token_sessioni(request.user.id, lambda s: s == sid) == 0:
             raise ServiceError(
                 code="E_SESSIONE_NOT_FOUND",
                 message="Sessione non trovata o gia' revocata.",
@@ -220,7 +161,7 @@ class SessioniRevocaTutteView(DomainAPIView):
         }
 
         # Tutti i token che non sono della sessione corrente.
-        _blocca_token_sessioni(
+        blocca_token_sessioni(
             request.user.id, lambda s: bool(s) and s != current_sid
         )
 

@@ -263,8 +263,18 @@ class DefinizioniServiceTests(SimpleTestCase):
     @patch(f"{_SVC}.DefinizioniRepository")
     def test_update_step_payload_vuoto(self, MockRepo):
         with self.assertRaises(ServiceError) as ctx:
-            definizioni_service.update_step(419, 100, {"campo_sconosciuto": 1})
+            definizioni_service.update_step(419, 100, {})
         self.assertEqual(ctx.exception.code, "E_VALIDATION_INPUT")
+        MockRepo.return_value.update_step.assert_not_called()
+
+    # Scopo: ⛔ una chiave fuori STEP_CORE_FIELDS (es. un campo display) è un 400
+    # col nome della chiave, non uno scarto silenzioso (2026-09-26).
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_update_step_chiave_estranea_rifiutata(self, MockRepo):
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.update_step(419, 100, {"descrizione": "x", "campo_sconosciuto": 1})
+        self.assertEqual(ctx.exception.code, "E_VALIDATION_INPUT")
+        self.assertIn("campo_sconosciuto", ctx.exception.detail)
         MockRepo.return_value.update_step.assert_not_called()
 
     @patch(f"{_SVC}.DefinizioniRepository")
@@ -296,13 +306,27 @@ class DefinizioniServiceTests(SimpleTestCase):
         repo.step_in_definizione.return_value = True
         repo.create_child.return_value = 77
         out = definizioni_service.create_step_figlio(419, 100, "canali", {
-            "canale_id": 3, "attivo": True, "campo_ignoto": "x",
+            "canale_id": 3, "attivo": True,
         })
         self.assertEqual(out, {"id": 77})
         repo.step_in_definizione.assert_called_once_with(419, 100)
         kind, step, data = repo.create_child.call_args.args
         self.assertEqual((kind, step), ("canali", 100))
-        self.assertEqual(data, {"canale_id": 3, "attivo": True})  # campo_ignoto scartato
+        self.assertEqual(data, {"canale_id": 3, "attivo": True})
+
+    # Scopo: ⛔ una chiave fuori dai campi scrivibili del kind è un 400, non uno
+    # scarto silenzioso (2026-09-26): nessun INSERT.
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_create_figlio_chiave_estranea_rifiutata(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.step_in_definizione.return_value = True
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.create_step_figlio(419, 100, "canali", {
+                "canale_id": 3, "attivo": True, "campo_ignoto": "x",
+            })
+        self.assertEqual(ctx.exception.code, "E_VALIDATION_INPUT")
+        self.assertIn("campo_ignoto", ctx.exception.detail)
+        repo.create_child.assert_not_called()
 
     # Scopo: step fuori dalla definizione → 404, senza INSERT.
     @patch(f"{_SVC}.DefinizioniRepository")
@@ -349,7 +373,7 @@ class DefinizioniServiceTests(SimpleTestCase):
     @patch(f"{_SVC}.DefinizioniRepository")
     def test_update_figlio_payload_vuoto(self, MockRepo):
         with self.assertRaises(ServiceError) as ctx:
-            definizioni_service.update_step_figlio(419, 100, "canali", 5, {"xxx": 1})
+            definizioni_service.update_step_figlio(419, 100, "canali", 5, {})
         self.assertEqual(ctx.exception.code, "E_VALIDATION_INPUT")
         MockRepo.return_value.update_child.assert_not_called()
 
@@ -457,7 +481,16 @@ class DefinizioniServiceTests(SimpleTestCase):
     @patch(f"{_SVC}.DefinizioniRepository")
     def test_update_arco_payload_vuoto(self, MockRepo):
         with self.assertRaises(ServiceError) as ctx:
-            definizioni_service.update_arco(419, "formule_tempo", 5, {"xxx": 1})
+            definizioni_service.update_arco(419, "formule_tempo", 5, {})
+        self.assertEqual(ctx.exception.code, "E_VALIDATION_INPUT")
+        MockRepo.return_value.update_edge.assert_not_called()
+
+    # Scopo: ⛔ `attivo` non è scrivibile sui prerequisiti: 400, non scarto
+    # silenzioso (2026-09-26).
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_update_arco_chiave_estranea_rifiutata(self, MockRepo):
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.update_arco(419, "prerequisiti", 5, {"attivo": False})
         self.assertEqual(ctx.exception.code, "E_VALIDATION_INPUT")
         MockRepo.return_value.update_edge.assert_not_called()
 

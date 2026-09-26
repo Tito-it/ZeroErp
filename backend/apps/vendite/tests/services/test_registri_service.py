@@ -25,6 +25,8 @@ Indice test eseguiti:
 7)  RegistriFormaTests.test_update_forma_su_registro_che_ha_numerato_propaga_il_codice
 8)  RegistriFormaTests.test_i_tre_campi_di_forma_sono_in_update      (gemello positivo)
 8b) RegistriFormaTests.test_serie_default_non_e_scrivibile
+8b-bis) RegistriFormaTests.test_serie_default_in_modifica_e_400
+8b-ter) RegistriFormaTests.test_chiave_estranea_in_creazione_e_400
 9)  RegistriPayloadTests.test_limiti_azzerati_su_famiglia_non_fattura
 9b) RegistriPayloadTests.test_limiti_non_toccati_quando_la_famiglia_non_e_nel_payload
 9c) RegistriPayloadTests.test_stringa_vuota_diventa_none
@@ -278,6 +280,30 @@ class RegistriFormaTests(TestCase):
         for campo in ("uid", "id", "emittente_soggetto_ruolo_id"):
             self.assertNotIn(campo, _CAMPI_CREATE)
             self.assertNotIn(campo, _CAMPI_UPDATE)
+
+    # Scopo: (8b-bis) ⛔ ...e spedita in MODIFICA e' un 400, prima del
+    #        database (2026-09-26). Fino a quel giorno il repository la
+    #        scartava in silenzio: la PATCH rispondeva 200 senza aver scritto
+    #        il campo.
+    @patch.object(RegistriRepository, "update_registro")
+    def test_serie_default_in_modifica_e_400(self, mock_update):
+        with self.assertRaises(ServiceError) as ctx:
+            RegistriService().update_registro(7, [99], {"serie_default": "B"})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("unknown_keys"), ["serie_default"])
+        mock_update.assert_not_called()
+
+    # Scopo: (8b-ter) stessa regola in creazione, su una chiave che nessun
+    #        verbo scrive.
+    @patch.object(RegistriRepository, "create_registro")
+    def test_chiave_estranea_in_creazione_e_400(self, mock_create):
+        with self.assertRaises(ServiceError) as ctx:
+            RegistriService().create_registro(
+                99, {"codice": "X", "descrizione": "Y", "attivo": False},
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("unknown_keys"), ["attivo"])
+        mock_create.assert_not_called()
 
     # Scopo: (8c) `reset_policy` si SCEGLIE alla nascita e non si cambia piu'.
     # ⭐ Il verso positivo conta quanto il negativo, ed e' nuovo dal 2026-09-08:

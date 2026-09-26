@@ -30,5 +30,5 @@ class AttivazioneView(AttivazioneVesteView):
     """POST: attivazione della veste operatore con il token dell'invito."""
 
     porta = PORTA_OPERATORE
-    messaggio_con_password = "Account attivato con successo. Effettua il login con la nuova password."
+    messaggio_con_password = "Account attivato con successo. Effettua il login con la nuova password."  # noqa: S105 — testo del messaggio, non una password
     messaggio_cross = "Accesso operatore attivato. Effettua il login con le tue credenziali esistenti."

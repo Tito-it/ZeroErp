@@ -23,6 +23,7 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
 )
+from apps.core.db.sql_write_helpers import execute_dynamic_insert
 
 
 # Whitelist colonne ammesse per ORDER BY: chiave = `campo_sorgente` del catalogo
@@ -55,6 +56,48 @@ _RICERCA_CLIENTI = RicercaFull(
     "anagrafiche.clienti",
     ("ragione_sociale_completa", "ba_codice", "soggetto_codice", "id_fiscale_univoco_cf_piva"),
 )
+
+
+# Colonne scrivibili in creazione del cliente. Whitelist RIGIDA del BB
+# `execute_dynamic_insert` (2026-09-26).
+# ⚠️ `stato_cliente_id` e `data_attivazione` ci sono perche' il BB fa passare
+#    la whitelist anche alle colonne delle `espressioni`: le scrivono le
+#    espressioni di `create_cliente` (AT, `CURRENT_DATE`), e se arrivassero
+#    ANCHE fra i valori il BB rifiuterebbe (due risposte alla stessa domanda)
+#    — non puo' sceglierle il chiamante.
+# ⛔ Sei chiavi tolte il 2026-08-29 (I0/I8 del brief
+#    brief-be-fe-iva-risolutore-e-regime-cliente): `iva_id`, `cliente_pa`,
+#    `split_payment`, `codice_cig`, `codice_cup`, `codice_commessa` non sono
+#    piu' colonne di `anagrafiche.clienti`. Le loro sedi: i due flag su
+#    `anagrafiche.soggetti` (D8 — la PA e' una proprieta' dell'ENTE, non della
+#    fornitura), i tre codici su `vendite.contratti` (D9 — nominano un
+#    contratto, non un cliente), l'IVA in nessuna colonna di default (D7-bis).
+_CLIENTE_CREATE_ALLOWED: frozenset[str] = frozenset({
+    "istanza_utility_id", "billing_account_id", "soggetto_ruolo_id",
+    "stato_cliente_id", "data_attivazione",
+    "termine_pagamento_id", "modalita_pagamento_id",
+    "servizio_da_fatturare",
+    "garanzia_tipo", "garanzia_importo",
+})
+
+# Campi editabili sul cliente (pagamento, garanzia, servizio).
+# ATTENZIONE: questo set DEVE restare allineato alla whitelist interna della
+# funzione madre anagrafiche.fn_update_cliente (autorita' finale: ignora le
+# chiavi non whitelisted). Aggiungere un campo editabile => aggiornare ENTRAMBI.
+# ⛔ Le sei chiavi di I0/I8 sono uscite il 2026-08-29 QUI e nella fn madre
+#    (changeSet 20260829-20). L'allineamento e' il punto: se restassero solo
+#    qui, la PATCH le accetterebbe e la fn le butterebbe via — l'operatore
+#    salverebbe senza vedere errori e il valore non andrebbe da nessuna parte.
+# ⭐ Dal 2026-09-26 e' anche la base del contratto della PATCH che
+#    `ClientiService.update_cliente` valida (400 `E_ANAG_VALIDAZIONE`), e il
+#    repository RIFIUTA (`RuntimeError`) invece di scartare: fino a quel giorno
+#    una chiave estranea spariva qui in silenzio — lo stesso difetto che il
+#    commento sopra descrive per la fn, un piano piu' su.
+CLIENTE_UPDATE_ALLOWED: frozenset[str] = frozenset({
+    "modalita_pagamento_id", "termine_pagamento_id",
+    "servizio_da_fatturare",
+    "garanzia_tipo", "garanzia_importo",
+})
 
 
 class ClientiRepository:
@@ -135,74 +178,52 @@ class ClientiRepository:
         # risolto (dal payload `ba_categoria_cliente_id`). La colonna DB e'
         # NOT NULL post-backfill F1-DB-03; la FK e' validata dal trigger
         # `fk_billing_account_categoria_cliente`.
-        cols = [
-            "istanza_utility_id", "soggetto_ruolo_id", "utility_id",
-            "parent_account_id", "categoria_cliente_id",
-        ]
-        vals: list[Any] = [
-            istanza_utility_id, soggetto_ruolo_id, utility_id,
-            parent_account_id, categoria_cliente_id,
-        ]
-        if fatturazione_ordini is not None:
-            cols.append("fatturazione_ordini")
-            vals.append(fatturazione_ordini)
-        placeholders = ", ".join(["%s"] * len(cols))
-        sql = f"""
-            INSERT INTO anagrafiche.billing_account ({", ".join(cols)})
-            VALUES ({placeholders})
-            RETURNING id
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return row[0]
+        # ⭐ BB core `execute_dynamic_insert` (2026-09-26). `allowed=None`:
+        #    le chiavi sono i kwargs LETTERALI di questo metodo. `skip_none`:
+        #    un `fatturazione_ordini` None si omette e decide il DEFAULT del DB
+        #    (CONFERMATO), come prima; un `parent_account_id` None prima si
+        #    scriveva NULL e ora si omette — la colonna e' nullable SENZA
+        #    default, quindi e' NULL comunque.
+        riga = execute_dynamic_insert(
+            "anagrafiche.billing_account",
+            {
+                "istanza_utility_id": istanza_utility_id,
+                "soggetto_ruolo_id": soggetto_ruolo_id,
+                "utility_id": utility_id,
+                "parent_account_id": parent_account_id,
+                "categoria_cliente_id": categoria_cliente_id,
+                "fatturazione_ordini": fatturazione_ordini,
+            },
+            allowed=None,
+            skip_none=True,
+        )
+        return riga["id"]
 
     # Scopo: Crea record cliente con stato ATTIVO.
     #        I trigger DB gestiscono: sync_utility, set_periodo, sync_pdp, guard.
     #        Le colonne opzionali sono incluse solo se valorizzate; il DB ha un
     #        default o un trigger per i campi NOT NULL rimanenti.
-    def create_cliente(self, **kwargs) -> int:
-        # Colonne fisse (sempre presenti)
-        cols = ["istanza_utility_id", "billing_account_id", "soggetto_ruolo_id",
-                "stato_cliente_id", "data_attivazione"]
-        vals: list = [kwargs["istanza_utility_id"], kwargs["billing_account_id"],
-                      kwargs["soggetto_ruolo_id"]]
-        # Espressioni speciali (non parametrizzate)
-        special = {
-            "stato_cliente_id": "(SELECT id FROM config.stati_cliente WHERE codice_interno = 'AT')",
-            "data_attivazione": "CURRENT_DATE",
-        }
-        # Colonne opzionali: incluse solo se valorizzate (non None)
-        # ⛔ Sei chiavi tolte il 2026-08-29 (I0/I8 del brief
-        #    brief-be-fe-iva-risolutore-e-regime-cliente): `iva_id`,
-        #    `cliente_pa`, `split_payment`, `codice_cig`, `codice_cup`,
-        #    `codice_commessa` non sono piu' colonne di `anagrafiche.clienti`.
-        #    Le loro sedi: i due flag su `anagrafiche.soggetti` (D8 — la PA e' una
-        #    proprieta' dell'ENTE, non della fornitura), i tre codici su
-        #    `vendite.contratti` (D9 — nominano un contratto, non un cliente),
-        #    l'IVA in nessuna colonna di default (D7-bis).
-        _OPTIONAL = [
-            "termine_pagamento_id", "modalita_pagamento_id",
-            "servizio_da_fatturare",
-            "garanzia_tipo", "garanzia_importo",
-        ]
-        for col in _OPTIONAL:
-            val = kwargs.get(col)
-            if val is not None:
-                cols.append(col)
-                vals.append(val)
-        placeholders = [special.get(c, "%s") for c in cols]
-        sql = f"""
-            INSERT INTO anagrafiche.clienti ({", ".join(cols)})
-            VALUES ({", ".join(placeholders)})
-            RETURNING id
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return row[0]
+    #        ⭐ BB core `execute_dynamic_insert` (2026-09-26): stato AT e data
+    #        di attivazione sono `espressioni` letterali (sottoquery su un
+    #        codice fisso, `CURRENT_DATE`), le altre colonne passano la
+    #        whitelist RIGIDA `_CLIENTE_CREATE_ALLOWED` — fuori lista e'
+    #        `RuntimeError`, prima era uno scarto silenzioso. Le chiavi le
+    #        sceglie il service per NOME (`crea_cliente`), non il client.
+    #        `skip_none=True`: un opzionale None si omette (DEFAULT del DB).
+    def create_cliente(self, **kwargs: Any) -> int:
+        riga = execute_dynamic_insert(
+            "anagrafiche.clienti",
+            kwargs,
+            allowed=_CLIENTE_CREATE_ALLOWED,
+            skip_none=True,
+            espressioni={
+                "stato_cliente_id": (
+                    "(SELECT id FROM config.stati_cliente WHERE codice_interno = 'AT')"
+                ),
+                "data_attivazione": "CURRENT_DATE",
+            },
+        )
+        return riga["id"]
 
     # =================================================================
     # Validazione entita' esistenti
@@ -434,22 +455,6 @@ class ClientiRepository:
             cursor.execute(sql, [cliente_id])
             return row_to_dict(cursor)
 
-    # Campi editabili sul cliente (pagamento, garanzia, servizio).
-    # ATTENZIONE: questo set DEVE restare allineato alla whitelist interna della
-    # funzione madre anagrafiche.fn_update_cliente (autorita' finale: ignora le
-    # chiavi non whitelisted). Qui e' difesa-in-profondita' + igiene payload (non
-    # spedire chiavi ignote nel jsonb), coerente coi repo fratelli
-    # (fornitori/emittenti). Aggiungere un campo editabile => aggiornare ENTRAMBI.
-    # ⛔ Le sei chiavi di I0/I8 sono uscite il 2026-08-29 QUI e nella fn madre
-    #    (changeSet 20260829-20). L'allineamento e' il punto: se restassero solo
-    #    qui, la PATCH le accetterebbe e la fn le butterebbe via — l'operatore
-    #    salverebbe senza vedere errori e il valore non andrebbe da nessuna parte.
-    _UPDATE_ALLOWED = {
-        "modalita_pagamento_id", "termine_pagamento_id",
-        "servizio_da_fatturare",
-        "garanzia_tipo", "garanzia_importo",
-    }
-
     # Scopo: Aggiornamento atomico del cliente via funzione madre DB.
     #        Obiettivo: fondere in UNA sola statement SQL
     #        (anagrafiche.fn_update_cliente) la scrittura della categoria
@@ -466,17 +471,27 @@ class ClientiRepository:
     #        Input:
     #          - ba_categoria_cliente_id: categoria da scrivere sul BA del
     #            cliente; None = categoria non toccata (colonna NOT NULL, mai a NULL).
-    #          - cliente_fields: delta dei campi editabili. Solo le chiavi
-    #            whitelisted (_UPDATE_ALLOWED) sono passate alla fn; le stringhe
+    #          - cliente_fields: delta dei campi editabili, SOLO chiavi di
+    #            `CLIENTE_UPDATE_ALLOWED` — una chiave fuori lista e'
+    #            `RuntimeError` (dal 2026-09-26; prima veniva scartata in
+    #            silenzio), il 400 educato lo da' il service. Le stringhe
     #            vuote/whitespace sono normalizzate a NULL (la fn DB non
     #            normalizza: la disciplina null-vs-empty resta lato BE).
+    #        ⚠️ Non e' il BB `execute_dynamic_update`: qui non si compone SQL,
+    #           si spedisce un delta jsonb alla fn madre. La regola della
+    #           whitelist RIGIDA pero' e' la stessa del BB.
     def update_cliente_atomico(
         self, cliente_id: int, *,
         ba_categoria_cliente_id: int | None,
         cliente_fields: dict[str, Any],
     ) -> dict[str, bool]:
-        # Whitelist + normalizzazione stringa-vuota -> None prima di serializzare
-        # il delta in jsonb per la fn madre.
+        # Whitelist RIGIDA + normalizzazione stringa-vuota -> None prima di
+        # serializzare il delta in jsonb per la fn madre.
+        fuori = sorted(k for k in cliente_fields if k not in CLIENTE_UPDATE_ALLOWED)
+        if fuori:
+            raise RuntimeError(
+                f"update_cliente_atomico: colonne non ammesse: {', '.join(fuori)}"
+            )
         # Empty -> NULL applicata a TUTTI i campi editabili: nessuno memorizza
         # legittimamente '' (interi, numerici, enum-char, codici opzionali), quindi
         # svuotare = azzerare. Evita una lista di colonne nullable da tenere in
@@ -485,8 +500,6 @@ class ClientiRepository:
         # dal vincolo (input FE invalido, mai inviato dalle select).
         clean: dict[str, Any] = {}
         for k, v in cliente_fields.items():
-            if k not in self._UPDATE_ALLOWED:
-                continue
             if isinstance(v, str) and not v.strip():
                 v = None
             clean[k] = v

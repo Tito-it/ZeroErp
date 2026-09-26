@@ -59,7 +59,7 @@ class RiepilogoIvaRepositoryMixin:
               FROM {self._riepilogo_iva_vista}
              WHERE {fk} = %s
              ORDER BY iva_aliquota NULLS LAST, iva_id NULLS LAST
-        """
+        """  # noqa: S608 — vista/FK da attributi di classe letterali della sottoclasse, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [documento_id])
             return rows_to_list(cursor)

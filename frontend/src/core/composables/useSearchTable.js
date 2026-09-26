@@ -105,7 +105,15 @@ export function useSearchTable(store, options = {}) {
     }
     clearTimeout(searchTimeout)
     searchTimeout = setTimeout(() => {
-      store.filters.search = searchText.value || ''
+      const termine = searchText.value || ''
+      // ⭐ Se il termine non cambia la richiesta (sotto la soglia della lista,
+      //    o uguale dopo il `trim`) la lista a video e' gia' la risposta: si
+      //    allinea lo store e basta — ne' fetch ne' ritorno a pagina 1. Lo
+      //    decide il BB di stato, che conosce soglia e ultima richiesta. Uno
+      //    store che non lo espone ricarica a ogni tasto, come sempre.
+      const cambia = store.ricercaCambiaLaRichiesta?.(termine) ?? true
+      store.filters.search = termine
+      if (!cambia) return
       store.filters.offset = 0
       store.fetchList()
     }, debounceMs)

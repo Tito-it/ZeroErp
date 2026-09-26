@@ -128,7 +128,7 @@ def _extract_scope(user: Any, request: Any) -> tuple[int, int | None]:
         if hasattr(auth, "get"):
             try:
                 claim = auth.get(JWT_CLAIM_IDENTITA_ID)
-            except Exception:  # noqa: BLE001 - auth oggetto opaco
+            except Exception:  # auth oggetto opaco
                 claim = None
         elif isinstance(auth, dict):
             claim = auth.get(JWT_CLAIM_IDENTITA_ID)

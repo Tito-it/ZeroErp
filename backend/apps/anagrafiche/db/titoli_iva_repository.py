@@ -44,6 +44,7 @@ from apps.core.db._helpers import (
     row_to_dict,
     sql_order_clause,
 )
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 
 # Display field via JOIN (`feedback_display_fields_backend`): il frontend riceve
 # le descrizioni gia' risolte e non fa lookup client-side.
@@ -201,6 +202,10 @@ _TITOLO_UPDATE_COLS: tuple[str, ...] = (
     "attivo",
     "note",
 )
+# In create si scrivono anche le due chiavi del padre (immutabili dopo, Q5).
+_TITOLO_CREATE_COLS: frozenset[str] = frozenset(
+    ("soggetto_id", "emittente_fiscale_id", *_TITOLO_UPDATE_COLS)
+)
 
 _AMBITO_COLS = """
                    a.id,
@@ -322,12 +327,12 @@ class TitoliIvaRepository:
                    COUNT(*) OVER () AS total_count
              {_TITOLI_SOGGETTO_FROM_WHERE}
              ORDER BY {ordinamento}{paginazione}
-        """  # noqa: S608
+        """
         return fetch_paged_with_total(
             data_sql,
             params,
             fallback_count_sql=(
-                f"SELECT count(*) {_TITOLI_SOGGETTO_FROM_WHERE}"  # noqa: S608
+                f"SELECT count(*) {_TITOLI_SOGGETTO_FROM_WHERE}"
             ),
             fallback_params=[soggetto_id],
             offset=offset,
@@ -341,7 +346,7 @@ class TitoliIvaRepository:
             SELECT {_TITOLO_COLS}
               {_TITOLO_JOINS}
              WHERE t.id = %s
-        """  # noqa: S608
+        """
         with connection.cursor() as cursor:
             cursor.execute(sql, [titolo_id])
             return row_to_dict(cursor)
@@ -349,48 +354,29 @@ class TitoliIvaRepository:
     # Scopo: Crea un titolo. Le colonne assenti dal payload prendono il default
     #        DB; i guard di coerenza (plafond <-> tipo, ambito <-> righe) sono
     #        trigger e scattano qui.
+    #        BB `execute_dynamic_insert` (2026-09-26): whitelist RIGIDA
+    #        (`_TITOLO_UPDATE_COLS` + le due chiavi del padre) — prima una
+    #        chiave fuori lista era scartata in silenzio; le chiavi le valida
+    #        il service. None scrive NULL, come prima.
     def create_titolo(
         self, *, soggetto_id: str, emittente_fiscale_id: int, data: dict[str, Any],
     ) -> int:
-        cols = ["soggetto_id", "emittente_fiscale_id"]
-        placeholders = ["%s::uuid", "%s"]
-        vals: list[Any] = [soggetto_id, emittente_fiscale_id]
-        for col in _TITOLO_UPDATE_COLS:
-            if col in data:
-                cols.append(col)
-                placeholders.append("%s")
-                vals.append(data[col])
-        sql = f"""
-            INSERT INTO anagrafiche.soggetti_titoli_iva ({", ".join(cols)})
-            VALUES ({", ".join(placeholders)})
-            RETURNING id
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+        riga = execute_dynamic_insert(
+            "anagrafiche.soggetti_titoli_iva",
+            {"soggetto_id": soggetto_id, "emittente_fiscale_id": emittente_fiscale_id, **data},
+            allowed=_TITOLO_CREATE_COLS,
+            casts={"soggetto_id": "uuid"},
+        )
+        return int(riga["id"])
 
     # Scopo: Aggiorna un titolo. Solo le colonne whitelisted; niente da
     #        aggiornare -> False, e il service decide se e' un errore.
+    #        BB `execute_dynamic_update` (2026-09-26), whitelist RIGIDA.
     def update_titolo(self, titolo_id: int, data: dict[str, Any]) -> bool:
-        set_parts: list[str] = []
-        vals: list[Any] = []
-        for col in _TITOLO_UPDATE_COLS:
-            if col in data:
-                set_parts.append(f"{col} = %s")
-                vals.append(data[col])
-        if not set_parts:
-            return False
-        vals.append(titolo_id)
-        sql = f"""
-            UPDATE anagrafiche.soggetti_titoli_iva
-               SET {", ".join(set_parts)}
-             WHERE id = %s
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return cursor.rowcount > 0
+        return execute_dynamic_update(
+            "anagrafiche.soggetti_titoli_iva", titolo_id, data,
+            allowed=_TITOLO_UPDATE_COLS,
+        )
 
     # Scopo: Elimina un titolo. Le righe di ambito seguono (ON DELETE CASCADE);
     #        i movimenti NO, e il service deve aver gia' rifiutato il caso (Q6).
@@ -476,11 +462,11 @@ class TitoliIvaRepository:
              {_SFONDATI_FROM_WHERE}
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
-        """  # noqa: S608
+        """
         return fetch_paged_with_total(
             data_sql,
             [limit, offset],
-            fallback_count_sql=f"SELECT count(*) {_SFONDATI_FROM_WHERE}",  # noqa: S608
+            fallback_count_sql=f"SELECT count(*) {_SFONDATI_FROM_WHERE}",
             offset=offset,
         )
 
@@ -511,12 +497,12 @@ class TitoliIvaRepository:
                    COUNT(*) OVER () AS total_count
              {_AMBITI_FROM_WHERE}
              ORDER BY a.livello, a.id{paginazione}
-        """  # noqa: S608
+        """
         return fetch_paged_with_total(
             data_sql,
             params,
             fallback_count_sql=(
-                f"SELECT count(*) {_AMBITI_FROM_WHERE}"  # noqa: S608
+                f"SELECT count(*) {_AMBITI_FROM_WHERE}"
             ),
             fallback_params=[titolo_id],
             offset=offset,
@@ -616,12 +602,12 @@ class TitoliIvaRepository:
                    COUNT(*) OVER () AS total_count
              {_MOVIMENTI_FROM_WHERE}
              ORDER BY {ordinamento}{paginazione}
-        """  # noqa: S608
+        """
         return fetch_paged_with_total(
             data_sql,
             params,
             fallback_count_sql=(
-                f"SELECT count(*) {_MOVIMENTI_FROM_WHERE}"  # noqa: S608
+                f"SELECT count(*) {_MOVIMENTI_FROM_WHERE}"
             ),
             fallback_params=[titolo_id],
             offset=offset,

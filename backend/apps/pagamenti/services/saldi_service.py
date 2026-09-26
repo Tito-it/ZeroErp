@@ -181,9 +181,8 @@ def saldi_rate_documento(fattura_id: int) -> dict[str, Any]:
 #    lingua di `useSearchTable` e di `createListaStore`, e la lista e' montata
 #    su `<ListaConfigurabile>`. Le liste piu' vecchie del dominio sono
 #    page-based; la conversione la fa lo store, in un posto solo.
-# ⛔ `order_dir` arriva GREZZO dalla view (non dal bundle
-#    `parse_list_params`, che lo normalizza ad `asc`): senza verso esplicito
-#    decide il repository — e su una colonna DATA il verso naturale e' DESC.
+# ⛔ `order_dir` puo' arrivare `None` (assente): senza verso esplicito decide
+#    il repository — e su una colonna DATA il verso naturale e' DESC.
 # ⚠️ NESSUN criterio e' obbligatorio QUI: il picker lo pretende nel frontend
 #    (cliente o numero fattura, D19-c), lo scadenzario no — e' la stessa rotta.
 # ⚠️ `solo_aperte` e' SUPPORTATO dal 2026-09-17 (P-3 consegnata): «aperta» =
@@ -217,7 +216,7 @@ def list_rate(
     #    repository (il default a catalogo, `data_scadenza ASC`). Fuori
     #    whitelist e' un 400 col campo, non un 500 sul `ORDER BY`.
     order_by, order_dir = validate_order_params(
-        order_by, order_dir.lower() if order_dir else None,
+        order_by, order_dir,
         allowed_columns=RATE_SORT_COLUMNS,
         error_code=E_VALIDAZIONE,
         function_name=f"{_FN}.list_rate",

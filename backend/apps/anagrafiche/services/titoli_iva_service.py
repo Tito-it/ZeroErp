@@ -143,7 +143,7 @@ class TitoliIvaService:
     #    arriverebbe come violazione di NOT NULL, cioe' un errore che nomina una
     #    colonna a chi ha lasciato vuoto un campo.
     def create_titolo(self, soggetto_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        self._guard_chiavi(payload, _CREATE_KEYS)
+        _V.validate_allowed_keys(payload, allowed=_CREATE_KEYS, message=_MESSAGE)
         for campo in _CREATE_OBBLIGATORI:
             ErrorManager.require(
                 payload.get(campo) not in (None, ""),
@@ -173,7 +173,7 @@ class TitoliIvaService:
     def update_titolo(
         self, soggetto_id: str, titolo_id: int, payload: dict[str, Any],
     ) -> dict[str, Any]:
-        self._guard_chiavi(payload, _UPDATE_KEYS)
+        _V.validate_allowed_keys(payload, allowed=_UPDATE_KEYS, message=_MESSAGE)
         self._require_titolo(soggetto_id, titolo_id)
         dati = self._normalizza_titolo(payload)
         aggiornato = self._repo.update_titolo(titolo_id, dati)
@@ -448,19 +448,6 @@ class TitoliIvaService:
         return (
             titolo.get("ambito") == "RISTRETTO"
             and int(titolo.get("ambiti_count") or 0) == 0
-        )
-
-    # Scopo: Rifiuta le chiavi che il contratto non ammette, invece di
-    #        ignorarle in silenzio.
-    @staticmethod
-    def _guard_chiavi(payload: dict[str, Any], ammesse: frozenset[str]) -> None:
-        ignote = sorted(k for k in payload if k not in ammesse)
-        ErrorManager.require(
-            not ignote,
-            code=E_ANAG_VALIDAZIONE,
-            message=_MESSAGE,
-            detail=f"Campi non supportati: {', '.join(ignote)}",
-            context={"unknown_keys": ignote, "allowed_keys": sorted(ammesse)},
         )
 
     # Scopo: Normalizza il payload del titolo verso le colonne.

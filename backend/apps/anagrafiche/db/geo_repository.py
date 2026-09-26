@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from apps.core.db._helpers import (
+    pattern_contiene,
     dynamic_update,
     extract_paginated,
     row_to_dict,
@@ -56,7 +57,7 @@ class GeoRepository:
             default="descrizione",
             tiebreak="id",
         )
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        search_pattern = pattern_contiene(search)
         sql = f"""
             SELECT id, descrizione, attivo, COUNT(*) OVER () AS total_count
               FROM config.toponomastica
@@ -105,7 +106,7 @@ class GeoRepository:
             default="descrizione",
             tiebreak="c.id",
         )
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        search_pattern = pattern_contiene(search)
         sql = f"""
             SELECT c.id, c.descrizione,
                    p.sigla AS provincia_sigla,
@@ -181,7 +182,7 @@ class GeoRepository:
             default="codice",
             tiebreak="cp.id",
         )
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        search_pattern = pattern_contiene(search)
         sql = f"""
             SELECT cp.id, cp.codice, cp.comune_id,
                    c.descrizione AS comune_descrizione,
@@ -246,7 +247,7 @@ class GeoRepository:
             default="descrizione",
             tiebreak="p.id",
         )
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        search_pattern = pattern_contiene(search)
         sql = f"""
             SELECT p.id, TRIM(p.descrizione) AS descrizione, TRIM(p.sigla) AS sigla,
                    p.regione_id, r.descrizione AS regione_descrizione,
@@ -314,7 +315,7 @@ class GeoRepository:
             default="descrizione",
             tiebreak="r.id",
         )
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        search_pattern = pattern_contiene(search)
         sql = f"""
             SELECT r.id, r.descrizione, r.stato_id, s.descrizione AS stato_descrizione,
                    COUNT(*) OVER () AS total_count
@@ -376,7 +377,7 @@ class GeoRepository:
             default="descrizione",
             tiebreak="id",
         )
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        search_pattern = pattern_contiene(search)
         sql = f"""
             SELECT id, descrizione, sigla_stato, codice_iso2, codice_iso3,
                    codice_telefonico, continente,

@@ -279,7 +279,9 @@ function buildEditablePayload() {
     servizio_da_fatturare: f.servizio_da_fatturare,
     garanzia_tipo: f.garanzia_tipo,
     garanzia_importo: f.garanzia_importo || 0,
-    stato_cliente_id: f.stato_cliente_id || null,
+    // ⛔ `stato_cliente_id` NON si manda (2026-09-26): lo stato cambia con la
+    //    sua azione, non dal form, e il backend lo scartava in silenzio. Da
+    //    quel giorno una chiave fuori contratto e' un 400.
   }
 }
 

@@ -119,7 +119,7 @@ class CambioRepartoListener:
         conninfo = self._get_conninfo()
         with psycopg.connect(conninfo, autocommit=True) as conn:
             self._conn = conn
-            conn.execute(f"LISTEN {CHANNEL}")  # noqa: S608 — canale costante
+            conn.execute(f"LISTEN {CHANNEL}")  # canale costante
             logger.info("LISTEN %s registrato, in attesa notifiche...", CHANNEL)
 
             while self._running:

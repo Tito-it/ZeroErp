@@ -17,7 +17,11 @@ _IBAN_RE = re.compile(r'^[A-Z0-9]{15,34}$')
 
 from apps.core.api.payload_validators import optional_bool, optional_int
 from apps.core.services.error_manager import ErrorManager
-from apps.anagrafiche.db.conti_bancari_repository import ContiBancariRepository
+from apps.anagrafiche.db.conti_bancari_repository import (
+    LEGAME_RUOLO_UPDATE_COLS,
+    LEGAME_SOGGETTO_UPDATE_COLS,
+    ContiBancariRepository,
+)
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 from apps.anagrafiche.error_codes import (
     E_ANAG_CONTO_NOT_FOUND,
@@ -31,6 +35,21 @@ from apps.anagrafiche.services._validators import (
     require_str,
     update_with_dedup,
 )
+from apps.core.services.payload_helpers import PayloadValidator
+
+
+# Contratti delle PATCH dei legami, validati QUI con 400 `E_ANAG_VALIDAZIONE`
+# (2026-09-26): dal passaggio al BB `sql_set_clause` il repository rifiuta con
+# `RuntimeError` (500) ogni colonna fuori whitelist — fino a quel giorno la
+# scartava in silenzio. Partono dalle colonne scrivibili del repository.
+# ⛔ `istanza_utility_id` solo sul legame RUOLO: il legame soggetto non ha la
+#    colonna (prima arrivava a PostgreSQL e usciva come 500).
+_UPDATE_LEGAME_SOGGETTO_KEYS: frozenset[str] = LEGAME_SOGGETTO_UPDATE_COLS
+_UPDATE_LEGAME_RUOLO_KEYS: frozenset[str] = LEGAME_RUOLO_UPDATE_COLS
+_MESSAGE_LEGAME = "Payload conto bancario non valido."
+
+# Validator stateless del dominio (solo il codice errore): condivisibile.
+_V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
 
 
 class ContiBancariService:
@@ -102,6 +121,9 @@ class ContiBancariService:
         self, soggetto_id: str, conto_soggetto_id: int,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
+        _V.validate_allowed_keys(
+            payload, allowed=_UPDATE_LEGAME_SOGGETTO_KEYS, message=_MESSAGE_LEGAME,
+        )
         self._require_soggetto_exists(soggetto_id)
         # Guard predefinito/bloccato: legge stato corrente per merge con payload
         current = self._repo.get_legame_flags_soggetto(conto_soggetto_id)
@@ -205,6 +227,9 @@ class ContiBancariService:
         self, soggetto_ruolo_id: int, conto_ruolo_id: int,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
+        _V.validate_allowed_keys(
+            payload, allowed=_UPDATE_LEGAME_RUOLO_KEYS, message=_MESSAGE_LEGAME,
+        )
         # Guard predefinito/bloccato: legge stato corrente per merge con payload
         current = self._repo.get_legame_flags_ruolo(conto_ruolo_id)
         self._guard_predefinito_bloccato(payload, current)

@@ -117,7 +117,7 @@ from apps.vendite.services._componenti_service_helpers import (
 # fissando `error_code='E_PREV_VALIDAZIONE'` (semantica dominio preventivi).
 # Evitano di replicare `error_code=...` sui ~15 callsite mantenendo la
 # storica firma `(payload, *, function_name)` dei test pre-Fase H.
-def _normalize_componenti_overrides(  # noqa: D401 — test helper
+def _normalize_componenti_overrides(  # test helper
     overrides: Any, *, function_name: str,
 ) -> dict[str, str] | None:
     return normalize_componenti_overrides(
@@ -1302,11 +1302,59 @@ class TestPreventiviService(unittest.TestCase):
         }
         self.mock_repo.update_componente.return_value = True
 
-        result = update_componente(
-            1, 10, 50, {"prezzo_unitario": "150.00", "origine_prezzo": "MANUALE"},
-        )
+        result = update_componente(1, 10, 50, {"prezzo_unitario": "150.00"})
         self.assertEqual(result["componente_id"], 50)
-        self.mock_repo.update_componente.assert_called_once()
+        # `origine_prezzo` la scrive il server: un prezzo dell'operatore e'
+        # MANUALE per definizione (contratto PATCH, 2026-09-26).
+        self.mock_repo.update_componente.assert_called_once_with(
+            50, prezzo_unitario="150.00", origine_prezzo="MANUALE",
+        )
+
+    # Scopo: ⛔ l'operatore NON puo' approvarsi un prezzo L3. Fino al 2026-09-26
+    #        la PATCH validava contro la whitelist del repository, che contiene
+    #        `stato_approvazione_prezzo`: `{"stato_approvazione_prezzo":
+    #        "APPROVED"}` su un componente PENDING passava anche il guard DB.
+    #        Stesso rifiuto per la pratica e per un'origine dichiarata dal client.
+    def test_update_componente_campi_del_workflow_rifiutati(self):
+        from apps.core.services.service_errors import ServiceError
+        from apps.vendite.services.preventivi_service import update_componente
+
+        self.mock_repo.load_componente_with_scope.return_value = {
+            "componente_id": 50,
+            "riga_preventivo_id": 10,
+            "preventivo_id": 1,
+            "stato_codice_interno": "DRAFT",
+        }
+        for payload in (
+            {"stato_approvazione_prezzo": "APPROVED"},
+            {"pratica_approvazione_prezzo_id": 7},
+            {"prezzo_unitario": "1.00", "origine_prezzo": "CONTRATTO_LISTINO"},
+        ):
+            with self.subTest(payload=payload):
+                with self.assertRaises(ServiceError) as ctx:
+                    update_componente(1, 10, 50, payload)
+                self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.mock_repo.update_componente.assert_not_called()
+
+    # Scopo: chiave fuori `COMPONENTE_UPDATE_ALLOWED` -> 400 che la nomina,
+    #        repository non chiamato. ⛔ Fino al 2026-09-26 il mixin la
+    #        scartava in silenzio e la PATCH «riusciva».
+    def test_update_componente_chiave_fuori_whitelist_400(self):
+        from apps.vendite.services.preventivi_service import update_componente
+
+        self.mock_repo.load_componente_with_scope.return_value = {
+            "componente_id": 50,
+            "riga_preventivo_id": 10,
+            "preventivo_id": 1,
+            "stato_codice_interno": "DRAFT",
+        }
+        with self.assertRaises(ServiceError) as ctx:
+            update_componente(
+                1, 10, 50, {"prezzo_unitario": "150.00", "coeff_qta_snapshot": 2},
+            )
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.assertEqual(ctx.exception.context["unknown_keys"], ["coeff_qta_snapshot"])
+        self.mock_repo.update_componente.assert_not_called()
 
     # Scopo: componente inesistente -> 404.
     def test_update_componente_not_found(self):

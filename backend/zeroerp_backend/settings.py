@@ -23,6 +23,21 @@ def env(name, default=None, required=False):
     return v
 
 
+# ⛔ Il backend NON parte con gli `assert` spenti (`python -O`, `PYTHONOPTIMIZE`).
+#    Il codice applicativo usa `assert` per restringere i tipi dopo un
+#    `ErrorManager.require` o dopo una funzione SQL che ritorna sempre una riga,
+#    e la regola ruff `S101` e' spenta per questo (vedi `ruff.toml`). Con `-O`
+#    quelle righe sparirebbero SENZA errore: il rifiuto all'avvio rende la
+#    premessa vera per costruzione, non per consuetudine.
+# ⚠️ I controlli che proteggono qualcosa (whitelist SQL, input) NON si scrivono
+#    come `assert` nemmeno cosi': sono `raise` espliciti.
+if not __debug__:
+    raise ImproperlyConfigured(
+        "Il backend non si avvia con gli assert disattivati "
+        "(python -O / PYTHONOPTIMIZE): rimuovere l'ottimizzazione."
+    )
+
+
 # Gate deprecation Django 7.0 (opt-in via env, attivo in CI). Escala a errore
 # SOLO i RemovedInDjango70Warning: un uso deprecato fa fallire il test che lo
 # tocca invece di scoprirli tutti al salto 6.x -> 7.0. Non usiamo PYTHONWARNINGS

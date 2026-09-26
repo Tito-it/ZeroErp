@@ -14,6 +14,8 @@ from typing import Any
 from django.db import transaction
 
 from apps.anagrafiche.db.emittenti_fiscali_repository import (
+    EMITTENTE_UPDATE_ALLOWED,
+    UTILITIES_UPDATE_ALLOWED,
     EmittentiFiscaliBillingAccountRepository,
     EmittentiFiscaliRepository,
     EmittentiFiscaliUtilitiesRepository,
@@ -32,13 +34,26 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.non_editable_fields_helper import (
     compute_non_editable_fields,
 )
-from apps.core.services.payload_helpers import translate_db_errors
+from apps.core.services.payload_helpers import PayloadValidator, translate_db_errors
 
 
 # Gap rispetto al registro DB `dbops.vw_non_editable_fields` (Fase 4 — A9).
 # `codice` e `soggetto_id` sono semanticamente immutabili sull'emittente
 # fiscale: cambiarli equivale a creare un altro emittente.
 _EMITTENTE_NON_EDITABLE_GAPS: tuple[str, ...] = ("codice", "soggetto_id")
+
+# Contratti delle PATCH, validati QUI con 400 `E_ANAG_VALIDAZIONE` (2026-09-26):
+# dal passaggio ai BB di scrittura il repository rifiuta con `RuntimeError`
+# (500) ogni colonna fuori whitelist — fino a quel giorno la scartava in
+# silenzio. Partono dalle colonne scrivibili del repository.
+# ⚠️ `codice` NON c'e': e' immutabile (trigger `lock_columns`). Fino al
+#    2026-09-26 una PATCH che lo portava veniva accettata e il campo ignorato;
+#    ora e' un 400 che lo nomina.
+_UPDATE_EMITTENTE_KEYS: frozenset[str] = EMITTENTE_UPDATE_ALLOWED
+_UPDATE_UTILITY_KEYS: frozenset[str] = UTILITIES_UPDATE_ALLOWED
+
+# Validator stateless del dominio (solo il codice errore): condivisibile.
+_V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
 
 
 class EmittentiFiscaliService:
@@ -148,8 +163,13 @@ class EmittentiFiscaliService:
     # =================================================================
 
     # Scopo: Aggiorna campi editabili dell'emittente fiscale.
-    #        Il campo codice e' bloccato dal trigger DB e viene ignorato se presente nel payload.
+    #        Il campo codice e' bloccato dal trigger DB: in PATCH e' rifiutato
+    #        (400) dal contratto `_UPDATE_EMITTENTE_KEYS`, come ogni chiave ignota.
     def update_emittente(self, emittente_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        _V.validate_allowed_keys(
+            payload, allowed=_UPDATE_EMITTENTE_KEYS,
+            message="Payload emittente fiscale non valido.",
+        )
         # Verifica che l'emittente esista
         self.get_emittente(emittente_id)
         # Copia difensiva: il repo normalizza stringhe vuote -> None e non deve mutare
@@ -473,6 +493,10 @@ class EmittentiFiscaliUtilitiesService:
 
     # Scopo: Aggiorna un record utility (delta update).
     def aggiorna_record(self, emittente_id: int, record_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        _V.validate_allowed_keys(
+            payload, allowed=_UPDATE_UTILITY_KEYS,
+            message="Payload record utility non valido.",
+        )
         _verify_record_ownership(
             self._parent, self._repo, emittente_id, record_id,
             "Record utility non trovato per l'emittente indicato.",

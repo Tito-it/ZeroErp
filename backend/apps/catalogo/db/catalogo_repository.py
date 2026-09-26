@@ -14,14 +14,15 @@ from uuid import UUID
 from django.db import connection
 
 from apps.core.db._helpers import (
+    pattern_contiene,
     RicercaFull,
     add_ricerca_full_condition,
-    escape_ilike,
     fetch_con_sonda,
+    fetch_paged_with_total,
     row_to_dict,
-    rows_to_list,
+    sql_order_clause,
 )
-from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 
 # `attivo` e' NUCLEO: lo stato ordina sempre. Aggiunta in anticipo sul seed
 # della lista articoli (passata unica 2026-08-01, richiesta del team DB: la
@@ -79,45 +80,76 @@ UOM_CONVERSIONI_ORDER_COLUMNS: dict[str, str] = {
     "attivo": "c.attivo",
 }
 
-ARTICOLI_CREATE_COLUMNS: dict[str, str] = {
-    "codice": "text",
-    "descrizione": "text",
-    "descrizione_breve": "text",
-    "uom_id": "int",
-    "tipo_voce_id": "int",
-    "gruppo_voce_id": "int",
-    "spesa_id": "int",
-    "iva_id": "int",
-    "conto_contabile_vendita_id": "int",
-    "conto_contabile_acquisto_id": "int",
-    "is_composito": "bool",
-    "is_solo_componente": "bool",
-    "requires_serial": "bool",
+# Colonne DATA delle whitelist qui sopra: senza `order_dir` ordinano DESC
+# (`sql_order_clause(colonne_desc=…)`, regola di Tid del 2026-09-02). Insiemi
+# confrontati col seed da `test_liste_configurabili_seed` (test 10): devono
+# coincidere con le colonne `date`/`datetime` ordinabili del catalogo.
+# ⚠️ Nessun insieme per gli articoli: la whitelist ammette `data_insert` e
+#    `data_update`, ma il catalogo `catalogo.articoli` non le ha fra le colonne
+#    ordinabili — dichiararle qui farebbe rosso il test 10. Punto aperto
+#    (whitelist piu' larga del seed), non una scelta.
+UOM_TIPI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_insert", "data_update"})
+UOM_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_insert", "data_update"})
+UOM_CONVERSIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"valido_dal", "valido_al"})
+
+# Colonne SCRIVIBILI di `catalogo.articoli`: la whitelist RIGIDA del BB
+# `execute_dynamic_insert`/`execute_dynamic_update`. ⭐ Dal 2026-09-26 e' un
+# insieme di NOMI, non piu' una mappa nome -> tipo: il tipo serviva solo a
+# `sql_placeholder`/`to_write_param` (ritirati), e `meta` — l'unica jsonb —
+# arriva dal service sempre come dict o None (`_extract_meta`), che il BB
+# casta da solo. Nessuna stringa-testo-JSON: `jsonb=` non serve.
+ARTICOLI_CREATE_COLUMNS: frozenset[str] = frozenset({
+    "codice",
+    "descrizione",
+    "descrizione_breve",
+    "uom_id",
+    "tipo_voce_id",
+    "gruppo_voce_id",
+    "spesa_id",
+    "iva_id",
+    "conto_contabile_vendita_id",
+    "conto_contabile_acquisto_id",
+    "is_composito",
+    "is_solo_componente",
+    "requires_serial",
     # Lotto 2 di magazzino (brief §4.9, M-5): l'articolo decide se si
     # movimenta per PARTITE — o sempre o mai. Gemello di `requires_serial`,
     # ⛔ ma FUORI dal lock BoM (Lotto 1 §4.3): non entra in
     # `lock_columns_conditional` ne' nei `non_editable_fields`.
-    "requires_lotto": "bool",
-    "listino_tipologia_id": "int",
-    "natura_vendita_id": "int",
+    "requires_lotto",
+    "listino_tipologia_id",
+    "natura_vendita_id",
     # Blocco B del brief modifiche certe (2026-09-13): DA DOVE arriva l'articolo.
     # `modo_approvvigionamento_id` e' NOT NULL con DEFAULT ACQUISTO (come
     # `natura_vendita_id`), `gestito_a_magazzino` NOT NULL DEFAULT false
     # (fail-safe), `lead_time_giorni` nullable con CHECK >= 0 (NULL = «non si
     # applica», per una prestazione; `0` NON e' «non si applica»).
-    "modo_approvvigionamento_id": "int",
-    "gestito_a_magazzino": "bool",
-    "lead_time_giorni": "int",
-    "meta": "jsonb",
-}
+    "modo_approvvigionamento_id",
+    "gestito_a_magazzino",
+    "lead_time_giorni",
+    "meta",
+})
 
 # Scopo: Whitelist colonne UPDATE articolo. Esclude codice e uom_id che sono
 # entrambi immutabili (lock_columns DDL). Esclude attivo (Fase 7: la
 # disattivazione/riattivazione passa solo dagli endpoint dedicati
 # /disattiva/ e /riattiva/, non da PATCH).
-ARTICOLI_UPDATE_COLUMNS: dict[str, str] = {
-    key: value for key, value in ARTICOLI_CREATE_COLUMNS.items() if key not in {"codice", "uom_id"}
-}
+ARTICOLI_UPDATE_COLUMNS: frozenset[str] = ARTICOLI_CREATE_COLUMNS - {"codice", "uom_id"}
+
+# Colonne AGGIORNABILI delle tabelle UoM (whitelist RIGIDA di
+# `execute_dynamic_update`, 2026-09-26). Fino a quel giorno erano tuple
+# letterali dentro i metodi, e una chiave fuori tupla veniva IGNORATA in
+# silenzio; il service ne teneva una copia a mano per il 400. Ora il service
+# deriva la sua whitelist da qui: una fonte sola (come ARTICOLI_*_COLUMNS).
+# ⚠️ Il contratto dell'operatore puo' essere piu' stretto, mai piu' largo.
+UOM_TIPI_UPDATE_COLUMNS: frozenset[str] = frozenset({"descrizione", "attivo"})
+UNITA_MISURA_UPDATE_COLUMNS: frozenset[str] = frozenset({
+    "descrizione", "descrizione_fattura", "tipo_uom_id", "attivo",
+})
+# `uom_from_id`/`uom_to_id` immutabili dopo la create (exclude daterange).
+CONVERSIONI_UPDATE_COLUMNS: frozenset[str] = frozenset({
+    "fattore", "valido_dal", "valido_al", "attivo",
+})
 
 ARTICOLI_DETAIL_COLUMNS: tuple[str, ...] = (
     "a.id",
@@ -227,15 +259,21 @@ class CatalogoRepository:
         search: str | None,
         data_da: date | None,
         data_a: date | None,
-        order_by: str,
-        order_dir: str,
+        order_by: str | None,
+        order_dir: str | None,
         limit: int,
         offset: int,
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
-        order_column = ARTICOLI_ORDER_COLUMNS[order_by]
-        safe_order_dir = "DESC" if order_dir.lower() == "desc" else "ASC"
+        # ORDER BY dal BB (NULLS espliciti + tiebreak allineato). ⚠️ Fino al
+        # 2026-09-26 qui c'era `ARTICOLI_ORDER_COLUMNS[order_by]`: KeyError
+        # fuori whitelist, mentre le tre liste UoM ripiegavano sul default.
+        # Il default e' quello del service e della view (`descrizione`).
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=ARTICOLI_ORDER_COLUMNS, default="a.descrizione", tiebreak="a.id",
+        )
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -268,31 +306,24 @@ class CatalogoRepository:
             params.append(data_a)
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        from_where = f"FROM catalogo.vw_articoli_dettaglio a {where_clause}"
 
-        count_sql = f"""
-            SELECT COUNT(*)
-            FROM catalogo.vw_articoli_dettaglio a
-            {where_clause}
-        """
         data_sql = f"""
             SELECT
-                {self._articoli_detail_projection()}
-            FROM catalogo.vw_articoli_dettaglio a
-            {where_clause}
-            ORDER BY {order_column} {safe_order_dir}, a.id {safe_order_dir}
+                {self._articoli_detail_projection()},
+                COUNT(*) OVER () AS total_count
+            {from_where}
+            ORDER BY {ordinamento}
             LIMIT %s OFFSET %s
-        """
-
-        with connection.cursor() as cursor:
-            cursor.execute(count_sql, params)
-            row = cursor.fetchone()
-            assert row is not None
-            total_count = int(row[0])
-
-            cursor.execute(data_sql, params + [safe_limit, safe_offset])
-            results = rows_to_list(cursor)
-
-        return results, total_count
+        """  # proiezione da ARTICOLI_DETAIL_COLUMNS, ORDER BY da sql_order_clause su whitelist ARTICOLI_ORDER_COLUMNS, WHERE da condizioni letterali + add_ricerca_full_condition (espressioni dichiarate nel repo), valori come parametri
+        # Totale in UNA valutazione; il COUNT separato gira solo su una pagina
+        # oltre l'ultima, dove la window function non puo' dirlo.
+        return fetch_paged_with_total(
+            data_sql, params + [safe_limit, safe_offset],
+            fallback_count_sql=f"SELECT COUNT(*) {from_where}",  # stesso FROM/WHERE della pagina
+            fallback_params=params,
+            offset=safe_offset,
+        )
 
     # Scopo: Restituisce singolo articolo arricchito dalla vista dettaglio.
     def get_articolo(self, articolo_id: UUID | str) -> dict[str, Any] | None:
@@ -324,61 +355,23 @@ class CatalogoRepository:
             return bool(row[0]) if row else False
 
     # Scopo: Inserisce un articolo usando solo colonne esplicitamente ammesse.
+    # ⛔ Dal 2026-09-26 (BB `execute_dynamic_insert`) una chiave fuori
+    #    `ARTICOLI_CREATE_COLUMNS` e' `RuntimeError`, non piu' scartata in
+    #    silenzio: il contratto dell'operatore lo fa rispettare il service con
+    #    un 400 (`_extract_articolo_payload` -> `_validate_payload_keys`).
+    #    None scrive NULL (nessun `skip_none`: come prima).
     def create_articolo(self, data: dict[str, Any]) -> UUID:
-        fields = [(key, value) for key, value in data.items() if key in ARTICOLI_CREATE_COLUMNS]
-        if not fields:
-            raise ValueError("create_articolo_empty_payload")
-
-        column_names = [field_name for field_name, _ in fields]
-        placeholders = ", ".join(
-            sql_placeholder(ARTICOLI_CREATE_COLUMNS[field_name])
-            for field_name, _ in fields
+        riga = execute_dynamic_insert(
+            "catalogo.articoli", data, allowed=ARTICOLI_CREATE_COLUMNS,
         )
-        params = [
-            to_write_param(field_value, ARTICOLI_CREATE_COLUMNS[field_name])
-            for field_name, field_value in fields
-        ]
-
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                INSERT INTO catalogo.articoli ({", ".join(column_names)})
-                VALUES ({placeholders})
-                RETURNING id
-                """,
-                params,
-            )
-            row = cursor.fetchone()
-
-        assert row is not None
-        return row[0]
+        return riga["id"]
 
     # Scopo: Aggiorna i soli campi presenti nel payload, supportando anche NULL espliciti.
+    # ⛔ Whitelist RIGIDA come la create (vedi sopra); payload vuoto -> False.
     def update_articolo(self, articolo_id: UUID | str, data: dict[str, Any]) -> bool:
-        fields = [(key, value) for key, value in data.items() if key in ARTICOLI_UPDATE_COLUMNS]
-        if not fields:
-            return False
-
-        set_clause = ", ".join(
-            f"{field_name} = {sql_placeholder(ARTICOLI_UPDATE_COLUMNS[field_name])}"
-            for field_name, _ in fields
+        return execute_dynamic_update(
+            "catalogo.articoli", articolo_id, data, allowed=ARTICOLI_UPDATE_COLUMNS,
         )
-        params = [
-            to_write_param(field_value, ARTICOLI_UPDATE_COLUMNS[field_name])
-            for field_name, field_value in fields
-        ]
-        params.append(articolo_id)
-
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                UPDATE catalogo.articoli
-                SET {set_clause}
-                WHERE id = %s
-                """,
-                params,
-            )
-            return cursor.rowcount > 0
 
     # Scopo: Disattiva un articolo mantenendo la semantica soft-delete prevista dal dominio.
     def deactivate_articolo(self, articolo_id: UUID | str) -> bool:
@@ -436,7 +429,7 @@ class CatalogoRepository:
         #    ritirato il 2026-09-24 (brief §8).
         termine = search.strip() if search else ""
         if termine:
-            like_value = f"%{escape_ilike(termine)}%"
+            like_value = pattern_contiene(termine)
             conditions.append("(a.codice ILIKE %s OR a.descrizione ILIKE %s)")
             params.extend([like_value, like_value])
         if attivo is not None:
@@ -547,15 +540,18 @@ class CatalogoRepository:
         *,
         attivo: bool | None,
         search: str | None,
-        order_by: str,
-        order_dir: str,
+        order_by: str | None,
+        order_dir: str | None,
         limit: int,
         offset: int,
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
-        order_column = UOM_TIPI_ORDER_COLUMNS.get(order_by, "ut.descrizione")
-        safe_order_dir = "DESC" if order_dir.lower() == "desc" else "ASC"
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=UOM_TIPI_ORDER_COLUMNS, default="ut.descrizione", tiebreak="ut.id",
+            colonne_desc=UOM_TIPI_SORT_COLONNE_DATA,
+        )
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -566,30 +562,22 @@ class CatalogoRepository:
         add_ricerca_full_condition(conditions, params, search, _RICERCA_UOM_TIPI, alias="ut")
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        from_where = f"FROM catalogo.uom_tipi ut {where_clause}"
 
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"SELECT COUNT(*) FROM catalogo.uom_tipi ut {where_clause}",
-                params,
-            )
-            row = cursor.fetchone()
-            assert row is not None
-            total_count = int(row[0])
-
-            cursor.execute(
-                f"""
-                SELECT ut.id, ut.codice, ut.codice_interno, ut.descrizione, ut.attivo,
-                       ut.user_insert, ut.user_update, ut.data_insert, ut.data_update
-                FROM catalogo.uom_tipi ut
-                {where_clause}
-                ORDER BY {order_column} {safe_order_dir}, ut.id {safe_order_dir}
-                LIMIT %s OFFSET %s
-                """,
-                params + [safe_limit, safe_offset],
-            )
-            results = rows_to_list(cursor)
-
-        return results, total_count
+        return fetch_paged_with_total(
+            f"""
+            SELECT ut.id, ut.codice, ut.codice_interno, ut.descrizione, ut.attivo,
+                   ut.user_insert, ut.user_update, ut.data_insert, ut.data_update,
+                   COUNT(*) OVER () AS total_count
+            {from_where}
+            ORDER BY {ordinamento}
+            LIMIT %s OFFSET %s
+            """,  # ORDER BY da sql_order_clause su whitelist UOM_TIPI_ORDER_COLUMNS, WHERE da condizioni letterali + add_ricerca_full_condition (espressioni dichiarate nel repo), valori come parametri
+            params + [safe_limit, safe_offset],
+            fallback_count_sql=f"SELECT COUNT(*) {from_where}",  # stesso FROM/WHERE della pagina
+            fallback_params=params,
+            offset=safe_offset,
+        )
 
     # Scopo: Restituisce singola tipologia UoM per id.
     def get_uom_tipo(self, tipo_id: int) -> dict[str, Any] | None:
@@ -622,21 +610,9 @@ class CatalogoRepository:
 
     # Scopo: Aggiorna una tipologia UoM esistente.
     def update_uom_tipo(self, tipo_id: int, data: dict[str, Any]) -> bool:
-        sets: list[str] = []
-        params: list[Any] = []
-        for key in ("descrizione", "attivo"):
-            if key in data:
-                sets.append(f"{key} = %s")
-                params.append(data[key])
-        if not sets:
-            return False
-        params.append(tipo_id)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"UPDATE catalogo.uom_tipi SET {', '.join(sets)} WHERE id = %s",
-                params,
-            )
-            return cursor.rowcount > 0
+        return execute_dynamic_update(
+            "catalogo.uom_tipi", tipo_id, data, allowed=UOM_TIPI_UPDATE_COLUMNS,
+        )
 
     # --- Sezione CRUD unita_misura ---
 
@@ -646,15 +622,18 @@ class CatalogoRepository:
         *,
         attivo: bool | None,
         search: str | None,
-        order_by: str,
-        order_dir: str,
+        order_by: str | None,
+        order_dir: str | None,
         limit: int,
         offset: int,
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
-        order_column = UOM_ORDER_COLUMNS.get(order_by, "u.codice")
-        safe_order_dir = "DESC" if order_dir.lower() == "desc" else "ASC"
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=UOM_ORDER_COLUMNS, default="u.codice", tiebreak="u.id",
+            colonne_desc=UOM_SORT_COLONNE_DATA,
+        )
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -665,33 +644,31 @@ class CatalogoRepository:
         add_ricerca_full_condition(conditions, params, search, _RICERCA_UNITA_MISURA, alias="u")
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        # ⚠️ Il COUNT storico leggeva la sola `unita_misura`, la pagina anche il
+        #    JOIN su `uom_tipi`: FK NOT NULL, quindi stesso insieme. Ora il
+        #    totale viene dalla pagina, e il ripiego ha lo stesso FROM.
+        from_where = (
+            "FROM catalogo.unita_misura u "
+            "JOIN catalogo.uom_tipi ut ON ut.id = u.tipo_uom_id "
+            f"{where_clause}"
+        )
 
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"SELECT COUNT(*) FROM catalogo.unita_misura u {where_clause}",
-                params,
-            )
-            row = cursor.fetchone()
-            assert row is not None
-            total_count = int(row[0])
-
-            cursor.execute(
-                f"""
-                SELECT u.id, u.codice, u.descrizione, u.descrizione_fattura,
-                       u.tipo_uom_id, ut.codice AS tipo_uom_codice,
-                       ut.descrizione AS tipo_uom_descrizione, u.attivo,
-                       u.user_insert, u.user_update, u.data_insert, u.data_update
-                FROM catalogo.unita_misura u
-                JOIN catalogo.uom_tipi ut ON ut.id = u.tipo_uom_id
-                {where_clause}
-                ORDER BY {order_column} {safe_order_dir}, u.id {safe_order_dir}
-                LIMIT %s OFFSET %s
-                """,
-                params + [safe_limit, safe_offset],
-            )
-            results = rows_to_list(cursor)
-
-        return results, total_count
+        return fetch_paged_with_total(
+            f"""
+            SELECT u.id, u.codice, u.descrizione, u.descrizione_fattura,
+                   u.tipo_uom_id, ut.codice AS tipo_uom_codice,
+                   ut.descrizione AS tipo_uom_descrizione, u.attivo,
+                   u.user_insert, u.user_update, u.data_insert, u.data_update,
+                   COUNT(*) OVER () AS total_count
+            {from_where}
+            ORDER BY {ordinamento}
+            LIMIT %s OFFSET %s
+            """,  # ORDER BY da sql_order_clause su whitelist UOM_ORDER_COLUMNS, WHERE da condizioni letterali + add_ricerca_full_condition (espressioni dichiarate nel repo), valori come parametri
+            params + [safe_limit, safe_offset],
+            fallback_count_sql=f"SELECT COUNT(*) {from_where}",  # stesso FROM/WHERE della pagina
+            fallback_params=params,
+            offset=safe_offset,
+        )
 
     # Scopo: Restituisce singola unita' di misura per id.
     def get_unita_misura(self, uom_id: int) -> dict[str, Any] | None:
@@ -727,21 +704,9 @@ class CatalogoRepository:
 
     # Scopo: Aggiorna una unita' di misura esistente.
     def update_unita_misura(self, uom_id: int, data: dict[str, Any]) -> bool:
-        sets: list[str] = []
-        params: list[Any] = []
-        for key in ("descrizione", "descrizione_fattura", "tipo_uom_id", "attivo"):
-            if key in data:
-                sets.append(f"{key} = %s")
-                params.append(data[key])
-        if not sets:
-            return False
-        params.append(uom_id)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"UPDATE catalogo.unita_misura SET {', '.join(sets)} WHERE id = %s",
-                params,
-            )
-            return cursor.rowcount > 0
+        return execute_dynamic_update(
+            "catalogo.unita_misura", uom_id, data, allowed=UNITA_MISURA_UPDATE_COLUMNS,
+        )
 
     # =================================================================
     # Conversioni UoM (catalogo.unita_misura_conversioni)
@@ -752,12 +717,17 @@ class CatalogoRepository:
         self, *, search: str | None = None, attivo: bool | None = True,
         uom_id: int | None = None,
         limit: int = 25, offset: int = 0,
-        order_by: str = "uom_from_codice", order_dir: str = "asc",
+        order_by: str | None = "uom_from_codice", order_dir: str | None = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        order_column = UOM_CONVERSIONI_ORDER_COLUMNS.get(order_by, "uf.codice")
-        safe_order_dir = "DESC" if order_dir.upper() == "DESC" else "ASC"
-        safe_limit = min(max(limit, 1), 200)
-        safe_offset = max(offset, 0)
+        safe_limit = max(1, min(int(limit), 200))
+        safe_offset = max(0, int(offset))
+        # ⚠️ Fino al 2026-09-26 la direzione si confrontava con `.upper()` e
+        #    nelle sorelle con `.lower()`: ora la legge il BB per tutte.
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=UOM_CONVERSIONI_ORDER_COLUMNS, default="uf.codice", tiebreak="c.id",
+            colonne_desc=UOM_CONVERSIONI_SORT_COLONNE_DATA,
+        )
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -768,31 +738,30 @@ class CatalogoRepository:
             conditions.append("(c.uom_from_id = %s OR c.uom_to_id = %s)")
             params.extend([uom_id, uom_id])
         add_ricerca_full_condition(conditions, params, search, _RICERCA_CONVERSIONI)
-        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        from_where = (
+            "FROM catalogo.unita_misura_conversioni c "
+            "JOIN catalogo.unita_misura uf ON uf.id = c.uom_from_id "
+            "JOIN catalogo.unita_misura ut ON ut.id = c.uom_to_id "
+            f"{where_clause}"
+        )
 
-        with connection.cursor() as cursor:
-            cursor.execute(f"SELECT COUNT(*) FROM catalogo.unita_misura_conversioni c JOIN catalogo.unita_misura uf ON uf.id = c.uom_from_id JOIN catalogo.unita_misura ut ON ut.id = c.uom_to_id {where_clause}", params)
-            row = cursor.fetchone()
-            assert row is not None
-            total_count = int(row[0])
-
-            cursor.execute(
-                f"""
-                SELECT c.id, c.uom_from_id, c.uom_to_id, c.fattore,
-                       c.valido_dal, c.valido_al, c.attivo,
-                       uf.codice AS uom_from_codice, uf.descrizione AS uom_from_descrizione,
-                       ut.codice AS uom_to_codice, ut.descrizione AS uom_to_descrizione
-                FROM catalogo.unita_misura_conversioni c
-                JOIN catalogo.unita_misura uf ON uf.id = c.uom_from_id
-                JOIN catalogo.unita_misura ut ON ut.id = c.uom_to_id
-                {where_clause}
-                ORDER BY {order_column} {safe_order_dir}, c.id {safe_order_dir}
-                LIMIT %s OFFSET %s
-                """,
-                params + [safe_limit, safe_offset],
-            )
-            results = rows_to_list(cursor)
-        return results, total_count
+        return fetch_paged_with_total(
+            f"""
+            SELECT c.id, c.uom_from_id, c.uom_to_id, c.fattore,
+                   c.valido_dal, c.valido_al, c.attivo,
+                   uf.codice AS uom_from_codice, uf.descrizione AS uom_from_descrizione,
+                   ut.codice AS uom_to_codice, ut.descrizione AS uom_to_descrizione,
+                   COUNT(*) OVER () AS total_count
+            {from_where}
+            ORDER BY {ordinamento}
+            LIMIT %s OFFSET %s
+            """,  # ORDER BY da sql_order_clause su whitelist UOM_CONVERSIONI_ORDER_COLUMNS, WHERE da condizioni letterali + add_ricerca_full_condition (espressioni dichiarate nel repo), valori come parametri
+            params + [safe_limit, safe_offset],
+            fallback_count_sql=f"SELECT COUNT(*) {from_where}",  # stesso FROM/WHERE della pagina
+            fallback_params=params,
+            offset=safe_offset,
+        )
 
     # Scopo: Restituisce singola conversione UoM per id.
     def get_conversione(self, conv_id: int) -> dict[str, Any] | None:
@@ -831,21 +800,9 @@ class CatalogoRepository:
 
     # Scopo: Aggiorna una conversione UoM esistente.
     def update_conversione(self, conv_id: int, data: dict[str, Any]) -> bool:
-        sets: list[str] = []
-        params: list[Any] = []
-        for key in ("fattore", "valido_dal", "valido_al", "attivo"):
-            if key in data:
-                sets.append(f"{key} = %s")
-                params.append(data[key])
-        if not sets:
-            return False
-        params.append(conv_id)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"UPDATE catalogo.unita_misura_conversioni SET {', '.join(sets)} WHERE id = %s",
-                params,
-            )
-            return cursor.rowcount > 0
+        return execute_dynamic_update(
+            "catalogo.unita_misura_conversioni", conv_id, data, allowed=CONVERSIONI_UPDATE_COLUMNS,
+        )
 
     # Scopo: Disattiva una unita' di misura (soft delete).
     def deactivate_unita_misura(self, uom_id: int) -> bool:

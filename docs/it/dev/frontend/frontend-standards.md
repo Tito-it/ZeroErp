@@ -1089,9 +1089,15 @@ watcher della casella chiede allo store `ricercaCambiaLaRichiesta(termine)`
 dell'ultima richiesta partita — termine sotto soglia, o uguale dopo il `trim` —
 lo store si allinea e basta, senza fetch e senza tornare a pagina 1. Senza,
 sulle liste col filtro data di default (preventivi, offerte, ordini) «a» e «ab»
-ricaricavano la stessa lista senza `search`. ⚠️ Uno store scritto a mano sul BB
-la **espone** nel suo `return`, come `ricercaMinCaratteri`: se manca, la lista
-ricarica a ogni tasto.
+ricaricavano la stessa lista senza `search`.
+
+⛔ **Uno store scritto a mano sul BB ne espone lo stato INTERO** (dal 2026-09-26,
+regola del 2): `const lista = useListaEmptyStateFetch({...})`, si destruttura
+solo ciò che lo store usa dentro, e il `return` comincia con `...lista`. Prima
+ogni store elencava a mano i ref del BB, e a ogni ref nuovo (`ricercaFull`,
+`ricercaMinCaratteri`, `ricercaCambiaLaRichiesta`) andavano ricopiati in tutti:
+cinque su dieci erano allineati, e agli altri la lista ricaricava a ogni tasto
+senza errore. Presidio: `npm run guard:lista-stato`.
 
 ```js
 const hasSearched = ref(false)
@@ -1127,7 +1133,7 @@ async function fetchList() {
   }
 }
 
-// Esporre hasSearched nel return
+// In uno store sul BB: `return { ...lista, filters, ... }` (vedi sopra)
 return { items, totalRecords, loading, hasSearched, filters, fetchList, ... }
 ```
 

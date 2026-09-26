@@ -75,7 +75,7 @@ def richiedi_db_provvisto(sonda: str = SONDA_SCHEMA_LIQUIBASE) -> None:
 
     try:
         connection.ensure_connection()
-    except Exception as exc:  # noqa: BLE001 — qualunque errore = DB non usabile
+    except Exception as exc:  # qualunque errore = DB non usabile
         raise unittest.SkipTest(f"DB non raggiungibile: {exc}") from exc
 
     # ⚠️ Raggiungibile != provvisto: un database c'e', ma potrebbe essere quello

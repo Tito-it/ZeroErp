@@ -6,7 +6,7 @@
 #
 annotated-types==0.8.0
     # via pydantic
-anthropic==1.7.0
+anthropic==1.8.0
     # via -r ../requirements.in
 anyio==4.15.1
     # via
@@ -54,15 +54,15 @@ drf-spectacular==0.30.0
     # via -r ../requirements.in
 et-xmlfile==2.0.0
     # via openpyxl
-fonttools[woff]==4.65.0
+fonttools[woff]==4.66.0
     # via weasyprint
 gunicorn==26.2.0
     # via -r ../requirements.in
 h11==0.16.0
     # via httpcore2
-httpcore2==2.13.0
+httpcore2==2.13.1
     # via httpx2
-httpx2==2.13.0
+httpx2==2.13.1
     # via anthropic
 idna==3.20
     # via
@@ -100,7 +100,7 @@ pydantic-core==2.46.5
     # via pydantic
 pydyf==0.12.1
     # via weasyprint
-pyjwt==2.14.0
+pyjwt==2.15.0
     # via
     #   -r ../requirements.in
     #   djangorestframework-simplejwt

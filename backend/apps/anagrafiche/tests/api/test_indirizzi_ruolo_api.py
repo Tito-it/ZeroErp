@@ -15,6 +15,7 @@ Indice test eseguiti:
  3) test_create_indirizzo_ruolo_libero — POST crea indirizzo libero
  4) test_update_indirizzo_ruolo_ok — PATCH aggiorna
  5) test_update_indirizzo_ruolo_not_found — PATCH indirizzo inesistente
+ 5b) test_update_indirizzo_ruolo_chiave_ignota_400 — chiave fuori contratto → 400
  6) test_delete_indirizzo_ruolo_ok — DELETE elimina
  7) test_delete_indirizzo_ruolo_not_found — DELETE indirizzo inesistente
 """
@@ -27,6 +28,9 @@ from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _REPO = "apps.anagrafiche.api.views_indirizzi_ruolo._repo"
+# La PATCH passa dal service dal 2026-09-26 (validazione delle chiavi): il
+# repository da mockare e' quello che il service istanzia.
+_SVC_REPO = "apps.anagrafiche.services.soggetti_service.SoggettiRepository"
 
 
 class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
@@ -110,9 +114,10 @@ class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
         self.assertEqual(body["data"]["indirizzo_libero"], "123 Main St, London")
 
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_REPO)
-    def test_update_indirizzo_ruolo_ok(self, mock_repo, _auth):
+    @patch(_SVC_REPO)
+    def test_update_indirizzo_ruolo_ok(self, mock_repo_cls, _auth):
         """PATCH /anagrafiche/ruoli/{id}/indirizzi/{indirizzo_id}/ — aggiorna."""
+        mock_repo = mock_repo_cls.return_value
         mock_repo.update_indirizzo_ruolo.return_value = True
         resp = self.client.patch(
             "/api/v1/anagrafiche/ruoli/10/indirizzi/50/",
@@ -124,9 +129,10 @@ class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
         self.assertTrue(body["data"]["updated"])
 
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_REPO)
-    def test_update_indirizzo_ruolo_not_found(self, mock_repo, _auth):
+    @patch(_SVC_REPO)
+    def test_update_indirizzo_ruolo_not_found(self, mock_repo_cls, _auth):
         """PATCH indirizzo inesistente → errore."""
+        mock_repo = mock_repo_cls.return_value
         mock_repo.update_indirizzo_ruolo.return_value = False
         resp = self.client.patch(
             "/api/v1/anagrafiche/ruoli/10/indirizzi/999/",
@@ -134,6 +140,24 @@ class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
             content_type="application/json",
         )
         self.assertIn(resp.status_code, (400, 404, 422))
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_SVC_REPO)
+    def test_update_indirizzo_ruolo_chiave_ignota_400(self, mock_repo_cls, _auth):
+        """PATCH con una chiave fuori contratto → 400 che la nomina.
+
+        ⛔ Fino al 2026-09-26 il repository la scartava in silenzio (200 senza
+        aver scritto il campo); col BB a whitelist rigida sarebbe un 500. Il
+        service la ferma prima.
+        """
+        resp = self.client.patch(
+            "/api/v1/anagrafiche/ruoli/10/indirizzi/50/",
+            data=json.dumps({"tipo_indirizzo_id": 2, "fonte": "ruolo"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("fonte", json.dumps(resp.json()))
+        mock_repo_cls.return_value.update_indirizzo_ruolo.assert_not_called()
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_REPO)

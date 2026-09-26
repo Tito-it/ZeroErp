@@ -126,7 +126,13 @@ def parse_list_params(
     limit = min(qp_int(qp.get("limit"), default_limit), max_limit)
     offset = qp_int(qp.get("offset"), 0)
     order_by = qp.get("order_by") or default_order
-    order_dir = qp.get("order_dir") or "asc"
+    # ⛔ Assente = `None`, NON "asc" (2026-09-26). Il ripiego su "asc"
+    #    annullava il default dei repository (`default_desc`, `colonne_desc`),
+    #    che si accende solo su `None`: le liste che nascono dal piu' recente
+    #    si aprivano al contrario, senza errore, e ogni view che lo sapeva
+    #    rileggeva la direzione grezza dalla query string. La direzione si
+    #    VALIDA a valle (`order_dir_ammessa`, nel service o nel BB SQL).
+    order_dir = qp_str(qp.get("order_dir"))
     page = (offset // limit) + 1 if limit > 0 else 1
     return {
         "search": search,

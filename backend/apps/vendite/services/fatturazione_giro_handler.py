@@ -202,7 +202,7 @@ def _annota_esito_gruppi(summary: dict[str, Any], competenza: date) -> None:
         return
     try:
         _misura_esito_gruppi(summary, competenza, lotto_ids)
-    except Exception as exc:  # noqa: BLE001 — il giro e' gia' riuscito
+    except Exception as exc:  # il giro e' gia' riuscito
         code = getattr(exc, "code", type(exc).__name__)
         logger.warning(
             "fatturazione_giro.consuntivo_non_misurato lotti=%s code=%s",

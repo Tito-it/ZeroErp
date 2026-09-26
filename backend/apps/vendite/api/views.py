@@ -872,7 +872,7 @@ def _parse_lotti_query(qp, *, function_name: str) -> dict:
     if order_by is not None:
         order_by, order_dir = validate_order_params(
             order_by,
-            (order_dir or "asc").lower(),
+            order_dir or "asc",
             allowed_columns=_ORDER_BY_LOTTI,
             error_code="E_SEARCH_VALIDATION",
             function_name=function_name,
@@ -1542,9 +1542,7 @@ class ApiGiornale(DomainAPIView):
         },
     )
     # Scopo: Restituisce via GET il giornale trasversale, paginato.
-    # ⛔ `order_dir` GREZZO e non dal bundle: `parse_list_params` normalizza
-    #    l'assenza ad `asc`, e il default `quando DESC` non verrebbe mai
-    #    raggiunto (api.md §parse_list_params).
+    # ⭐ `order_dir` assente = `None`: decide il default `quando DESC`.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         p = parse_list_params(qp, default_order="quando")
@@ -1553,7 +1551,7 @@ class ApiGiornale(DomainAPIView):
             limit=p["limit"],
             offset=p["offset"],
             order_by=p["order_by"],
-            order_dir=qp_str(qp.get("order_dir")),
+            order_dir=p["order_dir"],
         ))
 
 

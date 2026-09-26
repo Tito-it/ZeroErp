@@ -165,7 +165,7 @@ class PromoArticoliService:
         order_by: str = "valido_dal",
         order_dir: str = "desc",
     ) -> tuple[list[dict[str, Any]], int]:
-        self._v.validate_order_by(order_by, allowed=_ORDER_BY_VALIDI)
+        self._v.validate_order_by(order_by, allowed=_ORDER_BY_VALIDI, order_dir=order_dir)
         # tipo_variazione filter whitelist (evita SQL con valori arbitrari).
         if tipo_variazione is not None:
             ErrorManager.require(

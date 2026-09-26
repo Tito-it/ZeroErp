@@ -128,7 +128,7 @@ class PannelloVerboDbTests(TestCase):
     # 4.
     def test_la_riga_che_non_c_e(self) -> None:
         with connection.cursor() as cur:
-            cur.execute(f"SELECT COALESCE(max(id), 0) + 1000000 FROM {_REL}")  # noqa: S608
+            cur.execute(f"SELECT COALESCE(max(id), 0) + 1000000 FROM {_REL}")
             assente = cur.fetchone()[0]
         self.assertEqual(
             self._codice(lambda: self.svc.update_record(_REL, assente, {"descrizione": "x"})),

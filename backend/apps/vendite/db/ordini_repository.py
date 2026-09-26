@@ -28,7 +28,7 @@ from apps.core.db._helpers import (
     rows_to_list,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
-from apps.core.db.sql_write_helpers import execute_dynamic_update
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
 from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
@@ -456,12 +456,17 @@ class OrdiniRepository(
         meta: dict[str, Any] | None = None,
         fatturazione_immediata: bool | None = None,
     ) -> dict[str, Any]:
-        cols: list[str] = ["soggetto_ruolo_id", "billing_account_id", "stato_doc_ordine_id"]
-        vals: list[Any] = [soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id]
-        # Colonne opzionali: omesse se None così i DEFAULT del DB (es.
-        # fatturazione_trigger ereditato da BA via trgfn_ordini_normalize,
-        # canale_origine='ADMIN') restano attivi.
-        optional: dict[str, Any] = {
+        # BB `execute_dynamic_insert`: i None si omettono (`skip_none`) così i
+        # DEFAULT del DB (es. fatturazione_trigger ereditato da BA via
+        # trgfn_ordini_normalize, canale_origine='ADMIN') restano attivi; le
+        # chiavi sono letterali del metodo (`allowed=None`).
+        # ⚠️ `billing_account_id` None prima si scriveva come NULL esplicito e
+        #    ora si omette: la colonna non ha DEFAULT, quindi il trigger BEFORE
+        #    INSERT vede NULL in entrambi i casi.
+        valori: dict[str, Any] = {
+            "soggetto_ruolo_id": soggetto_ruolo_id,
+            "billing_account_id": billing_account_id,
+            "stato_doc_ordine_id": stato_doc_ordine_id,
             "utility_id": utility_id,
             "emittente_fiscale_id": emittente_fiscale_id,
             "valuta_id": valuta_id,
@@ -473,24 +478,12 @@ class OrdiniRepository(
             # Corsia di instradamento (simmetria del flag): None = si lascia il
             # DEFAULT false del DB, cioe' corsia differita.
             "fatturazione_immediata": fatturazione_immediata,
+            "meta": meta or {},
         }
-        for col, val in optional.items():
-            if val is not None:
-                cols.append(col)
-                vals.append(val)
-        cols.append("meta")
-        placeholders = ["%s"] * (len(cols) - 1) + ["%s::jsonb"]
-        vals.append(json.dumps(meta or {}))
-        sql = (  # noqa: S608 — colonne whitelisted (chiavi statiche)
-            f"INSERT INTO vendite.ordini ({', '.join(cols)}) "
-            f"VALUES ({', '.join(placeholders)}) "
-            f"RETURNING id, uid::text AS uid, numero"
+        return execute_dynamic_insert(
+            "vendite.ordini", valori, allowed=None, skip_none=True,
+            returning="id, uid::text AS uid, numero",
         )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            result = row_to_dict(cursor)
-            assert result is not None
-            return result
 
     # Scopo: Valorizza la provenienza upstream (documento_origine) di un ordine
     #        appena creato dalla conversione preventivo/offerta → ordine. UPDATE
@@ -554,10 +547,28 @@ class OrdiniRepository(
             row = cursor.fetchone()
         return int(row[0]) if row else None
 
+    # ⛔ Whitelist RIGIDA del BB `execute_dynamic_update` (2026-09-26): una
+    #    chiave fuori lista e' `ValueError`, non uno scarto. E' l'elenco delle
+    #    colonne che QUESTO metodo scrive, non il contratto dell'operatore (che
+    #    sta nel service, `ordini_service._UPDATE_KEYS_ORDINE / _UPDATE_KEYS_RIGA`): se il service ne aggiunge una, va aggiunta
+    #    qui — e dimenticarlo e' un errore che si vede, non un campo perso.
+    TESTATA_UPDATE_COLUMNS: frozenset[str] = frozenset({
+        "utility_id", "valuta_id", "modalita_pagamento_id",
+        "termine_pagamento_id", "fatturazione_trigger", "agente_soggetto_ruolo_id",
+        "data", "meta", "fatturazione_immediata",
+    })
+    RIGA_UPDATE_COLUMNS: frozenset[str] = frozenset({
+        "descrizione", "quantita", "qta_operativa", "uom_operativa_id",
+        "factor_to_base", "prezzo_unitario", "sconto_percentuale", "meta",
+        "data_consegna_richiesta_cliente", "data_consegna_confermata",
+    })
+
     # Scopo: Aggiorna campi modificabili della testata ordine. Accetta None per
     #        azzerare campi nullable. Campi jsonb (meta) serializzati ::jsonb.
     def update_ordine(self, ordine_id: int, **kwargs: Any) -> bool:
-        return execute_dynamic_update("vendite.ordini", ordine_id, kwargs)
+        return execute_dynamic_update(
+            "vendite.ordini", ordine_id, kwargs, allowed=self.TESTATA_UPDATE_COLUMNS,
+        )
 
     # Scopo: Hard-delete ordine (flusso abbandono bozza). Guard di dominio
     #        (stato DRAFT, no DDT/fatture collegate) applicati nel service +
@@ -652,7 +663,9 @@ class OrdiniRepository(
 
     # Scopo: Aggiorna una riga ordine esistente. Campi jsonb (meta) ::jsonb.
     def update_riga(self, riga_id: int, **kwargs: Any) -> bool:
-        return execute_dynamic_update("vendite.ordini_righe", riga_id, kwargs)
+        return execute_dynamic_update(
+            "vendite.ordini_righe", riga_id, kwargs, allowed=self.RIGA_UPDATE_COLUMNS,
+        )
 
     # Scopo: Elimina una riga ordine (HARD DELETE). La FK
     #        ordini_righe_componenti.riga_ordine_id ha ON DELETE CASCADE.

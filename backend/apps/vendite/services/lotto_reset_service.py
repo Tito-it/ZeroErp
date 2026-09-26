@@ -60,7 +60,6 @@ class LottoResetService:
             log_to_db=True,
         )
         assert lotto_id is not None
-        assert lotto_id > 0
         return self.repository.annulla_lotto_da_draft(lotto_id)
 
     # Scopo: RITORNO A BOZZA del lotto (Fase 6): guard sui parametri + delega.
@@ -80,7 +79,6 @@ class LottoResetService:
             log_to_db=True,
         )
         assert lotto_id is not None
-        assert lotto_id > 0
         return self.repository.riporta_lotto_a_draft(lotto_id)
 
     # Scopo: Elimina una singola fattura dal lotto, liberandone le attivita'
@@ -106,9 +104,7 @@ class LottoResetService:
             log_to_db=True,
         )
         assert lotto_id is not None
-        assert lotto_id > 0
         assert fattura_id is not None
-        assert fattura_id > 0
         return self.repository.elimina_fattura_da_lotto(lotto_id, fattura_id)
 
     # Scopo: toglie UN documento dal giro di fatturazione, cosi' che il lotto
@@ -141,7 +137,6 @@ class LottoResetService:
             log_to_db=True,
         )
         assert lotto_id is not None
-        assert lotto_id > 0
         # ⭐ IL CODICE DEL RIFIUTO DEVE ARRIVARE FIN QUI, e per questo la
         #    traduzione sta nel SERVICE e non al confine dell'API.
         #

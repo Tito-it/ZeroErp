@@ -15,9 +15,9 @@
 #
 #       ⚠️ Le liste sono OFFSET-based (`limit`/`offset`, `{count, results}`),
 #       la lingua di `useSearchTable`; `order_by`/`order_dir` passano GREZZI
-#       (non dal bundle `parse_list_params`, che normalizza l'assenza di
-#       `order_dir` ad `asc` e non farebbe mai scattare il default DESC delle
-#       date — api.md §parse_list_params).
+#       (non dal bundle `parse_list_params`, il cui `order_by` di default,
+#       `"descrizione"`, qui non e' una colonna): assenti = `None`, e decide
+#       il default del repository — per le date, DESC.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -481,7 +481,7 @@ VISTE_RETTIFICHE = build_documento_interno_views(FAMIGLIE["rettifiche"])
 #    attributo assegnato da una factory — per lui `lista_codice = f.lista_codice`
 #    e' un cancello che non c'e'. La factory resta la sede del comportamento;
 #    queste sottoclassi aggiungono la sola riga che il presidio sa leggere, e
-#    l'`assert` sotto le tiene inchiodate alla config (una stringa ripetuta e'
+#    il controllo sotto le tiene inchiodate alla config (una stringa ripetuta e'
 #    gia' divergente il giorno in cui una delle due cambia).
 
 class ApiInventariList(VISTE_INVENTARI["lista"]):
@@ -504,8 +504,12 @@ for _viste, _lista, _righe in (
     (VISTE_INVENTARI, ApiInventariList, ApiInventarioRigheList),
     (VISTE_RETTIFICHE, ApiRettificheList, ApiRettificaRigheList),
 ):
-    assert _lista.lista_codice == _viste["lista"].lista_codice, _lista.__name__
-    assert _righe.lista_codice == _viste["righe"].lista_codice, _righe.__name__
+    for _classe, _chiave in ((_lista, "lista"), (_righe, "righe")):
+        if _classe.lista_codice != _viste[_chiave].lista_codice:
+            raise RuntimeError(
+                f"{_classe.__name__}: lista_codice {_classe.lista_codice!r} "
+                f"diverso dalla config {_viste[_chiave].lista_codice!r}"
+            )
     _viste["lista"] = _lista
     _viste["righe"] = _righe
 

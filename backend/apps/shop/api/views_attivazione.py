@@ -27,5 +27,5 @@ class AttivazioneShopView(AttivazioneVesteView):
     """POST: attivazione shop (con password o con un clic)."""
 
     porta = PORTA_SHOP
-    messaggio_con_password = "Account shop attivato con successo. Effettua il login con la nuova password."
+    messaggio_con_password = "Account shop attivato con successo. Effettua il login con la nuova password."  # noqa: S105 — testo del messaggio, non una password
     messaggio_cross = "Accesso shop attivato. Effettua il login con le tue credenziali esistenti."

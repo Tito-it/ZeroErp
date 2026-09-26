@@ -540,24 +540,31 @@ madre conta di più di quanto la lista consegna e fa scattare il guard su un
 troncamento che non esiste. ⇒ Si condivide il frammento `FROM`+`WHERE` fra le
 due query, non lo si riscrive.
 
-#### ⚠️ `parse_list_params` normalizza `order_dir` ad `"asc"`: non è mai `None`
+#### ⭐ `parse_list_params`: `order_dir` assente è `None`, e decide il repository
 
-`parse_list_params(qp)` fa `order_dir = qp.get("order_dir") or "asc"`. Quindi
-**annulla** il `default_desc=True` dei repository, che si accende solo su
-`None`.
+Dal **2026-09-26** `parse_list_params(qp)` restituisce `order_dir = None` quando
+il client non lo manda (o lo manda vuoto), e il valore ripulito dagli spazi
+quando c'è. **Non lo valida**: la direzione estranea la rifiuta chi ordina, con
+la regola unica `order_dir_ammessa` — il service (`validate_order_params`,
+`PayloadValidator.validate_order_by`) col codice del dominio, o il BB SQL
+(`sql_order_direction`) col 400 `E_VALIDATION_INPUT`.
 
-🔴 Il difetto che produce è muto: una lista che deve aprirsi dal più grave (o
-dal più recente) si apre al contrario, senza nessun errore. ⇒ Per le liste con
-un default DESC si passa il valore **grezzo**, che è il pattern già in uso in
-`pagamenti`:
+🔴 **Fino a quel giorno l'assenza diventava `"asc"`**, e il difetto era muto: il
+`default_desc` e le `colonne_desc` dei repository si accendono solo su `None`,
+quindi una lista che deve aprirsi dal più grave (o dal più recente) si apriva al
+contrario, senza errore. Il ripiego che questa sezione prescriveva — passare
+`qp_str(qp.get("order_dir"))` invece di `p["order_dir"]` — è stato **ritirato**
+dalle view che lo usavano solo per la direzione.
 
-```python
-p = parse_list_params(qp, default_order="eccedenza")
-dati = service.list_x(
-    limit=p["limit"], offset=p["offset"], order_by=p["order_by"],
-    order_dir=qp_str(qp.get("order_dir")),   # ⛔ non p["order_dir"]
-)
-```
+⚠️ **Un validatore di dominio che riceve `p["order_dir"]` deve ammettere
+l'assenza**: `validate_order_params(..., nullable=True)`. Senza, la lista
+risponde 400 a una richiesta senza verso (era il caso dei quattro validatori di
+catalogo e listini, allineati lo stesso giorno).
+
+⚠️ **`order_by` è un'altra storia, e resta**: il bundle ha un `default_order`
+(`"descrizione"` se non lo si passa) che per molte liste non è una colonna. Lì
+`order_by` si legge ancora grezzo (`qp_str(qp.get("order_by"))`), per quel
+motivo e non per la direzione.
 
 #### La whitelist di ordinamento si chiava sul `campo_sorgente` FISICO
 

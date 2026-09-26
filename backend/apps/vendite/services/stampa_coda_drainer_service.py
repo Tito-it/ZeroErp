@@ -191,7 +191,7 @@ def draina_coda_stampa_per_roster(
                     stale_minuti=stale_minuti,
                     on_item_esito=on_item_esito,
                 )
-        except Exception as exc:  # noqa: BLE001 — isolamento per emittente voluto
+        except Exception as exc:  # isolamento per emittente voluto
             logger.warning(
                 "stampa_coda.emittente_fallito emittente=%s badge=%s errore=%s",
                 badge["emittente_codice"], badge["username"], exc, exc_info=True,
@@ -308,7 +308,7 @@ def _lavora_item(
         )
         return _esito_da_stato(stato, code=str(errore["code"]))
 
-    except Exception as exc:  # noqa: BLE001 — resilienza per-riga voluta
+    except Exception as exc:  # resilienza per-riga voluta
         errore = _errore_riga_coda(exc)
         stato = repo.marca_stampa_errore(
             coda_id, errore=errore, soglia_tentativi=soglia_tentativi,

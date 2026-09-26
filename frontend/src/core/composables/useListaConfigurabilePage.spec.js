@@ -20,10 +20,13 @@
 //  3. nessun termine in casella: la soglia cambia, ma non si ricarica
 //  4. config ripetuta con la stessa soglia: nessuna ricarica
 //  5. soglia e pagina cambiano insieme: UNA fetch sola
+//  — il watcher della casella (`useSearchTable`) —
+//  6. lista a video col filtro data (i preventivi): «a» e «ab» non ricaricano
+//     e non tornano a pagina 1; «abc» cerca, da pagina 1
 // ------------------------------------------------------------
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { defineComponent, h } from 'vue'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { defineComponent, h, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { createPinia, defineStore, setActivePinia } from 'pinia'
 
@@ -125,5 +128,44 @@ describe('useListaConfigurabilePage — la soglia della ricerca dalla configuraz
     onConfigLoaded(config({ ricerca_min_caratteri: 1, pagina_dimensione: 50 }))
     await vi.waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(2))
     expect(fetchPage.mock.calls[1][0]).toMatchObject({ search: 'KG', limit: 50 })
+  })
+})
+
+describe('useListaConfigurabilePage — il tasto che non cambia la richiesta', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    query.value = {}
+    vi.useFakeTimers()
+  })
+  afterEach(() => vi.useRealTimers())
+
+  // Scopo: scrive nella casella e fa scadere il debounce.
+  async function digita(pagina, testo) {
+    pagina.searchText.value = testo
+    await nextTick()
+    await vi.runAllTimersAsync()
+  }
+
+  // ⭐ Il caso di Tid (2026-09-26): i preventivi partono col filtro data di
+  //    default, e «a»/«ab» ricaricavano la stessa lista pesante senza `search`.
+  it('lista col filtro data: 1-2 caratteri non ricaricano ne tornano a pagina 1', async () => {
+    const fetchPage = spia()
+    const store = defineStore('lista-spec-preventivi', () => useListaStoreCore({
+      fetchPage, filterDefaults: { data_da: '2026-07-01' }, gateKeys: ['data_da'],
+    }))()
+    const pagina = monta(store)
+    await store.fetchList()
+    store.filters.offset = 50
+    const prima = fetchPage.mock.calls.length
+
+    await digita(pagina, 'a')
+    await digita(pagina, 'ab')
+    expect(fetchPage).toHaveBeenCalledTimes(prima)
+    expect(store.filters.search).toBe('ab')
+    expect(store.filters.offset).toBe(50)
+
+    await digita(pagina, 'abc')
+    expect(fetchPage).toHaveBeenCalledTimes(prima + 1)
+    expect(fetchPage.mock.calls.at(-1)[0]).toMatchObject({ search: 'abc', offset: 0 })
   })
 })

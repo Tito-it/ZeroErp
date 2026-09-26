@@ -32,6 +32,7 @@ from apps.core.db._helpers import (
     fetch_paged_with_total,
     iso_or_none,
     jsonb_out,
+    sql_order_clause,
 )
 
 from .backend import QueueItem
@@ -64,9 +65,11 @@ DEFAULT_EXTRA_TENTATIVI = 3
 
 # Whitelist ORDER BY della lista code: chiave = `campo_sorgente` inviato dal
 # frontend, valore = espressione SQL (nuda solo dove e' un alias di output della
-# SELECT, che e' l'unico caso in cui ORDER BY la risolve). `{dir}` compare solo
-# dove serve NULLS LAST — la direzione va PRIMA della clausola; altrove si
-# appende in coda.
+# SELECT, che e' l'unico caso in cui ORDER BY la risolve). Direzione, NULLS e
+# tiebreak li mette il BB `sql_order_clause` (2026-09-26: prima il segnaposto
+# `{dir}` portava un `NULLS LAST` fisso in entrambi i versi e il tiebreak era
+# `id DESC` fisso — una seconda regola accanto a quella di Tid del
+# 2026-07-19/08-03, e la stessa copia viveva nella coda stampa).
 #
 # ⚠️ A livello MODULO, non attributo di classe, per due motivi che vanno
 # insieme: (1) il gate del service ne DERIVA l'elenco invece di ricopiarlo, e
@@ -83,13 +86,13 @@ DEFAULT_EXTRA_TENTATIVI = 3
 # la colonna e' a catalogo `ordinabile = t` su entrambe le code, e il seed e la
 # whitelist sono confrontati da `test_liste_configurabili_seed` — accenderla la'
 # senza metterla qui sarebbe una colonna che il frontend offre e il backend
-# rifiuta con un 400. NULLS LAST esplicito: la data e' NULL su tutte le righe
-# NON archiviate, che in DESC finirebbero in testa.
+# rifiuta con un 400. Nullable: la data e' NULL su tutte le righe NON
+# archiviate, che in DESC il BB manda in coda.
 ELENCA_SORT_SQL: dict[str, str] = {
     "id": "id",
     "job_type": "job_type",
     "stato": "stato",
-    "proprietario": "proprietario {dir} NULLS LAST",
+    "proprietario": "proprietario",
     # ⭐ QUANDO IL LAVORO E' ENTRATO IN CODA, ed e' il default dal 2026-09-07.
     #    ⛔ Niente NULLS LAST, e non e' una dimenticanza: `data_insert` e' NOT
     #    NULL con default `now()`. E' l'unica colonna temporale della tabella
@@ -102,10 +105,17 @@ ELENCA_SORT_SQL: dict[str, str] = {
     #    al 2026-09-07, e il difetto era muto — la lista non nascondeva niente,
     #    seppelliva. Misurato quel giorno: le righe senza `started_at` in
     #    posizione 112 e 113 su 113, cioe' in quinta pagina da 25.
-    "started_at": "started_at {dir} NULLS LAST",
-    "ended_at": "ended_at {dir} NULLS LAST",
-    "archiviato_il": "archiviato_il {dir} NULLS LAST",
+    "started_at": "started_at",
+    "ended_at": "ended_at",
+    "archiviato_il": "archiviato_il",
 }
+
+# Le colonne DATA della whitelist: senza direzione indicata partono DESC (regola
+# Tid 2026-09-02, `colonne_desc` di `sql_order_clause`). Coincidono con le date
+# ordinabili del seed — lo verifica `test_liste_configurabili_seed`.
+ELENCA_SORT_COLONNE_DATA: frozenset[str] = frozenset(
+    {"data_insert", "started_at", "ended_at", "archiviato_il"}
+)
 
 
 class CodaLavoriRepository:
@@ -561,7 +571,8 @@ class CodaLavoriRepository:
     #        whitelist `ELENCA_SORT_SQL` — il service ha già validato, qui
     #        l'assert è defense-in-depth (mai input libero nell'SQL). Default
     #        `started_at DESC` (l'ultimo lavoro avviato in testa); tiebreaker
-    #        `id DESC` sempre, per un ordine stabile tra righe pari. È una
+    #        `id` allineato alla direzione (regola 2026-08-03), per un ordine
+    #        stabile tra righe pari. È una
     #        lista di MONITORAGGIO, non la corsia del worker (che resta
     #        `priorita, id` nel claim).
     #
@@ -619,15 +630,14 @@ class CodaLavoriRepository:
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         safe_limit = max(1, min(int(limit), LIST_MAX_LIMIT))
         safe_offset = max(0, int(offset))
-        sort_expr = ELENCA_SORT_SQL.get(sort_by)
-        assert sort_expr is not None, f"sort_by non in whitelist: {sort_by!r}"
-        assert sort_dir in ("ASC", "DESC"), f"sort_dir non valido: {sort_dir!r}"
-        # `{dir}` presente solo nelle espressioni con NULLS LAST (la direzione
-        # va PRIMA della clausola NULLS); per le altre si appende in coda.
-        order_by = (
-            sort_expr.format(dir=sort_dir)
-            if "{dir}" in sort_expr
-            else f"{sort_expr} {sort_dir}"
+        # Whitelist prima dell'SQL: l'ordinamento finisce interpolato nel testo.
+        # BB `sql_order_clause` RIGIDO — sort_by o sort_dir fuori lista sono
+        # `ValueError`, mai il default.
+        order_by = sql_order_clause(
+            sort_by, sort_dir,
+            colonne=ELENCA_SORT_SQL, default="data_insert", default_desc=True,
+            colonne_desc=ELENCA_SORT_COLONNE_DATA,
+            tiebreak="id", rifiuta_fuori_whitelist=True,
         )
         data_sql = f"""
             SELECT id, job_type, stato, priorita, tentativi, max_tentativi,
@@ -640,7 +650,7 @@ class CodaLavoriRepository:
                    COUNT(*) OVER() AS total_count
               FROM dbops.coda_lavori
               {where}
-             ORDER BY {order_by}, id DESC
+             ORDER BY {order_by}
              LIMIT %s OFFSET %s
         """  # noqa: S608 — where/order da whitelist chiuse (nessun input libero)
         rows, total = fetch_paged_with_total(

@@ -253,7 +253,7 @@ class UtilitiesTipiRuoloRepository:
     #        del tipo_ruolo); per altri ruoli ritorna sempre 0.
     #        Riferimento: feedback_slot_override_matrix.md (pattern slot/override).
     def count_emittenti_usage(self, record_id: int) -> int:
-        sql = f"SELECT COUNT(*) {_USAGE_FROM_WHERE}"  # noqa: S608
+        sql = f"SELECT COUNT(*) {_USAGE_FROM_WHERE}"
         with connection.cursor() as cursor:
             cursor.execute(sql, [record_id, _RUOLO_EF_CODICE])
             row = cursor.fetchone()
@@ -288,7 +288,7 @@ class UtilitiesTipiRuoloRepository:
             {_USAGE_FROM_WHERE}
              ORDER BY s_ef.ragione_sociale_completa ASC, ef.codice ASC
              LIMIT %s OFFSET %s
-        """  # noqa: S608
+        """
         with connection.cursor() as cursor:
             cursor.execute(
                 sql,

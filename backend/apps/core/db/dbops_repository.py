@@ -12,7 +12,14 @@ from typing import cast
 
 from django.db import connection
 
-from apps.core.db._helpers import escape_ilike, fetch_paged_with_total, jsonb_out, sql_order_clause
+from apps.core.db._helpers import (
+    colonne_identita,
+    escape_ilike,
+    fetch_paged_with_total,
+    jsonb_out,
+    pattern_contiene,
+    sql_order_clause,
+)
 from apps.core.db.tabelle_gestibili_repository import TabelleGestibiliRepository
 from apps.core.services.service_errors import ServiceError
 from apps.core.types import (
@@ -44,6 +51,13 @@ LOOKUP_COLONNE_VALORE: frozenset[str] = frozenset({"id", "codice", "codice_inter
 # Cap massimo righe sorgente per la CTE lookup. Il dataset atteso è molto più piccolo
 # (tabelle config con poche decine/centinaia di record); il cap è una guardia di sicurezza.
 LOOKUP_MAX_SOURCE_ROWS = 10_000
+
+# Scopo: le colonne per cui si ordina una lookup di codici, generica o
+#        specializzata: SEDE UNICA (2026-09-26, regola del 2). Le legge anche
+#        `lookup_service` per validare `order_by` col codice del dominio —
+#        prima ne aveva una sua copia, `{codice, descrizione}` scritto a mano
+#        due volte, che oggi coincideva e domani no.
+LOOKUP_ORDER_COLONNE: tuple[str, ...] = ("codice", "descrizione")
 
 
 # Lookup specializzati: relazioni che estendono il contratto generico
@@ -206,12 +220,18 @@ class DbopsRepository:
         offset: int,
     ) -> tuple[list[dict], int]:
         spec = _LOOKUP_SPECIALIZZATE[rel]
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
-        order_map = {
-            "codice": "t.codice",
-            "descrizione": "t.descrizione",
-        }
-        order_column = order_map[order_col]
+        search_pattern = pattern_contiene(search)
+        order_map = {c: f"t.{c}" for c in LOOKUP_ORDER_COLONNE}
+        # ⛔ Clausola dal BB (2026-09-26), non `{order_col} {order_dir}`
+        #    interpolati: la direzione si fidava della validazione a monte, e
+        #    un chiamante diretto con un valore estraneo l'avrebbe scritta
+        #    nell'SQL. Il BB la rifiuta, mette i NULL come valore minimo e
+        #    allinea lo spareggio.
+        ordinamento = sql_order_clause(
+            order_col, order_dir,
+            colonne=order_map, default="t.descrizione", tiebreak="t.id",
+            rifiuta_fuori_whitelist=True,
+        )
 
         codice_interno_sql = (
             "t.codice_interno" if spec["has_codice_interno"] else "NULL::text"
@@ -254,9 +274,9 @@ class DbopsRepository:
                        {search_codice_interno}
                        OR t.descrizione ILIKE %(search)s
                    )
-                 ORDER BY {order_column} {order_dir}, t.id {order_dir}
+                 ORDER BY {ordinamento}
                  LIMIT %(limit)s OFFSET %(offset)s
-                """,
+                """,  # noqa: S608 — rel verificata su config.tabelle_gestibili (CHECK di forma) e in _LOOKUP_SPECIALIZZATE, colonne da spec costante, ORDER BY dal BB sql_order_clause su order_map, valori come parametri
                 {
                     "attivo_only": attivo_only,
                     "includi_obsoleti": includi_obsoleti,
@@ -319,14 +339,19 @@ class DbopsRepository:
             )
 
         # Normalizzazione: search None o stringa vuota => nessun filtro.
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        search_pattern = pattern_contiene(search)
 
         with connection.cursor() as cursor:
             # Wrappa fn_get_lookup_codici in una CTE con filtro ILIKE e paginazione esterna.
             # Il limit interno (LOOKUP_MAX_SOURCE_ROWS) è una guardia; il filtro è applicato sul risultato.
-            # order_col e order_dir sono gia' validati dal service contro whitelist
-            # (frozenset {"codice","descrizione"} e {"asc","desc"}).
-            # Non possono essere parametri SQL (%s), servono nel testo della query.
+            # ⛔ L'ORDER BY lo scrive il BB `sql_order_clause` (2026-09-26): prima
+            #    `{order_col} {order_dir}` interpolati, fidandosi della whitelist
+            #    del service, e lo spareggio `id` sempre ASC.
+            ordinamento = sql_order_clause(
+                order_col, order_dir,
+                colonne=colonne_identita(*LOOKUP_ORDER_COLONNE),
+                default="descrizione", tiebreak="id", rifiuta_fuori_whitelist=True,
+            )
             sql = """
                 WITH base AS (
                     SELECT id, codice, codice_interno, descrizione, attivo
@@ -354,9 +379,9 @@ class DbopsRepository:
                      OR codice_interno ILIKE %s
                      OR descrizione ILIKE %s
                  )
-                 ORDER BY {} {}, id
+                 ORDER BY {}
                  LIMIT %s OFFSET %s
-                """.format(order_col, order_dir)
+                """.format(ordinamento)  # noqa: S608 — ORDER BY dal BB sql_order_clause (whitelist codice/descrizione), valori come parametri
             cursor.execute(
                 sql,
                 [
@@ -413,7 +438,7 @@ class DbopsRepository:
             has_attivo = bool(cursor.fetchone()[0])
             predicate = " AND attivo = true" if has_attivo else ""
             cursor.execute(
-                f"SELECT EXISTS(SELECT 1 FROM {rel} WHERE id = %s{predicate})",
+                f"SELECT EXISTS(SELECT 1 FROM {rel} WHERE id = %s{predicate})",  # noqa: S608 — rel verificata su config.tabelle_gestibili (CHECK di forma schema.tabella), predicato letterale, valori come parametri
                 [record_id],
             )
             row = cursor.fetchone()
@@ -434,7 +459,7 @@ class DbopsRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[DominioTaskRow], int]:
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        search_pattern = pattern_contiene(search)
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -476,7 +501,7 @@ class DbopsRepository:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[TaskRegistryRow], int]:
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        search_pattern = pattern_contiene(search)
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -577,7 +602,10 @@ class DbopsRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[AuditLogRow], int]:
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        search_pattern = pattern_contiene(search)
+        # Guardia e filtro leggono lo STESSO valore: con la guardia sul nome
+        # grezzo, «  » passava la guardia e finiva in `ILIKE NULL` (zero righe).
+        function_pattern = pattern_contiene(function_name)
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -599,7 +627,7 @@ class DbopsRepository:
                 """,
                 [
                     status, status,
-                    function_name, f"%{function_name}%" if function_name else None,
+                    function_pattern, function_pattern,
                     date_from, date_from,
                     date_to, date_to,
                     search_pattern, search_pattern, search_pattern,
@@ -701,7 +729,7 @@ class DbopsRepository:
                AND (%s::date IS NULL OR e.occurred_at < %s::date + interval '1 day')
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
-            """,
+            """,  # noqa: S608 — ORDER BY da sql_order_clause su whitelist ERROR_LOG_SORT_COLUMNS, valori come parametri
             [
                 area, area,
                 prefisso, prefisso,

@@ -65,7 +65,7 @@ _SQL = f"""
                %s::uuid,      -- p_soggetto_id
                %s::bigint     -- p_emittente_fiscale_id
            ) AS r
-"""
+"""  # noqa: S608 — colonne dalla costante di modulo _COLONNE, valori come parametri
 
 
 class IvaResolverRepository:

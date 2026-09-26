@@ -380,7 +380,9 @@ class EmailDispatchService:
             if server:
                 try:
                     server.quit()
-                except Exception:
+                # Chiusura best-effort: la connessione puo' essere gia' caduta,
+                # e l'esito dell'invio e' gia' deciso sopra.
+                except (smtplib.SMTPException, OSError):
                     pass
 
     # Scopo: Il messaggio `mixed` — il corpo alternativo seguito dai file
@@ -558,5 +560,7 @@ class EmailDispatchService:
             if server:
                 try:
                     server.quit()
-                except Exception:
+                # Chiusura best-effort: la connessione puo' essere gia' caduta,
+                # e l'esito dell'invio e' gia' deciso sopra.
+                except (smtplib.SMTPException, OSError):
                     pass

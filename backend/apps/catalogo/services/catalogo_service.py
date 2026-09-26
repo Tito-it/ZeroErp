@@ -24,9 +24,12 @@ from apps.catalogo.db.catalogo_repository import (
     ARTICOLI_CREATE_COLUMNS,
     ARTICOLI_ORDER_COLUMNS,
     ARTICOLI_UPDATE_COLUMNS,
+    CONVERSIONI_UPDATE_COLUMNS,
+    UNITA_MISURA_UPDATE_COLUMNS,
     UOM_CONVERSIONI_ORDER_COLUMNS,
     UOM_ORDER_COLUMNS,
     UOM_TIPI_ORDER_COLUMNS,
+    UOM_TIPI_UPDATE_COLUMNS,
     CatalogoRepository,
 )
 from apps.catalogo.db.catalogo_uom_repository import (
@@ -88,15 +91,15 @@ _ARTICOLO_NULLABLE_FIELDS: frozenset[str] = frozenset({
     *_ARTICOLO_INT_FIELDS,
     "meta",
 })
-_ARTICOLO_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset(ARTICOLI_CREATE_COLUMNS.keys())
-_ARTICOLO_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(ARTICOLI_UPDATE_COLUMNS.keys())
-_UOM_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset(UOM_OPERATIVA_WRITE_COLUMNS.keys())
+_ARTICOLO_CREATE_ALLOWED_KEYS: frozenset[str] = ARTICOLI_CREATE_COLUMNS
+_ARTICOLO_UPDATE_ALLOWED_KEYS: frozenset[str] = ARTICOLI_UPDATE_COLUMNS
+_UOM_CREATE_ALLOWED_KEYS: frozenset[str] = UOM_OPERATIVA_WRITE_COLUMNS
 _UOM_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(key for key in UOM_OPERATIVA_WRITE_COLUMNS if key != "uom_id")
-_COMPONENTE_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset(COMPONENTE_WRITE_COLUMNS.keys())
+_COMPONENTE_CREATE_ALLOWED_KEYS: frozenset[str] = COMPONENTE_WRITE_COLUMNS
 _COMPONENTE_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(
     key for key in COMPONENTE_WRITE_COLUMNS if key != "componente_id"
 )
-_NOTA_ALLOWED_KEYS: frozenset[str] = frozenset(NOTA_WRITE_COLUMNS.keys())
+_NOTA_ALLOWED_KEYS: frozenset[str] = NOTA_WRITE_COLUMNS
 _ROUNDING_MODE_VALIDI: frozenset[str] = frozenset({"UP", "DOWN", "HALF_UP", "HALF_DOWN", "HALF_EVEN"})
 
 # Scopo: Mappa codice -> (descrizione, ordering) per lookup statico rounding modes UoM operative.
@@ -178,12 +181,15 @@ def _validate_lookup_limit(limit: int, *, max_limit: int, function_name: str) ->
 
 
 # Scopo: Normalizza e valida ordinamento lista articoli contro whitelist locale.
-def _validate_order(order_by: str, order_dir: str, function_name: str) -> tuple[str, str]:
+def _validate_order(order_by: str, order_dir: str | None, function_name: str) -> tuple[str, str | None]:
     return validate_order_params(
         order_by,
         order_dir,
         allowed_columns=_ORDER_BY_VALIDI,
         error_code="E_CATALOGO_VALIDATION",
+        # `nullable`: direzione assente -> `None` e decide il default del
+        # repository (`parse_list_params` non inventa piu' "asc", 2026-09-26).
+        nullable=True,
         function_name=function_name,
     )
 
@@ -210,29 +216,6 @@ def _lookup_response(
     results: list[dict[str, object]], *, troncato: bool
 ) -> dict[str, object]:
     return {"count": len(results), "results": results, "troncato": troncato}
-
-
-# Scopo: Blocca chiavi non supportate per evitare typo silenziosi lato client.
-def _validate_payload_keys(
-    payload: dict[str, Any],
-    *,
-    allowed_keys: frozenset[str],
-    function_name: str,
-    message: str = "Payload articolo non valido.",
-) -> None:
-    unknown_keys = sorted(key for key in payload.keys() if key not in allowed_keys)
-    ErrorManager.require(
-        not unknown_keys,
-        code="E_CATALOGO_VALIDATION",
-        message=message,
-        detail=f"Campi non supportati: {', '.join(unknown_keys)}",
-        context={
-            "unknown_keys": unknown_keys,
-            "allowed_keys": sorted(allowed_keys),
-        },
-        function_name=function_name,
-        log_to_db=True,
-    )
 
 
 # Scopo: Estrae stringa obbligatoria non vuota dal payload.
@@ -580,10 +563,11 @@ def _extract_articolo_payload(
             function_name=function_name,
             log_to_db=True,
         )
-        _validate_payload_keys(
+        _V.validate_allowed_keys(
             payload,
-            allowed_keys=_ARTICOLO_UPDATE_ALLOWED_KEYS | {"codice", "uom_id"},
+            allowed=_ARTICOLO_UPDATE_ALLOWED_KEYS | {"codice", "uom_id"},
             function_name=function_name,
+            message="Payload articolo non valido.",
         )
         descrizione = _extract_string(
             payload,
@@ -594,10 +578,11 @@ def _extract_articolo_payload(
         if descrizione is not _MISSING:
             data["descrizione"] = descrizione
     else:
-        _validate_payload_keys(
+        _V.validate_allowed_keys(
             payload,
-            allowed_keys=_ARTICOLO_CREATE_ALLOWED_KEYS,
+            allowed=_ARTICOLO_CREATE_ALLOWED_KEYS,
             function_name=function_name,
+            message="Payload articolo non valido.",
         )
         data["codice"] = _require_string(
             payload,
@@ -736,16 +721,16 @@ def _extract_uom_operativa_payload(
             function_name=function_name,
             log_to_db=True,
         )
-        _validate_payload_keys(
+        _V.validate_allowed_keys(
             payload,
-            allowed_keys=_UOM_UPDATE_ALLOWED_KEYS | {"uom_id"},
+            allowed=_UOM_UPDATE_ALLOWED_KEYS | {"uom_id"},
             function_name=function_name,
             message=payload_message,
         )
     else:
-        _validate_payload_keys(
+        _V.validate_allowed_keys(
             payload,
-            allowed_keys=_UOM_CREATE_ALLOWED_KEYS,
+            allowed=_UOM_CREATE_ALLOWED_KEYS,
             function_name=function_name,
             message=payload_message,
         )
@@ -927,16 +912,16 @@ def _extract_componente_payload(
             function_name=function_name,
             log_to_db=True,
         )
-        _validate_payload_keys(
+        _V.validate_allowed_keys(
             payload,
-            allowed_keys=_COMPONENTE_UPDATE_ALLOWED_KEYS | {"componente_id"},
+            allowed=_COMPONENTE_UPDATE_ALLOWED_KEYS | {"componente_id"},
             function_name=function_name,
             message=payload_message,
         )
     else:
-        _validate_payload_keys(
+        _V.validate_allowed_keys(
             payload,
-            allowed_keys=_COMPONENTE_CREATE_ALLOWED_KEYS,
+            allowed=_COMPONENTE_CREATE_ALLOWED_KEYS,
             function_name=function_name,
             message=payload_message,
         )
@@ -1039,9 +1024,9 @@ def _extract_nota_payload(
 ) -> dict[str, Any]:
     data: dict[str, Any] = {}
     payload_message = "Payload nota non valido."
-    _validate_payload_keys(
+    _V.validate_allowed_keys(
         payload,
-        allowed_keys=_NOTA_ALLOWED_KEYS,
+        allowed=_NOTA_ALLOWED_KEYS,
         function_name=function_name,
         message=payload_message,
     )
@@ -1161,7 +1146,11 @@ def _extract_nota_payload(
 
     meta = _extract_meta(payload, function_name=function_name, message=payload_message)
     if meta is not _MISSING:
-        data["meta"] = meta
+        # ⛔ `catalogo.note.meta` e' NOT NULL DEFAULT '{}' (le altre tabelle del
+        #    catalogo no): `meta: null` dal client vuol dire «nessun metadato»,
+        #    cioe' `{}`. Fino al 2026-09-26 arrivava NULL al DB e la scrittura
+        #    falliva sul vincolo.
+        data["meta"] = {} if meta is None else meta
 
     if not for_update:
         ErrorManager.require(
@@ -1842,7 +1831,10 @@ def fn_delete_nota(nota_id: int) -> dict[str, object]:
 # copie a mano: su offerte la stessa copia aveva gia' divergito.
 _UOM_TIPO_ORDER_BY_VALIDI: frozenset[str] = frozenset(UOM_TIPI_ORDER_COLUMNS)
 _UOM_TIPO_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset({"codice", "codice_interno", "descrizione"})
-_UOM_TIPO_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset({"descrizione", "attivo"})
+# ⭐ Le whitelist UPDATE vengono dal repository (2026-09-26): la sua e' RIGIDA
+#    (`execute_dynamic_update` -> RuntimeError), quindi il 400 qui deve
+#    coprire esattamente le stesse chiavi — due copie a mano divergerebbero.
+_UOM_TIPO_UPDATE_ALLOWED_KEYS: frozenset[str] = UOM_TIPI_UPDATE_COLUMNS
 _UOM_ORDER_BY_VALIDI: frozenset[str] = frozenset(UOM_ORDER_COLUMNS)
 _UOM_ALLOWED_KEYS: frozenset[str] = frozenset({"codice", "descrizione", "descrizione_fattura", "tipo_uom_id"})
 
@@ -1850,16 +1842,19 @@ _UOM_ALLOWED_KEYS: frozenset[str] = frozenset({"codice", "descrizione", "descriz
 # Scopo: Valida ordinamento UoM/tipi UoM contro whitelist locale.
 def _validate_uom_order(
     order_by: str,
-    order_dir: str,
+    order_dir: str | None,
     *,
     allowed: frozenset[str],
     function_name: str,
-) -> tuple[str, str]:
+) -> tuple[str, str | None]:
     return validate_order_params(
         order_by,
         order_dir,
         allowed_columns=allowed,
         error_code="E_CATALOGO_VALIDATION",
+        # `nullable`: direzione assente -> `None` e decide il default del
+        # repository (`parse_list_params` non inventa piu' "asc", 2026-09-26).
+        nullable=True,
         function_name=function_name,
     )
 
@@ -1944,9 +1939,9 @@ def fn_get_uom_tipo(tipo_id: int) -> dict[str, object]:
 # Scopo: Crea una nuova tipologia UoM.
 def fn_create_uom_tipo(payload: dict[str, Any]) -> dict[str, object]:
     function_name = "catalogo.catalogo_service.fn_create_uom_tipo"
-    _validate_payload_keys(
+    _V.validate_allowed_keys(
         payload,
-        allowed_keys=_UOM_TIPO_CREATE_ALLOWED_KEYS,
+        allowed=_UOM_TIPO_CREATE_ALLOWED_KEYS,
         function_name=function_name,
         message="Payload tipologia UoM non valido.",
     )
@@ -1987,9 +1982,9 @@ def fn_create_uom_tipo(payload: dict[str, Any]) -> dict[str, object]:
 # Scopo: Aggiorna una tipologia UoM.
 def fn_update_uom_tipo(tipo_id: int, payload: dict[str, Any]) -> dict[str, object]:
     function_name = "catalogo.catalogo_service.fn_update_uom_tipo"
-    _validate_payload_keys(
+    _V.validate_allowed_keys(
         payload,
-        allowed_keys=_UOM_TIPO_UPDATE_ALLOWED_KEYS,
+        allowed=_UOM_TIPO_UPDATE_ALLOWED_KEYS,
         function_name=function_name,
         message="Payload tipologia UoM non valido.",
     )
@@ -2065,7 +2060,7 @@ def fn_get_unita_misura(uom_id: int) -> dict[str, object]:
 # Scopo: Crea una nuova unita' di misura.
 def fn_create_unita_misura(payload: dict[str, Any]) -> dict[str, object]:
     function_name = "catalogo.catalogo_service.fn_create_unita_misura"
-    _validate_payload_keys(payload, allowed_keys=_UOM_ALLOWED_KEYS, function_name=function_name, message="Payload UoM non valido.")
+    _V.validate_allowed_keys(payload, allowed=_UOM_ALLOWED_KEYS, function_name=function_name, message="Payload UoM non valido.")
     codice = _require_string(payload, "codice", function_name=function_name, message="Codice obbligatorio.")
     descrizione = _require_string(payload, "descrizione", function_name=function_name, message="Descrizione obbligatoria.")
     descrizione_fattura = _extract_string(payload, "descrizione_fattura", function_name=function_name, nullable=True)
@@ -2110,10 +2105,9 @@ def fn_create_unita_misura(payload: dict[str, Any]) -> dict[str, object]:
 # Scopo: Aggiorna una unita' di misura.
 def fn_update_unita_misura(uom_id: int, payload: dict[str, Any]) -> dict[str, object]:
     function_name = "catalogo.catalogo_service.fn_update_unita_misura"
-    update_keys = frozenset({"descrizione", "descrizione_fattura", "tipo_uom_id", "attivo"})
-    _validate_payload_keys(
+    _V.validate_allowed_keys(
         payload,
-        allowed_keys=update_keys,
+        allowed=UNITA_MISURA_UPDATE_COLUMNS,
         function_name=function_name,
         message="Payload UoM non valido.",
     )
@@ -2197,9 +2191,7 @@ def fn_disattiva_unita_misura(uom_id: int) -> dict[str, object]:
 _CONV_CREATE_KEYS: frozenset[str] = frozenset({
     "uom_from_id", "uom_to_id", "fattore", "valido_dal", "valido_al",
 })
-_CONV_UPDATE_KEYS: frozenset[str] = frozenset({
-    "fattore", "valido_dal", "valido_al", "attivo",
-})
+_CONV_UPDATE_KEYS: frozenset[str] = CONVERSIONI_UPDATE_COLUMNS
 _CONV_ORDER_BY_VALIDI: frozenset[str] = frozenset(UOM_CONVERSIONI_ORDER_COLUMNS)
 
 
@@ -2265,7 +2257,7 @@ def fn_get_conversione(conv_id: int) -> dict[str, object]:
 # Scopo: Crea una nuova conversione UoM (uom_from -> uom_to con fattore).
 def fn_create_conversione(payload: dict[str, Any]) -> dict[str, object]:
     function_name = "catalogo.catalogo_service.fn_create_conversione"
-    _validate_payload_keys(payload, allowed_keys=_CONV_CREATE_KEYS, function_name=function_name, message="Payload conversione non valido.")
+    _V.validate_allowed_keys(payload, allowed=_CONV_CREATE_KEYS, function_name=function_name, message="Payload conversione non valido.")
 
     uom_from_id = _extract_nullable_int(payload, "uom_from_id", function_name=function_name, message="Payload conversione non valido.")
     ErrorManager.require(
@@ -2327,7 +2319,7 @@ def fn_create_conversione(payload: dict[str, Any]) -> dict[str, object]:
 #        uom_from_id e uom_to_id sono immutabili dopo la creazione.
 def fn_update_conversione(conv_id: int, payload: dict[str, Any]) -> dict[str, object]:
     function_name = "catalogo.catalogo_service.fn_update_conversione"
-    _validate_payload_keys(payload, allowed_keys=_CONV_UPDATE_KEYS, function_name=function_name, message="Payload conversione non valido.")
+    _V.validate_allowed_keys(payload, allowed=_CONV_UPDATE_KEYS, function_name=function_name, message="Payload conversione non valido.")
 
     data: dict[str, Any] = {}
     fattore = _V.extract_optional_decimal(payload, "fattore", function_name=function_name, nullable=False, min_value=Decimal("0.000001"), message="Payload conversione non valido.")

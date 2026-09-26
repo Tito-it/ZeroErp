@@ -14,26 +14,30 @@ from uuid import UUID
 from django.db import connection
 
 from apps.core.db._helpers import row_to_dict, rows_to_list
-from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, sql_set_clause
 
-UOM_OPERATIVA_WRITE_COLUMNS: dict[str, str] = {
-    "uom_id": "int",
-    "is_base": "bool",
-    "factor_to_base": "numeric",
-    "is_sell_uom": "bool",
-    "is_purchase_uom": "bool",
-    "is_logistic_uom": "bool",
-    "qty_step": "numeric",
-    "rounding_mode": "text",
-    "max_decimals": "int",
-    "forbid_fraction": "bool",
-    "require_lot": "bool",
-    "gtin": "text",
-    "valido_dal": "date",
-    "valido_al": "date",
-    "attivo": "bool",
-    "meta": "jsonb",
-}
+# Colonne SCRIVIBILI di una UoM operativa: whitelist RIGIDA del BB di
+# scrittura (2026-09-26 — prima mappa nome -> tipo per `sql_placeholder`/
+# `to_write_param`, ritirati). `meta` (jsonb) arriva dal service come dict o
+# None: il BB lo casta da solo. `articolo_id` NON e' qui: viene dal path.
+UOM_OPERATIVA_WRITE_COLUMNS: frozenset[str] = frozenset({
+    "uom_id",
+    "is_base",
+    "factor_to_base",
+    "is_sell_uom",
+    "is_purchase_uom",
+    "is_logistic_uom",
+    "qty_step",
+    "rounding_mode",
+    "max_decimals",
+    "forbid_fraction",
+    "require_lot",
+    "gtin",
+    "valido_dal",
+    "valido_al",
+    "attivo",
+    "meta",
+})
 
 UOM_OPERATIVA_DETAIL_COLUMNS: tuple[str, ...] = (
     "auo.id",
@@ -114,52 +118,28 @@ class CatalogoUomRepository:
             return row_to_dict(cursor)
 
     # Scopo: Inserisce una nuova UoM operativa per l'articolo.
+    # ⛔ Whitelist RIGIDA dal 2026-09-26 (BB `execute_dynamic_insert`): il 400
+    #    lo da' il service (`_extract_uom_operativa_payload`). L'articolo viene
+    #    dal path, scritto PER ULTIMO: vince sul payload.
     def create_uom_operativa(self, articolo_id: UUID | str, data: dict[str, Any]) -> int:
-        fields = [("articolo_id", articolo_id), *[(key, value) for key, value in data.items() if key in UOM_OPERATIVA_WRITE_COLUMNS]]
-
-        column_names = [field_name for field_name, _ in fields]
-        placeholders = ", ".join(
-            "%s" if field_name == "articolo_id" else sql_placeholder(UOM_OPERATIVA_WRITE_COLUMNS[field_name])
-            for field_name, _ in fields
+        riga = execute_dynamic_insert(
+            "catalogo.articoli_uom_operativa",
+            {**data, "articolo_id": articolo_id},
+            allowed=UOM_OPERATIVA_WRITE_COLUMNS | {"articolo_id"},
         )
-        params = [
-            field_value if field_name == "articolo_id" else to_write_param(field_value, UOM_OPERATIVA_WRITE_COLUMNS[field_name])
-            for field_name, field_value in fields
-        ]
-
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                INSERT INTO catalogo.articoli_uom_operativa ({", ".join(column_names)})
-                VALUES ({placeholders})
-                RETURNING id
-                """,
-                params,
-            )
-            row = cursor.fetchone()
-
-        assert row is not None
-        return int(row[0])
+        return int(riga["id"])
 
     # Scopo: Aggiorna la UoM operativa solo se appartiene all'articolo indicato.
+    #        SET dal BB `sql_set_clause` (whitelist RIGIDA), WHERE del metodo.
     def update_uom_operativa(
         self,
         articolo_id: UUID | str,
         uom_operativa_id: int,
         data: dict[str, Any],
     ) -> bool:
-        fields = [(key, value) for key, value in data.items() if key in UOM_OPERATIVA_WRITE_COLUMNS]
-        if not fields:
+        if not data:
             return False
-
-        set_clause = ", ".join(
-            f"{field_name} = {sql_placeholder(UOM_OPERATIVA_WRITE_COLUMNS[field_name])}"
-            for field_name, _ in fields
-        )
-        params = [
-            to_write_param(field_value, UOM_OPERATIVA_WRITE_COLUMNS[field_name])
-            for field_name, field_value in fields
-        ]
+        set_clause, params = sql_set_clause(data, allowed=UOM_OPERATIVA_WRITE_COLUMNS)
         params.extend([articolo_id, uom_operativa_id])
 
         with connection.cursor() as cursor:
@@ -169,7 +149,7 @@ class CatalogoUomRepository:
                 SET {set_clause}
                 WHERE articolo_id = %s
                   AND id = %s
-                """,
+                """,  # noqa: S608 — SET da sql_set_clause (colonne verificate sulla whitelist UOM_OPERATIVA_WRITE_COLUMNS), valori come parametri
                 params,
             )
             return cursor.rowcount > 0

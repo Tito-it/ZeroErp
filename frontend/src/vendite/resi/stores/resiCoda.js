@@ -91,15 +91,18 @@ function createResiCodaStore(id, fetchPage, extraFilters = {}) {
     })
 
     // alwaysFetch: la coda parte piena (lavoro pendente sempre visibile).
-    // `ricercaFull` (la lista cerca?) e `ricercaMinCaratteri` (da quanti
-    // caratteri?) le dichiara il BB di stato.
-    const { items, totalRecords, loading, hasSearched, ricercaFull, ricercaMinCaratteri, fetchList } =
-      useListaEmptyStateFetch({
-        filters,
-        buildParams: buildCodaParams,
-        fetchPage,
-        alwaysFetch: true,
-      })
+    // `lista`: lo stato del BB, esposto INTERO nel `return` (`...lista`).
+    // ⛔ Non si elencano i suoi ref a mano: un ref nuovo del BB (com'e'
+    //    successo con `ricercaFull`, `ricercaMinCaratteri`,
+    //    `ricercaCambiaLaRichiesta`) arriverebbe solo agli store che lo
+    //    ricordano — e senza errore sugli altri.
+    const lista = useListaEmptyStateFetch({
+      filters,
+      buildParams: buildCodaParams,
+      fetchPage,
+      alwaysFetch: true,
+    })
+    const { fetchList } = lista
 
     // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
     // nascita, e come si riportano li' («Pulisci filtri»).
@@ -108,7 +111,8 @@ function createResiCodaStore(id, fetchPage, extraFilters = {}) {
     })
 
     return {
-      items, totalRecords, loading, hasSearched, filters, fetchList, ricercaFull, ricercaMinCaratteri,
+      ...lista,
+      filters,
       chiaviFiltro, filtriDefault, azzeraFiltri,
     }
   }, {

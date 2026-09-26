@@ -22,12 +22,16 @@
 #   6. list_versioni_filters_by_template_and_state
 #   7. get_versione_binds_template_id
 #   8. list_templates_invalid_order_by_raises_validation_no_db
+#   8-bis. list_templates_order_dir_maiuscola_ammessa
+#   8-ter. list_templates_order_dir_estranea_rifiutata_no_db
 #   9. create_template_inserts_only_whitelisted_columns_returns_id
+#   9-bis. create_template_chiave_fuori_whitelist_rifiutata
 #  10. update_template_returns_true_on_success
 #  11. update_template_returns_false_on_empty_data_no_sql
-#  12. update_template_filters_by_id_in_where
+#  12. update_template_immutabile_rifiutata
 #  13. next_versione_num_uses_coalesce_max
 #  14. create_versione_inserts_only_whitelisted_columns
+#  14-bis. create_versione_chiave_fuori_whitelist_rifiutata
 #  15. update_versione_returns_true_on_success
 #  16. delete_versione_returns_true_on_success
 #  17. pubblica_versione_chiama_funzione_db_atomica
@@ -128,7 +132,7 @@ class DocumentiRepositoryListTemplatesTests(TestCase):
         self.assertEqual(cursor.execute.call_count, 2)
         # Tiebreaker su `t.id ASC` nel data SQL (seconda execute).
         data_sql = cursor.execute.call_args_list[1].args[0]
-        self.assertIn("ORDER BY t.codice ASC, t.id ASC", data_sql)
+        self.assertIn("ORDER BY t.codice ASC NULLS FIRST, t.id ASC", data_sql)
         self.assertIn("s_ef.ragione_sociale_completa", data_sql)
         self.assertIn("AS emittente_ragione_sociale", data_sql)
         self.assertIn("LEFT JOIN anagrafiche.soggetti_ruoli sr_ef", data_sql)
@@ -209,7 +213,7 @@ class DocumentiRepositoryListTemplatesTests(TestCase):
 
         data_sql, data_params = cursor.execute.call_args_list[1].args
         self.assertEqual(data_params[-2:], [200, 10])
-        self.assertIn("ORDER BY t.codice ASC, t.id ASC", data_sql)
+        self.assertIn("ORDER BY t.codice ASC NULLS FIRST, t.id ASC", data_sql)
 
     # 8. order_by fuori whitelist -> E_DOCUMENTI_VALIDATION (no DB call).
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
@@ -222,6 +226,28 @@ class DocumentiRepositoryListTemplatesTests(TestCase):
             )
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         # Defense-in-depth: nessuna query eseguita.
+        mocked_factory.assert_not_called()
+
+    # 8-bis. Direzione dal BB `sql_order_clause` (2026-09-26): `DESC`
+    #        maiuscolo e' ammesso e allinea il tiebreak.
+    @patch("apps.documenti.db.documenti_repository.connection.cursor")
+    def test_list_templates_order_dir_maiuscola_ammessa(self, mocked_factory) -> None:
+        cursor = _mk_cursor(
+            fetchone_results=[(0,), None],
+            descriptions=[[], _columns("id")],
+            fetchall_results=[[], []],
+        )
+        mocked_factory.return_value = cursor
+        DocumentiRepository().list_templates(**self._list_default_args(order_dir="DESC"))
+        data_sql = cursor.execute.call_args_list[1].args[0]
+        self.assertIn("ORDER BY t.codice DESC NULLS LAST, t.id DESC", data_sql)
+
+    # 8-ter. Una direzione estranea e' `ValueError` (400 `E_VALIDATION_INPUT`
+    #        sull'API), non ASC in silenzio come faceva la copia a mano.
+    @patch("apps.documenti.db.documenti_repository.connection.cursor")
+    def test_list_templates_order_dir_estranea_rifiutata_no_db(self, mocked_factory) -> None:
+        with self.assertRaisesRegex(ValueError, "order_dir_invalid"):
+            DocumentiRepository().list_templates(**self._list_default_args(order_dir="giu"))
         mocked_factory.assert_not_called()
 
 
@@ -311,12 +337,15 @@ class DocumentiRepositoryVersioniTests(TestCase):
 
 
 class DocumentiRepositoryCreateTemplateTests(TestCase):
-    # 9. create_template usa solo colonne whitelisted; ritorna id RETURNING.
+    # 9. create_template (BB `execute_dynamic_insert`): colonne del data,
+    #    `meta` dict serializzato `::jsonb`, RETURNING id.
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
     def test_create_template_inserts_only_whitelisted_columns_returns_id(
         self, mocked_factory
     ) -> None:
-        cursor = _mk_cursor(fetchone_results=[(99,)])
+        cursor = _mk_cursor(
+            fetchone_results=[(99,)], descriptions=[_columns("id")],
+        )
         mocked_factory.return_value = cursor
 
         data = {
@@ -330,7 +359,6 @@ class DocumentiRepositoryCreateTemplateTests(TestCase):
             "is_default": True,
             "attivo": True,
             "meta": {"k": "v"},
-            "chiave_extra": "ignorata",  # difensivo: non inserita
         }
         new_id = DocumentiRepository().create_template(data)
 
@@ -338,10 +366,23 @@ class DocumentiRepositoryCreateTemplateTests(TestCase):
         sql, params = cursor.execute.call_args_list[0].args
         self.assertIn("INSERT INTO documenti.template_documenti", sql)
         self.assertIn("RETURNING id", sql)
-        self.assertNotIn("chiave_extra", sql)
-        # 10 colonne presenti nel data, tutte whitelisted (file_name_pattern
-        # assente nel data quindi 10 - 1 = 10 colonne effettive).
         self.assertEqual(len(params), 10)
+        # ⚠️ Fino al 2026-09-26 il dict arrivava nudo al cursor (500 su psycopg).
+        self.assertIn("%s::jsonb", sql)
+        self.assertIn('{"k": "v"}', params)
+
+    # 9-bis. ⛔ Una chiave fuori whitelist e' RuntimeError, non uno scarto
+    #        silenzioso (2026-09-26): nessuna SQL parte.
+    @patch("apps.documenti.db.documenti_repository.connection.cursor")
+    def test_create_template_chiave_fuori_whitelist_rifiutata(
+        self, mocked_factory
+    ) -> None:
+        with self.assertRaises(RuntimeError) as ctx:
+            DocumentiRepository().create_template(
+                {"codice": "TPL-A", "chiave_extra": "x"}
+            )
+        self.assertIn("chiave_extra", str(ctx.exception))
+        mocked_factory.assert_not_called()
 
 
 class DocumentiRepositoryUpdateTemplateTests(TestCase):
@@ -370,23 +411,17 @@ class DocumentiRepositoryUpdateTemplateTests(TestCase):
         self.assertFalse(result)
         mocked_factory.assert_not_called()
 
-    # 12. update_template ignora chiavi non whitelisted (defense-in-depth).
+    # 12. ⛔ update_template: un'immutabile (fuori whitelist UPDATE) e'
+    #     RuntimeError, non uno scarto silenzioso (2026-09-26). Il service la
+    #     rifiuta prima con un 400 parlante.
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
-    def test_update_template_filters_by_id_in_where(self, mocked_factory) -> None:
-        cursor = _mk_cursor()
-        cursor.rowcount = 1
-        mocked_factory.return_value = cursor
-
-        # `tipo_documento_output_id` (immutabile) non e' nella whitelist UPDATE
-        # del repository: deve essere silently ignorato.
-        DocumentiRepository().update_template(
-            7, {"descrizione": "X", "tipo_documento_output_id": 999}
-        )
-
-        sql, params = cursor.execute.call_args_list[0].args
-        self.assertIn("descrizione = %s", sql)
-        self.assertNotIn("tipo_documento_output_id", sql)
-        self.assertEqual(params, ["X", 7])
+    def test_update_template_immutabile_rifiutata(self, mocked_factory) -> None:
+        with self.assertRaises(RuntimeError) as ctx:
+            DocumentiRepository().update_template(
+                7, {"descrizione": "X", "tipo_documento_output_id": 999}
+            )
+        self.assertIn("tipo_documento_output_id", str(ctx.exception))
+        mocked_factory.assert_not_called()
 
 
 class DocumentiRepositoryVersioneMutationsTests(TestCase):
@@ -403,12 +438,16 @@ class DocumentiRepositoryVersioneMutationsTests(TestCase):
         self.assertIn("template_documento_id = %s", sql)
         self.assertEqual(params, [42])
 
-    # 14. create_versione filtra colonne whitelisted + RETURNING id.
+    # 14. create_versione (BB, 2026-09-26): RETURNING id, `meta`/
+    #     `context_schema` dict serializzati `::jsonb`, corpo del template NON
+    #     strippato (`letterali=`).
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
     def test_create_versione_inserts_only_whitelisted_columns(
         self, mocked_factory
     ) -> None:
-        cursor = _mk_cursor(fetchone_results=[(50,)])
+        cursor = _mk_cursor(
+            fetchone_results=[(50,)], descriptions=[_columns("id")],
+        )
         mocked_factory.return_value = cursor
 
         data = {
@@ -416,18 +455,34 @@ class DocumentiRepositoryVersioneMutationsTests(TestCase):
             "versione": 5,
             "stato": "BOZZA",
             "titolo": "v5",
-            "html_template": "<p/>",
+            "html_template": "  <pre>\n  x\n</pre>\n",
             "render_engine_id": 1,
             "page_format": "A4",
-            "chiave_extra": "ignorata",  # non whitelisted
+            "context_schema": {"type": "object"},
+            "meta": {"k": "v"},
         }
         new_id = DocumentiRepository().create_versione(data)
         self.assertEqual(new_id, 50)
         sql, params = cursor.execute.call_args_list[0].args
         self.assertIn("INSERT INTO documenti.template_documenti_versioni", sql)
         self.assertIn("RETURNING id", sql)
-        self.assertNotIn("chiave_extra", sql)
-        self.assertEqual(len(params), 7)  # 7 chiavi whitelisted
+        self.assertEqual(len(params), 9)
+        self.assertEqual(sql.count("%s::jsonb"), 2)
+        self.assertIn("  <pre>\n  x\n</pre>\n", params)
+        self.assertIn('{"type": "object"}', params)
+
+    # 14-bis. ⛔ Una chiave fuori whitelist e' RuntimeError, non piu' uno
+    #         scarto silenzioso (2026-09-26): nessuna SQL parte.
+    @patch("apps.documenti.db.documenti_repository.connection.cursor")
+    def test_create_versione_chiave_fuori_whitelist_rifiutata(
+        self, mocked_factory
+    ) -> None:
+        with self.assertRaises(RuntimeError) as ctx:
+            DocumentiRepository().create_versione(
+                {"titolo": "v5", "chiave_extra": "x"}
+            )
+        self.assertIn("chiave_extra", str(ctx.exception))
+        mocked_factory.assert_not_called()
 
     # 15. update_versione: rowcount > 0 -> True.
     @patch("apps.documenti.db.documenti_repository.connection.cursor")

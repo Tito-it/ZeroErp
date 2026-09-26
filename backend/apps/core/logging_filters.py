@@ -63,7 +63,7 @@ class RequestIdFilter(logging.Filter):
 
         try:
             request_id = get_request_id()
-        except Exception:  # noqa: BLE001 — un log non deve mai far fallire il chiamante
+        except Exception:  # un log non deve mai far fallire il chiamante
             request_id = None
         record.request_id = request_id or NESSUNA_RICHIESTA
         return True

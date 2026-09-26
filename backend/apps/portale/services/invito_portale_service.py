@@ -423,7 +423,7 @@ class InvitoPortaleService:
             email=email,
             # Password NON utilizzabile finche' l'invito non si attiva: e' cio'
             # che al reinvio tiene l'utente nel flow INVITO.
-            password_hash="!",
+            password_hash="!",  # noqa: S106 — "!" = password inutilizzabile (convenzione Django), non un segreto
             first_name=first,
             last_name=last,
         )

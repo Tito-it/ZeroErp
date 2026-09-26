@@ -38,7 +38,7 @@ from apps.core.services.coda_lavori.repository import (
 from apps.core.services.coda_lavori.scope import scope_key_da_emittenti
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.fan_out import run_fan_out
-from apps.core.services.list_helpers import validate_enum_param
+from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.payload_helpers import translate_db_errors
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.core.services.processi import (
@@ -123,16 +123,15 @@ def _valida_ordinamento(
     default: str,
     function_name: str,
 ) -> tuple[str, str]:
-    validate_enum_param(
-        sort_by, allowed=allowed, param_name="sort_by",
+    # ⛔ Il BB `validate_order_params` (2026-09-26), non due `validate_enum_param`
+    #    con un insieme `("ASC", "DESC")` scritto qui: la direzione la giudica
+    #    `order_dir_ammessa`, la stessa regola del repository e di ogni lista.
+    #    `nullable`: l'assenza prende i default di Tid qui sotto.
+    sort_by, sort_dir_norm = validate_order_params(
+        sort_by, sort_dir, allowed_columns=allowed, nullable=True,
         error_code="E_SEARCH_VALIDATION", function_name=function_name,
     )
-    sort_dir_norm = sort_dir.upper() if sort_dir else None
-    validate_enum_param(
-        sort_dir_norm, allowed=("ASC", "DESC"), param_name="sort_dir",
-        error_code="E_SEARCH_VALIDATION", function_name=function_name,
-    )
-    return sort_by or default, sort_dir_norm or "DESC"
+    return sort_by or default, (sort_dir_norm or "desc").upper()
 
 
 # Scopo: liveness dei worker, con la soglia PRESA DAL CONTRATTO A CATALOGO

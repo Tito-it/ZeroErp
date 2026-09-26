@@ -15,8 +15,8 @@
 #        - create_asset: INSERT con sole colonne whitelisted in
 #          ASSET_CREATE_COLUMNS, RETURNING id;
 #        - update_asset_metadati: UPDATE su sole colonne whitelisted in
-#          ASSET_UPDATE_COLUMNS (chiavi file/anag silenziosamente ignorate
-#          come guardrail in profondita'), True se rowcount > 0, False se
+#          ASSET_UPDATE_COLUMNS (chiavi file/anag: RuntimeError dal
+#          2026-09-26, prima scartate in silenzio), True se rowcount > 0, False se
 #          data vuoto senza eseguire SQL;
 #        - get_tipo_asset: SELECT su tipi_asset_documento per id, dict
 #          ritornato con id/codice_interno/attivo, None se inesistente.
@@ -27,12 +27,15 @@
 #   2. list_asset_applies_emittente_scope_anyarray
 #   3. list_asset_paginazione_deterministica_id_tiebreaker
 #   4. list_asset_invalid_order_by_raises_validation_no_db
+#   4-bis. list_asset_order_dir_maiuscola_ammessa
+#   4-ter. list_asset_order_dir_estranea_rifiutata_no_db
 #   5. get_asset_returns_row_or_none
 #   6. get_asset_with_scope_passes_anyarray
 #   7. create_asset_inserts_only_whitelisted_columns_returns_id
+#   7-bis. create_asset_chiave_fuori_whitelist_rifiutata
 #   8. update_asset_metadati_returns_true_on_success
 #   9. update_asset_metadati_returns_false_on_empty_data_no_sql
-#  10. update_asset_metadati_filters_only_whitelisted_columns
+#  10. update_asset_metadati_filters_only_whitelisted_columns (ora: RuntimeError)
 #  11. get_tipo_asset_returns_dict_or_none
 # ------------------------------------------------------------
 
@@ -128,7 +131,7 @@ class DocumentiRepositoryListAssetTests(TestCase):
         self.assertEqual(rows, [{"id": 1, "codice": "L1"}, {"id": 2, "codice": "L2"}])
         self.assertEqual(cursor.execute.call_count, 2)
         data_sql = cursor.execute.call_args_list[1].args[0]
-        self.assertIn("ORDER BY a.codice ASC, a.id ASC", data_sql)
+        self.assertIn("ORDER BY a.codice ASC NULLS FIRST, a.id ASC", data_sql)
         self.assertIn("s_ef.ragione_sociale_completa", data_sql)
         self.assertIn("AS emittente_ragione_sociale", data_sql)
         self.assertIn("LEFT JOIN anagrafiche.soggetti_ruoli sr_ef", data_sql)
@@ -207,7 +210,7 @@ class DocumentiRepositoryListAssetTests(TestCase):
 
         data_sql, data_params = cursor.execute.call_args_list[1].args
         self.assertEqual(data_params[-2:], [200, 10])
-        self.assertIn("ORDER BY a.codice ASC, a.id ASC", data_sql)
+        self.assertIn("ORDER BY a.codice ASC NULLS FIRST, a.id ASC", data_sql)
 
     # 4. order_by fuori whitelist -> E_DOCUMENTI_VALIDATION (no DB call).
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
@@ -220,6 +223,28 @@ class DocumentiRepositoryListAssetTests(TestCase):
             )
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         # Defense-in-depth: nessuna query eseguita.
+        mocked_factory.assert_not_called()
+
+    # 4-bis. Direzione dal BB `sql_order_clause` (2026-09-26): `DESC`
+    #        maiuscolo e' ammesso e allinea il tiebreak.
+    @patch("apps.documenti.db.documenti_repository.connection.cursor")
+    def test_list_asset_order_dir_maiuscola_ammessa(self, mocked_factory) -> None:
+        cursor = _mk_cursor(
+            fetchone_results=[(0,), None],
+            descriptions=[[], _columns("id")],
+            fetchall_results=[[], []],
+        )
+        mocked_factory.return_value = cursor
+        DocumentiRepository().list_asset(**self._list_default_args(order_dir="DESC"))
+        data_sql = cursor.execute.call_args_list[1].args[0]
+        self.assertIn("ORDER BY a.codice DESC NULLS LAST, a.id DESC", data_sql)
+
+    # 4-ter. Una direzione estranea e' `ValueError` (400 `E_VALIDATION_INPUT`
+    #        sull'API), non ASC in silenzio come faceva la copia a mano.
+    @patch("apps.documenti.db.documenti_repository.connection.cursor")
+    def test_list_asset_order_dir_estranea_rifiutata_no_db(self, mocked_factory) -> None:
+        with self.assertRaisesRegex(ValueError, "order_dir_invalid"):
+            DocumentiRepository().list_asset(**self._list_default_args(order_dir="giu"))
         mocked_factory.assert_not_called()
 
 
@@ -278,7 +303,9 @@ class DocumentiRepositoryCreateAssetTests(TestCase):
     def test_create_asset_inserts_only_whitelisted_columns_returns_id(
         self, mocked_factory
     ) -> None:
-        cursor = _mk_cursor(fetchone_results=[(99,)])
+        cursor = _mk_cursor(
+            fetchone_results=[(99,)], descriptions=[_columns("id")],
+        )
         mocked_factory.return_value = cursor
 
         data = {
@@ -294,7 +321,6 @@ class DocumentiRepositoryCreateAssetTests(TestCase):
             "emittente_fiscale_id": 11,
             "attivo": True,
             "meta": {"k": "v"},
-            "chiave_extra": "ignorata",  # difensivo: non inserita
         }
         new_id = DocumentiRepository().create_asset(data)
 
@@ -302,10 +328,23 @@ class DocumentiRepositoryCreateAssetTests(TestCase):
         sql, params = cursor.execute.call_args_list[0].args
         self.assertIn("INSERT INTO documenti.template_asset", sql)
         self.assertIn("RETURNING id", sql)
-        self.assertNotIn("chiave_extra", sql)
         # 12 chiavi presenti nel data tutte whitelisted (valido_dal/valido_al
-        # assenti) -> 12 placeholder.
+        # assenti) -> 12 placeholder; `meta` serializzato `::jsonb` (fino al
+        # 2026-09-26 il dict arrivava nudo al cursor: 500 su psycopg).
         self.assertEqual(len(params), 12)
+        self.assertIn("%s::jsonb", sql)
+        self.assertIn('{"k": "v"}', params)
+
+    # 7-bis. ⛔ Una chiave fuori whitelist e' RuntimeError (2026-09-26), non
+    #        uno scarto silenzioso: nessuna SQL parte.
+    @patch("apps.documenti.db.documenti_repository.connection.cursor")
+    def test_create_asset_chiave_fuori_whitelist_rifiutata(
+        self, mocked_factory
+    ) -> None:
+        with self.assertRaises(RuntimeError) as ctx:
+            DocumentiRepository().create_asset({"codice": "X", "chiave_extra": "x"})
+        self.assertIn("chiave_extra", str(ctx.exception))
+        mocked_factory.assert_not_called()
 
 
 class DocumentiRepositoryUpdateAssetMetadatiTests(TestCase):
@@ -340,35 +379,29 @@ class DocumentiRepositoryUpdateAssetMetadatiTests(TestCase):
         self.assertFalse(result)
         mocked_factory.assert_not_called()
 
-    # 10. update_asset_metadati ignora chiavi non whitelisted (defense-in-depth):
-    #     storage_key/sha256/file_name/codice/asset_tipo_id NON entrano in SQL.
+    # 10. ⛔ update_asset_metadati: le colonne file/anagrafiche fuori whitelist
+    #     sono RuntimeError (2026-09-26), non piu' scartate in silenzio. Il
+    #     service le rifiuta prima con un 400 (`_UPDATE_KEYS`); il trigger DB
+    #     A4 resta la difesa finale.
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
     def test_update_asset_metadati_filters_only_whitelisted_columns(
         self, mocked_factory
     ) -> None:
-        cursor = _mk_cursor()
-        cursor.rowcount = 1
-        mocked_factory.return_value = cursor
-
-        # Trigger DB A4 e' la difesa finale; il repo per design esclude
-        # gia' le colonne file dalla whitelist UPDATE.
-        DocumentiRepository().update_asset_metadati(
-            7,
-            {
-                "descrizione": "X",
-                "storage_key": "tampered",
-                "sha256": "tampered",
-                "file_name": "tampered.png",
-                "codice": "TAMPER",
-                "asset_tipo_id": 999,
-            },
-        )
-
-        sql, params = cursor.execute.call_args_list[0].args
-        self.assertIn("descrizione = %s", sql)
+        with self.assertRaises(RuntimeError) as ctx:
+            DocumentiRepository().update_asset_metadati(
+                7,
+                {
+                    "descrizione": "X",
+                    "storage_key": "tampered",
+                    "sha256": "tampered",
+                    "file_name": "tampered.png",
+                    "codice": "TAMPER",
+                    "asset_tipo_id": 999,
+                },
+            )
         for forbidden in ("storage_key", "sha256", "file_name", "codice", "asset_tipo_id"):
-            self.assertNotIn(f"{forbidden} = %s", sql)
-        self.assertEqual(params, ["X", 7])
+            self.assertIn(forbidden, str(ctx.exception))
+        mocked_factory.assert_not_called()
 
 
 class DocumentiRepositoryGetTipoAssetTests(TestCase):

@@ -30,7 +30,7 @@ from apps.core.db._helpers import (
     rows_to_list,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
-from apps.core.db.sql_write_helpers import execute_dynamic_update
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
 from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
@@ -471,10 +471,12 @@ class DdtRepository(
         meta: dict[str, Any] | None = None,
         fatturazione_immediata: bool | None = None,
     ) -> dict[str, Any]:
-        cols: list[str] = ["destinatario_soggetto_ruolo_id", "stato_doc_ddt_id"]
-        vals: list[Any] = [destinatario_soggetto_ruolo_id, stato_doc_ddt_id]
-        # Colonne opzionali: omesse se None così i DEFAULT del DB restano attivi.
-        optional: dict[str, Any] = {
+        # BB `execute_dynamic_insert`: i None si omettono (`skip_none`) così i
+        # DEFAULT del DB restano attivi; le chiavi sono letterali del metodo
+        # (`allowed=None`). `meta` e' un dict -> `::jsonb` dal BB.
+        valori: dict[str, Any] = {
+            "destinatario_soggetto_ruolo_id": destinatario_soggetto_ruolo_id,
+            "stato_doc_ddt_id": stato_doc_ddt_id,
             "billing_account_id": billing_account_id,
             "emittente_fiscale_id": emittente_fiscale_id,
             "utility_id": utility_id,
@@ -494,29 +496,36 @@ class DdtRepository(
             "data": data,
             # Corsia di instradamento: None = DEFAULT false del DB (differita).
             "fatturazione_immediata": fatturazione_immediata,
+            "meta": meta or {},
         }
-        for col, val in optional.items():
-            if val is not None:
-                cols.append(col)
-                vals.append(val)
-        cols.append("meta")
-        placeholders = ["%s"] * (len(cols) - 1) + ["%s::jsonb"]
-        vals.append(json.dumps(meta or {}))
-        sql = (  # noqa: S608 — colonne whitelisted (chiavi statiche)
-            f"INSERT INTO vendite.ddt ({', '.join(cols)}) "
-            f"VALUES ({', '.join(placeholders)}) "
-            f"RETURNING id, uid::text AS uid, numero"
+        return execute_dynamic_insert(
+            "vendite.ddt", valori, allowed=None, skip_none=True,
+            returning="id, uid::text AS uid, numero",
         )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            result = row_to_dict(cursor)
-            assert result is not None
-            return result
+
+    # ⛔ Whitelist RIGIDA del BB `execute_dynamic_update` (2026-09-26): una
+    #    chiave fuori lista e' `ValueError`, non uno scarto. E' l'elenco delle
+    #    colonne che QUESTO metodo scrive, non il contratto dell'operatore (che
+    #    sta nel service, `ddt_service._UPDATE_KEYS_DDT / _UPDATE_KEYS_RIGA`): se il service ne aggiunge una, va aggiunta
+    #    qui — e dimenticarlo e' un errore che si vede, non un campo perso.
+    TESTATA_UPDATE_COLUMNS: frozenset[str] = frozenset({
+        "utility_id", "valuta_id", "mittente_soggetto_ruolo_id",
+        "vettore_soggetto_ruolo_id", "causale_trasporto_id", "aspetto_bene_id",
+        "modalita_addebito_trasporto_id", "num_colli", "peso_lordo", "peso_netto",
+        "volume", "targa", "autista", "tracking_code", "data", "meta",
+        "fatturazione_immediata",
+    })
+    RIGA_UPDATE_COLUMNS: frozenset[str] = frozenset({
+        "descrizione", "quantita", "qta_operativa", "uom_operativa_id",
+        "factor_to_base", "prezzo_unitario", "sconto_percentuale", "meta",
+    })
 
     # Scopo: Aggiorna campi modificabili della testata DDT. Accetta None per
     #        azzerare campi nullable. Campi jsonb (meta) serializzati ::jsonb.
     def update_ddt(self, ddt_id: int, **kwargs: Any) -> bool:
-        return execute_dynamic_update("vendite.ddt", ddt_id, kwargs)
+        return execute_dynamic_update(
+            "vendite.ddt", ddt_id, kwargs, allowed=self.TESTATA_UPDATE_COLUMNS,
+        )
 
     # Scopo: Hard-delete DDT (flusso abbandono bozza). Guard di dominio (stato
     #        DRAFT, no righe/fulfillment collegati) applicati nel service +
@@ -602,7 +611,9 @@ class DdtRepository(
 
     # Scopo: Aggiorna una riga DDT esistente. Campi jsonb (meta) ::jsonb.
     def update_riga(self, riga_id: int, **kwargs: Any) -> bool:
-        return execute_dynamic_update("vendite.ddt_righe", riga_id, kwargs)
+        return execute_dynamic_update(
+            "vendite.ddt_righe", riga_id, kwargs, allowed=self.RIGA_UPDATE_COLUMNS,
+        )
 
     # Scopo: Elimina una riga DDT (HARD DELETE). La FK
     #        ddt_righe_componenti.riga_ddt_id ha ON DELETE CASCADE. Il trigger DB

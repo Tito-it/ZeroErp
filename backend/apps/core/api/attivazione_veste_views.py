@@ -83,7 +83,8 @@ class AttivazioneVesteValidateView(APIView):
     # (`richiede_password`), la stessa domanda che fara' la conferma.
     def get(self, request: Request, token: str) -> JsonResponse:
         porta = self.porta
-        assert porta is not None, "AttivazioneVesteValidateView e' astratta: fissare `porta`"
+        if porta is None:
+            raise RuntimeError("AttivazioneVesteValidateView e' astratta: fissare `porta`")
         risolto = risolvi_token(porta, token)
         if risolto is None:
             return success_response({
@@ -107,13 +108,14 @@ class AttivazioneVesteView(APIView):
     authentication_classes = []
     throttle_classes = [PasswordResetRateThrottle]
     porta: PortaInvito | None = None
-    messaggio_con_password: str = "Accesso attivato. Effettua il login con la nuova password."
+    messaggio_con_password: str = "Accesso attivato. Effettua il login con la nuova password."  # noqa: S105 — testo del messaggio, non una password
     messaggio_cross: str = "Accesso attivato. Effettua il login con le tue credenziali esistenti."
 
     @extend_schema(summary="Attivazione di una veste (con password o con un clic)", request=_ATTIVA_REQ, responses={200: _ATTIVA_RESP})
     def post(self, request: Request) -> JsonResponse:
         porta = self.porta
-        assert porta is not None, "AttivazioneVesteView e' astratta: fissare `porta`"
+        if porta is None:
+            raise RuntimeError("AttivazioneVesteView e' astratta: fissare `porta`")
 
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             esito = attiva_veste(

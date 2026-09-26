@@ -175,11 +175,14 @@ class AmmSoftwareRepository:
         order_by: str | None = None,
         order_dir: str | None = None,
     ) -> tuple[list[OperatoreRow], int]:
-        # Validazione ordinamento
+        # Validazione ordinamento: la COLONNA fuori whitelist ripiega sull'ordine
+        # di default (contratto di questa lista). ⛔ La DIREZIONE no: la giudica
+        # `sql_order_direction` qui sotto. Fino al 2026-09-26 qui c'era una
+        # copia a mano (`order_dir.upper() not in ("ASC", "DESC")` -> None) che
+        # trasformava un valore estraneo nel default PRIMA che il BB lo vedesse:
+        # il rifiuto scritto piu' in basso non scattava mai.
         if order_by and order_by not in ALLOWED_ORDER_COLUMNS:
             order_by = None
-        if order_dir and order_dir.upper() not in ("ASC", "DESC"):
-            order_dir = None
 
         conditions: list[str] = [ESCLUDI_UTENTI_TECNICI]
         params: list[Any] = []
@@ -208,8 +211,11 @@ class AmmSoftwareRepository:
         # Ordinamento sicuro (whitelist): la mappa traduce il campo inviato dal
         # client nell'espressione SQL, in un passaggio solo.
         order_column = ALLOWED_ORDER_COLUMNS.get(order_by or "")
+        # ⛔ Direzione risolta PRIMA del ramo (2026-09-26): senza colonna il
+        #    ramo di default la ignora, e un `order_dir` estraneo passava muto.
+        #    Il BB la rifiuta anche quando poi non la si usa.
+        direction = sql_order_direction(order_dir)
         if order_column:
-            direction = sql_order_direction(order_dir)
             tiebreak_dir = sql_tiebreak_direction(direction)
             order_clause = f"ORDER BY {order_column} {direction}, au.id {tiebreak_dir}"
         else:
@@ -257,7 +263,7 @@ class AmmSoftwareRepository:
              WHERE {where_clause}
              {order_clause}
              LIMIT %s OFFSET %s
-        """
+        """  # noqa: S608 — WHERE da frammenti letterali + colonne _RICERCA_OPERATORI, ORDER BY da whitelist ALLOWED_ORDER_COLUMNS, valori come parametri
         params.extend([limit, offset])
 
         with connection.cursor() as cursor:
@@ -340,7 +346,7 @@ class AmmSoftwareRepository:
         params.append(auth_user_id)
         with connection.cursor() as cursor:
             cursor.execute(
-                f"UPDATE anagrafiche.identita_digitali "
+                f"UPDATE anagrafiche.identita_digitali "  # noqa: S608 — SET da frammenti letterali di questo metodo, valori come parametri
                 f"SET {', '.join(fields)} "
                 f"WHERE auth_user_id = %s",
                 params,
@@ -425,7 +431,7 @@ class AmmSoftwareRepository:
                 auth_params.append(auth_user_id)
                 with connection.cursor() as cursor:
                     cursor.execute(
-                        f"UPDATE auth_user SET {', '.join(auth_fields)} WHERE id = %s",
+                        f"UPDATE auth_user SET {', '.join(auth_fields)} WHERE id = %s",  # noqa: S608 — SET da frammenti letterali di questo metodo, valori come parametri
                         auth_params,
                     )
 
@@ -468,7 +474,7 @@ class AmmSoftwareRepository:
                                SET {', '.join(ru_fields)}
                               FROM anagrafiche.identita_digitali id
                              WHERE id.auth_user_id = %s
-                               AND id.soggetto_ruolo_id = ru.soggetto_ruolo_id""",
+                               AND id.soggetto_ruolo_id = ru.soggetto_ruolo_id""",  # noqa: S608 — SET da frammenti letterali di questo metodo, valori come parametri
                         ru_params + [auth_user_id],
                     )
 
@@ -1263,7 +1269,7 @@ class AmmSoftwareRepository:
             if not self._AUDIT_STORICO_TABLE_RE.match(storico_table or ""):
                 continue
             unions.append(
-                f"SELECT '{code}' AS code, "
+                f"SELECT '{code}' AS code, "  # noqa: S608 — code/area/storico_table dal catalogo vw_audit_sources filtrati dalle regex _AUDIT_*_RE, nessun input
                 f"'{area}' AS area_funzionale, "
                 f"s.id AS storico_id, "
                 f"s.valid_from, s.tipo_operazione, s.user_insert, "
@@ -1273,14 +1279,14 @@ class AmmSoftwareRepository:
                 #    a rileggere `storico_table` dal catalogo. Le due
                 #    interpolazioni qui sotto SONO diverse apposta.
                 f"script.fn_audit_summary('{code}', s.id) AS audit "
-                f"FROM {storico_table} s"  # noqa: S608
+                f"FROM {storico_table} s"
             )
 
         if not unions:
             return [], 0
 
         params: list[Any] = []
-        sql = f"WITH events AS ({' UNION ALL '.join(unions)}) "  # noqa: S608
+        sql = f"WITH events AS ({' UNION ALL '.join(unions)}) "
         sql += (
             "SELECT code, area_funzionale, storico_id, valid_from, "
             "tipo_operazione, user_insert, snapshot, audit, "
@@ -1298,13 +1304,15 @@ class AmmSoftwareRepository:
         # Ordinamento sicuro: la whitelist traduce il nome di risultato nel nome
         # colonna in un passaggio solo (vedi `AUDIT_ORDER_COLUMNS`).
         order_column = AUDIT_ORDER_COLUMNS.get(order_by or "")
+        # ⛔ Direzione risolta PRIMA del ramo (2026-09-26): il ramo di default
+        #    la ignora, e un `order_dir` estraneo passava muto.
+        direction = sql_order_direction(order_dir, default_desc=True)
         if order_column:
-            direction = sql_order_direction(order_dir, default_desc=True)
             # `valid_from DESC` NON e' uno spareggio tecnico ma l'ordine
             # STORICO delle versioni di una stessa riga (la piu' recente
             # prima): resta fisso anche ordinando al contrario, altrimenti la
             # storia di un record si leggerebbe a rovescio.
-            sql += f"ORDER BY {order_column} {direction}, valid_from DESC "  # noqa: S608
+            sql += f"ORDER BY {order_column} {direction}, valid_from DESC "
         else:
             sql += "ORDER BY valid_from DESC "
         sql += "LIMIT %s OFFSET %s"
@@ -1415,7 +1423,7 @@ class AmmSoftwareRepository:
                 ON uo.id = ru.unita_organizzativa_id
              WHERE {where_clause}
              ORDER BY COALESCE(s.cognome, au.last_name), au.username
-        """
+        """  # noqa: S608 — colonne area da config.aree_funzionali filtrate da regex _SAFE_IDENT, WHERE letterale, valori come parametri
 
         with connection.cursor() as cursor:
             cursor.execute(sql, params)

@@ -225,7 +225,7 @@ class StatiCheckScrittoriPythonTests(TestCase):
                     "(brief-db-presidio-stati-mai-scritti §3-ter.4)."
                 )
             cur.execute(
-                f"SELECT esito, schema_tabella, nome_tabella, colonna, valore, "  # noqa: S608
+                f"SELECT esito, schema_tabella, nome_tabella, colonna, valore, "
                 f"scrittori_tabella, ragione FROM {_VISTA}"
             )
             colonne = [c[0] for c in cur.description]

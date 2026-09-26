@@ -52,8 +52,9 @@ def risposta_paginata(results: list[Any], total: int) -> dict[str, Any]:
 # Scopo: Valida `order_by`/`order_dir` di una lista contro la whitelist del
 #        repository. `nullable=True`: «non specificato» e' legittimo e l'ordine
 #        lo decide il repository; fuori whitelist e' un 400 col campo.
-# ⚠️ `order_dir` arriva GREZZO dalla query string (api.md §parse_list_params):
-#    il BB confronta case-sensitive, quindi qui si normalizza a minuscolo.
+# ⭐ `order_dir` arriva GREZZO dalla query string (api.md §parse_list_params)
+#    e passa grezzo: dal 2026-09-26 il BB lo giudica con `order_dir_ammessa`
+#    (maiuscole e spazi ammessi) e lo ritorna normalizzato.
 def ordinamento_validato(
     order_by: str | None,
     order_dir: str | None,
@@ -63,7 +64,7 @@ def ordinamento_validato(
 ) -> tuple[str | None, str | None]:
     return validate_order_params(
         order_by,
-        order_dir.lower() if order_dir else None,
+        order_dir,
         allowed_columns=colonne,
         error_code=E_VALIDAZIONE,
         function_name=function_name,

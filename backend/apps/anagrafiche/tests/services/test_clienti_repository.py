@@ -12,7 +12,8 @@
 """
 Indice test eseguiti:
 1) test_atomico_chiama_fn_madre           — una sola SELECT su fn_update_cliente con (id, categoria, jsonb)
-2) test_atomico_whitelist_scarta_ignoti   — chiavi non whitelisted escluse dal jsonb
+2) test_atomico_whitelist_rifiuta_ignoti  — chiave non whitelisted -> RuntimeError, nessuna SELECT (2026-09-26)
+2b) test_atomico_whitelist_rifiuta_le_sei_chiavi_migrate — idem per le sei chiavi di I0/I8
 3) test_atomico_normalizza_empty_nullable — stringa vuota su campo nullable -> None nel jsonb
 4) test_atomico_normalizza_empty_numerico  — termine_pagamento_id/garanzia_importo "" -> None (no crash ::integer/::numeric)
 5) test_atomico_ritorna_flag              — mappa la row (categoria_aggiornata, campi_aggiornati)
@@ -58,21 +59,29 @@ class UpdateClienteAtomicoTests(TestCase):
         self.assertEqual(params[1], 9)
         self.assertEqual(_payload_jsonb(cursor), {"modalita_pagamento_id": 5})
 
+    # ⛔ Dal 2026-09-26 la whitelist e' RIGIDA: fino a quel giorno la chiave
+    #    ignota veniva SCARTATA in silenzio e il salvataggio «riusciva» senza
+    #    averla scritta. Il 400 educato lo da' il service
+    #    (`ClientiService.update_cliente`); qui si prova che il repository non
+    #    spedisce niente alla fn madre.
     @patch(CURSOR)
-    def test_atomico_whitelist_scarta_ignoti(self, mocked_factory):
-        """Le chiavi non whitelisted non finiscono nel jsonb passato alla fn."""
+    def test_atomico_whitelist_rifiuta_ignoti(self, mocked_factory):
+        """Una chiave non whitelisted e' RuntimeError, e la fn madre non si chiama."""
         cursor = _mock_cursor(mocked_factory)
-        ClientiRepository().update_cliente_atomico(
-            1, ba_categoria_cliente_id=None,
-            cliente_fields={"modalita_pagamento_id": 5, "campo_ignoto": "x", "id": 999},
-        )
-        self.assertEqual(_payload_jsonb(cursor), {"modalita_pagamento_id": 5})
+        with self.assertRaises(RuntimeError) as ctx:
+            ClientiRepository().update_cliente_atomico(
+                1, ba_categoria_cliente_id=None,
+                cliente_fields={"modalita_pagamento_id": 5, "campo_ignoto": "x", "id": 999},
+            )
+        self.assertIn("campo_ignoto", str(ctx.exception))
+        self.assertIn("id", str(ctx.exception))
+        cursor.execute.assert_not_called()
 
     @patch(CURSOR)
-    def test_atomico_whitelist_scarta_le_sei_chiavi_migrate(self, mocked_factory):
-        """Le sei chiavi di I0/I8 non arrivano piu' alla fn madre.
+    def test_atomico_whitelist_rifiuta_le_sei_chiavi_migrate(self, mocked_factory):
+        """Le sei chiavi di I0/I8 non arrivano alla fn madre: sono rifiutate.
 
-        ⭐ Il test guarda il lato che i due sopra non guardano: quelle chiavi
+        ⭐ Il test guarda il lato che quello sopra non guarda: quelle chiavi
         non sono "ignote" (un typo), sono chiavi che il FE ha spedito per mesi.
         Se un giorno rientrassero nella whitelist senza che la colonna esista,
         la fn le scarterebbe in silenzio e il salvataggio sembrerebbe riuscito.
@@ -80,15 +89,14 @@ class UpdateClienteAtomicoTests(TestCase):
         `vendite.contratti` (D9), l'IVA da nessuna parte (D7-bis).
         """
         cursor = _mock_cursor(mocked_factory)
-        ClientiRepository().update_cliente_atomico(
-            1, ba_categoria_cliente_id=None,
-            cliente_fields={
-                "iva_id": 5, "cliente_pa": "S", "split_payment": "S",
-                "codice_cig": "A1", "codice_cup": "B2", "codice_commessa": "C3",
-                "modalita_pagamento_id": 5,
-            },
-        )
-        self.assertEqual(_payload_jsonb(cursor), {"modalita_pagamento_id": 5})
+        for chiave in ("iva_id", "cliente_pa", "split_payment",
+                       "codice_cig", "codice_cup", "codice_commessa"):
+            with self.subTest(chiave=chiave), self.assertRaises(RuntimeError):
+                ClientiRepository().update_cliente_atomico(
+                    1, ba_categoria_cliente_id=None,
+                    cliente_fields={chiave: "S", "modalita_pagamento_id": 5},
+                )
+        cursor.execute.assert_not_called()
 
     @patch(CURSOR)
     def test_atomico_normalizza_empty_nullable(self, mocked_factory):

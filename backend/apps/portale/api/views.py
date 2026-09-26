@@ -57,7 +57,7 @@ class AttivazionePortaleView(AttivazioneVesteView):
 
     porta = PORTA_PORTALE
     messaggio_con_password = (
-        "Account portale attivato con successo. "
+        "Account portale attivato con successo. "  # noqa: S105 — testo del messaggio, non una password
         "Effettua il login con la nuova password."
     )
     messaggio_cross = (

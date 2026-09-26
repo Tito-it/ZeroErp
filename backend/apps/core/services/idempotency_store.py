@@ -8,11 +8,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID, uuid4
 
 from django.db import connection
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -147,7 +150,10 @@ class IdempotencyStore:
                         return value
                     return UUID(str(value))
         except Exception:
-            pass
+            # Il ripiego resta, ma non muto: un tx_id applicativo scollega la
+            # chiave dalla transazione DB, e senza questa riga non lo saprebbe
+            # nessuno.
+            logger.warning("idempotency.tx_id_db_non_disponibile", exc_info=True)
 
         if request_id:
             try:

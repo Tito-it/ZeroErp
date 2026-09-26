@@ -45,7 +45,9 @@ export function makeComponentiBomApi(basePath) {
     return api.get(`${base}/${parentId}/righe/${rigaId}/componenti/`, { params })
   }
 
-  // PATCH singolo componente (prezzo override, IVA, origine, ecc.).
+  // PATCH singolo componente: `prezzo_unitario`, `attivo`, `meta` e basta
+  // (`COMPONENTE_PATCH_OPERATORE` del backend). L'origine del prezzo la scrive
+  // il server; IVA e campi del workflow L3 sono un 400.
   // Coerente con updateRiga/update testata: nessuna Idempotency-Key.
   function updateRigaComponente(parentId, rigaId, componenteId, payload) {
     return api.patch(

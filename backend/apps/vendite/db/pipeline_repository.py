@@ -26,6 +26,7 @@ from apps.core.db._helpers import (
     jsonb_out,
     row_to_dict,
     rows_to_list,
+    sql_order_clause,
 )
 from apps.core.db.emittente_scope_helpers import (
     add_emittente_scope_condition,
@@ -221,8 +222,10 @@ class TaskExecutionMode:
 
 
 # Whitelist ORDER BY della coda stampa: chiave = `campo_sorgente` inviato dal
-# frontend, valore = espressione SQL qualificata. `{dir}` solo dove serve NULLS
-# LAST (la direzione va PRIMA della clausola).
+# frontend, valore = espressione SQL qualificata. Direzione, NULLS e tiebreak li
+# mette il BB `sql_order_clause` (2026-09-26: prima il segnaposto `{dir}` portava
+# un `NULLS LAST` fisso in entrambi i versi e il tiebreak era `c.id DESC` fisso —
+# una seconda regola accanto a quella di Tid del 2026-07-19/08-03).
 #
 # ⚠️ A livello MODULO, non attributo di classe: il gate del service ne DERIVA
 # l'elenco, e una whitelist raggiungibile solo attraverso la classe diventa
@@ -236,10 +239,10 @@ class TaskExecutionMode:
 CODA_STAMPA_SORT_SQL: dict[str, str] = {
     "id": "c.id",
     "fattura_id": "c.sorgente_id",
-    # NULLS LAST esplicito: il numero e` NULL finche` la fattura e` in bozza —
-    # in DESC finirebbe in testa.
-    "fattura_numero": "f.numero {dir} NULLS LAST",
-    "emittente_codice": "ef.codice {dir} NULLS LAST",
+    # Nullable: il numero e` NULL finche` la fattura e` in bozza — in DESC il
+    # BB lo manda in coda (NULL come valore minimo).
+    "fattura_numero": "f.numero",
+    "emittente_codice": "ef.codice",
     "operatore": "c.user_insert",
     "stato": "c.stato",
     # ⭐ QUANDO LA STAMPA E' ENTRATA IN CODA, ed e' il default dal 2026-09-07 —
@@ -250,17 +253,24 @@ CODA_STAMPA_SORT_SQL: dict[str, str] = {
     #    diverse, e un'ordinabilita' che regge finche' nessuno aggiorna la riga
     #    e' una proprieta' dei dati, non del modello.
     "data_insert": "c.data_insert",
-    # NULLS LAST esplicito: lotto_id e` NULL per le stampe fuori lotto (es.
-    # ristampe singole) — in DESC finirebbero in testa.
-    "lotto_id": "c.lotto_id {dir} NULLS LAST",
+    # Nullable: lotto_id e` NULL per le stampe fuori lotto (es. ristampe
+    # singole) — in DESC il BB le manda in coda.
+    "lotto_id": "c.lotto_id",
     "data_update": "c.data_update",
     # `archiviato_il` (2026-09-04, brief-db-archiviazione-righe-code): a
     # catalogo e` `ordinabile = t`, e seed e whitelist sono confrontati da
     # `test_liste_configurabili_seed` — accenderla la` senza metterla qui
     # sarebbe una colonna che il frontend offre e il backend rifiuta con un
-    # 400. NULLS LAST: la data e` NULL su ogni riga NON archiviata.
-    "archiviato_il": "c.archiviato_il {dir} NULLS LAST",
+    # 400. Nullable: la data e` NULL su ogni riga NON archiviata.
+    "archiviato_il": "c.archiviato_il",
 }
+
+# Le colonne DATA della whitelist: senza direzione indicata partono DESC (regola
+# Tid 2026-09-02, `colonne_desc` di `sql_order_clause`). Coincidono con le date
+# ordinabili del seed — lo verifica `test_liste_configurabili_seed`.
+CODA_STAMPA_SORT_COLONNE_DATA: frozenset[str] = frozenset(
+    {"data_insert", "data_update", "archiviato_il"}
+)
 
 
 # Proiezione e mapping di `GroupAttivitaInput`, in un posto solo.
@@ -1577,7 +1587,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 FROM (
                     {fattura_id_select_sql}
                 ) AS src
-                """,
+                """,  # noqa: S608 — SELECT sorgente letterale dai due chiamanti privati, valori come parametri
                 [
                     messaggio,
                     status,
@@ -2452,7 +2462,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                   JOIN vendite.fatture f_p ON f_p.id = lf_p.fattura_id
                  WHERE {perimetro}
                    AND f_p.numero IS NULL
-            """.format(perimetro=perimetro)
+            """.format(perimetro=perimetro)  # noqa: S608 — perimetro da costruisci_perimetro_lotti_numerabili (alias letterale + %s), valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             row = cursor.fetchone()
@@ -2494,7 +2504,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 SELECT max(vendite.fn_get_data_minima_numerabile_lotto(fl_p.id))
                   FROM vendite.fatturazione_lotti fl_p
                  WHERE {perimetro}
-                """.format(perimetro=perimetro),
+                """.format(perimetro=perimetro),  # noqa: S608 — perimetro da costruisci_perimetro_lotti_numerabili (alias letterale + %s), valori come parametri
                 par_perimetro,
             )
             row = cursor.fetchone()
@@ -2814,10 +2824,11 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
     #        Filtri opzionali stati/lotto/intervallo `data_insert` (`data_a`
     #        bound ESCLUSIVO: il chiamante passa gia` il giorno+1).
     #        Ordinamento (2026-07-23, richiesta Tid): `sort_by`/`sort_dir` da
-    #        whitelist `CODA_STAMPA_SORT_SQL` — il service valida, qui assert
-    #        di defense-in-depth. Default `data_update DESC` («aggiornato»: la
-    #        riga lavorata piu` di recente in testa); tiebreaker `c.id DESC`
-    #        per un ordine stabile. E` una lista di monitoraggio, non la corsia
+    #        whitelist `CODA_STAMPA_SORT_SQL` — il service valida, qui controllo
+    #        esplicito di defense-in-depth (BB `sql_order_clause` rigido).
+    #        Default `data_update DESC` («aggiornato»: la riga lavorata piu` di
+    #        recente in testa); tiebreaker `c.id` allineato alla direzione
+    #        (regola 2026-08-03) per un ordine stabile. E` una lista di monitoraggio, non la corsia
     #        del worker. Ritorna `{items, total, archiviate}` via BB
     #        `fetch_paged_with_total` (fallback pagina-stantia: la coda si
     #        auto-svuota sotto l'utente a ogni drain).
@@ -2873,13 +2884,13 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         safe_limit = max(1, min(int(limit), LIST_MAX_LIMIT))
         safe_offset = max(0, int(offset))
-        sort_expr = CODA_STAMPA_SORT_SQL.get(sort_by)
-        assert sort_expr is not None, f"sort_by non in whitelist: {sort_by!r}"
-        assert sort_dir in ("ASC", "DESC"), f"sort_dir non valido: {sort_dir!r}"
-        order_by = (
-            sort_expr.format(dir=sort_dir)
-            if "{dir}" in sort_expr
-            else f"{sort_expr} {sort_dir}"
+        # Whitelist prima dell'SQL: BB `sql_order_clause` RIGIDO — sort_by o
+        # sort_dir fuori lista sono `ValueError`, mai il default.
+        order_by = sql_order_clause(
+            sort_by, sort_dir,
+            colonne=CODA_STAMPA_SORT_SQL, default="c.data_insert",
+            default_desc=True, colonne_desc=CODA_STAMPA_SORT_COLONNE_DATA,
+            tiebreak="c.id", rifiuta_fuori_whitelist=True,
         )
         from_join = """
               FROM vendite.fatture_stampa_coda c
@@ -2900,9 +2911,9 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                    COUNT(*) OVER() AS total_count
               {from_join}
               {where}
-             ORDER BY {order_by}, c.id DESC
+             ORDER BY {order_by}
              LIMIT %s OFFSET %s
-        """  # noqa: S608 — where/order da whitelist chiuse (nessun input libero)
+        """  # where/order da whitelist chiuse (nessun input libero)
         rows, total = fetch_paged_with_total(
             data_sql,
             # `caller_username` per primo: è il parametro dell'is_mio nella
@@ -2910,7 +2921,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             # user reale → is_mio False, mai NULL.
             [caller_username or "", *params, safe_limit, safe_offset],
             fallback_count_sql=(
-                f"SELECT COUNT(*) {from_join} {where}"  # noqa: S608
+                f"SELECT COUNT(*) {from_join} {where}"
             ),
             fallback_params=list(params),
             offset=safe_offset,

@@ -28,6 +28,7 @@
 #   9. render_pdf_jinja_supporta_for_loop
 #  10. render_pdf_css_opzionale_none_quando_assente
 #  11. render_pdf_weasyprint_native_dep_mancante_mapped
+#  12. render_pdf_jinja_escapa_html_nei_valori_del_context
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -177,6 +178,25 @@ class RenderPdfJinjaTests(TestCase):
         html_arg, _ = mock_weasy.call_args.args
         self.assertIn("<li>a</li>", html_arg)
         self.assertIn("<li>b</li>", html_arg)
+
+
+    # 12. Un valore del context che contiene HTML arriva a WeasyPrint come
+    #     TESTO: un campo anagrafica non deve poter iniettare tag (es. un
+    #     `<link rel="attachment">` che allega un file del server al PDF).
+    #     L'HTML scritto nel template, invece, resta intatto.
+    @patch("apps.documenti.services.render_service._render_with_weasyprint")
+    def test_render_pdf_jinja_escapa_html_nei_valori_del_context(
+        self, mock_weasy
+    ) -> None:
+        mock_weasy.return_value = b"PDF"
+        render_service.render_pdf(
+            template_versione=_versione(html="<p>{{ nome }}</p>"),
+            context={"nome": '<link rel="attachment" href="file:///etc/passwd">'},
+        )
+        html_arg, _ = mock_weasy.call_args.args
+        self.assertNotIn("<link", html_arg)
+        self.assertIn("&lt;link rel=&#34;attachment&#34;", html_arg)
+        self.assertTrue(html_arg.startswith("<p>"))
 
 
 class RenderPdfWeasyPrintTests(TestCase):

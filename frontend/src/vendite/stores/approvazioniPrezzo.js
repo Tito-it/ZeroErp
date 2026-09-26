@@ -43,15 +43,19 @@ export const useApprovazioniPrezzoStore = defineStore(
       order_dir: 'desc',
     })
 
-    const { items, totalRecords, loading, hasSearched, fetchList } =
-      useListaEmptyStateFetch({
-        filters,
-        buildParams,
-        fetchPage: listCodaApprovazioni,
-        alwaysFetch: true,
-      })
+    // `lista`: lo stato del BB, esposto INTERO nel `return` (`...lista`).
+    // ⛔ Non si elencano i suoi ref a mano: un ref nuovo del BB (com'e'
+    //    successo con `ricercaFull`, `ricercaMinCaratteri`,
+    //    `ricercaCambiaLaRichiesta`) arriverebbe solo agli store che lo
+    //    ricordano — e senza errore sugli altri.
+    const lista = useListaEmptyStateFetch({
+      filters,
+      buildParams,
+      fetchPage: listCodaApprovazioni,
+      alwaysFetch: true,
+    })
 
-    return { items, totalRecords, loading, hasSearched, filters, fetchList }
+    return { ...lista, filters }
   },
   {
     userScoped: true,

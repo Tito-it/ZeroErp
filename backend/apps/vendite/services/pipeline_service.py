@@ -11,6 +11,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Any
 
+from apps.core.db._helpers import order_dir_ammessa
 from apps.core.db.dbops_repository import DbopsRepository
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.fan_out import FanOutRunLogger, run_fan_out
@@ -513,8 +514,11 @@ def fn_list_lotto_segnalazioni(
         function_name="vendite.pipeline_service.fn_list_lotto_segnalazioni",
         log_to_db=False,
     )
+    # ⛔ Il predicato unico `order_dir_ammessa` (2026-09-26), non un secondo
+    #    `in ("asc", "desc")`: la fn DB legge `lower(btrim(...))`, quindi
+    #    maiuscole, spazi e assenza (= il suo default `desc`) sono gia' suoi.
     ErrorManager.require(
-        order_dir.lower() in ("asc", "desc"),
+        order_dir_ammessa(order_dir),
         code="E_PIPELINE_VALIDATION",
         message="Parametri pipeline non validi.",
         detail=f"order_dir={order_dir!r} non ammesso",
@@ -1014,8 +1018,11 @@ def fn_get_lotto_task_runs(
         function_name="vendite.pipeline_service.fn_get_lotto_task_runs",
         log_to_db=True,
     )
+    # ⛔ Il predicato unico `order_dir_ammessa` (2026-09-26), non un secondo
+    #    `in ("asc", "desc")`: la fn DB legge `lower(btrim(...))`, quindi
+    #    maiuscole, spazi e assenza (= il suo default `desc`) sono gia' suoi.
     ErrorManager.require(
-        order_dir.lower() in ("asc", "desc"),
+        order_dir_ammessa(order_dir),
         code="E_PIPELINE_VALIDATION",
         message="Parametri pipeline non validi.",
         detail=f"order_dir={order_dir!r} non ammesso",
