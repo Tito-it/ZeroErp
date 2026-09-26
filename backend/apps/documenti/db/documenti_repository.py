@@ -301,9 +301,10 @@ _ASSET_PROJECTION_DETAIL = (
 # ⛔ Il `codice_interno` NON si cerca (Tid, 2026-09-23 — brief §7-bis): e' la
 #    chiave immutabile del sistema, non il codice dell'operatore. Fino al
 #    2026-09-24 la ricerca scritta a mano lo cercava; il catalogo non lo accende.
-# ⭐ Da un carattere (`min_caratteri=1`), senza 400: template e asset sono
-#    tabelle di CONFIGURAZIONE (Tid, 2026-09-24 — brief §6 e §13.3 a), come le
-#    altre dell'area config che cercano da un carattere.
+# ⭐ Senza 400 sotto soglia: template e asset sono tabelle di
+#    CONFIGURAZIONE (Tid, 2026-09-24 — brief §6 e §13.3 a), come le altre
+#    dell'area config. La soglia la dichiara il catalogo della lista
+#    (`ricerca_min_caratteri`), non questo modulo.
 _RICERCA_TEMPLATE_DOCUMENTI = RicercaFull("documenti.template_documenti", ("codice", "descrizione"))
 _RICERCA_TEMPLATE_ASSET = RicercaFull("documenti.template_asset", ("codice", "descrizione", "file_name"))
 
@@ -443,7 +444,7 @@ class DocumentiRepository:
             conditions.append("t.emittente_fiscale_id = ANY(%s)")
             params.append(list(emittente_ids_scope))
         # Un punto solo: la stessa condizione serve count e pagina.
-        add_ricerca_full_condition(conditions, params, search, _RICERCA_TEMPLATE_DOCUMENTI, alias="t", min_caratteri=1)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_TEMPLATE_DOCUMENTI, alias="t")
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -748,7 +749,7 @@ class DocumentiRepository:
             conditions.append("a.emittente_fiscale_id = ANY(%s)")
             params.append(list(emittente_ids_scope))
         # Un punto solo: la stessa condizione serve count e pagina.
-        add_ricerca_full_condition(conditions, params, search, _RICERCA_TEMPLATE_ASSET, alias="a", min_caratteri=1)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_TEMPLATE_ASSET, alias="a")
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 

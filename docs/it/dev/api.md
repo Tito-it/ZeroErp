@@ -583,7 +583,18 @@ una colonna — ed era successo due volte in pagamenti prima del BB.
 ### Ricerca e throttling
 
 * `is_search_endpoint = True` sulla view abilita `SearchBurstRateThrottle`
-* Ricerca testuale: parametro `search`, minimo 3 caratteri, operatore ILIKE
+* Ricerca testuale: parametro `search`, operatore ILIKE. ⭐ Sulle liste
+  configurabili la **soglia è della lista** (dal 2026-09-26): la dichiara il
+  catalogo (`ui.lista_definizione.ricerca_min_caratteri` — 1 sulle tabelle di
+  configurazione a codici corti, 3 sulle altre), il BB
+  `add_ricerca_full_condition` la legge da lì e sotto soglia il termine non
+  filtra; la stessa colonna arriva al frontend nella configurazione della lista
+  (chiave `ricerca_min_caratteri`). ⛔ Nessun repository e nessuna view la
+  scrivono a mano, e **nessuna lista a catalogo risponde 400** sotto soglia: il
+  termine corto semplicemente non filtra (decisione di Tid del 2026-09-26). Le
+  ricerche che non sono una lista a catalogo (ricerca universale, lookup)
+  restano alla soglia di progetto `RICERCA_MIN_CARATTERI` (3), col 400
+  `E_SEARCH_VALIDATION` di `require_min_search_length`
 * Vedi: `docs/it/dev/Policy-ricerca-e-paginazione(API-DB).md`
 
 ### ⭐ Capability di riga — come viaggia il motivo di un'azione spenta

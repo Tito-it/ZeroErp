@@ -41,7 +41,6 @@ from apps.core.api.payload_validators import (
     qp_int_optional,
     qp_str,
 )
-from apps.core.api.search_validators import require_min_search_length
 from apps.core.api.success_responses import success_response
 from apps.magazzino.api._comuni import (
     AREA,
@@ -70,8 +69,10 @@ _LISTA_MAGAZZINI = "magazzino.magazzini"
 _LISTA_UBICAZIONI = "magazzino.ubicazioni"
 _LISTA_LOTTI = "magazzino.lotti"
 
-# Sotto soglia la view risponde 400 (`require_min_search_length`).
-_PARAM_SEARCH = param_ricerca_full(rifiuta_sotto_soglia=True)
+# ⛔ Nessun 400 sotto soglia (brief-db-be-fe-ricerca-soglia-per-lista §6 a,
+#    Tid 2026-09-26): il termine corto lo ignora il BB, sulla soglia del
+#    catalogo della lista.
+_PARAM_SEARCH = param_ricerca_full()
 _PARAM_ATTIVO = OpenApiParameter(
     name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False,
     description="Assente = tutte, spente comprese; `true` = solo attive.",
@@ -81,8 +82,6 @@ _PARAM_ATTIVO = OpenApiParameter(
 # Scopo: i filtri comuni alle tre liste: ricerca libera e flag attivo.
 def _filtri_anagrafica(qp) -> dict:
     search = qp_str(qp.get("search"))
-    if search:
-        require_min_search_length(search)
     return {
         "search": search,
         "attivo": qp_bool_optional(qp.get("attivo"), "attivo"),

@@ -17,7 +17,7 @@ Indice test eseguiti:
 2) RateListaTests.test_ordinamento_fuori_whitelist_rifiutato
 3) RateListaTests.test_senza_ordinamento_decide_il_repository
 4) RateListaTests.test_direzione_normalizzata_in_minuscolo
-5) RateListaTests.test_ricerca_corta_rifiutata
+5) RateListaTests.test_ricerca_corta_non_e_un_errore
 6) RateListaTests.test_solo_aperte_arriva_come_booleano
 6-bis) RateListaTests.test_solo_numerate_e_un_perimetro_non_un_filtro
 7) RateListaTests.test_i_criteri_passano_intatti
@@ -91,13 +91,13 @@ class RateListaTests(SimpleTestCase):
         kwargs = self.repo.list_rate_paginata.call_args.kwargs
         self.assertEqual(kwargs["order_dir"], "desc")
 
-    # Scopo: la ricerca libera sotto i tre caratteri e' un 400 col campo, non
-    #        una lista non filtrata che sembra un risultato.
-    def test_ricerca_corta_rifiutata(self):
-        with self.assertRaises(ServiceError) as ctx:
-            saldi_service.list_rate(auth_user_id=5, limit=25, search="ro")
-        self.assertEqual(ctx.exception.code, "E_SEARCH_VALIDATION")
-        self.assertEqual(ctx.exception.context.get("field"), "search")
+    # Scopo: la ricerca libera corta NON e' un errore: arriva al repository, e
+    #        sotto la soglia del catalogo della lista la ignora il BB di ricerca
+    #        (brief-db-be-fe-ricerca-soglia-per-lista §6 a, Tid 2026-09-26 —
+    #        fino ad allora qui era un 400).
+    def test_ricerca_corta_non_e_un_errore(self):
+        saldi_service.list_rate(auth_user_id=5, limit=25, search="ro")
+        self.assertEqual(self.repo.list_rate_paginata.call_args.kwargs["search"], "ro")
 
     # Scopo: `solo_aperte` e' SUPPORTATO (P-3 c'e'): al repository arriva un
     #        booleano, e `None` vale `False` — nessun 400 «non supportato».

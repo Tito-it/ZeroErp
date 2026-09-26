@@ -28,7 +28,10 @@
 * Ricerca **prefix** di default (es. `term%`) quando applicabile.
 * Ricerca **contains** (es. `%term%`) ammessa solo se:
 
-  * lunghezza termine ≥ **3** caratteri (configurabile)
+  * lunghezza termine ≥ la **soglia della lista**: sulle liste configurabili
+    la dichiara il catalogo (`ui.lista_definizione.ricerca_min_caratteri`, 1
+    sulle tabelle di configurazione a codici corti, 3 sulle altre); altrove la
+    soglia di progetto, **3**
   * paginazione obbligatoria + max page size
 
 ### 2.2 Protezioni lato API (DRF)
@@ -36,6 +39,9 @@
 * **Min length** per `contains`/`icontains` (es. 3):
 
   * se `term` troppo corto → errore controllato o richiesta di raffinamento.
+  * ⭐ **Sulle liste configurabili nessun errore**: sotto la soglia della lista
+    il termine non filtra (decisione del 2026-09-26). L'errore resta per le
+    ricerche dedicate e i lookup.
 * **Rate limiting/throttling** sugli endpoint di search.
 * **Hard cap** risultati navigabili (es. “result window” massima 10.000): oltre, richiedere filtri o export.
 * Separare endpoint:

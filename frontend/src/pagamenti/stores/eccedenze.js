@@ -24,10 +24,11 @@ import { paramsPagina, paramsRicerca } from '../../core/utils/listParams'
 import { listEccedenze } from '../api/pagamenti'
 import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
 
-function buildParams(f) {
+function buildParams(f, _termine, ricerca) {
   const p = paramsPagina(f)
-  // La ricerca libera con la regola comune (`paramsRicerca`: trim, soglia unica).
-  Object.assign(p, paramsRicerca(f))
+  // La ricerca libera con la regola comune (`paramsRicerca`: trim, soglia della
+  // lista — `ricerca` = `{ minCaratteri }`, passato dal BB di stato).
+  Object.assign(p, paramsRicerca(f, ricerca))
   if (f.chi_e_in_credito) p.chi_e_in_credito = f.chi_e_in_credito
   if (f.billing_account_id != null) p.billing_account_id = f.billing_account_id
   return p
@@ -61,8 +62,9 @@ export const useEccedenzeStore = defineStore(
       order_dir: 'desc',
     })
 
-    // `ricercaFull` (la lista cerca?) la dichiara il BB di stato.
-    const { items, totalRecords, loading, hasSearched, ricercaFull, fetchList } =
+    // `ricercaFull` (la lista cerca?) e `ricercaMinCaratteri` (da quanti
+    // caratteri?) le dichiara il BB di stato.
+    const { items, totalRecords, loading, hasSearched, ricercaFull, ricercaMinCaratteri, fetchList } =
       useListaEmptyStateFetch({
         filters,
         buildParams,
@@ -77,7 +79,7 @@ export const useEccedenzeStore = defineStore(
     })
 
     return {
-      items, totalRecords, loading, hasSearched, filters, fetchList, ricercaFull,
+      items, totalRecords, loading, hasSearched, filters, fetchList, ricercaFull, ricercaMinCaratteri,
       chiaviFiltro, filtriDefault, azzeraFiltri,
     }
   },

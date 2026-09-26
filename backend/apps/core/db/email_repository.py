@@ -84,8 +84,9 @@ EMAIL_LOG_ORDER_COLUMNS: dict[str, str] = {
 # `ea`, `et`, `el`), proiettate con lo stesso nome: forma a tupla.
 # ⭐ Soglie (brief §6): account e template sono tabelle di CONFIGURAZIONE e
 #    cercano da un carattere (Tid, 2026-09-23); il log e' un registro, non
-#    configurazione, e resta al default del BB (sotto soglia il termine non
-#    filtra — prima del 2026-09-24 filtrava da un carattere).
+#    configurazione, e resta alla soglia di progetto (sotto soglia il termine
+#    non filtra — prima del 2026-09-24 filtrava da un carattere). Le soglie le
+#    dichiara il catalogo di ciascuna lista (`ricerca_min_caratteri`).
 _RICERCA_EMAIL_ACCOUNT = RicercaFull("config.email_account", ("codice", "descrizione", "email_from"))
 _RICERCA_EMAIL_TEMPLATE = RicercaFull("config.email_template", ("codice", "oggetto"))
 _RICERCA_EMAIL_LOG = RicercaFull("config.email_log", ("destinatario", "oggetto"))
@@ -131,7 +132,7 @@ class EmailRepository:
         if attivo_only:
             conditions.append("ea.attivo IS TRUE")
         add_ricerca_full_condition(
-            conditions, params, search, _RICERCA_EMAIL_ACCOUNT, alias="ea", min_caratteri=1,
+            conditions, params, search, _RICERCA_EMAIL_ACCOUNT, alias="ea",
         )
 
         where = " AND ".join(conditions) if conditions else "TRUE"
@@ -348,7 +349,7 @@ class EmailRepository:
             conditions.append("et.codice = %s")
             params.append(codice)
         add_ricerca_full_condition(
-            conditions, params, search, _RICERCA_EMAIL_TEMPLATE, alias="et", min_caratteri=1,
+            conditions, params, search, _RICERCA_EMAIL_TEMPLATE, alias="et",
         )
 
         where = " AND ".join(conditions) if conditions else "TRUE"

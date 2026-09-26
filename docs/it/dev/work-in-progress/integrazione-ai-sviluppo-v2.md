@@ -1,7 +1,7 @@
 # Piano di Sviluppo v2 — Integrazione AI in ZeroERP (Evoluzione)
 
 **Stato:** WIP
-**Data:** 2026-03-31 · **riletto sul codice il 2026-09-25**
+**Data:** 2026-03-31 · **riletto sul codice il 2026-09-25** · aggiornato il 2026-09-26
 **Autore:** Michele Carlo / Claude Code
 **Prerequisito:** [integrazione-ai-sviluppo.md](../work-done/integrazione-ai-sviluppo.md) (v1 completato)
 
@@ -117,6 +117,58 @@ Incrementalmente, quando l'endpoint gemello del dominio è stabile e testato.
 
 ---
 
+## Debiti dei tool esistenti — fatti che hanno già una sede
+
+> Emersi il 2026-09-26 dalla chiusura di
+> [brief-db-be-fe-ricerca-soglia-per-lista](../work-done/brief-db-be-fe-ricerca-soglia-per-lista.md)
+> (§6 a-bis e §8), rimasti fuori da quel perimetro. Stessa natura in tutti e
+> due i casi: lo schema o il guard di un tool ripete un fatto che nel modello
+> ha già una sede, e la copia diverge in silenzio al primo cambio.
+
+### La soglia della ricerca è della lista, non di progetto
+
+* [ ] `ToolBase.termine_ricerca` (`tools/base.py`) rifiuta un termine sotto
+  `RICERCA_MIN_CARATTERI`, la soglia di progetto. Ma i tool cercano **sulle
+  liste a catalogo** dei loro endpoint gemelli, e lì la soglia è
+  `ui.lista_definizione.ricerca_min_caratteri`, per lista. Su una lista che
+  cerca da uno il tool rifiuterebbe «KG»; su una lista con soglia più alta
+  della costante lascerebbe passare un termine che il BB ignora, e il modello
+  riceverebbe **tutte** le righe credendole filtrate — proprio il caso che il
+  guard esiste per impedire.
+  - ⭐ **Il guard resta**: il rifiuto è giusto per un modello, che a
+    differenza dell'operatore non vede che la lista non si è ristretta (il
+    commento in `base.py` lo spiega). Cambia solo **la sede della soglia**.
+    Non contraddice la decisione di Tid del 2026-09-26 (nessun 400 sotto
+    soglia sulle liste a catalogo): quella riguarda la view, non un errore
+    azionabile per il modello.
+  - Direzione: `termine_ricerca(params, lista_codice)` con
+    `soglia_ricerca(lista_codice)` (`core/db/_helpers.py`), il codice lista
+    preso dalla dichiarazione `RicercaFull` del repository che il gemello usa,
+    non riscritto nel tool.
+  - Consumatori da allineare: i tool che chiamano `termine_ricerca` in
+    `anagrafiche_tools`, `config_tools`, `pratiche_tools`, `vendite_tools`;
+    test in `tests/tools/test_base_termine_ricerca.py`.
+* [ ] Le **descrizioni** dei parametri `search` dicono «min
+  {RICERCA_MIN_CARATTERI} caratteri» (stessi quattro file): lo schema si
+  costruisce all'import e non può leggere il catalogo. Da togliere, come si è
+  fatto per `param_ricerca_full` nello schema OpenAPI: il numero lo dice
+  l'errore di `termine_ricerca`, che il modello corregge al giro dopo.
+
+### Le nature del soggetto
+
+* [ ] `cerca_soggetti` (`tools/anagrafiche_tools.py`) dichiara
+  `"natura": {"enum": ["PF", "PG", "ENTE"]}`: una copia dell'enum
+  `config.natura_soggetto_enum`. Il 2026-09-26 la stessa copia è stata tolta da
+  `get_config_resolver`, che ora legge il dominio con `enum_range`. Lo schema
+  del tool non può leggere il DB all'import: le strade sono (1) togliere
+  `enum` e lasciare la validazione al backend, che rifiuta una natura
+  inesistente, con la descrizione che orienta il modello; (2) costruire lo
+  schema a runtime, alla prima richiesta. Da decidere con Tid.
+  - In ogni caso un **presidio** che confronti l'elenco dello schema con
+    `enum_range` sul DB vero, finché la copia esiste.
+
+---
+
 ## Miglioramenti frontend widget
 
 > Obiettivo: rendering più ricco e interazioni avanzate. Al 2026-09-25 nessuna
@@ -210,6 +262,7 @@ Sta nella guida AI §9 (requisito R7 di
 | Alta | Livelli dell'area `ai_assistant` (brief-db-area-funzionale-assistente-ai §5.3) | Senza, `LETTURA` sull'assistente non ha un significato |
 | Alta | Test con provider reale, a partire dai thinking blocks | Il tool loop può rompersi al primo giro multi-tool reale, e con il mock non si vede |
 | Alta | Conversazioni in cache | Con più worker il multi-turno si perde |
+| Media | Debiti dei tool esistenti (soglia della lista, nature) | Il guard sulla soglia oggi legge la costante di progetto: su una lista a soglia diversa rifiuta o lascia passare il termine sbagliato |
 | Media | Tool estensioni | Incrementali, sul gemello del dominio |
 | Media | Rendering arricchito widget | Dopo le prime prove con gli operatori |
 | Media | Audit `ai_initiated` | Dopo le prime settimane d'uso |
@@ -226,6 +279,7 @@ Sta nella guida AI §9 (requisito R7 di
 | 2026-06-26 | Regola di sicurezza sul rendering; conferme pendenti in cache; follow-up conversazioni |
 | 2026-07-26 | Nota sui thinking blocks dopo il passaggio a Opus 5 |
 | 2026-09-25 | Riletto sul codice: tolti i numeri della v1 e la ricetta vecchia per aggiungere un tool (area/livello dichiarati), riscritti tool e RAG sulla regola del gemello, segnate ✅ le voci fatte, priorità riordinate |
+| 2026-09-26 | Aggiunti i «Debiti dei tool esistenti»: soglia della ricerca dal catalogo della lista, elenco delle nature copiato dall'enum (dalla chiusura di brief-db-be-fe-ricerca-soglia-per-lista) |
 
 ---
 

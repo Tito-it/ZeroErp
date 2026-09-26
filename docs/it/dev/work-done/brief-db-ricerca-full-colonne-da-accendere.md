@@ -7,7 +7,7 @@
 > ✅ **CHIUSO il 2026-09-24 sera** (Tid) e archiviato in `work-done/`: §3.1-§3.5
 > e il codice errore sono applicati su dbdev, e il BE ha convertito le liste.
 > **Le due richieste rimaste aperte sono passate** al
-> [brief-db-be-fe-ricerca-soglia-per-lista](../work-in-progress/brief-db-be-fe-ricerca-soglia-per-lista.md):
+> [brief-db-be-fe-ricerca-soglia-per-lista](../work-done/brief-db-be-fe-ricerca-soglia-per-lista.md):
 > §8 (tre frecce di ordinamento) è la sua §1, §9 (la soglia per lista) la sua
 > §4. Qui restano per la storia: **non si eseguono da qui**.
 >

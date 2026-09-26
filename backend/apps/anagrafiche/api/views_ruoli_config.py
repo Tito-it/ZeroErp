@@ -72,7 +72,9 @@ class RuoliConfigResolverView(DomainAPIView):
                             "min_search_length": serializers.IntegerField(
                                 help_text=(
                                     "Lunghezza minima della search per attivare la "
-                                    "lookup soggetti. Default 3."
+                                    "lookup soggetti: la soglia della lista "
+                                    "`anagrafiche.soggetti` a catalogo "
+                                    "(`ricerca_min_caratteri`), che la ricerca usa."
                                 ),
                             ),
                         },

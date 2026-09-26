@@ -104,10 +104,12 @@ export const PAGINATION = {
 //    soglia di default del BB `add_ricerca_full_condition`. Una sede sola nel
 //    frontend (2026-09-24, regola del 2 — ok Tid): prima lo stesso `3` era
 //    scritto in sei store e due volte in `useListaEmptyStateFetch`.
-// ⚠️ E' il DEFAULT: le liste di configurazione cercano da un carattere nel
-//    backend, e finche' la soglia per lista non arriva dalla configurazione
-//    (brief-be-ricerca-full-liste-residue §13.6) il frontend la manda da tre.
-//    Chi la legge passa sempre da `paramsRicerca` / `ricercaCorta`
+// ⚠️ E' il RIPIEGO: la soglia di una lista configurabile e' un fatto della
+//    lista (`ricerca_min_caratteri` nella sua configurazione, brief-db-be-fe-
+//    ricerca-soglia-per-lista), che lo store tiene in `ricercaMinCaratteri`.
+//    Questo numero vale solo finche' la configurazione non e' arrivata
+//    (`null`), e per le ricerche che non sono una lista a catalogo.
+//    Chi la legge passa sempre da `paramsRicerca` / `termineCorto`
 //    (`core/utils/listParams.js`), mai da un confronto scritto sul posto.
 export const RICERCA = {
   MIN_CARATTERI: 3,

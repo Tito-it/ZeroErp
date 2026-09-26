@@ -78,12 +78,10 @@ def _escludi_riga_id(request: Request) -> int | None:
 #    distinta (BE-2, D20-c): UNA dichiarazione per la lista e per il suo export,
 #    come `escludi_riga_id` sui due livelli del saldo.
 # La ricerca libera delle liste (dal 2026-09-23, brief-be-ricerca-full-liste-
-# residue §5.3): nessun 400 sotto soglia (la soglia delle liste non di
-# configurazione e' la decisione aperta di §6).
+# residue §5.3). ⛔ Nessun 400 sotto soglia, rate comprese (brief-db-be-fe-
+# ricerca-soglia-per-lista §6 a, Tid 2026-09-26): il termine corto lo ignora il
+# BB, sulla soglia del catalogo della lista.
 _PARAM_SEARCH = param_ricerca_full()
-# ⚠️ Le rate rifiutano il termine corto con un 400 (`saldi_service.list_rate`):
-#    la soglia che OpenAPI dichiara e' quella vera della view.
-_PARAM_SEARCH_RATE = param_ricerca_full(rifiuta_sotto_soglia=True)
 
 _PARAM_SCARTATE = OpenApiParameter(
     name="scartate", type=bool, location=OpenApiParameter.QUERY, required=False,
@@ -900,7 +898,7 @@ class ApiRateList(DomainAPIView):
             # ⭐ Dal 2026-09-24 sul BB: le colonne le dice il catalogo (anche il
             #    numero documento), e la soglia vera e' il 400 del service (§6).
             #    ⚠️ Non confonderla con `fattura_numero`, il filtro ESATTO.
-            _PARAM_SEARCH_RATE,
+            _PARAM_SEARCH,
             OpenApiParameter(
                 name="solo_aperte", type=bool, location=OpenApiParameter.QUERY,
                 required=False,

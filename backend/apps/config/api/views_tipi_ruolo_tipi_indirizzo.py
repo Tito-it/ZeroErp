@@ -35,7 +35,7 @@ class TipiRuoloTipiIndirizzoView(AdminAPIView):
 
     @extend_schema(
         parameters=[
-            param_ricerca_full(min_caratteri=1),
+            param_ricerca_full(),
             OpenApiParameter(name="attivo", type=bool, required=False),
             OpenApiParameter(name="tipo_ruolo_id", type=int, required=False),
             OpenApiParameter(name="tipo_indirizzo_id", type=int, required=False),

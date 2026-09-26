@@ -18,7 +18,6 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import paginated_envelope, parse_list_params, qp_bool_optional, qp_int_strict, qp_str
-from apps.core.api.search_validators import require_min_search_length
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.listini_service import (
     fn_alert_scadenze,
@@ -178,10 +177,10 @@ class ApiListiniList(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            # ⚠️ Il 400 sotto soglia RESTA (`require_min_search_length` nel
-            #    `get`): la regola unica per le liste non di configurazione e'
-            #    la decisione aperta di brief-be-ricerca-full-liste-residue §6.
-            param_ricerca_full(rifiuta_sotto_soglia=True),
+            # ⛔ Nessun 400 sotto soglia (brief-db-be-fe-ricerca-soglia-per-lista
+            #    §6 a, Tid 2026-09-26): il termine corto lo ignora il BB, sulla
+            #    soglia del catalogo.
+            param_ricerca_full(),
             OpenApiParameter(name="utility_id", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="tipologia_id", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
@@ -204,7 +203,6 @@ class ApiListiniList(DomainAPIView):
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         p = parse_list_params(qp, default_order="codice")
-        require_min_search_length(p["search"], field_name="search")
         raw_utility_id = qp_str(qp.get("utility_id"))
         raw_tipologia_id = qp_str(qp.get("tipologia_id"))
         results, total = fn_list_listini(

@@ -26,10 +26,11 @@ import { useContrattoFiltriLista } from '../../core/composables/useContrattoFilt
 // Scopo: filtri dello store -> query param dell'endpoint.
 // Note: la `search` si inoltra con `paramsRicerca` (brief-be-ricerca-full-liste-
 //       residue §5.3): colonne dal catalogo, casella solo se `ricerca_full`.
-function buildParams(f) {
+function buildParams(f, _termine, ricerca) {
   const p = paramsPagina(f)
-  // La ricerca libera con la regola comune (`paramsRicerca`: trim, soglia unica).
-  Object.assign(p, paramsRicerca(f))
+  // La ricerca libera con la regola comune (`paramsRicerca`: trim, soglia della
+  // lista — `ricerca` = `{ minCaratteri }`, passato dal BB di stato).
+  Object.assign(p, paramsRicerca(f, ricerca))
   if (f.stato) p.stato = f.stato
   if (f.origine) p.origine = f.origine
   if (f.centro_riscossione_id != null) p.centro_riscossione_id = f.centro_riscossione_id
@@ -74,8 +75,9 @@ export const useDistinteStore = defineStore(
       order_dir: 'desc',
     })
 
-    // `ricercaFull` (la lista cerca?) la dichiara il BB di stato.
-    const { items, totalRecords, loading, hasSearched, ricercaFull, fetchList } =
+    // `ricercaFull` (la lista cerca?) e `ricercaMinCaratteri` (da quanti
+    // caratteri?) le dichiara il BB di stato.
+    const { items, totalRecords, loading, hasSearched, ricercaFull, ricercaMinCaratteri, fetchList } =
       useListaEmptyStateFetch({
         filters,
         buildParams,
@@ -90,7 +92,7 @@ export const useDistinteStore = defineStore(
     })
 
     return {
-      items, totalRecords, loading, hasSearched, filters, fetchList, ricercaFull,
+      items, totalRecords, loading, hasSearched, filters, fetchList, ricercaFull, ricercaMinCaratteri,
       chiaviFiltro, filtriDefault, azzeraFiltri,
     }
   },

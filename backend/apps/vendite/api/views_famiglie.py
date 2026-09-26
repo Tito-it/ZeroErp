@@ -63,7 +63,7 @@ _PARAMETRI_FILTRO = [
         required=False,
         description="Derivato da `colonna_serie IS NOT NULL`, non una colonna.",
     ),
-    param_ricerca_full(min_caratteri=1),
+    param_ricerca_full(),
     OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY,
                      required=False,
                      description="Whitelist; fuori whitelist → ordine di default."),

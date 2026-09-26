@@ -43,6 +43,7 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from apps.core.services.service_errors import ServiceError
+from apps.core.tests.ricerca_catalogo_fakes import catalogo_ricerca_finto
 from apps.documenti.db.documenti_repository import DocumentiRepository
 
 
@@ -137,12 +138,8 @@ class DocumentiRepositoryListAssetTests(TestCase):
     #    (BB `add_ricerca_full_condition`, lettura mockata qui): codice,
     #    descrizione e nome file. ⛔ Il `codice_interno` non si cerca (Tid,
     #    2026-09-23): fino al 2026-09-24 la ricerca scritta a mano lo cercava.
-    @patch(
-        "apps.core.db._helpers.colonne_ricerca_accese",
-        return_value=["codice", "descrizione", "file_name"],
-    )
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
-    def test_list_asset_applies_filters_and_search_dal_catalogo(self, mocked_factory, _accese) -> None:
+    def test_list_asset_applies_filters_and_search_dal_catalogo(self, mocked_factory) -> None:
         cursor = _mk_cursor(
             fetchone_results=[(0,), None],
             descriptions=[[], _columns("id")],
@@ -150,14 +147,16 @@ class DocumentiRepositoryListAssetTests(TestCase):
         )
         mocked_factory.return_value = cursor
 
-        DocumentiRepository().list_asset(
-            **self._list_default_args(
-                attivo=False,
-                asset_tipo_id=4,
-                emittente_fiscale_id=11,
-                search="logo",
+        # Catalogo finto: le colonne che la lista accende.
+        with catalogo_ricerca_finto(["codice", "descrizione", "file_name"]):
+            DocumentiRepository().list_asset(
+                **self._list_default_args(
+                    attivo=False,
+                    asset_tipo_id=4,
+                    emittente_fiscale_id=11,
+                    search="logo",
+                )
             )
-        )
 
         sql, params = cursor.execute.call_args_list[0].args
         self.assertIn("a.attivo = %s", sql)

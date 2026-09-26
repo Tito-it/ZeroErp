@@ -71,11 +71,11 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from apps.core.services.service_errors import ServiceError
+from apps.core.tests.ricerca_catalogo_fakes import catalogo_ricerca_finto
 from apps.vendite.db.vendite_repository import VenditeRepository
 
-# La lettura del catalogo del BB della ricerca libera (`add_ricerca_full_condition`)
-# e le cinque colonne che il seed accende sulla lista gruppi.
-_LETTURA_CATALOGO = "apps.core.db._helpers.colonne_ricerca_accese"
+# Le cinque colonne che il seed accende sulla lista gruppi, per il catalogo
+# finto del BB della ricerca libera (`catalogo_ricerca_finto`).
 _GRUPPI_ACCESE = (
     "riferimento", "cliente_display", "commessa_codice", "ba_codice_fatturazione", "id_fiscale",
 )
@@ -1398,11 +1398,11 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
         self.assertIn("g.ba_fatturazione_id IS NULL", cond)
         self.assertNotIn(77, params)
 
-        # Sotto soglia: ignorata, non solleva e non svuota la lista — e il
-        # catalogo non si legge nemmeno (la lettura mockata non viene chiamata).
+        # Sotto soglia: ignorata, non solleva e non svuota la lista — e le
+        # colonne del catalogo non si leggono nemmeno (si legge solo la soglia).
         # ⭐ Dal 2026-09-24 la ricerca passa dal BB `add_ricerca_full_condition`:
         #    le colonne le decide il catalogo, qui mockato con le cinque accese.
-        with patch(_LETTURA_CATALOGO, return_value=list(_GRUPPI_ACCESE)) as lettura:
+        with catalogo_ricerca_finto(_GRUPPI_ACCESE) as (lettura, _):
             cond, _ = VenditeRepository._where_gruppi(
                 competenza_mese=date(2026, 8, 1), stadio=None, search="OR",
             )
@@ -1426,12 +1426,12 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
     #     ricerca attiva quelle della dichiarazione, senza ricerca nessuna. E una
     #     colonna che il catalogo spegne esce dalla condizione (non dalla CTE).
     def test_filtri_gruppi_colonne_della_ricerca(self) -> None:
-        with patch(_LETTURA_CATALOGO, return_value=list(_GRUPPI_ACCESE)):
+        with catalogo_ricerca_finto(_GRUPPI_ACCESE):
             _, _, colonne = VenditeRepository._where_gruppi_filtri(search="OR")
             self.assertEqual(colonne, [])
             _, _, colonne = VenditeRepository._where_gruppi_filtri(search="ORD0005174")
             self.assertEqual(set(colonne), {f"g.{c}" for c in _GRUPPI_ACCESE})
-        with patch(_LETTURA_CATALOGO, return_value=["riferimento"]):
+        with catalogo_ricerca_finto(["riferimento"]):
             cond, params, _ = VenditeRepository._where_gruppi_filtri(search="ORD0005174")
         self.assertEqual(cond, ["((g.riferimento)::text ILIKE %s)"])
         self.assertEqual(params, ["%ORD0005174%"])

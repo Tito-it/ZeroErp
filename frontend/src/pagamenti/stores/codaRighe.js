@@ -27,10 +27,11 @@ import { CODE } from '../vocabolari'
 import { listCodaRighe } from '../api/pagamenti'
 import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
 
-function buildParams(f) {
+function buildParams(f, _termine, ricerca) {
   const p = paramsPagina(f)
-  // La ricerca libera con la regola comune (`paramsRicerca`: trim, soglia unica).
-  Object.assign(p, paramsRicerca(f))
+  // La ricerca libera con la regola comune (`paramsRicerca`: trim, soglia della
+  // lista — `ricerca` = `{ minCaratteri }`, passato dal BB di stato).
+  Object.assign(p, paramsRicerca(f, ricerca))
   // ⚠️ Sempre inviata: senza, il backend non saprebbe quale coda serve.
   p.coda = f.coda || CODE.DA_ABBINARE
   if (f.billing_account_id != null) p.billing_account_id = f.billing_account_id
@@ -76,8 +77,9 @@ export const useCodaRigheStore = defineStore(
     const statiRiga = ref([])
     const transizioniRiga = ref({})
 
-    // `ricercaFull` (la lista cerca?) la dichiara il BB di stato.
-    const { items, totalRecords, loading, hasSearched, ricercaFull, fetchList } =
+    // `ricercaFull` (la lista cerca?) e `ricercaMinCaratteri` (da quanti
+    // caratteri?) le dichiara il BB di stato.
+    const { items, totalRecords, loading, hasSearched, ricercaFull, ricercaMinCaratteri, fetchList } =
       useListaEmptyStateFetch({
         filters,
         buildParams,
@@ -108,7 +110,7 @@ export const useCodaRigheStore = defineStore(
     }
 
     return {
-      items, totalRecords, loading, hasSearched, filters, fetchList, ricercaFull, apriCoda,
+      items, totalRecords, loading, hasSearched, filters, fetchList, ricercaFull, ricercaMinCaratteri, apriCoda,
       statiRiga, transizioniRiga,
       chiaviFiltro, filtriDefault, azzeraFiltri,
     }

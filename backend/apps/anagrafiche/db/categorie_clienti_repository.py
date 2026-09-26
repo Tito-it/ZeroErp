@@ -93,8 +93,9 @@ class CategorieClientiRepository:
         if partecipa_promo is not None:
             conditions.append("cc.partecipa_promo = %s")
             params.append(partecipa_promo)
-        # Tabella di configurazione: la ricerca parte da un carattere (Tid, 2026-09-23).
-        add_ricerca_full_condition(conditions, params, search, _RICERCA, alias="cc", min_caratteri=1)
+        # Soglia della ricerca: la dichiara il catalogo della lista
+        # (`ricerca_min_caratteri`), non questo modulo.
+        add_ricerca_full_condition(conditions, params, search, _RICERCA, alias="cc")
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 

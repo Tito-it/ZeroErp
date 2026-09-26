@@ -347,7 +347,7 @@ class ProcessiListView(AdminAPIView):
             OpenApiParameter(name="classe", type=str, required=False),
             OpenApiParameter(name="canale", type=str, required=False),
             OpenApiParameter(name="attivo", type=bool, required=False),
-            param_ricerca_full(min_caratteri=1),
+            param_ricerca_full(),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
             OpenApiParameter(name="order_by", type=str, required=False),

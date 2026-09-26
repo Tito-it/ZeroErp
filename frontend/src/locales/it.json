@@ -806,7 +806,7 @@
   "resolver": {
     "action_search": "Cerca",
     "search_label": "Cerca soggetto per nome, CF o P.IVA",
-    "search_placeholder": "Digita almeno 3 caratteri...",
+    "search_placeholder": "Digita almeno 1 carattere... | Digita almeno {n} caratteri...",
     "confirm_selection": "Conferma selezione",
     "create_new": "Crea nuovo soggetto",
     "create_and_select": "Crea e seleziona",
@@ -895,7 +895,7 @@
     "select_type": "Tipo ruolo",
     "placeholder": "Cerca per nome, CF/P.IVA, codice...",
     "filter_comune": "Filtra per comune",
-    "min_chars": "Digitare almeno 3 caratteri",
+    "min_chars": "Digitare almeno {n} caratteri",
     "col_code": "Codice",
     "col_name": "Ragione Sociale",
     "col_fiscal_id": "CF / P.IVA",

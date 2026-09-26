@@ -13,19 +13,21 @@
 //  - `hasActiveFilters(f)` → bool: quali filtri contano come "ricerca attiva"
 //    (stato/utility/date/listino/...). `data_da` col default standard di solito conta,
 //    così la lista si popola al mount.
-//  - `buildParams(f, searchTerm)` → object: la mappatura filtri→query params,
-//    che differisce per dominio (es. preventivi usa page/page_size, offerte e
-//    ordini usano limit/offset; nomi filtri diversi). Riceve `searchTerm` già
-//    trimmato: il caller decide se/come passarlo (tipicamente se length >= 3).
+//  - `buildParams(f, searchTerm, ricerca)` → object: la mappatura
+//    filtri→query params, che differisce per dominio (es. preventivi usa
+//    page/page_size, offerte e ordini usano limit/offset; nomi filtri
+//    diversi). Riceve `searchTerm` già trimmato e `ricerca` =
+//    `{ minCaratteri }`, la soglia DELLA LISTA: il caller la passa a
+//    `paramsRicerca(f, ricerca)`, che manda il termine solo da lì in su.
 //  - `fetchPage(params)` → Promise di una response axios con envelope standard
 //    `{ data: { data: { results, count } } }` (paginated_envelope BE).
 //  - `alwaysFetch` (default false): se true salta i guard empty-state e carica
-//    SEMPRE (liste che partono piene: admin, geo). Il search < 3 char resta
-//    ignorato da `buildParams`, quindi la lista resta piena mentre si digita
+//    SEMPRE (liste che partono piene: admin, geo). Il search sotto la soglia
+//    della lista resta ignorato da `buildParams`, quindi la lista resta piena mentre si digita
 //    (no flash vuoto). Usato dalla factory `createCrudStore` con startsEmpty:false.
 //
 // Ritorna lo stato reattivo (items/totalRecords/loading/hasSearched/sospesa/
-// ricercaFull) + fetchList.
+// ricercaFull/ricercaMinCaratteri) + fetchList.
 // Lo store espone questi ref nel proprio `return` insieme a `filters` e alle
 // azioni CRUD.
 
@@ -122,6 +124,20 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
   //    di pagamenti scritti a mano. Qui la ricevono tutti gli store della lista,
   //    compresi quelli che nasceranno scritti a mano.
   const ricercaFull = ref(null)
+  // ⭐ DA QUANTI CARATTERI la lista cerca: un fatto della LISTA, non di chi la
+  //    chiama (Tid, 2026-09-24 — brief-db-be-fe-ricerca-soglia-per-lista): una
+  //    tabella di configurazione a codici corti cerca da uno («KG», «FT»), un
+  //    archivio che cresce da tre. Lo dice la configurazione risolta
+  //    (`ricerca_min_caratteri`, la stessa colonna con cui il BB del backend
+  //    decide se filtrare) e la scrive `useListaConfigurabilePage.onConfigLoaded`.
+  // ⚠️ `null` = «non si sa ancora»: vale `RICERCA.MIN_CARATTERI`
+  //    (`listParams.termineCorto`). Come `ricercaFull`, non e' un filtro e
+  //    `svuota()` non la tocca.
+  // ⛔ La leggono SOLO `termineCorto`/`paramsRicerca`, via `fetchList` qui
+  //    sotto: e' cosi' che guardia empty-state e parametro `search` non possono
+  //    usare due soglie diverse. Fino al 2026-09-26 il backend cercava da uno e
+  //    il frontend mandava da tre: «KG» non arrivava mai.
+  const ricercaMinCaratteri = ref(null)
   const fv = useFetchVersion()
 
   // Scopo: riporta la lista allo stato vuoto E scarta le risposte in volo.
@@ -155,8 +171,9 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
     const f = filters.value
     const searchTerm = termineRicerca(f)
     // Soglia del termine in una sede sola (`listParams.termineCorto`), la
-    // stessa con cui `paramsRicerca` decide se mandarlo.
-    const corta = termineCorto(searchTerm)
+    // stessa con cui `paramsRicerca` decide se mandarlo: quella della lista.
+    const ricerca = { minCaratteri: ricercaMinCaratteri.value }
+    const corta = termineCorto(searchTerm, ricerca)
 
     // Liste che partono piene: comportamento della ricerca corta secondo
     // `ricercaCorta` (vedi sopra). Il default 'fetch' prosegue e basta.
@@ -172,7 +189,7 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
     // (liste che partono piene) si salta tutto e si carica sempre.
     if (!alwaysFetch) {
       const hasFilters = hasActiveFilters(f)
-      // Search con meno di 3 caratteri e nessun filtro attivo → stato vuoto.
+      // Search sotto la soglia della lista e nessun filtro attivo → stato vuoto.
       if (corta && !hasFilters) {
         svuota()
         return false
@@ -191,7 +208,7 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
     const tag = fv.tag()
     if (!silent) loading.value = true
     try {
-      const res = await fetchPage(buildParams(f, searchTerm))
+      const res = await fetchPage(buildParams(f, searchTerm, ricerca))
       if (!fv.isCurrent(tag)) return false   // risposta stantia: la lista NON si tocca
       items.value = res.data.data.results
       totalRecords.value = res.data.data.count
@@ -211,5 +228,8 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
     }
   }
 
-  return { items, totalRecords, loading, hasSearched, sospesa, ricercaFull, fetchList, svuota }
+  return {
+    items, totalRecords, loading, hasSearched, sospesa, ricercaFull, ricercaMinCaratteri,
+    fetchList, svuota,
+  }
 }

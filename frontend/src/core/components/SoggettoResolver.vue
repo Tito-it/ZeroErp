@@ -5,7 +5,8 @@
 // Riusabile per operatori, clienti, fornitori, qualsiasi ruolo.
 import { ref, watch, computed, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { DRAWER_WIDTH, MANAGE_ICONS } from '../constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, RICERCA } from '../constants'
+import { termineCorto } from '../utils/listParams'
 import { listSoggetti, getConfigResolver, listSoggettoContatti } from '../../anagrafiche/api/anagrafiche'
 import SoggettoDrawer from '../../anagrafiche/components/SoggettoDrawer.vue'
 import DrawerTitle from './DrawerTitle.vue'
@@ -48,14 +49,29 @@ const searchLoading = ref(false)
 const searched = ref(false)
 let debounceTimer = null
 
-// Scopo: lunghezza minima query (data-driven dal config-resolver, default 3).
-const minSearchLength = computed(() => configResolver.value?.min_search_length ?? 3)
+// Scopo: la soglia della ricerca. ⭐ E' quella del catalogo della lista che il
+//        resolver interroga (`anagrafiche.soggetti`: `listSoggetti` cerca col
+//        BB di quella lista), e la config del resolver la porta in
+//        `min_search_length` (brief-db-be-fe-ricerca-soglia-per-lista §6 b).
+//        Finche' la config non e' arrivata vale il ripiego di progetto.
+// ⛔ Mai un numero scritto qui: con una soglia piu' bassa di quella del
+//    catalogo il BB ignorerebbe il termine, e la lista inline proporrebbe i
+//    primi soggetti NON filtrati come se corrispondessero.
+const minSearchLength = computed(() => configResolver.value?.min_search_length ?? RICERCA.MIN_CARATTERI)
+// Il termine come lo legge il backend (il BB fa lo stesso `strip`): la soglia
+// si misura su questo, non sul testo della casella — « ab» sono tre caratteri
+// nella casella e due per il BB.
+const termine = computed(() => searchQuery.value.trim())
+// «Sto ancora digitando»: la regola comune (`termineCorto`), sulla soglia qui sopra.
+const termineValido = computed(
+  () => !!termine.value && !termineCorto(termine.value, { minCaratteri: minSearchLength.value }),
+)
 
 // Scopo: ricerca debounced su input testo; popola `suggestions` per la lista inline.
 function onSearchInput() {
   clearTimeout(debounceTimer)
-  const query = searchQuery.value
-  if (!query || query.length < minSearchLength.value) {
+  const query = termine.value
+  if (!termineValido.value) {
     suggestions.value = []
     searched.value = false
     return
@@ -193,7 +209,7 @@ async function onSoggettoCreatoDaDrawer(data) {
         <span class="p-input-icon-right resolver-search">
           <InputText
             v-model="searchQuery"
-            :placeholder="t('resolver.search_placeholder')"
+            :placeholder="t('resolver.search_placeholder', minSearchLength, { n: minSearchLength })"
             autofocus
             @input="onSearchInput"
           />
@@ -233,7 +249,7 @@ async function onSoggettoCreatoDaDrawer(data) {
           </li>
         </ul>
         <small
-          v-else-if="searched && !searchLoading && searchQuery.length >= minSearchLength"
+          v-else-if="searched && !searchLoading && termineValido"
           class="resolver-empty"
         >
           {{ t('resolver.no_results') }}

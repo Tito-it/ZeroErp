@@ -37,8 +37,9 @@
 5. test_bb_*
    Il comportamento del BB, con la lettura del catalogo mockata:
    intersezione, colonne accese ma non dichiarate (warning), nessuna colonna
-   (`FALSE`), soglia (senza leggere il catalogo), escape, mappa, alias
-   invalido (esplode anche a lista aperta senza ricerca).
+   (`FALSE`), soglia DELLA LISTA (termine vuoto: niente letture; sotto soglia:
+   si legge la soglia, non le colonne), escape, mappa, alias invalido (esplode
+   anche a lista aperta senza ricerca).
 
 6. test_dichiarazione_invalida_esplode_alla_costruzione
    Un nome sbagliato esce quando il modulo si importa, non al primo operatore
@@ -47,19 +48,33 @@
 7. test_dichiarazione_congelata_sulla_copia
    Validata alla costruzione, la dichiarazione non cambia dopo: ne' da chi
    modifica la mappa passata, ne' scrivendoci dentro.
+
+8. test_nessuna_chiamata_dichiara_la_soglia
+   La soglia e' un fatto della lista, e la dice il catalogo
+   (`ricerca_min_caratteri`, brief-db-be-fe-ricerca-soglia-per-lista §5):
+   nessuna chiamata al BB e nessuno schema OpenAPI la passano. Il controllo e'
+   sul sorgente (AST) e non a runtime: una chiamata del repository con
+   l'argomento vecchio sarebbe un `TypeError` solo al primo operatore che cerca.
+
+9. test_i_test_fingono_il_catalogo_da_una_sede
+   Il BB legge il catalogo in due punti (colonne e soglia): un test che ne
+   sostituisce uno solo manda l'altro al database. I test li fingono insieme,
+   con `catalogo_ricerca_finto` — nessun altro file scrive i due percorsi.
 """
 
+import ast
 import importlib
+import inspect
 import unittest
-from unittest.mock import patch
+from pathlib import Path
 
+from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.db._helpers import RicercaFull, add_ricerca_full_condition
+from apps.core.tests.ricerca_catalogo_fakes import catalogo_ricerca_finto
 from apps.core.tests.test_liste_configurabili_seed import (
     _colonne_attive,
     _seed,
 )
-
-_LETTURA = "apps.core.db._helpers.colonne_ricerca_accese"
 
 
 # Scopo: la dichiarazione di una lista, letta dal simbolo che il repository
@@ -175,13 +190,15 @@ def _liste_ricercabili() -> set[str]:
     }
 
 
-# Scopo: chiama il BB con la lettura del catalogo sostituita da `accese`.
-def _condizione(termine, ricerca, accese, **kwargs):
+# Scopo: chiama il BB con le due letture del catalogo sostituite: le colonne
+#        accese (`accese`) e la soglia della lista (`soglia`, di norma quella di
+#        progetto). Torna anche i due mock, per chi guarda COSA si e' letto.
+def _condizione(termine, ricerca, accese, *, soglia=3, **kwargs):
     conditions: list[str] = []
     params: list = []
-    with patch(_LETTURA, return_value=list(accese)) as lettura:
+    with catalogo_ricerca_finto(accese, soglia=soglia) as (lettura, lettura_soglia):
         add_ricerca_full_condition(conditions, params, termine, ricerca, **kwargs)
-    return conditions, params, lettura
+    return conditions, params, lettura, lettura_soglia
 
 
 class RicercaFullSeedTests(unittest.TestCase):
@@ -224,10 +241,11 @@ class RicercaFullSeedTests(unittest.TestCase):
 
     def test_bb_cerca_sull_intersezione_nell_ordine_della_dichiarazione(self):
         ricerca = RicercaFull("x.lista", ("numero", "ba_codice", "descrizione"))
-        conditions, params, lettura = _condizione(
+        conditions, params, lettura, lettura_soglia = _condizione(
             "  50%_x  ", ricerca, ["descrizione", "numero"],
         )
         lettura.assert_called_once_with("x.lista")
+        lettura_soglia.assert_called_once_with("x.lista")
         self.assertEqual(
             conditions, ["((v.numero)::text ILIKE %s OR (v.descrizione)::text ILIKE %s)"],
         )
@@ -235,7 +253,7 @@ class RicercaFullSeedTests(unittest.TestCase):
 
     def test_bb_mappa_usa_le_espressioni_dichiarate(self):
         ricerca = RicercaFull("x.lista", {"ba_codice": "ba.codice", "fase": "COALESCE(p.a, p.b)"})
-        conditions, _, _ = _condizione("abc", ricerca, ["ba_codice", "fase"], alias="ignorato")
+        conditions, _, _, _ = _condizione("abc", ricerca, ["ba_codice", "fase"], alias="ignorato")
         self.assertEqual(
             conditions, ["((ba.codice)::text ILIKE %s OR (COALESCE(p.a, p.b))::text ILIKE %s)"],
         )
@@ -243,25 +261,40 @@ class RicercaFullSeedTests(unittest.TestCase):
     def test_bb_colonna_accesa_non_dichiarata_ignorata_con_warning(self):
         ricerca = RicercaFull("x.lista", ("numero",))
         with self.assertLogs("apps.core.db._helpers", level="WARNING") as log:
-            conditions, params, _ = _condizione("abc", ricerca, ["numero", "segreta"])
+            conditions, params, _, _ = _condizione("abc", ricerca, ["numero", "segreta"])
         self.assertEqual(conditions, ["((v.numero)::text ILIKE %s)"])
         self.assertEqual(len(params), 1)
         self.assertIn("segreta", log.output[0])
 
     def test_bb_nessuna_colonna_accesa_non_trova_niente(self):
         ricerca = RicercaFull("x.lista", ("numero",))
-        conditions, params, _ = _condizione("abc", ricerca, [])
+        conditions, params, _, _ = _condizione("abc", ricerca, [])
         self.assertEqual((conditions, params), (["FALSE"], []))
 
-    def test_bb_sotto_soglia_non_filtra_e_non_legge_il_catalogo(self):
+    def test_bb_termine_vuoto_non_legge_niente(self):
         ricerca = RicercaFull("x.lista", ("numero",))
-        for termine in (None, "", "   ", "ab"):
+        for termine in (None, "", "   "):
             with self.subTest(termine=termine):
-                conditions, params, lettura = _condizione(termine, ricerca, ["numero"])
+                conditions, params, lettura, lettura_soglia = _condizione(termine, ricerca, ["numero"])
                 self.assertEqual((conditions, params), ([], []))
                 lettura.assert_not_called()
-        conditions, _, _ = _condizione("F", ricerca, ["numero"], alias="t", min_caratteri=1)
-        self.assertEqual(conditions, ["((t.numero)::text ILIKE %s)"])
+                lettura_soglia.assert_not_called()
+
+    def test_bb_la_soglia_e_quella_della_lista(self):
+        ricerca = RicercaFull("x.lista", ("numero",))
+        # Sotto la soglia della lista: si legge la soglia, non le colonne.
+        conditions, params, lettura, lettura_soglia = _condizione(" ab ", ricerca, ["numero"], soglia=3)
+        self.assertEqual((conditions, params), ([], []))
+        lettura_soglia.assert_called_once_with("x.lista")
+        lettura.assert_not_called()
+        # Lo stesso termine, su una lista che cerca da uno, filtra.
+        for termine in ("F", "ab"):
+            with self.subTest(termine=termine):
+                conditions, _, _, _ = _condizione(termine, ricerca, ["numero"], alias="t", soglia=1)
+                self.assertEqual(conditions, ["((t.numero)::text ILIKE %s)"])
+        # Esattamente sulla soglia: filtra (la soglia e' «da», non «oltre»).
+        conditions, _, _, _ = _condizione("abc", ricerca, ["numero"], soglia=3)
+        self.assertEqual(conditions, ["((v.numero)::text ILIKE %s)"])
 
     def test_bb_alias_invalido_esplode_anche_senza_termine(self):
         ricerca = RicercaFull("x.lista", ("numero",))
@@ -290,3 +323,44 @@ class RicercaFullSeedTests(unittest.TestCase):
             with self.subTest(**{k: repr(v) for k, v in kwargs.items()}):
                 with self.assertRaises(ValueError):
                     RicercaFull(**kwargs)
+
+    # --- La soglia non si dichiara nel codice --------------------------------
+
+    def test_nessuna_chiamata_dichiara_la_soglia(self):
+        for funzione in (add_ricerca_full_condition, param_ricerca_full):
+            with self.subTest(firma=funzione.__name__):
+                self.assertNotIn("min_caratteri", inspect.signature(funzione).parameters)
+        apps = Path(__file__).resolve().parents[2]
+        colpevoli: list[str] = []
+        for sorgente in sorted(apps.rglob("*.py")):
+            albero = ast.parse(sorgente.read_text(encoding="utf-8"), filename=str(sorgente))
+            for nodo in ast.walk(albero):
+                if not isinstance(nodo, ast.Call):
+                    continue
+                nome = getattr(nodo.func, "id", None) or getattr(nodo.func, "attr", None)
+                if nome not in {"add_ricerca_full_condition", "param_ricerca_full"}:
+                    continue
+                if any(k.arg == "min_caratteri" for k in nodo.keywords):
+                    colpevoli.append(f"{sorgente.relative_to(apps)}:{nodo.lineno}")
+        self.assertFalse(
+            colpevoli,
+            f"chiamate che dichiarano la soglia: {colpevoli} — la soglia e' "
+            f"`ricerca_min_caratteri` del catalogo della lista",
+        )
+
+    def test_i_test_fingono_il_catalogo_da_una_sede(self):
+        apps = Path(__file__).resolve().parents[2]
+        sede = Path(__file__).resolve().parent / "ricerca_catalogo_fakes.py"
+        # Composti, non scritti: scritti per intero, questo file troverebbe se stesso.
+        letture = tuple(f"_helpers.{nome}" for nome in ("colonne_ricerca_accese", "soglia_ricerca"))
+        colpevoli = [
+            str(sorgente.relative_to(apps))
+            for sorgente in sorted(apps.rglob("tests/**/*.py"))
+            if sorgente != sede
+            and any(lettura in sorgente.read_text(encoding="utf-8") for lettura in letture)
+        ]
+        self.assertFalse(
+            colpevoli,
+            f"test che sostituiscono a mano le letture del catalogo: {colpevoli} — "
+            f"si usa `catalogo_ricerca_finto` (apps/core/tests/ricerca_catalogo_fakes.py)",
+        )

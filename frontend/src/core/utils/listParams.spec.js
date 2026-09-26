@@ -21,6 +21,7 @@
 //  9. paramsRicerca: la soglia e' un parametro (liste da un carattere)
 // 10. termineCorto: vuoto NON e' corto (sono due stati diversi)
 // 11. la soglia di default e' `RICERCA.MIN_CARATTERI`, non un numero sul posto
+// 12. soglia `null` (configurazione non ancora arrivata) = soglia di progetto
 import { describe, expect, it } from 'vitest'
 import { RICERCA } from '../constants'
 import { paramsOrdinamento, paramsPagina, paramsRicerca, termineCorto } from './listParams'
@@ -99,5 +100,14 @@ describe('paramsRicerca e termineCorto', () => {
     const giusto = 'x'.repeat(RICERCA.MIN_CARATTERI)
     expect(paramsRicerca({ search: giusto })).toEqual({ search: giusto })
     expect(paramsRicerca({ search: giusto.slice(1) })).toEqual({})
+  })
+
+  // ⚠️ Lo store tiene `null` finche' la configurazione non arriva: un default
+  //    di parametro non scatterebbe, e `length < null` non e' mai vero —
+  //    ogni lettera partirebbe.
+  it('soglia null = soglia di progetto', () => {
+    const corto = 'x'.repeat(RICERCA.MIN_CARATTERI - 1)
+    expect(paramsRicerca({ search: corto }, { minCaratteri: null })).toEqual({})
+    expect(termineCorto(corto, { minCaratteri: null })).toBe(true)
   })
 })

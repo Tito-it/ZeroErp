@@ -142,6 +142,11 @@ class UiService:
     #    non trova niente per costruzione (il BB mette `FALSE`). La lettura e'
     #    la stessa del BB (`colonne_ricerca_accese`): una seconda sede della
     #    stessa verita' sarebbe la duplicazione che poi diverge.
+    # ⭐ La SOGLIA della ricerca (`ricerca_min_caratteri`) non si aggiunge qui:
+    #    arriva gia' nel jsonb del risolutore, accanto a `pagina_dimensione`,
+    #    letta dalla stessa colonna che legge il BB di ricerca
+    #    (`soglia_ricerca`) — brief-db-be-fe-ricerca-soglia-per-lista §4-bis. Il
+    #    frontend non manda un termine sotto quella soglia.
     # ⚠️ Qui e NON in `get_lista_config` (Tid, 2026-09-24): quella la leggono
     #    anche l'export (`export_helpers`) e la modale (`get_catalogo`), che
     #    la casella non la mostrano e pagherebbero una query per niente.

@@ -179,11 +179,12 @@ class CategorieClientiListiniRepository:
             params.append(valid_at)
         # ⭐ Una condizione sola per pagina e conteggio (`where_clause` qui
         #    sotto): i due insiemi non possono divergere.
-        # ⭐ Da un carattere: matrice di configurazione, gemella di
-        #    `tipi_ruolo_tipi_indirizzo` e `categorie_clienti` (Tid, 2026-09-24).
-        #    Fino ad allora la ricerca scritta a mano non escapava `%`/`_` (e un
-        #    termine di soli spazi diventava `%%`).
-        add_ricerca_full_condition(conditions, params, search, _RICERCA_MATRICE, min_caratteri=1)
+        # ⭐ Matrice di configurazione, gemella di `tipi_ruolo_tipi_indirizzo`
+        #    e `categorie_clienti` (Tid, 2026-09-24): la soglia la dichiara il
+        #    catalogo (`ricerca_min_caratteri`). Fino ad allora la ricerca
+        #    scritta a mano non escapava `%`/`_` (e un termine di soli spazi
+        #    diventava `%%`).
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_MATRICE)
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 

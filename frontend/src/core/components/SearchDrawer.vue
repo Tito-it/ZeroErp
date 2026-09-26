@@ -12,7 +12,8 @@ import api from '../api'
 import { useApiHandler } from '../composables/useApiHandler'
 import { usePagination } from '../composables/usePagination'
 import { useContextStore } from '../../stores/context'
-import { DRAWER_WIDTH, TIPO_RUOLO } from '../constants'
+import { DRAWER_WIDTH, RICERCA, TIPO_RUOLO } from '../constants'
+import { termineCorto } from '../utils/listParams'
 import { NAV_ICONS } from '../navigation'
 import DrawerTitle from './DrawerTitle.vue'
 import SearchDetailTable from './details/SearchDetailTable.vue'
@@ -41,6 +42,13 @@ const emit = defineEmits(['update:visible'])
 const tipiRuolo = ref([])
 const selectedTipoRuolo = ref(null)
 const searchTerm = ref('')
+// Il termine come lo legge il backend (`require_min_search_length` fa lo
+// `strip`): la soglia si misura su questo, non sul testo della casella —
+// « ab» sono tre caratteri nella casella e un 400 per il backend. La soglia
+// e' quella di progetto (`termineCorto` senza `minCaratteri`): la ricerca
+// universale non e' una lista a catalogo.
+const termine = computed(() => searchTerm.value.trim())
+const termineInsufficiente = computed(() => !termine.value || termineCorto(termine.value))
 const auth = useAuthStore()
 
 // Etichetta di perimetro sulla ricerca (P-2c): qui il rischio non e' «non
@@ -90,13 +98,13 @@ async function loadTipiRuolo() {
 
 // Scopo: esegue la ricerca soggetti con i parametri correnti
 async function doSearch() {
-  if (!selectedTipoRuolo.value || searchTerm.value.length < 3) {
+  if (!selectedTipoRuolo.value || termineInsufficiente.value) {
     results.value = []
     return
   }
 
   const params = {
-    q: searchTerm.value,
+    q: termine.value,
     tipo_ruolo_id: selectedTipoRuolo.value.id,
     ...pagination.queryParams.value,
     ...(sortField.value ? { order_by: sortField.value, order_dir: sortOrder.value === 1 ? 'ASC' : 'DESC' } : {})
@@ -296,7 +304,7 @@ watch(() => props.visible, (newVal) => {
       >
         <template #empty>
           <div class="search-empty">
-            {{ searchTerm.length < 3 ? t('search.min_chars') : t('common.no_results') }}
+            {{ termineInsufficiente ? t('search.min_chars', { n: RICERCA.MIN_CARATTERI }) : t('common.no_results') }}
           </div>
         </template>
 

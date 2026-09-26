@@ -16,7 +16,7 @@ Indice test eseguiti:
  5) AuthTests.test_registra_richiede_jwt
  6) ListaApiTests.test_filtri_arrivano_tradotti
  7) ListaApiTests.test_senza_ordinamento_al_service_arriva_none
- 8) ListaApiTests.test_ricerca_corta_400
+ 8) ListaApiTests.test_ricerca_corta_non_e_un_errore
  9) ListaApiTests.test_creazione_senza_idempotency_key_rifiutata
 10) ListaApiTests.test_creazione_ok
 11) DettaglioApiTests.test_patch_passa_il_payload
@@ -141,10 +141,14 @@ class ListaApiTests(_Base):
 
     @_AUTH
     @patch(f"{_SVC}.list_documenti")
-    def test_ricerca_corta_400(self, mocked, _auth):
+    # ⛔ Nessun 400 sotto soglia (brief-db-be-fe-ricerca-soglia-per-lista §6 a,
+    #    Tid 2026-09-26): il termine arriva al service, e sotto la soglia del
+    #    catalogo lo ignora il BB di ricerca.
+    def test_ricerca_corta_non_e_un_errore(self, mocked, _auth):
+        mocked.return_value = {"count": 0, "results": []}
         resp = self.client.get("/api/v1/magazzino/inventari/?search=ab")
-        self.assertEqual(resp.status_code, 400)
-        mocked.assert_not_called()
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(mocked.call_args.kwargs["search"], "ab")
 
     @_AUTH
     @patch(f"{_SVC}.crea_documento")

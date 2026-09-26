@@ -12,7 +12,7 @@
 > ricerca libera di tutte le liste legge il catalogo, `_DEBITO_RICERCA_A_MANO`
 > è vuoto, la casella segue `ricerca_full`. **I residui non stanno più qui**:
 > la soglia della ricerca (§6, §13.3 f, §13.6) nel
-> [brief-db-be-fe-ricerca-soglia-per-lista](../work-in-progress/brief-db-be-fe-ricerca-soglia-per-lista.md);
+> [brief-db-be-fe-ricerca-soglia-per-lista](../work-done/brief-db-be-fe-ricerca-soglia-per-lista.md);
 > il mirror del `codice` delle famiglie (§13.5), la gamba bundle non provata
 > (§13.3 g) e il giornale in UTC (§10) in PROJECT_CONTEXT § «Aperto — Media
 > priorità»; il collaudo a video in

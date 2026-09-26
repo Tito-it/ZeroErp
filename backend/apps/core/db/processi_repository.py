@@ -238,8 +238,9 @@ class ProcessiRepository:
         if attivo is not None:
             conditions.append("p.attivo = %s")
             params.append(attivo)
-        # Tabella di configurazione: la ricerca parte da un carattere (Tid, 2026-09-23).
-        add_ricerca_full_condition(conditions, params, search, _RICERCA_PROCESSI, alias="p", min_caratteri=1)
+        # Soglia della ricerca: la dichiara il catalogo della lista
+        # (`ricerca_min_caratteri`), non questo modulo.
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_PROCESSI, alias="p")
 
         ordinamento = sql_order_clause(
             order_by, order_dir,

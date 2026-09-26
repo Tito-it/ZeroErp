@@ -277,8 +277,9 @@ class RegistriRepository:
             famiglia_documento, famiglia_documento,
             attivo, attivo,
         ]
-        # Tabella di configurazione: la ricerca parte da un carattere (Tid, 2026-09-23).
-        add_ricerca_full_condition(conditions, params, search, _RICERCA, alias="r", min_caratteri=1)
+        # Soglia della ricerca: la dichiara il catalogo della lista
+        # (`ricerca_min_caratteri`), non questo modulo.
+        add_ricerca_full_condition(conditions, params, search, _RICERCA, alias="r")
         sql = f"""
             SELECT {_PROIEZIONE},
                    COUNT(*) OVER () AS total_count

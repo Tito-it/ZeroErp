@@ -41,7 +41,7 @@ class CategorieClientiView(AdminAPIView):
 
     @extend_schema(
         parameters=[
-            param_ricerca_full(min_caratteri=1),
+            param_ricerca_full(),
             OpenApiParameter(name="attivo", type=bool, required=False),
             OpenApiParameter(name="partecipa_promo", type=bool, required=False),
             OpenApiParameter(name="limit", type=int, required=False),

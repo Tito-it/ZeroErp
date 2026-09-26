@@ -1061,9 +1061,27 @@ legga cosa fa — non un modello da copiare in uno store.
 ⛔ **La soglia della ricerca non si scrive sul posto** (dal 2026-09-24, regola del
 2): il termine si manda con **`paramsRicerca(f)`** e il «sto ancora digitando»
 si chiede a **`termineCorto(termine)`**, entrambi in `core/utils/listParams.js`,
-sulla costante `RICERCA.MIN_CARATTERI` (specchio di `RICERCA_MIN_CARATTERI` del
-backend). Anche uno store scritto a mano su `useListaEmptyStateFetch` li usa nel
-proprio `buildParams`: prima lo stesso `trim` + `>= 3` stava in sei store.
+con la **soglia della lista**. Prima lo stesso `trim` + `>= 3` stava in sei store.
+
+⭐ **La soglia è un fatto della lista** (dal 2026-09-26,
+[brief-db-be-fe-ricerca-soglia-per-lista](../work-done/brief-db-be-fe-ricerca-soglia-per-lista.md)):
+arriva nella configurazione (`ricerca_min_caratteri`, la stessa colonna con cui
+il backend decide se filtrare), `onConfigLoaded` la scrive in
+`store.ricercaMinCaratteri` (dichiarata da `useListaEmptyStateFetch`), e il BB
+la passa a `buildParams` come terzo argomento. Uno store scritto a mano la gira
+a `paramsRicerca`:
+
+```js
+function buildParams(f, _termine, ricerca) {
+  const p = paramsPagina(f)
+  Object.assign(p, paramsRicerca(f, ricerca))  // soglia della lista
+  // ... filtri di dominio ...
+  return p
+}
+```
+
+⛔ Nessun numero nel codice della lista: `RICERCA.MIN_CARATTERI` è il ripiego
+finché la configurazione non è arrivata (`null`).
 
 ```js
 const hasSearched = ref(false)
@@ -1073,8 +1091,9 @@ async function fetchList() {
   const searchTerm = termineRicerca(f)
   const hasFilters = f.filtro_1 != null || f.filtro_2 != null // adattare ai filtri reali
 
-  // Search sotto soglia e nessun filtro attivo → ignora
-  if (termineCorto(searchTerm) && !hasFilters) return
+  // Search sotto la soglia della lista e nessun filtro attivo → ignora
+  const ricerca = { minCaratteri: ricercaMinCaratteri.value }
+  if (termineCorto(searchTerm, ricerca) && !hasFilters) return
   // Primo caricamento senza filtri → resta vuoto
   if (!searchTerm && !hasFilters && !hasSearched.value) return
   // Search svuotata senza filtri → torna a stato vuoto
@@ -1087,7 +1106,7 @@ async function fetchList() {
 
   loading.value = true
   try {
-    const params = { ...paramsRicerca(f) }
+    const params = { ...paramsRicerca(f, ricerca) }
     // ... costruzione params ...
     const res = await listEntita(params)
     items.value = res.data.data.results

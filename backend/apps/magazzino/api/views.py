@@ -38,7 +38,6 @@ from apps.core.api.payload_validators import (
     qp_str,
     qp_str_upper,
 )
-from apps.core.api.search_validators import require_min_search_length
 from apps.core.api.success_responses import success_response
 from apps.magazzino.api._comuni import (
     AREA,
@@ -77,19 +76,16 @@ from apps.core.api.openapi_params import param_ricerca_full
 PERMESSO_REGISTRA = "registra_magazzino"
 
 
-# La ricerca libera delle liste di riga, del piano e del registro (dal
-# 2026-09-23, brief-be-ricerca-full-liste-residue §5.3): nessun 400 sotto soglia
-# (la soglia delle liste non di configurazione e' la decisione aperta di §6).
-# Testate e disponibilita' rispondono invece 400 (`require_min_search_length`).
+# La ricerca libera delle liste di magazzino (dal 2026-09-23, brief-be-ricerca-
+# full-liste-residue §5.3). ⛔ Nessun 400 sotto soglia, testate e disponibilita'
+# comprese (brief-db-be-fe-ricerca-soglia-per-lista §6 a, Tid 2026-09-26): il
+# termine corto lo ignora il BB, sulla soglia del catalogo della lista.
 _PARAM_SEARCH = param_ricerca_full()
-_PARAM_SEARCH_MIN = param_ricerca_full(rifiuta_sotto_soglia=True)
 
 
 # Scopo: i filtri della lista delle testate, letti dalla query string.
 def _filtri_documenti(qp) -> dict:
     search = qp_str(qp.get("search"))
-    if search:
-        require_min_search_length(search)
     return {
         "magazzino_id": qp_int_optional(qp.get("magazzino_id"), "magazzino_id"),
         "stato": qp_str_upper(qp.get("stato")),
@@ -127,7 +123,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
                 ),
                 OpenApiParameter(name="data_da", type=str, location=OpenApiParameter.QUERY, required=False),
                 OpenApiParameter(name="data_a", type=str, location=OpenApiParameter.QUERY, required=False),
-                _PARAM_SEARCH_MIN,
+                _PARAM_SEARCH,
                 *params_lista(DOCUMENTI_SORT_COLUMNS, "Senza: data DESC, id DESC."),
             ],
             responses={200: RISPOSTA_GENERICA},
@@ -620,8 +616,6 @@ class ApiAssetsLookup(DomainAPIView):
 # Scopo: i filtri della disponibilita', per magazzino e per articolo.
 def _filtri_disponibilita(qp, *, con_magazzino: bool) -> dict:
     search = qp_str(qp.get("search"))
-    if search:
-        require_min_search_length(search)
     filtri = {
         "articolo_id": qp_str(qp.get("articolo_id")),
         "solo_negativa": bool(qp_bool_optional(qp.get("solo_negativa"), "solo_negativa")),
@@ -640,7 +634,7 @@ _PARAMS_DISPONIBILITA = [
         description="Solo disponibile < 0: le promesse non piu' mantenibili (D-L2-d).",
     ),
     OpenApiParameter(name="solo_con_giacenza", type=bool, location=OpenApiParameter.QUERY, required=False),
-    _PARAM_SEARCH_MIN,
+    _PARAM_SEARCH,
 ]
 
 
