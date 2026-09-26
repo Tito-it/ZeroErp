@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# maintenance.proc_automations_lock_columns_job: il giro notturno non chiama
+#   piu' dbops.fn_run_automations_drop_lock_trg.
+#   Brief: brief-db-lock-di-colonna-fuori-registro, sezioni 1 e 4 (D2)
+#
+#   ⛔ Era quella chiamata, alle 21:10 e solo dove il job esiste (dbdev: in CI
+#   85_pgagent e' MARK_RAN), a cancellare per FUNZIONE i lock scritti a mano
+#   su tabelle che il registro non nominava: config.iva_stati e
+#   vendite.fatture.natura_doc_id sono spariti da dev cosi'. Il suo lavoro
+#   legittimo (togliere un lock che non serve piu') e' ora il ramo TOGLIE di
+#   dbops.fn_run_automations_lock_columns, che prima di togliere controlla che
+#   il registro conosca le colonne (20260926-04).
+#
+# Corpo dalla doc auto-gen (rev 20260923-46), meno una riga.
+# Va PRIMA del ritiro della funzione (20260926-06).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20260926-05-update-proc-automations-lock-columns-job-senza-drop-mctit.yaml
+
+  - changeSet:
+      id: 20260926-05-update-proc-automations-lock-columns-job-senza-drop
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il job notturno del lock non chiama piu' fn_run_automations_drop_lock_trg:
+        il suo lavoro e' il ramo TOGLIE del runner che converge (20260926-04).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE proname = 'proc_automations_lock_columns_job'
+                 AND pronamespace = 'maintenance'::regnamespace
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE maintenance.proc_automations_lock_columns_job()
+               LANGUAGE plpgsql
+              AS $procedure$
+                BEGIN
+                  -- rev 20260923-46: anche il guard delle date di validita'
+                  --   (automazione DATE_VALIDITA), stessa famiglia del lock.
+                  -- rev 20260926-05: niente piu' fn_run_automations_drop_lock_trg;
+                  --   togliere un lock e' un'azione del runner che converge.
+                  PERFORM maintenance.fn_run_and_log(
+                    p_jobname  := 'automations_lock_columns',
+                    p_stepname := 'run_automations_lock_columns',
+                    p_sql      := 'SELECT dbops.fn_run_automations_lock_columns(''SCHEDULED'', NULL, false); ' ||
+                                 'SELECT dbops.fn_run_automations_date_validita(''SCHEDULED'', NULL, false);',
+                    p_lock_key := hashtext('automations_lock_columns')
+                  );
+                END;
+              $procedure$;
+
+              COMMENT ON PROCEDURE maintenance.proc_automations_lock_columns_job()
+              IS 'Job wrapper per dbops.fn_run_automations_lock_columns, che converge i trigger di lock columns verso il registro (crea, rigenera, toglie). Rev 20260923-46: monta anche il guard delle date di validita'' (dbops.fn_run_automations_date_validita, automazione DATE_VALIDITA), stessa famiglia del lock. Rev 20260926-05: non chiama piu'' dbops.fn_run_automations_drop_lock_trg (ritirata), che cancellava per funzione anche i lock scritti a mano.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Nessun ritorno: la chiamata tolta e' quella che cancellava i lock
+              -- scritti a mano. Il rollback e' un no-op dichiarato.
+              SELECT 1;

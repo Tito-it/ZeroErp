@@ -1027,6 +1027,20 @@ segnata come eseguita **senza essere eseguita**. ⇒ Nasceranno su dbdev, ma su 
 ambiente ricostruito da zero **non esisterebbero**, e nessun test lo direbbe.
 Registrato come **R-11**.
 
+> 🔴 **R-11, 2026-09-26: il primo danno misurato.** Il job `automations_lock_columns`
+> chiamava anche `dbops.fn_run_automations_drop_lock_trg`, che cancellava per
+> funzione i lock di colonna scritti a mano. Su dbdev, dove il job gira, sono
+> spariti i lock di `config.iva_stati` e di `vendite.fatture.natura_doc_id`; su
+> `zeroerp_ci`, dove non esiste, c'erano ancora. Per due giorni la differenza è
+> stata letta al contrario («dev fuori modello»), perché la CI era considerata il
+> metro. ⇒ **Finché `85_pgagent` è `MARK_RAN`, ogni automazione notturna ha su CI
+> un pezzo di comportamento in meno che su dev**, e una divergenza dev/CI va letta
+> prima di tutto come «che cosa gira solo di notte?». Proposta (decisa da Tid,
+> D4 del brief sotto): lanciare almeno i **corpi** dei job una volta in CI dopo
+> `ci_apply`, anche senza pgAgent. ✅ Aperto il 26-09:
+> [brief-db-job-notturni-in-ci.md](../work-in-progress/brief-db-job-notturni-in-ci.md).
+> Brief: [brief-db-lock-di-colonna-fuori-registro.md](brief-db-lock-di-colonna-fuori-registro.md).
+
 ---
 
 ### 12.11 🔴 R-12 — un job fermo da sei mesi, trovato guardando un presidio

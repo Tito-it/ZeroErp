@@ -103,8 +103,13 @@ SELECT throws_like(
               )
           )
         WHERE auth_user_id = (SELECT user_id FROM tmp_imm_user) $$,
-    '%emittente%',
-    'UPDATE su emittente_fiscale_id -> bloccato dal trigger lock_columns'
+    -- rev 2026-09-26: la frase del codice DEDICATO (E_EMITTENTE_NON_MODIFICABILE).
+    --   Prima era '%emittente%', che passava anche col messaggio generico di
+    --   E_CODICE_NON_MODIFICABILE perche' il NOME DELLA COLONNA contiene
+    --   «emittente»: verde per coincidenza, e dev e CI rispondevano con due
+    --   codici diversi (brief-db-lock-di-colonna-fuori-registro).
+    '%emittente fiscale di un operatore%',
+    'UPDATE su emittente_fiscale_id -> bloccato dal lock di colonna con E_EMITTENTE_NON_MODIFICABILE'
 );
 
 -- ============================================================

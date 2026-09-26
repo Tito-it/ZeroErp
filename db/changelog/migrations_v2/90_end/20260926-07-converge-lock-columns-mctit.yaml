@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Una convergenza dei lock di colonna, alla migrate e non alle 21:10.
+#   Brief: brief-db-lock-di-colonna-fuori-registro, sezione 4 (D2)
+#
+# ── PERCHE' SERVE ───────────────────────────────────────────────────
+#   Il runner che converge (20260926-04) su dbdev girerebbe la prima volta
+#   col job notturno: ci_apply su dev e' EXECUTED dal 2025 e non torna. Se
+#   quella sera il runner si fermasse su una colonna fuori dal registro, lo
+#   direbbe solo il log di pgAgent. Qui lo dice la migrate, davanti a chi la
+#   lancia, e il registro corretto (80_data) c'e' gia'.
+#   Che cosa ci si aspetta su dev: vendite.fatture riprende il lock su
+#   natura_doc_id (riga nuova del registro, D1); i lock scritti a mano che
+#   restano prendono il nome da template; user_emittenti_fiscali passa al
+#   codice dedicato E_EMITTENTE_NON_MODIFICABILE.
+#
+# ── SU UN DATABASE DA ZERO ──────────────────────────────────────────
+#   Gira nella prima passata, prima di ci_apply, come i 20260923-02/-03. Trova
+#   i lock scritti a mano in 20_code e crea quelli di codice_interno e del
+#   registro; poi ci_apply richiama il runner e non trova niente da fare.
+#   ⚠️ Se su un DB nuovo un lock scritto a mano nominasse una colonna che il
+#   registro non conosce, la migrate si fermerebbe QUI, con il nome della
+#   colonna: e' voluto (brief §4, controllo (b)).
+#
+# Dopo il runner si pretende zero divergenze: e' il presidio del pgTAP
+# dbops/test-lock-columns-convergenza, detto anche alla migrate perche' e' lo
+# stesso criterio (dbops.fn_lock_columns_divergenze), non una sua copia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260926-07-converge-lock-columns-mctit.yaml
+
+  - changeSet:
+      id: 20260926-07-converge-lock-columns
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Converge una volta i trigger di lock columns verso il registro
+        (dbops.fn_run_automations_lock_columns) e pretende zero divergenze dopo.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE proname = 'fn_lock_columns_divergenze'
+                 AND pronamespace = 'dbops'::regnamespace
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $converge$
+              DECLARE
+                  v_resto text;
+              BEGIN
+                  PERFORM dbops.fn_run_automations_lock_columns('SCHEDULED', NULL, false);
+
+                  SELECT string_agg(d.schema_name||'.'||d.table_name||' ('||d.azione||')', ', '
+                                    ORDER BY d.schema_name, d.table_name)
+                    INTO v_resto
+                    FROM dbops.fn_lock_columns_divergenze('SCHEDULED', NULL) AS d;
+
+                  IF v_resto IS NOT NULL THEN
+                      RAISE EXCEPTION 'LOCK_COLUMNS: dopo la convergenza restano divergenze su: %', v_resto;
+                  END IF;
+
+                  RAISE NOTICE 'LOCK_COLUMNS: convergenza completata, nessuna divergenza.';
+              END
+              $converge$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- I trigger riallineati restano: sono lo stato che il registro
+              -- dichiara. Il rollback e' un no-op dichiarato.
+              SELECT 1;

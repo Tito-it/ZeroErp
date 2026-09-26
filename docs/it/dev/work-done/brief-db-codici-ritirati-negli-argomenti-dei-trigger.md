@@ -30,7 +30,7 @@
 > ✅ **CHIUSO il 2026-09-26 e spostato in `work-done/`.** La domanda sul modello
 > di §7 (i lock spariti da dbdev e la convergenza «trigger vivo = registro»)
 > passa a un brief suo:
-> [brief-db-lock-di-colonna-fuori-registro.md](../work-in-progress/brief-db-lock-di-colonna-fuori-registro.md).
+> [brief-db-lock-di-colonna-fuori-registro.md](brief-db-lock-di-colonna-fuori-registro.md).
 > Lì c'è anche la causa, trovata il 26-09: **non** era dev fuori modello, era il
 > giro notturno che su CI non gira.
 >
@@ -305,7 +305,7 @@ di una tabella senza `codice_interno` e senza righe attive nel registro, anche
 se è scritto a mano. Gira ogni notte alle 21:10 nel job pgAgent, che esiste
 solo su dbdev perché `85_pgagent` in CI è `MARK_RAN`. Quindi dev non è fuori
 modello: è l'unico ambiente dove il modello gira per intero. Il seguito è in
-[brief-db-lock-di-colonna-fuori-registro.md](../work-in-progress/brief-db-lock-di-colonna-fuori-registro.md).
+[brief-db-lock-di-colonna-fuori-registro.md](brief-db-lock-di-colonna-fuori-registro.md).
 
 Anche la frase del changeSet «da
 zero il censimento torna vuoto» era falsa: i lock scritti a mano in `20_code`
@@ -391,7 +391,7 @@ codice ritirato continua a risolversi) e il commento storico dell'e2e.
 ### 🔍 Resta una domanda sul MODELLO, non un residuo di questo giro
 
 > ➡️ **Passata il 2026-09-26 a
-> [brief-db-lock-di-colonna-fuori-registro.md](../work-in-progress/brief-db-lock-di-colonna-fuori-registro.md)**,
+> [brief-db-lock-di-colonna-fuori-registro.md](brief-db-lock-di-colonna-fuori-registro.md)**,
 > con la causa di `iva_stati` e `fatture` trovata. Il testo qui sotto resta com'era
 > il 23-09.
 

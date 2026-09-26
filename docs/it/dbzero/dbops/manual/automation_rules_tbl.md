@@ -59,6 +59,11 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
   * `BY_NAME` → cerca per nome (derivato dal template);
   * `BY_FUNCTION` → cerca per funzione invocata (schema.nome);
   * `BOTH` → vero se almeno uno dei due è trovato.
+
+  ⚠️ **Per `LOCK_COLUMNS` non si legge più** (dal 2026-09-26): la convergenza
+  riconosce un lock vivo **sempre** dalla funzione `script.trgfn_lock_columns`,
+  qualunque nome abbia, altrimenti un lock scritto a mano resterebbe invisibile.
+  Il nome serve solo a creare. Vedi `dbops.fn_lock_columns_divergenze`.
 * **params** *(jsonb)* – parametri specifici del *rule_type* (vedi sotto).
 * **priority** *(int)* – ordine di applicazione (più basso = prima). A parità, ordinamento per `id`.
 * **note** *(text)* – libero.
@@ -76,7 +81,9 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
 * **STORICO**: *(tipicamente vuoto)*
   La FK dello storico può essere data da override `STORICO_FK` in `automation_overrides_cols`.
 * **LOCK_COLUMNS**: *(tipicamente vuoto)*
-  Usa `name_template` ed `existence_strategy` per il naming e l'idempotenza dei trigger di lock.
+  Usa `name_template` per il nome del trigger di lock. Le colonne stanno in
+  `dbops.automation_lock_columns`; l'idempotenza viene dalla convergenza
+  (`dbops.fn_lock_columns_divergenze`), non da `existence_strategy`.
 * **ATTIVO**:
 
   * `reconcile_on_change` *(boolean, default `true`)* → **è l'unica chiave che
