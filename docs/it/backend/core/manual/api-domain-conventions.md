@@ -36,10 +36,9 @@ Per ridurre duplicazioni tra app dominio usare helper core:
 - Se serve disattivare fallback middleware (debug mirato), usare `DJANGO_API_EXCEPTION_MIDDLEWARE_ENABLED=0`.
 - Context middleware assegna `request_id` (header `X-Request-ID`) e propaga `Idempotency-Key` se presente.
 - Rate limiting applicativo (`apps/core/api/throttling.py`): `LoginRateThrottle` (5 ogni 5 minuti per IP) sui login, `PasswordResetRateThrottle` (3 ogni 15 minuti per IP) su reset password e attivazioni, `SearchBurstRateThrottle` sulle ricerche (sotto). Per gli altri endpoint write/retryable la baseline resta su Nginx/API gateway.
-- Paginazione/ricerca: seguire la policy `docs/it/dev/Policy-ricerca-e-paginazione(API-DB).md`.
-  - Parametri standard: `page`, `page_size`, `cursor`, `ordering`, `term`, `from`, `to`.
-  - Max page size: 200 (hard cap).
-  - `contains/ilike` solo con `term` >= 3.
+- Paginazione/ricerca: seguire la policy `docs/it/dev/Policy-ricerca-e-paginazione(API-DB).md`;
+  parametri, tetti e soglia di ricerca stanno in `docs/it/dev/api.md` §«Paginazione» e
+  §«Ricerca e throttling» (non si ricopiano qui).
   - Throttling search: DRF `SearchBurstRateThrottle` attivo su view con `is_search_endpoint = True`.
 
 ## Dipendenze DB
