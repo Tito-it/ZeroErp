@@ -52,11 +52,33 @@ colonna, la regola «a quale area appartiene un oggetto» avrebbe due sedi.
   potrebbe scrivere anche una tabella che le è chiusa. Le righe nascono nel CSV
   del seed.
 
-`ui.lista_definizione` sta nel pannello, ma la sua area (`ui`) non è a
-catalogo: la può modificare solo un SUPER_ADMIN, come dai suoi endpoint. È
-voluto, e il pgTAP lo dichiara.
+* ⛔ **Nel pannello, una tabella che ha già una sua schermata con il suo
+  cancello.** Il pannello diventerebbe una seconda strada per modificarla,
+  che salta il cancello. Il caso più grave è `config.profili_accesso`: dal
+  pannello, chi può modificare la Configurazione cambierebbe i profili di
+  permesso, cioè si darebbe da solo più diritti, senza passare dalla gestione
+  accessi riservata al SUPER_ADMIN. Per la stessa ragione restano fuori
+  `ui.lista_definizione`, `config.email_account`, `vendite.famiglie_documento`,
+  `anagrafiche.categorie_clienti` e `catalogo.uom_tipi`.
+* ⛔ **Nel pannello, un vocabolario di sistema.** Sono le tabelle che il seed
+  carica e il programma legge per codice (per esempio `config.nature_vendita`,
+  `config.registri_giornale`, i tipi di `documenti`). Una modifica dal pannello
+  cambierebbe un codice che il programma interpreta, o sparirebbe al
+  caricamento successivo.
+* ⛔ **Nel pannello, il catalogo delle aree** (`config.aree_funzionali`). È
+  la base su cui si danno i permessi: cambiarne la chiave staccherebbe profili
+  e permessi di un'area intera. La sua gestione va nell'amministrazione del
+  software, riservata al SUPER_ADMIN (decisa il 27-09-2026, da costruire).
+* ⛔ **Nel pannello, una tabella che non è nelle tendine.** Il pannello ne
+  elenca le righe passando dal lookup: `pannello` senza `lookup` è impedito
+  dalla tabella stessa (vincolo, 27-09-2026).
+
+Le tabelle tenute fuori dal pannello restano nella lista con `lookup`: servono
+alle tendine, ma non si modificano dal pannello (27-09-2026). Nel pannello ogni
+tabella appartiene a un'area del catalogo, senza eccezioni.
 
 Presidio: `db/pgtap/config/test-pannello-porta-v1.sql` (la lista risolve tabelle
-vere, nessuna ha la RLS, ogni area è a catalogo tranne quella dichiarata).
+vere, nessuna ha la RLS, ogni area è a catalogo, `config.profili_accesso` e
+`config.aree_funzionali` sono fuori dal pannello, il vincolo c'è).
 
 {% include-markdown "signature-core.md" %}

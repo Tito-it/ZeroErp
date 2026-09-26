@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA TABELLA DEL PANNELLO E' ANCHE NEL LOOKUP: CHECK (NOT pannello OR lookup)
+#   Brief: brief-db-pannello-config-verbo-generico, sezione 6 (richiesta del
+#   backend, decisa da Tid il 2026-09-27)
+#
+# -- PERCHE' --------------------------------------------------------------------------------------
+#   Il pannello elenca le righe di una tabella passando dal lookup generico
+#   (dbops.fn_get_lookup_codici), che serve solo le tabelle con `lookup`. Una riga
+#   con `pannello` e senza `lookup` sarebbe un pannello che sa scrivere la tabella
+#   e non sa elencarla: il backend risponde 400. Fino a oggi lo impediva solo il
+#   modo in cui e' scritto il CSV; da qui lo impedisce la tabella.
+#
+# -- ORDINE SU UN DATABASE DA ZERO ---------------------------------------------------------------
+#   La tabella nasce in 00_schema (20260925-29), il vincolo qui, il seed dopo, in
+#   80_data (20260925-30): il CSV lo rispetta gia' su tutte le righe.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260927-20-alter-tabelle-gestibili-pannello-implica-lookup-mctit.yaml
+
+  - changeSet:
+      id: 20260927-20-alter-tabelle-gestibili-pannello-implica-lookup
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        CHECK chk_tabelle_gestibili_pannello_implica_lookup su config.tabelle_gestibili: una tabella
+        del pannello e' anche nel lookup generico, perche' il pannello la elenca da li'. Brief:
+        brief-db-pannello-config-verbo-generico, sezione 6.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: tabelle_gestibili
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_constraint
+               WHERE conrelid = 'config.tabelle_gestibili'::regclass
+                 AND conname = 'chk_tabelle_gestibili_pannello_implica_lookup'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.tabelle_gestibili
+                  ADD CONSTRAINT chk_tabelle_gestibili_pannello_implica_lookup
+                  CHECK (NOT pannello OR lookup);
+
+              COMMENT ON CONSTRAINT chk_tabelle_gestibili_pannello_implica_lookup
+                  ON config.tabelle_gestibili IS
+                  'Una tabella del pannello (pannello = true) e'' anche nel lookup generico: il '
+                  'pannello ne elenca le righe da li''. Senza, il pannello saprebbe scriverla e non '
+                  'elencarla. Brief: brief-db-pannello-config-verbo-generico, sezione 6.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.tabelle_gestibili
+                  DROP CONSTRAINT IF EXISTS chk_tabelle_gestibili_pannello_implica_lookup;

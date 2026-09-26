@@ -1,0 +1,129 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE COLONNE CHE IL PANNELLO SCRIVE, IN UNA SEDE: config.fn_pannello_colonne_scrivibili(p_tabella)
+#   Brief: brief-db-pannello-config-verbo-generico, sezione 6 (richiesta del
+#   backend, decisa da Tid il 2026-09-27)
+#
+# -- PERCHE' --------------------------------------------------------------------------------------
+#   Fino a oggi la regola «quali colonne il pannello scrive» aveva due sedi: la
+#   costante c_escluse del verbo config.fn_pannello_scrivi (20260925-33), che
+#   RIFIUTA le altre, e _EXCLUDED_COLUMNS piu' un filtro su generate e identity
+#   in core/db/config_metadata_repository.py, che decide i campi del form. Se
+#   divergono, il form offre un campo che il salvataggio respinge. Da qui la regola
+#   sta in questa funzione: il verbo la chiama (20260927-22) e il backend la legge
+#   per il metadata, ritirando la sua costante nello stesso giro.
+#
+# -- LA REGOLA ------------------------------------------------------------------------------------
+#   Scrivibili = le colonne della tabella tranne:
+#   - quelle che scrive il DB per ogni riga: id, audit (data_/user_ insert e
+#     update), tx_id, storicizza, uid;
+#   - le generate (GENERATED ALWAYS AS) e le identity ALWAYS.
+#   Nell'ordine delle colonne della tabella (attnum): il form le mostra cosi'.
+#
+# -- LA FORMA -------------------------------------------------------------------------------------
+#   - Check pura: non solleva. Una tabella che il pannello non gestisce (fuori
+#     lista, pannello = false, o che non esiste) da' NULL: a sollevare, per il
+#     pannello, e' il passo 0 del verbo (E_PANNELLO_TABELLA_NON_AMMESSA).
+#   - La tabella si risolve dalla LISTA (schema_tabella, nome_tabella) e dal
+#     catalogo, mai dal testo dell'input: stessa regola del verbo.
+#   - STABLE, INVOKER: l'app legge la lista (SELECT) e il catalogo. Chiamata dal
+#     verbo DEFINER eredita il suo search_path bloccato: ogni nome e' qualificato.
+#   - plpgsql e non sql: il presidio dei riferimenti morti vede solo il plpgsql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260927-21-create-fn-pannello-colonne-scrivibili-mctit.yaml
+
+  - changeSet:
+      id: 20260927-21-create-fn-pannello-colonne-scrivibili
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.fn_pannello_colonne_scrivibili(p_tabella): le colonne che il pannello di
+        configurazione scrive per una tabella della lista, nell'ordine della tabella. Sede unica
+        della regola per il verbo config.fn_pannello_scrivi e per il metadata del backend. Check
+        pura, STABLE, INVOKER. Brief: brief-db-pannello-config-verbo-generico, sezione 6.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: tabelle_gestibili
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.fn_pannello_colonne_scrivibili(
+                  p_tabella config.tabelle_gestibili.codice_interno%TYPE
+              )
+              RETURNS text[]
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: dire quali colonne il pannello di configurazione scrive per una
+              --   tabella della lista (pannello = true), nell'ordine della tabella.
+              --   NULL se il pannello non gestisce la tabella.
+              DECLARE
+                  -- Le colonne che scrive il DB per ogni riga: il pannello non le tocca.
+                  c_di_sistema CONSTANT text[] := ARRAY['id', 'data_insert', 'user_insert',
+                                                       'data_update', 'user_update', 'tx_id',
+                                                       'storicizza', 'uid'];
+                  v_relid      oid;
+                  v_colonne    text[];
+              BEGIN
+                  SELECT c.oid
+                    INTO v_relid
+                    FROM config.tabelle_gestibili tg
+                    JOIN pg_catalog.pg_namespace n ON n.nspname = tg.schema_tabella
+                    JOIN pg_catalog.pg_class c     ON c.relnamespace = n.oid
+                                                  AND c.relname = tg.nome_tabella
+                                                  AND c.relkind IN ('r', 'p')
+                   WHERE tg.codice_interno = p_tabella
+                     AND tg.pannello;
+
+                  IF v_relid IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  SELECT array_agg(a.attname::text ORDER BY a.attnum)
+                    INTO v_colonne
+                    FROM pg_catalog.pg_attribute a
+                   WHERE a.attrelid = v_relid
+                     AND a.attnum > 0
+                     AND NOT a.attisdropped
+                     AND a.attgenerated = ''
+                     AND a.attidentity <> 'a'
+                     AND a.attname::text <> ALL (c_di_sistema);
+
+                  RETURN COALESCE(v_colonne, ARRAY[]::text[]);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.fn_pannello_colonne_scrivibili(text) IS
+                  'Check pura: le colonne che il pannello di configurazione scrive per una tabella di '
+                  'config.tabelle_gestibili con pannello = true (p_tabella = codice_interno, '
+                  'schema.tabella), nell''ordine della tabella. Escluse le colonne che scrive il DB per '
+                  'ogni riga (id, audit, tx_id, storicizza, uid), le generate e le identity ALWAYS. '
+                  'NULL se il pannello non gestisce la tabella (fuori lista, pannello = false, '
+                  'inesistente): a sollevare e'' il verbo. Sede unica della regola: la chiama '
+                  'config.fn_pannello_scrivi (passo 2) e la legge il metadata del backend per i campi '
+                  'del form. STABLE, INVOKER. Brief: brief-db-pannello-config-verbo-generico, '
+                  'sezione 6.';
+
+              REVOKE EXECUTE ON FUNCTION config.fn_pannello_colonne_scrivibili(text) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION config.fn_pannello_colonne_scrivibili(text) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS config.fn_pannello_colonne_scrivibili(text);
