@@ -34,6 +34,8 @@ import { useSelezioneToggle } from '../../../../core/composables/useSelezioneTog
 import AppDialog from '../../../../core/components/AppDialog.vue'
 import Tag from 'primevue/tag'
 import Checkbox from 'primevue/checkbox'
+// DataTable grezza: sono le RIGHE del preventivo col loro stato di smistamento
+// (/smistamento/ → .righe), nel dialog d'azione — dettaglio del documento.
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 

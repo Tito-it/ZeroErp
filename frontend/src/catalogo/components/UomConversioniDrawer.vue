@@ -2,6 +2,14 @@
 // Scopo: Sub-drawer per gestione conversioni UoM di una specifica unita' di misura.
 // Layout: lista conversioni sempre visibile in alto con fattore editabile inline,
 // form inserimento nuova conversione in basso (solo "A" selezionabile, "Da" e' la UoM corrente).
+//
+// ⭐ PORTATO SULLO STANDARD IL 2026-09-26 (piano PrimeVue 5, Gruppo A): la
+//    lista e' `catalogo.conversioni_uom` filtrata sulla UoM — lo stesso
+//    catalogo e lo stesso endpoint paginato della schermata Conversioni —
+//    con `useDrawerTabLista` + `<DrawerTabLista>` e uno store suo
+//    (`uomConversioni`). Prima era una `DataTable` grezza su `limit: 200`
+//    senza paginator. Il fattore resta modificabile sulla riga: e' lo slot
+//    `cell-fattore`.
 
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -10,19 +18,19 @@ import { useDrawerContentReady } from '../../core/composables/useDrawerContentRe
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerFormPreserve, gestoreVisibile, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useLookupCodici } from '../../core/composables/useLookupCodici'
-import { listConversioniUom, createConversioneUom, updateConversioneUom } from '../api/catalogo'
+import { createConversioneUom, updateConversioneUom } from '../api/catalogo'
+import { useUomConversioniStore } from '../stores/uomConversioni'
 import { parseIsoDate, toDateString } from '../../core/utils/date'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
-import { displayDate } from '../../core/utils/date'
+import AttivoTag from '../../core/components/AttivoTag.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
+import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
-import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import Drawer from 'primevue/drawer'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
@@ -47,8 +55,7 @@ const props = defineProps({
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved'])
 
-const conversioniList = ref([])
-const listLoading = ref(false)
+const store = useUomConversioniStore()
 const adding = ref(false)
 
 function defaultForm() {
@@ -83,29 +90,36 @@ const fattoreInline = useDrawerFormPreserve(
 const { modificato: modificatoTutto, chiudiConConferma: chiudiTutto } =
   unisciFotografie(inline, fattoreInline)
 
-// Scopo: Carica conversioni filtrate per la UoM corrente.
-async function loadConversioni() {
-  if (!props.uomId) return
-  listLoading.value = true
-  try {
-    // `limit` esplicito: dal 2026-08-01 l'endpoint e' paginato (default 25) e
-    // qui servono TUTTE le conversioni della UoM, non la prima pagina. 200 e'
-    // il tetto del repository; le conversioni di una singola UoM sono poche.
-    const res = await listConversioniUom({ uom_id: props.uomId, limit: 200 })
-    conversioniList.value = res.data?.data?.results || []
-  } catch {
-    conversioniList.value = []
-  } finally {
-    listLoading.value = false
-  }
-}
+// ⚠️ `parentId` porta l'id SOLO a drawer aperto: il `null` alla chiusura
+//    chiama `store.reset()`, o le conversioni della UoM precedente
+//    lampeggerebbero sotto la prossima.
+// ⚠️ Il «Nuovo» entra da `extraActions`: e' spento mentre il form e' aperto,
+//    una condizione che `onNew` non sa dire.
+const {
+  onPage, onSort, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato, reloadAll,
+} = useDrawerTabLista(store, {
+  parentId: () => (props.visible ? props.uomId : null),
+  parentField: 'uomId',
+  // Nessun `searchTableOptions`: l'ordinamento di partenza lo dichiara lo
+  // store, e una seconda copia qui divergerebbe in silenzio (vince lo store).
+  extraActions: () => [{
+    key: 'new-conversione',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('catalogo.nuova_conversione_uom'),
+    icon: MANAGE_ICONS.ADD,
+    hideWhenReadonly: true,
+    disabled: adding.value,
+    command: startAdd,
+  }],
+})
 
 watch(() => props.visible, (val) => {
   if (!val) return
   adding.value = false
   form.value = defaultForm()
   editingFattoreId.value = null
-  loadConversioni()
 })
 
 watch(currentTipoUomId, (tipoId) => {
@@ -160,7 +174,7 @@ async function onSaveNew() {
   if (result === null) return
   adding.value = false
   form.value = defaultForm()
-  await loadConversioni()
+  reloadAll()
   emit('saved')
 }
 
@@ -184,7 +198,7 @@ async function confirmEditFattore(row) {
   if (result === null) return
   editingFattoreId.value = null
   editingFattoreValue.value = null
-  await loadConversioni()
+  reloadAll()
   emit('saved')
 }
 
@@ -203,20 +217,6 @@ const onClose = useDrawerClose(emit)
 // quello modificato (se lo sono entrambi basta la prima).
 const chiudi = () => chiudiTutto(onClose)
 
-// Toolbar pagina: pulsante "Nuovo" sopra la lista (pattern standard
-// frontend-standards "PageActionsBar"). Speculare a ArticoloUomDrawer.
-const pageActions = computed(() => [
-  {
-    key: 'new-conversione',
-    kind: 'primary',
-    label: t('common.new'),
-    tooltip: t('catalogo.nuova_conversione_uom'),
-    icon: MANAGE_ICONS.ADD,
-    hideWhenReadonly: true,
-    disabled: adding.value,
-    command: startAdd,
-  },
-])
 const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
@@ -234,100 +234,93 @@ const suVisibile = gestoreVisibile(emit, chiudi)
     </template>
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <div v-if="listLoading" class="app-loading">
-        <i class="pi pi-spin pi-spinner" />
-      </div>
-
-      <template v-if="!listLoading">
-        <!-- Toolbar pagina standard: filtri (vuoti qui) + "Nuovo" prima
-             della lista. Visibile sempre in modalita' lista (non in adding),
-             cosi' anche l'empty state ha il pulsante "Nuovo" accessibile. -->
-        <div v-if="!adding" class="app-page-toolbar">
-          <PageActionsBar :actions="pageActions" />
-        </div>
-
-        <!-- Lista conversioni -->
-        <div v-if="conversioniList.length === 0 && !adding" class="app-empty-state">
-          <i class="pi pi-arrows-h" />
-          <p>{{ t('catalogo.nessuna_conversione') }}</p>
-        </div>
-
-        <DataTable v-if="conversioniList.length > 0" :value="conversioniList"
-          class="app-datatable app-datatable--inner" striped-rows>
-          <Column :header="t('catalogo.col_uom_da')" style="width: 100px;">
-            <template #body="{ data }">
-              <strong>{{ data.uom_from_codice }}</strong>
-            </template>
-          </Column>
-          <Column :header="t('catalogo.col_uom_a')" style="width: 100px;">
-            <template #body="{ data }">
-              <strong>{{ data.uom_to_codice }}</strong>
-            </template>
-          </Column>
-          <Column :header="t('catalogo.col_fattore')" style="width: 150px;">
-            <template #body="{ data }">
-              <template v-if="editingFattoreId === data.id">
-                <div>
-                  <InputNumber v-model="editingFattoreValue" :min="0" :min-fraction-digits="2"
-                    :max-fraction-digits="10" style="width: 100px;" />
-                  <Button :icon="MANAGE_ICONS.CONFIRM" text rounded size="small" class="app-action-btn"
-                    @click="confirmEditFattore(data)" />
-                  <Button :icon="MANAGE_ICONS.CANCEL" text rounded size="small"
-                    @click="fattoreInline.chiudiConConferma(cancelEditFattore)" />
-                </div>
-              </template>
-              <template v-else>
-                <span v-if="!isReadonly" class="app-mono fattore-cell" @click="startEditFattore(data)">
-                  {{ data.fattore }}
-                  <i class="pi pi-pencil" style="font-size: 0.7rem; margin-left: 0.25rem; opacity: 0.5;" />
-                </span>
-                <span v-else>{{ data.fattore }}</span>
-              </template>
-            </template>
-          </Column>
-          <Column :header="t('catalogo.field_valido_al')" style="width: 100px;">
-            <template #body="{ data }">{{ displayDate(data.valido_al) || '—' }}</template>
-          </Column>
-        </DataTable>
-
-        <!-- Form inserimento nuova conversione (pulsante "Nuovo" e' nella
-             toolbar sopra la lista, non piu' inline qui). -->
-        <template v-if="!isReadonly">
-          <template v-if="adding">
-            <div class="app-drawer-section">
-              <h4>{{ t('catalogo.nuova_conversione_uom') }}</h4>
-            </div>
-            <div class="form-grid-2col">
-              <div class="form-field">
-                <label>{{ t('catalogo.field_uom_a') }} *</label>
-                <LookupSelect v-model="form.uom_to_id" rel="catalogo.unita_misura"
-                  :placeholder="t('catalogo.select_uom_a')" filter-field="tipo_uom_id"
-                  :filter-value="currentTipoUomId" />
-              </div>
-              <div class="form-field">
-                <label>{{ t('catalogo.col_fattore') }} *</label>
-                <InputNumber v-model="form.fattore" :min="0" :min-fraction-digits="2"
-                  :max-fraction-digits="10" />
-              </div>
-              <div class="form-field">
-                <label>{{ t('catalogo.field_valido_dal') }}</label>
-                <DatePicker
-                  v-model="form.valido_dal"
-                  :date-format="DATE_FORMAT"
-                  show-icon
-                  show-button-bar
-                  :disabled="form.valido_dal_sempre"
-                  :invalid="campiErrati.includes('valido_dal')"
-                />
-              </div>
-            </div>
-            <div class="form-grid">
-              <div class="form-field">
-                <label>{{ t('catalogo.validita_sempre') }}</label>
-                <ToggleSwitch v-model="form.valido_dal_sempre" />
-              </div>
+      <!-- Lista conversioni: catalogo `catalogo.conversioni_uom`, filtrata
+           sulla UoM. Il fattore si modifica sulla riga (slot `cell-fattore`). -->
+      <DrawerTabLista
+        ref="listaRef"
+        codice="catalogo.conversioni_uom"
+        :store="store"
+        :rows="store.items"
+        :total="store.totalRecords"
+        :loading="store.loading"
+        :paginator-options="paginatorProps"
+        :page="tablePage"
+        :sort-field="paginatorProps.sortField"
+        :sort-order="paginatorProps.sortOrder"
+        :page-actions="pageActions"
+        :dirty="dirty"
+        :perimetro-bloccato="perimetroBloccato"
+        @page="onPage"
+        @sort="onSort"
+        @config-loaded="onConfigLoaded"
+      >
+        <!-- La frase del dominio al posto dell'empty-state generico, e solo se
+             la lettura e' riuscita: con `erroreCaricamento` la lista e' vuota
+             per un'altra ragione. -->
+        <template #empty>
+          <span v-if="!store.erroreCaricamento">{{ t('catalogo.nessuna_conversione') }}</span>
+        </template>
+        <template #cell-fattore="{ data }">
+          <template v-if="editingFattoreId === data.id">
+            <div>
+              <InputNumber v-model="editingFattoreValue" :min="0" :min-fraction-digits="2"
+                :max-fraction-digits="10" style="width: 100px;" />
+              <Button :icon="MANAGE_ICONS.CONFIRM" text rounded size="small" class="app-action-btn"
+                @click="confirmEditFattore(data)" />
+              <Button :icon="MANAGE_ICONS.CANCEL" text rounded size="small"
+                @click="fattoreInline.chiudiConConferma(cancelEditFattore)" />
             </div>
           </template>
+          <template v-else>
+            <span v-if="!isReadonly" class="app-mono fattore-cell" @click="startEditFattore(data)">
+              {{ data.fattore }}
+              <i class="pi pi-pencil" style="font-size: 0.7rem; margin-left: 0.25rem; opacity: 0.5;" />
+            </span>
+            <span v-else class="app-mono">{{ data.fattore }}</span>
+          </template>
+        </template>
+        <template #cell-attivo="{ data }">
+          <AttivoTag :active="data.attivo" />
+        </template>
+      </DrawerTabLista>
+
+      <!-- Form inserimento nuova conversione (pulsante "Nuovo" e' nella
+           toolbar sopra la lista, non piu' inline qui). -->
+      <template v-if="!isReadonly">
+        <template v-if="adding">
+          <div class="app-drawer-section">
+            <h4>{{ t('catalogo.nuova_conversione_uom') }}</h4>
+          </div>
+          <div class="form-grid-2col">
+            <div class="form-field">
+              <label>{{ t('catalogo.field_uom_a') }} *</label>
+              <LookupSelect v-model="form.uom_to_id" rel="catalogo.unita_misura"
+                :placeholder="t('catalogo.select_uom_a')" filter-field="tipo_uom_id"
+                :filter-value="currentTipoUomId" />
+            </div>
+            <div class="form-field">
+              <label>{{ t('catalogo.col_fattore') }} *</label>
+              <InputNumber v-model="form.fattore" :min="0" :min-fraction-digits="2"
+                :max-fraction-digits="10" />
+            </div>
+            <div class="form-field">
+              <label>{{ t('catalogo.field_valido_dal') }}</label>
+              <DatePicker
+                v-model="form.valido_dal"
+                :date-format="DATE_FORMAT"
+                show-icon
+                show-button-bar
+                :disabled="form.valido_dal_sempre"
+                :invalid="campiErrati.includes('valido_dal')"
+              />
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-field">
+              <label>{{ t('catalogo.validita_sempre') }}</label>
+              <ToggleSwitch v-model="form.valido_dal_sempre" />
+            </div>
+          </div>
         </template>
       </template>
 

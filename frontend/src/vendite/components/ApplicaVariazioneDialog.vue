@@ -9,6 +9,8 @@ import { applicaVariazionePercentuale } from '../api/listini'
 import { MANAGE_ICONS } from '../../core/constants'
 import AppDialog from '../../core/components/AppDialog.vue'
 import InputNumber from 'primevue/inputnumber'
+// DataTable grezza: anteprima dry_run delle righe che la variazione toccherebbe,
+// dentro il dialog di conferma — non paginata, non configurabile.
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'

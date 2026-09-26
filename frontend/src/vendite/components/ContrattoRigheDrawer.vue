@@ -44,6 +44,8 @@ import ComponentiPanel from '../_shared/componenti/ComponentiPanel.vue'
 import L2ErrorBanner from '../_shared/pricing/L2ErrorBanner.vue'
 import { useL2SaveFlow } from '../_shared/pricing/useL2SaveFlow'
 import Drawer from 'primevue/drawer'
+// DataTable grezza: sono le RIGHE del contratto (righeIniziali dal dettaglio del
+// padre + anteprima /righe-preview/), dettaglio del master — Gruppo B (Tid, 02-09).
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
