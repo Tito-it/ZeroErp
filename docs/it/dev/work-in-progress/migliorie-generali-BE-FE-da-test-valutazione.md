@@ -22,6 +22,11 @@
 > che hanno ancora un lavoro vivo (D1, D2, D3, D7, D9, D10). Per questi ultimi
 > numeri la voce compare **due volte** — in §3 il lavoro che resta, in §9 quello
 > fatto — e la tabella in testa a §3 dice riga per riga dove sta cosa.
+>
+> ✅ **Riallineato il 2026-09-26** sul repo: passate in §9 le voci chiuse dopo
+> il riordino — D1-d-bis (23-09), D5 (25-09), la schermata di D7 e D13-quater
+> (26-09) — e la metà sicurezza di D3-b. In §3 restano **D1-f, D2-b, D3-b, D3-c,
+> D9-a, D10-bis, D12**.
 
 ---
 
@@ -172,60 +177,36 @@ CI senza toccare il workflow.
 > ✅ **Le voci chiuse non stanno qui**: sono in **§9 «Attività svolte»**, con la
 > data e il rimando. La tabella dice riga per riga **che cosa resta in §3** e
 > **che cosa è passato in §9** — e quando una voce ha due facce il suo numero
-> compare in tutti e due i posti: `D1`, `D2`, `D3`, `D7`, `D9`, `D10`.
+> compare in tutti e due i posti: `D1`, `D2`, `D3`, `D9`, `D10` (`D7` fino al 26-09).
 > Le voci aperte, in ordine di ritorno, sono elencate anche in §8.
 
 |     | Difetto                                                                | Stato                                                                                           |
 | --- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| D1  | Il frontend non ha nessun cancello                                     | ✅ 09-09 — **in §9** · ✅ **D1-d-bis chiusa il 23-09** (primi test di componente) · resta la **decisione di D1-f** |
+| D1  | Il frontend non ha nessun cancello                                     | ✅ 09-09 e D1-d-bis 23-09 — **in §9** · resta la **decisione di D1-f**                           |
 | D2  | Backend senza analisi statica                                          | ✅ 09-09/10 — **in §9** · resta **D2-b** (type checker)                                          |
-| D3  | Lo schema OpenAPI si dichiara anonimo; `check --deploy` fuori dalla CI | ✅ D3-a — **in §9** · restano **D3-b**, **D3-c**                                                 |
+| D3  | Lo schema OpenAPI si dichiara anonimo; `check --deploy` fuori dalla CI | ✅ D3-a e la metà sicurezza di D3-b — **in §9** · restano **D3-b** (sanare 127 voci, cricchetto dal 26-09), **D3-c** |
 | D4  | `hint` trasportato e mai reso a video                                  | ✅ 09-09 — **in §9**                                                                             |
-| D5  | `area_funzionale = "ai_assistant"` non a catalogo                      | ✅ 09-25: riga a catalogo (DB), livelli dell'assistente (BE/FE), presidio aree/catalogo           |
+| D5  | `area_funzionale = "ai_assistant"` non a catalogo                      | ✅ 09-25 — **in §9**                                                                             |
 | D6  | Il `count` che è un'eco                                                | ✅ 09-10 — **in §9**                                                                             |
-| D7  | Endpoint senza consumatore                                             | ✅ decisione 09-11 — **in §9** · resta **la schermata**                                          |
+| D7  | Endpoint senza consumatore                                             | ✅ decisione 09-11 e schermata 09-26 — **in §9**                                                 |
 | D8  | View sotto `KeepAlive` che caricano solo in `onMounted`                | ✅ 09-10 — **in §9**                                                                             |
 | D9  | Suite larga e poco profonda; smoke non lanciati                        | ✅ D9-b 09-11 — **in §9** · resta **D9-a**                                                       |
 | D10 | I registri di debito non hanno un verso                                | ✅ la parte con un cricchetto — **in §9** · resta **D10-bis** (la tabella qui sotto è lo stato)  |
 | D11 | Quattro app scheletro                                                  | ✅ deciso 09-11 — **in §9**                                                                      |
 | D12 | Portali costruiti a DB, senza porte                                    | 🟡 **cantiere dichiarato**                                                                       |
-| D13 | Job notturno rotto da quattro notti                                    | ✅ 09-09 · D13-bis ✅ 09-11 — **in §9** · la sola coda (**D13-quater**) è in §8, ed è del team DB |
+| D13 | Job notturno rotto da quattro notti                                    | ✅ 09-09 · D13-bis 09-11 · D13-quater 09-26 — **in §9**                                          |
 | D14 | «Inviata» detto di una mail mai partita                                | ✅ 09-11 — **in §9**                                                                             |
 | D15 | `skip_area_check` è **muto** su 15 view; sei scrivono senza permesso   | ✅ 09-12, tutte e 15 — **in §9**                                                                 |
 
-### D1 — Il frontend non aveva nessun cancello
+### D1 — Il frontend non aveva nessun cancello — chiusa (§9), resta D1-f
 
-**Residui aperti:**
-
-* ~~**D1-d-bis** — il primo test di **componente**~~ ✅ **CHIUSA il 2026-09-23.**
-  `@vue/test-utils` + `jsdom` aggiunti con l'ok di Tid (0 vulnerabilita'), e
-  due componenti provati: `DrawerActionsBar` (12 test, 19 drawer lo montano) e
-  `ListaConfigurabile` (8 test, 63 file). ⭐ **Il «cosa deve asserire» e' stato
-  deciso cosi': i CONTRATTI fra caller e BB** — cio' che un file qualunque
-  promette senza saperlo — non la resa grafica, non la configurazione (e'
-  dato), non cio' che e' di PrimeVue. Impalcatura comune in `frontend/test/montaggio.js`,
-  DOM acceso **per file** (`// @vitest-environment jsdom`), non globalmente.
-  Entrambi gli spec provati **per mutazione**.
-* **D1-f** — ✅ le due vulnerabilità (`browserslist` alta,
-  `baseline-browser-mapping` moderata, entrambe di sola **build**) sanate il
-  2026-09-13 su segnalazione di Tid dagli avvisi Dependabot: **nessun
-  override e nessuna dipendenza nuova** — i range già dichiarati (`^4.24.0`,
-  `^2.10.38`) ammettevano le versioni corrette, è bastato aggiornare i due
-  pacchetti nel lock (4.28.9 e 2.11.23). `npm audit` a **zero**; lint, guard,
-  44 test e build verdi. ⚠️ **Resta la decisione**: il difetto non era la
-  vulnerabilità, è che nessuno lancia `npm audit` — oggi il registro è a zero,
-  cioè l'unico momento in cui un cancello nasce senza arretrato
-  (`npm audit --audit-level=high` nel job `ci-frontend`).
-  ⭐ **E il quarto avviso Dependabot era del backend**: `weasyprint 69.0`
-  (`< 70.0`, SSRF su `url_fetcher`, CVE-2026-55073). L'11-09 non si poteva
-  sanare — la 70.0 era uscita l'8-09 e il pin `<70` la escludeva. Chiuso il
-  2026-09-13: tetto a `<71`, `pip-compile --upgrade-package weasyprint` (una
-  riga nel lock), nessun altro pin mosso, fattura vera stampata con la 70
-  **identica** check per check alla 69, `apps.documenti` 252 e suite 4.652
-  verdi. ⚠️ **Residuo dichiarato**: la 70 avvisa che il ripiego su fontTools
-  per il subsetting dei font *«will be unsupported in future versions»* —
-  `libharfbuzz-subset0` manca nel `Dockerfile` e sulle macchine di sviluppo,
-  e va aggiunto **prima** della 71 (INFRA-2).
+**Aperto — D1-f**: la **decisione** se `npm audit --audit-level=high` entra nel
+job `ci-frontend`. Il difetto non erano le due vulnerabilità di build (sanate il
+13-09, §9), è che nessuno lancia `npm audit`: il registro è a zero dal 13-09,
+cioè l'unico momento in cui un cancello nasce senza arretrato. ⭐ Il gemello
+backend c'è dal 2026-09-26: `pip-audit` in `ci-validate.yaml`, acceso a zero —
+oggi i due lati sono asimmetrici. Sede della decisione:
+[sicurezza-e-qualita-statica.md](../sicurezza-e-qualita-statica.md) §Aperto.
 
 ### D2 — 258.000 righe di Python senza analisi statica — chiusa il 09-10 (§9), resta D2-b
 
@@ -238,13 +219,36 @@ può vedere.
 
 ### D3 — Lo schema OpenAPI e il ramo `--deploy` — D3-a chiuso il 09-09 (§9), restano D3-b e D3-c
 
-**Aperto — D3-b**: `manage.py check --deploy` **non gira in CI**, e
-drf-spectacular aggancia i propri controlli a quel ramo: la CI lancia `check`
-liscio e non ne vede nessuno. Restano **66 `W002`** (view senza `@extend_schema`
-su qualche metodo — violano una regola scritta in `AGENTS.md`), **54 collisioni
-di `operationId`** (`…_retrieve` / `…_retrieve_2`, prima invisibili sotto i
-607) e `mail.E001` (in CI va impostato il backend di posta giusto, non
-silenziato). Non è configurazione: è aprire un registro da 66 e dargli un verso.
+**Aperto — D3-b, la metà drf-spectacular**: la metà sicurezza è chiusa il
+2026-09-26 (§9). drf-spectacular aggancia i propri controlli al ramo `--deploy`,
+e il passo di CI gira `--tag security`, quindi non ne vede nessuno.
+Rimisurato il **2026-09-26** con l'ambiente del job CI (`check --deploy`
+completo, 130 rilievi):
+
+| Rilievo                    | 09-09 | 09-26  | Cosa                                                                                                        |
+| -------------------------- | ----- | ------ | ----------------------------------------------------------------------------------------------------------- |
+| `drf_spectacular.W002`     | 66    | **73** | view per cui lo schema non trova il serializer (violano la regola `@extend_schema` di `AGENTS.md`)         |
+| `drf_spectacular.W001`     | 54    | **54** | collisioni di `operationId` (lista e dettaglio sullo stesso `…_retrieve`, risolte con `…_retrieve_2`)      |
+| `mail.E001`                | 1     | 1      | backend di posta di sviluppo: in CI va impostato quello giusto, non silenziato                             |
+| `security.W004` / `W008`   | —     | 1 + 1  | accettati dal cricchetto: sono D3-c                                                                         |
+
+⚠️ Il **128** del commento nel passo CI non è il conto dei `W002`: è la somma
+dei rilievi drf-spectacular (73 + 54) più uno (commento corretto lo stesso
+giorno). Il registro era **cresciuto** di sette dal 09-09: senza un verso fa
+quello che ci si aspetta.
+
+✅ **Il verso c'è dal 2026-09-26**: `apps/core/tests/test_schema_openapi_registro.py`
+genera lo schema in memoria (senza DB, rotte condizionali comprese) e confronta
+i rilievi **per nome** con `openapi_schema.baseline.json` (73 view + 54
+`operationId`). Rosso su un nome nuovo, rosso su una voce sanata e non tolta,
+rosso su un rilievo di forma sconosciuta. Provato per mutazione: `@extend_schema`
+tolto da una view vera, voci tolte e aggiunte al registro, rotte condizionali
+spente — cinque rossi. ⚠️ Limite dichiarato nel test: il `W002` è **per view**,
+quindi una view ancora nel registro non è protetta sugli altri metodi.
+
+**Resta aperto — sanare il registro** (73 + 54 → 0) e, a registro vuoto,
+decidere se il test basta o se `check --deploy` completo entra in CI (serve
+anche `mail.E001` sistemato).
 
 **Aperto — D3-c**: `SECURE_HSTS_SECONDS` e `SECURE_SSL_REDIRECT` assenti dal
 ramo non-debug di `settings.py` (l'effetto lo decide il reverse proxy: da
@@ -252,37 +256,10 @@ concordare con chi gestisce nginx); **nessuna CSP**, né in `settings.py` né in
 `index.html`, con i due token JWT in `localStorage`. La postura regge perché
 `v-html` è a zero e `axios` sta in un file solo — cioè perché **non c'è
 superficie** — ma nessun presidio la verifica. O si aggiunge la CSP, o si scrive
-perché no.
-
-### D5 — `area_funzionale = "ai_assistant"`: un cancello che non si può aprire
-
-✅ **Chiusa il 2026-09-25**: la riga c'è (DB), i tre livelli hanno un
-significato (backend, brief §5.3) e il presidio aree/catalogo è scritto (brief
-§5.4). Il testo qui sotto è lo stato del 2026-09-11.
-
-🔵 **Aperto, attende il DB.** `AIQueryView` dichiara `area_funzionale =
-"ai_assistant"` e il catalogo `config.aree_funzionali` (13 righe) non la
-contiene: per `script.fn_resolve_livello_area` un'area fuori catalogo è
-**`BLOCCATO`** per tutti tranne `SUPER_ADMIN`, e **nessuno può concedere il
-permesso** perché non esiste la riga a cui appenderlo. Il 403 è indistinguibile
-da «non hai il permesso». Oggi la rotta è dietro `AI_ENABLED=0`; il giorno in
-cui si accende, si accende rotta per tutti tranne uno.
-
-**Decisione di Tid, 2026-09-11**: l'assistente lo devono poter usare **anche gli
-operatori** ⇒ riga a catalogo, strada `AdminAPIView` esclusa. Brief:
-[brief-db-area-funzionale-assistente-ai.md](../work-done/brief-db-area-funzionale-assistente-ai.md),
-che chiede anche di correggere il `COMMENT` della tabella (*«ogni area corrisponde
-a uno schema DB»*: già falso per `core` e `strumenti`). Il backend non ha niente
-da cambiare nel codice; appena la riga c'è, scrive il **presidio** che manca —
-un test su DB provvisto che confronta le `area_funzionale` dichiarate dalle view
-con i codici a catalogo, derivando l'elenco dalle view.
-
-### D7 — Endpoint costruiti, documentati, mai raggiunti da una schermata — la decisione è del 09-11 (§9), resta la schermata
-
-🔵 **Aperto — la schermata**: il registro mail dell'**operatore** (oggi lo vede
-solo l'amministratore). Piano al §2 dello stesso documento; niente dal team DB
-(la configurazione di lista `config.email_log` è a catalogo, id 31). Restano
-client, store, view e voce di menu.
+perché no. Proposta pronta in
+[brief-be-fe-sicurezza-header-token-mfa.md](brief-be-fe-sicurezza-header-token-mfa.md)
+§1 (decisione di Tid 2026-09-26: *«facciamo dopo»*); `W004`/`W008` sono
+nell'elenco a cricchetto del passo `check --deploy` e si tolgono a §1 chiusa.
 
 ### D9 — La suite è larga e poco profonda, e il livello profondo nessuno lo lancia — D9-b chiuso l'11-09 (§9), resta D9-a
 
@@ -362,13 +339,13 @@ Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione
 
 | Area                                    | Peso    | Voto       | Cosa regge il voto                                                                                                                                                                                                     |
 | --------------------------------------- | ------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Catena di verifica — frontend**       | 🔴 alto  | **7/10**   | Cancello in CI dal 09-09 (§2.1). Non sale perché la rete è tre file su ~680 (D1-d-bis)                                                                                                                                 |
+| **Catena di verifica — frontend**       | 🔴 alto  | **7/10**   | Cancello in CI dal 09-09 (§2.1), test di componente dal 23-09 (D1-d-bis). Manca `npm audit` (D1-f)                                                                                                                      |
 | **Analisi statica — backend**           | 🔴 alto  | **6,5/10** | `ruff` a registro zero dal 09-09 (§2.2). Manca il type checker (D2-b)                                                                                                                                                  |
 | **Catena di verifica — backend**        | 🔴 alto  | **8/10**   | Cancello duro, 4.560 test verdi, sette guardrail, `plpgsql_check`. Manca la profondità (D9) e il ramo `--deploy` (D3-b)                                                                                                |
-| **Contratto API pubblicato**            | 🟠 medio | **7/10**   | `securitySchemes` e `security:` su 815 operazioni (D3-a). Restano 66 `W002`, 54 collisioni, `--deploy` fuori CI                                                                                                        |
+| **Contratto API pubblicato**            | 🟠 medio | **7/10**   | `securitySchemes` e `security:` su 815 operazioni (D3-a). Restano 73 `W002` e 54 collisioni (26-09)                                                                                                                  |
 | **Contratto d'errore — lato backend**   | 🟠 medio | **9/10**   | 763 codici vivi, zero senza ripiego, zero orfani (§2.3)                                                                                                                                                                |
 | **Contratto d'errore — arrivo a video** | 🟠 medio | **8/10**   | `fields`, `targets`, `hint` a video (D4). Non è 10: chi chiama `notify.error` a mano resta fuori                                                                                                                       |
-| **Perimetro e permessi (applicativo)**  | 🟠 medio | **7,5/10** | Catena unica, fail-closed, reset GUC incondizionato. D5 vivo finché la riga a catalogo non c'è. ✅ 12-09: lo skip muto (D15) deciso e chiuso su tutte e 15 le view, presidiato dagli attributi **e** dal percorso reale |
+| **Perimetro e permessi (applicativo)**  | 🟠 medio | **7,5/10** | Catena unica, fail-closed, reset GUC incondizionato. ✅ 25-09 D5 chiuso con presidio aree/catalogo. ✅ 12-09: lo skip muto (D15) deciso e chiuso su tutte e 15 le view, presidiato dagli attributi **e** dal percorso reale |
 | **Correttezza dei contratti di lista**  | 🟠 medio | **8/10**   | Lookup con `troncato`, presidiato sul DB vero (D6). Nessun cancello sui `count: len()` senza `LIMIT`                                                                                                                   |
 | **Simmetria del dominio**               | 🟠 medio | **4/10**   | `acquisti`/`magazzino` modellati a DB e vuoti su BE e FE. La decisione dell'11-09 dà un verso al debito, non scrive il codice: il voto si muove col comportamento                                                      |
 | **Building block — frontend**           | 🟡 basso | **8,5/10** | Un solo punto HTTP, `bersagli`, contratto KeepAlive presidiato (D8). Restano le `DataTable` senza motivo                                                                                                               |
@@ -376,7 +353,7 @@ Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione
 | **Gestione del debito**                 | 🟡 basso | **8/10**   | Tre registri con cancello o cricchetto (D10). Senza verso: `skip_area_check` e baseline smoke                                                                                                                          |
 | **Documentazione di contesto**          | 🟡 basso | **9/10**   | Sette righe su sette chiuse (§1)                                                                                                                                                                                       |
 
-### Il giudizio, al 2026-09-12
+### Il giudizio, al 2026-09-12 (elenco degli aperti riallineato al 26-09)
 
 ⭐ **Il backend è costruito con lo stesso metodo del database**: contratto
 d'errore chiuso a chiave, catena dei permessi in una sede sola, reset GUC
@@ -386,11 +363,9 @@ backend senza nessuna analisi statica — erano economiche e sono chiuse.
 
 ⚠️ **La frase sulla «production-readiness» non cambia**: un cancello di build
 prova che il codice si compila, non che faccia la cosa giusta. Resta aperto ciò
-che è **cantiere** e non configurazione — i test di componente del frontend
-(D1-d-bis), la profondità della suite backend e gli smoke in CI (D9-a), il type
-checker (D2-b), `check --deploy` in CI (D3-b), la CSP (D3-c) — più ciò che
-aspetta un'altra squadra o una decisione (D5, D7-schermata, D10-bis, il
-rumore del digest). E il perimetro dei dati — D2 e D3 del gemello — è roba di là.
+che è **cantiere** e non configurazione — la profondità della suite backend e
+gli smoke in CI (D9-a), la metà drf-spectacular di `check --deploy` (D3-b) —
+più ciò che aspetta una decisione (D1-f, D2-b, D3-c, D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di là.
 
 ### Lezioni di metodo, in quattro righe
 
@@ -445,7 +420,9 @@ rumore del digest). E il perimetro dei dati — D2 e D3 del gemello — è roba 
 
 * [x] **D3-a** — ✅ 2026-09-09: `openapi_extensions.py`.
 * [ ] **D3-b** — `manage.py check --deploy` in CI: prima `mail.E001` nell'ambiente
-      di CI, poi il registro dei 66 `W002` e delle 54 collisioni con un verso.
+      di CI, poi il registro dei 73 `W002` e delle 54 collisioni (26-09) con un verso.
+      ✅ **Il verso dal 2026-09-26**: `test_schema_openapi_registro.py`, cricchetto
+      per nome. Resta da sanare il registro.
       ⭐ **Metà sicurezza chiusa il 2026-09-26**: il passo «Django check --deploy
       (sicurezza)» di `ci-validate.yaml` gira `--tag security` con un cricchetto
       (accettati solo W004/W008, cioè D3-c). Resta la metà drf-spectacular.
@@ -466,7 +443,9 @@ rumore del digest). E il perimetro dei dati — D2 e D3 del gemello — è roba 
       `config.aree_funzionali.schema_db`.
 * [x] **D6** — ✅ 2026-09-10: sonda `+1`, `troncato`, helper separati, test sul DB vero.
 * [x] **D7 (la decisione)** — ✅ 2026-09-11: piano §1, tredici rotte, due candidate al ritiro.
-* [~] **D7 (la schermata)** — 🔵 cantiere aperto il 2026-09-11: piano §2. Il 2026-09-25 Tid ha confermato la strada (a), cioè la schermata per gli operatori (piano §3.2). ⛔ È **ferma sul DB**: la RLS non applica gli ambiti `REPARTO`/`OPERATORE` (`brief-db-email-visibilita-per-ambito.md`).
+* [x] **D7 (la schermata)** — ✅ 2026-09-26: lista del log aperta a ogni
+      operatore (dominio «Personale», voce «Email»), dopo la RLS per ambito.
+      L'outbox resta sotto `config` e vive nel piano (§2.3 passo 5).
 * [x] **D8** — ✅ 2026-09-10: tre view, otto store, guard `check-keepalive-onactivated.mjs`.
 * [x] **D8-bis** — ✅ 2026-09-10: dati compagni in `onActivated`, con `force`.
 * [ ] **D9-a** — gli smoke in CI: prima insegnargli a fabbricarsi i soggetti, e
@@ -487,8 +466,8 @@ rumore del digest). E il perimetro dei dati — D2 e D3 del gemello — è roba 
 * [x] **D13** — ✅ 2026-09-09: `coerce_jsonb_dict`, test sulla forma, giro delle 22:05 passato.
 * [x] **D13-ter** — ✅ 2026-09-09 (Tid): otto righe archiviate, vista a zero.
 * [x] **D13-bis** — ✅ 2026-09-11 su entrambi i lati: catalogo `dbops.presidi`, digest attivo.
-* [ ] **D13-quater** — il rumore del primo digest (`sync_auth_user_active`,
-      processo ritirato in finestra): da portare al team DB (brief §9.5).
+* [x] **D13-quater** — ✅ 2026-09-26: rumore uscito da solo, nessun timer
+      acceso (§9).
 * [x] **D13-quinquies** — ✅ 2026-09-14, dalla nota DB del 14-09: il digest
       chiamava «FALLITA» la **propria** corsa in corso — `last_ok` era la riga
       più recente, cioè quella aperta (`ok` NULL). Ora `last_ok` è l'ultima
@@ -553,36 +532,31 @@ rumore del digest). E il perimetro dei dati — D2 e D3 del gemello — è roba 
 
 ### Le voci aperte, in ordine di ritorno
 
-| #   | Cosa                                                 | Perché sta qui                                                                                      |
-| --- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| 1   | **D5** — la riga `ai_assistant` a catalogo           | Zero sforzo lato backend, ma passa dal **team DB**; va fatta **prima** di accendere `AI_ENABLED`    |
-| 2   | **D13-quater** — il rumore del digest                | Un presidio che comincia col rumore insegna a non guardarlo; una riga al team DB                    |
-| 3   | **D7 (schermata)** — il registro mail dell'operatore | Cantiere piccolo (client, store, view, menu): la lista è già a catalogo                             |
-| 4   | **D3-c** — HSTS / SSL_REDIRECT / CSP                 | Dieci minuti di `settings.py` più una **decisione** sulla CSP; l'effetto lo decide il reverse proxy |
-| 5   | **D2-b** — type checker                              | Una decisione: sì (e come) o no (e si toglie la riga da `AGENTS.md`)                                |
-| 6   | **D1-f** — `npm audit` nel job                       | Registro a **zero** dal 13-09: è il momento in cui un cancello nasce senza arretrato                |
-| 7   | **D10-bis** — le letture cross-dominio con lo skip   | Lettura, non conteggio                                                                              |
+| #   | Cosa                                               | Perché sta qui                                                                                      |
+| --- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| 1   | **D1-f** — `npm audit` nel job                     | Registro a **zero** dal 13-09, e il lato backend (`pip-audit`) c'è dal 26-09                        |
+| 2   | **D3-c** — HSTS / SSL_REDIRECT / CSP               | Proposta pronta (brief sicurezza §1); l'effetto lo decide il reverse proxy                          |
+| 3   | **D2-b** — type checker                            | Una decisione: sì (e come) o no (e si toglie la riga da `AGENTS.md`)                                |
+| 4   | **D10-bis** — le letture cross-dominio con lo skip | Lettura, non conteggio                                                                              |
 
 ### ⛔ Sembrano facili e non lo sono — sono cantieri veri
 
 * **Smoke in CI (D9-a).** Tutti e sedici cercano i soggetti nei dati esistenti:
   su un DB di CI ricostruito da zero il cancello nascerebbe verde per
   sottrazione. Prima devono fabbricarsi i soggetti.
-* **`manage.py check --deploy` in CI (D3-b).** Non è configurazione: è aprire un
-  registro da 66 `W002` più 54 collisioni e dargli un verso.
-* **I test di componente del frontend (D1-d-bis).** Il pacchetto è la parte
-  facile; la parte che non si compra è decidere **cosa** un test di
-  `ListaConfigurabile` deve asserire.
-* **`acquisti` / `magazzino` (D11).** La decisione è presa; il comportamento
-  applicativo è il prossimo cantiere, e il voto di simmetria (§5) si muove con
-  quello.
+* **Sanare il registro drf-spectacular (D3-b).** Il cricchetto c'è dal 26-09 e
+  il numero non può più salire; restano 73 view e 54 `operationId` da
+  sistemare una per una.
+* **`acquisti` / `magazzino` (D11).** Il cantiere è aperto (stato in
+  `PROJECT_CONTEXT.md`): `magazzino` avanza a lotti, `acquisti` è ancora a
+  zero. Il voto di simmetria (§5) si muove con quello.
 
 ---
 
 ## 9. Attività svolte — cosa è stato chiuso, e con che cosa
 
 > Il rovescio di §3: qui sta ciò che era un difetto e non lo è più. I numeri che
-> compaiono in **tutti e due** i posti (`D1`, `D2`, `D3`, `D7`, `D9`, `D10`) non
+> compaiono in **tutti e due** i posti (`D1`, `D2`, `D3`, `D9`, `D10`) non
 > sono ripetizioni — in §3 c'è **il lavoro che resta**, qui **quello fatto**.
 > Il dettaglio vive nei documenti e nei file citati: qui si dice **che cosa è
 > cambiato nel sistema**, non come ci si è arrivati.
@@ -607,7 +581,15 @@ versioni corrette, bastava aggiornare i due pacchetti nel lock. E il quarto
 avviso era del **backend**: `weasyprint` 69 → **70** (`<71`), con una fattura
 vera stampata **identica** check per check alla 69. ⚠️ Coda dichiarata:
 `libharfbuzz-subset0` manca nel `Dockerfile` e sulle macchine di sviluppo, e va
-aggiunto **prima** della 71 (INFRA-2).
+aggiunto **prima** della 71 — ✅ fatto il 13-09 (INFRA-2, checklist §6).
+
+✅ **D1-d-bis — i primi test di componente — 2026-09-23.** `@vue/test-utils` +
+`jsdom` (ok di Tid, 0 vulnerabilità); provati `DrawerActionsBar` (12 test, 19
+drawer lo montano) e `ListaConfigurabile` (8 test, 63 file), entrambi **per
+mutazione**. ⭐ Il «cosa deve asserire» è stato deciso così: i **contratti fra
+caller e BB** — non la resa grafica, non la configurazione, non ciò che è di
+PrimeVue. Impalcatura in `frontend/test/montaggio.js`, DOM acceso **per file**
+(`// @vitest-environment jsdom`).
 
 ### ✅ D2 — Analisi statica del backend — 2026-09-09, allargata il 10-09
 
@@ -623,6 +605,23 @@ aggiunto **prima** della 71 (INFRA-2).
 `JwtAuditAuthentication`, registrata per import in `CoreConfig.ready()`.
 `components.securitySchemes` presente, `security:` su tutte le **815
 operazioni**, `check --deploy` da 677 a **124** problemi, i **607 `W001` a zero**.
+
+✅ **D3-b, la metà sicurezza — 2026-09-26.** Passo «Django check --deploy
+(sicurezza)» in `ci-validate.yaml`: `--tag security`, chiave generata nel job,
+e un cricchetto che accetta solo `W004`/`W008` (cioè D3-c). La metà
+drf-spectacular resta in §3.
+
+### ✅ D5 — `ai_assistant` a catalogo — 2026-09-25
+
+L'area dichiarata da `AIQueryView` non era a catalogo: `BLOCCATO` per tutti
+tranne `SUPER_ADMIN`, e nessuno poteva concedere il permesso. Decisione di Tid
+(11-09): l'assistente è anche per gli operatori. Il DB ha messo la riga (14), il
+backend ha dato un significato ai tre livelli (l'ingresso chiede `view`,
+`LETTURA` consulta, `TUTTO` agisce; letture in sola lettura a DB; la topbar
+mostra la chat solo a chi può usarla). Presidio:
+`core/tests/db/test_aree_dichiarate_a_catalogo.py` confronta le aree delle view
+(rotte condizionali comprese) con `config.aree_funzionali.schema_db`. Dettaglio:
+[brief-db-area-funzionale-assistente-ai.md](../work-done/brief-db-area-funzionale-assistente-ai.md).
 
 ### ✅ D4 — Il terzo lato del contratto d'errore — 2026-09-09
 
@@ -654,6 +653,15 @@ l'outbox) sono funzioni finite senza porta, **due sono candidate al ritiro**
 (`job-summary`, `manual-lookup`), una è un cantiere dichiarato (N6 dei listini),
 il resto è servizio legittimo. Corretto il docstring di
 `EmailLogOperatoreListView`, che prometteva un filtro che la RLS già applica.
+
+✅ **La schermata — 2026-09-26.** Scelta (a) di Tid (25-09): gli operatori
+vedono le mail del loro perimetro. Prerequisito DB chiuso il 25-09 (la RLS
+applica gli ambiti `REPARTO`/`OPERATORE`), poi la lista del log con
+`skip_area_check` sulla sola lettura e la schermata nel dominio «Personale»,
+voce «Email». Dettaglio:
+[brief-db-email-visibilita-per-ambito.md](../work-done/brief-db-email-visibilita-per-ambito.md)
+§9.6. L'outbox resta sotto `config` fino all'azione `invia_email`: è nel
+[piano](piano-be-fe-endpoint-senza-porta.md) §2.3 passo 5, non qui.
 
 ### ✅ D8 — Le view sotto `KeepAlive` — 2026-09-10
 
@@ -702,9 +710,11 @@ vera.* ✅ **D13-ter**: le otto righe storiche archiviate,
 `vw_coda_lavori_da_guardare` a zero. ✅ **D13-bis**: catalogo `dbops.presidi`
 applicato dal team DB, la riga di debito del backend **ritirata** (e il test di
 ritiro è diventato **rosso in CI nominandola** — il meccanismo che fa il suo
-mestiere), i due timer in servizio (07:00 e lunedì 07:30). ⚠️ La coda — il
-rumore del digest su un processo ritirato — è **D13-quater**, in §8, ed è una
-riga al team DB.
+mestiere), i due timer in servizio (07:00 e lunedì 07:30). ✅ **D13-quater**
+(il rumore del digest su `sync_auth_user_active`, processo ritirato il 07-09):
+**superata** il 2026-09-26 senza intervento — l'ultima corsa è del 05-09, la
+finestra di sette giorni l'ha fatta uscire e `maintenance.vw_job_run_da_guardare`
+è vuota (tabella senza RLS: lo zero è un dato). Nessuna corsa del processo dopo il 05-09.
 
 ### ✅ D14 — «Inviata» detto di una mail mai partita — 2026-09-11
 
@@ -743,6 +753,7 @@ allo stato corrente. Le misure sono letture di struttura sul repo al commit
 sui due workflow di CI e sull'esito di `manage.py check --deploy`; i numeri
 riletti dopo portano la loro data. **Riordinato il 2026-09-20**: §3 contiene solo
 i difetti aperti, le attività svolte stanno in §9 — con lo stesso numero in
-entrambe le sezioni quando una voce ha due facce. Lo strato DB è valutato
+entrambe le sezioni quando una voce ha due facce. **Riallineato il 2026-09-26**
+(D1-d-bis, D5, D7, D13-quater e metà di D3-b in §9). Lo strato DB è valutato
 separatamente in
 [migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md).*
