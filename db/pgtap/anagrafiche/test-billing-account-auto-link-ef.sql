@@ -10,7 +10,7 @@
 --  1) GUC app.current_user_id assente -> INSERT passa, nessun mapping
 --  2) Operatore con EF assegnato -> INSERT passa, mapping specifico creato
 --  3) Mapping non duplicato (idempotenza)
---  4) Admin globale + esistono emittenti -> INSERT bloccata
+--  4) Super admin senza emittente di lavoro + esistono emittenti -> INSERT bloccata
 --
 -- IMPORTANTE: questo file NON usa SAVEPOINT/ROLLBACK TO SAVEPOINT.
 -- pgTAP traccia lo stato dei test in una temp table interna; un
@@ -45,6 +45,13 @@
 --   soft» sollevano (uno slot mancante e' un difetto della fixture, non un
 --   caso), e il test 4 agisce come un super admin costruito con
 --   dbops.fn_pgtap_crea_operatore_umano(..., p_super_admin := true).
+--
+-- rev 2026-09-26 (brief-db-messaggio-ba-senza-emittente).
+--   Il test 4 riconosceva il rifiuto dal TESTO ('%amministratore globale%'):
+--   riscritto il messaggio (id 358) sulla regola vera, il test sarebbe
+--   diventato rosso senza che il guard cambiasse. Ora legge il CODICE dal
+--   canale CONSTRAINT (contratto P0001 + CONSTRAINT = codice): la frase
+--   per l'operatore e' del catalogo, non del test.
 -- ============================================================================
 
 BEGIN;
@@ -339,16 +346,29 @@ SELECT set_config('app.current_user_id',
                   true);
 SELECT set_config('app.current_emittente_id', '', true);
 
-SELECT throws_like(
-    $$ INSERT INTO anagrafiche.billing_account (
+-- Il codice di dominio di un errore, letto dal canale CONSTRAINT
+-- (contratto P0001 + CONSTRAINT = codice). NULL se non solleva.
+CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
+LANGUAGE plpgsql AS $$
+DECLARE v_c text;
+BEGIN
+    EXECUTE p_sql;
+    RETURN NULL;
+EXCEPTION WHEN SQLSTATE 'P0001' THEN
+    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
+    RETURN v_c;
+END $$;
+
+SELECT is(
+    pg_temp.codice_errore($$ INSERT INTO anagrafiche.billing_account (
            codice, istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal
        )
        SELECT 'PGTAP-AUTOLINK-4-' || floor(random()*1e9)::text,
               istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal
          FROM tmp_link_templates
-        WHERE slot = 4 $$,
-    '%amministratore globale%',
-    'Admin globale + esistono emittenti -> INSERT bloccata (E_BA_ADMIN_GLOBALE_VIETATO)'
+        WHERE slot = 4 $$),
+    'E_BA_ADMIN_GLOBALE_VIETATO',
+    'Super admin senza emittente di lavoro + esistono emittenti -> INSERT bloccata (E_BA_ADMIN_GLOBALE_VIETATO)'
 );
 
 SELECT * FROM finish();

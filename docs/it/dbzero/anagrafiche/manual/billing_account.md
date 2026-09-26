@@ -173,7 +173,7 @@ Il valore e ereditato automaticamente sugli ordini tramite `vendite.trgfn_ordini
 | Trigger                                     | Fase           | Scopo                                                                                  |
 | ------------------------------------------- | -------------- | -------------------------------------------------------------------------------------- |
 | `trgfn_billing_account_gen_codice`          | BEFORE INS/UPD | Genera `codice` automaticamente se mancante                                            |
-| `trgfn_billing_account_guard_admin_globale` | BEFORE INSERT  | Vieta agli admin globali di creare BA quando esistono emittenti (refactor 2026-04-08)  |
+| `trgfn_billing_account_guard_admin_globale` | BEFORE INSERT  | Vieta di creare un BA a chi non ha un emittente su cui scrivere (né appartenenza né emittente di lavoro), quando esistono emittenti (rev 2026-08-04) |
 | `trgfn_billing_account_guard_normalize`     | BEFORE INS/UPD | Guard di coerenza (validazioni, normalizzazione, protezione parent)                    |
 | `dbops.trgfn_tx_id_managed`                 | BEFORE INS/UPD | Genera `tx_id` per tracciabilita transazionale                                         |
 | `script.trgfn_audit_data_user_generic`      | BEFORE INS/UPD | Aggiorna campi audit                                                                   |

@@ -15,15 +15,27 @@
 > **zero righe in tutte le tabelle operative**, quindi nessuna bonifica dati e
 > nessun vincolo storico da rispettare. Ciò che si decide qui si decide libero.
 >
-> **Stato:** 🔵 **APERTO — è un'ANALISI, non un piano.** Nessun changeSet
-> scritto, niente applicato. Le decisioni stanno in §8 e vanno prese **prima**
-> che si scriva la prima riga di `magazzino`.
+> **Stato al 2026-09-26:** 🟡 **otto decisioni su nove PRESE e REALIZZATE; resta
+> aperta la sola D-5** (l'ODL sorgente o anello), che serve solo alla produzione.
+> ⚠️ Le §0 → §7 sono la **fotografia del 2026-09-01** e descrivono una struttura
+> che **non esiste più**: il ragionamento resta valido, lo stato no. Lo stato di
+> oggi, decisione per decisione, è nella tabella «Realizzato» in coda a §8.
 >
-> ✅ **2026-09-14 — sette delle nove decisioni sono PRESE da Tid** (D-1, D-2,
-> D-3, D-4, D-6, D-7, D-8, D-9; resta aperta la sola **D-5**, rinviata di
-> proposito con la §7 dell'analisi commessa). Il verbale è in **§8-quater**, la
-> tabella di §8 porta l'esito riga per riga, e il primo pezzo eseguibile è
-> [brief-db-magazzino-lotto-1-terreno-vuoto.md](../work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md).
+> * ✅ **Lotto 1** ([brief](../work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md),
+>   chiuso il 15-09, PR #1593): D-1, D-2, D-3, D-4, D-6, D-7, D-8;
+> * ✅ **Lotto 2** ([brief](../work-done/brief-db-magazzino-lotto-2-motore.md),
+>   DB applicato il 18-09, archiviato il 24-09): D-9 (vista degli orfani), la
+>   primitiva `fn_scrivi_movimento` come unica porta sul ledger, e il **rinvio**
+>   di `causali.sorgente_tipo_id` (D-L2-i, vedi D-8);
+> * ✅ **Verbi con permesso** ([brief](../work-done/brief-db-magazzino-verbi-con-permesso.md),
+>   24/25-09): l'app scrive il ledger **solo** da `fn_posta_inventario` /
+>   `fn_posta_rettifica`, sotto l'azione `registra_magazzino`.
+>
+> *Stato precedente, per la storia:* ✅ **2026-09-14 — otto delle nove decisioni
+> sono PRESE da Tid** (D-1, D-2, D-3, D-4, D-6, D-7, D-8, D-9; resta aperta la
+> sola **D-5**, rinviata di proposito con la §7 dell'analisi commessa). ⚠️ *Fino
+> al 26-09 qui c'era scritto «sette»: l'elenco fra parentesi ne ha sempre avute
+> otto.* Il verbale è in **§8-quater**.
 >
 > 📌 **Declassato ad analisi il 2026-09-01** (decisione di Tid), e rinominato da
 > `brief-db-…` a `analisi-db-…`: ⭐ è la stessa distinzione già usata dal cantiere
@@ -43,6 +55,11 @@
 ---
 
 ## 0. In due parole, senza tecnicismi
+
+> ⚠️ **Fotografia del 2026-09-01, superata dal Lotto 1** (15-09): il «foglietto»
+> di testo libero non esiste più, il ledger punta al catalogo delle sorgenti. Si
+> legge come il **perché** delle decisioni di §8; lo stato di oggi è in §8,
+> tabella «Realizzato».
 
 Ogni volta che della merce entra o esce dal magazzino, il sistema scrive una
 riga: *questo articolo, questa quantità, in questa data*. E accanto scrive **da
@@ -87,12 +104,19 @@ per dire che un caso non esiste.
 
 ## 2. In `magazzino` i modi di dire «da dove viene» sono due
 
+> ⚠️ **§2 → §7 descrivono la struttura del 2026-09-01**, prima del Lotto 1: le
+> `doc_*`, `uq_mag_movimenti_docref`, le dieci causali con `ambito_causale` e i
+> flag, il guard tipizzato montato su nessuna tabella di `magazzino`, `config.sorgenti`
+> a dieci righe. Oggi nulla di questo è più vero (§8, «Realizzato»). ⚠️ E
+> `uq_mag_movimenti_docref` esisteva **solo su dev**: su un database da zero il
+> suo changeSet era `MARK_RAN` (Lotto 1, registro del 15-09 sera).
+
 | Modello | Come è fatto | Chi lo usa in `magazzino` |
 | --- | --- | --- |
 | **Sorgente polimorfa a catalogo** | `sorgente_tipo_id` → `config.sorgenti` (FK) + la chiave del record puntato | `rettifiche`, `trasferimenti`, `inventari`, `eventi_assets` |
 | **Riferimento testuale libero** | `doc_schema` + `doc_table` + `doc_id` + `doc_riga_id`, tutte stringhe/bigint **senza FK e senza catalogo** | ⛔ `movimenti` (il ledger) e `reservations` |
 
-📌 **`reservations` è decisa come `magazzino.movimenti_attesi`** dal 2026-09-02
+📌 **`reservations` è decisa come `magazzino.movimenti_attesi`** dal 2026-09-02 (✅ **rinominata** il 15-09, `20260915-06`)
 (generica sui due versi, gemella del ledger): la decisione e le sue ragioni stanno
 in [analisi-db-magazzino-carico-e-scarico §7-bis](analisi-db-magazzino-carico-e-scarico.md). ⚠️ In questo documento
 resta il nome di oggi, perché qui si descrive la struttura **esistente** — ma il
@@ -270,6 +294,23 @@ si fa quando il dominio ha un ciclo di vita che il magazzino non deve conoscere.
 | **D-8** | **`causali.ambito_causale_id` si valorizza** (e allora l'ambito serve a qualcosa) **o l'ambito si ritira?** ⛔ Oggi la colonna è **vuota in tutte e dieci le causali**: il vocabolario dei sei ambiti esiste e non è collegato a niente | ⛔ un vocabolario collegato a zero righe è debito che **sembra** struttura — e chi legge lo scambia per un pezzo funzionante (§8-ter) | ✅ **SI RITIRA**, insieme ai tre flag morti (`richiede_odl`, `contabilizza_cdc`, `abilita_billing`). La primitiva è guidata da due cataloghi e l'ambito non è fra i suoi controlli; ed è il quinto asse chiamato «ambito» (analisi acquisti §7). Se un giorno servirà «questa causale accetta solo questa sorgente», la forma è un `causali.sorgente_tipo_id` 1:1, non un ambito |
 | **D-9** | **I due presidi che compensano il polimorfismo** (§8-bis): il tipo di sorgente vincolato al catalogo, e una **vista dei riferimenti orfani che deve restare vuota**. ⚠️ Sul ledger **non sono aggiungibili da soli**: presuppongono D-1 | il pattern è già di casa e si riusa; ma la parte sul ledger *è* la decisione D-1, non un'aggiunta sopra | ✅ **SÌ**, discende da D-1: FK + guard tipizzato sul ledger (Lotto 1); la vista degli orfani, generica su `config.sorgenti`, nel Lotto 2 con i suoi pgTAP |
 
+### ✅ Realizzato — stato al 2026-09-26
+
+> Verificato sulla doc auto-generata (`docs/it/dbzero/magazzino/`, `dbzero/dbops/`),
+> sul CSV di `config.sorgenti` e sui brief chiusi. Sono letture di **struttura**.
+
+| # | Che cosa esiste oggi | Dove | Scostamento dalla decisione |
+| --- | --- | --- | --- |
+| **D-1** | `movimenti` e `movimenti_attesi` portano `sorgente_tipo_id` (FK a `config.sorgenti`) + `sorgente_riga`/`sorgente_uid` con CHECK di chiave; le `doc_*` **non esistono più**. `reservations` è rinominata `movimenti_attesi` | `20260915-05`, `-06`, `-07` | ➕ le `doc_*` sono state tolte **anche da `eventi_assets`** (Lotto 1 §4.7, `20260915-11`), che D-1 non nominava |
+| **D-2** | le quattro testate hanno `sorgente_riga` + `chk_mag_<t>_sorgente_chiave`; `rettifiche` ha la sua FK; su `trasferimenti` resta la sola coppia `sorgente_*` | `20260915-11` | ⚠️ restano gli **UNIQUE parziali vecchi** su `(sorgente_tipo_id, sorgente_uid)` delle quattro testate (`uq_mag_rettifiche_source_fk`, `uq_mag_trasf_sorgente_fk`, `uq_mag_invetario_sorgente_fk`, `uq_mag_eventi_assets_sorgente_fk`): coprono il solo ramo `uid`, e nessuna decisione li nomina — **da decidere se servono** |
+| **D-3** | `trgfn_guard_sorgente_polimorfa_tipizzata` montato sulle **sei** tabelle (`trg_<t>_a10_guard_sorgente_ins_upd`) | Lotto 1 | nessuno. Le altre nove tabelle del modello A restano un cantiere `dbops` |
+| **D-4** | `uq_mag_movimenti_identita` su `(sorgente_tipo_id, sorgente_riga, sorgente_uid, causale_id, asset_id, lotto_id, ubicazione_id)` **`NULLS NOT DISTINCT`**, col `COMMENT` sull'operazione-per-tranche; `uq_mag_movimenti_docref` **droppato** (e `uq_mag_reservations_docref`) | `20260915-05`, `-07` | ✅ **D-L1-c confermata da Tid il 15-09: il verbo è la causale**, nessuna colonna `operazione_verbo`. ➕ `uq_mag_movimenti_storno_di` e `E_MAG_MOVIMENTO_GIA_REGISTRATO` nella primitiva (`20260918-18`) |
+| **D-5** | — | — | ⏸️ **ancora aperta**, con la §7 dell'analisi commessa |
+| **D-6** | `movimenti.sorgente_tipo_id` **NOT NULL**; nullable su `movimenti_attesi` e `rettifiche`; `lotto_id`/`asset_id` propagati alle righe delle testate | Lotto 1 | ➕ «lo storno eredita la sorgente» è **fatto rispettare dalla primitiva** (`E_MAG_STORNO_INCOERENTE`, `20260918-18`); la utility di storno è del Lotto 3. ⚠️ La riga «trasferimento → `trasferimenti_righe`» della tabella di §8-quater è **superata da D-L2-g**: `magazzino.trasferimenti` è il solo trasferimento **interno**, quello con trasporto è il DDT con causale `TRASFERIMENTO` e la sua sorgente è una riga di DDT (Lotto 3) |
+| **D-7** | `config.sorgenti.csv` a **20 righe**: le cinque `*_RIGA` di vendite entrate (id 3-11), più `INVENTARIO_RIGA`, `RETTIFICA_RIGA`, `TRASFERIMENTO_RIGA`, `EVENTO_ASSET` con scope **`MAGAZZINO`** (esteso in `20260915-01`) e `RESO_VENDITA_RIGA` | `80_data/sql/config/sorgenti.csv` | ⚠️ `RESO_VENDITA_RIGA` (id 16) ha scope **`ROW_VALIDATOR`**, non `MAGAZZINO`. ➕ Le cinque `*_RIGA` su dev erano **archiviate** (`attivo = f`), non solo fuori CSV: rientrate **attive** per D-L1-f. Nessuna sorgente di acquisti né ODL, come previsto (Lotti 4 e 5) |
+| **D-8** | `ambito_causale` droppata con `richiede_odl`, `contabilizza_cdc`, `abilita_billing` | `20260915-02`, `-03` | ⛔ **`causali.sorgente_tipo_id` 1:1 NON è stata fatta**: D-L2-i (Tid, 17-09) la **rinvia** e ne **smentisce la forma** — `RETT_POS` nasce da due sorgenti (`INVENTARIO_RIGA`, `RETTIFICA_RIGA`), quindi il rapporto è 1:N e servirà una tabella ponte, al primo scrittore che riceve la causale da fuori |
+| **D-9** | `dbops.fn_sorgenti_orfane()`, `fn_sorgenti_orfane_perimetro()`, `dbops.vw_sorgenti_orfane`, iscritta in `presidi.csv` (natura `ZERO`, settimanale); pgTAP `dbops/test-sorgenti-orfane-v1.sql` | `20260918-25`, `-27` | nessuno: il perimetro si deriva dalle FK verso `config.sorgenti`, quindi copre anche le tabelle future |
+
 ---
 
 ## 8-bis. I due presidi che compensano il polimorfismo (D-9)
@@ -373,7 +414,7 @@ e ogni operazione **è già un record**:
 | --- | --- |
 | inventario (iniziale o periodico) | `inventari_righe` |
 | ⭐ **correzione a mano** | `rettifiche_righe` — esiste apposta, con `qta_delta`, `motivo`, stato `DRAFT → CONFIRM → POSTED → CANCEL` |
-| trasferimento | `trasferimenti_righe` |
+| trasferimento | `trasferimenti_righe` — ⚠️ *dal 17-09 (D-L2-g) solo il trasferimento **interno**; quello con trasporto è il DDT con causale `TRASFERIMENTO`, sorgente una riga di DDT (Lotto 3)* |
 | installazione / rientro di un asset | `eventi_assets` |
 | bolla di vendita, reso del cliente | `ddt_righe`, `resi_righe` |
 | ricevimento, reso al fornitore | il record di ricevimento (Lotto 4) |
@@ -463,7 +504,13 @@ un ambito, che è più grosso di ciò che il controllo chiede (`ODL_USCITA_MAT` 
 `ODL_ENTRATA_MAT` sono entrambe `ODL` e vanno da sorgenti diverse). Candidata
 al Lotto 2, quando la primitiva esiste.
 
-### D-2, D-3, D-9 — discendono, e si fanno nel Lotto 1
+⛔ **Esito (Lotto 2, D-L2-i, Tid 17-09): rinviata, e la forma 1:1 è smentita.**
+`RETT_POS` nasce da **due** sorgenti (`INVENTARIO_RIGA` e `RETTIFICA_RIGA`): il
+rapporto è 1:N, quindi servirà una tabella ponte causale ↔ sorgente, non una
+colonna. Si scrive quando arriva il primo scrittore che riceve la causale da
+fuori invece di ricavarla da sé.
+
+### D-2, D-3, D-9 — discendono (D-2 e D-3 nel Lotto 1, D-9 nel Lotto 2)
 
 Le quattro testate prendono `sorgente_riga` e il guard tipizzato si monta su
 **sei** tabelle di `magazzino`; la vista degli orfani nasce nel Lotto 2 col
@@ -479,6 +526,13 @@ esserci.
 
 Concordato con Tid: qui c'è **solo l'aggancio al documento di origine**. Resta
 fuori, per l'**analisi successiva** su «cosa serve / cosa manca a magazzino»:
+
+✅ **Al 2026-09-26 tutte le voci sotto sono decise e quasi tutte costruite**
+(Lotti 1 e 2; dettaglio in carico/scarico §9). In particolare: il guard del verso
+esiste, il perimetro RLS di `magazzino` è acceso dal 15-09 (`20260915-16`), i
+pgTAP del dominio sono una ventina di file, e la sorgente polimorfa è presidiata
+dal guard tipizzato su sei tabelle e dalla vista degli orfani. Le righe sotto
+restano come erano scritte il 01-09.
 
 📌 **Tutto ciò che segue ha trovato una sede il 2026-09-02**, ed è
 [analisi-db-magazzino-carico-e-scarico.md](analisi-db-magazzino-carico-e-scarico.md) — che le raccoglie e dichiara,
@@ -504,6 +558,12 @@ l'aggancio al documento di origine.
 
 ## 10. Perimetro e regole del cantiere
 
+> ✅ **Al 2026-09-26 i tre punti sotto sono storia**: il Lotto 1 è applicato dal
+> 15-09 e il Lotto 2 dal 18-09; il lato BE/FE è arrivato (richiesta D-L1-g del
+> Lotto 1, brief 2-bis e piano BE/FE del Lotto 2, chiusi il 23 e il 25-09); e le
+> tabelle operative non sono più vuote su dev. Restano come la regola con cui il
+> cantiere è partito.
+
 - ⛔ **Niente è stato applicato**, e niente va applicato prima che D-1 → D-9
   abbiano una risposta: **cambiare il modello dopo** costerebbe più che deciderlo
   adesso, ed è l'unico momento in cui non c'è una riga da bonificare.
@@ -512,7 +572,7 @@ l'aggancio al documento di origine.
 - **Lato BE/FE non si chiede nulla in questa fase**: `backend/apps/magazzino`
   segue il dominio, non lo precede.
 - ⭐ **Il vantaggio da non sprecare**: tutte le tabelle operative di `magazzino`
-  sono a **zero righe**. Non è un argomento per fare o non fare qualcosa — è la
+  sono a **zero righe** (fatto datato 2026-09-01). Non è un argomento per fare o non fare qualcosa — è la
   ragione per cui questo cantiere può permettersi di **cambiare forma** invece di
   aggiungere strati compatibili.
 
@@ -524,7 +584,7 @@ l'aggancio al documento di origine.
   fermare, perché non è la commessa, e le dimensioni che al ciclo di vendita
   mancano comunque —
   [analisi-db-commessa-e-produzione-predisposizione.md](analisi-db-commessa-e-produzione-predisposizione.md).
-  ⚠️ La sua §7 è la **gemella della D-5** qui sotto e va decisa insieme.
+  ⚠️ La sua §7 è la **gemella della D-5** (§8) e va decisa insieme.
 - Convenzione della sorgente polimorfa:
   [sorgente-polimorfa.md](../../guide/sorgente-polimorfa.md)
 - Il precedente in cui il guard esisteva e non era agganciato:
@@ -533,6 +593,11 @@ l'aggancio al documento di origine.
   [brief-db-bonifica-pgtap-sorgente-polimorfa.md](../work-done/brief-db-bonifica-pgtap-sorgente-polimorfa.md)
 - Stato del dominio nella mappa: [mappa-concentrica.md](../../mappa-concentrica.md)
   § Anello 3
+- Dove le decisioni sono diventate DDL:
+  [Lotto 1](../work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md) (D-1 → D-4,
+  D-6 → D-8), [Lotto 2](../work-done/brief-db-magazzino-lotto-2-motore.md) (D-9,
+  D-L2-g, D-L2-i), [verbi con permesso](../work-done/brief-db-magazzino-verbi-con-permesso.md)
+  (la porta del ledger)
 
 ---
 
@@ -542,4 +607,5 @@ l'aggancio al documento di origine.
 | --- | --- |
 | 2026-09-01 | Prima stesura, declassata ad analisi lo stesso giorno. D-1 → D-9 poste, nessuna presa |
 | 2026-09-02 | §8-ter traslocato in carico/scarico; D-4 punta alla sua risposta (§6 di là); `reservations` → `movimenti_attesi` annotato in §2 |
-| 2026-09-14 | ✅ **Sette decisioni prese da Tid in una seduta** (verbale in **§8-quater**, esito riga per riga in §8): **D-1** catalogo e `doc_*` via; **D-6** sorgente **obbligatoria** sul ledger — rovescia la riga «resta tutto nullable» di carico/scarico §6, perché ogni scrittore è un'operazione con un record (la correzione a mano è una `rettifica`) e l'argomento del nullable valeva contro il testo libero; **D-4** la terza forma senza progressivo; **D-7** il catalogo registra le **operazioni**, e 🔴 le cinque `*_RIGA` di vendite esistono **solo sul DB di sviluppo** (id 3-11, fuori dal CSV: verde su dev, rosso in CI); **D-8** ambito e tre flag morti **ritirati**; D-2/D-3/D-9 discendono e si fanno nel Lotto 1 — dove si sanano anche `rettifiche` **senza FK** sulla sorgente e la coppia `sorgenti_*` **duplicata** su `trasferimenti`. ⏸️ **D-5 resta aperta di proposito**. Primo pezzo eseguibile: `brief-db-magazzino-lotto-1-terreno-vuoto.md` |
+| 2026-09-14 | ✅ **Otto decisioni prese da Tid in una seduta** *(fino al 26-09 diceva «sette»)* (verbale in **§8-quater**, esito riga per riga in §8): **D-1** catalogo e `doc_*` via; **D-6** sorgente **obbligatoria** sul ledger — rovescia la riga «resta tutto nullable» di carico/scarico §6, perché ogni scrittore è un'operazione con un record (la correzione a mano è una `rettifica`) e l'argomento del nullable valeva contro il testo libero; **D-4** la terza forma senza progressivo; **D-7** il catalogo registra le **operazioni**, e 🔴 le cinque `*_RIGA` di vendite esistono **solo sul DB di sviluppo** (id 3-11, fuori dal CSV: verde su dev, rosso in CI); **D-8** ambito e tre flag morti **ritirati**; D-2/D-3/D-9 discendono (D-2/D-3 nel Lotto 1, D-9 nel Lotto 2) — dove si sanano anche `rettifiche` **senza FK** sulla sorgente e la coppia `sorgenti_*` **duplicata** su `trasferimenti`. ⏸️ **D-5 resta aperta di proposito**. Primo pezzo eseguibile: `brief-db-magazzino-lotto-1-terreno-vuoto.md` |
+| 2026-09-26 | 🟡 **Riallineamento allo stato di sviluppo** (verifica su doc auto-generata, CSV e brief chiusi). Intestazione riscritta; aggiunta in §8 la tabella **«Realizzato»**, decisione per decisione con i changeSet; note di **fotografia superata** su §0 e §2 → §7, §9, §10. Corretti: «sette» decisioni → **otto** (l'elenco ne aveva sempre otto); D-9 nel **Lotto 2**, non nel 1. Registrati gli esiti che il documento non aveva: **D-L1-c** confermata (il verbo è la causale); le `*_RIGA` di vendite erano **archiviate** su dev e sono rientrate attive (D-L1-f); `RESO_VENDITA_RIGA` ha scope `ROW_VALIDATOR`, non `MAGAZZINO`; `causali.sorgente_tipo_id` 1:1 **rinviata e smentita** (D-L2-i, 1:N); il trasferimento con trasporto è il DDT `TRASFERIMENTO` (D-L2-g); lo storno eredita la sorgente **per guard** della primitiva. ⚠️ Emerso: sulle quattro testate restano gli **UNIQUE parziali** vecchi sul ramo `uid`, che nessuna decisione nomina. ⏸️ D-5 resta aperta |
