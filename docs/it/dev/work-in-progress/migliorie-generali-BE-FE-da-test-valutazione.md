@@ -446,8 +446,12 @@ rumore del digest). E il perimetro dei dati — D2 e D3 del gemello — è roba 
 * [x] **D3-a** — ✅ 2026-09-09: `openapi_extensions.py`.
 * [ ] **D3-b** — `manage.py check --deploy` in CI: prima `mail.E001` nell'ambiente
       di CI, poi il registro dei 66 `W002` e delle 54 collisioni con un verso.
+      ⭐ **Metà sicurezza chiusa il 2026-09-26**: il passo «Django check --deploy
+      (sicurezza)» di `ci-validate.yaml` gira `--tag security` con un cricchetto
+      (accettati solo W004/W008, cioè D3-c). Resta la metà drf-spectacular.
 * [ ] **D3-c** — `SECURE_HSTS_SECONDS` / `SECURE_SSL_REDIRECT` (con chi gestisce
       nginx) e **decidere** sulla CSP.
+      Proposta pronta: [brief sicurezza](brief-be-fe-sicurezza-header-token-mfa.md) §1.
 * [x] **D4** — ✅ 2026-09-09: `hint` a video, filtro sui codici tecnici, sei
       `ui_action` dichiarate servite dal default.
 

@@ -89,3 +89,24 @@ repos:
     rev: v0.16.6
     hooks:
       - id: ruff-check
+
+  # ⛔ SEGRETI NEL REPO (2026-09-26): `backend/.env` con SECRET_KEY e password
+  #    del DB reali e' rimasto tracciato per 5 commit, nonostante `.gitignore`
+  #    — era entrato prima della regola. Il `.gitignore` non e' un presidio: non
+  #    ferma un `git add -f` ne' un file gia' tracciato. Questo si'.
+  # ⛔ L'`entry` si SOVRASCRIVE, e non e' stile: quella dell'hook ufficiale e'
+  #    `--staged`, cioe' guarda l'indice. In CI `pre-commit run --from-ref`
+  #    non ha niente in staged e l'hook sarebbe VERDE PER SOTTRAZIONE, su ogni
+  #    PR. pre-commit esporta il range in PRE_COMMIT_FROM_REF/TO_REF: se c'e'
+  #    si scansionano i COMMIT del range (le sole righe aggiunte), altrimenti
+  #    l'indice del commit in corso.
+  # ⚠️ `--redact`: il log della CI e' pubblico, un segreto trovato non va
+  #    ristampato per intero proprio li'.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+        entry: >-
+          bash -c 'if [ -n "$PRE_COMMIT_FROM_REF" ];
+          then exec gitleaks git --redact --verbose --log-opts="$PRE_COMMIT_FROM_REF..$PRE_COMMIT_TO_REF";
+          else exec gitleaks git --pre-commit --staged --redact --verbose; fi'

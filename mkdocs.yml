@@ -154,6 +154,7 @@ nav:
                             - Configurazione e responsività delle liste: it/guide/configurazione-liste.md
                             - Sistema numerazione generico per codici e documenti: it/guide/numerazione-documenti-e-codici.md
                             - Il risolutore IVA di riga: it/guide/iva-risolutore-di-riga.md
+                            - Sicurezza di ZeroErp: it/guide/sicurezza.md
                   - Approfondimenti tecnici:
                             - Architettura Permessi e Autorizzazioni: it/guide/architettura-permessi-e-autorizzazioni.md
                             - Architettura multi face auth: it/guide/architettura-multi-face-auth.md
@@ -179,6 +180,7 @@ nav:
 
         - Strumenti:
                   - Generatore Documentazione: it/dbzero/tools/gen_db_docs.md
+                  - Sicurezza e qualità statica: it/dev/sicurezza-e-qualita-statica.md
         - Sviluppatori:
                   - API: it/dev/api.md
                   - Ricette (dove intervenire): it/dev/ricette-dove-intervenire.md

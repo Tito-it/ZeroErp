@@ -270,20 +270,13 @@ ln -s /etc/nginx/sites-available/zeroerp /etc/nginx/sites-enabled/zeroerp || tru
 nginx -t && systemctl reload nginx
 ```
 
-## 10) Sicurezza Django dietro proxy (append alla fine di settings.py)
+## 10) Sicurezza Django dietro proxy
 
-```bash
-cat >> /home/${APP_USER}/apps/zeroerp/zeroerp_backend/settings.py <<'EOF'
-# --- Proxy HTTPS/Nginx + cookie sicuri ---
-CSRF_TRUSTED_ORIGINS = [f"https://${TAIL_NAME}"]
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-# Static/Media best practice
-STATIC_URL = "/static/"; MEDIA_URL = "/media/"
-STATIC_ROOT = "/var/www/zeroerp/static"; MEDIA_ROOT  = "/var/www/zeroerp/media"
-EOF
-```
+⛔ **Non si accoda niente a `settings.py`**: il file è versionato e contiene già
+proxy fidati, cookie `Secure` e `CSRF_TRUSTED_ORIGINS`. Una modifica fatta sulla
+macchina si perde al primo `git pull`, o peggio diverge in silenzio. Le
+impostazioni e la loro verifica: [Configurazione Django](configurazione-django.md),
+«Sicurezza della superficie pubblica».
 
 ## 11) Migrazioni + superuser
 
