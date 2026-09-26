@@ -936,3 +936,5 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 936,28,soggetto_nome,Nome proprio,Nome proprio dell operatore,soggetto_nome,informazione,string,,,15,left,,,f,f,t,t,f,t,2026-09-24 00:00:00,mctit,amministrazione.col_soggetto_nome,50
 937,28,soggetto_ragione_sociale,Ragione sociale,Ragione sociale completa del soggetto collegato all operatore,soggetto_ragione_sociale,informazione,string,,,16,left,,,f,f,t,t,f,t,2026-09-24 00:00:00,mctit,common.ragione_sociale,50
 938,55,codice,Codice,"Codice della famiglia, modificabile: e quello che si mostra e si cerca",codice,identificatore,string,,150,5,left,Identificazione,1,f,f,t,t,f,t,2026-09-24 00:00:00,mctit,vendite.famiglie_documento.col_codice,100
+939,26,data_insert,Data inserimento,Data e ora di creazione dell articolo,data_insert,informazione,datetime,datetime_short,150,90,center,Audit,1,f,t,t,f,f,t,2026-09-26 00:00:00,mctit,common.data_insert,10
+940,26,data_update,Data aggiornamento,Data e ora dell ultima modifica dell articolo,data_update,informazione,datetime,datetime_short,150,95,center,Audit,1,f,t,t,f,f,t,2026-09-26 00:00:00,mctit,common.data_update,5
