@@ -171,7 +171,7 @@ const merceRef = ref(null)
 
 // Scopo: callback @evaso della dialog — generato un DDT dall'ordine: ricarica il
 // detail (lo stato ordine viene proiettato dal BE: CONFERMATO/PARZIALMENTE_EVASO/
-// EVASO) e le capability. La dialog ha gia' notificato il tab DDT.
+// EVASO) e le capability. Il tab DDT lo ha gia' avvisato il verbo `generaDdt` dello store.
 async function onEvaso() {
   await loadDetail()
   // L'evasione crea un DDT: nuovo arco ordine->DDT, quindi i chip dei

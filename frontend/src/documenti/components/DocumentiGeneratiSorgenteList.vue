@@ -397,7 +397,7 @@ async function reload() {
   white-space: nowrap;
 }
 .documenti-sorgente-list__file-size {
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   font-size: 0.85rem;
 }
 </style>

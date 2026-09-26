@@ -525,7 +525,7 @@ onMounted(async () => {
   width: 1.85rem;
   height: 1.85rem;
   font-size: 0.95rem;
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
   background: transparent;
   border: none;
   border-radius: 6px;
@@ -547,7 +547,7 @@ onMounted(async () => {
 .context-chip-icon {
   margin-right: 0.35rem;
   font-size: 0.8rem;
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
 }
 
 .context-chip-label {
@@ -556,27 +556,27 @@ onMounted(async () => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 600;
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
 }
 
 /* Badge admin */
 .admin-chip {
   cursor: default;
   font-size: var(--app-font-size-sm);
-  background: color-mix(in srgb, var(--p-orange-500) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--p-orange-500) 30%, transparent);
+  background: color-mix(in srgb, var(--app-warning-color) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--app-warning-color) 30%, transparent);
   padding: 0.15rem 0.5rem;
 }
 
 .topbar-left .admin-chip-icon {
   font-size: 0.8rem;
-  color: var(--p-orange-500);
+  color: var(--app-warning-color);
 }
 
 .admin-chip-label {
   margin-left: 0.3rem;
   font-weight: 600;
-  color: var(--p-orange-500);
+  color: var(--app-warning-color);
 }
 
 /* Contatori ambientali della topbar (badge code, pallino presidi): stessa
@@ -604,7 +604,7 @@ onMounted(async () => {
   right: -6px;
 }
 .topbar-code-icon-warn {
-  color: var(--p-red-500);
+  color: var(--app-severity-danger);
 }
 
 /* Logout — override hover rosso (usa topbar-icon-btn come base) */
@@ -632,7 +632,7 @@ onMounted(async () => {
 }
 
 /* Mobile — nasconde data, azienda, azioni inline; mostra solo il kebab */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .topbar-company,
   .topbar-date {
     display: none;
@@ -662,7 +662,7 @@ onMounted(async () => {
 }
 
 /* Tablet — il nome azienda si tronca con ellipsis */
-@media (max-width: 1024px) and (min-width: 768px) {
+@media (max-width: 1023.98px) and (min-width: 768px) {
   .topbar-company {
     max-width: 120px;
   }

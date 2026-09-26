@@ -26,9 +26,18 @@ import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 import { buildAttivoOptions, buildBoolOptions } from '../../core/utils/options'
 import { labelOrCode } from '../../core/utils/i18nLabel'
 import FiltriLista from '../../core/components/FiltriLista.vue'
+import EstensioneDrawerHost from '../../core/components/EstensioneDrawerHost.vue'
+import { useAzioniEstese } from '../../core/composables/useAzioniEstese'
+import { PUNTI_ESTENSIONE } from '../../core/estensioni'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 
-const emit = defineEmits(['new', 'row-click', 'manage-uom', 'manage-bom', 'manage-note', 'manage-lotti'])
+const emit = defineEmits(['new', 'row-click', 'manage-uom', 'manage-bom', 'manage-note'])
+
+// Le azioni di riga che altri domini contribuiscono all'articolo (oggi: i lotti
+// di magazzino), col drawer che aprono (core/estensioni.js).
+const {
+  voci: azioniEstese, aperto: drawerEsteso, impostaVisibile: visibileEsteso,
+} = useAzioniEstese(PUNTI_ESTENSIONE.ARTICOLO_AZIONI_RIGA)
 const { t, te } = useI18n()
 const store = useArticoliStore()
 const isBlocked = useInjectBlocked()
@@ -108,16 +117,7 @@ function buildRowActions(data) {
       icon: MANAGE_ICONS.NOTE,
       command: () => emit('manage-note', data),
     },
-    // I lotti di MAGAZZINO (2026-09-21): solo su merce gestita a magazzino —
-    // un lotto ha senso su cio' che movimenta. Su un articolo spento il DB
-    // rifiuterebbe la scrittura: si nasconde (`visible`), non si spegne.
-    {
-      key: 'manage-lotti',
-      label: t('magazzino.lotti.gestisci'),
-      icon: MANAGE_ICONS.LOTTO_MAGAZZINO,
-      visible: Boolean(data.gestito_a_magazzino) && data.attivo !== false,
-      command: () => emit('manage-lotti', data),
-    },
+    ...azioniEstese(data),
   ]
 }
 
@@ -198,6 +198,7 @@ onMounted(() => {
       </template>
     </ListaConfigurabile>
     </template>
+    <EstensioneDrawerHost :stato="drawerEsteso" @update:visible="visibileEsteso" />
   </div>
 </template>
 

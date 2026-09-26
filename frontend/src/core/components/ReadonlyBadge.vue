@@ -51,7 +51,7 @@ const isVisible = computed(() => isReadonly.value && !isBlocked.value)
 }
 
 /* Mobile: solo icona, testo nascosto (il tooltip resta) */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .app-readonly-badge__text {
     display: none;
   }

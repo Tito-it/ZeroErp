@@ -521,7 +521,7 @@ export const MANAGE_ICONS = {
   RIATTIVA: 'pi pi-replay',
   KEBAB: 'pi pi-ellipsis-v',
   // Documenti PDF (lista/anteprima/scarica). Centralizzata 2026-05-30:
-  // usata da GeneraPdfButton + EntityPdfButton (BB documenti) e dai
+  // usata da EntityPdfButton (BB documenti) e dai
   // buildRowActions delle liste vendite (preventivi/contratti/offerte).
   PDF: 'pi pi-file-pdf',
   // Personalizzazione lista (DEF-8): apre la modale "Personalizza colonne"
@@ -590,6 +590,7 @@ export const READONLY_DOMAINS = {
   // Area dedicata del dominio Strumenti (code di lavoro; l'area `core` resta
   // all'infra tracciamento, non si apre agli operatori per le code).
   STRUMENTI: 'strumenti',
+  PAGAMENTI: 'pagamenti',
   PRATICHE: 'pratiche',
   VENDITE: 'vendite',
 }

@@ -50,7 +50,7 @@ import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
 
 import AppDialog from '../../core/components/AppDialog.vue'
-import FatturaLookup from '../../core/components/FatturaLookup.vue'
+import FatturaLookup from '../../vendite/components/FatturaLookup.vue'
 import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfermata'
 import { displayDate } from '../../core/utils/date'
 import { abbinaRiga, registraRigaTardiva } from '../api/pagamenti'

@@ -165,7 +165,7 @@ onMounted(() => store.fetchList())
 </template>
 
 <style scoped>
-.text-muted { color: var(--p-text-muted-color); }
+.text-muted { color: var(--app-text-muted); }
 .parameter-resolved {
   display: inline-flex;
   align-items: center;
@@ -179,6 +179,6 @@ onMounted(() => store.fetchList())
 .app-empty-state {
   padding: 2rem;
   text-align: center;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
 }
 </style>

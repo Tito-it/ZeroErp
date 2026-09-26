@@ -234,7 +234,7 @@ function onDrawerNavigate() {
   min-width: 0;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .app-layout {
     min-height: 0;
   }

@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: Drawer crea/modifica articolo.
 //        Include combo conti contabili vendita/acquisto e auto-propose IVA da parameters.
-//        In edit: riepilogo UoM/BoM/Note/Lotti con pulsante "Gestisci" che apre sub-drawer dedicato.
+//        In edit: riepilogo UoM/BoM/Note (e le sezioni contribuite: lotti) con pulsante "Gestisci" che apre sub-drawer dedicato.
 //        ⭐ I LOTTI di magazzino (2026-09-21): la sezione compare solo se l'articolo
 //        e' `gestito_a_magazzino` (un lotto ha senso su merce che movimenta); con
 //        `requires_lotto` lo DICE. Il drawer vive in `src/magazzino` (Q-1 del piano
@@ -14,7 +14,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { listArticoloUom, listArticoloComponenti, makeArticoloNotesApi, getArticoloFormDefaults } from '../api/catalogo'
-import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH } from '../../core/constants'
 import { toDateString } from '../../core/utils/date'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
@@ -27,8 +27,8 @@ import ContoContabileSelect from '../../core/components/ContoContabileSelect.vue
 import ArticoloUomDrawer from './ArticoloUomDrawer.vue'
 import ArticoloBomDrawer from './ArticoloBomDrawer.vue'
 import ArticoloNoteDrawer from './ArticoloNoteDrawer.vue'
-import ArticoloLottiDrawer from '../../magazzino/components/ArticoloLottiDrawer.vue'
-import { listLotti } from '../../magazzino/api/magazzino'
+import PuntoEstensione from '../../core/components/PuntoEstensione.vue'
+import { PUNTI_ESTENSIONE, precaricaPunto } from '../../core/estensioni'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
@@ -48,6 +48,10 @@ const props = defineProps({
   mode: { type: String, default: 'create' },
   articoloId: { type: [String, null], default: null }
 })
+
+// I contributi al punto si caricano ora, non quando il punto si monta.
+precaricaPunto(PUNTI_ESTENSIONE.ARTICOLO_DRAWER_SEZIONI)
+
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
@@ -79,9 +83,6 @@ const bomDrawerVisible = ref(false)
 const bomRiepilogo = ref([])
 const noteDrawerVisible = ref(false)
 const noteRiepilogo = ref([])
-const lottiDrawerVisible = ref(false)
-// Il conteggio dei lotti ATTIVI dell'articolo (`null` = non letto).
-const lottiCount = ref(null)
 
 function defaultForm() {
   return {
@@ -112,17 +113,6 @@ function resetForm() {
   uomRiepilogo.value = []
   bomRiepilogo.value = []
   noteRiepilogo.value = []
-}
-
-// Scopo: Il conteggio dei lotti attivi: una pagina da una riga, il totale lo
-//        dice l'envelope. Solo se l'articolo e' gestito a magazzino.
-async function loadLottiCount() {
-  lottiCount.value = null
-  if (!props.articoloId || !form.value.gestito_a_magazzino) return
-  try {
-    const res = await listLotti({ articolo_id: props.articoloId, attivo: true, limit: 1 })
-    lottiCount.value = res.data?.data?.count ?? 0
-  } catch { lottiCount.value = null }
 }
 
 // Scopo: Carica riepilogo UoM operative.
@@ -191,7 +181,7 @@ async function loadDetail() {
     lead_time_giorni: data.lead_time_giorni ?? null,
   }
   // Carica riepilogo in parallelo
-  await Promise.all([loadUomRiepilogo(), loadBomRiepilogo(), loadNoteRiepilogo(), loadLottiCount()])
+  await Promise.all([loadUomRiepilogo(), loadBomRiepilogo(), loadNoteRiepilogo()])
 }
 
 // Fase 8 (A5): defaults form articolo via endpoint dedicato
@@ -559,18 +549,15 @@ const drawerActions = computed(() => {
           </div>
         </template>
 
-        <!-- Sezione: Lotti di magazzino (edit mode, solo se gestito a magazzino) -->
-        <template v-if="isEdit && detail && form.gestito_a_magazzino">
-          <div class="app-drawer-section"><h4>{{ t('magazzino.lotti.titolo', { n: lottiCount ?? '…' }) }}</h4></div>
-          <div class="app-riepilogo-section">
-            <div v-if="!form.requires_lotto" class="app-riepilogo-empty">{{ t('magazzino.lotti.articolo_non_per_lotti') }}</div>
-            <div v-else-if="lottiCount === 0" class="app-riepilogo-empty">{{ t('magazzino.lotti.nessun_lotto') }}</div>
-            <Button v-if="!isReadonly"
-              :label="t('magazzino.lotti.gestisci')" :icon="MANAGE_ICONS.LOTTO_MAGAZZINO"
-              text size="small" class="app-action-btn app-escape mt-025"
-              @click="lottiDrawerVisible = true" />
-          </div>
-        </template>
+        <!-- Sezioni contribuite da altri domini (oggi: i lotti di magazzino).
+             La scheda offre il punto, non sa chi ci contribuisce: ogni
+             contributo decide da se' se mostrarsi (core/estensioni.js). -->
+        <PuntoEstensione
+          v-if="isEdit && detail"
+          :punto="PUNTI_ESTENSIONE.ARTICOLO_DRAWER_SEZIONI"
+          :articolo-id="props.articoloId"
+          :articolo="form"
+        />
 
         <!-- Sezione: Note riepilogo (edit mode) -->
         <template v-if="isEdit && detail">
@@ -604,14 +591,6 @@ const drawerActions = computed(() => {
     @update:visible="v => uomDrawerVisible = v"
     :articolo-id="props.articoloId"
     @saved="loadUomRiepilogo"
-  />
-  <!-- Sub-drawer Lotti di magazzino (dominio magazzino, Q-1) -->
-  <ArticoloLottiDrawer
-    :visible="lottiDrawerVisible"
-    @update:visible="v => { lottiDrawerVisible = v; if (!v) loadLottiCount() }"
-    :articolo-id="props.articoloId"
-    :articolo-codice="form.codice"
-    :requires-lotto="form.requires_lotto"
   />
   <!-- Sub-drawer Distinta Base -->
   <ArticoloBomDrawer

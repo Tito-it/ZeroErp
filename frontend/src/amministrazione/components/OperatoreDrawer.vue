@@ -19,7 +19,7 @@ import { capitalizeWords } from '../../core/utils/string'
 import { isEmailValid } from '../../core/utils/validators'
 import { useNotify } from '../../core/composables/useNotify'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
+import SoggettoResolver from '../../anagrafiche/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
 import AuthUserForm from '../../core/components/AuthUserForm.vue'
 import OperatorePermessiTab from './OperatorePermessiTab.vue'
@@ -542,7 +542,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
 }
 .operatore-toggle-help {
   font-size: 0.78rem;
-  color: var(--app-text-muted, var(--p-text-muted-color));
+  color: var(--app-text-muted);
 }
 </style>
 

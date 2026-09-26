@@ -21,7 +21,6 @@ import { paramBool, paramInt } from '../../../core/utils/parameterCast'
 import { useParameterDefaults } from '../../../core/composables/useParameterDefaults'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
 import { useEmittenteFiscaleField } from '../../../core/composables/useEmittenteFiscaleField'
-import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { getPreventivoFormDefaults } from '../../api/formDefaults'
 import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
 import { createPreventivo, getContestoPricing } from '../api/preventiviApi'
@@ -63,7 +62,6 @@ const { t, te } = useI18n()
 const store = usePreventiviStore()
 const { execute, loading, campiErrati } = useApiHandler()
 const { confirmAction } = useConfirmAction()
-const { emitDataChanged } = useTabEvents()
 
 const props = defineProps({
   visible: Boolean,
@@ -805,14 +803,13 @@ function onNuovaRevisione() {
 // automatica ACCETTATO → EVASO e le capability si vedono solo dopo il reload),
 // i chip dei collegamenti (lo smistamento crea gli archi preventivo→ordine e
 // preventivo→commessa: senza reload il chip comparirebbe solo alla riapertura
-// del drawer) e, se il ramo merce ha creato un ordine, notifica il tab ordini.
-async function onSmistato({ ordineId } = {}) {
-  if (ordineId) emitDataChanged(TAB_ENTITIES.ORDINE, ordineId)
+// del drawer). Le liste in ascolto (ordini, preventivi) le avvisa lo store nel
+// verbo `generaOrdine`, non questo drawer.
+async function onSmistato() {
   await loadDetail()
   collegamentiRef.value?.reload()
-  // ⭐ `emitDataChanged` avvisa la tab ORDINI, che e' un'ALTRA lista. Anche il
-  // preventivo pero' e' cambiato — ed e' la lista che sta dietro a questo
-  // drawer: senza `changed` restava indietro proprio la piu' vicina.
+  // `changed` resta il contratto del drawer verso CHI LO HA APERTO, che non e'
+  // per forza una lista in ascolto dell'evento (es. l'host dei flussi pratica).
   emit('changed')
 }
 

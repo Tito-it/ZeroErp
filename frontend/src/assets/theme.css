@@ -71,8 +71,6 @@
   --app-toolbar-bg: var(--p-surface-900);
   --app-toolbar-border: var(--p-surface-700);
   --app-toolbar-tab-hover-bg: var(--p-surface-800);
-  --app-toolbar-tab-active-bg: var(--p-primary-color);
-  --app-toolbar-tab-active-color: var(--p-primary-contrast-color);
 
   /* ===== Icone informative ===== */
   /* Colore standard per icone non-pulsante (sidebar, drawer, dettagli, topbar).
@@ -159,6 +157,20 @@
    * accreditare» del pannello situazione merce) resta `warn`/arancio: li' non
    * c'e' un verso opposto accanto da distinguere. */
   --app-accredito-color: var(--p-red-600);
+
+  /* Colore d'ACCENTO: il primario del tema, dove un componente sottolinea
+   * cio' che e' attivo o selezionato (passo corrente, titolo del drawer, tab
+   * attiva). Il componente non scrive mai `--p-primary-color`: se l'accento
+   * cambia, cambia qui. */
+  --app-accent-color: var(--p-primary-color);
+
+  /* Dato che viene dal SOGGETTO e non dal ruolo o dall'istanza: il bordo delle
+   * schede ereditate nei drawer di contatti, conti bancari e indirizzi. */
+  --app-fonte-soggetto-color: var(--p-orange-300);
+
+  /* Pannello FISSATO nello split: la tab pinnata e il badge di sola lettura
+   * del pannello affiancato. Non e' un avviso: dice dove si sta guardando. */
+  --app-split-color: var(--p-orange-400);
 
   /* Attività IN CORSO (spinner di riga): il colore primario del tema, non un
    * colore d'allarme — un lavoro che sta girando è normale, non un problema.
@@ -267,6 +279,9 @@
   --app-table-cell-padding: var(--app-table-cell-padding-y) var(--app-table-cell-padding-x);
   --app-table-header-padding: 0.35rem var(--app-table-cell-padding-x);
   --app-table-stripe-bg: color-mix(in srgb, var(--p-surface-700) 30%, transparent);
+  /* Voce di un registro (nota, allegato, sospensione, evento di giornale):
+     la tinta di fondo della classe `app-voce-registro`. */
+  --app-voce-registro-bg: color-mix(in srgb, var(--p-surface-700) 20%, transparent);
   --app-table-hover-bg: color-mix(in srgb, var(--p-primary-color) 8%, transparent);
 
   /* ===== Pulsanti azione riga (DataTable / card) ===== */
@@ -287,9 +302,6 @@
   --app-btn-action-hover-color: var(--app-btn-manage-hover-color);
   --app-btn-action-hover-bg: var(--app-btn-manage-hover-bg);
 
-  --app-btn-edit-color: var(--p-primary-color);
-  --app-btn-edit-hover-color: var(--p-primary-700);
-  --app-btn-edit-hover-bg: var(--p-primary-50);
   --app-btn-delete-color: var(--p-red-500);
   --app-btn-delete-hover-color: var(--p-red-700);
   --app-btn-delete-hover-bg: var(--p-red-50);
@@ -398,6 +410,7 @@
 
   /* DataTable */
   --app-table-stripe-bg: color-mix(in srgb, var(--p-surface-100) 60%, transparent);
+  --app-voce-registro-bg: color-mix(in srgb, var(--p-surface-100) 70%, transparent);
   --app-table-hover-bg: color-mix(in srgb, var(--p-primary-color) 6%, transparent);
 
   /* Row expansion: tinta primary piu' marcata in light mode (10% vs 6% dark)

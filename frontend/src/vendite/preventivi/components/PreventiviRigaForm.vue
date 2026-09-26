@@ -18,7 +18,7 @@ import { pricingOrigineSeverity, pricingOrigineLabelKey } from '../../../core/ut
 import { coerceJsonbToObject } from '../../../core/utils/meta'
 import { formatCurrency } from '../../../core/utils/format'
 import { PRICING_ACTIONS } from '../../constants'
-import ArticoloLookup from '../../../core/components/ArticoloLookup.vue'
+import ArticoloLookup from '../../../catalogo/components/ArticoloLookup.vue'
 import IvaSelect from '../../../core/components/IvaSelect.vue'
 import PreventiviRigaComponentiPanel from './PreventiviRigaComponentiPanel.vue'
 import ComponentiCreateActionsPanel from '../../_shared/componenti/ComponentiCreateActionsPanel.vue'

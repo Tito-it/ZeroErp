@@ -47,9 +47,9 @@ import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPrese
 import { lookupRisorseUmane } from '../../core/apiCore'
 import { DRAWER_WIDTH, PAGINATION } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
-import DocumentoDrawerHost from '../_shared/documenti/DocumentoDrawerHost.vue'
-import { DOCUMENTO_DRAWER_TIPI } from '../_shared/documenti/documentoDrawers'
-import { useDocumentoDrawer } from '../_shared/documenti/useDocumentoDrawer'
+import DocumentoDrawerHost from '../../core/components/DocumentoDrawerHost.vue'
+import { DOCUMENTO_DRAWER_TIPI } from '../../core/drawerEntita'
+import { useDocumentoDrawer } from '../../core/composables/useDocumentoDrawer'
 import { buildApriDocumentoAction } from '../dashboardAree'
 import {
   STATO_APPROVAZIONE_ATTIVITA,

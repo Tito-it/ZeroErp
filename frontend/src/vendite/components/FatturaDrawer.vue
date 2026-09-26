@@ -4,7 +4,7 @@
 //        emittente, pagamento, totali) in alto, righe al centro, riepilogo IVA
 //        in fondo.
 //        Generico e richiamabile da più punti: dal kebab delle righe fatture
-//        del `LottoDrawer` e dal registry `documentoDrawers` (tappe Passaggi,
+//        del `LottoDrawer` e dal registro `core/drawerEntita` (tappe Passaggi,
 //        drill-down cruscotti); domani ricerca universale, portale.
 //        SOLA LETTURA per costruzione: la fattura è prodotta dalla pipeline e
 //        oltre la soglia di congelamento le righe sono congelate a DB
@@ -42,8 +42,8 @@ import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import NaturaDocTag from '../../core/components/NaturaDocTag.vue'
-import SaldoPanel from '../../core/components/SaldoPanel.vue'
-import { LIVELLO } from '../../core/composables/useSaldi'
+import PuntoEstensione from '../../core/components/PuntoEstensione.vue'
+import { PUNTI_ESTENSIONE, precaricaPunto } from '../../core/estensioni'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import RiepilogoIvaTable from '../../core/components/RiepilogoIvaTable.vue'
@@ -82,6 +82,8 @@ const { t, te } = useI18n()
 const onClose = useDrawerClose(emit)
 const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
+// I contributi al punto si caricano ora, non quando il punto si monta.
+precaricaPunto(PUNTI_ESTENSIONE.FATTURA_DRAWER_SEZIONI)
 const { execute } = useApiHandler()
 const docStore = useDocumentiPerSorgenteStore()
 
@@ -591,18 +593,12 @@ function onNoteSaved(total) {
               <TabPanel value="documento">
           <!-- ⭐ IL SALDO PER PRIMO: «questa fattura e' stata pagata?» e' la
                domanda per cui si apre questo drawer, e sta sopra i dati
-               anagrafici perche' e' quella che si fa entrando.
-               ⛔ DUE numeri e non tre (Q-6): l'«incassato» risponde a una
-               domanda di tesoreria, non a «questa fattura e' a posto?». Il
-               pannello lo sa mostrare — e' la stessa base — ma questa
-               schermata non lo accende.
-               ⚠️ Il pannello legge da se' e si rilegge al cambio di fattura:
-               il drawer e' un'istanza sola riusata cambiando `fatturaId`. -->
-          <div class="app-drawer-section"><h4>{{ t('vendite.fatture.sez_saldo') }}</h4></div>
-          <SaldoPanel
-            :livello="LIVELLO.DOCUMENTO"
-            :riferimento-id="fatturaId"
-            :mostra="['residuo', 'in_lavorazione']"
+               anagrafici perche' e' quella che si fa entrando. La sezione la
+               contribuisce pagamenti (core/estensioni.js): qui si offre il
+               punto, non si conosce chi ci scrive. -->
+          <PuntoEstensione
+            :punto="PUNTI_ESTENSIONE.FATTURA_DRAWER_SEZIONI"
+            :fattura-id="fatturaId"
           />
 
           <!-- Cliente e Documento affiancati (`form-grid-2col`, collassa a una

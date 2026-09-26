@@ -13,7 +13,7 @@ import {
   listPreventivi, getPreventivo, createPreventivo, updatePreventivo, deletePreventivo,
   cambiaStatoPreventivo, emettiPreventivo, creaRevisione, listRevisioni,
   listRighe, createRiga, updateRiga, deleteRiga, getRiepilogoIva,
-  pushCommessa, getSmistamento, generaPratica,
+  pushCommessa, getSmistamento, generaPratica, generaOrdineFromPreventivo,
 } from '../api/preventiviApi'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { useListaStoreCore } from '../../../core/composables/useListaStoreCore'
@@ -179,6 +179,20 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     return res.data.data
   }
 
+  // Scopo: Ramo merce dello smistamento: genera l'ordine dalle righe merce.
+  //        Il verbo scrive su DUE entita' — il preventivo (righe smistate,
+  //        transizione verso EVASO) e l'ordine che nasce — e lo store le avvisa
+  //        entrambe: qualunque superficie smisti, le due liste lo sanno senza
+  //        che il chiamante se ne ricordi (frontend-standards §«Producer
+  //        cross-tab»).
+  async function generaOrdine(preventivoId, righeIds = null) {
+    const res = await generaOrdineFromPreventivo(preventivoId, righeIds)
+    const data = res.data.data
+    emitDataChanged(TAB_ENTITIES.PREVENTIVO, preventivoId)
+    if (data?.ordine_id) emitDataChanged(TAB_ENTITIES.ORDINE, data.ordine_id)
+    return data
+  }
+
   // Scopo: Carica lo smistamento del preventivo (aggregato per ramo + righe
   //        con stato autorevole) per il Pannello Smistamento.
   async function loadSmistamento(preventivoId) {
@@ -200,7 +214,7 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     fetchDetail, create, update, elimina,
     cambiaStato, emetti, nuovaRevisione, loadRevisioni,
     loadRighe, addRiga, aggiornaRiga, eliminaRiga, loadRiepilogoIva,
-    inviaACommessa, loadSmistamento,
+    inviaACommessa, generaOrdine, loadSmistamento,
     creaPratica,
   }
 }, {

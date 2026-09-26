@@ -185,7 +185,7 @@ function close() {
 
 <style scoped>
 .parameter-description {
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   font-size: 0.85rem;
   padding: 0.25rem 0;
 }

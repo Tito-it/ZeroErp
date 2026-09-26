@@ -323,6 +323,6 @@ const pageActions = computed(() => [
   align-items: center;
 }
 .fattore-cell:hover {
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
 }
 </style>

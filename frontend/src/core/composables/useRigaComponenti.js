@@ -11,8 +11,8 @@
 //
 //        Estratto da `usePreventivoRigaComponenti.js` (Fase H 2026-05-14)
 //        per supportare la nuova sessione contratti senza duplicare 100
-//        righe di codice. Il composable preventivi-specifico resta come
-//        thin wrapper che chiude qui sopra le API preventivi + tabEntity.
+//        righe di codice. Il wrapper preventivi-specifico, rimasto senza
+//        consumatori, e' stato ritirato il 2026-09-26.
 
 import { ref, toValue } from 'vue'
 

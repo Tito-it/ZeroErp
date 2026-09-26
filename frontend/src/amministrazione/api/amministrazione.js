@@ -104,12 +104,6 @@ export function getProcessiPresidi() {
   return api.get(`${BASE}/processi/presidi/`)
 }
 
-// Scopo: la SOLA testata dei presidi — {totale, con_righe, non_letti} — per il
-//        pallino della topbar (`usePresidiPolling`). Stesso giro del pannello
-//        senza le prime righe: lo legge ogni scheda aperta, a cadenza lenta.
-export function getPresidiConteggi() {
-  return api.get(`${BASE}/processi/presidi/conteggi/`)
-}
 
 // Scopo: dettaglio di un processo (bersagli dichiarati + identità tecniche).
 export function getProcesso(codice) {
@@ -279,9 +273,6 @@ export function listAzioniProcesso() {
   return api.get(`${BASE}/lookup/azioni-processo/`)
 }
 
-export function listEmittentiFiscali() {
-  return api.get(`${BASE}/lookup/emittenti-fiscali/`)
-}
 
 // --- Setup status (refactor operatore-emittenti) ---
 

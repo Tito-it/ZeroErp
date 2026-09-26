@@ -15,6 +15,7 @@ import { useUiStore } from './ui'
 import { useNavigationStore } from './navigation'
 import { isJwtExpired } from '../core/jwt'
 import { switchEmittenteAttivo } from '../core/api/emittenteAttivo'
+import { cambiaPassword as apiCambiaPassword } from '../core/api/password'
 
 export const useAuthStore = defineStore('auth', () => {
   const accessToken = ref(local.get(STORAGE_KEYS.ACCESS_TOKEN))
@@ -400,6 +401,23 @@ export const useAuthStore = defineStore('auth', () => {
     return azioniAbilitate.value[codename] === true
   }
 
+  // Scopo: Cambia la password dell'operatore collegato. Il BE restituisce
+  //        token NUOVI (i vecchi sono revocati): salvarli e' compito dello
+  //        store, come per il cambio emittente — una view che li scrive a mano
+  //        e' una seconda sede della sessione. Ritorna la response axios; un
+  //        errore risale al chiamante, che lo mostra dove serve.
+  async function cambiaPassword({ oldPassword, newPassword, newPasswordConfirm }) {
+    const response = await apiCambiaPassword({ oldPassword, newPassword, newPasswordConfirm })
+    const data = response.data?.data || response.data
+    if (data?.access && data?.refresh) {
+      setTokens(data.access, data.refresh)
+      passwordChangeRequired.value = false
+      // Ricarica il profilo per aggiornare `deve_cambiare_password`.
+      try { await fetchProfile() } catch { /* non blocca il flusso */ }
+    }
+    return response
+  }
+
   // Scopo: Cambia l'emittente attivo di sessione e riparte pulito.
   //        `emittenteFiscaleId = null` = «Tutti gli emittenti».
   //
@@ -452,6 +470,7 @@ export const useAuthStore = defineStore('auth', () => {
     puoScegliereEmittente,
     deveScegliereEmittente,
     cambiaEmittenteAttivo,
+    cambiaPassword,
     mustChangePassword,
     passwordChangeRequired,
     displayName,

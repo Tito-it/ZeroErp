@@ -24,7 +24,7 @@
 import { computed } from 'vue'
 import { useAuthStore } from '../../stores/auth'
 import { useGlobalLookup } from './useGlobalLookup'
-import { listEmittentiFiscali } from '../../amministrazione/api/amministrazione'
+import { listEmittentiFiscali } from '../apiCore'
 
 // Chiave cache modulo-level. Coerente con altri lookup admin gia' usati.
 const LOOKUP_KEY = 'amm.emittenti_fiscali'

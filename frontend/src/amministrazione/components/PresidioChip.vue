@@ -74,7 +74,7 @@ function toggle(event) {
 .app-presidio-chip {
   gap: 0.4rem;
   padding: 0.2rem 0.5rem;
-  border: 1px solid var(--p-content-border-color);
+  border: 1px solid var(--app-border-color);
   border-radius: var(--p-content-border-radius);
 }
 .app-presidio-chip-nome { font-size: 0.8rem; }

@@ -28,7 +28,6 @@ import { useApiHandler } from '../../../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../../../core/composables/useConfirmAction'
 import { useNotify } from '../../../../core/composables/useNotify'
 import { usePreventiviStore } from '../../stores/preventivi'
-import { generaOrdineFromPreventivo } from '../../api/preventiviApi'
 import { DESTINAZIONE_SMISTAMENTO, STATO_SMISTAMENTO } from '../../../constants'
 import { formatNumber } from '../../../../core/utils/format'
 import { useSelezioneToggle } from '../../../../core/composables/useSelezioneToggle'
@@ -51,8 +50,8 @@ const props = defineProps({
 })
 // `smistato` notifica il drawer padre che almeno un ramo e' andato a buon fine
 // e che testata + capabilities vanno ricaricate (transizione automatica
-// ACCETTATO -> EVASO BE-driven, gate bi-ramo). Payload: { ordineId } se il
-// ramo merce ha creato un ordine (il padre notifica il tab ordini).
+// ACCETTATO -> EVASO BE-driven, gate bi-ramo). Le altre tab (ordini,
+// preventivi) le avvisa lo store, nel verbo che scrive.
 const emit = defineEmits(['update:visible', 'smistato'])
 
 const smistamento = ref(null)
@@ -201,15 +200,13 @@ function onSmista() {
       merce: merceIds.length, servizi: serviziIds.length,
     }),
     onAccept: async () => {
-      let ordineId = null
       let qualcosaSmistato = false
 
       if (merceIds.length) {
         const result = await execute(
-          () => generaOrdineFromPreventivo(props.preventivoId, merceIds),
+          () => store.generaOrdine(props.preventivoId, merceIds),
         )
         if (result === null) return // errore gestito; niente ramo servizi
-        ordineId = result.ordine_id
         qualcosaSmistato = true
         notify.success(t('vendite.preventivi.ordine_generato', { numero: result.numero }))
       }
@@ -227,7 +224,7 @@ function onSmista() {
       // se l'azione e' fallita del tutto il dialog resta aperto e aggiornato.
       await loadSmistamento()
       if (!qualcosaSmistato) return
-      emit('smistato', { ordineId })
+      emit('smistato')
       // Azione conclusa -> chiusura (come il crea-reso DDT): il drawer
       // ricarica testata e capability. Uno smistamento parziale si riprende
       // riaprendo la dialog, che ricarica lo stato autorevole.

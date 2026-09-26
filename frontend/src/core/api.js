@@ -1,5 +1,5 @@
 import axios from 'axios'
-import router from '../router'
+import { routerApp } from './routerApp'
 import { local, STORAGE_KEYS } from './storage'
 import { resolveCanaleLogin } from './constants'
 import i18n from './i18n'
@@ -158,7 +158,7 @@ async function redirectToLogin() {
   // `reason=session_expired` viene letto da LoginView per mostrare un messaggio
   // esplicito invece di una pagina muta (UX: l'utente capisce che e' caduta
   // la sessione e non sta avendo un bug).
-  const rottaCorrente = router.currentRoute?.value
+  const rottaCorrente = routerApp().currentRoute?.value
   // ⚠️ Se si e' gia' sul login non si spinge una seconda navigazione: con piu'
   //    chiamate in volo che prendono 401 insieme, ognuna passerebbe di qui e
   //    vue-router respingerebbe le repliche come «navigazione ridondante» —
@@ -173,7 +173,7 @@ async function redirectToLogin() {
   }
   // ⚠️ `catch` sul push: una navigazione respinta da un guard (o superata da
   //    un'altra) rifiuta la promise, e qui dentro nessuno la aspetta.
-  return router.push({ name: 'login', query }).catch(() => {})
+  return routerApp().push({ name: 'login', query }).catch(() => {})
 }
 
 export default api

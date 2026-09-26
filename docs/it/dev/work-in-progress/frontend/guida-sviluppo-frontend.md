@@ -33,7 +33,7 @@
 frontend/src/
 ├── core/                           # Moduli condivisi cross-dominio
 │   ├── components/                 # 40+ componenti UI condivisi
-│   │   ├── App*.vue                # Layout: AppLayout, AppTopbar, AppSidebar, AppToolbar, AppBreadcrumb, AppDrawer
+│   │   ├── App*.vue                # Layout: AppLayout, AppTopbar, AppSidebar, AppBreadcrumb, AppDrawer
 │   │   ├── Sidebar*.vue            # SidebarHome, SidebarDomain, SidebarItem
 │   │   ├── Content*.vue            # ContentTabs
 │   │   ├── Search*.vue             # SearchDrawer
@@ -48,7 +48,6 @@ frontend/src/
 │   │   ├── FormFooter.vue        # Footer drawer con auto-hide readonly
 │   │   ├── DrawerTitle.vue         # Titolo drawer
 │   │   ├── NewButton.vue           # Pulsante Nuovo con auto-hide readonly
-│   │   ├── PaginationInfo.vue      # Info paginazione
 │   │   ├── TagList.vue             # Lista tag
 │   │   ├── LogoBrand.vue           # Logo riutilizzabile
 │   │   └── StatusPage.vue          # Template pagina stato

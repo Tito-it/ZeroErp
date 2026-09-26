@@ -114,7 +114,12 @@ function onRootKeydown(event) {
 
 // Le sezioni pass-through di PrimeVue: la radice `.p-dialog` — testa, corpo e
 // footer compresi — riceve il keydown, in discesa e in risalita.
-const pt = { root: { onKeydownCapture: onRootKeydownCapture, onKeydown: onRootKeydown } }
+// `app-riquadro` sul contenuto: le soglie dei form dentro la dialog si
+// misurano sulla dialog, non sulla finestra (main.css, «I riquadri»).
+const pt = {
+  root: { onKeydownCapture: onRootKeydownCapture, onKeydown: onRootKeydown },
+  content: { class: 'app-riquadro' },
+}
 
 // Contesto readonly per i discendenti del dialog (FormFooter + eventuali
 // campi). Se `readonly` non e' passata -> ri-fornisce il valore ereditato

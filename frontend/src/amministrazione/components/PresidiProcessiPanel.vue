@@ -150,7 +150,7 @@ function cella(valore) {
 /* Layout locale del pannello: non è un pattern di pagina, non va in main.css. */
 .app-presidi { display: flex; flex-direction: column; gap: 1rem; }
 .app-presidio {
-  border: 1px solid var(--p-content-border-color);
+  border: 1px solid var(--app-border-color);
   border-radius: var(--p-content-border-radius);
   padding: 0.75rem;
 }
@@ -162,7 +162,7 @@ function cella(valore) {
 .app-presidio-errore {
   margin: 0.4rem 0 0.2rem;
   font-size: 0.85rem;
-  color: var(--app-severity-danger, var(--p-red-400));
+  color: var(--app-severity-danger);
 }
 /* Le tabelle larghe scorrono dentro il proprio contenitore: la pagina non
    scrolla mai in orizzontale. */

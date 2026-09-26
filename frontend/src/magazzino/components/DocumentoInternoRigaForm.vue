@@ -39,7 +39,7 @@ import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import Select from 'primevue/select'
 
-import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
+import ArticoloLookup from '../../catalogo/components/ArticoloLookup.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'

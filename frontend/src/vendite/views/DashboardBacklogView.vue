@@ -29,8 +29,8 @@ import { displayDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { labelOrCode } from '../../core/utils/i18nLabel'
 import { classeBacklogSeverity } from '../../core/utils/severity'
-import DocumentoDrawerHost from '../_shared/documenti/DocumentoDrawerHost.vue'
-import { useDocumentoDrawer } from '../_shared/documenti/useDocumentoDrawer'
+import DocumentoDrawerHost from '../../core/components/DocumentoDrawerHost.vue'
+import { useDocumentoDrawer } from '../../core/composables/useDocumentoDrawer'
 import {
   buildApriDocumentoAction,
   DASH_AREE,

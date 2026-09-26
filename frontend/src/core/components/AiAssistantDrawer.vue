@@ -251,7 +251,7 @@ watch(() => messages.value.length, () => {
   gap: 0.5rem;
   font-size: var(--app-font-size-sm);
   font-weight: 600;
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
 }
 
 .ai-widget-header-left i {
@@ -271,7 +271,7 @@ watch(() => messages.value.length, () => {
   width: 1.5rem;
   height: 1.5rem;
   font-size: 0.75rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   background: transparent;
   border: none;
   border-radius: 4px;
@@ -280,7 +280,7 @@ watch(() => messages.value.length, () => {
 }
 
 .ai-widget-header-btn:hover {
-  color: var(--p-text-color);
+  color: var(--app-text-color);
   background: var(--app-ai-border);
 }
 
@@ -304,7 +304,7 @@ watch(() => messages.value.length, () => {
   justify-content: center;
   flex: 1;
   gap: 0.5rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   text-align: center;
   padding: 1.5rem 1rem;
   font-size: var(--app-font-size-sm);
@@ -312,7 +312,7 @@ watch(() => messages.value.length, () => {
 
 .ai-welcome-icon {
   font-size: 1.5rem;
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
   opacity: 0.4;
 }
 
@@ -345,7 +345,7 @@ watch(() => messages.value.length, () => {
 }
 
 .ai-message-assistant .ai-message-avatar {
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
   border: 1px solid var(--app-ai-avatar-assistant-border);
 }
 
@@ -359,12 +359,12 @@ watch(() => messages.value.length, () => {
 
 .ai-message-user .ai-message-body {
   border: 1px solid var(--app-ai-msg-user-border);
-  color: var(--p-text-color);
+  color: var(--app-text-color);
 }
 
 .ai-message-assistant .ai-message-body {
   border: 1px solid var(--app-ai-msg-assistant-border);
-  color: var(--p-text-color);
+  color: var(--app-text-color);
 }
 
 .ai-message-text {
@@ -373,7 +373,7 @@ watch(() => messages.value.length, () => {
 }
 
 .ai-message-error {
-  color: var(--p-red-500);
+  color: var(--app-severity-danger);
   font-style: italic;
 }
 
@@ -381,7 +381,7 @@ watch(() => messages.value.length, () => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   font-style: italic;
 }
 
@@ -401,7 +401,7 @@ watch(() => messages.value.length, () => {
   gap: 0.3rem;
   padding: 0.15rem 0;
   font-size: var(--app-font-size-sm);
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
   background: none;
   border: none;
   cursor: pointer;
@@ -425,7 +425,7 @@ watch(() => messages.value.length, () => {
   gap: 0.25rem;
   margin-top: 0.25rem;
   font-size: 0.65rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
 }
 
 .ai-message-tools i {
@@ -489,7 +489,7 @@ watch(() => messages.value.length, () => {
 }
 
 /* Mobile — widget a schermo pieno */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .ai-widget {
     bottom: 0;
     right: 0;

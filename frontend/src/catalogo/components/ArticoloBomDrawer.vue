@@ -37,7 +37,7 @@ import {
 } from '../api/catalogo'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import { addDaysToToday, displayDate, toDateString } from '../../core/utils/date'
-import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
+import ArticoloLookup from './ArticoloLookup.vue'
 import NoteDrawer from '../../core/components/NoteDrawer.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
@@ -945,13 +945,13 @@ function buildRigaActions(row) {
 }
 
 .bom-readonly-switch--on {
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
   font-weight: 600;
 }
 
 .bom-readonly-switch--on::before {
-  border-color: var(--p-primary-color);
-  background: var(--p-primary-color);
+  border-color: var(--app-accent-color);
+  background: var(--app-accent-color);
 }
 
 .bom-readonly-switch--on .bom-readonly-switch__knob {

@@ -104,8 +104,8 @@ function handleSwap() {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  background: color-mix(in srgb, var(--p-orange-400) 15%, transparent);
-  color: var(--p-orange-500);
+  background: color-mix(in srgb, var(--app-split-color) 15%, transparent);
+  color: var(--app-split-color);
   padding: 0.15rem 0.45rem;
   border-radius: 3px;
   white-space: nowrap;

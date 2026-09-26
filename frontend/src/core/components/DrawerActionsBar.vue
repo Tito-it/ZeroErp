@@ -16,7 +16,7 @@
 //   - 'secondary'  -> dentro kebab desktop E compact. Utility/diagnostica
 //                     che non e' parte del flusso principale.
 //
-// Switch responsive CSS-first via @media (hover: none), (max-width: 1024px)
+// Switch responsive CSS-first via @media (hover: none), (max-width: 1023.98px)
 // in main.css sulle classi .app-drawer-actions-desktop / -compact. Il
 // componente renderizza entrambe le varianti, il CSS ne mostra una sola.
 //

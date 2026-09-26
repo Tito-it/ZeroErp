@@ -257,7 +257,11 @@ function onReset() {
 /* Footer a 3 pulsanti (reset + annulla + salva): su drawer stretto o
    schermo piccolo deve andare a capo, mai farsi tagliare. `flex-wrap`
    + `margin-left:auto` che si annulla quando si va a capo. */
+/* Il footer del drawer (`.p-drawer-footer`) e' FRATELLO del contenuto, non
+   suo figlio: non sta dentro il riquadro, e la `@container` qui sotto si
+   misura sul footer stesso. */
 .dash-config-footer {
+  container-type: inline-size;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -269,7 +273,7 @@ function onReset() {
   margin-left: auto;
 }
 
-@media (max-width: 560px) {
+@container (max-width: 559.98px) {
   .dash-config-footer-right {
     margin-left: 0;
     width: 100%;

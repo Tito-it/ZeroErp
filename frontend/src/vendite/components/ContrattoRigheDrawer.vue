@@ -24,7 +24,7 @@ import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { formatCurrency, formatNumber } from '../../core/utils/format'
 import { statoContrattoSeverity } from '../../core/utils/severity'
-import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOptions'
+import { useArticoloUomOptions } from '../../catalogo/composables/useArticoloUomOptions'
 import {
   previewRigaComponenti,
   listRigaComponenti as listContrattoRigaComponenti,
@@ -35,7 +35,7 @@ import {
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerContextHeader from '../../core/components/DrawerContextHeader.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
-import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
+import ArticoloLookup from '../../catalogo/components/ArticoloLookup.vue'
 import { rowComponenti, hasBundleComponenti } from '../_shared/componenti/rowComponenti'
 import ComponentiCreateActionsPanel from '../_shared/componenti/ComponentiCreateActionsPanel.vue'
 import ComponentiDialog from '../_shared/componenti/ComponentiDialog.vue'

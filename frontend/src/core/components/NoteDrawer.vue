@@ -393,12 +393,12 @@ function rigaLabel(n) {
 <style scoped>
 .nota-card-testo {
   font-size: 0.85rem;
-  color: var(--p-text-color);
+  color: var(--app-text-color);
   white-space: pre-wrap;
   word-break: break-word;
 }
 .text-muted {
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
 }
 .form-field-inline {
   flex-direction: row;

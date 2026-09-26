@@ -152,7 +152,7 @@ function buildRowActions(row) {
 
 <style scoped>
 .app-code-errore {
-  color: var(--p-red-500);
+  color: var(--app-severity-danger);
   font-size: 0.85em;
 }
 </style>

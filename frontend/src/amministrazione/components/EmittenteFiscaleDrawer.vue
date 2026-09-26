@@ -14,7 +14,7 @@ import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS, FIELD_LENGTH } from '../../core
 import { getEmittenteFormDefaults } from '../api/amministrazione'
 import { paramBool, paramNumber, paramString } from '../../core/utils/parameterCast'
 import { blockNonAlphanumeric, normalizeUpperNoSpaces } from '../../core/utils/string'
-import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
+import SoggettoResolver from '../../anagrafiche/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'

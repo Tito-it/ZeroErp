@@ -70,8 +70,8 @@ src/
                         dominio SENZA `schemaDb`, quindi visibile a ogni
                         operatore interno — la forma a video dello
                         `skip_area_check` delle sue rotte BE. Oggi: le sue email
-  documenti/          ← generazione ed emissione dei documenti (PDF, scelta
-                        template), condivisa dai domini che stampano
+  documenti/          ← MOTORE: generazione ed emissione dei documenti (PDF,
+                        scelta template), condivisa dai domini che stampano
   config/             ← configurazione (tabelle, impostazioni, modelli documenti)
   ui/                 ← personalizzazione delle liste (definizioni, colonne, preset)
   portale/            ← portale esterno (attivazione, profilo)
@@ -91,7 +91,13 @@ anagrafiche/
   stores/             ← store Pinia per il dominio
   views/              ← pagine intere (lista, dettaglio, tab)
   components/         ← componenti specifici del dominio
+  composables/        ← logica riusabile del dominio
+  iscrizioni.js       ← cio' che il dominio aggiunge ai registri di `core` e dei
+                        motori (facoltativo; lo carica `main.js` all'avvio)
 ```
+
+`pratiche/` e `documenti/` sono **motori**: ogni dominio li usa, e loro non
+nominano nessun dominio (§«Confini fra domini»).
 
 `core/` e' l'equivalente frontend di `dbops` e `script`: nessun dominio lo chiama esplicitamente, ma tutti dipendono da lui.
 
@@ -1976,27 +1982,75 @@ accanto. A video si vedono **due bordi** sul lato destro, e nessun errore
 
 ### Principio
 
-Ogni sotto-area che potrebbe essere usata in piu' di un contesto deve essere un **componente autonomo** in `core/components/`. I componenti specifici di un solo dominio stanno in `<dominio>/components/`.
+Ogni sotto-area che potrebbe essere usata in piu' di un contesto deve essere un **componente autonomo**. Dove vive lo decide **di che cosa parla**, non quanti la usano: un pezzo generico (layout, form, UI) sta in `core/components/`; un pezzo che parla di un'entita' sta nel dominio di quell'entita', e gli altri domini lo importano secondo §«Confini fra domini».
 
 ### Dove collocare un componente
 
 | Criterio | Collocazione | Esempio |
 | --- | --- | --- |
-| Entita' config condivisa (tabelle `config.*`) usata o potenzialmente usabile da 2+ domini | `core/components/` | ToponomasticaSearchTable, ComuniSearchTable, ProvinceDrawer |
-| Componente di layout, form o UI generico | `core/components/` | PageActionsBar, FormFooter, SoggettoForm |
-| Logica specifica di un solo dominio | `<dominio>/components/` | IndirizzoDrawer (via nuova + stradario), OperatorePermessiTab |
+| Componente di layout, form o UI **generico** (non parla di un'entita' di dominio) | `core/components/` | PageActionsBar, FormFooter, TagList, EntityFormDrawer |
+| Componente che parla di un'**entita' di dominio**, anche se lo usano piu' domini | `<dominio dell'entita'>/components/` | SoggettoForm, ComuneDrawer (anagrafiche), ArticoloLookup (catalogo), FatturaLookup (vendite) |
+| Pezzo che un dominio A VALLE aggiunge alla schermata di un'entita' A MONTE | il dominio a valle, **iscritto** a un punto di estensione | la sezione Lotti della scheda articolo (magazzino) |
 
-**Eccezione documentata**: i componenti geografici (toponomastica, comuni, province, regioni, stati)
-stanno in `core/components/` anche se importano stores da `anagrafiche/stores/`.
-Questo perche' sono entita' config condivise che il backend serve da `anagrafiche` per
-organizzazione, ma concettualmente sono cross-dominio (qualsiasi modulo potrebbe aver bisogno
-di un filtro per comune o provincia). L'alternativa — duplicarli per dominio — violerebbe
-il principio di riuso.
+### Confini fra domini — chi puo' importare chi
+
+> Decisione di Tid, 2026-09-26 ([analisi](../work-done/analisi-fe-regole-standard-violate-dal-codice.md) R-1/R-2).
+> Sostituisce la regola «un dominio importa solo da `core/`» e l'eccezione dei
+> componenti geografici.
+
+🔴 **Perché la regola vecchia era sbagliata.** «Un dominio non importa un
+altro dominio» contraddiceva il modello: pagamenti *deve* cercare le fatture,
+vendite *deve* scegliere un articolo. Per rispettarla, i pezzi finivano in
+`core/` — e allora era `core/` a importare i domini: `SoggettoForm` e i
+componenti geografici importavano `anagrafiche`, `FatturaLookup` importava
+vendite, il motore delle pratiche nominava i drawer di vendite, e il registro
+«tipo → drawer» che `core/bersagli.js` legge stava dentro `vendite/`. La regola
+produceva la violazione che voleva impedire.
+
+**La regola, sul modello — il verso delle FK:**
+
+1. **Un dominio importa un altro dominio solo se le sue tabelle puntano a
+   un'entità di quello.** `vendite.contratti` punta a `billing_account`:
+   vendite può usare i componenti di anagrafiche. `magazzino.lotti` punta a
+   `catalogo.articoli`: magazzino può usare `ArticoloLookup`. Si guarda
+   l'**entità**, non lo schema: fra schemi le FK vanno in tutti e due i versi
+   (`anagrafiche.soggetti_titoli_iva_ambiti` punta agli articoli).
+2. **Il verso opposto passa da un punto di estensione.** La scheda articolo
+   non importa magazzino: offre il punto `ARTICOLO_DRAWER_SEZIONI`, e
+   magazzino ci contribuisce la sezione Lotti dal suo `iscrizioni.js`. Così
+   per i contratti nella lista clienti, gli accessi web nell'anteprima del
+   soggetto, il saldo nel drawer della fattura
+   ([`core/estensioni.js`](../../../../frontend/src/core/estensioni.js)).
+3. **I motori (`pratiche`, `documenti`) li usano tutti e non nominano
+   nessuno.** Il motore possiede il registro; il dominio si iscrive
+   (`iscriviAttivitaUi`, `iscriviDrawerEntita`…). È lo specchio del backend,
+   dove vendite iscrive i suoi handler in `HANDLER_MAP` da `apps.py:ready()`.
+4. **`core/` non importa mai un dominio.** Ciò che un dominio aggiunge a
+   `core` si iscrive ([`core/registri.js`](../../../../frontend/src/core/registri.js),
+   [`core/drawerEntita.js`](../../../../frontend/src/core/drawerEntita.js)); una
+   funzione API che serve a tutti (la lookup degli emittenti, la testata dei
+   presidi) sta in `core/api/`, anche se l'endpoint lo serve un'app di dominio.
+   ⛔ **Nemmeno dalla porta di servizio del router**: `router/index.js` è la
+   radice dell'app e nomina tutti i domini (view e vocabolari), quindi
+   `core/` e gli store globali non ne importano il modulo. Chi deve navigare
+   fuori da un setup (l'interceptor HTTP, un bersaglio, l'assistente) usa
+   `routerApp()` di [`core/routerApp.js`](../../../../frontend/src/core/routerApp.js),
+   a cui `main.js` consegna l'istanza prima del mount; dentro un componente,
+   `useRouter()`.
+
+`main.js` carica ogni `<dominio>/iscrizioni.js` con `import.meta.glob`, prima
+del mount, senza nominarne nessuno: un dominio nuovo — acquisti — si aggiunge
+scrivendo il proprio file, senza toccare i motori.
+
+Presidio: `npm run guards` → `check-confini-domini.mjs`. L'elenco degli archi
+ammessi porta accanto la FK che li giustifica. ⛔ Un arco non si aggiunge per
+far passare il guard: se la FK non c'è, quello che serve è un punto di
+estensione.
 
 ### Checklist prima di creare un componente
 
 1. **Esiste gia'?** — controllare `core/components/` e `core/composables/`
-2. **Servira' altrove?** — se si', collocare in `core/`; se no, in `<dominio>/components/`
+2. **Di che cosa parla?** — se e' generico, in `core/`; se parla di un'entita', nel dominio di quell'entita' (anche se lo useranno altri domini: §«Confini fra domini»)
 3. **Props minimali** — esporre solo cio' che varia tra i contesti
 4. **Emits chiari** — `@saved`, `@changed`, `@row-click`, `@new`, `update:modelValue`
 
@@ -2623,7 +2677,26 @@ Lato DB serve **defense-in-depth** per chiudere il cerchio (analogo a listini-ve
 | 768-1023px | Tablet      | Pulsanti azione solo icona + tooltip, **filtri nel drawer dal basso** (`FiltriLista`), azioni di riga in kebab `⋮` |
 | < 768px    | Mobile      | Sidebar overlay, padding ridotto, **filtri nel drawer dal basso**, azioni di riga in kebab `⋮`                     |
 
-Le classi responsive sono in `main.css` — nessun `@media` nei componenti scoped.
+**Due tipi di soglia, e non si confondono** (decisione Tid, 2026-09-26):
+
+| Dipende da | Si scrive | Soglie | Dove |
+| --- | --- | --- | --- |
+| la **finestra** (sidebar, topbar, layout di pagina) | `@media` | **solo** quelle di `BREAKPOINTS`, in forma canonica: `max-width: <B − 0.02>px` («sotto B», perché `BREAKPOINTS.X` si legge `< X`) e `min-width: <B>px` | anche nel componente scoped |
+| il **riquadro** in cui il contenuto vive (drawer, dialog) | `@container` | libere, scritte accanto alla regola | `main.css` o componente |
+
+Il riquadro è il contenuto di ogni drawer (`.p-drawer-content`) e di ogni
+`AppDialog` (classe `app-riquadro`, passata via `pt`): hanno una larghezza
+fissa (`DRAWER_WIDTH` / `DIALOG_WIDTH`) e per questo possono portare la
+containment senza collassare. Una griglia di form si stringe perché si
+stringe il drawer, non la finestra.
+
+Presidio: `npm run guards` → `check-media-soglie.mjs` legge `BREAKPOINTS` da
+`constants.js` e rifiuta ogni larghezza di `@media` che non ne sia una. Le
+query senza larghezza (`hover`, `pointer`, `prefers-reduced-motion`) sono
+libere. 🔴 Fino al 2026-09-26 la regola era «nessun `@media` nei componenti»,
+e il difetto vero le passava accanto: `max-width: 1024px` e `768px` in cinque
+componenti, contro `1023.98px` e `767.98px` del resto — alla finestra larga
+esattamente 1024px la topbar si credeva tablet e la pagina desktop.
 Il breakpoint mobile e' gestito dallo store `ui.js` (`isMobile`, `isTablet`).
 
 Le azioni di riga (`RowActionsMenu`) usano in aggiunta `@media (hover: none)` per
@@ -2806,6 +2879,14 @@ subordinato a questa sezione.
 
 I componenti usano **solo** `--app-*`. Mai `var(--p-*)` direttamente.
 
+Un `--p-*` usato in piu' punti per la stessa cosa e' un **token non ancora nato**:
+il token prende il nome del **significato** (accento, attenzione, dato ereditato
+dal soggetto, pannello nello split — vedi il catalogo BB, «Variabili tema»), non
+della tinta. ⚠️ Al 2026-09-26 restano circa 60 `var(--p-*)` nei componenti
+(`primary-700/500/50`, `yellow-*`, `blue-*`, `surface-200/400`,
+`border-radius-sm`…) senza un significato ancora nominato: e' lavoro aperto
+(PROJECT_CONTEXT, «Aperto»), e il guard arrivera' quando saranno a zero.
+
 ### `theme.css` — personalizzazione visiva
 
 Unico punto di personalizzazione: sidebar, topbar, contenuto, card, drawer, AI widget, transizioni, tipografia.
@@ -2928,7 +3009,6 @@ Nessun componente deve definire colori o hover per pulsanti riga — usare sempr
 | --- | --- | --- |
 | `app-action-btn` | Blu (`--app-btn-action-*`, dal 2026-08-27) | Azioni generiche nei form ("Aggiungi", "Gestisci" nei drawer) |
 | `app-manage-btn` | Blu (info) | Pulsanti "Gestisci" nelle colonne DataTable (apre sub-drawer) |
-| `app-edit-btn` | Verde (primary) | Matita modifica riga (DataTable e card) |
 | `app-delete-btn` | Rosso | Cestino elimina riga (DataTable e card) |
 | `app-reload-btn` | Blu (`--app-btn-action-*`, dal 2026-08-27) | Refresh lista nella toolbar |
 
@@ -3149,6 +3229,11 @@ ed etichetta** (l'icona ha sempre label o tooltip accanto). Quindi:
   valore → il pezzo comune domina la lettura e le icone si assomigliano. Il
   pezzo che varia (l'overlay) è quello che deve distinguere; l'**euro resta solo
   su Fattura**, dove finalmente significa qualcosa di specifico.
+  ⚠️ La regola vale **dentro la famiglia documento** (base `\e958`): su un'altra
+  base l'euro è un altro segno. Listini e approvazioni prezzo lo portano come
+  «prezzo», su basi proprie, e non collidono. La Fattura ha la base foglio
+  **dal 2026-09-26** (decisione Tid): prima usava la ricevuta `\ea06`, la
+  stessa di Clienti, e usciva dalla sua famiglia.
 - **Due elementi, non tre.** Base (famiglia) + overlay (tipo). Non aggiungere un
   terzo marcatore "area": la base È già l'area → sarebbe solo ingombrante.
 - **Niente collisioni di dominio/azione**: l'icona del dominio Vendite è il
@@ -3186,7 +3271,14 @@ ed etichetta** (l'icona ha sempre label o tooltip accanto). Quindi:
 ### Regole di sicurezza
 
 - Mai accedere a `localStorage` direttamente — usare `useAuthStore()`
-- Mai `window.location` per redirect — usare il router
+- Mai `window.location` per redirect — usare il router. ⭐ **Una sola eccezione
+  dichiarata, e non è un redirect**: `cambiaEmittenteAttivo` in `stores/auth.js`
+  fa `window.location.assign('/')` per **ripartire dal boot**. Cambiare emittente
+  cambia ciò che si vede ovunque, e l'applicazione tiene stato in cache fuori
+  dagli store (KeepAlive delle viste, cache di modulo dei lookup): solo un
+  ricaricamento completo garantisce che non restino a video dati dell'emittente
+  precedente. Un altro caso con la stessa esigenza passa dalla stessa azione
+  dello store, non scrive un secondo `window.location`
 - Mai esporre dati sensibili in log, template o attributi HTML
 - Mai costruire URL con interpolazione da input utente — usare parametri Axios
 
@@ -3197,8 +3289,8 @@ ed etichetta** (l'icona ha sempre label o tooltip accanto). Quindi:
 I componenti **non gestiscono errori manualmente**. Il composable `useApiHandler` intercetta, estrae il messaggio dall'envelope backend e mostra il toast.
 
 ```js
-// Caricamento (toast solo su errore)
-const data = await execute(() => api.get('/endpoint/', { params }))
+// Caricamento (toast solo su errore) — la funzione viene dal modulo api/
+const data = await execute(() => listConfigRecords(rel, params))
 
 // Salvataggio (toast su successo e errore)
 const result = await execute(
@@ -3207,7 +3299,7 @@ const result = await execute(
 )
 
 // Polling silenzioso (nessun toast)
-const status = await execute(() => api.get('/status/'), { silent: true })
+const sessioni = await execute(() => listSessioni(), { silent: true })
 ```
 
 ### ⭐ Campi in errore dal backend — `campiErrati` (dal 2026-08-08)
@@ -3386,10 +3478,10 @@ Il provider va chiamato nella View (parent della SearchTable e dei drawer). I fi
 
 ```js
 // Livello area (classico)
-useReadonlyMode('anagrafiche')
+useReadonlyMode(READONLY_DOMAINS.ANAGRAFICHE)
 
 // Livello oggetto (permessi v2) — richiede model_permission sulla view BE
-useReadonlyMode('anagrafiche', 'cliente')
+useReadonlyMode(READONLY_DOMAINS.ANAGRAFICHE, READONLY_MODELS.CLIENTE)
 ```
 
 Semantica di `isReadonly` / `isBlocked` dopo la risoluzione:
@@ -3564,17 +3656,18 @@ Un drawer puo' comportarsi in due modi rispetto ai permessi livello oggetto:
 
 | Tipo | Dichiara scope proprio | Quando usare | Esempio |
 | --- | --- | --- | --- |
-| **Autonomo** | `useReadonlyMode('schema', 'model')` al setup | Il model e' catalogato in `config.area_model_overrides` (l'admin puo' bloccarlo singolarmente) | `ContiBancariDrawer` → `('anagrafiche', 'conto_bancario')` |
+| **Autonomo** | `useReadonlyMode(READONLY_DOMAINS.X, READONLY_MODELS.Y)` al setup | Il model e' catalogato in `config.area_model_overrides` (l'admin puo' bloccarlo singolarmente) | `ContiBancariDrawer` → `(READONLY_DOMAINS.ANAGRAFICHE, READONLY_MODELS.CONTO_BANCARIO)` |
 | **Figlio puro** | solo `useInjectReadonly()` | Il model non e' nel catalogo, si eredita il readonly del parent | `IndirizzoDrawer`, `ContoBancarioForm` |
 
 **Drawer autonomo — template**:
 
 ```js
-// ContiBancariDrawer.vue
+// anagrafiche/components/ContiBancariDrawer.vue
 import { useReadonlyMode, useInjectBlocked } from '@/core/composables/useReadonlyMode'
+import { READONLY_DOMAINS, READONLY_MODELS } from '@/core/constants'
 
 // Dichiara scope proprio (l'OR interno rispetta anche eredita' dal parent)
-const { isReadonly } = useReadonlyMode('anagrafiche', 'conto_bancario')
+const { isReadonly } = useReadonlyMode(READONLY_DOMAINS.ANAGRAFICHE, READONLY_MODELS.CONTO_BANCARIO)
 const isBlocked = useInjectBlocked()
 ```
 
@@ -3789,7 +3882,7 @@ import { READONLY_DOMAINS, READONLY_MODELS, TAB_ENTITIES } from '@/core/constant
 
 | Enum | Scopo | Esempi |
 | --- | --- | --- |
-| `READONLY_DOMAINS` | Area (schema DB) passata come **primo arg** a `useReadonlyMode` | `VENDITE`, `ANAGRAFICHE`, `CATALOGO`, `AMM_SOFTWARE`, `CONFIG`, `PRATICHE` |
+| `READONLY_DOMAINS` | Area (schema DB) passata come **primo arg** a `useReadonlyMode` | `AMM_SOFTWARE`, `ANAGRAFICHE`, `CATALOGO`, `CONFIG`, `DOCUMENTI`, `MAGAZZINO`, `PAGAMENTI`, `PRATICHE`, `STRUMENTI`, `VENDITE` (elenco completo al 2026-09-26; `PAGAMENTI` e' entrato quel giorno, prima le view di pagamenti passavano la stringa) |
 | `READONLY_MODELS` | Model specifico (permessi v2) come **secondo arg** opzionale a `useReadonlyMode` | `CONTRATTO`, `CLIENTE`, `FORNITORE`, `ARTICOLO`, `UNITA_MISURA`, `CONTO_BANCARIO`, `SOGGETTO`, `PROMO_ARTICOLO` |
 | `TAB_ENTITIES` | Chiave cross-tab per `emitDataChanged` + `useTabFreshness` / `onDataChanged` | `CONTRATTO`, `PRATICA`, `ARTICOLO`, `FORNITORE`, `PREVENTIVO`, `PROMO_ARTICOLI`, ... |
 
@@ -3847,6 +3940,29 @@ async function update(id, payload) {
 ```
 
 Entità **read-only** (es. log immutabili): non emettono mai, e nessun consumer deve ascoltarle.
+
+⭐ **Un verbo che fa nascere un'altra entità avvisa le DUE entità, dallo store del
+verbo.** Generare un DDT da un ordine scrive sull'ordine (residui, stato) *e* crea
+il DDT; lo smistamento di un preventivo scrive sul preventivo *e* crea l'ordine.
+L'azione dello store che chiama l'endpoint emette per entrambe:
+
+```js
+// store ordini
+async function generaDdt(ordineId, righe = null) {
+  const res = await generaDdtFromOrdine(ordineId, righe)
+  emitDataChanged(TAB_ENTITIES.ORDINE, ordineId)
+  if (res.data.data?.ddt_id) emitDataChanged(TAB_ENTITIES.DDT, res.data.data.ddt_id)
+  return res.data.data
+}
+```
+
+⛔ Mai l'emissione nella dialog o nel drawer che ha lanciato il verbo: un'altra
+superficie che chiama lo stesso endpoint (un flusso di pratica, un'azione di
+massa) non avviserebbe nessuno, e la lista dell'entità nata resterebbe ferma
+senza errori. Fino al 2026-09-26 facevano così `OrdineEvasioneDialog` e
+`PreventiviDrawer` (smistamento); `generaRiconsegna` dello store resi era già
+nella forma giusta. Il `changed` del drawer resta: è il contratto verso chi lo
+ha aperto, non l'avviso alle liste.
 
 ### Factory `createCrudStore`
 
@@ -4127,15 +4243,15 @@ caso peggiore. Il test è nato da lì.
 
 ## Regole per il developer
 
-1. Ogni componente e' autonomo — logica nei composables di `core/`
-2. Chiamate API passano da `useApiHandler` — mai `api.get/post` nei componenti
+1. Ogni componente e' autonomo — logica nei composables (di `core/` se generici, del dominio se parlano di un'entita')
+2. Un componente non parla HTTP: l'URL di un endpoint vive in un modulo `api/` (del dominio o `core/api/`) o dietro uno store, e il componente chiama quella funzione dentro `execute` di `useApiHandler`. Mai `import api` in un `.vue` (presidio: `npm run guards` → `check-api-componenti.mjs`). ⚠️ Le pagine pubbliche della famiglia login (reset e cambio password) mostrano l'errore **nella card** e non in un toast: lì il `try/catch` resta, ma la chiamata passa comunque dal modulo `core/api/password.js`
 3. Toast via `useNotify()` — mai `useToast()` direttamente
 4. Dialog conferma via `useConfirmAction()` — mai `useConfirm()` direttamente; **sempre con `header`** (il nome dell'azione)
 5. Drawer usano PrimeVue `Drawer` + `FormFooter` — mai pulsanti inline
 6. Testi visibili via `$t()` — mai stringhe hardcoded
 6-bis. Un test si scrive all'**altezza più bassa** che vede il difetto (§Test), e se passa al primo colpo si prova **per mutazione**
 7. Nessun `console.log` in produzione
-8. Componenti di dominio non importano da altri domini — solo da `core/`
+8. Un dominio importa un altro dominio solo nel verso delle FK; il verso opposto passa da un punto di estensione, e `core/` non importa mai un dominio (§«Confini fra domini»; presidio `check-confini-domini.mjs`)
 9. Larghezze drawer da `constants.js` — mai hardcoded
 10. Navigazione da `navigation.js` — mai duplicata
 11. Paginazione/sort/search da `useSearchTable` — mai implementata manualmente
@@ -4153,7 +4269,7 @@ caso peggiore. Il test è nato da lì.
 ## Catalogo componenti e composable riutilizzabili
 
 > Prima di creare un nuovo componente o composable, verificare se esiste gia' in questo catalogo.
-> I componenti in `core/` sono cross-dominio e non devono importare da domini specifici.
+> I componenti in `core/` sono generici e non importano mai un dominio (§«Confini fra domini», presidio `check-confini-domini.mjs`).
 
 ### Componenti UI (`core/components/`)
 
@@ -4164,7 +4280,6 @@ caso peggiore. Il test è nato da lì.
 | `AppLayout` | Layout principale: sidebar + topbar + content area | router (layout radice) |
 | `AppTopbar` | Topbar: azienda, titolo area, ricerca, sessioni, data | AppLayout |
 | `AppSidebar` | Contenitore sidebar (logo + stato morfic) | AppLayout |
-| `AppToolbar` | Toolbar meta-driven con tab e azioni | — (senza consumatori) |
 | `AppBreadcrumb` | Breadcrumb derivato da route meta | AppLayout |
 | `ContentTabs` | Barra tab multi-entita con KeepAlive | AppLayout |
 | `SidebarHome` | Sidebar stato HOME (lista domini L1) | AppSidebar |
@@ -4183,17 +4298,70 @@ caso peggiore. Il test è nato da lì.
 | `FormFooter` | Footer drawer con Annulla/Salva, auto-hide Salva in readonly | `loading`, `disabled`, `action`, `closeOnly` | OperatoreDrawer |
 | `PageActionsBar` | Barra azioni pagina/lista responsive. Gestisce azione primaria, utility inline desktop e kebab su touch/tablet/mobile | `actions`, `disabled`, `menuTooltip` | FornitoriSearchTable |
 | `NewButton` | Pulsante specializzato legacy/non-toolbar. Nelle liste usare `PageActionsBar` | `tooltip`, `action` | TemplateVersioniSection |
-| `ReloadButton` | Pulsante specializzato legacy/non-toolbar. Nelle liste usare `PageActionsBar` | — | — (senza consumatori) |
 | `ReadonlyBadge` | Badge grigio "Sola lettura", auto-visibile se `isReadonly && !isBlocked`, responsive (icona-only su mobile) | — | FornitoriSearchTable |
 | `AccessoBloccatoPanel` | Pannello sostitutivo "Accesso negato a questo elenco" per BLOCCATO oggetto | — | FornitoriSearchTable |
 | `RowActionsMenu` | Azioni di riga responsive: pulsanti inline su desktop, kebab `⋮` su tablet/touch. Se riceve `row` disabilita le azioni operative su record inattivi (`attivo=false` / `is_active=false`) salvo `allowWhenInactive` | `actions`, `row`, `tooltip`, `disabled`, `disableWhenInactive` | FornitoriSearchTable |
 | `FiltriLista` | I FILTRI di una lista: in linea su desktop, in un drawer dal basso sotto i 1024px (o su un touch senza hover), con il segno di quanti ne sono attivi e «Pulisci filtri». Due slot: `#sempre` (la ricerca) e il default (gli altri filtri). ⚠️ I filtri dentro si legano con un **binder**, non con un `ref` a senso unico (§«Un filtro si lega con un binder») | `store` \| `segno`, `inert`, `titolo` | FornitoriSearchTable |
 | `FiltroPeriodo` | Il PERIODO come UN filtro: i due estremi `data_da`/`data_a` resi insieme, una cella sola nella griglia del drawer | `periodo` (da `bindPeriodo`), `placeholderDa/A` | AuditLogView |
-| `PaginationInfo` | Info paginazione «pagina X di Y» + salto a pagina (emette `go-to-page`) | `page`, `totalPages`, `totalRecords` | — (senza consumatori) |
 | `TagList` | Lista tag con overflow +N e tooltip | `items`, `labelField`, `maxVisible`, `severity` | SoggettiSearchTable |
 | `AppDrawer` | Drawer generico con header + footer + slot body | `title`, `width` | CanaleIncassoDrawer |
 
 #### Building block form
+
+| Componente | Scopo | Props chiave | Esempio d'uso |
+| --- | --- | --- | --- |
+| `AuthUserForm` | Form credenziali operatore | `form`, `isEdit` | OperatoreDrawer |
+
+### Composable (`core/composables/`)
+
+#### Infrastruttura liste e drawer
+
+| Composable | Scopo | Esempio d'uso |
+| --- | --- | --- |
+| `useSearchTable` | Paginazione, sort, search debounce, applyFilters per DataTable lazy | useListaConfigurabilePage |
+| `useDrawerState` | Stato drawer: visible, mode, itemId, itemData, openCreate(), editRow(), close() | EmittentiFiscaliListView |
+| `useTabFreshness` | Refresh automatico lista su evento `dataChanged` | FornitoriSearchTable |
+| `useTabEvents` | Event bus inter-tab per invalidazione dati | store `contratti` (emit); RepartiProfiloView (listen, Pattern B) |
+| `useApiHandler` | Execute con loading, toast successo, gestione errori | DefinizioneEditorView |
+| `useNotify` | Toast PrimeVue centralizzato — MAI importare useToast direttamente | useApiHandler |
+| `useConfirmAction` | Dialogo conferma azione distruttiva | DefinizioneEditorView |
+| `useConfirmCloseTab` | Conferma chiusura tab con modifiche non salvate | ContentTabs |
+| `useKeyboardShortcuts` | Shortcut globali: Ctrl+K ricerca, Ctrl+W chiudi tab, Ctrl+Tab naviga | AppLayout |
+| `usePagination` | Paginazione server-side locale (fuori da `useSearchTable`) | SearchDrawer |
+| `useContrattoFiltriLista` | Il contratto che una lista offre ai suoi filtri: `chiaviFiltro`, `filtriDefault` (copia **profonda** e congelata), `filtriNeutri` e `azzeraFiltri`. Lo consuma `useListaStoreCore`, e lo adottano in tre righe gli store scritti a mano | useListaStoreCore |
+| `useContrattoFiltriLocali` | Lo stesso contratto per una superficie **senza store-lista**: si dichiara `{ chiave: { rif, default } }` e tornano `segno` + `azzeraFiltri()`. Il default si **dichiara** (non si fotografa dal `ref`) e può essere una **funzione** quando si ricalcola («oggi») | DashboardBacklogView |
+| `useStoreFilterBindings` | Il legame widget ↔ `store.filters`: `bindSelect`, `bindDate`, `bindPeriodo`, `bindToggle`, `bindLookup` | FornitoriSearchTable |
+
+#### Lookup e autocomplete
+
+| Composable | Scopo | Esempio d'uso |
+| --- | --- | --- |
+| `useLookup` | Caricamento lazy/eager di dati lookup con cache | OperatoriListView |
+| `useLookupCodici` | Lookup **generico** di un `rel` nella cache condivisa: chiave (`<rel>` / `<rel>::no-obsoleti`) e fetch composte in un posto — mai scritte a mano (2026-09-19) | LookupSelect |
+| `useLookupEtichettato` | Lookup del catalogo con l'**etichetta dichiarata dal DB** (`etichetta_key`, resa con `labelOrCode`): `etichetta(codice)` per le colonne + `opzioni` con la voce «tutti» — **non** un `LookupSelect`, che rende `descrizione` (2026-09-19, regola del 2) | GiornaleListView |
+| `useServerAutocomplete` | Autocomplete con ricerca server debounce 300ms | ComuneAutocomplete |
+
+#### Modalita sola lettura e azioni processo
+
+| Composable | Scopo | Esempio d'uso |
+| --- | --- | --- |
+| `useReadonlyMode` | Provider: derive isReadonly da permessi area + provide | CategorieClientiListView |
+| `useInjectReadonly` | Consumer: inject isReadonly dal provider padre | FormFooter |
+| `useActionPermission` | Verifica se un'azione processo e' abilitata (computed reattivo) | LottiListView |
+
+**Nota**: per i casi standard, usare `action` su `PageActionsBar`/`FormFooter` invece del composable diretto.
+
+#### Ricerca universale
+
+| Composable | Scopo | Esempio d'uso |
+| --- | --- | --- |
+| `useSearchDetail` | Fetch dettaglio soggetto per row expansion (livello 2) | SearchDetailTable |
+
+### Building block di anagrafiche (`anagrafiche/components/`, `anagrafiche/composables/`)
+
+Soggetto, indirizzi, contatti, conti bancari e geografia: fino al 2026-09-26 stavano in `core/`, che per usarli importava `anagrafiche` (frontend-standards §«Confini fra domini»). Gli altri domini li importano quando le loro tabelle puntano a quelle entita' (vendite, magazzino, pagamenti, pratiche, amministrazione).
+
+#### Form
 
 | Componente | Scopo | Props chiave | Esempio d'uso |
 | --- | --- | --- | --- |
@@ -4202,9 +4370,8 @@ caso peggiore. Il test è nato da lì.
 | `IndirizzoSoggettoForm` | Form indirizzo con barra multi-tipo, via_obj, check duplicato | composable props | SoggettoDrawer |
 | `DatiSocietariForm` | Form dati societari (FG, REA, capitale, FE) | `form`, `formeGiuridiche`, `provinceLookup` | SoggettoDrawer |
 | `ContoBancarioForm` | Form conto bancario: IBAN autocomplete, filiale, uso, date, flags | `form`, `usiDisponibili` | ContiBancariDrawer |
-| `AuthUserForm` | Form credenziali operatore | `form`, `isEdit` | OperatoreDrawer |
 
-#### Autocomplete
+#### Autocomplete geografici
 
 | Componente | Scopo | Props chiave | Esempio d'uso |
 | --- | --- | --- | --- |
@@ -4232,38 +4399,6 @@ caso peggiore. Il test è nato da lì.
 | `CodiciPostaliDrawer` + `CodiciPostaliSearchTable` | CRUD codici postali | IndirizziView |
 | `ConfigTablePanel` + `GenericConfigDrawer` | CRUD generico dei vocabolari dichiarati in `config-tables.js` (metadata-driven: etichette i18n, FK→lookup, date) | ConfigView |
 
-### Composable (`core/composables/`)
-
-#### Infrastruttura liste e drawer
-
-| Composable | Scopo | Esempio d'uso |
-| --- | --- | --- |
-| `useSearchTable` | Paginazione, sort, search debounce, applyFilters per DataTable lazy | useListaConfigurabilePage |
-| `useDrawerState` | Stato drawer: visible, mode, itemId, itemData, openCreate(), editRow(), close() | EmittentiFiscaliListView |
-| `useTabFreshness` | Refresh automatico lista su evento `dataChanged` | FornitoriSearchTable |
-| `useTabEvents` | Event bus inter-tab per invalidazione dati | store `contratti` (emit); RepartiProfiloView (listen, Pattern B) |
-| `useTabLabel` | Risoluzione label tab da route meta | — (senza consumatori) |
-| `useApiHandler` | Execute con loading, toast successo, gestione errori | DefinizioneEditorView |
-| `useNotify` | Toast PrimeVue centralizzato — MAI importare useToast direttamente | useApiHandler |
-| `useConfirmAction` | Dialogo conferma azione distruttiva | DefinizioneEditorView |
-| `useConfirmCloseTab` | Conferma chiusura tab con modifiche non salvate | ContentTabs |
-| `useDirtyState` | Traccia modifiche non salvate (form dirty) | — (senza consumatori) |
-| `useLoading` | Stato loading generico (ref + toggle) | — (senza consumatori) |
-| `useKeyboardShortcuts` | Shortcut globali: Ctrl+K ricerca, Ctrl+W chiudi tab, Ctrl+Tab naviga | AppLayout |
-| `usePagination` | Paginazione server-side locale (fuori da `useSearchTable`) | SearchDrawer |
-| `useContrattoFiltriLista` | Il contratto che una lista offre ai suoi filtri: `chiaviFiltro`, `filtriDefault` (copia **profonda** e congelata), `filtriNeutri` e `azzeraFiltri`. Lo consuma `useListaStoreCore`, e lo adottano in tre righe gli store scritti a mano | useListaStoreCore |
-| `useContrattoFiltriLocali` | Lo stesso contratto per una superficie **senza store-lista**: si dichiara `{ chiave: { rif, default } }` e tornano `segno` + `azzeraFiltri()`. Il default si **dichiara** (non si fotografa dal `ref`) e può essere una **funzione** quando si ricalcola («oggi») | DashboardBacklogView |
-| `useStoreFilterBindings` | Il legame widget ↔ `store.filters`: `bindSelect`, `bindDate`, `bindPeriodo`, `bindToggle`, `bindLookup` | FornitoriSearchTable |
-
-#### Lookup e autocomplete
-
-| Composable | Scopo | Esempio d'uso |
-| --- | --- | --- |
-| `useLookup` | Caricamento lazy/eager di dati lookup con cache | OperatoriListView |
-| `useLookupCodici` | Lookup **generico** di un `rel` nella cache condivisa: chiave (`<rel>` / `<rel>::no-obsoleti`) e fetch composte in un posto — mai scritte a mano (2026-09-19) | LookupSelect |
-| `useLookupEtichettato` | Lookup del catalogo con l'**etichetta dichiarata dal DB** (`etichetta_key`, resa con `labelOrCode`): `etichetta(codice)` per le colonne + `opzioni` con la voce «tutti» — **non** un `LookupSelect`, che rende `descrizione` (2026-09-19, regola del 2) | GiornaleListView |
-| `useServerAutocomplete` | Autocomplete con ricerca server debounce 300ms | ComuneAutocomplete |
-
 #### Building block dominio — soggetti e contatti
 
 | Composable | Scopo | Esempio d'uso |
@@ -4282,22 +4417,6 @@ caso peggiore. Il test è nato da lì.
 | `useIndirizzoSoggettoForm` | Estende useIndirizzoBase: multi-tipo, libera, auto-clone, toPayloadArray | SoggettoDrawer |
 | `useIndirizzoMultiTipo` | Barra tag tipo indirizzo con snapshot/restore per cambio tipo | useIndirizzoSoggettoForm |
 | `useIndirizzoDuplicato` | Check duplicato indirizzo via API con exact_match + indirizzoWarnings | useIndirizzoBase |
-
-#### Modalita sola lettura e azioni processo
-
-| Composable | Scopo | Esempio d'uso |
-| --- | --- | --- |
-| `useReadonlyMode` | Provider: derive isReadonly da permessi area + provide | CategorieClientiListView |
-| `useInjectReadonly` | Consumer: inject isReadonly dal provider padre | FormFooter |
-| `useActionPermission` | Verifica se un'azione processo e' abilitata (computed reattivo) | LottiListView |
-
-**Nota**: per i casi standard, usare `action` su `PageActionsBar`/`FormFooter` invece del composable diretto.
-
-#### Ricerca universale
-
-| Composable | Scopo | Esempio d'uso |
-| --- | --- | --- |
-| `useSearchDetail` | Fetch dettaglio soggetto per row expansion (livello 2) | SearchDetailTable |
 
 ### Utility (`core/utils/`)
 

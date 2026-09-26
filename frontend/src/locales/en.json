@@ -833,8 +833,6 @@
     "validation_error": "Please fill in all required fields."
   },
   "pagination": {
-    "page_of": "Page {page} of {total}",
-    "go_to_page": "Go to page",
     "rows_per_page": "Rows per page"
   },
   "actions": {
@@ -2193,9 +2191,7 @@
       "field_codice_commessa": "Order Code",
       "field_tipo_utenza": "Usage type",
       "field_classe_utenza": "Usage class",
-      "field_param_1_num": "Numeric parameter",
       "field_pdp": "PDP/POD",
-      "field_param_2_txt": "Text parameter (PDP/POD)",
       "field_nr_righe": "Number of rows",
       "field_utility_associata": "Associated utility",
       "field_articolo": "Article",
@@ -2264,7 +2260,6 @@
       "errore_generico": "Error while saving the contract row.",
       "drawer_righe_titolo": "Contract - Rows",
       "gestisci_righe": "Manage rows",
-      "gestisci_utility": "Manage utility",
       "aggiungi_riga": "New row",
       "nuova_riga": "New row",
       "modifica_riga": "Edit row",
@@ -2311,8 +2306,6 @@
       "ripristina_articolo_dialog_titolo": "Restore article in contract",
       "ripristina_articolo_dialog_messaggio": "Article {articolo} will become available again in the contract at the price list value. The exclusion will be removed. Confirm?",
       "ripristina_articolo_dialog_conferma": "Restore",
-      "utility_creata": "Utility created",
-      "utility_salvata": "Utility saved",
       "conferma_titolo": "Confirm status change",
       "conferma_cambio_stato": "Move the contract to status {stato}?",
       "stato_cambiato": "Status updated",
@@ -2861,8 +2854,7 @@
       "vedi_fatture": "View invoices",
       "collegamento_soggetto": "Invoices for entity {valore} — no date limit.",
       "collegamento_cliente": "Invoices for {valore} — no date limit.",
-      "collegamento_rimuovi": "Clear filter",
-      "sez_saldo": "Balance"
+      "collegamento_rimuovi": "Clear filter"
     },
     "indirizzi": {
       "da_soggetto": "from subject",
@@ -4605,6 +4597,18 @@
       "gia_corretta": "Already corrected by sheet {codice}: open that one and work there.",
       "e_la_correzione_di": "This sheet corrects {codice}",
       "e_stata_corretta_da": "This sheet has already been corrected by {codice}"
+    },
+    "saldi": {
+      "residuo": "Outstanding",
+      "in_lavorazione": "In progress",
+      "in_lavorazione_aiuto": "Already entered on a sheet and not yet posted: they do not reduce the outstanding amount.",
+      "incassato": "Collected",
+      "incassato_non_disponibile": "The collected amount is not available at this level: it is not zero, it is unknown.",
+      "nessun_movimento": "Nothing has arrived on this document yet.",
+      "non_letto": "The balance could not be read: retry before concluding there is nothing left to pay.",
+      "livello_non_pronto": "The balance for this level is not available yet.",
+      "include_riga_corrente": "The amount in progress also includes this line: at this level the balance cannot exclude it.",
+      "sezione": "Balance"
     }
   },
   "magazzino": {
@@ -5213,8 +5217,6 @@
     "visualizzazione_pratica": "Viewing practice code: {codice}",
     "apri_scheda": "Open case sheet",
     "modalita_tecnica": "Technical mode",
-    "mie_attivita_titolo": "My activities",
-    "mie_attivita_vuoto": "No activities",
     "mie_attivita_espandi": "Expand",
     "mie_attivita_comprimi": "Collapse"
   },
@@ -5242,17 +5244,7 @@
       "FATTURA": "Invoice"
     },
     "genera_pdf": {
-      "label": "Generate PDF",
-      "tooltip": "Generate and download the PDF document",
-      "success": "PDF document generated",
-      "no_template": "No document template configured for this source. Add a template in Configuration.",
-      "lookup_error": "Error retrieving applicable templates.",
       "download_error": "Error during PDF download."
-    },
-    "scelta_template": {
-      "title": "Choose document template",
-      "subtitle": "Multiple templates are available for this source: select the one to use for generation.",
-      "confirm": "Generate"
     },
     "lista": {
       "title": "Generated documents",
@@ -5920,17 +5912,6 @@
       "scelta_conferma": "Start",
       "scelta_errore": "Could not load issuers. Retry, or continue in read-only mode.",
       "scelta_rimanda": "Continue without selecting"
-    },
-    "saldi": {
-      "residuo": "Outstanding",
-      "in_lavorazione": "In progress",
-      "in_lavorazione_aiuto": "Already entered on a sheet and not yet posted: they do not reduce the outstanding amount.",
-      "incassato": "Collected",
-      "incassato_non_disponibile": "The collected amount is not available at this level: it is not zero, it is unknown.",
-      "nessun_movimento": "Nothing has arrived on this document yet.",
-      "non_letto": "The balance could not be read: retry before concluding there is nothing left to pay.",
-      "livello_non_pronto": "The balance for this level is not available yet.",
-      "include_riga_corrente": "The amount in progress also includes this line: at this level the balance cannot exclude it."
     },
     "email_log": {
       "stato": "Status",

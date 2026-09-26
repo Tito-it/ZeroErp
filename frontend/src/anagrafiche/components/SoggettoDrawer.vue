@@ -10,10 +10,10 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useSoggettiStore } from '../stores/soggetti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useSoggettoForm } from '../../core/composables/useSoggettoForm'
-import { useContattoForm } from '../../core/composables/useContattoForm'
-import { useIndirizzoSoggettoForm } from '../../core/composables/useIndirizzoSoggettoForm'
-import { useDatiSocietariForm } from '../../core/composables/useDatiSocietariForm'
+import { useSoggettoForm } from '../composables/useSoggettoForm'
+import { useContattoForm } from '../composables/useContattoForm'
+import { useIndirizzoSoggettoForm } from '../composables/useIndirizzoSoggettoForm'
+import { useDatiSocietariForm } from '../composables/useDatiSocietariForm'
 import { useLookup } from '../../core/composables/useLookup'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { lookupFormeGiuridiche } from '../../core/apiCore'
@@ -21,15 +21,15 @@ import { lookupProvince } from '../api/anagrafiche'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { toDateString } from '../../core/utils/date'
-import SoggettoForm from '../../core/components/SoggettoForm.vue'
-import ContattoForm from '../../core/components/ContattoForm.vue'
-import IndirizzoSoggettoForm from '../../core/components/IndirizzoSoggettoForm.vue'
-import DatiSocietariForm from '../../core/components/DatiSocietariForm.vue'
+import SoggettoForm from './SoggettoForm.vue'
+import ContattoForm from './ContattoForm.vue'
+import IndirizzoSoggettoForm from './IndirizzoSoggettoForm.vue'
+import DatiSocietariForm from './DatiSocietariForm.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import IndirizziSoggettoDrawer from '../../core/components/IndirizziSoggettoDrawer.vue'
-import ContattiSoggettoDrawer from '../../core/components/ContattiSoggettoDrawer.vue'
-import ContiBancariDrawer from '../../core/components/ContiBancariDrawer.vue'
+import IndirizziSoggettoDrawer from './IndirizziSoggettoDrawer.vue'
+import ContattiSoggettoDrawer from './ContattiSoggettoDrawer.vue'
+import ContiBancariDrawer from './ContiBancariDrawer.vue'
 import TitoliIvaSoggettoDrawer from './TitoliIvaSoggettoDrawer.vue'
 import Drawer from 'primevue/drawer'
 import Select from 'primevue/select'
@@ -450,7 +450,7 @@ async function handleSave() {
               <span v-if="c.telefono" class="app-riepilogo-detail">{{ c.telefono }}</span>
             </div>
           </div>
-          <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
+          <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
             {{ t('anagrafiche.contatto.nessun_contatto') }}
           </div>
           <Button
@@ -542,7 +542,7 @@ async function handleSave() {
               <span>{{ ind.indirizzo_display }}</span>
             </div>
           </div>
-          <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
+          <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
             {{ t('anagrafiche.indirizzo_soggetto.nessun_indirizzo') }}
           </div>
           <Button
@@ -569,7 +569,7 @@ async function handleSave() {
               <span v-if="cb.filiale_nome" class="app-riepilogo-detail">{{ cb.filiale_nome }}</span>
             </div>
           </div>
-          <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
+          <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
             {{ t('anagrafiche.conti_bancari.nessun_conto') }}
           </div>
           <Button
@@ -602,7 +602,7 @@ async function handleSave() {
               </span>
             </div>
           </div>
-          <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
+          <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
             {{ t('anagrafiche.titoli_iva.lista_vuota') }}
           </div>
           <Button
@@ -625,7 +625,7 @@ async function handleSave() {
           <Tag v-for="r in ruoliAssegnati" :key="r.tipo_ruolo_id"
                :value="r.ruolo_descrizione" severity="info" />
         </div>
-        <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
+        <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
           {{ t('anagrafiche.soggetti.nessun_ruolo') }}
         </div>
       </template>

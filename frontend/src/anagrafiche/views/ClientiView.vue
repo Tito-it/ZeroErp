@@ -4,7 +4,6 @@
 // Sotto-drawer indirizzi e conti bancari dalla lista (come SoggettiView).
 import { ref, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
-import { useI18n } from 'vue-i18n'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useDrawerSavedListRefresh } from '../../core/composables/useDrawerSavedListRefresh'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
@@ -13,13 +12,11 @@ import { useClientiStore } from '../stores/clienti'
 import ClientiSearchTable from '../components/ClientiSearchTable.vue'
 import ClienteDrawer from '../components/ClienteDrawer.vue'
 import SoggettoDrawer from '../components/SoggettoDrawer.vue'
-import ContattiSoggettoDrawer from '../../core/components/ContattiSoggettoDrawer.vue'
-import IndirizziSoggettoDrawer from '../../core/components/IndirizziSoggettoDrawer.vue'
-import ContiBancariDrawer from '../../core/components/ContiBancariDrawer.vue'
-import ContrattiBillingAccountDrawer from '../../vendite/components/ContrattiBillingAccountDrawer.vue'
+import ContattiSoggettoDrawer from '../components/ContattiSoggettoDrawer.vue'
+import IndirizziSoggettoDrawer from '../components/IndirizziSoggettoDrawer.vue'
+import ContiBancariDrawer from '../components/ContiBancariDrawer.vue'
 import { TIPO_RUOLO, READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
 
-const { t } = useI18n()
 const drawer = useDrawerState()
 const store = useClientiStore()
 const ctx = useContextStore()
@@ -40,14 +37,6 @@ const soggettoDrawer = ref({ visible: false, soggettoId: null })
 const contattiDrawer = ref({ visible: false, ruoloId: null, istanzaUtilityId: null })
 const indirizziDrawer = ref({ visible: false, ruoloId: null, istanzaUtilityId: null })
 const contiBancariDrawer = ref({ visible: false, ruoloId: null, ownerName: '', istanzaUtilityId: null })
-const contrattiDrawer = ref({
-  visible: false,
-  billingAccountId: null,
-  billingAccountLabel: '',
-  billingAccountUtility: '',
-  canCreate: true,
-  disabledReason: '',
-})
 
 function onSoggetto(data) {
   soggettoDrawer.value = { visible: true, soggettoId: data.soggetto_id }
@@ -70,27 +59,6 @@ function onContiBancari(data) {
   }
 }
 
-// Scopo: Determina se il BA ammette la creazione di nuovi contratti.
-// Regola attuale: blocca su stato CESSATO/CHIUSO (estendibile).
-function resolveCanCreateContratto(cliente) {
-  const stato = (cliente?.stato_codice_interno || '').toUpperCase()
-  if (stato === 'CESSATO' || stato === 'CHIUSO') {
-    return { canCreate: false, reason: t('anagrafiche.clienti.ba_chiuso_no_contratti') }
-  }
-  return { canCreate: true, reason: '' }
-}
-
-function onContratti(data) {
-  const { canCreate, reason } = resolveCanCreateContratto(data)
-  contrattiDrawer.value = {
-    visible: true,
-    billingAccountId: data.billing_account_id,
-    billingAccountLabel: data.ragione_sociale_completa || data.ba_codice || '',
-    billingAccountUtility: data.utility_descrizione || '',
-    canCreate,
-    disabledReason: reason,
-  }
-}
 
 </script>
 
@@ -103,7 +71,6 @@ function onContratti(data) {
       @contatti="onContatti"
       @indirizzi="onIndirizzi"
       @conti-bancari="onContiBancari"
-      @contratti="onContratti"
     />
 
     <ClienteDrawer
@@ -148,14 +115,5 @@ function onContratti(data) {
       context="ruolo"
     />
 
-    <ContrattiBillingAccountDrawer
-      :visible="contrattiDrawer.visible"
-      @update:visible="v => contrattiDrawer.visible = v"
-      :billing-account-id="contrattiDrawer.billingAccountId"
-      :billing-account-label="contrattiDrawer.billingAccountLabel"
-      :billing-account-utility="contrattiDrawer.billingAccountUtility"
-      :can-create="contrattiDrawer.canCreate"
-      :disabled-create-reason="contrattiDrawer.disabledReason"
-    />
   </div>
 </template>

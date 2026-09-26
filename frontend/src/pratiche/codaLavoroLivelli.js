@@ -1,7 +1,6 @@
 // Scopo: single source of truth dei livelli della coda lavoro operatore.
-// Mappa 1:1 la policy reparto-first dell'assegnazione flusso. Condivisa da
-// PraticheCodaLavoro (sezioni espanse) e MieAttivitaPanel (contatori collassati)
-// → ordine, label i18n e severity restano coerenti tra le due viste.
+// Mappa 1:1 la policy reparto-first dell'assegnazione flusso: ordine, label
+// i18n e severity dei livelli di PraticheCodaLavoro.
 //
 // Ordine canonico (brief-design-coda-lavoro-mie-attivita §1/§6):
 // ASSEGNATO → REPARTO → LIBERO → COMPETENZA (avanzato/opzionale, per ultimo).

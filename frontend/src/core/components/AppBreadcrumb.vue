@@ -48,16 +48,16 @@ const crumbs = computed(() => {
   gap: 0.25rem;
   padding: 0.5rem 0;
   font-size: var(--app-font-size-sm);
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
 }
 
 .breadcrumb-item.active {
-  color: var(--p-text-color);
+  color: var(--app-text-color);
   font-weight: 500;
 }
 
 .breadcrumb-separator {
   margin: 0 0.25rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
 }
 </style>

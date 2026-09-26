@@ -276,7 +276,7 @@ function handlePinTab(tab) {
 
 .content-tab.active {
   color: var(--app-topbar-breadcrumb-active-color);
-  border-bottom-color: var(--p-primary-color);
+  border-bottom-color: var(--app-accent-color);
 }
 
 .tab-icon {
@@ -290,7 +290,7 @@ function handlePinTab(tab) {
 
 /* Separatore verticale verde tra tab */
 .content-tab + .content-tab {
-  border-left: 1px solid color-mix(in srgb, var(--p-primary-color) 35%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--app-accent-color) 35%, transparent);
 }
 
 /* Il titolo: tetto a 150px come prima, e `min-width: 0` perche' possa cedere
@@ -307,7 +307,7 @@ function handlePinTab(tab) {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--p-orange-400);
+  background: var(--app-warning-color);
 }
 
 .tab-context-dot {
@@ -336,12 +336,12 @@ function handlePinTab(tab) {
 
 /* Tab pinnata nello split */
 .content-tab.pinned {
-  border-bottom-color: var(--p-orange-400);
+  border-bottom-color: var(--app-split-color);
 }
 
 .tab-pin-icon {
   font-size: 0.6rem;
-  color: var(--p-orange-400);
+  color: var(--app-split-color);
 }
 
 /* Contatore schede rimanenti */
@@ -366,12 +366,12 @@ function handlePinTab(tab) {
 
 .tab-remaining.remaining-orange {
   color: #fff;
-  background: var(--p-orange-500);
+  background: var(--app-warning-color);
 }
 
 .tab-remaining.remaining-red {
   color: #fff;
-  background: var(--p-red-500);
+  background: var(--app-severity-danger);
 }
 
 /* Bottone Affianca / Chiudi split — icona verde, sfondo neutro (come app-action-btn) */
@@ -383,7 +383,7 @@ function handlePinTab(tab) {
   height: 1.85rem;
   margin: auto 0.4rem;
   font-size: 0.95rem;
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
   background: transparent;
   border: none;
   border-radius: 6px;

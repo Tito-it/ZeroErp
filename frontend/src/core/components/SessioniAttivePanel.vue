@@ -7,11 +7,13 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
 import Badge from 'primevue/badge'
-import api from '../api'
+import { useApiHandler } from '../composables/useApiHandler'
+import { listSessioni, revocaSessione as apiRevocaSessione, revocaTutteSessioni as apiRevocaTutte } from '../api/sessioni'
 
 const { t } = useI18n()
 const { confirmAction } = useConfirmAction()
 const notify = useNotify()
+const { execute } = useApiHandler()
 
 const sessioni = ref([])
 const loading = ref(false)
@@ -24,9 +26,10 @@ const expanded = ref(false)
 async function fetchSessioni() {
   loading.value = true
   try {
-    const response = await api.get('/core/me/sessioni/')
-    sessioni.value = response.data.data.sessioni || []
-  } catch {
+    // Silenziosa: un pannello di contorno non apre un toast a ogni lettura.
+    const data = await execute(() => listSessioni(), { silent: true })
+    if (data !== null) sessioni.value = data.sessioni || []
+    // `null` = lettura fallita:
     // ⛔ NON si azzera la lista: `sessioni = []` fa sparire tutto il pannello
     //    (`v-if="sessioni.length > 0"`), cioe' dice «non hai altre sessioni
     //    attive» quando la verita' e' «non lo so, la lettura e' fallita». Su un
@@ -95,11 +98,11 @@ function confermaRevocaTutte() {
 async function revocaSessione(jti) {
   azioneInCorso.value = true
   try {
-    await api.post(`/core/me/sessioni/${jti}/revoca/`)
+    // L'errore lo mostra `execute` con il messaggio del backend.
+    const esito = await execute(() => apiRevocaSessione(jti))
+    if (esito === null) return
     notify.success(t('sessions.revoke_success'))
     await fetchSessioni()
-  } catch {
-    notify.error()
   } finally {
     azioneInCorso.value = false
   }
@@ -116,12 +119,11 @@ async function revocaSessione(jti) {
 async function revocaTutteSessioni() {
   azioneInCorso.value = true
   try {
-    const res = await api.post('/core/me/sessioni/revoca-tutte/')
-    const revocate = res.data?.data?.revoked ?? 0
+    const esito = await execute(() => apiRevocaTutte())
+    if (esito === null) return
+    const revocate = esito.revoked ?? 0
     notify.success(t('sessions.revoke_all_success', { count: revocate }))
     await fetchSessioni()
-  } catch {
-    notify.error()
   } finally {
     azioneInCorso.value = false
   }
@@ -225,11 +227,11 @@ onActivated(fetchSessioni)
   gap: 0.5rem;
   font-size: var(--app-font-size-base);
   font-weight: 600;
-  color: var(--p-text-color);
+  color: var(--app-text-color);
   margin: 0;
 }
 
 .sessioni-title i {
-  color: var(--p-orange-400);
+  color: var(--app-warning-color);
 }
 </style>

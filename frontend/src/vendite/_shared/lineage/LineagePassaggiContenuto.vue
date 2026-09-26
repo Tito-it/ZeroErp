@@ -22,7 +22,7 @@ import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import ProgressBar from 'primevue/progressbar'
-import { isTappaApribile } from '../documenti/documentoDrawers'
+import { isTappaApribile } from '../../../core/drawerEntita'
 import { lineageDocumentoLabel } from './lineageLabels'
 import { faseDocumentoSeverity } from '../../../core/utils/severity'
 

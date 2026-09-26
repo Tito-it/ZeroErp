@@ -32,10 +32,10 @@ import {
   deleteBundleComponenti,
 } from '../api/listini'
 import ComponentiDialog from '../_shared/componenti/ComponentiDialog.vue'
-import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOptions'
+import { useArticoloUomOptions } from '../../catalogo/composables/useArticoloUomOptions'
 import { useListiniRigheStore } from '../stores/listiniRighe'
 import { MANAGE_ICONS } from '../../core/constants'
-import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
+import ArticoloLookup from '../../catalogo/components/ArticoloLookup.vue'
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'

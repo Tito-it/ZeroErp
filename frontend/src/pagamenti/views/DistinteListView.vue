@@ -11,12 +11,13 @@
 //    backend non presidia — sarebbe una granularita' che non esiste.
 import { ref } from 'vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS } from '../../core/constants'
 import DistinteSearchTable from '../components/DistinteSearchTable.vue'
 import DistintaDrawer from '../components/DistintaDrawer.vue'
 import ApriDistintaDialog from '../components/ApriDistintaDialog.vue'
 import { useDistinteStore } from '../stores/distinte'
 
-useReadonlyMode('pagamenti')
+useReadonlyMode(READONLY_DOMAINS.PAGAMENTI)
 
 const store = useDistinteStore()
 const drawerVisible = ref(false)

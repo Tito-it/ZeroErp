@@ -30,7 +30,9 @@ import InputNumber from 'primevue/inputnumber'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Textarea from 'primevue/textarea'
 import DatePicker from 'primevue/datepicker'
-import api from '../api'
+import {
+  getConfigTableMetadata, getConfigRecord, createConfigRecord, updateConfigRecord,
+} from '../api/configTables'
 import { useDrawerContentReady } from '../composables/useDrawerContentReady'
 
 
@@ -116,13 +118,14 @@ watch(() => props.visible, async (val) => {
 
   // Carica metadata se non gia' presenti per questa rel
   if (columns.value.length === 0) {
-    try {
-      const res = await api.get(`/core/config/tables/${props.rel}/metadata/`)
-      columns.value = res.data.data.columns
-    } catch {
+    // Metadata non letto: il toast dice perche', e il drawer si richiude
+    // (senza colonne non c'e' un form da mostrare).
+    const meta = await execute(() => getConfigTableMetadata(props.rel))
+    if (meta === null) {
       emit('update:visible', false)
       return
     }
+    columns.value = meta.columns
   }
 
   // Reset form: inizializza ogni campo dal default DB (col.default) quando noto,
@@ -140,15 +143,13 @@ watch(() => props.visible, async (val) => {
 
   // Se edit, carica dati esistenti
   if (props.mode === 'edit' && props.recordId) {
-    try {
-      const res = await api.get(`/core/config/tables/${props.rel}/${props.recordId}/`)
-      const data = res.data.data
-      for (const col of editableColumns.value) {
-        if (data[col.name] !== undefined) newForm[col.name] = versoForm(col, data[col.name])
-      }
-    } catch {
+    const data = await execute(() => getConfigRecord(props.rel, props.recordId))
+    if (data === null) {
       emit('update:visible', false)
       return
+    }
+    for (const col of editableColumns.value) {
+      if (data[col.name] !== undefined) newForm[col.name] = versoForm(col, data[col.name])
     }
   }
 
@@ -186,8 +187,8 @@ async function handleSave() {
 
   const result = await execute(
     () => isCreate
-      ? api.post(`/core/config/tables/${props.rel}/`, payload)
-      : api.patch(`/core/config/tables/${props.rel}/${props.recordId}/`, payload),
+      ? createConfigRecord(props.rel, payload)
+      : updateConfigRecord(props.rel, props.recordId, payload),
     { successMessage: msg }
   )
 

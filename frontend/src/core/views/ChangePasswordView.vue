@@ -5,7 +5,6 @@ import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../../stores/auth'
 import { usePasswordValidation } from '../composables/usePasswordValidation'
 import { extractApiError } from '../utils/apiError'
-import api from '../api'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
 
@@ -34,19 +33,11 @@ async function handleChangePassword() {
 
   loading.value = true
   try {
-    const response = await api.post('/auth/change-password/', {
-      old_password: oldPassword.value,
-      new_password: newPassword.value,
-      new_password_confirm: confirmPassword.value,
+    await auth.cambiaPassword({
+      oldPassword: oldPassword.value,
+      newPassword: newPassword.value,
+      newPasswordConfirm: confirmPassword.value,
     })
-    // Aggiorna token nello store
-    const data = response.data?.data || response.data
-    if (data.access && data.refresh) {
-      auth.setTokens(data.access, data.refresh)
-      auth.passwordChangeRequired = false
-      // Ricarica profilo per aggiornare deve_cambiare_password nel profilo
-      try { await auth.fetchProfile() } catch { /* non blocca il flusso */ }
-    }
     successMessage.value = t('auth.password_changed_success')
     setTimeout(() => router.push(route.query.redirect || '/'), 1500)
   } catch (err) {

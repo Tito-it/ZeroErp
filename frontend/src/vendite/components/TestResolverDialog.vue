@@ -7,11 +7,11 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
-import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOptions'
+import { useArticoloUomOptions } from '../../catalogo/composables/useArticoloUomOptions'
 import { extractApiError } from '../../core/utils/apiError'
 import { resolvePrezzoV5, diagnoseConfigurazionePricing } from '../api/listini'
 import { pricingOrigineSeverity } from '../../core/utils/severity'
-import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
+import ArticoloLookup from '../../catalogo/components/ArticoloLookup.vue'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
@@ -329,7 +329,7 @@ function close() {
 
       <!-- BA + categoria (radice) -->
       <div class="form-field" style="margin-bottom: 0.5rem;">
-        <i class="pi pi-check-circle" style="color: var(--p-green-500); margin-right: 0.4rem;"></i>
+        <i class="pi pi-check-circle" style="color: var(--app-success-color); margin-right: 0.4rem;"></i>
         <strong>{{ t('vendite.listini.diagnose_ba') }}</strong>:
         <span v-if="diagnose.ba.categoria_codice">
           {{ t('vendite.listini.diagnose_categoria') }}
@@ -343,7 +343,7 @@ function close() {
       <!-- Stadio 0 PROMO -->
       <div class="form-field" style="margin-bottom: 0.5rem;">
         <i :class="diagnose.stadio_0_promo.applicabile ? 'pi pi-check-circle' : 'pi pi-times-circle'"
-          :style="`color: var(${diagnose.stadio_0_promo.applicabile ? '--p-green-500' : '--p-red-500'}); margin-right: 0.4rem;`"></i>
+          :style="`color: var(${diagnose.stadio_0_promo.applicabile ? '--app-success-color' : '--app-severity-danger'}); margin-right: 0.4rem;`"></i>
         <strong>{{ t('vendite.listini.diagnose_stadio_0') }}</strong>
         <span v-if="diagnose.stadio_0_promo.applicabile">
           — <strong>{{ diagnose.stadio_0_promo.promo_codice }}</strong>
@@ -355,7 +355,7 @@ function close() {
       <!-- Stadio 1 CONTRATTO -->
       <div class="form-field" style="margin-bottom: 0.5rem;">
         <i :class="diagnose.stadio_1_contratto.applicabile ? 'pi pi-check-circle' : 'pi pi-times-circle'"
-          :style="`color: var(${diagnose.stadio_1_contratto.applicabile ? '--p-green-500' : '--p-red-500'}); margin-right: 0.4rem;`"></i>
+          :style="`color: var(${diagnose.stadio_1_contratto.applicabile ? '--app-success-color' : '--app-severity-danger'}); margin-right: 0.4rem;`"></i>
         <strong>{{ t('vendite.listini.diagnose_stadio_1') }}</strong>
         <span v-if="diagnose.stadio_1_contratto.contratto_attivo">
           — <strong>{{ diagnose.stadio_1_contratto.contratto_numero }}</strong>
@@ -370,7 +370,7 @@ function close() {
       <!-- Stadio 2 CATEGORIA → MATRICE -->
       <div class="form-field" style="margin-bottom: 0.5rem;">
         <i :class="diagnose.stadio_2_categoria.applicabile ? 'pi pi-check-circle' : 'pi pi-times-circle'"
-          :style="`color: var(${diagnose.stadio_2_categoria.applicabile ? '--p-green-500' : '--p-red-500'}); margin-right: 0.4rem;`"></i>
+          :style="`color: var(${diagnose.stadio_2_categoria.applicabile ? '--app-success-color' : '--app-severity-danger'}); margin-right: 0.4rem;`"></i>
         <strong>{{ t('vendite.listini.diagnose_stadio_2') }}</strong>
         <span v-if="diagnose.stadio_2_categoria.applicabile">
           — <strong>{{ diagnose.stadio_2_categoria.matrice_listino_codice }}</strong>

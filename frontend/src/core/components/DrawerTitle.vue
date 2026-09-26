@@ -38,7 +38,7 @@ defineProps({
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
   white-space: nowrap;
   min-width: 4rem;
 }
@@ -47,7 +47,7 @@ defineProps({
   text-align: center;
   font-size: 1.35rem;
   font-weight: 600;
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
 }
 .app-drawer-title-icon {
   font-size: 1.1rem;

@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { extractApiError } from '../utils/apiError'
-import api from '../api'
+import { richiediResetPassword } from '../api/password'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 
@@ -17,7 +17,7 @@ async function handleRequest() {
   errorMessage.value = ''
   loading.value = true
   try {
-    await api.post('/auth/password-reset-request/', { username: username.value })
+    await richiediResetPassword(username.value)
     sent.value = true
   } catch (err) {
     const status = err?.response?.status
