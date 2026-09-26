@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ----------------------------------------------------------
+# IL REGISTRO DEGLI OWNER: all'app solo SELECT
+#   Brief: brief-db-registro-owner-e-sync-riservati-al-migratore.md §2.2
+#
+#   dbops.sec_functions_owner dichiara chi possiede le DEFINER di postgres, e
+#   la sync (20_code/dbops/20260926-11) applica la dichiarazione: chi scrive il
+#   registro sceglie il proprietario. Lo scrive solo il migratore — il mirror
+#   CSV 80_data/20251123-51 e i changeSet «a prestito», entrambi come
+#   proprietario della tabella. Nessuno scrittore in backend/ ne' nei pgTAP.
+#   Il SELECT resta (D-2 del brief): e' configurazione, non un segreto, e chi
+#   legge senza poter scrivere ne' eseguire la sync non ha nessuna leva.
+#   Tre sedi, come per le altre tabelle in sola lettura: questo forward su dev,
+#   la voce in `v_tabelle_sola_lettura_app` del loop ci_apply 20260205-41, il
+#   blocco «POSTURA DICHIARATA» del provisioning. Il pgTAP
+#   db/pgtap/dbops/test-sec-functions-owner-riservato-v1.sql lo dice se non lo fa.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260926-12-revoke-app-scrittura-sec-functions-owner-mctit.yaml
+
+  - changeSet:
+      id: 20260926-12-revoke-app-scrittura-sec-functions-owner
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il registro degli owner in sola lettura per l'app: a zeroerp_app SELECT soltanto su
+        dbops.sec_functions_owner (REVOKE INSERT, UPDATE, DELETE: lo scrive solo il migratore).
+        Postura resa stabile dal loop 20260205-41 e dal provisioning. Brief:
+        brief-db-registro-owner-e-sync-riservati-al-migratore §2.2.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: sec_functions_owner
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $porta$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: skip porta del registro degli owner.';
+                      RETURN;
+                  END IF;
+
+                  GRANT  SELECT                 ON TABLE dbops.sec_functions_owner TO   zeroerp_app;
+                  REVOKE INSERT, UPDATE, DELETE ON TABLE dbops.sec_functions_owner FROM zeroerp_app;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Senza togliere la voce dal loop 20260205-41 e dal provisioning la
+              -- passata ci_apply successiva richiude la porta.
+              GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE dbops.sec_functions_owner TO zeroerp_app;

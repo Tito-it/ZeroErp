@@ -89,100 +89,11 @@ SET CONSTRAINTS ALL IMMEDIATE;
 SELECT plan(16);
 
 -- ============================================================
--- 1. ⛔ LA SANATURA NON SI DISFA
--- ============================================================
--- ⛔ I ventisette guard sanati il 2026-09-21 (changeSet -43..-49) e le otto
---   funzioni del 2026-09-22 (i 9 A del §4-ter.2, changeSet 20260922-11..13:
---   il test BE li aveva trovati ROSSI la sera stessa, fuori dai 37), con i
---   loro codici. Restano scritti qui APPOSTA: e' la prova che nessuno ha
---   riemesso uno di questi corpi da uno YAML piu' vecchio della sanatura —
---   il modo in cui una correzione sparisce senza che nessun altro test lo
---   veda (memoria: fn_escludi_documento_da_giro, 2026-09-09).
--- ⚠️ Solo il SITO sanato: E_DATA_AL_MINORE_DAL in vendite.fn_get_or_create_commessa
---   e E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO nelle due *_componenti_init
---   restano NESSUNO di proposito (nessun input della pagina, §4-ter.2) e non
---   sono qui: il verso 1 chiede «almeno un» sito.
-SELECT is(
-    (SELECT string_agg(a.funzione || ' / ' || a.codice || ' = ' || coalesce(v.canale, '?') || '/' || coalesce(v.chiave, '-'),
-                       ', ' ORDER BY a.funzione, a.codice)
-       FROM (VALUES
-            ('anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza', 'E_BA_SOGGETTO_INCOERENTE_ISTANZA'),
-            ('anagrafiche.trgfn_soggetti_conti_bancari_guard',                    'E_CONTO_BANCARIO'),
-            ('anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard',              'E_CONTO_BANCARIO'),
-            ('anagrafiche.trgfn_sepa_mandati_guard',                              'E_DATA_ERRATA'),
-            ('anagrafiche.trgfn_dati_societari_guard_forma_giuridica',            'E_FORMA_GIURIDICA_PAESE'),
-            ('anagrafiche.trgfn_risorse_umane_guard_ruolo',                       'E_RISORSA_UMANA_SOGGETTO_MISMATCH'),
-            ('anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo',       'E_TIPO_INDIRIZZO_NON_PERMESSO'),
-            ('config.trgfn_iva_guard_conti_iva',                                  'E_IVA_CONTO_ACQ_ERR'),
-            ('config.trgfn_iva_guard_conti_iva',                                  'E_IVA_CONTO_VEN_ERR'),
-            ('config.trgfn_toponomastica_normalize',                              'E_NAZIONE_NON_TROVATA'),
-            ('config.trgfn_profili_accesso_bindings_guard_coerenza',              'E_PROFILO_ACCESSO_BINDING_INCOERENTE'),
-            ('config.trgfn_stati_doc_guard_esito_verdetto',                       'E_STATO_DOC_ESITO_NON_VERDETTO'),
-            ('documenti.fn_pubblica_template_documento_versione',                 'E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO'),
-            ('pratiche.trgfn_flussi_guard_esito_classe',                          'E_FLUSSI_ESITO_NON_AMMESSO'),
-            ('pratiche.trgfn_template_flussi_guard_modalita_esito',               'E_TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO'),
-            ('pratiche.trgfn_template_flussi_guard_modalita_esito',               'E_TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA'),
-            ('pratiche.trgfn_template_flussi_guard_modalita_esito',               'E_TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO'),
-            ('pratiche.trgfn_template_flussi_guard_modalita_esito',               'E_TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO'),
-            ('script.trgfn_qta_from_operativa',                                   'E_QTA_MISSING'),
-            ('script.trgfn_qta_from_operativa',                                   'E_QTA_OPERATIVA_NON_INTERA'),
-            ('script.trgfn_qta_from_operativa',                                   'E_QTA_OPER_STEP_INVALIDO'),
-            ('script.trgfn_qta_from_operativa',                                   'E_UOM_MISSING'),
-            ('vendite.trgfn_listini_righe_guard_tipologia',                       'E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE'),
-            ('vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile',         'E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO'),
-            ('vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino',        'E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO'),
-            ('vendite.trgfn_contratti_utilities_guard_tipo_classe',               'E_CONTRATTO_CLASSE_TIPO_INCOERENTE'),
-            ('vendite.trgfn_contratti_utilities_guard_tipo_classe',               'E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI'),
-            ('vendite.trgfn_contratti_utilities_guard_tipo_classe',               'E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI'),
-            ('vendite.trgfn_listini_guard_tipologia_utility',                     'E_LISTINO_TIPOLOGIA_UTILITY'),
-            ('vendite.trgfn_ordini_ful_guard_consistenza',                        'E_QTA_NON_POSITIVA'),
-            ('vendite.trgfn_resi_accrediti_guard',                                'E_QTA_NON_POSITIVA'),
-            ('vendite.trgfn_resi_riconsegne_guard',                               'E_QTA_NON_POSITIVA'),
-            ('vendite.trgfn_resi_righe_guard_quantita',                           'E_QTA_NON_POSITIVA'),
-            ('vendite.trgfn_resi_rinunce_guard',                                  'E_QTA_NON_POSITIVA'),
-            ('vendite.trgfn_preventivi_guard_utility_istanza_coerenza',           'E_PREV_UTILITY_ISTANZA_INCOERENTE'),
-            -- i 9 A del §4-ter.2 (22-09, changeSet 20260922-11..13)
-            ('anagrafiche.fn_crea_risorsa_umana_v2',                              'E_ADMIN_UO_NON_TROVATA'),
-            ('anagrafiche.trgfn_billing_account_guard_normalize',                 'E_PARENT_SELF'),
-            -- ⭐ 2026-09-23: i tre controlli sulle date di validita' che stavano
-            --   qui (billing_account e i due legami ai conti bancari) sono stati
-            --   ritirati (20260923-43..-45): la regola ha UNA sede, il guard
-            --   comune. Il canale si pretende ora su di lui.
-            --   2026-09-24: stessa sorte per E_BOM_VALIDO_AL_INVALIDO nel trigger
-            --   della BoM (20260924-01, codice ritirato). La pubblicazione dei
-            --   template (sopra) resta: il suo codice vive sul ramo di valido_dal.
-            ('script.trgfn_guard_date_validita',                                  'E_DATA_AL_MINORE_DAL'),
-            ('script.fn_disdetta_cliente',                                        'E_DATA_CESSAZIONE_INVALIDA'),
-            ('script.fn_guard_soggetto_pf_pura',                                  'E_AUTH_USER_SOGGETTO_CON_PIVA'),
-            ('script.trgfn_componenti_check_prezzo_obbligatorio',                 'E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO'),
-            ('vendite.fn_aggiungi_onere_commessa',                                'E_ONERE_ARTICOLO_MANCANTE'),
-            ('vendite.fn_aggiungi_onere_commessa',                                'E_ONERE_IMPORTO_NON_VALIDO')
-       ) a(funzione, codice)
-       LEFT JOIN dbops.vw_punti_canale_campo v
-              ON v.funzione = a.funzione AND v.codice = a.codice AND v.via = 'DIRETTO'
-      WHERE v.canale IS DISTINCT FROM 'IN_CHIAMATA' OR v.chiave IS DISTINCT FROM 'campo'),
-    NULL,
-    '1. i 27 guard sanati il 21-09 e le 8 funzioni del 22-09 portano ancora il canale campo per i loro codici: nessun corpo riemesso da uno YAML stantio'
-);
-
--- ============================================================
--- 2. ⛔ NESSUN RAMO CIECO
--- ============================================================
--- Un sito PRIMO_MOTIVO che non si lega a nessun codice non e' «a posto»: e' un
--- sito che la lettura non sa leggere. Stesso criterio del rubinetto (t.3).
-SELECT is(
-    (SELECT string_agg(funzione, ', ' ORDER BY funzione)
-       FROM dbops.vw_punti_canale_campo
-      WHERE via = 'PRIMO_MOTIVO' AND codice IS NULL),
-    NULL,
-    '2. ogni sito che solleva il primo motivo si lega ad almeno un codice: nessun ramo cieco'
-);
-
--- ============================================================
 -- I casi costruiti — da qui in giu' si semina
 -- ============================================================
--- ⛔ I test 1..2 girano PRIMA: da qui il database contiene apposta siti
---   senza canale, e l'ordine non e' un dettaglio.
+-- ⛔ Da qui il database contiene apposta siti senza canale. I test 1..2
+--   leggono la stessa copia della vista, ma ESCLUSO lo schema pgtap_c2: il
+--   loro perimetro sono le funzioni vere, e i casi seminati non ci entrano.
 -- ⚠️ Uno schema VERO e non pg_temp: la risalita cerca la fn_check_* per
 --   `schema.nome` in pg_namespace, e `pg_temp` e' un alias che li' non c'e'.
 CREATE SCHEMA pgtap_c2;
@@ -344,7 +255,6 @@ BEGIN
 END
 $f$;
 
--- La vista si legge UNA volta sui casi di prova: e' una scansione di pg_proc,
 -- 15) ⭐ LA DELEGA (20260924-08): una check che restituisce i motivi di
 --     un'altra. Filtrata (la forma di script.fn_check_prezzi_in_attesa) e
 --     accodata (la forma di fn_check_ddt_emittibile).
@@ -411,9 +321,112 @@ BEGIN
 END
 $f$;
 
--- non una riga per test.
+-- ⚠️ Le due viste si leggono UNA volta sola, dopo la semina, e le asserzioni
+--   leggono le copie. Sono scansioni di tutto pg_proc (~3,8 s la prima, ~1,1 s
+--   la seconda, misura del 2026-09-26 su dbdev) e un filtro su `funzione` NON
+--   le accorcia: il predicato non scende dentro la vista, che calcola tutto e
+--   filtra dopo. Prima erano cinque letture — t.1, t.2, _c2, t.10, t.16.
+--   Non indebolisce niente: la copia e' esattamente cio' che la vista dice.
+CREATE TEMP TABLE _punti AS
+SELECT * FROM dbops.vw_punti_canale_campo;
+
 CREATE TEMP TABLE _c2 AS
-SELECT * FROM dbops.vw_punti_canale_campo WHERE funzione LIKE 'pgtap_c2.%';
+SELECT * FROM _punti WHERE funzione LIKE 'pgtap_c2.%';
+
+CREATE TEMP TABLE _c2_check AS
+SELECT * FROM dbops.vw_funzioni_check_codici WHERE funzione LIKE 'pgtap_c2.%';
+
+-- ============================================================
+-- 1. ⛔ LA SANATURA NON SI DISFA
+-- ============================================================
+-- ⛔ I ventisette guard sanati il 2026-09-21 (changeSet -43..-49) e le otto
+--   funzioni del 2026-09-22 (i 9 A del §4-ter.2, changeSet 20260922-11..13:
+--   il test BE li aveva trovati ROSSI la sera stessa, fuori dai 37), con i
+--   loro codici. Restano scritti qui APPOSTA: e' la prova che nessuno ha
+--   riemesso uno di questi corpi da uno YAML piu' vecchio della sanatura —
+--   il modo in cui una correzione sparisce senza che nessun altro test lo
+--   veda (memoria: fn_escludi_documento_da_giro, 2026-09-09).
+-- ⚠️ Solo il SITO sanato: E_DATA_AL_MINORE_DAL in vendite.fn_get_or_create_commessa
+--   e E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO nelle due *_componenti_init
+--   restano NESSUNO di proposito (nessun input della pagina, §4-ter.2) e non
+--   sono qui: il verso 1 chiede «almeno un» sito.
+SELECT is(
+    (SELECT string_agg(a.funzione || ' / ' || a.codice || ' = ' || coalesce(v.canale, '?') || '/' || coalesce(v.chiave, '-'),
+                       ', ' ORDER BY a.funzione, a.codice)
+       FROM (VALUES
+            ('anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza', 'E_BA_SOGGETTO_INCOERENTE_ISTANZA'),
+            ('anagrafiche.trgfn_soggetti_conti_bancari_guard',                    'E_CONTO_BANCARIO'),
+            ('anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard',              'E_CONTO_BANCARIO'),
+            ('anagrafiche.trgfn_sepa_mandati_guard',                              'E_DATA_ERRATA'),
+            ('anagrafiche.trgfn_dati_societari_guard_forma_giuridica',            'E_FORMA_GIURIDICA_PAESE'),
+            ('anagrafiche.trgfn_risorse_umane_guard_ruolo',                       'E_RISORSA_UMANA_SOGGETTO_MISMATCH'),
+            ('anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo',       'E_TIPO_INDIRIZZO_NON_PERMESSO'),
+            ('config.trgfn_iva_guard_conti_iva',                                  'E_IVA_CONTO_ACQ_ERR'),
+            ('config.trgfn_iva_guard_conti_iva',                                  'E_IVA_CONTO_VEN_ERR'),
+            ('config.trgfn_toponomastica_normalize',                              'E_NAZIONE_NON_TROVATA'),
+            ('config.trgfn_profili_accesso_bindings_guard_coerenza',              'E_PROFILO_ACCESSO_BINDING_INCOERENTE'),
+            ('config.trgfn_stati_doc_guard_esito_verdetto',                       'E_STATO_DOC_ESITO_NON_VERDETTO'),
+            ('documenti.fn_pubblica_template_documento_versione',                 'E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO'),
+            ('pratiche.trgfn_flussi_guard_esito_classe',                          'E_FLUSSI_ESITO_NON_AMMESSO'),
+            ('pratiche.trgfn_template_flussi_guard_modalita_esito',               'E_TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO'),
+            ('pratiche.trgfn_template_flussi_guard_modalita_esito',               'E_TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA'),
+            ('pratiche.trgfn_template_flussi_guard_modalita_esito',               'E_TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO'),
+            ('pratiche.trgfn_template_flussi_guard_modalita_esito',               'E_TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO'),
+            ('script.trgfn_qta_from_operativa',                                   'E_QTA_MISSING'),
+            ('script.trgfn_qta_from_operativa',                                   'E_QTA_OPERATIVA_NON_INTERA'),
+            ('script.trgfn_qta_from_operativa',                                   'E_QTA_OPER_STEP_INVALIDO'),
+            ('script.trgfn_qta_from_operativa',                                   'E_UOM_MISSING'),
+            ('vendite.trgfn_listini_righe_guard_tipologia',                       'E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE'),
+            ('vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile',         'E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO'),
+            ('vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino',        'E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO'),
+            ('vendite.trgfn_contratti_utilities_guard_tipo_classe',               'E_CONTRATTO_CLASSE_TIPO_INCOERENTE'),
+            ('vendite.trgfn_contratti_utilities_guard_tipo_classe',               'E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI'),
+            ('vendite.trgfn_contratti_utilities_guard_tipo_classe',               'E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI'),
+            ('vendite.trgfn_listini_guard_tipologia_utility',                     'E_LISTINO_TIPOLOGIA_UTILITY'),
+            ('vendite.trgfn_ordini_ful_guard_consistenza',                        'E_QTA_NON_POSITIVA'),
+            ('vendite.trgfn_resi_accrediti_guard',                                'E_QTA_NON_POSITIVA'),
+            ('vendite.trgfn_resi_riconsegne_guard',                               'E_QTA_NON_POSITIVA'),
+            ('vendite.trgfn_resi_righe_guard_quantita',                           'E_QTA_NON_POSITIVA'),
+            ('vendite.trgfn_resi_rinunce_guard',                                  'E_QTA_NON_POSITIVA'),
+            ('vendite.trgfn_preventivi_guard_utility_istanza_coerenza',           'E_PREV_UTILITY_ISTANZA_INCOERENTE'),
+            -- i 9 A del §4-ter.2 (22-09, changeSet 20260922-11..13)
+            ('anagrafiche.fn_crea_risorsa_umana_v2',                              'E_ADMIN_UO_NON_TROVATA'),
+            ('anagrafiche.trgfn_billing_account_guard_normalize',                 'E_PARENT_SELF'),
+            -- ⭐ 2026-09-23: i tre controlli sulle date di validita' che stavano
+            --   qui (billing_account e i due legami ai conti bancari) sono stati
+            --   ritirati (20260923-43..-45): la regola ha UNA sede, il guard
+            --   comune. Il canale si pretende ora su di lui.
+            --   2026-09-24: stessa sorte per E_BOM_VALIDO_AL_INVALIDO nel trigger
+            --   della BoM (20260924-01, codice ritirato). La pubblicazione dei
+            --   template (sopra) resta: il suo codice vive sul ramo di valido_dal.
+            ('script.trgfn_guard_date_validita',                                  'E_DATA_AL_MINORE_DAL'),
+            ('script.fn_disdetta_cliente',                                        'E_DATA_CESSAZIONE_INVALIDA'),
+            ('script.fn_guard_soggetto_pf_pura',                                  'E_AUTH_USER_SOGGETTO_CON_PIVA'),
+            ('script.trgfn_componenti_check_prezzo_obbligatorio',                 'E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO'),
+            ('vendite.fn_aggiungi_onere_commessa',                                'E_ONERE_ARTICOLO_MANCANTE'),
+            ('vendite.fn_aggiungi_onere_commessa',                                'E_ONERE_IMPORTO_NON_VALIDO')
+       ) a(funzione, codice)
+       LEFT JOIN _punti v
+              ON v.funzione = a.funzione AND v.codice = a.codice AND v.via = 'DIRETTO'
+      WHERE v.canale IS DISTINCT FROM 'IN_CHIAMATA' OR v.chiave IS DISTINCT FROM 'campo'),
+    NULL,
+    '1. i 27 guard sanati il 21-09 e le 8 funzioni del 22-09 portano ancora il canale campo per i loro codici: nessun corpo riemesso da uno YAML stantio'
+);
+
+-- ============================================================
+-- 2. ⛔ NESSUN RAMO CIECO
+-- ============================================================
+-- Un sito PRIMO_MOTIVO che non si lega a nessun codice non e' «a posto»: e' un
+-- sito che la lettura non sa leggere. Stesso criterio del rubinetto (t.3).
+SELECT is(
+    (SELECT string_agg(funzione, ', ' ORDER BY funzione)
+       FROM _punti
+      WHERE via = 'PRIMO_MOTIVO' AND codice IS NULL
+        AND funzione NOT LIKE 'pgtap_c2.%'),
+    NULL,
+    '2. ogni sito che solleva il primo motivo si lega ad almeno un codice: nessun ramo cieco'
+);
+
 
 -- ============================================================
 -- 3..14. I casi costruiti, uno per proprieta'
@@ -469,7 +482,7 @@ SELECT is(
        FROM _c2 WHERE funzione = 'pgtap_c2.fn_primo_motivo_dal_motivo')
     || ' | ' ||
     (SELECT string_agg(codice || ':' || coalesce(motivo_chiave, '-') || ':' || n_motivi, ', ' ORDER BY codice)
-       FROM dbops.vw_funzioni_check_codici
+       FROM _c2_check
       WHERE funzione = 'pgtap_c2.fn_primo_motivo_dal_motivo'),
     'E_PGTAP_MOTIVO_CON:IN_CHIAMATA/campo/fn_check_pgtap_canale, E_PGTAP_MOTIVO_SENZA:NESSUNO/-/fn_check_pgtap_canale'
     || ' | ' ||
@@ -522,7 +535,7 @@ SELECT is(
 --   `valori` (la delegata li emette, la check che la conta no).
 SELECT is(
     (SELECT string_agg(codice || ':' || check_emette_valori, ', ' ORDER BY codice)
-       FROM dbops.vw_funzioni_check_codici
+       FROM _c2_check
       WHERE funzione = 'pgtap_c2.fn_consumo'),
     'E_PGTAP_CONTATO:false',
     '16. IL CONSUMO non e'' delega: una check che CONTA i motivi di un''altra emette il suo, non eredita codici ne'' `valori`'

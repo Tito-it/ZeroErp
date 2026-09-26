@@ -207,7 +207,7 @@ invecchia senza dirlo*. Le sei domande della diagnostica restano come
 **decisione** e non come lavoro, fra le «Decisioni aperte» della mappa. Vedi
 [brief-db-fixture-che-costruiscono-d7-d6-d4.md](work-done/brief-db-fixture-che-costruiscono-d7-d6-d4.md),
 [analisi-presidi-percorso-storto.md](work-done/analisi-presidi-percorso-storto.md),
-[brief-db-registro-owner-e-sync-riservati-al-migratore.md](work-in-progress/brief-db-registro-owner-e-sync-riservati-al-migratore.md),
+[brief-db-registro-owner-e-sync-riservati-al-migratore.md](work-done/brief-db-registro-owner-e-sync-riservati-al-migratore.md),
 [analisi-diagnostica-produzione-senza-accesso-db.md](work-done/analisi-diagnostica-produzione-senza-accesso-db.md).
 
 **Anello 1 (`ui`) — Il frontend: le classi che non esistevano, e il chrome che

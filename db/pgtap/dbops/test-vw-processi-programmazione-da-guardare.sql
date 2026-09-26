@@ -92,11 +92,14 @@ SELECT is_empty(
 -- manca e `fn_get_pgagent_job_stato` torna zero righe per tutti.
 DO $guasto$
 BEGIN
+    -- rev 2026-09-26: un processo con job pgAgent dichiara se gira in CI
+    --   (chk_processi_convergenza_ci, brief-db-job-notturni-in-ci).
     INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
-                                jobname_pgagent)
+                                jobname_pgagent, ci_esclusione)
     VALUES (9750, 'PGTAP-PRESIDIO-GUASTO',
             'processo che dichiara un job inesistente',
-            'MANUTENZIONE', 'PGAGENT', 'PGTAP-JOB-CHE-NON-ESISTE-MAI');
+            'MANUTENZIONE', 'PGAGENT', 'PGTAP-JOB-CHE-NON-ESISTE-MAI',
+            'pgTAP: processo guasto seminato');
 END
 $guasto$;
 

@@ -1927,11 +1927,14 @@ stesso build**, dalla passata `ci_apply` che segue quella che l'ha applicato.
 > una riga di REVOKE»*, ed era una riga che il loop avrebbe cancellato.
 
 ⭐ **Il rimedio, per una tabella intera, è dichiararla nel loop.** In testa al
-blocco ci sono due elenchi: `v_registri_append_only` (tabelle a cui l'app riceve
+blocco ci sono gli elenchi: `v_registri_append_only` (tabelle a cui l'app riceve
 solo `SELECT, INSERT`, e a cui `UPDATE, DELETE` vengono **revocati** a ogni
-passata) e `v_fn_riservate` (funzioni a cui l'`EXECUTE` è revocato **a PUBLIC e
-all'app**). Il presidio sta nell'unico posto che avrebbe potuto annullarlo, e
-si dichiara come dato — non come un secondo file che rincorre il primo.
+passata), `v_tabelle_sola_lettura_app` (solo `SELECT`: scrive una porta del
+proprietario — una DEFINER, un seed, il migratore), `v_tabelle_senza_delete` e
+`v_schemi_senza_delete` (tutto tranne `DELETE`), e `v_fn_riservate` (funzioni a
+cui l'`EXECUTE` è revocato **a PUBLIC e all'app**). Il presidio sta nell'unico
+posto che avrebbe potuto annullarlo, e si dichiara come dato — non come un
+secondo file che rincorre il primo.
 
 ⚠️ **Servono comunque TRE sedi, non due** — fino al 2026-09-18 questa riga
 diceva «due file», e la terza era scritta solo nell'intestazione del loop
@@ -1955,6 +1958,18 @@ al solo `zeroerp_app` non toglie niente: si revoca `FROM PUBLIC, zeroerp_app`
 insieme. Il proprietario esegue sempre; i grant espliciti (ruoli batch, dal
 provisioning) restano. ⚠️ Un `DROP` + `CREATE` riporterebbe `=X`: lo vede il
 pgTAP di postura, non il migrate.
+
+⛔ **Eccezione: una `SECURITY DEFINER` di `postgres` non si chiude con l'ACL.**
+Un privilegio dato al migratore mentre la possiede in prestito non sopravvive
+alla restituzione (`ALTER … OWNER` rimappa le voci del vecchio proprietario), e
+in `v_fn_riservate` servirebbe anche un `GRANT` esplicito al migratore di CI. La
+funzione si difende **nel corpo**: una guardia in testa che legge il chiamante
+da **`session_user`** — dentro una DEFINER `current_user` è il proprietario, e
+una guardia su di lui è sempre aperta — e solleva `42501` nudo. `EXECUTE` a
+PUBLIC resta, e il pgTAP di postura lo **dichiara** `true`. Caso unico al
+2026-09-26: `dbops.fn_sync_functions_owner` (brief
+registro-owner-e-sync-riservati-al-migratore, presidio
+`db/pgtap/dbops/test-sec-functions-owner-riservato-v1.sql`).
 
 ⭐ **La postura si asserisce con `has_table_privilege(ruolo, …)` e
 `has_function_privilege(ruolo, …)`**, mai con `information_schema.role_table_grants`,
