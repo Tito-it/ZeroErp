@@ -275,7 +275,7 @@ class ClientiRepository:
             stato_cliente_id, stato_cliente_id,
             emittente_ids, emittente_ids,
         ]
-        # ⚠️ Sotto `RICERCA_MIN_CARATTERI` (3) il termine non filtra: fino al
+        # ⚠️ Sotto la soglia della lista (catalogo) il termine non filtra: fino al
         #    2026-09-24 la ricerca scritta a mano filtrava da un carattere (e
         #    senza `escape_ilike`: un `%` o un `_` facevano da jolly).
         add_ricerca_full_condition(conditions, params, search, _RICERCA_CLIENTI, alias="v")

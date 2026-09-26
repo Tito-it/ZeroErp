@@ -20,6 +20,7 @@ from apps.core.db._helpers import (
     extract_paginated,
     row_to_dict,
     rows_to_list,
+    soglia_ricerca,
 )
 from apps.core.db.parameter_repository import ParameterRepository
 
@@ -121,11 +122,10 @@ _ISTANZE_INFO_SELECT = """ist.n_istanze,
        CASE WHEN ist.n_istanze = 1 THEN ist._unica_id END AS istanza_unica_id,
        CASE WHEN ist.n_istanze = 1 THEN ist._unica_codice END AS istanza_unica_codice"""
 
-# Lunghezza minima della search bar soggetti (resolver). Esposto via
-# config-resolver al frontend per evitare cablato duplicato. Costante
-# applicativa: se serve parametrizzazione per emittente, promuovere a
-# config.parameters (chiave es. MIN_SEARCH_LENGTH_SOGGETTI).
-MIN_SEARCH_LENGTH_SOGGETTI = 3
+# ⛔ `MIN_SEARCH_LENGTH_SOGGETTI` non c'e' piu' (2026-09-26, brief-db-be-fe-
+#    ricerca-soglia-per-lista §6 b, decisione di Tid): la soglia del resolver
+#    soggetti e' quella del catalogo della lista che interroga — vedi
+#    `get_config_resolver`.
 
 
 class SoggettiRepository:
@@ -155,7 +155,7 @@ class SoggettiRepository:
         params: list[Any] = [emittente_ids, emittente_ids]
         conditions: list[str] = ["(%s::bigint IS NULL OR s.tipo_soggetto_dettaglio_id = %s)"]
         params.extend([tipo_soggetto_dettaglio_id, tipo_soggetto_dettaglio_id])
-        # ⚠️ Sotto `RICERCA_MIN_CARATTERI` (3) il termine non filtra: fino al
+        # ⚠️ Sotto la soglia della lista (catalogo) il termine non filtra: fino al
         #    2026-09-24 la ricerca scritta a mano filtrava da un carattere.
         add_ricerca_full_condition(conditions, params, search, _RICERCA_SOGGETTI, alias="s")
         sql = f"""
@@ -914,6 +914,12 @@ class SoggettiRepository:
                AND (trna.valido_al IS NULL OR trna.valido_al >= CURRENT_DATE)
         """
         # 3. Tipi soggetto dettaglio filtrati per nature ammesse
+        # ⛔ `varchar[]`, non `bigint[]`: `config.tipi_soggetto.id` e' un codice
+        #    (`PF`, `PG`, `ENC`). Col cast a `bigint[]` la query falliva su OGNI
+        #    ruolo con la matrice delle nature valorizzata — cioe' tutti quelli
+        #    del seed — e i test unitari, con la connessione mockata, non lo
+        #    vedevano. Trovato il 2026-09-26 dal primo test sul DB vero
+        #    (`test_ricerca_full_db`, brief-db-be-fe-ricerca-soglia-per-lista §6 b).
         sql_dettaglio = """
             SELECT tsd.id, tsd.codice_interno, tsd.descrizione,
                    ts.id AS tipo_soggetto_id,
@@ -923,7 +929,7 @@ class SoggettiRepository:
                    tsd.dati_societari_policy
               FROM config.tipi_soggetto_dettaglio tsd
               JOIN config.tipi_soggetto ts ON ts.id = tsd.tipo_soggetto_id
-             WHERE (%s::bigint[] IS NULL OR ts.id = ANY(%s))
+             WHERE (%s::varchar[] IS NULL OR ts.id = ANY(%s::varchar[]))
              ORDER BY tsd.codice_interno
         """
         with connection.cursor() as cursor:
@@ -940,6 +946,19 @@ class SoggettiRepository:
 
             cursor.execute(sql_dettaglio, [nature_ids, nature_ids])
             dettagli = rows_to_list(cursor)
+
+            # «Tutte le nature» si leggono dal dominio, l'enum di
+            # `tipi_soggetto.natura_soggetto`, nell'ordine in cui e' dichiarato.
+            # ⛔ Mai un elenco scritto qui: fino al 2026-09-26 era
+            #    `["PF", "PG", "ENTE"]`, una seconda sede dell'enum che una
+            #    natura nuova avrebbe lasciato indietro senza errore.
+            if nature:
+                nature_ammesse = [n["natura_soggetto"] for n in nature]
+            else:
+                cursor.execute(
+                    "SELECT unnest(enum_range(NULL::config.natura_soggetto_enum))::text"
+                )
+                nature_ammesse = [r[0] for r in cursor.fetchall()]
 
         # 4. Default tipo_soggetto_dettaglio per ruolo (codice_interno via
         # config.parameters, override gratuito per emittente). Usiamo
@@ -963,10 +982,18 @@ class SoggettiRepository:
         return {
             "tipo_ruolo": ruolo["codice"],
             "tipo_ruolo_descrizione": ruolo["descrizione"],
-            "nature_ammesse": [n["natura_soggetto"] for n in nature] if nature else ["PF", "PG", "ENTE"],
+            "nature_ammesse": nature_ammesse,
             "tipi_soggetto_dettaglio": dettagli,
             "default_tipo_soggetto_dettaglio_id": default_id,
-            "min_search_length": MIN_SEARCH_LENGTH_SOGGETTI,
+            # ⭐ La soglia del catalogo della lista soggetti, non una costante:
+            #    il resolver cerca con `listSoggetti`, cioe' con QUESTA lista, e
+            #    il BB di ricerca filtra solo da `ricerca_min_caratteri` in su.
+            #    Una soglia sua sarebbe una seconda sede dello stesso fatto — e
+            #    se fosse piu' bassa di quella del catalogo, il resolver
+            #    manderebbe termini che il BB ignora, e proporrebbe come
+            #    suggerimenti i primi soggetti NON filtrati, senza errore.
+            #    Il codice lista viene dalla dichiarazione che la ricerca usa.
+            "min_search_length": soglia_ricerca(_RICERCA_SOGGETTI.lista_codice),
         }
 
     # Scopo: Recupera dati societari del soggetto (se esistono).

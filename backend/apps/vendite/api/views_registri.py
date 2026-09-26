@@ -97,7 +97,7 @@ class ApiRegistriList(DomainAPIView):
                     "spiegano un rifiuto in creazione."
                 ),
             ),
-            param_ricerca_full(min_caratteri=1),
+            param_ricerca_full(),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY,
                              required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY,

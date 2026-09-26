@@ -99,7 +99,7 @@ class EmailAccountListView(AdminAPIView):
 
     @extend_schema(
         parameters=[
-            param_ricerca_full(min_caratteri=1),
+            param_ricerca_full(),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
             OpenApiParameter(name="order_by", type=str, required=False),
@@ -265,7 +265,7 @@ class EmailTemplateListView(AdminAPIView):
 
     @extend_schema(
         parameters=[
-            param_ricerca_full(min_caratteri=1),
+            param_ricerca_full(),
             OpenApiParameter(name="codice", type=str, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),

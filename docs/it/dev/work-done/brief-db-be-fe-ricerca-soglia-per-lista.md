@@ -28,6 +28,26 @@
 > `ordinabile = t`), **pgTAP verdi** (corsa di Tid). ✅ **Decise da Tid** le
 > due scelte di §4-bis: `NOT NULL DEFAULT 3` e il BB `ui.fn_lista_da_codice`.
 > **Il lato DB è chiuso.** ⏳ Tocca a **BE e FE**: §5, nello stesso giro.
+>
+> **Stato 2026-09-26 (pomeriggio):** ✅ **§5 scritta**, BE e FE nello stesso
+> giro — esito in **§5-bis**. Suite BE 5400/5400 con E2E (2 skip), suite FE
+> 354/354. ⏳ Resta a **Tid**: la prova a video («KG» su unità di misura) e le
+> decisioni di §6, che non bloccano. Poi il brief va in `work-done/`.
+>
+> **Stato 2026-09-26 (sera):** ✅ **§6 a decisa da Tid: strada 2**, nessun 400
+> sotto soglia sulle liste a catalogo — applicata nello stesso giorno
+> (§6 a-bis). ✅ **§6 b decisa da Tid: strada 1** — il resolver soggetti usa
+> la soglia a catalogo della lista che interroga; applicata lo stesso giorno
+> (§6 b-bis), insieme a un difetto trovato strada facendo: la configurazione
+> del resolver non era mai passata sul DB vero (cast `bigint[]` su un codice).
+> **Nessuna decisione aperta.** Resta la prova a video di Tid.
+>
+> **Stato 2026-09-26 (chiusura):** ✅ revisione critica del diff prima del
+> commit, esito in **§8**: sei difetti corretti (fra cui la ricerca universale,
+> che misurava la soglia sul testo non trimmato), l'elenco delle nature del
+> resolver letto dall'enum, i mock del catalogo in una sede sola. **Brief
+> chiuso e spostato in `work-done/`.** Suite BE 5022/5022 sulle app toccate con
+> E2E (2 skip), FE 354/354.
 
 ---
 
@@ -240,6 +260,63 @@ dal CRUD, va prima deciso chi vince.
 ⛔ Fino ad allora i quattordici `min_caratteri=1` e i
 `param_ricerca_full(min_caratteri=1)` restano dove sono: niente passo a metà.
 
+## 5-bis. Esito BE e FE — 2026-09-26 ✅ scritto
+
+**Backend**
+
+| Pezzo | Dove |
+| --- | --- |
+| `soglia_ricerca(lista_codice)`: `SELECT ricerca_min_caratteri FROM ui.fn_lista_da_codice(%s)`, nessun ripiego (colonna `NOT NULL`) | `apps/core/db/_helpers.py` |
+| `add_ricerca_full_condition` senza `min_caratteri`: termine vuoto o di soli spazi → **nessuna** lettura; sotto soglia → si legge la soglia, **non** le colonne | idem |
+| i quattordici `min_caratteri=1` tolti dai repository | catalogo ×3, config ×2, anagrafiche ×2, documenti ×2, email ×2, famiglie, registri, processi |
+| `param_ricerca_full(*, rifiuta_sotto_soglia=False)`: la frase dice «sotto la soglia della lista (`ricerca_min_caratteri` nella configurazione) non filtra»; i quattordici `param_ricerca_full(min_caratteri=1)` diventano `param_ricerca_full()` | `apps/core/api/openapi_params.py` + le view |
+| la configurazione della schermata: **nessun codice nuovo** — `ricerca_min_caratteri` arriva già nel jsonb del risolutore, e `get_lista_config_per_video` lo porta così com'è | `apps/ui/services/ui_service.py` (solo il commento) |
+| `RICERCA_MIN_CARATTERI` resta, **solo** per le ricerche che non sono una lista a catalogo (il 400 di `require_min_search_length`, i tool dell'assistente) | `_helpers.py`, commento riscritto |
+
+Presidi: `test_ricerca_full_seed` — `test_nessuna_chiamata_dichiara_la_soglia`
+(firma dei due BB **e** scansione AST di `apps/`: una chiamata col vecchio
+argomento sarebbe un `TypeError` solo al primo operatore che cerca),
+`test_bb_termine_vuoto_non_legge_niente`, `test_bb_la_soglia_e_quella_della_lista`;
+`test_ricerca_full_db` — `test_la_soglia_e_della_lista_e_la_leggono_i_due_lettori`:
+la **stessa** lista messa a 1 e poi a 3 nel test (caso costruito, non il seed)
+filtra «K» solo nel primo caso, la configurazione per video porta ogni volta lo
+stesso numero (intero), e una lista inesistente è `E_UI_LISTA_NON_TROVATA`. I
+quattro test unitari che mockavano la sola lettura delle colonne mockano anche
+la soglia. `test_seed_offre_tutto_cio_che_il_backend_sa_ordinare` è verde (§1).
+
+**Frontend**
+
+| Pezzo | Dove |
+| --- | --- |
+| `ricercaMinCaratteri = ref(null)` dichiarata accanto a `ricercaFull`; `fetchList` la usa per `termineCorto` e la passa a `buildParams` come **terzo argomento** (`{ minCaratteri }`) | `core/composables/useListaEmptyStateFetch.js` |
+| `termineCorto`/`paramsRicerca`: `minCaratteri ?? RICERCA.MIN_CARATTERI` — ⚠️ `??` e non un default di parametro: lo store tiene `null`, e `length < null` manderebbe ogni lettera | `core/utils/listParams.js` |
+| `paramsFiltro` legge lo stesso ref: fetch **ed export** con la stessa soglia | `core/composables/useListaStoreCore.js` |
+| i cinque store scritti a mano (`distinte`, `codaRighe`, `rateFuoriCapienza`, `eccedenze`, `resiCoda`): `buildParams(f, _termine, ricerca)` → `paramsRicerca(f, ricerca)`, ed espongono `ricercaMinCaratteri` | `pagamenti/stores/`, `vendite/resi/stores/` |
+| `onConfigLoaded` scrive la soglia (intero ≥ 1, altrimenti `null`) e **ricarica** se la soglia vera cambia il `search` che si manda — il deep-link `?search=KG` parte con la soglia di ripiego, prima della configurazione. Una fetch sola se cambiano insieme pagina e soglia | `core/composables/useListaConfigurabilePage.js` |
+
+Presidi: `listParams.spec` (soglia `null`), `useListaStoreCore.spec` (15-17),
+`pagamenti/stores/ricercaFull.spec` (la soglia arriva al `buildParams` scritto a
+mano), e il **nuovo** `useListaConfigurabilePage.spec` (5 test: soglia dalla
+configurazione, deep-link corto ricaricato, nessuna ricarica senza termine o a
+soglia invariata, una fetch sola).
+
+Doc: cataloghi BB (backend `add_ricerca_full_condition` e `param_ricerca_full`,
+frontend `useListaEmptyStateFetch` e `listParams`), `frontend-standards`
+§ricerca, `api.md` §Ricerca, `Policy-ricerca-e-paginazione` §2.1.
+
+⚠️ **Cosa NON è cambiato, e perché** — da leggere con §6:
+
+- ~~i **400** sotto soglia restano sulla soglia di progetto~~ → ✅ chiuso da
+  §6 a (sera del 2026-09-26): tolti, vedi §6 a-bis;
+- i **tool dell'assistente** rifiutano sotto `RICERCA_MIN_CARATTERI` prima di
+  chiamare il service, anche su liste a catalogo: stessa natura del punto
+  sopra, oggi tutte le liste che interrogano sono a 3;
+- l'export della **coda resi** (`ResiCodaTable.buildExportParams`) manda il
+  termine della casella senza soglia, da prima di questo cantiere: il backend lo
+  ignora sotto la soglia della lista, quindi il file coincide con la videata;
+- il **CRUD admin** della colonna (§4-bis, «chi vince» fra admin e mirror CSV):
+  non esposto.
+
 ## 6. Decisioni aperte per Tid — non bloccano §4
 
 **a. Sotto soglia, sulle liste NON di configurazione: 400 o termine ignorato?**
@@ -257,6 +334,39 @@ la soglia **della lista**, quindi il 400 diventa una difesa contro un client che
 non legge la configurazione, non un evento della digitazione. Fino alla
 decisione i 400 esistenti **restano** nelle view.
 
+**✅ Decisa da Tid il 2026-09-26: strada 2 — il termine sotto soglia si
+ignora, nessun 400 sulle liste a catalogo.** Il perché: la domanda «il
+termine è troppo corto?» ha già una sede, la soglia del catalogo applicata dal
+BB; un controllo nella view ne è una seconda, e il frontend non manda più
+termini corti, quindi il 400 non protegge l'operatore. Una regola sola per
+tutte le liste.
+
+**§6 a-bis. Esito — 2026-09-26 ✅ scritto**
+
+| Lista | Dove era il 400 |
+| --- | --- |
+| `catalogo.articoli` | `ApiArticoliList.get` |
+| `vendite.listini` | `ApiListiniList.get` |
+| `pagamenti.rate` | `saldi_service.list_rate` |
+| testate `magazzino.inventari` / `magazzino.rettifiche` | `magazzino/api/views._filtri_documenti` |
+| `magazzino.disponibilita` / `…_articoli` | `magazzino/api/views._filtri_disponibilita` |
+| `magazzino.magazzini` / `ubicazioni` / `lotti` | `magazzino/api/views_anagrafiche._filtri_anagrafica` |
+
+- `param_ricerca_full` perde l'opzione `rifiuta_sotto_soglia` (nessun
+  consumatore): lo schema OpenAPI di ogni lista dice la stessa frase;
+- tre test rovesciati: il termine corto arriva al service/repository con un
+  200 (`test_list_articoli_search_corta_non_e_un_errore`,
+  `test_ricerca_corta_non_e_un_errore` in rate e magazzino);
+- ⛔ **restano** col 400, perché non sono liste a catalogo: la ricerca
+  universale (`search_view`), il lookup articoli per autocomplete e il lookup
+  delle risorse umane. Per questi `RICERCA_MIN_CARATTERI` resta la soglia;
+- i **tool dell'assistente** rifiutano ancora il termine corto prima di
+  chiamare il service: non è un 400 HTTP ma un errore azionabile per il
+  modello (`ai_assistant/tools/base.py`), fuori dal perimetro di questa
+  decisione. ➡️ Annotato in
+  [integrazione-ai-sviluppo-v2](../work-in-progress/integrazione-ai-sviluppo-v2.md)
+  § «Debiti dei tool esistenti»: il guard resta, la soglia va letta dalla lista.
+
 **b. `MIN_SEARCH_LENGTH_SOGGETTI = 3`** (ex brief BE §13.3 f) in
 `anagrafiche/db/soggetti_repository.py`: la soglia della ricerca soggetti del
 `SoggettoResolver`, esposta al FE dal resolver (`min_search_length`,
@@ -269,12 +379,91 @@ decidere se legge `RICERCA_MIN_CARATTERI` (e il FE `RICERCA.MIN_CARATTERI`) o se
 
 1. ✅ **Team DB**: §4 scritta il 2026-09-25 (§4-bis), coi pgTAP; §1 scritta il
    2026-09-24. ✅ Applicate entrambe il 2026-09-26, pgTAP verdi.
-2. ⏳ **BE + FE**: §5, nello stesso giro — **sbloccato**. Il BE legge la soglia
+2. ✅ **BE + FE**: §5, nello stesso giro — scritto il 2026-09-26 (§5-bis).
+   ⏳ Prova a video di Tid. Era: **sbloccato**. Il BE legge la soglia
    con `SELECT ricerca_min_caratteri FROM ui.fn_lista_da_codice(%s)` e la
    passa al FE dalla chiave `ricerca_min_caratteri` del jsonb del risolutore
    (§4-bis). Con §1 applicata, `test_seed_offre_tutto_cio_che_il_backend_sa_ordinare`
    deve tornare verde.
-3. ⏳ **Tid**: §6 a e b, quando vuole: non bloccano.
+3. ✅ **Tid**: §6 a (strada 2) e §6 b (strada 1) decise e applicate il
+   2026-09-26. ⏳ Prova a video.
 
 Fine cantiere: nessuna chiamata al BB passa `min_caratteri`, nessuna view
 dichiara la soglia a mano, e «KG» su unità di misura filtra a video.
+
+## 6 b-bis. Esito — 2026-09-26 ✅ scritto
+
+**Decisione di Tid: strada 1.** Il brief diceva «il resolver non è una lista a
+catalogo, quindi §4 non lo copre». Il codice dice altro: il `SoggettoResolver`
+cerca con `listSoggetti`, cioè con la lista `anagrafiche.soggetti`, e quindi
+col BB che applica la soglia a catalogo di quella lista. Due soglie decidevano
+la stessa ricerca, e con quella del resolver più bassa la lista inline avrebbe
+proposto i primi soggetti **non filtrati** come suggerimenti.
+
+| Pezzo | Dove |
+| --- | --- |
+| `min_search_length` della configurazione del resolver = `soglia_ricerca(_RICERCA_SOGGETTI.lista_codice)`; `MIN_SEARCH_LENGTH_SOGGETTI` ritirata | `anagrafiche/db/soggetti_repository.py` |
+| il componente: ripiego `RICERCA.MIN_CARATTERI` invece di `?? 3`; la soglia si misura sul termine **trimmato** con `termineCorto` (« ab» erano tre caratteri nella casella e due per il BB) e si manda il termine trimmato | `core/components/SoggettoResolver.vue` |
+| il placeholder dice la soglia vera: «Digita almeno {n} caratteri...» | `locales/it.json`, `en.json` |
+
+⚠️ **Difetto trovato strada facendo, e corretto**: `get_config_resolver`
+filtrava i tipi di dettaglio con `%s::bigint[]`, ma `config.tipi_soggetto.id`
+è un `varchar(10)` (`PF`, `PG`, `ENC`). Su ogni ruolo con la matrice delle
+nature valorizzata — tutti quelli del seed — la query falliva; i test unitari,
+con la connessione mockata, non potevano vederlo. Ora `varchar[]`. A video il
+resolver ripiegava in silenzio: nessuna natura, nessun tipo di dettaglio,
+soglia 3.
+
+Presidi: `test_config_resolver` (la soglia arriva dalla lettura del catalogo,
+chiamata col codice della lista soggetti), e `test_ricerca_full_db` test 8, sul
+DB vero: la lista soggetti messa a 5 nel test, la configurazione del resolver
+risponde 5 **e** porta i tipi di dettaglio (presidio del cast).
+
+## 8. Revisione critica prima del commit — 2026-09-26 ✅ scritta
+
+Una lettura del diff completo (BE, FE, test) cercando difetti, copie e numeri
+scritti a mano. Il trasporto della soglia è risultato completo: ogni
+`paramsRicerca`/`termineCorto` la riceve, ogni `buildParams` scritto a mano la
+inoltra, e i cinque store costruiti su `useListaEmptyStateFetch` che non la
+ricevono (`canaliIncasso`, `codeJobs`, `fondiFatturaDaDecidere`, `lotti`,
+`approvazioniPrezzo`) non hanno ricerca testuale.
+
+**Difetti corretti**
+
+| # | Difetto | Dove | Correzione |
+| --- | --- | --- | --- |
+| 1 | Con la soglia a catalogo `{n}` può valere 1: «Digita almeno 1 caratteri» | `SoggettoResolver.vue`, `locales/*.json` | plurale `1 carattere \| {n} caratteri`, `t(key, n, { n })` come nel resto del progetto |
+| 2 | Ricerca universale: `3` scritto due volte, e soglia misurata sul testo **non** trimmato mentre il backend fa `strip` — « ab» passava il frontend e prendeva un 400. Lo stesso difetto di §6 b-bis, nel componente accanto | `core/components/SearchDrawer.vue` | `termineCorto` sul termine trimmato (soglia di progetto: non è una lista a catalogo), `q` trimmato; `search.min_chars` dice `{n}` da `RICERCA.MIN_CARATTERI` |
+| 3 | `min_length=3` scritto accanto a un default che è già `RICERCA_MIN_CARATTERI` | `core/api/search_view.py`, `core/api/examples/domain_search_example.py` (un esempio si ricopia) | tolto: vale il default |
+| 4 | Commento falso: «la view risponde ancora 400, decisione aperta» | `catalogo_repository.list_articoli` | riscritto: nessun 400 (§6 a) |
+| 5 | Il `min_caratteri=1` sparito dal codice restava in una decina di commenti al presente («cerca da un carattere»): la seconda sede che il brief ritira, falsa al primo cambio di catalogo | repository e view di configurazione | «la soglia la dichiara il catalogo della lista»; le decisioni restano, datate |
+| 6 | Righe di commento oltre 100 caratteri, tre righe vuote dopo un import tolto | view di magazzino, rate, listini, articoli; `openapi_params.py` | riavvolte |
+
+**Da decidere, deciso e fatto (ok Tid, stesso giorno)**
+
+- **Le nature del resolver senza matrice.** `get_config_resolver` rispondeva
+  `["PF", "PG", "ENTE"]` scritto nel codice quando il ruolo non ha righe in
+  `tipi_ruoli_nature_ammesse` («tutte le nature»): una seconda sede dell'enum
+  `config.natura_soggetto_enum`, che una natura nuova avrebbe lasciato indietro
+  senza errore. Ora si legge il dominio:
+  `SELECT unnest(enum_range(NULL::config.natura_soggetto_enum))::text`, nell'ordine
+  di dichiarazione. Presidi: `test_config_resolver` 3 (una natura che il codice
+  non conosce arriva) e `test_ricerca_full_db` 8 (lo stesso ruolo con la matrice
+  spenta nel test risponde col dominio, letto come app).
+  ⚠️ **Resta fuori perimetro** una seconda copia dello stesso elenco nello schema
+  JSON di un tool dell'assistente (`ai_assistant/tools/anagrafiche_tools.py`,
+  `"enum": ["PF", "PG", "ENTE"]`): lo schema si costruisce all'import e non può
+  leggere il DB. ➡️ Annotato, insieme alla soglia dei tool (§6 a-bis), in
+  [integrazione-ai-sviluppo-v2](../work-in-progress/integrazione-ai-sviluppo-v2.md)
+  § «Debiti dei tool esistenti».
+- **I mock del catalogo in una sede.** Dopo §5 ogni test unitario che passa dal
+  BB di ricerca doveva fingere **due** letture (colonne e soglia), e la coppia
+  era scritta a mano in cinque file con tre nomi diversi per lo stesso percorso.
+  Ora c'è `catalogo_ricerca_finto(accese, *, soglia=RICERCA_MIN_CARATTERI)` in
+  `apps/core/tests/ricerca_catalogo_fakes.py` (regola del 2), e le cinque copie
+  sono ritirate nello stesso giro. Presidio:
+  `test_ricerca_full_seed.test_i_test_fingono_il_catalogo_da_una_sede` — nessun
+  altro file di test scrive i percorsi delle due letture. Il mock di
+  `test_config_resolver` resta a parte: sostituisce un altro nome
+  (`soggetti_repository.soglia_ricerca`).
+

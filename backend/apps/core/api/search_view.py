@@ -178,7 +178,7 @@ class SearchUniversaleView(DomainAPIView):
                 message="Parametri ricerca non validi.",
                 detail="Il parametro 'q' e' obbligatorio.",
             )
-        require_min_search_length(q, min_length=3, field_name="q")
+        require_min_search_length(q, field_name="q")
 
         repo = SearchRepository()
         tipo_ruolo_id = _require_tipo_ruolo_id(request.query_params, repo)

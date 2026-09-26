@@ -24,8 +24,6 @@ from collections.abc import Iterable
 
 from drf_spectacular.utils import OpenApiParameter
 
-from apps.core.db._helpers import RICERCA_MIN_CARATTERI
-
 
 # Scopo: la frase «Whitelist (nome FISICO): …» di un `order_by`, dalla
 #        whitelist del repository (`dict[chiave esposta -> colonna SQL]`, o
@@ -41,9 +39,7 @@ def descrizione_order_by(colonne: Iterable[str], nota: str = "") -> str:
 
 
 # Scopo: il parametro `search` di una lista configurabile che cerca col BB
-#        `add_ricerca_full_condition`. Gli argomenti ripetono quelli della
-#        chiamata al BB nel repository (`min_caratteri`) e dicono se la view
-#        risponde 400 sotto soglia (`require_min_search_length`).
+#        `add_ricerca_full_condition`.
 # ⛔ La frase NON elenca le colonne: le decide il catalogo della lista, per
 #    l'operatore, e l'amministratore le cambia dal pannello. Un elenco scritto
 #    qui e' una seconda sede che invecchia al primo cambio — ed e' come e'
@@ -51,22 +47,21 @@ def descrizione_order_by(colonne: Iterable[str], nota: str = "") -> str:
 #    di dichiarazioni, con testi gia' separati dal codice («min 2», «>=3 char»
 #    dove il 400 era stato ritirato, P.IVA e C.F. dove si cerca l'id fiscale
 #    univoco, il codice interno che non si cerca).
-def param_ricerca_full(
-    *,
-    min_caratteri: int = RICERCA_MIN_CARATTERI,
-    rifiuta_sotto_soglia: bool = False,
-) -> OpenApiParameter:
-    frase = (
-        "Ricerca libera sulle colonne che il catalogo della lista accende per "
-        "l'operatore (`ricerca_full` nella configurazione della lista)."
-    )
-    if min_caratteri <= 1:
-        soglia = "Da un carattere."
-    elif rifiuta_sotto_soglia:
-        soglia = f"Sotto {min_caratteri} caratteri: 400 `E_SEARCH_VALIDATION`."
-    else:
-        soglia = f"Sotto {min_caratteri} caratteri non filtra."
+# ⛔ E per la stessa ragione NON dice la soglia: e' un fatto della lista
+#    (`ricerca_min_caratteri` nella configurazione, brief-db-be-fe-ricerca-
+#    soglia-per-lista), e lo schema non puo' leggere il catalogo all'import.
+#    Fino al 2026-09-26 la view la ripeteva (`min_caratteri=1`), accanto al
+#    repository che la ripeteva una seconda volta.
+# ⭐ Nessuna lista a catalogo risponde 400 sotto soglia (§6 a, Tid 2026-09-26):
+#    il termine corto non filtra, sempre. L'opzione `rifiuta_sotto_soglia`, che
+#    lo dichiarava per sette view, e' uscita con loro.
+def param_ricerca_full() -> OpenApiParameter:
     return OpenApiParameter(
         name="search", type=str, location=OpenApiParameter.QUERY, required=False,
-        description=f"{frase} {soglia}",
+        description=(
+            "Ricerca libera sulle colonne che il catalogo della lista accende per "
+            "l'operatore (`ricerca_full` nella configurazione della lista). Sotto "
+            "la soglia della lista (`ricerca_min_caratteri` nella configurazione) "
+            "il termine non filtra."
+        ),
     )

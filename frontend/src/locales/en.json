@@ -806,7 +806,7 @@
   "resolver": {
     "action_search": "Search",
     "search_label": "Search subject by name, tax code or VAT",
-    "search_placeholder": "Type at least 3 characters...",
+    "search_placeholder": "Type at least 1 character... | Type at least {n} characters...",
     "confirm_selection": "Confirm selection",
     "create_new": "Create new subject",
     "create_and_select": "Create and select",
@@ -895,7 +895,7 @@
     "select_type": "Role type",
     "placeholder": "Search by name, tax ID, code...",
     "filter_comune": "Filter by municipality",
-    "min_chars": "Type at least 3 characters",
+    "min_chars": "Type at least {n} characters",
     "col_code": "Code",
     "col_name": "Business Name",
     "col_fiscal_id": "Tax ID / VAT",

@@ -11,7 +11,7 @@ Indice test eseguiti:
 2) CatalogoApiTests.test_list_articoli_requires_jwt
 3) CatalogoApiTests.test_list_articoli_parametri
 4) CatalogoApiTests.test_list_articoli_invalid_limit_fallback
-5) CatalogoApiTests.test_list_articoli_search_troppo_corta
+5) CatalogoApiTests.test_list_articoli_search_corta_non_e_un_errore
 6) CatalogoApiTests.test_list_articoli_invalid_tipo_voce_id
 7) CatalogoApiTests.test_get_articolo_ok
 8) CatalogoApiTests.test_get_articolo_not_found
@@ -121,13 +121,17 @@ class CatalogoApiTests(JwtMockedApiTest):
         response = self.client.get("/api/v1/catalogo/articoli/?limit=abc")
         self.assertEqual(response.status_code, 200)
 
-    # Scopo: search troppo corta -> 400 search validation.
+    # Scopo: search corta -> 200, il termine arriva al repository (sotto la
+    #        soglia del catalogo lo ignora il BB). ⛔ Nessun 400 sotto soglia
+    #        (brief-db-be-fe-ricerca-soglia-per-lista §6 a, Tid 2026-09-26).
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    def test_list_articoli_search_troppo_corta(self, _mock_auth):
+    @patch("apps.catalogo.api.views.fn_list_articoli")
+    def test_list_articoli_search_corta_non_e_un_errore(self, mocked_list, _mock_auth):
+        mocked_list.return_value = (_LIST_RESULTS, _LIST_TOTAL)
         response = self.client.get("/api/v1/catalogo/articoli/?search=ab")
 
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()["error"]["code"], "E_SEARCH_VALIDATION")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mocked_list.call_args.kwargs["search"], "ab")
 
     # Scopo: filtro integer non numerico -> 400 validazione input, non silenzioso fallback.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))

@@ -46,6 +46,23 @@
    La guardia di contesto (brief §12) sul DB vero: la GUC `app.current_user_id`
    di un altro utente, o vuota, e' `E_UI_CHIAMATA_NON_VALIDA` — la
    configurazione e la ricerca risponderebbero per due persone diverse.
+
+7. test_la_soglia_e_della_lista_e_la_leggono_i_due_lettori
+   La soglia della ricerca (`ui.lista_definizione.ricerca_min_caratteri`,
+   brief-db-be-fe-ricerca-soglia-per-lista §5): la STESSA lista, messa a 1 e
+   poi a 3 nel test (caso costruito, non il seed), filtra con un carattere solo
+   nel primo caso — e la configurazione della schermata porta ogni volta lo
+   stesso numero che il BB ha usato. Lista inesistente: `E_UI_LISTA_NON_TROVATA`.
+
+8. test_il_resolver_soggetti_usa_la_soglia_della_lista
+   Il `SoggettoResolver` cerca con la lista `anagrafiche.soggetti`: la sua
+   configurazione (`min_search_length`) e' la soglia a catalogo di quella lista
+   (brief §6 b). Caso costruito: la lista messa a 5 nel test, la configurazione
+   del resolver risponde 5. Con una soglia sua, piu' bassa, il resolver
+   proporrebbe soggetti non filtrati. Sul DB vero la configurazione del resolver
+   non era mai passata: il filtro per nature castava a `bigint[]` un codice.
+   Lo stesso ruolo senza matrice: `nature_ammesse` e' il dominio dell'enum
+   `config.natura_soggetto_enum`, non un elenco scritto nel codice.
 """
 
 from __future__ import annotations
@@ -55,7 +72,7 @@ import unittest
 
 from django.db import connection, transaction
 
-from apps.core.db._helpers import add_ricerca_full_condition
+from apps.core.db._helpers import add_ricerca_full_condition, soglia_ricerca
 from apps.core.tests.db_e2e import (
     apri_contesto_operatore,
     richiedi_db_provvisto,
@@ -460,6 +477,78 @@ class RicercaFullDbTests(unittest.TestCase):
                 with self.assertRaises(ServiceError) as ctx:
                     UiService().get_lista_config_per_video(utente, "vendite.preventivi")
                 self.assertEqual(ctx.exception.code, E_UI_CHIAMATA_NON_VALIDA)
+                raise _Annulla
+        except _Annulla:
+            pass
+
+    def test_la_soglia_e_della_lista_e_la_leggono_i_due_lettori(self):
+        from django.contrib.auth import get_user_model
+        from django.db import DatabaseError
+
+        from apps.ui.services.ui_service import UiService
+
+        ricerca = dict(_RICERCHE)["vendite.preventivi"]()
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                uid = apri_contesto_operatore(cur)
+                utente = get_user_model().objects.get(pk=uid)
+                for soglia, filtra in ((1, True), (3, False)):
+                    with self.subTest(soglia=soglia):
+                        cur.execute(
+                            "UPDATE ui.lista_definizione SET ricerca_min_caratteri = %s "
+                            " WHERE codice = 'vendite.preventivi'",
+                            [soglia],
+                        )
+                        self.assertEqual(cur.rowcount, 1)
+                        self.assertEqual(soglia_ricerca("vendite.preventivi"), soglia)
+                        conditions: list[str] = []
+                        add_ricerca_full_condition(conditions, [], "K", ricerca)
+                        self.assertEqual(bool(conditions), filtra, conditions)
+                        # Il secondo lettore: la schermata riceve lo stesso numero,
+                        # come intero (il frontend lo confronta con una lunghezza).
+                        config = UiService().get_lista_config_per_video(utente, "vendite.preventivi")
+                        self.assertEqual(config["ricerca_min_caratteri"], soglia)
+                        self.assertIsInstance(config["ricerca_min_caratteri"], int)
+                # Lista inesistente: lo stesso errore delle altre letture del catalogo.
+                with self.assertRaises(DatabaseError) as ctx, transaction.atomic():
+                    soglia_ricerca("x.lista_che_non_esiste")
+                self.assertIn("E_UI_LISTA_NON_TROVATA", str(ctx.exception))
+                raise _Annulla
+        except _Annulla:
+            pass
+
+    def test_il_resolver_soggetti_usa_la_soglia_della_lista(self):
+        from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
+
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                apri_contesto_operatore(cur)
+                cur.execute(
+                    "UPDATE ui.lista_definizione SET ricerca_min_caratteri = 5 "
+                    " WHERE codice = 'anagrafiche.soggetti'"
+                )
+                self.assertEqual(cur.rowcount, 1)
+                # `CL` e' un tipo ruolo del seed (contratto, non fotografia).
+                config = SoggettiRepository().get_config_resolver("CL")
+                self.assertEqual(config["min_search_length"], 5)
+                # ⚠️ Presidio del cast (`varchar[]`): la matrice delle nature del
+                #    ruolo filtra i tipi di dettaglio, e col vecchio `bigint[]`
+                #    questa chiamata falliva prima di arrivare qui.
+                self.assertTrue(config["tipi_soggetto_dettaglio"])
+                # Lo stesso ruolo SENZA matrice (spenta nel test, caso
+                # costruito): «tutte le nature» e' il dominio dell'enum, letto
+                # come app — non un elenco nel codice che invecchia.
+                cur.execute(
+                    "UPDATE config.tipi_ruoli_nature_ammesse trna SET attivo = false "
+                    "  FROM config.tipi_ruoli tr "
+                    " WHERE tr.id = trna.tipo_ruolo_id "
+                    "   AND COALESCE(tr.codice_interno, tr.codice) = 'CL'"
+                )
+                self.assertGreater(cur.rowcount, 0)
+                cur.execute("SELECT enum_range(NULL::config.natura_soggetto_enum)::text[]")
+                dominio = list(cur.fetchone()[0])
+                config = SoggettiRepository().get_config_resolver("CL")
+                self.assertEqual(config["nature_ammesse"], dominio)
                 raise _Annulla
         except _Annulla:
             pass

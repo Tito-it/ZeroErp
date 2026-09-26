@@ -120,10 +120,16 @@ def escape_ilike(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-# Soglia della ricerca libera delle liste: sotto, il termine non filtra.
-# ⚠️ Una sola per tutte le liste: il frontend manda il termine a ogni tasto, e
-#    prima del BB la stessa soglia era scritta in cinque repository, assente in
-#    due e trasformata in un 400 nel service delle offerte.
+# Soglia di progetto delle ricerche che NON sono una lista a catalogo: il 400
+# di `require_min_search_length` (ricerca universale, lookup), i tool
+# dell'assistente. ⛔ Non il resolver soggetti: cerca con la lista
+# `anagrafiche.soggetti`, e ne usa la soglia a catalogo (§6 b del brief sotto).
+# ⛔ Non e' la soglia delle liste configurabili: quella e' un fatto della LISTA
+#    (`ui.lista_definizione.ricerca_min_caratteri`, brief-db-be-fe-ricerca-
+#    soglia-per-lista) e il BB `add_ricerca_full_condition` la legge dal
+#    catalogo (`soglia_ricerca`). Un numero scritto qui per le liste sarebbe la
+#    seconda sede dello stesso fatto — com'era fino al 2026-09-26, con
+#    quattordici `min_caratteri=1` nei repository e nessuno nel frontend.
 RICERCA_MIN_CARATTERI = 3
 
 _NOME_COLONNA = re.compile(r"^[a-z_][a-z0-9_]*$")
@@ -209,6 +215,27 @@ def colonne_ricerca_accese(lista_codice: str) -> list[str]:
         return [r[0] for r in cursor.fetchall()]
 
 
+# Scopo: la soglia della ricerca libera di una lista: sotto questo numero di
+#        caratteri (dopo lo `strip`) il termine non filtra. E' un fatto della
+#        LISTA — una tabella di configurazione a codici corti cerca da uno, un
+#        archivio che cresce da tre — e sta nel catalogo accanto alle colonne
+#        (decisione di Tid del 2026-09-24).
+# ⭐ Una fonte, due lettori: questa e la configurazione della schermata (chiave
+#    `ricerca_min_caratteri` di `ui.fn_resolve_lista_config`), da cui il
+#    frontend decide se mandare il termine. Tutte e due leggono la riga dal BB
+#    DB `ui.fn_lista_da_codice`.
+# ⚠️ `SELECT … FROM`: `SELECT ui.fn_lista_da_codice(…)` da' la riga intera come
+#    una tupla in un campo solo. Colonna NOT NULL: nessun ripiego qui — lista
+#    assente o spenta e' `E_UI_LISTA_NON_TROVATA`, come per le colonne.
+def soglia_ricerca(lista_codice: str) -> int:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT ricerca_min_caratteri FROM ui.fn_lista_da_codice(%s)",
+            [lista_codice],
+        )
+        return int(fetchone_scalar(cursor))
+
+
 # Scopo: l'utente per cui la connessione sta agendo: la GUC `app.current_user_id`
 #        che `JwtAuditAuthentication` imposta per la RLS. `None` se vuota (fuori
 #        da una richiesta autenticata, o su un canale che non l'ha dichiarata).
@@ -233,15 +260,22 @@ def add_ricerca_full_condition(
     ricerca: RicercaFull,
     *,
     alias: str = "v",
-    min_caratteri: int = RICERCA_MIN_CARATTERI,
 ) -> None:
     """La ricerca libera di una lista: un OR di `ILIKE` sulle colonne accese.
 
     Aggiunge a `conditions`/`params` la condizione
     `((v.a)::text ILIKE %s OR (v.b)::text ILIKE %s ...)` col termine escapato
-    (`escape_ilike`) e racchiuso fra `%`. Termine vuoto o piu' corto di
-    `min_caratteri` (dopo lo `strip`) → non aggiunge niente, e il catalogo non
-    si legge nemmeno: aprire una lista senza cercare non costa niente in piu'.
+    (`escape_ilike`) e racchiuso fra `%`. Termine vuoto → non aggiunge niente
+    e il catalogo non si legge: aprire una lista senza cercare non costa niente
+    in piu'. Termine piu' corto della soglia della lista (`soglia_ricerca`,
+    dopo lo `strip`) → non aggiunge niente, e le colonne non si leggono.
+
+    ⭐ **La soglia e' della lista, non di chi chiama** (brief-db-be-fe-ricerca-
+    soglia-per-lista): la legge il catalogo, come le colonne, e la stessa
+    colonna arriva al frontend nella configurazione della lista. Fino al
+    2026-09-26 era un argomento `min_caratteri`, passato a 1 da quattordici
+    repository e ignorato dal frontend: «KG» sulle unita' di misura partiva
+    senza `search`, e la lista restava intera.
 
     ⭐ **Due sedi, due domande** (brief-be-ricerca-full-liste-residue §2):
     cosa si PUO' cercare lo dice il codice (`ricerca`, la dichiarazione del
@@ -276,10 +310,11 @@ def add_ricerca_full_condition(
     #    primo operatore che cerca.
     if not _NOME_COLONNA.match(alias):
         raise ValueError(f"add_ricerca_full_condition: alias non valido {alias!r}")
+    # Il termine di soli spazi e' un termine vuoto: non vale una lettura.
+    termine = (termine or "").strip()
     if not termine:
         return
-    termine = termine.strip()
-    if len(termine) < min_caratteri:
+    if len(termine) < soglia_ricerca(ricerca.lista_codice):
         return
     espressioni = ricerca.espressioni(alias)
     accese = set(colonne_ricerca_accese(ricerca.lista_codice))

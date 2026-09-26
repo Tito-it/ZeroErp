@@ -19,6 +19,11 @@
 //       ⭐ Dal 2026-09-24 anche la RICERCA LIBERA (`paramsRicerca`,
 //       `termineCorto`): la soglia del termine era scritta in sei store e due
 //       volte nel BB di stato della lista.
+//       ⭐ Dal 2026-09-26 la soglia e' della LISTA: arriva dalla configurazione
+//       (`ricerca_min_caratteri`, brief-db-be-fe-ricerca-soglia-per-lista), il
+//       BB di stato la tiene (`ricercaMinCaratteri`) e la passa qui come
+//       `minCaratteri`. Nessun numero nuovo nel codice: `RICERCA.MIN_CARATTERI`
+//       resta il ripiego finche' la configurazione non e' arrivata.
 // ------------------------------------------------------------
 
 import { PAGINATION, RICERCA } from '../constants'
@@ -110,10 +115,15 @@ export function termineRicerca(f) {
 //    stati diversi, e la guardia empty-state li tratta in due modi.
 // @param {string} termine - gia' trimmato (`termineRicerca`).
 // @param {object} [opts]
-// @param {number} [opts.minCaratteri] - soglia (default `RICERCA.MIN_CARATTERI`).
+// @param {number|null} [opts.minCaratteri] - la soglia della lista
+//        (`ricercaMinCaratteri` dello store); `null`/assente = non ancora nota,
+//        vale `RICERCA.MIN_CARATTERI`.
 // @returns {boolean}
-export function termineCorto(termine, { minCaratteri = RICERCA.MIN_CARATTERI } = {}) {
-  return termine.length > 0 && termine.length < minCaratteri
+// ⚠️ `??` e non un default di parametro: il default scatta solo su
+//    `undefined`, e lo store tiene `null` finche' la configurazione non arriva
+//    — un `termine.length < null` direbbe «mai corto» e manderebbe ogni lettera.
+export function termineCorto(termine, { minCaratteri } = {}) {
+  return termine.length > 0 && termine.length < (minCaratteri ?? RICERCA.MIN_CARATTERI)
 }
 
 // Scopo: il parametro `search` come lo chiede il backend — il termine trimmato
@@ -125,9 +135,10 @@ export function termineCorto(termine, { minCaratteri = RICERCA.MIN_CARATTERI } =
 //    chiedono qui, cosi' il file scaricato cerca come la videata.
 // @param {object} f - i filtri dello store (`search`).
 // @param {object} [opts]
-// @param {number} [opts.minCaratteri] - soglia (default `RICERCA.MIN_CARATTERI`).
+// @param {number|null} [opts.minCaratteri] - la soglia della lista (vedi
+//        `termineCorto`).
 // @returns {{search?: string}}
-export function paramsRicerca(f, { minCaratteri = RICERCA.MIN_CARATTERI } = {}) {
+export function paramsRicerca(f, { minCaratteri } = {}) {
   const termine = termineRicerca(f)
   return termine && !termineCorto(termine, { minCaratteri }) ? { search: termine } : {}
 }

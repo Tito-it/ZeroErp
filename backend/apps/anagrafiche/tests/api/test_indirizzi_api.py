@@ -26,6 +26,8 @@ Indice test eseguiti:
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+from apps.core.tests.ricerca_catalogo_fakes import catalogo_ricerca_finto
+
 
 def _mock_cursor(rows=None, cols=None, rowcount=0, fetchone_value=None):
     """Helper: crea mock cursor configurabile."""
@@ -102,10 +104,7 @@ class TestListIndirizziDettaglio(TestCase):
 
         # La lettura del catalogo e' del BB (`add_ricerca_full_condition`): qui
         # si fissa cosa accende, e si guarda che il pattern arrivi alla SQL.
-        with patch(
-            "apps.core.db._helpers.colonne_ricerca_accese",
-            return_value=["indirizzo_normalizzato", "descrizione_comune"],
-        ):
+        with catalogo_ricerca_finto(["indirizzo_normalizzato", "descrizione_comune"]):
             IndirizziRepository().list_indirizzi_dettaglio(search="Roma")
         sql, params = mc.execute.call_args[0]
         self.assertIn("(vid.indirizzo_normalizzato)::text ILIKE %s", sql)

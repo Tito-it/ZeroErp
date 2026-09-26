@@ -23,16 +23,17 @@ import { useContrattoFiltriLista } from '../../../core/composables/useContrattoF
 import { paramsRicerca } from '../../../core/utils/listParams'
 
 // Scopo: mappa filtri store → query params degli endpoint coda. Search con la
-//        regola comune (`paramsRicerca`, parità lista resi/DDT). order_by/
+//        regola comune (`paramsRicerca`, soglia della lista in `ricerca`,
+//        passata dal BB di stato; parità lista resi/DDT). order_by/
 //        order_dir e paginazione sempre inoltrati.
-function buildCodaParams(f) {
+function buildCodaParams(f, _termine, ricerca) {
   const p = {
     limit: f.limit,
     offset: f.offset,
     order_by: f.order_by,
     order_dir: f.order_dir,
   }
-  Object.assign(p, paramsRicerca(f))
+  Object.assign(p, paramsRicerca(f, ricerca))
   if (f.billing_account_id != null) p.billing_account_id = f.billing_account_id
   if (f.data_da) p.data_da = f.data_da
   if (f.data_a) p.data_a = f.data_a
@@ -90,8 +91,9 @@ function createResiCodaStore(id, fetchPage, extraFilters = {}) {
     })
 
     // alwaysFetch: la coda parte piena (lavoro pendente sempre visibile).
-    // `ricercaFull` (la lista cerca?) la dichiara il BB di stato.
-    const { items, totalRecords, loading, hasSearched, ricercaFull, fetchList } =
+    // `ricercaFull` (la lista cerca?) e `ricercaMinCaratteri` (da quanti
+    // caratteri?) le dichiara il BB di stato.
+    const { items, totalRecords, loading, hasSearched, ricercaFull, ricercaMinCaratteri, fetchList } =
       useListaEmptyStateFetch({
         filters,
         buildParams: buildCodaParams,
@@ -106,7 +108,7 @@ function createResiCodaStore(id, fetchPage, extraFilters = {}) {
     })
 
     return {
-      items, totalRecords, loading, hasSearched, filters, fetchList, ricercaFull,
+      items, totalRecords, loading, hasSearched, filters, fetchList, ricercaFull, ricercaMinCaratteri,
       chiaviFiltro, filtriDefault, azzeraFiltri,
     }
   }, {

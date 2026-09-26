@@ -206,11 +206,10 @@ class FamiglieDocumentoRepository:
             "(%s::boolean IS NULL OR v.gestisce_serie = %s)",
         ]
         params: list[Any] = [attivo, attivo, gestisce_serie, gestisce_serie]
-        # ⭐ `min_caratteri=1`: una lista di configurazione, dove prefissi e
-        #    codici di uno o due caratteri sono normali e vanno trovati.
-        add_ricerca_full_condition(
-            conditions, params, search, _RICERCA, min_caratteri=1,
-        )
+        # ⭐ Una lista di configurazione, dove prefissi e codici di uno o due
+        #    caratteri sono normali e vanno trovati: la soglia la dichiara il
+        #    catalogo della lista (`ricerca_min_caratteri`), non questo modulo.
+        add_ricerca_full_condition(conditions, params, search, _RICERCA)
         sql = f"""
             SELECT v.*,
                    COUNT(*) OVER () AS total_count

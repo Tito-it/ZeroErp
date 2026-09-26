@@ -189,7 +189,7 @@ ARTICOLI_DETAIL_COLUMNS: tuple[str, ...] = (
 
 # Cosa si PUO' cercare nelle liste di catalogo; cosa si cerca lo dice il
 # catalogo (`add_ricerca_full_condition`, brief-be-ricerca-full-liste-residue §2).
-# Tabelle di configurazione: la ricerca parte da un carattere (Tid, 2026-09-23).
+# La soglia di ciascuna lista la dichiara il catalogo (`ricerca_min_caratteri`).
 # ⭐ Articoli dal 2026-09-24, dopo il seed che accende codice e descrizione
 #    (brief-db-ricerca-full-colonne-da-accendere §3.1, righe 321-322).
 _RICERCA_ARTICOLI = RicercaFull("catalogo.articoli", ("codice", "descrizione"))
@@ -256,9 +256,9 @@ class CatalogoRepository:
         if listino_tipologia_id is not None:
             conditions.append("a.listino_tipologia_id = %s")
             params.append(listino_tipologia_id)
-        # Colonne dal catalogo della lista (BB). ⚠️ Soglia di default e non
-        # `min_caratteri=1`: gli articoli non sono una tabella di configurazione,
-        # e la view risponde ancora 400 sotto soglia (brief §6, decisione aperta).
+        # Colonne e soglia dal catalogo della lista (BB). Sotto soglia il
+        # termine non filtra, e la view non risponde 400 (brief-db-be-fe-
+        # ricerca-soglia-per-lista §6 a, Tid 2026-09-26).
         add_ricerca_full_condition(conditions, params, search, _RICERCA_ARTICOLI, alias="a")
         if data_da is not None:
             conditions.append("a.data_insert::date >= %s")
@@ -563,7 +563,7 @@ class CatalogoRepository:
         if attivo is not None:
             conditions.append("ut.attivo = %s")
             params.append(attivo)
-        add_ricerca_full_condition(conditions, params, search, _RICERCA_UOM_TIPI, alias="ut", min_caratteri=1)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_UOM_TIPI, alias="ut")
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -662,7 +662,7 @@ class CatalogoRepository:
         if attivo is not None:
             conditions.append("u.attivo = %s")
             params.append(attivo)
-        add_ricerca_full_condition(conditions, params, search, _RICERCA_UNITA_MISURA, alias="u", min_caratteri=1)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_UNITA_MISURA, alias="u")
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -767,7 +767,7 @@ class CatalogoRepository:
         if uom_id is not None:
             conditions.append("(c.uom_from_id = %s OR c.uom_to_id = %s)")
             params.extend([uom_id, uom_id])
-        add_ricerca_full_condition(conditions, params, search, _RICERCA_CONVERSIONI, min_caratteri=1)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_CONVERSIONI)
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
         with connection.cursor() as cursor:

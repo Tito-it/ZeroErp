@@ -122,8 +122,9 @@ class TipiRuoloTipiIndirizzoRepository:
         if tipo_indirizzo_id is not None:
             conditions.append("trti.tipo_indirizzo_id = %s")
             params.append(tipo_indirizzo_id)
-        # Tabella di configurazione: la ricerca parte da un carattere (Tid, 2026-09-23).
-        add_ricerca_full_condition(conditions, params, search, _RICERCA, min_caratteri=1)
+        # Soglia della ricerca: la dichiara il catalogo della lista
+        # (`ricerca_min_caratteri`), non questo modulo.
+        add_ricerca_full_condition(conditions, params, search, _RICERCA)
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 

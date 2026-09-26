@@ -187,15 +187,20 @@ export function useListaStoreCore({
   //        se ne aggiunge uno, e nessuno se ne accorge finche' qualcuno non
   //        confronta il file con la schermata (la lezione di
   //        `famiglieDocumento`, che l'aveva gia' scritta nel proprio store).
-  // ⚠️ La ricerca parte da `RICERCA.MIN_CARATTERI`, ed e' la policy di progetto
-  //    (`api.md` §Ricerca): un termine piu' corto non si manda, e la lista
-  //    fa cio' che `ricercaCorta` dice.
+  // ⚠️ La ricerca parte dalla soglia DELLA LISTA (`ricercaMinCaratteri`, dalla
+  //    configurazione; `RICERCA.MIN_CARATTERI` finche' non arriva): un termine
+  //    piu' corto non si manda, e la lista fa cio' che `ricercaCorta` dice.
+  //    ⭐ L'export legge la stessa soglia, perche' passa di qui: il file
+  //    scaricato cerca come la videata anche su una lista da un carattere.
   // ⚠️ Il confronto e' `!= null`, non un truthy-check: `false` e `0` sono
   //    filtri legittimi («solo i disattivati»), e un `if (f.attivo)` li
   //    tratterebbe come «nessun filtro», mostrando anche gli attivi.
   function paramsFiltro(f = filters.value) {
-    // La ricerca con la regola comune (`paramsRicerca`): trim, soglia unica.
-    const params = { ...paramsRicerca(f) }
+    // La ricerca con la regola comune (`paramsRicerca`): trim, soglia della lista.
+    // ⚠️ `ricercaMinCaratteri` e' dichiarata piu' sotto (dal BB di stato): qui
+    //    si legge a CHIAMATA, quando esiste gia' — `paramsFiltro` non gira
+    //    durante il setup.
+    const params = { ...paramsRicerca(f, { minCaratteri: ricercaMinCaratteri.value }) }
     // Ogni filtro di dominio valorizzato, anche quelli non-gate (es.
     // `attivo: true`: default valorizzato, inviato sempre). Sul filo va col
     // nome che l'endpoint si aspetta (`paramNames`), che di norma e' lo stesso.
@@ -211,8 +216,9 @@ export function useListaStoreCore({
 
   const {
     items, totalRecords, loading, hasSearched, sospesa: fetchSospesa,
-    // `ricercaFull`: la lista cerca? Dichiarata dal BB di stato (vedi li').
-    ricercaFull,
+    // `ricercaFull` (la lista cerca?) e `ricercaMinCaratteri` (da quanti
+    // caratteri?): dichiarate dal BB di stato (vedi li').
+    ricercaFull, ricercaMinCaratteri,
     fetchList: fetchListBase, svuota,
   } = useListaEmptyStateFetch({
     filters,
@@ -267,7 +273,7 @@ export function useListaStoreCore({
 
   const esposto = {
     items, totalRecords, loading, hasSearched, filters,
-    ricercaFull,
+    ricercaFull, ricercaMinCaratteri,
     // Alzata da chi conosce il motivo (oggi solo il cancello di perimetro
     // emittente, in `useListaConfigurabilePage`): finche' e' true la lista non
     // interroga il backend. Si scrive nei DUE versi, mai una volta sola.

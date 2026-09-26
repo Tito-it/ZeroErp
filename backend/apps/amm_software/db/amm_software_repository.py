@@ -184,7 +184,7 @@ class AmmSoftwareRepository:
         conditions: list[str] = [ESCLUDI_UTENTI_TECNICI]
         params: list[Any] = []
 
-        # ⚠️ Sotto `RICERCA_MIN_CARATTERI` (3) il termine non filtra: fino al
+        # ⚠️ Sotto la soglia della lista (catalogo) il termine non filtra: fino al
         #    2026-09-24 la ricerca scritta a mano filtrava da un carattere, senza
         #    `strip` ne' `escape_ilike`.
         add_ricerca_full_condition(conditions, params, search, _RICERCA_OPERATORI)

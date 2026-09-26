@@ -23,7 +23,6 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from apps.core.api.search_validators import require_min_search_length
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_order_params
 from apps.pagamenti.db.pagamenti_repository import (
@@ -224,13 +223,10 @@ def list_rate(
         function_name=f"{_FN}.list_rate",
         nullable=True,
     )
-    # ⚠️ Il 400 sotto soglia RESTA (brief-be-ricerca-full-liste-residue §6,
-    #    decisione aperta sulle liste non di configurazione), col BB delle altre
-    #    view: stessa soglia del repository (`RICERCA_MIN_CARATTERI`), stesso
-    #    codice `E_SEARCH_VALIDATION` (Tid, 2026-09-24: una regola, un nome —
-    #    fino ad allora qui era `E_PAGAMENTI_VALIDATION`, e lo schema OpenAPI
-    #    prometteva l'altro), col campo nel contesto.
-    require_min_search_length(search, field_name="search")
+    # ⛔ Nessun 400 sotto soglia (brief-db-be-fe-ricerca-soglia-per-lista §6 a,
+    #    Tid 2026-09-26): il termine corto lo ignora il BB di ricerca, sulla soglia che il catalogo della
+    #    lista dichiara — la stessa che il frontend legge per non mandarlo. Un
+    #    controllo qui sarebbe una seconda sede della stessa soglia.
     repository = PagamentiRepository()
     results, total = repository.list_rate_paginata(
         auth_user_id=auth_user_id,

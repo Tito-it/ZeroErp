@@ -16,6 +16,9 @@
 //  1. `ricercaFull` nasce `null`
 //  2. 1-2 caratteri: la fetch parte, senza `search`
 //  3. da 3 caratteri: `search` viaggia, trimmata
+//  4. `ricercaMinCaratteri` nasce `null`; messa a 1 (dalla configurazione
+//     della lista) un carattere viaggia — il `buildParams` scritto a mano
+//     riceve la soglia dal BB di stato
 // ------------------------------------------------------------
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -67,5 +70,14 @@ describe.each(CASI)('pagamenti/%s — la ricerca libera', (_nome, useStore, fn) 
     store.filters.search = '  abc  '
     await store.fetchList()
     expect(api[fn].mock.calls[0][0].search).toBe('abc')
+  })
+
+  it('la soglia e della lista: a 1 un carattere viaggia', async () => {
+    const store = useStore()
+    expect(store.ricercaMinCaratteri).toBeNull()
+    store.ricercaMinCaratteri = 1
+    store.filters.search = ' K '
+    await store.fetchList()
+    expect(api[fn].mock.calls[0][0].search).toBe('K')
   })
 })

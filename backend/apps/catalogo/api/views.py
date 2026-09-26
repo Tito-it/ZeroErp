@@ -204,7 +204,7 @@ class ApiArticoliList(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            param_ricerca_full(rifiuta_sotto_soglia=True),
+            param_ricerca_full(),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="is_composito", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="tipo_voce_id", type=int, location=OpenApiParameter.QUERY, required=False),
@@ -226,10 +226,9 @@ class ApiArticoliList(DomainAPIView):
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         p = parse_list_params(qp, default_order="descrizione")
-        # ⚠️ Il 400 sotto soglia RESTA (brief-be-ricerca-full-liste-residue §6:
-        #    decisione aperta sulle liste non di configurazione). Le colonne
-        #    le decide il catalogo della lista (BB nel repository, dal 2026-09-24).
-        require_min_search_length(p["search"], field_name="search")
+        # Colonne e soglia le decide il catalogo della lista (BB nel
+        # repository). ⛔ Nessun 400 sotto soglia (brief-db-be-fe-ricerca-
+        # soglia-per-lista §6 a, Tid 2026-09-26).
 
         results, total = fn_list_articoli(
             attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
@@ -698,7 +697,7 @@ class ApiUomTipiList(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            param_ricerca_full(min_caratteri=1),
+            param_ricerca_full(),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
@@ -712,8 +711,8 @@ class ApiUomTipiList(DomainAPIView):
     )
     # Scopo: Restituisce lista paginata tipologie UoM.
     def get(self, request: Request) -> JsonResponse:
-        # Tabella di configurazione: la ricerca parte da un carattere, niente 400
-        # sotto soglia (Tid, 2026-09-23 — brief-be-ricerca-full-liste-residue §6).
+        # Tabella di configurazione: niente 400 sotto soglia (Tid, 2026-09-23 —
+        # brief-be-ricerca-full-liste-residue §6); la soglia e' del catalogo.
         p = parse_list_params(request.query_params, default_order="descrizione")
         results, total = fn_list_uom_tipi(
             attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
@@ -788,7 +787,7 @@ class ApiUnitaMisuraList(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            param_ricerca_full(min_caratteri=1),
+            param_ricerca_full(),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
@@ -802,8 +801,8 @@ class ApiUnitaMisuraList(DomainAPIView):
     )
     # Scopo: Restituisce lista paginata unita' di misura.
     def get(self, request: Request) -> JsonResponse:
-        # Tabella di configurazione: la ricerca parte da un carattere (`KG`, `PZ`),
-        # niente 400 sotto soglia (Tid, 2026-09-23 — brief §6).
+        # Tabella di configurazione a codici corti (`KG`, `PZ`): la soglia la
+        # dichiara il catalogo, niente 400 sotto soglia (Tid, 2026-09-23).
         p = parse_list_params(request.query_params, default_order="codice")
         results, total = fn_list_unita_misura(
             attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
@@ -898,7 +897,7 @@ class ApiConversioniList(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            param_ricerca_full(min_caratteri=1),
+            param_ricerca_full(),
             OpenApiParameter(name="attivo", type=bool, required=False, description="Filtro attivo (null=tutti)"),
             OpenApiParameter(name="uom_id", type=int, required=False, description="Filtra conversioni per UoM (from o to)"),
             OpenApiParameter(name="limit", type=int, required=False),

@@ -31,6 +31,10 @@
 // 12. `ricercaCorta: 'svuota'` — 1-2 caratteri: nessuna fetch, lista svuotata
 // 13. `ricercaCorta: 'ignora'` — 1-2 caratteri: nessuna fetch, lista intatta
 // 14. `ricercaCorta` default — 1-2 caratteri: fetch senza `search`
+//  — la soglia della lista (brief-db-be-fe-ricerca-soglia-per-lista) —
+// 15. `ricercaMinCaratteri` nasce `null`: vale la soglia di progetto
+// 16. a 1: `paramsFiltro` (cioe' anche l'export) e la fetch mandano «K»
+// 17. a 1: con `ricercaCorta: 'svuota'` «K» non svuota, cerca
 // ------------------------------------------------------------
 
 import { describe, it, expect, vi } from 'vitest'
@@ -196,5 +200,33 @@ describe('useListaStoreCore — la fetch', () => {
     expect(await s.fetchList()).toBe(true)
     expect(fetchPage).toHaveBeenCalledTimes(1)
     expect(fetchPage.mock.calls[0][0]).not.toHaveProperty('search')
+  })
+})
+
+describe('useListaStoreCore — la soglia della ricerca e della lista', () => {
+  it('ricercaMinCaratteri nasce null, e vale la soglia di progetto', () => {
+    const s = useListaStoreCore({ fetchPage: fetchMai })
+    expect(s.ricercaMinCaratteri.value).toBeNull()
+    expect(s.paramsFiltro({ search: 'KG' })).toEqual({})
+  })
+
+  // ⭐ Il caso del cantiere: «KG» su unita' di misura partiva senza `search`.
+  it('a 1: paramsFiltro (anche per l export) e la fetch mandano un carattere', async () => {
+    const fetchPage = spiaFetch()
+    const s = useListaStoreCore({ fetchPage, startsEmpty: false })
+    s.ricercaMinCaratteri.value = 1
+    expect(s.paramsFiltro({ search: ' K ' })).toEqual({ search: 'K' })
+    s.filters.value.search = 'K'
+    expect(await s.fetchList()).toBe(true)
+    expect(fetchPage.mock.calls[0][0].search).toBe('K')
+  })
+
+  it("a 1: con ricercaCorta 'svuota' un carattere non svuota, cerca", async () => {
+    const fetchPage = spiaFetch()
+    const s = useListaStoreCore({ fetchPage, startsEmpty: false, ricercaCorta: 'svuota' })
+    s.ricercaMinCaratteri.value = 1
+    s.filters.value.search = 'K'
+    expect(await s.fetchList()).toBe(true)
+    expect(fetchPage.mock.calls[0][0].search).toBe('K')
   })
 })
