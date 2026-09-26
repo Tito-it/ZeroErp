@@ -1,0 +1,257 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_lock_columns_divergenze: per ogni tabella, il lock di colonna
+#   ATTESO (codice_interno + registro) confrontato con quello VIVO.
+#   Brief: brief-db-lock-di-colonna-fuori-registro, sezioni 4 (D2, D3) e 7
+#
+# ── IL CRITERIO, IN UN POSTO SOLO ───────────────────────────────────
+#   Fino al 26-09 due runner lavoravano sugli stessi trigger e li
+#   riconoscevano in due modi: fn_run_automations_lock_columns creava solo se
+#   non trovava niente (per nome o per funzione), fn_run_automations_drop_-
+#   lock_trg cancellava per funzione ogni trigger di una tabella che il
+#   registro non nominava. I lock SCRITTI A MANO stavano in mezzo: mai
+#   riallineati dal primo, cancellati dal secondo ogni notte alle 21:10.
+#   ⇒ Qui si calcola una volta sola che cosa DOVREBBE esserci e che cosa
+#   C'E'. La usano il runner (20260926-04), che agisce sulle righe, e il
+#   presidio pgTAP dbops/test-lock-columns-convergenza, che ne pretende zero.
+#   Nessuno dei due ricalcola il criterio.
+#
+# ── CHE COSA E' UN LOCK VIVO ────────────────────────────────────────
+#   Ogni trigger non interno su script.trgfn_lock_columns, QUALUNQUE nome
+#   abbia. Le colonne che presidia sono gli argomenti in posizione dispari
+#   (coppie colonna, codice) piu' le colonne del suo UPDATE OF.
+#   Gli argomenti li legge dbops.fn_trigger_argomenti (20260926-01).
+#
+# ── CHE COSA E' IL LOCK ATTESO ──────────────────────────────────────
+#   Lo stesso calcolo che il runner faceva dal 20260110-12, invariato:
+#   `codice_interno` se la tabella ce l'ha (implicito, linee-guida-sql 6b),
+#   poi le righe attive di dbops.automation_lock_columns per il modo di
+#   esecuzione, in ordine di colonna, solo se la colonna esiste.
+#   ⭐ Una novita': una riga attiva di un ALTRO modo resta attesa se la sua
+#   colonna e' gia' bloccata. exec_mode dice in quale giro un lock NASCE, non
+#   in quale giro esiste. Senza questa riga il giro 'SCHEDULED' toglierebbe
+#   ogni notte cio' che il giro 'CI' ha messo, e viceversa.
+#   Il nome e' quello del name_template della prima regola LOCK_COLUMNS
+#   attiva per la tabella. Una tabella che nessuna regola copre non si tocca.
+#
+# ── LE AZIONI ───────────────────────────────────────────────────────
+#   CREA      atteso non vuoto, nessun lock vivo
+#   RIGENERA  atteso non vuoto, e i vivi non sono esattamente UN trigger col
+#             nome da template, gli argomenti attesi, UPDATE OF sulle colonne
+#             attese e la forma BEFORE UPDATE FOR EACH ROW (tgtype 19)
+#   TOGLIE    atteso vuoto, qualche lock vivo
+#   Le tabelle gia' allineate non escono.
+#
+# ── ⭐ colonne_perse: il controllo che conta ─────────────────────────
+#   Una colonna bloccata dal vivo, che esiste, che l'atteso non contiene e
+#   che il registro NON NOMINA AFFATTO. E' un lock nato fuori dal registro:
+#   convergere lo cancellerebbe in silenzio, cioe' il difetto che questo
+#   giro chiude, solo piu' veloce. Il runner su queste si FERMA.
+#   Una riga del registro con enabled = false invece e' una decisione
+#   («questa colonna non si blocca piu'»): quella colonna si toglie.
+#   E' il controllo (b) del 90_end/20260923-02, portato dove gira sempre.
+#
+# INVOKER. Legge solo il catalogo e due tabelle di dbops, ma resta VOLATILE:
+#   chiama helper VOLATILE (fn_resolve_scope, fn_col_exists) e plpgsql_check
+#   segnala uno STABLE che li chiama (provato il 2026-09-26).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260926-03-create-fn-lock-columns-divergenze-mctit.yaml
+
+  - changeSet:
+      id: 20260926-03-create-fn-lock-columns-divergenze
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_lock_columns_divergenze(p_exec_mode, p_schemas): per ogni tabella
+        in cui il lock di colonna vivo diverge da quello atteso (codice_interno +
+        registro), l'azione che lo riallinea (CREA, RIGENERA, TOGLIE) e le colonne
+        bloccate fuori dal registro. Criterio unico per il runner e per il presidio.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE proname = 'fn_trigger_argomenti'
+                     AND pronamespace = 'dbops'::regnamespace
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE proname = 'fn_lock_columns_divergenze'
+                     AND pronamespace = 'dbops'::regnamespace
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_lock_columns_divergenze(p_exec_mode text, p_schemas text[])
+              RETURNS TABLE (
+                  schema_name       text,
+                  table_name        text,
+                  azione            text,
+                  trigger_atteso    text,
+                  colonne_attese    text[],
+                  argomenti_attesi  text[],
+                  trigger_vivi      text[],
+                  colonne_perse     text[]
+              )
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: il lock di colonna ATTESO confrontato con quello VIVO, una riga
+              --   per tabella che diverge. Criterio unico del runner
+              --   (dbops.fn_run_automations_lock_columns) e del presidio pgTAP.
+              -- Parametri: p_exec_mode come il runner (AUTO/CI/SCHEDULED);
+              --   p_schemas NULL = ambito risolto da dbops.fn_resolve_scope.
+              DECLARE
+                  v_schemas text[] := dbops.fn_resolve_scope(p_schemas);
+              BEGIN
+                  RETURN QUERY
+                  WITH tab AS (
+                      SELECT n.nspname::text AS sch, c.relname::text AS tbl, c.oid AS rel
+                        FROM pg_class c
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                       WHERE c.relkind = 'r'
+                         AND n.nspname = ANY (v_schemas)
+                         AND dbops.fn_table_in_scope(n.nspname, c.relname)
+                  ),
+                  -- La prima regola LOCK_COLUMNS attiva che copre la tabella: ne da' il nome.
+                  regola AS (
+                      SELECT DISTINCT ON (t.rel)
+                             t.rel,
+                             dbops.fn_name_from_template(
+                                 COALESCE(r.name_template, 'trg_{table}_a10_lock_columns_upd'),
+                                 t.sch, t.tbl, NULL, NULL, NULL, NULL) AS trg
+                        FROM tab t
+                        JOIN dbops.automation_rules_tbl r
+                          ON r.enabled
+                         AND upper(btrim(r.rule_type)) = 'LOCK_COLUMNS'
+                         AND dbops.fn_schema_match(r.target_schema, t.sch)
+                         AND (upper(r.target_table) = '*ALL' OR t.tbl ILIKE r.target_table)
+                         AND (upper(btrim(r.exec_mode)) = 'AUTO' OR r.exec_mode = p_exec_mode)
+                       ORDER BY t.rel, r.priority, r.id
+                  ),
+                  -- Ogni trigger su trgfn_lock_columns, qualunque nome abbia.
+                  vivo AS (
+                      SELECT tg.tgrelid AS rel,
+                             tg.tgname::text AS trg,
+                             tg.tgtype,
+                             dbops.fn_trigger_argomenti(tg.tgargs) AS args,
+                             ARRAY(SELECT a.attname::text
+                                     FROM unnest(tg.tgattr::int2[]) AS k(attnum)
+                                     JOIN pg_attribute a
+                                       ON a.attrelid = tg.tgrelid AND a.attnum = k.attnum
+                                    ORDER BY 1) AS cols_update_of
+                        FROM pg_trigger tg
+                        JOIN tab t ON t.rel = tg.tgrelid
+                       WHERE NOT tg.tgisinternal
+                         AND tg.tgfoid = 'script.trgfn_lock_columns()'::regprocedure
+                  ),
+                  -- Le colonne che i vivi bloccano: argomenti dispari + UPDATE OF.
+                  vivo_col AS (
+                      SELECT DISTINCT v.rel, x.col
+                        FROM vivo v
+                        CROSS JOIN LATERAL (
+                            SELECT v.args[i] FROM generate_subscripts(v.args, 1) AS g(i) WHERE i % 2 = 1
+                            UNION
+                            SELECT unnest(v.cols_update_of)
+                        ) AS x(col)
+                  ),
+                  atteso_col AS (
+                      SELECT t.rel, 'codice_interno'::text AS col,
+                             'E_CODICE_NON_MODIFICABILE'::text AS codice, 0 AS ord
+                        FROM tab t
+                       WHERE dbops.fn_col_exists(t.sch, t.tbl, 'codice_interno')
+                      UNION ALL
+                      SELECT t.rel, l.column_name::text,
+                             COALESCE(l.error_code, 'E_CODICE_NON_MODIFICABILE')::text, 1
+                        FROM tab t
+                        JOIN dbops.automation_lock_columns l
+                          ON l.enabled
+                         AND l.target_schema = t.sch
+                         AND l.target_table  = t.tbl
+                         AND l.column_name  <> 'codice_interno'
+                       WHERE dbops.fn_col_exists(t.sch, t.tbl, l.column_name)
+                         AND (   upper(btrim(l.exec_mode)) = 'AUTO'
+                              OR l.exec_mode = p_exec_mode
+                              -- un altro modo: resta attesa se e' gia' bloccata
+                              OR EXISTS (SELECT 1 FROM vivo_col vc
+                                          WHERE vc.rel = t.rel AND vc.col = l.column_name))
+                  ),
+                  atteso AS (
+                      SELECT a.rel,
+                             array_agg(a.col ORDER BY a.ord, a.col) AS cols,
+                             ARRAY(SELECT w.x
+                                     FROM atteso_col b
+                                     CROSS JOIN LATERAL unnest(ARRAY[b.col, b.codice])
+                                          WITH ORDINALITY AS w(x, j)
+                                    WHERE b.rel = a.rel
+                                    ORDER BY b.ord, b.col, w.j) AS args
+                        FROM atteso_col a
+                       GROUP BY a.rel
+                  ),
+                  vivo_tab AS (
+                      SELECT v.rel,
+                             array_agg(v.trg ORDER BY v.trg) AS trgs,
+                             count(*) AS n,
+                             min(v.trg) AS trg1
+                        FROM vivo v
+                       GROUP BY v.rel
+                  ),
+                  confronto AS (
+                      SELECT t.sch, t.tbl, rg.trg, at.cols, at.args, vt.trgs,
+                             CASE
+                               WHEN at.rel IS NULL AND vt.rel IS NULL THEN NULL
+                               WHEN at.rel IS NULL THEN 'TOGLIE'
+                               WHEN vt.rel IS NULL THEN 'CREA'
+                               WHEN vt.n = 1
+                                AND v1.trg = rg.trg
+                                AND v1.args = at.args
+                                AND v1.cols_update_of = ARRAY(SELECT c FROM unnest(at.cols) AS u(c) ORDER BY 1)
+                                AND v1.tgtype = 19           -- BEFORE | ROW | UPDATE
+                               THEN NULL
+                               ELSE 'RIGENERA'
+                             END AS azione,
+                             ARRAY(SELECT vc.col
+                                     FROM vivo_col vc
+                                    WHERE vc.rel = t.rel
+                                      AND dbops.fn_col_exists(t.sch, t.tbl, vc.col)
+                                      AND NOT (vc.col = ANY (COALESCE(at.cols, ARRAY[]::text[])))
+                                      AND NOT EXISTS (
+                                            SELECT 1 FROM dbops.automation_lock_columns l
+                                             WHERE l.target_schema = t.sch
+                                               AND l.target_table  = t.tbl
+                                               AND l.column_name   = vc.col)
+                                    ORDER BY 1) AS perse
+                        FROM tab t
+                        JOIN regola rg        ON rg.rel = t.rel
+                        LEFT JOIN atteso at   ON at.rel = t.rel
+                        LEFT JOIN vivo_tab vt ON vt.rel = t.rel
+                        -- il primo (e, se allineato, unico) trigger vivo, per confrontarlo
+                        LEFT JOIN vivo v1     ON v1.rel = t.rel AND v1.trg = vt.trg1
+                  )
+                  SELECT cf.sch, cf.tbl, cf.azione, cf.trg, cf.cols, cf.args,
+                         COALESCE(cf.trgs, ARRAY[]::text[]), cf.perse
+                    FROM confronto cf
+                   WHERE cf.azione IS NOT NULL
+                   ORDER BY cf.sch, cf.tbl;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_lock_columns_divergenze(text, text[])
+              IS 'Il lock di colonna ATTESO (codice_interno implicito + righe attive di dbops.automation_lock_columns; una riga di un altro exec_mode resta attesa se la colonna e'' gia'' bloccata) confrontato con quello VIVO (ogni trigger su script.trgfn_lock_columns, qualunque nome abbia). Una riga per tabella che diverge: azione CREA, RIGENERA o TOGLIE; colonne_perse = colonne bloccate dal vivo che il registro non nomina affatto (una riga con enabled = false e'' invece una decisione di togliere il blocco). Criterio unico di dbops.fn_run_automations_lock_columns e del presidio pgTAP dbops/test-lock-columns-convergenza. Brief: brief-db-lock-di-colonna-fuori-registro §4 D2-D3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: DROP FUNCTION IF EXISTS dbops.fn_lock_columns_divergenze(text, text[]);

@@ -22,7 +22,7 @@
 > **Vedi anche** — funzioni e trigger DB:
 >
 > * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations) — l'orchestratore: legge regole e ambito, chiama i runner
-> * [dbops.fn_run_automations_drop_lock_trg](/dbzero/dbops/funzioni/fn_run_automations_drop_lock_trg) — rimuove i trigger LOCK rimasti orfani
+> * [dbops.fn_lock_columns_divergenze](/dbzero/dbops/funzioni/fn_lock_columns_divergenze) — i lock di colonna vivi confrontati con il registro
 > * [dbops.fn_apply_cleanup_at](/dbzero/dbops/funzioni/fn_apply_cleanup_at) — il motore della regola CLEANUP
 > * [dbops.fn_apply_automazione_overlap](/dbzero/dbops/funzioni/fn_apply_automazione_overlap) — crea i vincoli EXCLUDE di OVERLAP
 > * [dbops.fn_apply_delete_block_trigger](/dbzero/dbops/funzioni/fn_apply_delete_block_trigger) — monta il blocco DELETE con bypass via GUC
@@ -120,11 +120,10 @@ Gli **orchestratori** sono funzioni SQL che leggono rules e ambito, risolvono le
 | [fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id)                 | TX_ID                                              |
 | [fn_run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update)   | AUDIT_UPDATE                                       |
 | [fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico)             | STORICO + STORICO_PROVISION                        |
-| [fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns)   | LOCK_COLUMNS                                       |
+| [fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns)   | LOCK_COLUMNS (converge: crea, rigenera, toglie)    |
 | [fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)               | ATTIVO                                             |
 | [fn_run_automations_delete_block](/dbzero/dbops/funzioni/fn_run_automations_delete_block)   | DELETE_BLOCK                                       |
 | [fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)             | CLEANUP                                            |
-| [fn_run_automations_drop_lock_trg](/dbzero/dbops/funzioni/fn_run_automations_drop_lock_trg) | Cleanup trigger LOCK obsoleti                      |
 
 Tutti i runner accettano il parametro `p_dry_run`:
 
@@ -244,9 +243,11 @@ Alcune colonne non devono essere modificate dopo la creazione del record (es. `c
 * La colonna `codice_interno` è **implicita**: se esiste sulla tabella, viene sempre inclusa
 * Colonne extra si configurano in `dbops.automation_lock_columns`
 * Se una colonna configurata non esiste fisicamente sulla tabella, il runner la ignora
+* Il runner **converge**: a ogni giro porta il lock vivo a quello che il registro dichiara (crea, rigenera, toglie). Una colonna disattivata nel registro (`enabled = false`) si toglie da sola
+* ⛔ Un lock di colonna **non si scrive a mano**: si dichiara nel registro. Se un trigger vivo blocca una colonna che il registro non nomina, il runner si ferma e la nomina
 
-**Cleanup trigger obsoleti:**
-Quando non esistono più colonne da bloccare (né `codice_interno` né colonne extra attive), i trigger possono restare orfani. La funzione `dbops.fn_run_automations_drop_lock_trg` li rimuove.
+Il comportamento completo, con le azioni e il caso in cui si ferma, sta nella pagina di
+[fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns).
 
 ### 4.2 ATTIVO (soft-delete – policy BLOCK-ONLY)
 
@@ -427,7 +428,7 @@ Le regole si inseriscono in `dbops.automation_rules_tbl`. Usa `target_schema='*a
 
 **Consigli:**
 
-* `existence_strategy='BOTH'` minimizza i conflitti (verifica sia per nome che per funzione)
+* `existence_strategy='BOTH'` minimizza i conflitti (verifica sia per nome che per funzione). ⚠️ Per `LOCK_COLUMNS` non si legge: il lock vivo si riconosce sempre dalla funzione
 * Per STORICO, preferisci il template **senza** `{op}` (trigger unico UPDATE+DELETE)
 * Se mantieni un template con `{op}`, passa `'upd_dlt'` all'helper di naming
 
@@ -718,7 +719,7 @@ Questa checklist è pensata per essere usata prima, durante e dopo il rollout de
 ### Apply
 
 * [ ] Esegui l'apply **un modulo alla volta**: parti da `TX_ID` su `anagrafiche` e solo dopo passa agli altri — query in coda
-* [ ] Se usi LOCK_COLUMNS e hai disattivato colonne, valuta il cleanup con `dbops.fn_run_automations_drop_lock_trg` — query in coda
+* [ ] Se usi LOCK_COLUMNS, guarda prima che cosa farebbe la convergenza con `dbops.fn_lock_columns_divergenze` — query in coda
 
 ### Verifica post-apply
 
@@ -903,8 +904,9 @@ SELECT dbops.fn_run_automations(
 -- Apply, un modulo alla volta
 SELECT dbops.fn_run_automations('CI', ARRAY['anagrafiche'], false, ARRAY['TX_ID']);
 
--- Cleanup delle colonne LOCK_COLUMNS disattivate
-SELECT dbops.fn_run_automations_drop_lock_trg('AUTO', NULL, false);
+-- LOCK_COLUMNS: che cosa farebbe la convergenza, e le colonne che la fermerebbero
+SELECT schema_name, table_name, azione, colonne_perse
+  FROM dbops.fn_lock_columns_divergenze('AUTO', NULL);
 
 -- Trigger presenti (esclusi quelli interni)
 SELECT n.nspname, c.relname, t.tgname

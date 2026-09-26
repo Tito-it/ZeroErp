@@ -1,0 +1,56 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Ritiro di dbops.fn_run_automations_drop_lock_trg.
+#   Brief: brief-db-lock-di-colonna-fuori-registro, sezione 4 (D2)
+#
+#   Due runner sugli stessi trigger, che li riconoscevano in due modi, sono la
+#   copia che la regola del 2 ritira nello stesso giro dell'estrazione. Questa
+#   decideva «niente da bloccare» leggendo solo il registro e poi cancellava
+#   per FUNZIONE: anche i lock scritti a mano, che il registro non nominava.
+#   Il suo lavoro legittimo e' il ramo TOGLIE di
+#   dbops.fn_run_automations_lock_columns (20260926-04).
+#
+#   Consumatori censiti il 2026-09-26: solo maintenance.proc_automations_-
+#   lock_columns_job, che non la chiama piu' da 20260926-05. Nessun pgTAP e
+#   nessuno script la nominano.
+#   La preCondition lo ripete sul vivo: nessun corpo la CHIAMA (nome seguito
+#   da parentesi). Non basta il nome nudo: il commento del job lo cita.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260926-06-drop-fn-run-automations-drop-lock-trg-mctit.yaml
+
+  - changeSet:
+      id: 20260926-06-drop-fn-run-automations-drop-lock-trg
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritira dbops.fn_run_automations_drop_lock_trg: il suo lavoro e' il ramo
+        TOGLIE del runner che converge (20260926-04).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_proc p
+               WHERE p.prokind IN ('f', 'p')
+                 AND p.oid IS DISTINCT FROM to_regprocedure('dbops.fn_run_automations_drop_lock_trg(text, text[], boolean)')
+                 AND p.prosrc LIKE '%fn_run_automations_drop_lock_trg(%'
+      changes:
+        - sql:
+            dbms: postgresql
+            sql: DROP FUNCTION IF EXISTS dbops.fn_run_automations_drop_lock_trg(text, text[], boolean);
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Non si ricrea: cancellava per funzione i lock scritti a mano.
+              -- Il rollback e' un no-op dichiarato.
+              SELECT 1;

@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.processi: l'elenco dei job notturni STRUTTURALI, con il loro ordine,
+#   dichiarato nel catalogo. Brief: brief-db-job-notturni-in-ci, sezione 3 (D1-D3)
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   In CI 85_pgagent e' MARK_RAN: i job pgAgent non esistono, e cio' che solo
+#   la loro procedura fa non gira mai. ci_apply (20250627-31) ha un elenco suo
+#   di chiamate, scritto a mano, che nessuno tiene allineato alle procedure:
+#   il 26-09 OVERLAP e CLEANUP non giravano mai in CI, e la chiamata a
+#   drop_lock_trg (solo nella procedura del lock) ha cancellato per mesi i lock
+#   scritti a mano su dev senza che la CI lo vedesse.
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   Tre colonne, per ogni processo che ha un job pgAgent (jobname_pgagent):
+#     ci_ordine      la posizione nella convergenza strutturale
+#     ci_procedura   la procedura da chiamare, per esteso con la firma
+#                    (to_regprocedure). Non si deriva dal codice:
+#                    apply_storicizza_weekly -> proc_apply_storicizza_defaults_job
+#     ci_esclusione  perche' il job NON gira in CI
+#   ⭐ Esattamente una fra (ci_ordine + ci_procedura) e ci_esclusione:
+#   «fuori apposta» si distingue da «dimenticato». Un processo senza job
+#   pgAgent non porta nessuna delle tre.
+#   L'elenco lo esegue 90_end/ci_apply/20260926-10; lo presidia il pgTAP
+#   dbops/test-processi-convergenza-ci. Nessuno dei due ne tiene una copia.
+#
+# ── ⚠️ NOT VALID, poi VALIDATE in 90_end/20260926-09 ────────────────
+#   Su dbdev le righe esistono gia' e non hanno ancora i valori: li porta il
+#   CSV di 80_data, che gira dopo. Il CHECK nasce NOT VALID (vale per ogni riga
+#   scritta da qui in poi, compreso l'upsert del CSV) e si convalida dopo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260926-08-alter-processi-add-convergenza-ci-mctit.yaml
+
+  - changeSet:
+      id: 20260926-08-alter-processi-add-convergenza-ci
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.processi: ci_ordine, ci_procedura, ci_esclusione. Ogni processo con
+        un job pgAgent dichiara o la sua posizione nella convergenza strutturale
+        eseguita in CI (e la procedura da chiamare), o perche' ne resta fuori.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: dbops, tableName: processi }
+            - not:
+                - columnExists: { schemaName: dbops, tableName: processi, columnName: ci_ordine }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.processi
+                  ADD COLUMN ci_ordine     integer,
+                  ADD COLUMN ci_procedura  text,
+                  ADD COLUMN ci_esclusione text;
+
+              ALTER TABLE dbops.processi
+                  ADD CONSTRAINT uq_processi_ci_ordine UNIQUE (ci_ordine);
+
+              ALTER TABLE dbops.processi
+                  ADD CONSTRAINT chk_processi_convergenza_ci CHECK (
+                      CASE
+                        WHEN jobname_pgagent IS NULL THEN
+                             ci_ordine IS NULL AND ci_procedura IS NULL AND ci_esclusione IS NULL
+                        ELSE
+                             (ci_ordine IS NOT NULL AND ci_ordine > 0
+                              AND ci_procedura IS NOT NULL AND btrim(ci_procedura) <> ''
+                              AND ci_esclusione IS NULL)
+                          OR (ci_ordine IS NULL AND ci_procedura IS NULL
+                              AND ci_esclusione IS NOT NULL AND btrim(ci_esclusione) <> '')
+                      END
+                  ) NOT VALID;
+
+              COMMENT ON COLUMN dbops.processi.ci_ordine IS
+                  'Posizione del job nella convergenza strutturale eseguita in CI (90_end/ci_apply/20260926-10), in ordine crescente. Valorizzata insieme a ci_procedura, in alternativa a ci_esclusione, per ogni processo con un job pgAgent. Brief: brief-db-job-notturni-in-ci.';
+              COMMENT ON COLUMN dbops.processi.ci_procedura IS
+                  'La procedura che il job pgAgent chiama, per esteso con la firma (es. maintenance.proc_automations_attivo_job()): la convergenza in CI fa CALL di questa. Non si deriva dal codice del processo. Brief: brief-db-job-notturni-in-ci.';
+              COMMENT ON COLUMN dbops.processi.ci_esclusione IS
+                  'Perche'' il job pgAgent NON gira nella convergenza strutturale in CI (job operativo su dati e orologio, oppure con un giro suo altrove). Distingue «fuori apposta» da «dimenticato». Brief: brief-db-job-notturni-in-ci.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              ALTER TABLE dbops.processi
+                  DROP CONSTRAINT IF EXISTS chk_processi_convergenza_ci,
+                  DROP CONSTRAINT IF EXISTS uq_processi_ci_ordine,
+                  DROP COLUMN IF EXISTS ci_esclusione,
+                  DROP COLUMN IF EXISTS ci_procedura,
+                  DROP COLUMN IF EXISTS ci_ordine;

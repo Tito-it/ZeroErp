@@ -89,6 +89,17 @@
 #   del provisioning; pgTAP `db/pgtap/config/test-pannello-porta-v1.sql`.
 #   Forward su dev `90_end/20260925-62`, stesso blocco del provisioning, stesso
 #   pgTAP.
+#
+# ── ⭐ IL REGISTRO DEGLI OWNER (dal 2026-09-26) ─────────────────────────────
+#   Brief: brief-db-registro-owner-e-sync-riservati-al-migratore, sezione 2.2
+#   `dbops.sec_functions_owner` entra in `v_tabelle_sola_lettura_app`: chi lo
+#   scrive sceglie il proprietario delle DEFINER di postgres, e lo scrive solo
+#   il migratore. ⚠️ La sync `dbops.fn_sync_functions_owner` NON entra in
+#   `v_fn_riservate`, per scelta (D-3): e' di postgres, e l'ACL non la difende
+#   (il cambio di proprietario rimappa le voci, questo loop le riscrive). La
+#   difesa sta nel suo corpo (20_code/dbops/20260926-11). Forward su dev
+#   `90_end/20260926-12`; terza sede il blocco del provisioning; pgTAP
+#   `db/pgtap/dbops/test-sec-functions-owner-riservato-v1.sql`.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -151,7 +162,9 @@ databaseChangeLog:
                 v_schemi_senza_delete text[] := ARRAY[
                   'storico'
                 ];
-                -- ⭐ Tabelle in SOLA LETTURA per l'applicazione: il ledger di
+                -- ⭐ Tabelle in SOLA LETTURA per l'applicazione: l'app legge, scrive
+                --   solo una porta del proprietario (una DEFINER, un seed, il
+                --   migratore). Nata il 2026-09-18 per il ledger di
                 --   magazzino e la sua copia del valore. Scrive solo la primitiva
                 --   DEFINER (magazzino.fn_scrivi_movimento) e il ricalcolo: è la
                 --   porta di D-L2-b. Voci `schema.tabella`.
@@ -171,7 +184,12 @@ databaseChangeLog:
                   --   il verbo config.fn_pannello_scrivi, e la lista delle tabelle
                   --   gestibili e' una porta (brief-db-pannello-config-verbo-generico §3.5).
                   'magazzino.causali',
-                  'config.tabelle_gestibili'
+                  'config.tabelle_gestibili',
+                  -- ⭐ Dal 2026-09-26 il REGISTRO DEGLI OWNER: chi lo scrive sceglie
+                  --   il proprietario delle DEFINER di postgres. Lo scrive solo il
+                  --   migratore; la sync ha la sua guardia nel corpo
+                  --   (brief-db-registro-owner-e-sync-riservati-al-migratore §2.2).
+                  'dbops.sec_functions_owner'
                 ];
                 -- ⭐ Tabelle SENZA DELETE per l'applicazione (la forma per tabella
                 --   di v_schemi_senza_delete): un blocco di magazzino si chiude

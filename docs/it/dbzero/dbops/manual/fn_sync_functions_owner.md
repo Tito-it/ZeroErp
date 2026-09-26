@@ -130,6 +130,39 @@ Questo consente di:
   * la funzione gestisce il caso con `EXCEPTION WHEN insufficient_privilege` → nessun errore bloccante verso Liquibase.
 * L’elenco delle funzioni che può modificare è **limitato** a quelle elencate in `dbops.sec_functions_owner`, che funge da policy esplicita e revisionabile.
 
+#### ⛔ Riservata al migratore (dal 2026-09-26)
+
+Chi esegue questa funzione decide **chi possiede** le funzioni sensibili: bastava
+riscrivere una riga del registro e lanciarla, e le funzioni del canale di log
+passavano a un altro proprietario. Per questo la funzione **si difende da sola**,
+con una guardia in testa al corpo:
+
+* **passa** chi possiede lo schema `dbops` (il ruolo che lancia le migrazioni, in
+  ogni ambiente) e un superuser (la passata provision-post);
+* **tutti gli altri**, applicazione compresa, ricevono un errore `42501`
+  (*permesso negato*). L’errore non passa dal canale di log: quel canale è fra le
+  funzioni che la sync protegge.
+
+⚠️ **Il chiamante si legge da `session_user`, non da `current_user`.** Dentro una
+`SECURITY DEFINER` `current_user` è il proprietario della funzione (`postgres`),
+e una guardia su di lui sarebbe sempre aperta. **Limite dichiarato**:
+`session_user` è il ruolo con cui la sessione si è **collegata**, e un `SET ROLE`
+non lo cambia — una sessione aperta dal migratore che passa a `zeroerp_app`
+supererebbe la guardia. L’applicazione si collega come `zeroerp_app`, quindi il
+caso non la riguarda; PostgreSQL non offre un modo di leggere «chi ha chiamato»
+una `SECURITY DEFINER` senza questo limite.
+
+⭐ **`EXECUTE` a PUBLIC resta, per scelta.** La difesa non sta nei permessi della
+funzione: essendo di `postgres`, quei permessi vengono riscritti a ogni passata
+del loop dei grant e rimappati a ogni cambio di proprietario. Con la guardia nel
+corpo, poter chiamare la funzione non compra niente.
+
+Il registro che la funzione legge è in **sola lettura** per l’applicazione: vedi
+[dbops.sec_functions_owner](/dbzero/dbops/tabelle/sec_functions_owner). I due
+presidi pgTAP sono `db/pgtap/dbops/test-sec-functions-owner-riservato-v1.sql`
+(l’applicazione è respinta) e `test-sec-functions-owner-migratore-passa-v1.sql`
+(il migratore passa ancora).
+
 ---
 
 ### Relazione con `dbops.sec_functions_owner`

@@ -1,0 +1,224 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_run_automations_lock_columns: da «crea se manca» a «converge».
+#   Brief: brief-db-lock-di-colonna-fuori-registro, sezione 4 (D2)
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   Fino a questa revisione (corpo 20260805-26) il runner creava il trigger
+#   solo se sulla tabella non ne trovava uno, per nome O per funzione
+#   (existence_strategy BOTH), e non guardava mai gli argomenti di quello
+#   esistente. ⇒ Un lock nato una volta non si riallineava piu' al registro:
+#   codici ritirati rimasti negli argomenti (brief dei codici ritirati), una
+#   colonna aggiunta al registro che non arrivava mai (vendite.preventivi,
+#   emittente_fiscale_id), sei changeSet 90_end/*provision-lock* scritti a
+#   mano per rifare un perimetro fisso. E in parallelo fn_run_automations_-
+#   drop_lock_trg cancellava per funzione i lock che il registro non nominava,
+#   anche quelli scritti a mano (config.iva_stati, vendite.fatture su dbdev).
+#
+# ── ORA ─────────────────────────────────────────────────────────────
+#   Il confronto lo fa dbops.fn_lock_columns_divergenze (20260926-03), e il
+#   runner agisce sulle sue righe:
+#     CREA      -> CREATE TRIGGER col nome da template
+#     RIGENERA  -> DROP di tutti i lock vivi della tabella, poi CREATE
+#     TOGLIE    -> DROP di tutti i lock vivi della tabella
+#   ⇒ Il lavoro di fn_run_automations_drop_lock_trg (TOGLIE) diventa un ramo di
+#   questo runner, e quella funzione si ritira nello stesso giro (20260926-06).
+#   ⇒ existence_strategy per LOCK_COLUMNS NON si legge piu': un lock vivo si
+#   riconosce sempre dalla funzione, qualunque nome abbia. Dichiarato in
+#   manual/automation_rules_tbl.md.
+#
+# ── ⭐ IL RUNNER SI FERMA, NON CANCELLA ──────────────────────────────
+#   Se una tabella ha colonne bloccate che il registro non nomina affatto
+#   (colonne_perse), il runner solleva E_LOCK_COLUMNS e le nomina TUTTE, in
+#   un solo errore, PRIMA di toccare qualunque trigger. E' il controllo (b)
+#   del 90_end/20260923-02, portato dove gira sempre: senza, convergere
+#   cancellerebbe in silenzio ogni lock nato fuori dal registro. Il rimedio e'
+#   una riga nel CSV del registro (con enabled = false se il blocco va davvero
+#   tolto), non togliere il controllo. Un errore a meta' del ciclo (una DDL
+#   fallita) annulla tutto il giro: il runner gira in una sola istruzione,
+#   quindi nessuna tabella resta a meta'.
+#   In DRY RUN non solleva: registra nell'audit l'azione e le colonne perse.
+#
+# ⚠️ Linee guida SQL 11.5: DDL su trigger che nascono da ci_apply. E' il
+#   generatore stesso, agisce solo su cio' che trova in pg_trigger, e su un
+#   DB nuovo prima di ci_apply trova solo i lock scritti a mano in 20_code.
+# Corpo precedente dalla doc auto-gen (rev 20260805-26). INVOKER, invariato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260926-04-update-fn-run-automations-lock-columns-converge-mctit.yaml
+
+  - changeSet:
+      id: 20260926-04-update-fn-run-automations-lock-columns-converge
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_run_automations_lock_columns converge il lock vivo verso quello atteso
+        (dbops.fn_lock_columns_divergenze): crea, rigenera o toglie. Si ferma con
+        E_LOCK_COLUMNS se una colonna bloccata non e' nel registro.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE proname = 'fn_lock_columns_divergenze'
+                 AND pronamespace = 'dbops'::regnamespace
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_run_automations_lock_columns(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              /*
+                Scopo
+                -----
+                Porta i trigger LOCK_COLUMNS (script.trgfn_lock_columns) delle tabelle in
+                scope allo stato che il registro dichiara:
+                - codice_interno, se presente in tabella (implicito);
+                - colonne extra attive in dbops.automation_lock_columns.
+                Il confronto fra atteso e vivo lo fa dbops.fn_lock_columns_divergenze:
+                qui si esegue l'azione di ogni riga.
+
+                Azioni
+                ------
+                CREA      trigger unico col nome da template (dbops.automation_rules_tbl)
+                RIGENERA  toglie tutti i lock vivi della tabella, qualunque nome abbiano,
+                          e crea quello atteso
+                TOGLIE    toglie tutti i lock vivi (nessuna colonna da bloccare)
+
+                Colonne fuori dal registro
+                --------------------------
+                Una colonna bloccata dal vivo che il registro non nomina affatto ferma il
+                giro con E_LOCK_COLUMNS, prima di qualunque DDL: convergere la
+                cancellerebbe in silenzio. Si aggiunge la riga (enabled = false se il
+                blocco va tolto).
+
+                DRY RUN
+                -------
+                p_dry_run = true: nessuna DDL, azione e colonne perse nell'audit
+                (dbops.fn_audit_log_once).
+              */
+              DECLARE
+                  r        record;
+                  v_trg    text;
+                  v_cols   text;
+                  v_args   text;
+                  v_perse  text;
+              BEGIN
+                  -- ⭐ Prima di qualunque DDL, e per TUTTE le tabelle insieme: un lock nato
+                  --    fuori dal registro non si cancella. Chi lancia la migrate riceve
+                  --    l'elenco intero, non la prima tabella.
+                  IF NOT p_dry_run THEN
+                      SELECT string_agg(d.schema_name||'.'||d.table_name||' ('||array_to_string(d.colonne_perse, ', ')||')',
+                                        '; ' ORDER BY d.schema_name, d.table_name)
+                        INTO v_perse
+                        FROM dbops.fn_lock_columns_divergenze(p_exec_mode, p_schemas) AS d
+                       WHERE cardinality(d.colonne_perse) > 0;
+
+                      IF v_perse IS NOT NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'dbops.fn_run_automations_lock_columns',
+                              'E_LOCK_COLUMNS',
+                              jsonb_build_object('where', 'LOCK_COLUMNS_FUORI_REGISTRO', 'tabelle', v_perse),
+                              NULL::uuid,
+                              format('colonne bloccate da un trigger che il registro dbops.automation_lock_columns '
+                                     'non nomina: %s. Aggiungere le righe (enabled = false se il blocco va tolto) '
+                                     'prima di convergere', v_perse)
+                          );
+                      END IF;
+                  END IF;
+
+                  FOR r IN
+                      SELECT d.*
+                        FROM dbops.fn_lock_columns_divergenze(p_exec_mode, p_schemas) AS d
+                       ORDER BY d.schema_name, d.table_name
+                  LOOP
+                      IF p_dry_run THEN
+                          PERFORM dbops.fn_audit_log_once(
+                              p_function_name => 'dbops.fn_run_automations',
+                              p_status        => 'DRYRUN',
+                              p_rule_type     => 'LOCK_COLUMNS',
+                              p_exec_mode     => p_exec_mode,
+                              p_parts         => ARRAY['LOCK_COLUMNS'],
+                              p_dry_run       => true,
+                              p_params        => jsonb_build_object(
+                                                  'table',         r.schema_name||'.'||r.table_name,
+                                                  'trigger',       r.trigger_atteso,
+                                                  'columns',       r.colonne_attese,
+                                                  'trigger_vivi',  r.trigger_vivi,
+                                                  'colonne_perse', r.colonne_perse,
+                                                  'action',        'DRYRUN_'||r.azione
+                                                ),
+                              p_message       => 'Lock columns: '||r.azione
+                          );
+                          CONTINUE;
+                      END IF;
+
+                      BEGIN
+                          FOREACH v_trg IN ARRAY r.trigger_vivi LOOP
+                              EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I',
+                                             v_trg, r.schema_name, r.table_name);
+                          END LOOP;
+
+                          IF r.azione IN ('CREA', 'RIGENERA') THEN
+                              SELECT string_agg(quote_ident(c), ', ' ORDER BY i)
+                                INTO v_cols
+                                FROM unnest(r.colonne_attese) WITH ORDINALITY AS u(c, i);
+                              SELECT string_agg(quote_literal(a), ', ' ORDER BY i)
+                                INTO v_args
+                                FROM unnest(r.argomenti_attesi) WITH ORDINALITY AS u(a, i);
+
+                              EXECUTE format($f$
+                                CREATE TRIGGER %I
+                                BEFORE UPDATE OF %s ON %I.%I
+                                FOR EACH ROW
+                                EXECUTE FUNCTION script.trgfn_lock_columns(%s)
+                              $f$, r.trigger_atteso, v_cols, r.schema_name, r.table_name, v_args);
+                          END IF;
+                      EXCEPTION WHEN others THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'dbops.fn_run_automations_lock_columns',
+                              'E_LOCK_COLUMNS',
+                              jsonb_build_object(
+                                  'where',  'LOCK_COLUMNS',
+                                  'table',  r.schema_name||'.'||r.table_name,
+                                  'azione', r.azione,
+                                  'error',  SQLERRM
+                              ),
+                              NULL::uuid,
+                              SQLERRM
+                          );
+                      END;
+
+                      RAISE NOTICE 'LOCK_COLUMNS: % %.% (vivi: %; attese: %)',
+                          r.azione, r.schema_name, r.table_name,
+                          COALESCE(array_to_string(r.trigger_vivi, ', '), ''),
+                          COALESCE(array_to_string(r.colonne_attese, ', '), '');
+                  END LOOP;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_run_automations_lock_columns(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+              IS 'Converge i trigger di lock columns (script.trgfn_lock_columns) verso lo stato dichiarato: codice_interno implicito + colonne attive di dbops.automation_lock_columns. Crea, rigenera (anche i lock scritti a mano, qualunque nome abbiano) o toglie, secondo dbops.fn_lock_columns_divergenze. Si ferma con E_LOCK_COLUMNS, prima di qualunque DDL, se una colonna bloccata non e'' nominata dal registro. Rev 20260926-04: assorbe dbops.fn_run_automations_drop_lock_trg (ritirata). Brief: brief-db-lock-di-colonna-fuori-registro §4 D2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Nessun ritorno al «crea se manca»: con fn_run_automations_drop_lock_trg
+              -- ritirata, il runner vecchio non toglierebbe piu' nulla e non
+              -- riallineerebbe nulla. Il rollback e' un no-op dichiarato.
+              SELECT 1;

@@ -32,7 +32,7 @@
 > (letti su `pg_trigger`). ⇒ Il **test 17 del guard non fa più `skip`**: adesso
 > misura davvero. A generarli è stata l'automazione chiamata da
 > `90_end/20260923-02`, il changeSet di un cantiere nato da una riga di questo
-> brief — [brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](../work-in-progress/brief-db-codici-ritirati-negli-argomenti-dei-trigger.md).
+> brief — [brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](brief-db-codici-ritirati-negli-argomenti-dei-trigger.md).
 > ✅ **pgTAP rilanciati da Tid, nessuna regressione; commit fatto** (`7d67d6d9d`).
 > ⇒ **Sul DB non resta niente di questo brief.**
 >
@@ -472,7 +472,7 @@ test 2 torna rosso e nomina le righe giuste: la fotografia non lo ha reso cieco.
    nominavano un codice ritirato o inesistente e che **69 trigger vivi** lo
    sollevavano con il presidio verde. La bonifica ha chiamato l'automazione una
    volta, e nello stesso gesto ha armato anche questi due:
-   [brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](../work-in-progress/brief-db-codici-ritirati-negli-argomenti-dei-trigger.md).
+   [brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](brief-db-codici-ritirati-negli-argomenti-dei-trigger.md).
 6. ✅ **pgTAP e commit**: rilanciati da Tid il 23-09, **nessuna regressione**;
    commit `7d67d6d9d`. ⇒ Sul database non resta niente di questo brief.
 
@@ -506,7 +506,7 @@ ne è accorto solo un pgTAP.
 che 26 righe su 38 nominavano quel codice ritirato o uno inesistente, e che **69
 trigger vivi** lo sollevavano ancora con il presidio verde — il codice viaggia come
 argomento del trigger, e il controllo guardava i corpi delle funzioni.
-[brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](../work-in-progress/brief-db-codici-ritirati-negli-argomenti-dei-trigger.md).
+[brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](brief-db-codici-ritirati-negli-argomenti-dei-trigger.md).
 ⚠️ Quella bonifica arma **anche** i due lock di R-4: è l'automazione, chiamata una volta.
 
 ⚠️ **La `data` resta modificabile**, per decisione esplicita nella stessa
@@ -608,7 +608,7 @@ fa fallire niente*.
 ⚠️ **Una ricaduta trovata strada facendo, e non è di questo brief**: il test BE
 `test_il_codice_del_magazzino_e_lockato_e_il_duplicato_dice_il_campo` era rosso
 prima di toccare qualunque cosa. Il changeSet `90_end/20260923-02` (cantiere
-[codici ritirati negli argomenti dei trigger](../work-in-progress/brief-db-codici-ritirati-negli-argomenti-dei-trigger.md))
+[codici ritirati negli argomenti dei trigger](brief-db-codici-ritirati-negli-argomenti-dei-trigger.md))
 ha rigenerato i lock coi codici vivi, e `CODICE_NON_MODIFICABILE` — obsoleto dal
 2026-08-05 — è diventato `E_CODICE_NON_MODIFICABILE`: il test pinnava il vecchio.
 Allineato qui perché senza, la suite del dominio resta rossa. ⭐ Vale la pena

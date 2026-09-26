@@ -82,16 +82,14 @@ SELECT is(
     (SELECT array_agg(DISTINCT u.a ORDER BY u.a)
        FROM pg_trigger t
        JOIN pg_proc p ON p.oid = t.tgfoid,
-       LATERAL unnest(string_to_array(encode(t.tgargs, 'escape'), '\000'))
+       -- Argomenti dal building block (dal 2026-09-26): prima qui si decodificava
+       -- con encode(tgargs,'escape'), che lascia un elemento vuoto in coda.
+       LATERAL unnest(dbops.fn_trigger_argomenti(t.tgargs))
                WITH ORDINALITY u(a, i)
       WHERE t.tgrelid = 'catalogo.articoli'::regclass
         AND NOT t.tgisinternal
         AND p.proname = 'trgfn_lock_columns'
-        AND u.i % 2 = 1
-        -- ⚠️ `encode(tgargs,'escape')` termina con un \000: lo split produce un
-        --   elemento VUOTO in coda, e la coda cade in posizione dispari come le
-        --   colonne. Senza questo filtro l'array atteso dovrebbe contenere ''.
-        AND u.a <> ''),
+        AND u.i % 2 = 1),
     ARRAY['codice', 'uom_id'],
     '3) catalogo.articoli e'' lockata da script.trgfn_lock_columns su codice e uom_id'
 );
