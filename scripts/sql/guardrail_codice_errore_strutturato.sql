@@ -287,16 +287,18 @@ BEGIN
         UNION ALL
 
         -- (2) l'argomento di un trigger su una funzione GENERICA: il codice non
-        --     e' in nessun corpo, e' in pg_trigger.tgargs. `encode(...,'escape')`
-        --     rende gli argomenti separati da \000, e si confronta per
-        --     UGUAGLIANZA — non con un LIKE, che su CODICE_NON_MODIFICABILE
-        --     aggancerebbe anche E_CODICE_NON_MODIFICABILE, cioe' il codice VIVO.
+        --     e' in nessun corpo, e' in pg_trigger.tgargs. Gli argomenti li
+        --     legge dbops.fn_trigger_argomenti (dal 2026-09-26, building block:
+        --     prima qui c'era una decodifica sua con encode(...,'escape')), e si
+        --     confronta per UGUAGLIANZA — non con un LIKE, che su
+        --     CODICE_NON_MODIFICABILE aggancerebbe anche E_CODICE_NON_MODIFICABILE,
+        --     cioe' il codice VIVO.
         SELECT DISTINCT ce.codice || '  <-  trigger ' || tn.nspname || '.'
                || tc.relname || '.' || t.tgname AS riga
           FROM config.codici_errore ce
           JOIN pg_trigger t
             ON NOT t.tgisinternal
-           AND ce.codice = ANY (string_to_array(encode(t.tgargs, 'escape'), '\000'))
+           AND ce.codice = ANY (dbops.fn_trigger_argomenti(t.tgargs))
           JOIN pg_class tc     ON tc.oid = t.tgrelid
           JOIN pg_namespace tn ON tn.oid = tc.relnamespace
          WHERE ce.obsoleto_dal IS NOT NULL
