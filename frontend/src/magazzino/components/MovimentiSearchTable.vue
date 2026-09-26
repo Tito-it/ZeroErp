@@ -26,7 +26,7 @@ import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
-import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
+import ArticoloLookup from '../../catalogo/components/ArticoloLookup.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'

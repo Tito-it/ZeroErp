@@ -135,9 +135,11 @@ nuova: è cablaggio del doc-type sul motore esistente (regola del 2).
 - registrazione in `HANDLER_MAP` via `apps/vendite/apps.py:ready()` (lazy import,
   pattern già stabilito).
 
-**FE (src/pratiche/)**:
-- 1 voce in `uiActivityRegistry.js` (apri il drawer di dominio dal flusso) +
-  eventuali chiavi i18n; la **dashboard/percorso/coda non cambiano** (generici).
+**FE (`src/<dominio>/iscrizioni.js`)**:
+- 1 voce iscritta con `iscriviAttivitaUi` nel registro di
+  `src/pratiche/uiActivityRegistry.js` (apri il drawer di dominio dal flusso) —
+  lo specchio di `HANDLER_MAP`: il motore non nomina il dominio (dal 2026-09-26) —
+  + eventuali chiavi i18n; la **dashboard/percorso/coda non cambiano** (generici).
 
 ### 5.2 Specificità per dominio (cosa riusa cosa)
 

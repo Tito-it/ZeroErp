@@ -15,6 +15,7 @@ import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import Drawer from 'primevue/drawer'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
@@ -41,6 +42,9 @@ const form = ref({
   valido_dal: parseIsoDate(ALWAYS_VALID_FROM), valido_dal_sempre: true,
   valido_al: null, attivo: true
 })
+// Modifiche non salvate: fotografia all'apertura (anche in creazione) e
+// conferma se si chiude con modifiche (BB useDrawerFormPreserve).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 
 // Fase 5: campi immutabili dopo create per conversioni UoM. Vengono dal
 // detail (`detail.non_editable_fields`, fonte = `dbops.vw_non_editable_fields`
@@ -66,6 +70,7 @@ function resetForm() {
     valido_al: null,
     attivo: true
   }
+  fissa()
 }
 
 function todayLocalDate() {
@@ -85,6 +90,7 @@ async function loadDetail() {
     valido_al: parseIsoDate(data.valido_al),
     attivo: data.attivo ?? true
   }
+  fissa()
   nonEditableFields.value = data.non_editable_fields || []
 }
 
@@ -150,14 +156,19 @@ function close() {
   emit('update:visible', false)
   emit('cancelled')
 }
+
+// Chiusura per volonta' dell'utente: con modifiche non salvate chiede conferma.
+// Dopo il salvataggio riuscito resta `close()`, diretta.
+const chiudi = () => chiudiConConferma(close)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
+  <Drawer :visible="visible" @update:visible="suVisibile"
     position="right" :style="{ width: DRAWER_WIDTH.STANDARD }" :dismissable="true"
     @after-show="onAfterShow">
     <template #header>
-      <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('catalogo.conversione_uom')" />
+      <DrawerTitle :modificato="modificato" :action="isEdit ? t('common.edit') : t('common.new')" :title="t('catalogo.conversione_uom')" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
@@ -220,7 +231,7 @@ function close() {
         <i class="pi pi-spin pi-spinner" style="font-size: 1.5rem;"></i>
       </div>
 
-      <FormFooter v-if="contentReady" :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
+      <FormFooter v-if="contentReady" :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />
     </div>
   </Drawer>
 </template>

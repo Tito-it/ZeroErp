@@ -21,6 +21,7 @@ import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useApiHandler } from '../composables/useApiHandler'
 import { useLookup } from '../composables/useLookup'
+import { useDrawerFormPreserve, gestoreVisibile } from '../composables/useDrawerFormPreserve'
 import { DRAWER_WIDTH } from '../constants'
 import FormFooter from './FormFooter.vue'
 import DrawerTitle from './DrawerTitle.vue'
@@ -57,6 +58,11 @@ for (const f of props.fields.flatMap(f => (f.group ? f.fields : [f]))) {
 }
 
 const form = ref({})
+// Modifiche non salvate: la fotografia si fissa all'apertura (anche in
+// creazione: un record nuovo compilato e poi chiuso e' lavoro perso), e
+// chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
+const chiudi = () => chiudiConConferma(() => emit('update:visible', false))
 
 function defaultFor(f) {
   if (f.type === 'toggle') return f.default ?? true
@@ -82,6 +88,7 @@ watch(() => props.visible, (val) => {
     }
   }
   form.value = f
+  fissa()
 })
 
 function fieldVisible(fd) {
@@ -123,6 +130,7 @@ async function handleSave() {
     }
   }
 }
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
@@ -130,10 +138,11 @@ async function handleSave() {
     :visible="visible"
     position="right"
     :style="{ width }"
-    @update:visible="emit('update:visible', $event)"
+    @update:visible="suVisibile"
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="mode === 'create' ? t('common.new') : t('common.edit')"
         :title="t(titleKey)"
         :icon="icon"
@@ -167,7 +176,7 @@ async function handleSave() {
         :loading="loading"
         :disabled="!canSave"
         @save="handleSave"
-        @cancel="emit('update:visible', false)"
+        @cancel="chiudi"
       />
     </div>
   </Drawer>

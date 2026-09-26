@@ -19,7 +19,7 @@ import Tag from 'primevue/tag'
 import AttivoTag from '../../../core/components/AttivoTag.vue'
 import ToggleSwitch from 'primevue/toggleswitch'
 
-import ArticoloLookup from '../../../core/components/ArticoloLookup.vue'
+import ArticoloLookup from '../../../catalogo/components/ArticoloLookup.vue'
 import DrawerContextHeader from '../../../core/components/DrawerContextHeader.vue'
 import FormFooter from '../../../core/components/FormFooter.vue'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
@@ -32,10 +32,11 @@ import L2ErrorBanner from '../../_shared/pricing/L2ErrorBanner.vue'
 import { useL2SaveFlow } from '../../_shared/pricing/useL2SaveFlow'
 import { useLimitiPricing } from '../../composables/useLimitiPricing'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
-import { useArticoloUomOptions } from '../../../core/composables/useArticoloUomOptions'
+import { useArticoloUomOptions } from '../../../catalogo/composables/useArticoloUomOptions'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
 import { displayDate } from '../../../core/utils/date'
@@ -89,6 +90,12 @@ const formMode = ref(null) // null | 'create' | 'edit'
 const editingId = ref(null)
 const selectedRow = ref(null)
 const form = ref({})
+// Modifiche non salvate del form inline: conferma alla chiusura del drawer e
+// all'Annulla del form, scritta arancio nel titolo.
+const inline = useDrawerFormPreserve(form, {
+  visibile: () => props.visible && formMode.value !== null,
+})
+const modificato = inline.modificato
 // Expansion DataTable righe eccezione: chiave = `id` (PK). Mostra
 // `ComponentiPanel` data-driven con i figli aggregati dal BE
 // (`row.componenti` jsonb). Pattern speculare a `ContrattoRigheDrawer`.
@@ -225,7 +232,11 @@ async function reload() {
   if (formMode.value === 'edit' && editingId.value != null) {
     const refreshed = list.find((r) => r.id === editingId.value)
     if (refreshed && refreshed.prezzo_unitario != null) {
+      // Il prezzo lo riscrive il server, non l'operatore: se il form era
+      // pulito resta pulito (la fotografia segue il nuovo SUM).
+      const eraPulito = !modificato.value
       form.value.prezzo_unitario = Number(refreshed.prezzo_unitario)
+      if (eraPulito) inline.fissa()
     }
   }
   emit('changed')
@@ -293,6 +304,7 @@ function openCreate() {
   selectedRow.value = null
   resetUomOptions()
   _resetComponentiState()
+  inline.fissa()
 }
 
 function onRowSelect(event) {
@@ -303,6 +315,7 @@ function onRowSelect(event) {
   form.value = fromRow(row)
   formMode.value = 'edit'
   _resetComponentiState()
+  inline.fissa()
   if (row.articolo_id) {
     // In edit l'articolo e' immutabile (Tag readonly); carichiamo comunque le
     // UoM operative dell'articolo cosi' la Select mostra etichetta coerente
@@ -494,6 +507,10 @@ const pageActions = computed(() => [
 ])
 
 const onClose = useDrawerClose(emit)
+// Chiusure per volonta' dell'utente: con il form inline modificato chiedono conferma.
+const chiudi = () => inline.chiudiConConferma(onClose)
+const annullaForm = () => inline.chiudiConConferma(closeForm)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
@@ -502,13 +519,14 @@ const onClose = useDrawerClose(emit)
     position="right"
     :style="{ width: DRAWER_WIDTH.WIDE_PLUS }"
     :dismissable="true"
-    @update:visible="(val) => emit('update:visible', val)"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
         :title="t('vendite.offerte.eccezioni_titolo')"
         :icon="MANAGE_ICONS.RIGHE"
+        :modificato="modificato"
       />
     </template>
 
@@ -818,11 +836,11 @@ const onClose = useDrawerClose(emit)
             :loading="saving"
             :disabled="!canSave"
             @save="handleSave"
-            @cancel="closeForm"
+            @cancel="annullaForm"
           />
         </template>
 
-        <FormFooter v-else close-only @cancel="onClose" />
+        <FormFooter v-else close-only @cancel="chiudi" />
       </template>
     </div>
 

@@ -33,7 +33,7 @@ E_OUTBOX = "E_OUTBOX"
 # Campi della bozza che l'operatore puo' modificare (PATCH outbox). Coincide
 # oggi con `EmailRepository._OUTBOX_UPDATE_COLS`, ma e' il contratto
 # dell'operatore: puo' essere piu' stretto delle colonne scrivibili.
-_DRAFT_EDITABILI: frozenset[str] = frozenset({
+DRAFT_EDITABILI: frozenset[str] = frozenset({
     "oggetto", "corpo_html", "corpo_testo", "destinatario", "destinatari_cc",
 })
 
@@ -128,7 +128,7 @@ class EmailOutboxService:
         return self._repo.get_outbox(outbox_id) or {}
 
     # Scopo: Aggiorna campi editabili di una bozza DRAFT.
-    # ⛔ Dal 2026-09-26 una chiave fuori `_DRAFT_EDITABILI` e' un 400
+    # ⛔ Dal 2026-09-26 una chiave fuori `DRAFT_EDITABILI` e' un 400
     #    (`E_OUTBOX`), non piu' uno scarto silenzioso: un PATCH che «riesce»
     #    senza aver scritto il campo e' il difetto che non da' errore. Il
     #    repository, dietro, e' RIGIDO (RuntimeError): la regola dell'operatore
@@ -141,7 +141,7 @@ class EmailOutboxService:
         ErrorManager.require(outbox["stato"] == "DRAFT", code=E_OUTBOX, message="Solo bozze DRAFT sono modificabili.")
 
         PayloadValidator(validation_code=E_OUTBOX).validate_allowed_keys(
-            kwargs, allowed=_DRAFT_EDITABILI, message="Campi della bozza non modificabili.",
+            kwargs, allowed=DRAFT_EDITABILI, message="Campi della bozza non modificabili.",
         )
         cc = kwargs.get("destinatari_cc")
         ErrorManager.require(

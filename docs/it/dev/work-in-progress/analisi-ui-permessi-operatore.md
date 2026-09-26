@@ -55,7 +55,7 @@
 
 ## 1 · Cosa c'è oggi
 
-[`OperatorePermessiTab.vue`](../../../frontend/src/amministrazione/components/OperatorePermessiTab.vue)
+[`OperatorePermessiTab.vue`](../../../../frontend/src/amministrazione/components/OperatorePermessiTab.vue)
 — 428 righe — porta tre `DataTable` affiancate (aree, azioni, oggetti). Ogni
 riga è un **override**: una tendina per scegliere l'entità, una per il livello,
 un cestino. «Aggiungi override» spinge in lista una riga vuota.
@@ -183,7 +183,7 @@ prima di allora sarebbe una bugia gentile.
 
 **4.5 · Il drawer è il vincolo peggiore.** 59 righe con tre colonne non stanno
 in un drawer stretto. Esiste già
-[`PermessiRiepilogoView`](../../../frontend/src/amministrazione/views/PermessiRiepilogoView.vue)
+[`PermessiRiepilogoView`](../../../../frontend/src/amministrazione/views/PermessiRiepilogoView.vue)
 (matrice operatori × aree, sola lettura): la strada naturale è una **pagina
 intera** per l'editing, tenendo il drawer per la consultazione rapida.
 `getLivelloSeverity` / `getLivelloLabel` in `amministrazione/constants` sono già

@@ -17,7 +17,9 @@ import { BREAKPOINTS, PAGINATION } from '../constants'
 
 function defaultRowsForViewport() {
   if (typeof window === 'undefined') return PAGINATION.DEFAULT_ROWS
-  return window.matchMedia(`(max-width: ${BREAKPOINTS.TABLET - 1}px)`).matches
+  // `width <` e non `max-width: TABLET - 1`: con lo zoom la larghezza e'
+  // frazionaria, e fra 1023 e 1024 il CSS e questa soglia non concorderebbero.
+  return window.matchMedia(`(width < ${BREAKPOINTS.TABLET}px)`).matches
     ? PAGINATION.COMPACT_ROWS
     : PAGINATION.DEFAULT_ROWS
 }

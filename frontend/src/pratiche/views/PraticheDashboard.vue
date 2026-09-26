@@ -293,7 +293,7 @@ const selectedPraticaContext = computed(() => ({
 
 // --- Attività UI di dominio aperte da un flusso (data-driven, registry) ---
 // L'azione "apri documento" sul flusso (azione_ui_key) è risolta dal registry
-// UI_ACTIVITY_REGISTRY: nessun drawer hardcoded qui. Il componente è dinamico,
+// Registro delle attivita' UI (uiActivityRegistry, iscritto dai domini): nessun drawer hardcoded qui. Il componente è dinamico,
 // le props e il gancio post-save arrivano dalla voce di registry.
 const activityVisible = ref(false)
 const activityComponent = shallowRef(null)
@@ -535,7 +535,7 @@ onUnmounted(() => {
     />
 
     <!-- Drawer documento collegato (data-driven): componente risolto dal registry
-         UI_ACTIVITY_REGISTRY in base all'azione_ui_key del flusso. Per il
+         registro delle attivita' UI in base all'azione_ui_key del flusso. Per il
          preventivo, praticaId+praticaContext (da buildProps) nascondono l'azione
          accetta e pre-compilano/bloccano cliente+istanza; l'accettazione passa
          dal flusso M2. -->
@@ -626,7 +626,7 @@ onUnmounted(() => {
 }
 
 /* Tablet/mobile: la dashboard impila (rail sopra) e scrolla per intero */
-@media (max-width: 1279px) {
+@media (max-width: 1279.98px) {
   .pratiche-dashboard {
     flex-direction: column;
     overflow-y: auto;

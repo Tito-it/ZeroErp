@@ -82,7 +82,7 @@ _METODI_CANDIDATI: frozenset[str] = frozenset(
 #      `email_views.py`). Sei di quelle scrivono senza permesso: con lo skip
 #      attivo sarebbero state un relay di posta per qualunque operatore;
 #    - `RuoliConfigResolverView` (1) → vale lo SKIP, come i lookup soggetti di
-#      cui e' la configurazione (lo consuma `core/components/SoggettoResolver`).
+#      cui e' la configurazione (lo consuma `anagrafiche/components/SoggettoResolver`).
 #    ⭐ A ZERO dal 2026-09-12. Resta qui perche' e' la sede in cui la prossima
 #    finirebbe: una view che dichiara entrambi e' rossa il giorno stesso.
 #    Chiave: `modulo.QualName` della classe.

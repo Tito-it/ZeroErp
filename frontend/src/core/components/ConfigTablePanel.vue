@@ -24,7 +24,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import AttivoTag from './AttivoTag.vue'
-import api from '../api'
+import { getConfigTableMetadata, listConfigRecords } from '../api/configTables'
 import FiltriLista from './FiltriLista.vue'
 
 const { t, te } = useI18n()
@@ -95,7 +95,7 @@ watch(selectedRel, async (rel) => {
   sortOrder.value = 1
   tableColumns.value = []
   if (rel) {
-    const meta = await execute(() => api.get(`/core/config/tables/${rel}/metadata/`))
+    const meta = await execute(() => getConfigTableMetadata(rel))
     // Metadata non letto: il toast lo ha detto; la tabella resta con le sole
     // colonne fisse (codice/descrizione).
     if (meta) tableColumns.value = meta.columns.map(c => c.name)
@@ -125,7 +125,7 @@ async function loadRecords() {
       params.order_dir = sortOrder.value === -1 ? 'desc' : 'asc'
     }
 
-    const data = await execute(() => api.get(`/core/config/tables/${selectedRel.value}/`, { params }))
+    const data = await execute(() => listConfigRecords(selectedRel.value, params))
     // Lista non letta (toast gia' mostrato): vuota, e il totale a zero.
     items.value = data ? data.results : []
     totalRecords.value = data ? data.count : 0
@@ -297,7 +297,7 @@ function selectTable(rel) {
   font-size: 0.7rem;
   font-weight: 700;
   text-transform: uppercase;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   padding: 0.5rem 0.5rem 0.25rem;
   margin-top: 0.5rem;
   letter-spacing: 0.05em;
@@ -312,13 +312,13 @@ function selectTable(rel) {
   cursor: pointer;
   border-radius: var(--p-border-radius-sm);
   font-size: 0.85rem;
-  color: var(--p-text-color);
+  color: var(--app-text-color);
   transition: background 0.15s, color 0.15s;
   border-left: 3px solid transparent;
 }
 
 .config-panel-item:hover {
-  background: var(--p-content-hover-background);
+  background: var(--app-hover-bg);
   color: var(--p-text-hover-color);
   border-left-color: var(--p-primary-300);
 }
@@ -345,6 +345,6 @@ function selectTable(rel) {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
 }
 </style>

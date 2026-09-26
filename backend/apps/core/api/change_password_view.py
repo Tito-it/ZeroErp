@@ -16,7 +16,8 @@ from typing import Any
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import JsonResponse
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
@@ -38,12 +39,22 @@ E_CHANGE_PW = "E_CHANGE_PASSWORD"
 _auth_repo = AuthRepository()
 
 
+# Il corpo che il gestore legge: tutte e tre obbligatorie.
+_CHANGE_PASSWORD_REQUEST = inline_serializer(
+    name="CoreChangePasswordReq",
+    fields={
+        "old_password": serializers.CharField(),
+        "new_password": serializers.CharField(),
+        "new_password_confirm": serializers.CharField(),
+    },
+)
+
 class ChangePasswordView(DomainAPIView):
     """Cambio password: valida vecchia, applica nuova, resetta flag, rigenera token."""
 
     skip_area_check = True
 
-    @extend_schema(summary="Cambio password", responses={200: dict})
+    @extend_schema(request=_CHANGE_PASSWORD_REQUEST, summary="Cambio password", responses={200: dict})
     # Scopo: Cambio password con validazione completa. Obiettivo: permettere
     #        all'operatore di cambiare la propria password (sia volontario
     #        che obbligatorio al primo accesso). Resetta flag, invalida

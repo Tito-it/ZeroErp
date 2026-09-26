@@ -11,7 +11,7 @@
 // ⭐ BUILDING BLOCK (regola del 2, ok Tid 2026-09-26): la usano il log
 //    dell'amministratore (`amministrazione/views/EmailLogsListView`, rotta
 //    `/amm-software/email-log/`) e le email dell'operatore
-//    (`personale/views/EmailLogView`, rotta `/core/email/log/`). Stessa lista,
+//    (`strumenti/views/EmailLogView`, rotta `/core/email/log/`). Stessa lista,
 //    due porte: cambia solo lo STORE, cioe' da dove legge. Chi vede quale riga
 //    lo decide la porta (l'admin tutto, l'operatore il suo perimetro per RLS),
 //    non questo componente.

@@ -9,12 +9,13 @@ import { useI18n } from 'vue-i18n'
 import { useEmittentiFiscaliStore } from '../stores/emittentiFiscali'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS, FIELD_LENGTH } from '../../core/constants'
 import { getEmittenteFormDefaults } from '../api/amministrazione'
 import { paramBool, paramNumber, paramString } from '../../core/utils/parameterCast'
 import { blockNonAlphanumeric, normalizeUpperNoSpaces } from '../../core/utils/string'
-import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
+import SoggettoResolver from '../../anagrafiche/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
@@ -97,6 +98,11 @@ function defaultForm() {
 }
 
 const form = ref(defaultForm())
+// Modifiche non salvate: fotografia all'apertura (anche in creazione), e
+// chiudere con modifiche chiede conferma (BB useDrawerFormPreserve). In
+// creazione il soggetto scelto sta fuori dal form: il confronto ne raccoglie l'id.
+const formSalvato = computed(() => ({ ...form.value, soggetto_id: soggettoSelezionato.value?.id ?? null }))
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSalvato, { visibile: () => props.visible })
 
 // Carica defaults da BE (cast tipi gia' applicato lato server) e li applica
 // al form. Best-effort: errori di rete non bloccano il form (l'utente compila
@@ -166,6 +172,7 @@ watch(() => props.visible, async (val) => {
       if (d) {
         detail.value = d
         populateFormFromDetail(d)
+        fissa()
       }
     } catch {
       // Errori di rete/API gestiti dall'interceptor axios globale
@@ -176,6 +183,8 @@ watch(() => props.visible, async (val) => {
     // Fase 3: applica defaults form da config.parameters (best-effort).
     // Pattern allineato a catalogo Fase 8 (ArticoloDrawer).
     await applyFormDefaults()
+    // Fotografia DOPO i default: sono scritti dal codice, non dall'utente.
+    if (props.visible && !isEdit.value) fissa()
   }
 })
 
@@ -238,25 +247,29 @@ async function save() {
       { successMessage: t('amministrazione.emittenti_fiscali.created') }
     )
   }
-  if (result !== null) emit('saved', result)
+  if (result !== null) { fissa(); emit('saved', result) }
 }
 
 function close() {
-  emit('update:visible', false)
-  emit('cancelled')
+  chiudiConConferma(() => {
+    emit('update:visible', false)
+    emit('cancelled')
+  })
 }
+const suVisibile = gestoreVisibile(emit, close)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="v => emit('update:visible', v)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :icon="isEdit ? 'pi pi-pencil' : 'pi pi-plus'"
         :title="drawerTitle"
       />

@@ -28,9 +28,18 @@ import ExportDialog from '../../core/components/ExportDialog.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
 import FiltriLista from '../../core/components/FiltriLista.vue'
+import EstensioneDrawerHost from '../../core/components/EstensioneDrawerHost.vue'
+import { useAzioniEstese } from '../../core/composables/useAzioniEstese'
+import { PUNTI_ESTENSIONE } from '../../core/estensioni'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 
-const emit = defineEmits(['new', 'row-click', 'soggetto', 'contatti', 'indirizzi', 'conti-bancari', 'contratti'])
+const emit = defineEmits(['new', 'row-click', 'soggetto', 'contatti', 'indirizzi', 'conti-bancari'])
+
+// Le azioni di riga che altri domini contribuiscono al cliente (oggi: i
+// contratti di vendite), col drawer che aprono (core/estensioni.js).
+const {
+  voci: azioniEstese, aperto: drawerEsteso, impostaVisibile: visibileEsteso,
+} = useAzioniEstese(PUNTI_ESTENSIONE.CLIENTE_AZIONI_RIGA)
 const { t } = useI18n()
 // Navigazione verso la lista fatture (azione di riga): e' un cambio di
 // pagina, non un sotto-drawer, quindi non passa dal padre come le altre voci.
@@ -77,7 +86,7 @@ function buildExportParams(format) {
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento Primevue).
 function onRowClick(data) { emit('row-click', data) }
 
-// Scopo: azioni di riga del cliente (sub-drawer anagrafici + contratti).
+// Scopo: azioni di riga del cliente (sub-drawer anagrafici + le azioni contribuite).
 // Ogni sub-drawer con model_permission proprio disabilita la sua voce se
 // l'oggetto e' BLOCCATO per l'operatore (evita click che genererebbero 403).
 function buildRowActions(data) {
@@ -108,12 +117,7 @@ function buildRowActions(data) {
       disabled: contiBlocked,
       command: () => emit('conti-bancari', data),
     },
-    {
-      key: 'contratti',
-      label: t('vendite.contratti.gestisci_contratti'),
-      icon: MANAGE_ICONS.CONTRATTI,
-      command: () => emit('contratti', data),
-    },
+    ...azioniEstese(data),
     // ⭐ Porta alla LISTA FATTURE già filtrata su questo conto. Non apre un
     // sotto-drawer: è una navigazione, e la lista dichiara a video da dove
     // arriva e come togliere il filtro.
@@ -245,6 +249,8 @@ onMounted(() => {
         </template>
       </ListaConfigurabile>
     </template>
+
+    <EstensioneDrawerHost :stato="drawerEsteso" @update:visible="visibileEsteso" />
 
     <ExportDialog
       v-model:visible="exportDialogVisible"

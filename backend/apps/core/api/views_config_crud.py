@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 from django.http import JsonResponse
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -19,6 +20,13 @@ from apps.core.api.success_responses import success_response
 from apps.core.db.tabelle_gestibili_repository import TabelleGestibiliRepository
 from apps.core.services.config_crud_service import ConfigCrudService
 
+
+# Il corpo di un record: un oggetto le cui chiavi sono le colonne della tabella
+# `rel`, diverse per ogni tabella del pannello. ⭐ E' la forma VERA, non un
+# ripiego: le colonne (con tipo, obbligatorieta' e sola lettura) le dichiara
+# a runtime `GET config/tables/<rel>/metadata/`, ed e' li' che le legge il
+# pannello. Uno schema per tabella sarebbe una seconda sede di quel catalogo.
+_RECORD_REQUEST = OpenApiTypes.OBJECT
 
 # Scopo: Le rotte che nominano una tabella (`rel`) chiedono il permesso
 # sull'OGGETTO a cui la tabella appartiene, non sull'area del pannello
@@ -50,7 +58,7 @@ class ConfigTablesListView(DomainAPIView):
     """GET lista tabelle disponibili."""
     area_funzionale = "config"
 
-    @extend_schema(responses={200: inline_serializer(name="ConfigTablesListResp", fields={"data": serializers.DictField()})})
+    @extend_schema(operation_id="core_config_tables_list", responses={200: inline_serializer(name="ConfigTablesListResp", fields={"data": serializers.DictField()})})
     def get(self, request: Request) -> JsonResponse:
         return success_response({"results": ConfigCrudService().list_tables()})
 
@@ -71,6 +79,7 @@ class ConfigTableRecordsView(_PermessoSullOggettoMixin, DomainAPIView):
     is_search_endpoint = True
 
     @extend_schema(
+        operation_id="core_config_tables_records_list",
         parameters=[OpenApiParameter(name="rel", type=str, location="path", required=True)],
         responses={200: inline_serializer(name="ConfigTableRecordsResp", fields={"data": serializers.DictField()})},
     )
@@ -90,6 +99,8 @@ class ConfigTableRecordsView(_PermessoSullOggettoMixin, DomainAPIView):
         return success_response(data)
 
     @extend_schema(
+        request=_RECORD_REQUEST,
+        operation_id="core_config_tables_records_create",
         parameters=[OpenApiParameter(name="rel", type=str, location="path", required=True)],
         responses={200: inline_serializer(name="ConfigTableCreateResp", fields={"data": serializers.DictField()})},
     )
@@ -100,10 +111,10 @@ class ConfigTableRecordsView(_PermessoSullOggettoMixin, DomainAPIView):
 class ConfigTableRecordDetailView(_PermessoSullOggettoMixin, DomainAPIView):
     """GET dettaglio, PATCH aggiorna record."""
 
-    @extend_schema(responses={200: inline_serializer(name="ConfigRecordDetailResp", fields={"data": serializers.DictField()})})
+    @extend_schema(operation_id="core_config_tables_records_retrieve", responses={200: inline_serializer(name="ConfigRecordDetailResp", fields={"data": serializers.DictField()})})
     def get(self, request: Request, rel: str, pk: int) -> JsonResponse:
         return success_response(ConfigCrudService().get_record(rel, pk))
 
-    @extend_schema(responses={200: inline_serializer(name="ConfigRecordUpdateResp", fields={"data": serializers.DictField()})})
+    @extend_schema(request=_RECORD_REQUEST, operation_id="core_config_tables_records_partial_update", responses={200: inline_serializer(name="ConfigRecordUpdateResp", fields={"data": serializers.DictField()})})
     def patch(self, request: Request, rel: str, pk: int) -> JsonResponse:
         return handle_post_json(request, handler=lambda p: ConfigCrudService().update_record(rel, pk, p))

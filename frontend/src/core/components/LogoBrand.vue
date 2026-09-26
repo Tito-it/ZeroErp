@@ -42,7 +42,7 @@ defineProps({
 .logo-brand-text {
   font-weight: 600;
   font-size: var(--app-font-size-lg);
-  color: var(--p-text-color);
+  color: var(--app-text-color);
   white-space: nowrap;
 }
 

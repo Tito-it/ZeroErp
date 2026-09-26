@@ -82,16 +82,42 @@ _CHIAVE_DATA_CONSEGNA = "data_consegna_richiesta_cliente"
 #    la mette sempre in `non_editable_fields`). `iva_id` nemmeno (`I6`,
 #    2026-08-31: l'aliquota la decide il risolutore). `quantita` e' derivata
 #    dal trigger: la sorgente e' `qta_operativa`.
-_UPDATE_KEYS_PREVENTIVO: frozenset[str] = frozenset({
+UPDATE_KEYS_PREVENTIVO: frozenset[str] = frozenset({
     "billing_account_id", "istanza_utility_id",
     "valuta_id", "termine_pagamento_id",
     "validita_dal", "validita_al", "competenza_mese",
     "fatturazione_immediata", "meta",
 })
-_UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
+UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "descrizione", "qta_operativa", "uom_operativa_id",
     "factor_to_base", "prezzo_unitario", "sconto_percentuale",
     "ordine", "meta",
+})
+# Il contratto della CREAZIONE (testata e riga): le chiavi che `crea_preventivo`
+# e `gestisci_riga` leggono, ne' una di piu' ne' una di meno — e una chiave fuori
+# elenco viene SCARTATA in ingresso, come in ordini e DDT.
+# ⭐ Dichiarati il 2026-09-26: fino a quel giorno le chiavi si leggevano una per
+#    una e non stavano in nessun elenco, e lo schema OpenAPI scritto a mano
+#    pubblicava ancora `iva_id` (chiuso da `I6`, 2026-08-31) e `quantita` (la
+#    calcola il trigger da `qta_operativa`), che il service ignorava in silenzio.
+#    Lo schema ora si legge da qui (`vendite/api/_schema_da_contratto.py`).
+CREATE_KEYS_PREVENTIVO: frozenset[str] = frozenset({
+    "utility_id", "billing_account_id", "istanza_utility_id",
+    "emittente_fiscale_id", "valuta_id", "termine_pagamento_id",
+    "validita_dal", "validita_al", "competenza_mese",
+    "fatturazione_immediata", "meta",
+})
+CREATE_KEYS_RIGA: frozenset[str] = frozenset({
+    "articolo_id", "descrizione", "qta_operativa", "uom_operativa_id",
+    "factor_to_base", "prezzo_unitario", "sconto_percentuale", "ordine", "meta",
+    "data_consegna_richiesta_cliente", "richiesta_approvazione",
+    "componenti_overrides", "componenti_attivazioni",
+})
+# In MODIFICA riga, oltre a `UPDATE_KEYS_RIGA` (le colonne che il repository
+# scrive in blocco), `aggiorna_riga` legge a parte queste due: la data con il
+# suo validatore, la richiesta di approvazione per il gate L3.
+UPDATE_RIGA_LETTE_A_PARTE: frozenset[str] = frozenset({
+    "data_consegna_richiesta_cliente", "richiesta_approvazione",
 })
 _V_RIGA = PayloadValidator(validation_code="E_PREV_VALIDAZIONE")
 
@@ -364,6 +390,7 @@ def delete_indirizzo(preventivo_id: int, indirizzo_id: int) -> dict[str, Any]:
 #    Specificarlo esplicito solo per admin globale (utente senza emittente
 #    assegnato che sceglie l'emittente del documento).
 def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
+    payload = {k: v for k, v in payload.items() if k in CREATE_KEYS_PREVENTIVO}
     repo = PreventiviRepository()
     ba_repo = BillingAccountRepository()
     iu_repo = IstanzeUtilityRepository()
@@ -513,7 +540,7 @@ def aggiorna_preventivo(preventivo_id: int, payload: dict[str, Any]) -> dict[str
     # include sempre utility_id) e quindi NON e' nella whitelist: per cambiarla
     # serve creare un nuovo preventivo.
     update_fields: dict[str, Any] = {}
-    for key in _UPDATE_KEYS_PREVENTIVO:
+    for key in UPDATE_KEYS_PREVENTIVO:
         if key in payload:
             val = payload[key]
             update_fields[key] = empty_to_none(val) if isinstance(val, str) else val
@@ -815,6 +842,7 @@ def gestisci_riga(
     *,
     auth_user_id: int | None = None,
 ) -> dict[str, Any]:
+    payload = {k: v for k, v in payload.items() if k in CREATE_KEYS_RIGA}
     repo = PreventiviRepository()
     testata = _get_testata_or_raise(repo, preventivo_id, op="gestisci_riga")
     richiedi_righe_in_bozza(
@@ -1081,7 +1109,7 @@ def aggiorna_riga(
     # ⚠️ E non si ri-risolve in UPDATE, ed e' corretto: `articolo_id` non e' in
     #    questo elenco — l'articolo di una riga non si cambia — quindi non c'e'
     #    niente, qui, che possa spostare la risposta.
-    for key in _UPDATE_KEYS_RIGA:
+    for key in UPDATE_KEYS_RIGA:
         if key in payload:
             update_fields[key] = payload[key]
     # La data di consegna richiesta: presente nel payload -> si scrive (anche

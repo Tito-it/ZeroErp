@@ -45,10 +45,47 @@ export function escapeSoloInCima(event, doc) {
   return true
 }
 
-// Scopo: aggancia la regola a `document`, UNA volta, all'avvio dell'app.
-//        Torna la funzione che la sgancia (per i test e per simmetria).
+// ⭐ ESC DA UNA TENDINA CHIUSA (2026-09-26, rilievo in-app di Tid: «ESC
+//    bloccato se il fuoco e' su un campo»). Il `Select` di PrimeVue 4 fa
+//    `stopPropagation` su ESC SEMPRE, anche a tendina chiusa (nel sorgente:
+//    «@todo will be changed next versions»): scelto un valore, il fuoco resta
+//    sulla tendina, e ESC non arriva piu' a `document` — il drawer non si
+//    chiudeva e non chiedeva nemmeno delle modifiche non salvate.
+//    MultiSelect e DatePicker lo fermano solo a pannello APERTO, com'e' giusto.
+//
+//    Rimedio, qui e non campo per campo: in CAPTURE (prima del Select) un ESC
+//    su una tendina CHIUSA si toglie al Select — a tendina chiusa il suo ESC
+//    non fa niente — e se ne rimanda una copia dal CONTENITORE della tendina,
+//    che risale come avrebbe fatto l'originale: la radice di un `AppDialog`,
+//    poi `document` (la regola qui sopra, poi Drawer e Dialog). A tendina
+//    APERTA non si tocca: il primo ESC chiude la tendina, il secondo il resto.
+const TENDINA = '.p-select'
+
+// Scopo: la regola, pura. `crea` fabbrica la copia dell'evento (nei test un
+//        oggetto finto: il progetto non ha jsdom).
+export function escapeDaTendinaChiusa(event, crea = (init) => new KeyboardEvent('keydown', init)) {
+  if (event.code !== 'Escape') return false
+  const bersaglio = event.target
+  const tendina = bersaglio?.closest?.(TENDINA)
+  if (!tendina?.parentElement) return false
+  // Il fuoco di un Select (etichetta o input) porta `aria-expanded`.
+  if (bersaglio.getAttribute?.('aria-expanded') === 'true') return false
+  event.stopImmediatePropagation()
+  tendina.parentElement.dispatchEvent(
+    crea({ key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }),
+  )
+  return true
+}
+
+// Scopo: aggancia le due regole a `document`, UNA volta, all'avvio dell'app.
+//        Torna la funzione che le sgancia (per i test e per simmetria).
 export function installaEscapeSoloInCima(doc = document) {
   const listener = (event) => escapeSoloInCima(event, doc)
+  const tendina = (event) => escapeDaTendinaChiusa(event)
   doc.addEventListener('keydown', listener)
-  return () => doc.removeEventListener('keydown', listener)
+  doc.addEventListener('keydown', tendina, true)
+  return () => {
+    doc.removeEventListener('keydown', listener)
+    doc.removeEventListener('keydown', tendina, true)
+  }
 }

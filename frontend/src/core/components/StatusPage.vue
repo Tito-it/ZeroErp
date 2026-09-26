@@ -69,18 +69,18 @@ const emit = defineEmits(['action'])
 
 .status-icon {
   font-size: 2.5rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
 }
 
 .status-content h2 {
   margin: 0;
-  color: var(--p-text-color);
+  color: var(--app-text-color);
   font-size: 1.2rem;
 }
 
 .status-content p {
   margin: 0;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   font-size: var(--app-font-size-base);
 }
 
@@ -92,7 +92,7 @@ const emit = defineEmits(['action'])
 
 .status-features h3 {
   font-size: var(--app-font-size-sm);
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   margin: 0 0 0.4rem 0;
 }
 
@@ -103,7 +103,7 @@ const emit = defineEmits(['action'])
 
 .status-features li {
   font-size: var(--app-font-size-sm);
-  color: var(--p-text-color);
+  color: var(--app-text-color);
   padding: 0.15rem 0;
 }
 </style>

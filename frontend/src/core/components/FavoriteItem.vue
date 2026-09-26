@@ -107,7 +107,7 @@ function onRemove() {
   border: 1px solid var(--app-card-border);
   border-radius: var(--app-card-radius);
   background: var(--app-card-bg);
-  color: var(--p-text-color);
+  color: var(--app-text-color);
 }
 
 .favorite-item--tile:hover {
@@ -130,7 +130,7 @@ function onRemove() {
 
 .favorite-item__handle {
   font-size: 0.75rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   opacity: 0.65;
 }
 
@@ -187,7 +187,7 @@ function onRemove() {
 }
 
 .favorite-item__domain {
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   font-size: 0.75rem;
 }
 

@@ -18,6 +18,7 @@ import { useNotify } from '../../../core/composables/useNotify'
 import { useInjectReadonly, READONLY_KEY } from '../../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../../core/composables/useDrawerFormPreserve'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
@@ -52,6 +53,10 @@ const onClose = useDrawerClose(emit, 'cancelled')
 const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 
 const form = ref({})
+// Modifiche non salvate: fotografia a ogni caricamento del dettaglio,
+// chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
+const { preserva, fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
+const chiudi = () => chiudiConConferma(onClose)
 const detail = ref(null)
 // Stato form riga inline: quando si edita/aggiunge una riga, il FormFooter
 // testata si nasconde per non duplicare i bottoni di ResoRigaForm.
@@ -104,6 +109,10 @@ function resetForm() {
 
 async function loadDetail() {
   if (!props.resoId) return
+  // `preserva`: salvare una riga o cambiare stato ricarica la testata, e senza
+  // la modifica di testata non ancora salvata tornava com'era, in silenzio
+  // (stesso difetto gia' corretto su ordini/DDT/preventivi, 2026-09-26).
+  const applica = preserva()
   const data = await loadDetailOrClose(() => store.fetchDetail(props.resoId))
   if (!data) return
   detail.value = data
@@ -111,6 +120,7 @@ async function loadDetail() {
     emittente_fiscale_id: data.emittente_fiscale_id ?? null,
     data: data.data ? new Date(data.data + 'T00:00:00') : null,
   }
+  applica()
 }
 
 watch(() => props.visible, (v) => {
@@ -130,6 +140,9 @@ async function handleSave() {
     { successMessage: t('vendite.resi.reso_salvato') },
   )
   if (result !== null) {
+    // Salvato: fotografia PRIMA della ricarica, o `preserva` riprenderebbe
+    // la data appena salvata per una modifica pendente.
+    fissa()
     await loadDetail()
     emit('saved', result)
   }
@@ -231,14 +244,16 @@ async function onCoperturaRiconsegnaCambiata() {
   // aperto. Difetto gemello di quello degli ordini, con il segno opposto.
   emit('changed')
 }
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="(v) => { if (!v) onClose() }"
+  <Drawer :visible="visible" @update:visible="suVisibile"
     @after-show="onAfterShow"
     position="right" :style="{ width: DRAWER_WIDTH.WIDE_PLUS }" :dismissable="true">
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="t('common.edit')"
         :title="t('vendite.resi.reso')"
         :icon="NAV_ICONS.RESI"
@@ -303,8 +318,8 @@ async function onCoperturaRiconsegnaCambiata() {
 
       <FormFooter v-if="canEditTestata && !isReadonly && !formRigaAperto"
         :loading="loading" :disabled="!canSave"
-        @save="handleSave" @cancel="onClose" />
-      <FormFooter v-else-if="hasDetail && !formRigaAperto" close-only @cancel="onClose" />
+        @save="handleSave" @cancel="chiudi" />
+      <FormFooter v-else-if="hasDetail && !formRigaAperto" close-only @cancel="chiudi" />
     </div>
   </Drawer>
 

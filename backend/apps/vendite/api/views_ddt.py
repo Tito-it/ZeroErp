@@ -39,12 +39,44 @@ from apps.vendite.api.indirizzi_documento_views import (
 from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import ddt_service
 from apps.core.api.openapi_params import param_ricerca_full
-from apps.vendite.api._componenti_schema import COMPONENTE_PATCH_REQUEST
+from apps.vendite.api._componenti_schema import (
+    COMPONENTE_PATCH_REQUEST,
+    COMPONENTI_LIST_PARAMETERS,
+    COMPONENTI_LIST_RESPONSE,
+    PREVIEW_COMPONENTI_REQUEST,
+    PREVIEW_COMPONENTI_RESPONSE,
+    componenti_overrides_field,
+)
+from apps.vendite.api._schema_da_contratto import CAMBIA_STATO_REQUEST, schema_da_contratto
 
 # Codice lista (ui.lista_definizione) usato dall'export per risolvere
 # colonne visibili/ordine/permessi dell'utente.
 _LISTA_CODICE_DDT = "vendite.ddt"
 
+
+# ── Schemi OpenAPI dei corpi: le chiavi dal contratto del service ──────────
+_DDT_CREATE_REQUEST = schema_da_contratto(
+    "VenditeDdtCreateReq", ddt_service.CREATE_KEYS_DDT,
+    obbligatorie=("billing_account_id",),
+)
+_DDT_UPDATE_REQUEST = schema_da_contratto(
+    "VenditeDdtUpdateReq", ddt_service.UPDATE_KEYS_DDT,
+)
+_DDT_RIGA_CREATE_REQUEST = schema_da_contratto(
+    "VenditeDdtRigaCreateReq", ddt_service.CREATE_KEYS_RIGA,
+    obbligatorie=("articolo_id",),
+    speciali={"componenti_overrides": componenti_overrides_field()},
+)
+_DDT_RIGA_UPDATE_REQUEST = schema_da_contratto(
+    "VenditeDdtRigaUpdateReq", ddt_service.UPDATE_KEYS_RIGA,
+)
+_DDT_RESPONSE = inline_serializer(
+    name="VenditeDdtResp", fields={"data": serializers.DictField()},
+)
+_DDT_LISTA_RESPONSE = inline_serializer(
+    name="VenditeDdtListaResp",
+    fields={"data": serializers.ListField(child=serializers.DictField())},
+)
 
 class ApiDdtList(DomainAPIView):
     """GET/POST /api/v1/vendite/ddt/ — lista paginata + create BOZZA standalone."""
@@ -93,6 +125,10 @@ class ApiDdtList(DomainAPIView):
         )
         return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
+    @extend_schema(
+        request=_DDT_CREATE_REQUEST,
+        responses={200: _DDT_RESPONSE},
+    )
     # Scopo: Crea nuovo DDT standalone in stato BOZZA (DRAFT).
     def post(self, request: Request) -> JsonResponse:
         return handle_post_json(request, handler=ddt_service.crea_ddt)
@@ -168,10 +204,17 @@ class ApiDdtDetail(DomainAPIView):
 
     area_funzionale = "vendite"
 
+    @extend_schema(
+        responses={200: _DDT_RESPONSE},
+    )
     # Scopo: Dettaglio testata DDT + capability.
     def get(self, request: Request, ddt_id: int) -> JsonResponse:
         return success_response(ddt_service.get_ddt(int(ddt_id)))
 
+    @extend_schema(
+        request=_DDT_UPDATE_REQUEST,
+        responses={200: _DDT_RESPONSE},
+    )
     # Scopo: Aggiorna testata DDT (solo DRAFT). PATCH usa request.data (DRF ha
     #        gia' parsato il body; handle_post_json rileggerebbe il raw consumato).
     def patch(self, request: Request, ddt_id: int) -> JsonResponse:
@@ -179,6 +222,9 @@ class ApiDdtDetail(DomainAPIView):
             ddt_service.aggiorna_ddt(int(ddt_id), dict(request.data)),
         )
 
+    @extend_schema(
+        responses={200: _DDT_RESPONSE},
+    )
     # Scopo: Hard-delete DDT (abbandono bozza, solo DRAFT + 0 righe).
     def delete(self, request: Request, ddt_id: int) -> JsonResponse:
         return success_response(ddt_service.elimina_ddt(int(ddt_id)))
@@ -192,6 +238,10 @@ class ApiDdtCambiaStato(DomainAPIView):
 
     area_funzionale = "vendite"
 
+    @extend_schema(
+        request=CAMBIA_STATO_REQUEST,
+        responses={200: _DDT_RESPONSE},
+    )
     # Scopo: Esegue la transizione di stato richiesta (validata dal trigger DB).
     def post(self, request: Request, ddt_id: int) -> JsonResponse:
         return handle_post_json(
@@ -208,6 +258,10 @@ class ApiDdtPush(DomainAPIView):
 
     area_funzionale = "vendite"
 
+    @extend_schema(
+        request=None,
+        responses={200: _DDT_RESPONSE},
+    )
     # Scopo: Push singolo del DDT a commessa (sorgente DDT_VENDITA).
     def post(self, request: Request, ddt_id: int) -> JsonResponse:
         user = getattr(request.user, "username", None) or None
@@ -262,6 +316,9 @@ class ApiDdtRighePerReso(DomainAPIView):
 
     area_funzionale = "vendite"
 
+    @extend_schema(
+        responses={200: _DDT_LISTA_RESPONSE},
+    )
     # Scopo: Righe DDT + qta_gia_resa/qta_resa_residua per il pannello reso.
     def get(self, request: Request, ddt_id: int) -> JsonResponse:
         from apps.vendite.services import resi_service
@@ -275,10 +332,17 @@ class ApiDdtRighe(DomainAPIView):
 
     area_funzionale = "vendite"
 
+    @extend_schema(
+        responses={200: _DDT_LISTA_RESPONSE},
+    )
     # Scopo: Lista righe del DDT.
     def get(self, request: Request, ddt_id: int) -> JsonResponse:
         return success_response(ddt_service.list_righe(int(ddt_id)))
 
+    @extend_schema(
+        request=_DDT_RIGA_CREATE_REQUEST,
+        responses={200: _DDT_RESPONSE},
+    )
     # Scopo: Aggiunge una riga (solo DRAFT). Pricing via BB condiviso.
     def post(self, request: Request, ddt_id: int) -> JsonResponse:
         auth_user_id = get_scope_user_id(request)
@@ -295,6 +359,10 @@ class ApiDdtRigaDetail(DomainAPIView):
 
     area_funzionale = "vendite"
 
+    @extend_schema(
+        request=_DDT_RIGA_UPDATE_REQUEST,
+        responses={200: _DDT_RESPONSE},
+    )
     # Scopo: Aggiorna una riga del DDT (solo DRAFT).
     def patch(self, request: Request, ddt_id: int, riga_id: int) -> JsonResponse:
         return success_response(
@@ -304,6 +372,9 @@ class ApiDdtRigaDetail(DomainAPIView):
             ),
         )
 
+    @extend_schema(
+        responses={200: _DDT_RESPONSE},
+    )
     # Scopo: Elimina una riga del DDT (hard delete, solo DRAFT).
     def delete(self, request: Request, ddt_id: int, riga_id: int) -> JsonResponse:
         return success_response(
@@ -319,6 +390,10 @@ class ApiDdtRigaPreviewComponenti(DomainAPIView):
 
     area_funzionale = "vendite"
 
+    @extend_schema(
+        request=PREVIEW_COMPONENTI_REQUEST,
+        responses={200: PREVIEW_COMPONENTI_RESPONSE},
+    )
     # Scopo: Preview read-only dei componenti BoM (nessuna persistenza: il gate
     #        L1 sugli override e' applicato al salvataggio riga).
     def post(self, request: Request, ddt_id: int) -> JsonResponse:
@@ -342,6 +417,10 @@ class ApiDdtRigaComponentiList(DomainAPIView):
 
     area_funzionale = "vendite"
 
+    @extend_schema(
+        parameters=COMPONENTI_LIST_PARAMETERS,
+        responses={200: COMPONENTI_LIST_RESPONSE},
+    )
     # Scopo: Lista componenti BoM persistiti della riga.
     def get(self, request: Request, ddt_id: int, riga_id: int) -> JsonResponse:
         solo_attivi = qp_bool(request.query_params.get("solo_attivi"), default=True)
@@ -368,6 +447,9 @@ class ApiDdtRigaComponenteDetail(DomainAPIView):
             ),
         )
 
+    @extend_schema(
+        responses={200: _DDT_RESPONSE},
+    )
     # Scopo: Disattiva (soft) un componente BoM (solo DRAFT).
     def delete(
         self, request: Request, ddt_id: int, riga_id: int, componente_id: int,

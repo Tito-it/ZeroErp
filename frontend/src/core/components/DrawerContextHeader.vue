@@ -138,7 +138,7 @@ function displayValue(item) {
   flex: 0 0 auto;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .drawer-context-header-primary {
     flex-direction: column;
     align-items: flex-start;

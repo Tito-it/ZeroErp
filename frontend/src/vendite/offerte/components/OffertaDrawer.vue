@@ -41,6 +41,7 @@ import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../../core/composables/useDrawerFormPreserve'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
 import { useEmittenteFiscaleField } from '../../../core/composables/useEmittenteFiscaleField'
@@ -99,6 +100,9 @@ const isEdit = computed(() => props.mode === 'edit')
 
 const detail = ref(null)
 const form = ref({})
+// Modifiche non salvate: fotografia a form popolato (apertura, ricarica,
+// salvataggio), chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
+const { preserva, fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 // Tab "Testata | Revisioni" — state + load con guard di race incapsulati nel
 // building block `useRevisioniTab` (regola del 2, estratto a 2026-05-28
 // insieme a PreventiviDrawer). Le revisioni hanno il loro guard di versione
@@ -367,6 +371,7 @@ async function loadOrReset() {
     if (d == null) return  // dettaglio non accessibile → drawer già chiuso
     detail.value = d
     populateFromDetail(d)
+    fissa()
     // revisioniTab usa il proprio guard interno (useFetchVersion incluso).
     revisioniTab.loadRevisioni(props.offertaId)
   } else {
@@ -395,6 +400,7 @@ async function loadOrReset() {
         // Best-effort: trigger DB risolverà la valuta al save.
       }
     }
+    fissa()
   }
 }
 watch(() => [props.visible, props.offertaId], loadOrReset)
@@ -497,6 +503,11 @@ async function handleSave() {
     },
   )
   if (result !== null) {
+    // Salvato: la fotografia e' il form com'e' ora, PRIMA della ricarica —
+    // o `preserva` di refreshDetail prenderebbe i valori appena salvati per
+    // «non salvati» e li rimetterebbe sopra quelli del server. In creazione
+    // il parent riapre/chiude.
+    fissa()
     if (!isCreate) await refreshDetail()
     emit('saved', result)
   }
@@ -504,6 +515,10 @@ async function handleSave() {
 
 async function refreshDetail() {
   if (!props.offertaId) return
+  // `preserva`: salvare una riga o cambiare stato ricarica la testata, e senza
+  // la modifica di testata non ancora salvata tornava com'era, in silenzio
+  // (stesso difetto gia' corretto su ordini/DDT/preventivi, 2026-09-26).
+  const applica = preserva()
   // Guard `fv` (useFetchVersion): protegge contro l'apply di un detail stantio
   // se l'operatore chiude/cambia offerta mentre il fetch e' in volo. Stesso
   // pattern del watcher loadOrReset.
@@ -512,6 +527,7 @@ async function refreshDetail() {
   if (!fv.isCurrent(t)) return
   detail.value = d
   populateFromDetail(d)
+  applica()
   // Chip collegamenti riallineati qui e non nei singoli handler: push contratto
   // e genera ordine creano archi (offerta→contratto, offerta→ordine) e passano
   // TUTTI da questo punto — agganciarlo qui vale anche per le azioni future.
@@ -791,8 +807,11 @@ const drawerActions = computed(() => {
 })
 
 const onClose = useDrawerClose(emit, 'cancelled')
+// Uscite per volonta' dell'utente: con modifiche non salvate si chiede prima.
+const chiudi = () => chiudiConConferma(onClose)
 // Detail fuori scope (RLS) / inesistente → toast + chiusura, niente drawer vuoto.
 const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
@@ -801,11 +820,12 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
     :dismissable="true"
-    @update:visible="(val) => emit('update:visible', val)"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('vendite.offerte.titolo_drawer')"
         :icon="NAV_ICONS.OFFERTE"
@@ -1173,9 +1193,9 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
           :loading="loading"
           :disabled="!canSave"
           @save="handleSave"
-          @cancel="onClose"
+          @cancel="chiudi"
         />
-        <FormFooter v-else-if="isEdit" close-only @cancel="onClose" />
+        <FormFooter v-else-if="isEdit" close-only @cancel="chiudi" />
       </template>
     </div>
 

@@ -207,6 +207,13 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "v1",
     # Espone nello schema solo gli endpoint versionati /api/v1/*.
     "SCHEMA_PATH_PREFIX": r"/api/v1",
+    # Il primo e' il default di drf-spectacular (va ripetuto: la lista
+    # sostituisce, non aggiunge). Il secondo separa lista e dettaglio
+    # (`x_list` / `x_retrieve`): perche', in `apps/core/api/openapi_extensions.py`.
+    "POSTPROCESSING_HOOKS": [
+        "drf_spectacular.hooks.postprocess_schema_enums",
+        "apps.core.api.openapi_extensions.nomi_lista_dettaglio",
+    ],
     # UI Swagger: rimuove header CSRF dai request snippet per API JWT.
     "SWAGGER_UI_SETTINGS": """
     {

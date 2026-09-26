@@ -131,7 +131,7 @@ _TIPI_VARIAZIONE_GLOBALE_AMMESSI: frozenset[str] = frozenset({"PERCENTUALE"})
 # Chiavi ammesse nel payload create testata. `numero` escluso: generato dal
 # service. `stato_doc_contratto_id` escluso: stato iniziale DRAFT impostato
 # dal service (cambi stato successivi via endpoint dedicato).
-_CREATE_KEYS_TESTATA: frozenset[str] = frozenset({
+CREATE_KEYS_TESTATA: frozenset[str] = frozenset({
     # Post brief simmetria 2026-05-26: `emittente_fiscale_id` ora e' colonna
     # nativa di `vendite.contratti` (NOT NULL). Pattern duale al trigger
     # `script.trgfn_default_emittente_fiscale` (BB unico dal 2026-09-15, la
@@ -171,7 +171,7 @@ _CREATE_KEYS_TESTATA: frozenset[str] = frozenset({
     # Snapshot valuta fissato al CREATE, opzionale: se non passato, il
     # trigger DB `_a*_set_valuta_default_ins` risolve via
     # `vendite.fn_get_valuta_id` (catena BA → emittente → gestore, brief
-    # work-done 2026-05-29). Non in _UPDATE_KEYS_TESTATA: snapshot
+    # work-done 2026-05-29). Non in UPDATE_KEYS_TESTATA: snapshot
     # immutabile post-CREATE (simmetrico a preventivi/offerte).
     "valuta_id",
     # Riferimenti dell'atto (I8/D9), ammessi in CREATE dalla slice S3-b
@@ -192,7 +192,7 @@ _CREATE_KEYS_TESTATA: frozenset[str] = frozenset({
     "utility",
 })
 
-_UPDATE_KEYS_TESTATA: frozenset[str] = frozenset({
+UPDATE_KEYS_TESTATA: frozenset[str] = frozenset({
     "ambito",
     "valido_dal",
     "valido_al",
@@ -234,7 +234,7 @@ _UPDATE_KEYS_TESTATA: frozenset[str] = frozenset({
 # ⛔ In CESSATO e ANNULLATO restano fuori: li' la regola e' immutabilita' piena e
 #   non c'e' ragione di scalfirla.
 _CONTRATTO_PATCH_ALLOWED_BY_STATE: dict[str, frozenset[str]] = {
-    "DRAFT": _UPDATE_KEYS_TESTATA,
+    "DRAFT": UPDATE_KEYS_TESTATA,
     "ATTIVO": frozenset({"valido_al", "meta"}) | _CODICI_ATTO,
     "CESSATO": frozenset(),
     # ANNULLATO (refactor 2026-05-20): stato terminale "soft-delete", coerente
@@ -293,7 +293,7 @@ _FORBIDDEN_TESTATA_UPDATE: frozenset[str] = frozenset({
 # ESCLUSIONE, AGGIUNTA. Obbligatoria in create (NOT NULL nello schema),
 # immutabile in update (per cambiare tipo serve DELETE + INSERT — meno
 # zone grigie di un cambio di semantica in-place).
-_CREATE_KEYS_RIGA: frozenset[str] = frozenset({
+CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "articolo_id",
     "tipo_eccezione",
     "tipo_erogazione",
@@ -321,7 +321,7 @@ _CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "richiesta_approvazione",
 })
 
-_UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
+UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "tipo_erogazione",
     "fonte_quantita_attesa",
     "periodicita",
@@ -335,7 +335,7 @@ _UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "ordine",
     "attivo",
     "meta",
-    # Workflow L3: vedi commento _CREATE_KEYS_RIGA. update_riga lo gestisce
+    # Workflow L3: vedi commento CREATE_KEYS_RIGA. update_riga lo gestisce
     # alla stessa stregua per `prezzo_unitario` modificato che viola L2.
     "richiesta_approvazione",
 })
@@ -401,7 +401,7 @@ _FONTI_QUANTITA_DOWNSTREAM: frozenset[str] = frozenset({
 # utility_id sono derivati dal contratto in create; immutabili in update.
 # Utility 1:1: istanza_utility_id e utility_id derivano dalla testata,
 # NON dal payload (evita incoerenze silenziose).
-_UTILITY_CREATE_KEYS: frozenset[str] = frozenset({
+UTILITY_CREATE_KEYS: frozenset[str] = frozenset({
     "istanza_dati_precontrattuali_id",
     "tipo_utenza_id",
     "classe_utenza_id",
@@ -410,7 +410,7 @@ _UTILITY_CREATE_KEYS: frozenset[str] = frozenset({
     "meta",
 })
 
-_UTILITY_UPDATE_KEYS: frozenset[str] = frozenset({
+UTILITY_UPDATE_KEYS: frozenset[str] = frozenset({
     "istanza_dati_precontrattuali_id",
     "tipo_utenza_id",
     "classe_utenza_id",
@@ -738,7 +738,7 @@ class ContrattiService:
                 "Campi rifiutati"
             ),
         )
-        self._v.validate_allowed_keys(payload, allowed=_CREATE_KEYS_TESTATA, message=_MESSAGE)
+        self._v.validate_allowed_keys(payload, allowed=CREATE_KEYS_TESTATA, message=_MESSAGE)
 
         data = self._build_create_data_testata(payload)
         utility_payload = payload.get("utility")
@@ -794,7 +794,7 @@ class ContrattiService:
             ),
             context_extra={"contratto_id": contratto_id},
         )
-        self._v.validate_allowed_keys(payload, allowed=_UPDATE_KEYS_TESTATA, message=_MESSAGE)
+        self._v.validate_allowed_keys(payload, allowed=UPDATE_KEYS_TESTATA, message=_MESSAGE)
 
         # Leggiamo la testata esistente PRIMA di validare la coppia variazione
         # globale: serve al validator per sapere il listino_id corrente quando
@@ -869,7 +869,7 @@ class ContrattiService:
             bool(data),
             code=E_VENDITE_VALIDATION,
             message="Nessun campo aggiornabile presente nel payload.",
-            context={"allowed_keys": sorted(_UPDATE_KEYS_TESTATA)},
+            context={"allowed_keys": sorted(UPDATE_KEYS_TESTATA)},
         )
 
         # Refactor modalita 2026-05-15 §3-bis-E: se il PATCH tocca la
@@ -1278,7 +1278,7 @@ class ContrattiService:
             reason="contratto_id arriva dall'URL, non dal payload.",
             detail_prefix="Campi rifiutati",
         )
-        self._v.validate_allowed_keys(payload, allowed=_CREATE_KEYS_RIGA, message=_MESSAGE_RIGA)
+        self._v.validate_allowed_keys(payload, allowed=CREATE_KEYS_RIGA, message=_MESSAGE_RIGA)
         # `componenti_overrides` non e' campo di `contratti_righe`: estraiamo
         # PRIMA di `_build_data_riga` cosi' non finisce nell'INSERT.
         componenti_overrides_raw = payload.pop("componenti_overrides", None)
@@ -1535,7 +1535,7 @@ class ContrattiService:
             reason="articolo_id, contratto_id e tipo_eccezione immutabili: per rimpiazzarli eliminare la riga e crearne una nuova.",
             detail_prefix="Campi rifiutati",
         )
-        self._v.validate_allowed_keys(payload, allowed=_UPDATE_KEYS_RIGA, message=_MESSAGE_RIGA)
+        self._v.validate_allowed_keys(payload, allowed=UPDATE_KEYS_RIGA, message=_MESSAGE_RIGA)
         # Flag opt-in L3 estratto pre-build_data (non e' una colonna riga).
         richiesta_approvazione = bool(payload.pop("richiesta_approvazione", False))
         data = self._build_data_riga(payload, for_create=False)
@@ -1544,7 +1544,7 @@ class ContrattiService:
             bool(data),
             code=E_VENDITE_VALIDATION,
             message="Nessun campo aggiornabile presente nel payload riga.",
-            context={"allowed_keys": sorted(_UPDATE_KEYS_RIGA)},
+            context={"allowed_keys": sorted(UPDATE_KEYS_RIGA)},
         )
 
         # Coerenza prezzo_unitario / tipo_eccezione (refactor 2026-05-15):
@@ -1894,7 +1894,7 @@ class ContrattiService:
             reason="Identificativi utility immutabili.",
             detail_prefix="Campi rifiutati",
         )
-        self._v.validate_allowed_keys(payload, allowed=_UTILITY_UPDATE_KEYS, message=_MESSAGE_UTILITY)
+        self._v.validate_allowed_keys(payload, allowed=UTILITY_UPDATE_KEYS, message=_MESSAGE_UTILITY)
         self._validate_utility_payload_shape(payload, for_create=False)
         data = self._build_utility_data(
             payload,
@@ -1906,7 +1906,7 @@ class ContrattiService:
             bool(data),
             code=E_VENDITE_VALIDATION,
             message="Nessun campo aggiornabile presente nel payload utility.",
-            context={"allowed_keys": sorted(_UTILITY_UPDATE_KEYS)},
+            context={"allowed_keys": sorted(UTILITY_UPDATE_KEYS)},
         )
 
         with self._map_db_errors(
@@ -2437,7 +2437,7 @@ class ContrattiService:
     def _validate_utility_payload_shape(
         self, payload: dict[str, Any], *, for_create: bool
     ) -> None:
-        allowed = _UTILITY_CREATE_KEYS if for_create else _UTILITY_UPDATE_KEYS
+        allowed = UTILITY_CREATE_KEYS if for_create else UTILITY_UPDATE_KEYS
         self._v.validate_allowed_keys(
             payload, allowed=allowed, message=_MESSAGE_UTILITY,
         )

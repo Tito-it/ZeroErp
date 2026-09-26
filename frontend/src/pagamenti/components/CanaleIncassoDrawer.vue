@@ -40,6 +40,7 @@ import AppDrawer from '../../core/components/AppDrawer.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import SoggettoRuoloLookup from '../../core/components/SoggettoRuoloLookup.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import {
   useEmittenteFiscaleField,
   formatEmittenteOptionLabel,
@@ -143,6 +144,9 @@ const nessunConto = computed(() => risposta.value?.nessun_conto_di_incasso === t
 const form = ref(defaultForm())
 const filialeObj = ref(null)
 const soggettoPspObj = ref(null)
+// Modifiche non salvate (BB useDrawerFormPreserve): il guscio AppDrawer colora
+// l'azione e chiede conferma su ogni uscita.
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 
 function defaultForm() {
   return {
@@ -283,7 +287,7 @@ watch(() => [props.visible, props.canaleId], async ([vis]) => {
   }
   soggettoRuoloEmittente.value = soggettoRuoloSessione.value
 
-  if (!props.canaleId) return
+  if (!props.canaleId) { fissa(); return }
   const dati = await execute(() => getEnteIncasso(props.canaleId))
   if (dati === null) return
   const c = dati.ente_incasso || {}
@@ -314,6 +318,7 @@ watch(() => [props.visible, props.canaleId], async ([vis]) => {
   if (c.conto_soggetto_ruolo_id != null) {
     soggettoRuoloEmittente.value = c.conto_soggetto_ruolo_id
   }
+  fissa()
 })
 
 async function onSave() {
@@ -351,13 +356,15 @@ async function onSave() {
 <template>
   <AppDrawer
     :visible="visible"
-    :title="t(isEdit ? 'pagamenti.canali.titolo_modifica' : 'pagamenti.canali.titolo_nuovo')"
+    :title="t('pagamenti.canali.titolo_singolare')"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
     :width="DRAWER_WIDTH.STANDARD"
     :loading="loading || caricamentoConti"
     :save-disabled="!canSave"
     @update:visible="(v) => emit('update:visible', v)"
     @save="onSave"
-    @cancel="emit('update:visible', false)"
   >
     <div class="form-grid">
       <!-- ══ Che canale e' ══ -->

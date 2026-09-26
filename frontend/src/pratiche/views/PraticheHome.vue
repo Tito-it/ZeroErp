@@ -31,8 +31,8 @@ const store = usePraticheStore()
 const auth = useAuthStore()
 const { isReadonly, isBlocked } = useReadonlyMode(READONLY_DOMAINS.PRATICHE)
 
-// Solo l'operatore con emittente 1-a-1 ha una coda lavoro (stesso gate di
-// MieAttivitaPanel): admin globale/portali → niente colonna Continua.
+// Solo l'operatore con emittente 1-a-1 ha una coda lavoro: admin
+// globale/portali → niente colonna Continua.
 const isOperatore = computed(() => !!auth.emittenteCorrente?.id)
 
 // Colonne visibili: Comincia richiede il permesso di creare (non readonly),
@@ -339,7 +339,7 @@ const { prendiInCarico: onPrendiInCarico } = usePrendiInCarico()
 }
 
 /* Tablet/mobile: colonne impilate, scrolla la pagina */
-@media (max-width: 1023px) {
+@media (max-width: 1023.98px) {
   .pratiche-home {
     overflow-y: auto;
   }

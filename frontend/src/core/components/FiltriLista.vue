@@ -243,7 +243,7 @@ function pulisci() {
          nessun filtro non ha niente da pulire, anche se il suo store dichiara
          dei `filterDefaults`.
          ⭐ Icona sola col tooltip, come ogni altro pulsante di questa toolbar
-         (`ReloadButton`): l'etichetta per esteso resta nel drawer, dove c'e' lo
+         (`PageActionsBar`): l'etichetta per esteso resta nel drawer, dove c'e' lo
          spazio e il gesto e' piu' lontano dai filtri. La classe e' quella del
          pulsante-imbuto perche' sono la stessa famiglia — i comandi dei filtri
          nella toolbar — e i colori vivono in una sede sola. -->

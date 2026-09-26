@@ -93,16 +93,16 @@ const levels = computed(() => {
   font-size: 0.85rem;
 }
 .parameter-level-active {
-  background: var(--p-highlight-background);
+  background: var(--app-highlight-bg);
   font-weight: 600;
 }
 .parameter-level-label {
   min-width: 80px;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   font-size: 0.8rem;
 }
 .parameter-level-empty {
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   font-style: italic;
 }
 </style>

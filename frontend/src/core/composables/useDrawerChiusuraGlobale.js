@@ -32,54 +32,30 @@
 // query: i filtri di lista e i deep-link si ripuliscono da soli con
 // `router.replace` sulla stessa pagina, e chiudere i drawer li' sarebbe un
 // pannello che sparisce da solo mentre si filtra.
-import { getCurrentScope, onScopeDispose } from 'vue'
+// Le protezioni del segnale (iterazione su una copia, chiusure isolate l'una
+// dall'altra, de-registrazione allo smontaggio) stanno nel BB `creaSegnale`:
+// una chiusura puo' smontare un componente e de-registrare se stessa mentre il
+// ciclo gira, e un drawer rotto non e' una buona ragione per lasciarne aperti
+// altri quattro sopra la pagina d'arrivo.
+import { creaSegnale } from '../segnale'
 
-// Le chiusure vive, in ordine di registrazione. Set e non array: la stessa
-// funzione non si registra due volte, e la rimozione non ha da cercare indici.
-const _chiusure = new Set()
+const chiusura = creaSegnale('chiusura globale drawer')
 
 /**
- * Registra la chiusura di un drawer nel segnale globale.
- *
- * Se chiamata dentro uno scope reattivo (setup di un componente, o un
- * `effectScope`) si de-registra da sola allo smontaggio: un drawer smontato che
- * restasse nel Set verrebbe chiuso a vuoto per sempre — e su una view
- * KeepAlive che monta e smonta a ripetizione sarebbe una perdita che cresce.
+ * Registra la chiusura di un drawer nel segnale globale. Dentro uno scope
+ * reattivo si de-registra da sola allo smontaggio.
  *
  * @param {Function} chiudi - come si chiude QUESTO drawer
  * @returns {Function} de-registrazione manuale (per chi non ha uno scope)
  */
 export function registraDrawerChiudibile(chiudi) {
-  _chiusure.add(chiudi)
-  const rimuovi = () => _chiusure.delete(chiudi)
-  if (getCurrentScope()) onScopeDispose(rimuovi)
-  return rimuovi
+  return chiusura.ascolta(chiudi)
 }
 
 /**
  * Chiude TUTTO quello che e' aperto. Non ritorna niente e non fallisce: e' un
  * segnale, non un'operazione.
- *
- * ⚠️ Si itera su una COPIA: una chiusura puo' smontare un componente e quindi
- * de-registrare se stessa (o un figlio) mentre il ciclo gira — mutare il Set
- * sotto l'iteratore salterebbe silenziosamente il drawer successivo, cioe'
- * lascerebbe aperto proprio uno degli anelli che questo modulo esiste per
- * chiudere.
- *
- * ⚠️ E ogni chiusura e' isolata: se una solleva, le altre devono comunque
- * partire. Un drawer rotto non e' una buona ragione per lasciarne aperti altri
- * quattro sopra la pagina d'arrivo.
  */
 export function chiudiTuttiIDrawer() {
-  // Snapshot, non il Set vivo (vedi sopra). Estratto in una costante perche'
-  // lo spread dentro il `for…of` e' indistinguibile, per il linter, da una copia
-  // inutile — qui e' il punto della funzione.
-  const daChiudere = Array.from(_chiusure)
-  for (const chiudi of daChiudere) {
-    try {
-      chiudi()
-    } catch (e) {
-      console.warn('chiusura globale drawer: una chiusura ha sollevato', e)
-    }
-  }
+  chiusura.emetti()
 }

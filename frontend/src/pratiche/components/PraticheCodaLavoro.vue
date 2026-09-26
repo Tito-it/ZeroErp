@@ -21,8 +21,8 @@ const props = defineProps({
 
 const emit = defineEmits(['select-flusso', 'prendi-in-carico'])
 
-// Raggruppamento per livello dalla config condivisa (ordine + severity coerenti
-// coi contatori di MieAttivitaPanel). LIBERO = policy reparto-first caso C
+// Raggruppamento per livello dalla config dei livelli (ordine + severity).
+// LIBERO = policy reparto-first caso C
 // (flusso senza reparto/skill mostrato all'operatore della pratica).
 const sezioni = computed(() =>
   CODA_LAVORO_LIVELLI

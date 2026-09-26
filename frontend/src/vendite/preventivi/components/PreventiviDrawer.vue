@@ -21,7 +21,6 @@ import { paramBool, paramInt } from '../../../core/utils/parameterCast'
 import { useParameterDefaults } from '../../../core/composables/useParameterDefaults'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
 import { useEmittenteFiscaleField } from '../../../core/composables/useEmittenteFiscaleField'
-import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { getPreventivoFormDefaults } from '../../api/formDefaults'
 import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
 import { createPreventivo, getContestoPricing } from '../api/preventiviApi'
@@ -63,7 +62,6 @@ const { t, te } = useI18n()
 const store = usePreventiviStore()
 const { execute, loading, campiErrati } = useApiHandler()
 const { confirmAction } = useConfirmAction()
-const { emitDataChanged } = useTabEvents()
 
 const props = defineProps({
   visible: Boolean,
@@ -156,7 +154,13 @@ const form = ref({})
 // senza, compilare la testata e poi salvare una RIGA (`@changed` → loadDetail)
 // la riportava com'era sul server, in silenzio. BB condiviso coi drawer
 // gemelli (difetto trovato sul DDT, 2026-08-17, identico qui).
-const { preserva: preservaForm, reset: resetFormPreserve } = useDrawerFormPreserve(form)
+const {
+  preserva: preservaForm,
+  reset: resetFormPreserve,
+  fissa: fissaForm,
+  modificato,
+  chiudiConConferma,
+} = useDrawerFormPreserve(form, { visibile: () => props.visible })
 const detail = ref(null)
 // Riepilogo IVA aggregato per aliquota (lettura da `vw_preventivi_riepilogo_iva_dettaglio`).
 // Auto-popolato a ogni loadDetail e ogni `@changed` delle righe (regola fiscale
@@ -565,6 +569,8 @@ const { close, onVisibleChange } = useDrawerAutosaveBozza({
   form,
   deleteDraft: (id) => store.elimina(id),
   righeCountGetter: () => detail.value?.righe_count ?? 0,
+  // Uscita con modifiche non salvate: prima si chiede (BB useDrawerFormPreserve).
+  confermaUscita: chiudiConConferma,
   messages: {
     bozzaCreata: t('vendite.preventivi.bozza_creata'),
     abbandonoTitolo: t('vendite.preventivi.abbandono_bozza_titolo'),
@@ -640,6 +646,10 @@ async function handleSave() {
       { successMessage: t('vendite.preventivi.preventivo_salvato') }
     )
     if (result !== null) {
+      // Salvato: la fotografia e' il form com'e' ora, PRIMA della ricarica —
+      // o `preserva` prenderebbe i valori appena salvati per «non salvati» e
+      // li rimetterebbe sopra quelli (eventualmente normalizzati) del server.
+      fissaForm()
       await loadDetail()
       emit('saved', result)
     }
@@ -805,14 +815,13 @@ function onNuovaRevisione() {
 // automatica ACCETTATO → EVASO e le capability si vedono solo dopo il reload),
 // i chip dei collegamenti (lo smistamento crea gli archi preventivo→ordine e
 // preventivo→commessa: senza reload il chip comparirebbe solo alla riapertura
-// del drawer) e, se il ramo merce ha creato un ordine, notifica il tab ordini.
-async function onSmistato({ ordineId } = {}) {
-  if (ordineId) emitDataChanged(TAB_ENTITIES.ORDINE, ordineId)
+// del drawer). Le liste in ascolto (ordini, preventivi) le avvisa lo store nel
+// verbo `generaOrdine`, non questo drawer.
+async function onSmistato() {
   await loadDetail()
   collegamentiRef.value?.reload()
-  // ⭐ `emitDataChanged` avvisa la tab ORDINI, che e' un'ALTRA lista. Anche il
-  // preventivo pero' e' cambiato — ed e' la lista che sta dietro a questo
-  // drawer: senza `changed` restava indietro proprio la piu' vicina.
+  // `changed` resta il contratto del drawer verso CHI LO HA APERTO, che non e'
+  // per forza una lista in ascolto dell'evento (es. l'host dei flussi pratica).
   emit('changed')
 }
 
@@ -878,6 +887,7 @@ const drawerActions = computed(() => {
     <template #header>
       <DrawerTitle
         :action="(isEdit || hasDetail) ? t('common.edit') : t('common.new')"
+        :modificato="modificato"
         :title="t('vendite.preventivi.preventivo')"
         :icon="NAV_ICONS.PREVENTIVI"
       />

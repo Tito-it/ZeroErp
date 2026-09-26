@@ -3147,9 +3147,9 @@ class ContrattiWhitelistCreateAllineataAlDbTests(TestCase):
         return set(re.findall(r"'([a-z0-9_]+)'", match.group(1)))
 
     def test_whitelist_be_e_db_combaciano(self) -> None:
-        from apps.vendite.services.contratti_service import _CREATE_KEYS_TESTATA
+        from apps.vendite.services.contratti_service import CREATE_KEYS_TESTATA
 
-        be = set(_CREATE_KEYS_TESTATA) - self._NON_COLONNE
+        be = set(CREATE_KEYS_TESTATA) - self._NON_COLONNE
         db = self._whitelist_db("v_testata_allowed")
 
         # Chiavi che il BE accetta e la fn madre NON conosce: sono quelle che
@@ -3169,7 +3169,7 @@ class ContrattiWhitelistCreateAllineataAlDbTests(TestCase):
             non_esposte, [],
             f"vendite.fn_create_contratto accetta chiavi che il BE non espone: "
             f"{non_esposte}. Se è voluto, escluderle esplicitamente qui con il "
-            f"motivo; altrimenti aggiungerle a _CREATE_KEYS_TESTATA.",
+            f"motivo; altrimenti aggiungerle a CREATE_KEYS_TESTATA.",
         )
 
     # La sotto-entità utility ha la STESSA struttura fail-open della testata
@@ -3178,9 +3178,9 @@ class ContrattiWhitelistCreateAllineataAlDbTests(TestCase):
     # Presidiata qui, non perché sia già successo ma perché è lo stesso identico
     # meccanismo che è già costato un giro sulla testata.
     def test_whitelist_utility_be_e_db_combaciano(self) -> None:
-        from apps.vendite.services.contratti_service import _UTILITY_CREATE_KEYS
+        from apps.vendite.services.contratti_service import UTILITY_CREATE_KEYS
 
-        be = set(_UTILITY_CREATE_KEYS) | self._UTILITY_INIETTATE
+        be = set(UTILITY_CREATE_KEYS) | self._UTILITY_INIETTATE
         db = self._whitelist_db("v_util_allowed")
 
         scartate = sorted(be - db)
@@ -3202,7 +3202,7 @@ class ContrattiCatenaUpdateTests(TestCase):
 
     Il difetto del 2026-07-27 non è nato sulla create ma qui. La catena è:
 
-        _UPDATE_KEYS_TESTATA  →  _build_update_data_testata  →  TESTATA_UPDATE_COLUMNS
+        UPDATE_KEYS_TESTATA  →  _build_update_data_testata  →  TESTATA_UPDATE_COLUMNS
         (cosa si accetta)        (cosa si mappa)                (cosa si scrive)
 
     Basta che una colonna manchi in **uno solo** dei tre e l'UPDATE non la
@@ -3221,7 +3221,7 @@ class ContrattiCatenaUpdateTests(TestCase):
     """
 
     # Valore valido per ogni chiave della whitelist. Il dizionario È parte del
-    # guardrail: aggiungere una chiave a `_UPDATE_KEYS_TESTATA` senza aggiungere
+    # guardrail: aggiungere una chiave a `UPDATE_KEYS_TESTATA` senza aggiungere
     # qui un campione fa fallire il primo test — che è il momento in cui serve
     # fermarsi a pensare se il mapper la gestisce.
     _CAMPIONI: dict[str, object] = {
@@ -3253,7 +3253,7 @@ class ContrattiCatenaUpdateTests(TestCase):
     # 0) ⭐ L'invariante su cui si regge il FRONTEND, e che nessuno vedeva.
     #    `ContrattoDrawer.buildPayload()` costruisce il payload della PATCH, e
     #    `handleSave` lo SPREADA dentro il payload di CREATE. La create BE
-    #    (`validate_allowed_keys` su `_CREATE_KEYS_TESTATA`) RIFIUTA l'intero
+    #    (`validate_allowed_keys` su `CREATE_KEYS_TESTATA`) RIFIUTA l'intero
     #    payload se contiene una chiave che non ammette — non la ignora.
     #    Quindi ogni chiave accettata in UPDATE dev'essere accettata anche in
     #    CREATE, oppure il drawer deve cancellarla esplicitamente prima di
@@ -3262,7 +3262,7 @@ class ContrattiCatenaUpdateTests(TestCase):
     #    Era dichiarata UNA SOLA: i tre riferimenti dell'atto (I8/D9), che la
     #    whitelist della fn madre `vendite.fn_create_contratto` non conosceva.
     #    Il changeSet `20260831-24` li ha ammessi, quindi sono entrati in
-    #    `_CREATE_KEYS_TESTATA` (slice S3-b) e il `v-if` nel drawer e' caduto.
+    #    `CREATE_KEYS_TESTATA` (slice S3-b) e il `v-if` nel drawer e' caduto.
     #    ⭐ Il segnalibro ha fatto il suo mestiere: e' diventato rosso il giorno
     #    in cui l'eccezione ha smesso di servire, invece di restare verde su una
     #    deroga sopravvissuta alla sua ragione.
@@ -3272,28 +3272,28 @@ class ContrattiCatenaUpdateTests(TestCase):
     #    dichiarando l'eccezione, che e' il gesto che la rende visibile.
     def test_update_keys_accettate_anche_in_create(self) -> None:
         from apps.vendite.services.contratti_service import (
-            _CREATE_KEYS_TESTATA,
-            _UPDATE_KEYS_TESTATA,
+            CREATE_KEYS_TESTATA,
+            UPDATE_KEYS_TESTATA,
         )
 
-        solo_update = sorted(set(_UPDATE_KEYS_TESTATA) - set(_CREATE_KEYS_TESTATA))
+        solo_update = sorted(set(UPDATE_KEYS_TESTATA) - set(CREATE_KEYS_TESTATA))
         self.assertEqual(
             solo_update, [],
             "Chiavi accettate in UPDATE ma non in CREATE. Il drawer spreda il "
             "payload della PATCH dentro quello della create, e la create "
-            "rifiuta le chiavi ignote: o si aggiungono a _CREATE_KEYS_TESTATA, "
+            "rifiuta le chiavi ignote: o si aggiungono a CREATE_KEYS_TESTATA, "
             "o `ContrattoDrawer.buildPayload` deve escluderle esplicitamente.",
         )
 
     # 1) Ogni chiave accettata ha un campione: è il gancio che costringe a
     #    passare di qui quando si allarga la whitelist.
     def test_ogni_chiave_accettata_ha_un_campione(self) -> None:
-        from apps.vendite.services.contratti_service import _UPDATE_KEYS_TESTATA
+        from apps.vendite.services.contratti_service import UPDATE_KEYS_TESTATA
 
-        senza_campione = sorted(set(_UPDATE_KEYS_TESTATA) - set(self._CAMPIONI))
+        senza_campione = sorted(set(UPDATE_KEYS_TESTATA) - set(self._CAMPIONI))
         self.assertEqual(
             senza_campione, [],
-            f"Chiavi in _UPDATE_KEYS_TESTATA senza campione in questo test: "
+            f"Chiavi in UPDATE_KEYS_TESTATA senza campione in questo test: "
             f"{senza_campione}. Aggiungerne uno valido e verificare che "
             f"_build_update_data_testata le legga davvero.",
         )
@@ -3304,7 +3304,7 @@ class ContrattiCatenaUpdateTests(TestCase):
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_ogni_chiave_attraversa_il_mapper(self, repo_cls, listini_cls) -> None:
         from apps.vendite.services.contratti_service import (
-            _UPDATE_KEYS_TESTATA,
+            UPDATE_KEYS_TESTATA,
             ContrattiService,
         )
 
@@ -3316,7 +3316,7 @@ class ContrattiCatenaUpdateTests(TestCase):
         repo.count_eccezioni_bloccanti.return_value = {}
         listini_cls.return_value.has_versione_attiva.return_value = True
 
-        for chiave in sorted(_UPDATE_KEYS_TESTATA):
+        for chiave in sorted(UPDATE_KEYS_TESTATA):
             with self.subTest(chiave=chiave):
                 repo.get_contratto.return_value = _testata_default()
                 payload: dict[str, object] = {chiave: self._CAMPIONI[chiave]}
@@ -3334,7 +3334,7 @@ class ContrattiCatenaUpdateTests(TestCase):
                 data = repo.update_contratto.call_args.args[1]
                 self.assertIn(
                     chiave, data,
-                    f"'{chiave}' è accettata da _UPDATE_KEYS_TESTATA ma "
+                    f"'{chiave}' è accettata da UPDATE_KEYS_TESTATA ma "
                     f"_build_update_data_testata NON la legge: l'UPDATE la "
                     f"ignorerebbe in silenzio (difetto 2026-07-27).",
                 )
@@ -3346,9 +3346,9 @@ class ContrattiCatenaUpdateTests(TestCase):
     #    lo deve trovare questo test e non l'operatore.
     def test_whitelist_e_colonne_scrivibili_combaciano(self) -> None:
         from apps.vendite.db.contratti_repository import ContrattiRepository
-        from apps.vendite.services.contratti_service import _UPDATE_KEYS_TESTATA
+        from apps.vendite.services.contratti_service import UPDATE_KEYS_TESTATA
 
-        accettate = set(_UPDATE_KEYS_TESTATA)
+        accettate = set(UPDATE_KEYS_TESTATA)
         scrivibili = set(ContrattiRepository.TESTATA_UPDATE_COLUMNS)
 
         self.assertEqual(

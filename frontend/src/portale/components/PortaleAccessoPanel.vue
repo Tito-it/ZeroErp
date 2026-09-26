@@ -325,11 +325,11 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
   flex-direction: column;
   gap: 0.5rem;
   padding-top: 0.5rem;
-  border-top: 1px solid var(--app-drawer-section-border, var(--p-content-border-color));
+  border-top: 1px solid var(--app-drawer-section-border);
 }
 .portale-accesso-help {
   font-size: 0.85rem;
-  color: var(--app-text-muted, var(--p-text-muted-color));
+  color: var(--app-text-muted);
   margin: 0;
 }
 .portale-accesso-actions {
@@ -343,7 +343,7 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
   gap: 0.5rem;
   padding-top: 1rem;
   margin-top: 0.5rem;
-  border-top: 1px dashed var(--app-drawer-section-border, var(--p-content-border-color));
+  border-top: 1px dashed var(--app-drawer-section-border);
 }
 .portale-accesso-stato-tag {
   margin-left: 0.5rem;
@@ -357,13 +357,13 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
   gap: 0.5rem;
 }
 .portale-accesso-user-label {
-  color: var(--app-text-muted, var(--p-text-muted-color));
+  color: var(--app-text-muted);
 }
 .portale-accesso-user-value {
   font-weight: 600;
 }
 .portale-accesso-user-email {
   font-weight: 400;
-  color: var(--app-text-muted, var(--p-text-muted-color));
+  color: var(--app-text-muted);
 }
 </style>

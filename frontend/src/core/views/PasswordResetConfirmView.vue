@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { usePasswordValidation } from '../composables/usePasswordValidation'
 import { extractApiError } from '../utils/apiError'
-import api from '../api'
+import { validaTokenResetPassword, confermaResetPassword } from '../api/password'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
 
@@ -27,7 +27,7 @@ onMounted(async () => {
     return
   }
   try {
-    const res = await api.get(`/auth/password-reset-validate/${token.value}/`)
+    const res = await validaTokenResetPassword(token.value)
     tokenValid.value = res.data?.data?.valid === true
   } catch {
     tokenValid.value = false
@@ -46,10 +46,10 @@ async function handleConfirm() {
 
   loading.value = true
   try {
-    await api.post('/auth/password-reset-confirm/', {
+    await confermaResetPassword({
       token: token.value,
-      new_password: newPassword.value,
-      new_password_confirm: confirmPassword.value,
+      newPassword: newPassword.value,
+      newPasswordConfirm: confirmPassword.value,
     })
     successMessage.value = t('auth.reset_success')
     setTimeout(() => router.push('/login'), 2000)

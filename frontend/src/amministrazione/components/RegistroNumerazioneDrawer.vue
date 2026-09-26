@@ -62,6 +62,7 @@ import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import Message from 'primevue/message'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 
 const { t, te } = useI18n()
 const notify = useNotify()
@@ -83,6 +84,9 @@ const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved'])
 
 const form = ref(defaultForm())
+// Modifiche non salvate: fotografia all'apertura (anche in creazione), e
+// chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 const dettaglio = ref(null)
 const salvando = ref(false)
 
@@ -283,6 +287,8 @@ watch(() => props.visible, async (aperto) => {
     return
   }
   await Promise.all([caricaFamiglie(), carica(), caricaRegistriEsistenti()])
+  // Fotografia DOPO i tre caricamenti: il form e' popolato dal codice.
+  if (props.visible) fissa()
 })
 
 // ⭐ FE-F1: LA FORMA SI PRECOMPILA DALLA FAMIGLIA, e non è una comodità. Fino
@@ -368,6 +374,7 @@ async function salva() {
       ? await store.aggiorna(props.registroId, payload())
       : await store.crea(payload())
     notify.success(t('amministrazione.registri_numerazione.salvato'))
+    fissa()
     emit('saved', dati)
     chiudi()
   } catch {
@@ -381,6 +388,9 @@ async function salva() {
 function chiudi() {
   emit('update:visible', false)
 }
+// Uscita per volonta' dell'utente: con modifiche chiede conferma. Dopo il
+// salvataggio `chiudi()` resta diretta.
+const annulla = () => chiudiConConferma(chiudi)
 
 const titolo = computed(() => {
   const base = isEdit.value
@@ -388,6 +398,7 @@ const titolo = computed(() => {
     : t('amministrazione.registri_numerazione.drawer_title_new')
   return props.emittenteRagioneSociale ? `${base} — ${props.emittenteRagioneSociale}` : base
 })
+const suVisibile = gestoreVisibile(emit, annulla)
 </script>
 
 <template>
@@ -395,11 +406,11 @@ const titolo = computed(() => {
     :visible="visible"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
-    @update:visible="(v) => emit('update:visible', v)"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :icon="MANAGE_ICONS.NUMERAZIONE" :title="titolo" />
+      <DrawerTitle :modificato="modificato" :icon="MANAGE_ICONS.NUMERAZIONE" :title="titolo" />
     </template>
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
@@ -627,7 +638,7 @@ const titolo = computed(() => {
       v-if="contentReady"
       :loading="salvando"
       @save="salva"
-      @cancel="chiudi"
+      @cancel="annulla"
     />
   </Drawer>
 </template>

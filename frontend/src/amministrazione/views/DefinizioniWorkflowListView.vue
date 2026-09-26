@@ -21,7 +21,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useLookup } from '../../core/composables/useLookup'
 import { READONLY_DOMAINS, MANAGE_ICONS, STATO_DEFINIZIONE } from '../../core/constants'
-import { listEmittentiFiscali } from '../api/amministrazione'
+import { listEmittentiFiscali } from '../../core/apiCore'
 import {
   forkDefinizione,
   nuovaVersioneDefinizione,

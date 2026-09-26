@@ -12,7 +12,8 @@ import logging
 from typing import Any
 
 import jwt
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.request import Request
 from rest_framework.response import Response
 from apps.core.api.base_views import DomainAPIView
@@ -27,6 +28,12 @@ from apps.core.services.service_errors import ServiceError
 
 logger = logging.getLogger("security")
 
+
+# Il refresh della sessione da chiudere: senza, `E_LOGOUT_NO_TOKEN`.
+_LOGOUT_REQUEST = inline_serializer(
+    name="CoreLogoutReq",
+    fields={"refresh": serializers.CharField()},
+)
 
 # Scopo: i claim del refresh presentato, con la FIRMA verificata e la
 #        scadenza no. `None` se il token non e' nostro, e' malformato o non e'
@@ -62,7 +69,7 @@ class LogoutView(DomainAPIView):
 
     skip_area_check = True
 
-    @extend_schema(summary="Logout utente", responses={204: None})
+    @extend_schema(request=_LOGOUT_REQUEST, summary="Logout utente", responses={204: None})
     # Scopo: Revoca la sessione del refresh presentato e registra l'evento LOGOUT.
     # ⭐ Si revoca la SESSIONE (tutti i token col suo `sid`, via il BB
     #    `blocca_token_sessioni`), non il solo token presentato (2026-09-26).

@@ -85,7 +85,7 @@ _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 # Whitelist campi testata accettati in create (null_vs_empty -> None).
 # `destinatario_soggetto_ruolo_id` opzionale nel payload: derivato dal
 # billing_account se assente (cliente=BA, come ordini).
-_CREATE_KEYS_DDT: frozenset[str] = frozenset({
+CREATE_KEYS_DDT: frozenset[str] = frozenset({
     "billing_account_id", "destinatario_soggetto_ruolo_id", "utility_id",
     "emittente_fiscale_id",
     "valuta_id", "mittente_soggetto_ruolo_id", "vettore_soggetto_ruolo_id",
@@ -101,7 +101,7 @@ _CREATE_KEYS_DDT: frozenset[str] = frozenset({
 })
 # NB: billing_account_id/destinatario NON aggiornabili (cliente immutabile
 # post-creazione, vedi aggiorna_ddt): cambiare cliente = nuovo DDT.
-_UPDATE_KEYS_DDT: frozenset[str] = frozenset({
+UPDATE_KEYS_DDT: frozenset[str] = frozenset({
     "utility_id", "valuta_id", "mittente_soggetto_ruolo_id",
     "vettore_soggetto_ruolo_id", "causale_trasporto_id", "aspetto_bene_id",
     "modalita_addebito_trasporto_id", "num_colli", "peso_lordo", "peso_netto",
@@ -115,12 +115,12 @@ _UPDATE_KEYS_DDT: frozenset[str] = frozenset({
     # ⚠️ Una chiave fuori whitelist viene SCARTATA, non respinta: un client
     # vecchio che la manda ancora non riceve un errore — il valore semplicemente
     # non arriva. E' voluto, ed e' il motivo per cui BE e FE vanno insieme.
-_CREATE_KEYS_RIGA: frozenset[str] = frozenset({
+CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "articolo_id", "descrizione", "quantita", "qta_operativa",
     "uom_operativa_id", "factor_to_base", "prezzo_unitario", "sconto_percentuale",
     "meta",
 })
-_UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
+UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "descrizione", "quantita", "qta_operativa", "uom_operativa_id",
     "factor_to_base", "prezzo_unitario", "sconto_percentuale", "meta",
 })
@@ -277,7 +277,7 @@ def list_riepilogo_iva(ddt_id: int) -> list[dict[str, Any]]:
 #        assente (cliente=BA, come ordini).
 def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
     repo = DdtRepository()
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in _CREATE_KEYS_DDT}
+    data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_DDT}
 
     billing_account_id = data.get("billing_account_id")
     # Cliente obbligatorio: deriva il destinatario e ancora il fallback DB
@@ -353,7 +353,7 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
 # Scopo: Aggiorna testata DDT (solo in DRAFT).
 #
 # Cliente immutabile post-creazione: billing_account_id NON e' nella whitelist
-# _UPDATE_KEYS_DDT. `vendite.ddt` denormalizza il cliente su billing_account_id
+# UPDATE_KEYS_DDT. `vendite.ddt` denormalizza il cliente su billing_account_id
 # + destinatario_soggetto_ruolo_id (NOT NULL): cambiare il BA lascerebbe il
 # destinatario stantio -> incoerenza cliente<->soggetto. Regola "cambiare
 # cliente = nuovo DDT". Un tentativo ESPLICITO di cambiare BA e' rifiutato (non
@@ -401,7 +401,7 @@ def aggiorna_ddt(ddt_id: int, payload: dict[str, Any]) -> dict[str, Any]:
             function_name=f"{_FN}.aggiorna_ddt",
         )
 
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in _UPDATE_KEYS_DDT}
+    data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_DDT}
     ErrorManager.require(
         len(data) > 0,
         code="E_DDT_VALIDAZIONE",
@@ -526,7 +526,7 @@ def gestisci_riga(
         error_code="E_DDT_VALIDAZIONE",
     )
 
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in _CREATE_KEYS_RIGA}
+    data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_RIGA}
     articolo_id = data.get("articolo_id")
     ErrorManager.require(
         articolo_id is not None and str(articolo_id).strip() != "",
@@ -648,7 +648,7 @@ def aggiorna_riga(
         function_name=f"{_FN}.aggiorna_riga",
     )
     _get_riga_or_raise(repo, ddt_id, riga_id, op="aggiorna_riga")
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in _UPDATE_KEYS_RIGA}
+    data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_RIGA}
     ErrorManager.require(
         len(data) > 0,
         code="E_DDT_VALIDAZIONE",

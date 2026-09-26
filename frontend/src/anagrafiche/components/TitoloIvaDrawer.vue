@@ -21,6 +21,7 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerFormPreserve, gestoreVisibile, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { labelOrCode } from '../../core/utils/i18nLabel'
@@ -55,7 +56,7 @@ import IvaSelect from '../../core/components/IvaSelect.vue'
 import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
-import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
+import ArticoloLookup from '../../catalogo/components/ArticoloLookup.vue'
 import Drawer from 'primevue/drawer'
 import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
@@ -88,6 +89,10 @@ const fv = useFetchVersion()
 
 const form = ref(defaultForm())
 const detail = ref(null)
+// Modifiche non salvate del titolo (BB useDrawerFormPreserve): conferma alla
+// chiusura, «Modifica» arancio. Il form inline degli ambiti ha la sua
+// fotografia (`inlineAmbito`, piu' sotto).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 
 // ⭐ LE DUE SOTTO-LISTE NON SONO PIU' DUE `ref` ALIMENTATI DAL DETTAGLIO
 //    (2026-09-02, liste 64 e 65 del lotto 3). Erano `DataTable` grezze che
@@ -176,7 +181,11 @@ const {
   ),
   parentField: 'chiaveTitolo',
   newTooltipKey: 'anagrafiche.titoli_iva.aggiungi_ambito',
-  onNew: () => { ambitoFormAperto.value = true },
+  onNew: () => {
+    ambitoForm.value = nuovoAmbito()
+    ambitoFormAperto.value = true
+    inlineAmbito.fissa()
+  },
 })
 
 const {
@@ -237,6 +246,10 @@ function populateFromDetail(d) {
 watch(() => props.visible, async (val) => {
   if (!val) { fv.invalidate(); return }
   const v = fv.tag()
+  // Il form ambito riparte chiuso e vuoto: il drawer e' un'istanza sola, e un
+  // ambito abbandonato sul titolo precedente finirebbe su questo.
+  ambitoFormAperto.value = false
+  ambitoForm.value = nuovoAmbito()
   if (isEdit.value) {
     const res = await execute(() => getSoggettoTitoloIva(props.soggettoId, props.titoloId))
     if (res === null || !fv.isCurrent(v)) return
@@ -246,6 +259,7 @@ watch(() => props.visible, async (val) => {
     detail.value = null
     form.value = defaultForm()
   }
+  fissa()
 })
 
 // Scopo: passando a un tipo SENZA tetto, il plafond digitato si azzera.
@@ -304,6 +318,17 @@ async function onSave() {
 // === Ambiti (master-detail inline) ===
 const ambitoForm = ref(nuovoAmbito())
 const ambitoFormAperto = ref(false)
+// Modifiche non salvate del form inline degli ambiti: conferma all'Annulla e
+// alla chiusura del drawer, scritta arancio nel titolo.
+const inlineAmbito = useDrawerFormPreserve(ambitoForm, {
+  visibile: () => props.visible && ambitoFormAperto.value,
+})
+function annullaAmbito() {
+  inlineAmbito.chiudiConConferma(() => {
+    ambitoFormAperto.value = false
+    ambitoForm.value = nuovoAmbito()
+  })
+}
 
 function nuovoAmbito() {
   return {
@@ -511,6 +536,12 @@ function movimentoSeverity(tipo) {
 }
 
 const onClose = useDrawerClose(emit)
+// La chiusura chiede conferma se il titolo O il form ambito e' modificato,
+// con un dialog solo.
+const { modificato: modificatoTutto, chiudiConConferma: chiudiTutto } =
+  unisciFotografie({ modificato, chiudiConConferma }, inlineAmbito)
+const chiudi = () => chiudiTutto(onClose)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
@@ -522,10 +553,11 @@ const onClose = useDrawerClose(emit)
        maschera sembrava «scritta male» quando era solo strizzata.
        ⇒ Presidiato da `scripts/check-drawer-width.mjs`, che nasce da qui. -->
   <Drawer
-    :visible="visible" @update:visible="emit('update:visible', $event)"
+    :visible="visible" @update:visible="suVisibile"
     position="right" :style="{ width: DRAWER_WIDTH.WIDE }" @after-show="onAfterShow">
     <template #header>
       <DrawerTitle
+        :modificato="modificatoTutto"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('anagrafiche.titoli_iva.titolo')"
         :icon="MANAGE_ICONS.TITOLI_IVA" />
@@ -698,7 +730,7 @@ const onClose = useDrawerClose(emit)
               <Button :label="t('common.add')" :icon="MANAGE_ICONS.ADD" size="small"
                 :disabled="!ambitoValido" :loading="loading" @click="onAddAmbito" />
               <Button :label="t('common.cancel')" text size="small"
-                @click="ambitoFormAperto = false; ambitoForm = nuovoAmbito()" />
+                @click="annullaAmbito" />
             </div>
           </div>
         </div>
@@ -763,8 +795,8 @@ const onClose = useDrawerClose(emit)
       </div>
 
       <FormFooter v-if="!isReadonly" :loading="loading" :disabled="!canSave"
-        @save="onSave" @cancel="onClose" />
-      <FormFooter v-else close-only @cancel="onClose" />
+        @save="onSave" @cancel="chiudi" />
+      <FormFooter v-else close-only @cancel="chiudi" />
     </div>
 
     <!-- L'annullo di una forzatura (Q7): un contro-movimento, non una delete. -->

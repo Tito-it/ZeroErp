@@ -64,7 +64,7 @@ E_DEFINIZIONE_IN_USE = "E_UI_DEFINIZIONE_IN_USO"
 #    campi scrivibili, non la sola whitelist), e questo commento.
 #    Decisione Tid 2026-08-17 · brief-db-perimetro-emittente-liste-e-gerarchia-ba
 #    §7 decisione 3, Q1, §11.5.
-_CREATE_KEYS: frozenset[str] = frozenset(
+CREATE_KEYS: frozenset[str] = frozenset(
     {
         "codice",
         "descrizione",
@@ -79,7 +79,7 @@ _CREATE_KEYS: frozenset[str] = frozenset(
 # UNIQUE constraint DB intercetta i conflitti (mappata via
 # map_integrity_error). `schema_dati` ammesso in update perche' la
 # tabella non ha trigger di immutabilita'.
-_UPDATE_KEYS: frozenset[str] = _CREATE_KEYS
+UPDATE_KEYS: frozenset[str] = CREATE_KEYS
 
 _MAX_CODICE_LEN = 80
 _MAX_DESCRIZIONE_LEN = 200
@@ -192,7 +192,7 @@ class ListaDefinizioneAdminService:
     ) -> dict[str, Any]:
         self._v.validate_allowed_keys(
             payload,
-            allowed=_CREATE_KEYS,
+            allowed=CREATE_KEYS,
             message="Payload definizione lista non valido.",
         )
         data = self._build_create_data(payload)
@@ -221,7 +221,7 @@ class ListaDefinizioneAdminService:
     #        tabella deliberatamente fuori: `multi_emittente`. Non e' un campo
     #        che questo service ha dimenticato di esporre — e' l'unica
     #        eccezione a questa frase, e il perche' e' scritto accanto a
-    #        `_CREATE_KEYS`. Chi riallinea le whitelist «per coerenza» legga
+    #        `CREATE_KEYS`. Chi riallinea le whitelist «per coerenza» legga
     #        prima quello.
     def update_definizione(
         self,
@@ -235,7 +235,7 @@ class ListaDefinizioneAdminService:
 
         self._v.validate_allowed_keys(
             payload,
-            allowed=_UPDATE_KEYS,
+            allowed=UPDATE_KEYS,
             message="Payload definizione lista non valido.",
         )
         data = self._build_update_data(payload)
@@ -243,7 +243,7 @@ class ListaDefinizioneAdminService:
             bool(data),
             code=E_DEFINIZIONE_VALIDATION,
             message="Nessun campo aggiornabile presente nel payload.",
-            detail=f"allowed_keys={sorted(_UPDATE_KEYS)!r}",
+            detail=f"allowed_keys={sorted(UPDATE_KEYS)!r}",
         )
 
         try:

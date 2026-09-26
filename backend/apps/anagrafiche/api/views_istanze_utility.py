@@ -40,6 +40,7 @@ class IstanzaUtilityLookupView(DomainAPIView):
     is_search_endpoint = True
 
     @extend_schema(
+        operation_id="anagrafiche_istanze_utility_lookup_list",
         parameters=[
             OpenApiParameter(
                 name="q",

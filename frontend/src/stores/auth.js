@@ -15,6 +15,7 @@ import { useUiStore } from './ui'
 import { useNavigationStore } from './navigation'
 import { isJwtExpired } from '../core/jwt'
 import { switchEmittenteAttivo } from '../core/api/emittenteAttivo'
+import { cambiaPassword as apiCambiaPassword } from '../core/api/password'
 
 export const useAuthStore = defineStore('auth', () => {
   const accessToken = ref(local.get(STORAGE_KEYS.ACCESS_TOKEN))
@@ -332,6 +333,24 @@ export const useAuthStore = defineStore('auth', () => {
       ?? null
   )
 
+  // Scopo: dello STESSO emittente di scrittura, il ruolo (`soggetti_ruoli.id`)
+  //        e il nome. Stesse due sorgenti, stessa precedenza.
+  // ⚠️ Il ruolo NON e' la PK (`feedback_emittente_pk_vs_soggetto_ruolo`): e'
+  //    la chiave dei listini (`emittente_soggetto_ruolo_id`). Per il super
+  //    admin arriva da `/me/` (`emittente_attivo.soggetto_ruolo_id`, dal
+  //    2026-09-26): prima non c'era, e il listino gli restava non creabile
+  //    anche dopo aver scelto l'emittente.
+  const emittenteScritturaSoggettoRuoloId = computed(
+    () => emittenteCorrente.value?.soggettoRuoloId
+      ?? emittenteAttivo.value?.soggetto_ruolo_id
+      ?? null
+  )
+  const emittenteScritturaNome = computed(
+    () => emittenteCorrente.value?.ragioneSociale
+      ?? emittenteAttivo.value?.ragione_sociale
+      ?? null
+  )
+
   // Scopo: Domini visibili. Filtri applicati:
   //   - adminOnly: solo SUPER_ADMIN (es. Amm. Software).
   //   - non adminOnly: solo operatori interni (OPERATORE). I portali e lo
@@ -400,6 +419,23 @@ export const useAuthStore = defineStore('auth', () => {
     return azioniAbilitate.value[codename] === true
   }
 
+  // Scopo: Cambia la password dell'operatore collegato. Il BE restituisce
+  //        token NUOVI (i vecchi sono revocati): salvarli e' compito dello
+  //        store, come per il cambio emittente — una view che li scrive a mano
+  //        e' una seconda sede della sessione. Ritorna la response axios; un
+  //        errore risale al chiamante, che lo mostra dove serve.
+  async function cambiaPassword({ oldPassword, newPassword, newPasswordConfirm }) {
+    const response = await apiCambiaPassword({ oldPassword, newPassword, newPasswordConfirm })
+    const data = response.data?.data || response.data
+    if (data?.access && data?.refresh) {
+      setTokens(data.access, data.refresh)
+      passwordChangeRequired.value = false
+      // Ricarica il profilo per aggiornare `deve_cambiare_password`.
+      try { await fetchProfile() } catch { /* non blocca il flusso */ }
+    }
+    return response
+  }
+
   // Scopo: Cambia l'emittente attivo di sessione e riparte pulito.
   //        `emittenteFiscaleId = null` = «Tutti gli emittenti».
   //
@@ -447,11 +483,14 @@ export const useAuthStore = defineStore('auth', () => {
     isAdminGlobale,
     emittenteCorrente,
     emittenteAttivo,
+    emittenteScritturaSoggettoRuoloId,
+    emittenteScritturaNome,
     emittenteScritturaId,
     perimetroMultiEmittente,
     puoScegliereEmittente,
     deveScegliereEmittente,
     cambiaEmittenteAttivo,
+    cambiaPassword,
     mustChangePassword,
     passwordChangeRequired,
     displayName,

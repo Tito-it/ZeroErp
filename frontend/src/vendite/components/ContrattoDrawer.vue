@@ -16,6 +16,7 @@ import { useI18n } from 'vue-i18n'
 import { useContrattiStore } from '../stores/contratti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
@@ -88,6 +89,9 @@ const isEdit = computed(() => props.mode === 'edit')
 
 const detail = ref(null)
 const form = ref({})
+// Modifiche non salvate: fotografia a form popolato (apertura, ricarica,
+// salvataggio), chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
+const { preserva, fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 
 // Capability dal detail backend (Fase 1.B2: script.fn_available_actions_contratto).
 // Il drawer NON ricalcola lo stato: tutto deriva dai metadata API.
@@ -365,6 +369,7 @@ watch(() => props.visible, async (val) => {
     if (d == null) return  // dettaglio non accessibile → drawer già chiuso
     detail.value = d
     populateFromDetail(d)
+    fissa()
   } else {
     await Promise.all([loadParamDefaults(), loadUtilityDefault()])
     if (!fgFv.isCurrent(v)) return
@@ -388,6 +393,7 @@ watch(() => props.visible, async (val) => {
         // Best-effort: trigger DB risolverà la valuta al save.
       }
     }
+    fissa()
   }
 })
 
@@ -541,7 +547,7 @@ async function handleSave() {
       () => store.update(props.contrattoId, buildPayload()),
       { successMessage: t('vendite.contratti.contratto_salvato') }
     )
-    if (result !== null) emit('saved', result)
+    if (result !== null) { fissa(); emit('saved', result) }
   } else {
     const f = form.value
     const payload = {
@@ -566,16 +572,21 @@ async function handleSave() {
       () => store.create(payload),
       { successMessage: t('vendite.contratti.contratto_creato') }
     )
-    if (result !== null) emit('saved', result)
+    if (result !== null) { fissa(); emit('saved', result) }
   }
 }
 
 // Ricarica dettaglio (usata dopo cambio stato o mutazioni righe/utility).
 async function refreshDetail() {
   if (!props.contrattoId) return
+  // `preserva`: salvare una riga o cambiare stato ricarica la testata, e senza
+  // la modifica di testata non ancora salvata tornava com'era, in silenzio
+  // (stesso difetto gia' corretto su ordini/DDT/preventivi, 2026-09-26).
+  const applica = preserva()
   const d = await store.fetchDetail(props.contrattoId)
   detail.value = d
   populateFromDetail(d)
+  applica()
 }
 
 // Stato dialog cessazione: una azione con `requires_date=true` apre il dialog
@@ -774,8 +785,11 @@ const drawerActions = computed(() => {
 })
 
 const onClose = useDrawerClose(emit, 'cancelled')
+// Uscite per volonta' dell'utente: con modifiche non salvate si chiede prima.
+const chiudi = () => chiudiConConferma(onClose)
 // Detail fuori scope (RLS) / inesistente → toast + chiusura, niente drawer vuoto.
 const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
@@ -784,11 +798,12 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
     :dismissable="true"
-    @update:visible="val => emit('update:visible', val)"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('vendite.contratti.contratto')"
         :icon="NAV_ICONS.CONTRATTI"
@@ -1165,12 +1180,12 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
            visibile per l'operatore in ATTIVO). -->
       <FormFooter v-if="mostraFooterSalva"
         :loading="loading" :disabled="!canSave"
-        @save="handleSave" @cancel="onClose" />
+        @save="handleSave" @cancel="chiudi" />
       <!-- Fallback close-only: stati post-DRAFT o LETTURA. Footer dedicato
            con solo "Chiudi" (semantica completion, vs X in alto = dismiss).
            Pattern coerente con `feedback_drawer_footer_close_only` e
            PreventiviDrawer. -->
-      <FormFooter v-else-if="detail" close-only @cancel="onClose" />
+      <FormFooter v-else-if="detail" close-only @cancel="chiudi" />
       </template>
     </div>
 

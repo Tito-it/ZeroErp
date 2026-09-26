@@ -68,7 +68,7 @@ watch(() => props.praticaId, (id) => {
     </div>
 
     <div v-else class="sospensioni-list">
-      <div v-for="s in sospensioni" :key="s.id" class="sospensione-entry">
+      <div v-for="s in sospensioni" :key="s.id" class="app-voce-registro">
         <div class="sospensione-header">
           <i class="pi pi-pause sospensione-icon"></i>
           <Tag
@@ -107,12 +107,6 @@ watch(() => props.praticaId, (id) => {
   gap: 0.5rem;
 }
 
-.sospensione-entry {
-  padding: 0.5rem 0.75rem;
-  border-left: 3px solid var(--app-toolbar-border);
-  border-radius: 0 4px 4px 0;
-  background: color-mix(in srgb, var(--p-surface-700) 20%, transparent);
-}
 
 .sospensione-header {
   display: flex;
@@ -159,6 +153,6 @@ watch(() => props.praticaId, (id) => {
 .sospensione-motivo {
   margin-top: 0.25rem;
   font-size: var(--app-font-size-sm);
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
 }
 </style>

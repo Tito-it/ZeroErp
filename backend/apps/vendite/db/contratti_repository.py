@@ -742,7 +742,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
     #        lock_columns). stato_doc_contratto_id si aggiorna via
     #        update_stato() per leggibilita'.
     # Colonne scrivibili dalla PATCH di testata: ULTIMO dei tre anelli della
-    # catena `_UPDATE_KEYS_TESTATA` → `_build_update_data_testata` → qui. Fino
+    # catena `UPDATE_KEYS_TESTATA` → `_build_update_data_testata` → qui. Fino
     # al 2026-09-26 una colonna mancante in uno dei tre non veniva scritta e
     # nessuno se ne accorgeva — e' il difetto costato un giro su
     # `fatturazione_immediata` (2026-07-27); da quel giorno il BB rifiuta

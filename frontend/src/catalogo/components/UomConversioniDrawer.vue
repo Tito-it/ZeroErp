@@ -9,6 +9,7 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerFormPreserve, gestoreVisibile, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
 import { useLookupCodici } from '../../core/composables/useLookupCodici'
 import { listConversioniUom, createConversioneUom, updateConversioneUom } from '../api/catalogo'
 import { parseIsoDate, toDateString } from '../../core/utils/date'
@@ -69,6 +70,19 @@ const currentTipoUomId = computed(() => {
 const editingFattoreId = ref(null)
 const editingFattoreValue = ref(null)
 
+// Modifiche non salvate: due form indipendenti, ognuno con la sua fotografia —
+// il form «nuova conversione» (vive finche' `adding`) e il fattore in modifica
+// sulla riga (vive finche' c'e' `editingFattoreId`). Il fattore e' un numero:
+// il BB confronta oggetti, quindi lo si avvolge.
+const inline = useDrawerFormPreserve(form, { visibile: () => props.visible && adding.value })
+const fattoreInline = useDrawerFormPreserve(
+  computed(() => ({ fattore: editingFattoreValue.value })),
+  { visibile: () => props.visible && editingFattoreId.value !== null },
+)
+// Una domanda sola per le due fotografie (chiusura del drawer).
+const { modificato: modificatoTutto, chiudiConConferma: chiudiTutto } =
+  unisciFotografie(inline, fattoreInline)
+
 // Scopo: Carica conversioni filtrate per la UoM corrente.
 async function loadConversioni() {
   if (!props.uomId) return
@@ -115,12 +129,16 @@ watch(() => form.value.valido_dal_sempre, (sempre) => {
 function startAdd() {
   form.value = defaultForm()
   adding.value = true
+  inline.fissa()
 }
 
 function cancelAdd() {
   adding.value = false
   form.value = defaultForm()
 }
+
+// Annulla del form «nuova conversione»: con modifiche chiede conferma.
+const annullaAdd = () => inline.chiudiConConferma(cancelAdd)
 
 const canSaveNew = computed(() => {
   return form.value.uom_to_id != null && form.value.fattore > 0
@@ -148,9 +166,14 @@ async function onSaveNew() {
 
 // --- Edit inline fattore ---
 
+// ⚠️ Passare a un'altra riga butta il fattore scritto sulla precedente: con
+//    modifiche si chiede prima.
 function startEditFattore(row) {
-  editingFattoreId.value = row.id
-  editingFattoreValue.value = row.fattore
+  fattoreInline.chiudiConConferma(() => {
+    editingFattoreId.value = row.id
+    editingFattoreValue.value = row.fattore
+    fattoreInline.fissa()
+  })
 }
 
 async function confirmEditFattore(row) {
@@ -175,6 +198,11 @@ function cancelEditFattore() {
 // del form e non spingere il form sotto al fold.
 const onClose = useDrawerClose(emit)
 
+// Chiusura del drawer per volonta' dell'utente (X/ESC/clic fuori/Chiudi):
+// chiede conferma se uno dei due form ha modifiche — una domanda sola, a
+// quello modificato (se lo sono entrambi basta la prima).
+const chiudi = () => chiudiTutto(onClose)
+
 // Toolbar pagina: pulsante "Nuovo" sopra la lista (pattern standard
 // frontend-standards "PageActionsBar"). Speculare a ArticoloUomDrawer.
 const pageActions = computed(() => [
@@ -189,18 +217,20 @@ const pageActions = computed(() => [
     command: startAdd,
   },
 ])
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="emit('update:visible', $event)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :action="t('catalogo.gestisci_conversioni')" :title="uomCodice" :icon="NAV_ICONS.ARROWS_H" />
+      <DrawerTitle :action="t('catalogo.gestisci_conversioni')" :title="uomCodice" :icon="NAV_ICONS.ARROWS_H"
+        :modificato="modificatoTutto" />
     </template>
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
@@ -243,7 +273,7 @@ const pageActions = computed(() => [
                   <Button :icon="MANAGE_ICONS.CONFIRM" text rounded size="small" class="app-action-btn"
                     @click="confirmEditFattore(data)" />
                   <Button :icon="MANAGE_ICONS.CANCEL" text rounded size="small"
-                    @click="cancelEditFattore" />
+                    @click="fattoreInline.chiudiConConferma(cancelEditFattore)" />
                 </div>
               </template>
               <template v-else>
@@ -309,9 +339,9 @@ const pageActions = computed(() => [
         :loading="loading"
         :disabled="!canSaveNew"
         @save="onSaveNew"
-        @cancel="cancelAdd"
+        @cancel="annullaAdd"
       />
-      <FormFooter v-else close-only @cancel="onClose" />
+      <FormFooter v-else close-only @cancel="chiudi" />
     </div>
   </Drawer>
 </template>
@@ -323,6 +353,6 @@ const pageActions = computed(() => [
   align-items: center;
 }
 .fattore-cell:hover {
-  color: var(--p-primary-color);
+  color: var(--app-accent-color);
 }
 </style>

@@ -1333,7 +1333,7 @@ fuori. Fonderle produrrebbe una lista sbagliata e `codice` duplicati.
 
 - `core/components/ConfigTablePanel.vue`
 - `core/components/details/SearchDetailTable.vue`
-- `core/components/GeoSearchTable.vue`
+- `anagrafiche/components/GeoSearchTable.vue` (in `core/components/` fino al 2026-09-26)
 - `core/components/ListaConfigurabile.vue`
 - `core/components/RigheMasterDetailTable.vue`
 - `core/components/SearchDrawer.vue`

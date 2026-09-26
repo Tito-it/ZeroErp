@@ -24,6 +24,7 @@ import { useI18n } from 'vue-i18n'
 import { useTemplateDocumentiStore } from '../stores/templateDocumenti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
 import { DRAWER_WIDTH } from '../../core/constants'
@@ -92,6 +93,9 @@ const isSelectedBuilderUnregistered = computed(() =>
 const formVersioneAperto = ref(false)
 
 const form = ref(emptyForm())
+// Modifiche non salvate della testata: fotografia a form popolato, conferma
+// alla chiusura (BB useDrawerFormPreserve).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 function emptyForm() {
   return {
     codice: '',
@@ -129,6 +133,7 @@ async function loadDetail() {
     is_default: data.is_default ?? false,
     attivo: data.attivo ?? true,
   }
+  fissa()
 }
 
 watch(
@@ -146,6 +151,7 @@ watch(
       // operatore standard. EmittenteFiscaleField si occupa del
       // lazy load del lookup admin quando reso.
       form.value.emittente_fiscale_id = defaultEmittenteId.value
+      fissa()
     }
   },
 )
@@ -182,7 +188,11 @@ async function handleSave() {
       () => store.update(effectiveId.value, payload),
       { successMessage: t('config.modelli_documenti.saved') },
     )
-    if (result !== null) emit('saved', result)
+    if (result !== null) {
+      // Resta aperto senza ricaricare: la fotografia diventa il salvato.
+      fissa()
+      emit('saved', result)
+    }
   } else {
     const payload = {
       codice: f.codice.trim(),
@@ -206,6 +216,7 @@ async function handleSave() {
       // tramite emit 'saved'.
       createdId.value = result.id
       localMode.value = 'edit'
+      fissa()
       emit('saved', result)
     }
   }
@@ -215,12 +226,19 @@ function close() {
   emit('update:visible', false)
   emit('cancelled')
 }
+// Il form inline delle versioni (sezione figlia) ha la sua fotografia: la
+// chiusura chiede conferma se UNO dei due e' modificato, con un dialog solo.
+const versioniRef = ref(null)
+const { modificato: modificatoTutto, chiudiConConferma: chiudiTutto } =
+  unisciFotografie({ modificato, chiudiConConferma }, () => versioniRef.value)
+const chiudi = () => chiudiTutto(close)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="v => emit('update:visible', v)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
     :dismissable="true"
@@ -228,6 +246,7 @@ function close() {
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificatoTutto"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('config.modelli_documenti.drawer_title')"
       />
@@ -356,6 +375,7 @@ function close() {
       <template v-if="isEdit && effectiveId">
         <Divider />
         <TemplateVersioniSection
+          ref="versioniRef"
           :template-id="effectiveId"
           :readonly="isReadOnlyEffective"
           @form-aperto="(v) => { formVersioneAperto = v }"
@@ -370,7 +390,7 @@ function close() {
         :loading="loading"
         :disabled="!canSave"
         @save="handleSave"
-        @cancel="close"
+        @cancel="chiudi"
       />
     </template>
   </Drawer>

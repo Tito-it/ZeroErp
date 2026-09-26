@@ -38,6 +38,7 @@
 import { computed, watch } from 'vue'
 import { useConfirmAction } from './useConfirmAction'
 import { useTabEvents } from './useTabEvents'
+import { valoriUguali } from './useDrawerFormPreserve'
 
 export function useDrawerAutosaveBozza({
   emit,
@@ -57,6 +58,10 @@ export function useDrawerAutosaveBozza({
   deleteDraft,
   righeCountGetter,
   messages,
+  // Come si esce se non c'e' una bozza orfana: il drawer passa
+  // `chiudiConConferma` di useDrawerFormPreserve, che chiede conferma se ci
+  // sono modifiche non salvate. Default: si esce e basta.
+  confermaUscita = (chiudi) => chiudi(),
 }) {
   const { confirmAction } = useConfirmAction()
   const { emitDataChanged } = useTabEvents()
@@ -85,7 +90,7 @@ export function useDrawerAutosaveBozza({
     if (!form || !snapshot) return null
     const toccati = {}
     for (const [k, v] of Object.entries(form.value)) {
-      if (v !== snapshot[k]) toccati[k] = v
+      if (!valoriUguali(v, snapshot[k])) toccati[k] = v
     }
     return Object.keys(toccati).length ? toccati : null
   }
@@ -169,10 +174,15 @@ export function useDrawerAutosaveBozza({
   // Intercetta ogni chiusura (Annulla, ESC, click outside, X header): se la
   // bozza è orfana chiede conferma e la elimina; in caso di reject lascia il
   // drawer aperto (NON emette update:visible(false)).
+  // ⚠️ Con la bozza orfana la domanda sulle modifiche NON si fa: quella
+  //    sull'abbandono della bozza copre gia' l'uscita, e due conferme in fila
+  //    sullo stesso ConfirmDialog si pesterebbero.
   function attemptClose() {
     if (!hasOrphanedDraft.value) {
-      emit('update:visible', false)
-      emit('cancelled')
+      confermaUscita(() => {
+        emit('update:visible', false)
+        emit('cancelled')
+      })
       return
     }
     confirmAction({

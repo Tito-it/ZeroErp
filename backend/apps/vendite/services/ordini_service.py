@@ -110,7 +110,7 @@ _STATI_PUSHABILI: frozenset[str] = frozenset(
 # Qui non serve una difesa applicativa aggiuntiva: la testata dell'ordine e'
 # editabile solo in DRAFT (`can_edit_testata`), e il push avviene da CONFERMATO
 # in poi — le due finestre non si sovrappongono.
-_CREATE_KEYS_ORDINE: frozenset[str] = frozenset({
+CREATE_KEYS_ORDINE: frozenset[str] = frozenset({
     "billing_account_id", "soggetto_ruolo_id", "utility_id",
     "emittente_fiscale_id", "valuta_id", "modalita_pagamento_id",
     "termine_pagamento_id", "fatturazione_trigger", "agente_soggetto_ruolo_id",
@@ -118,7 +118,7 @@ _CREATE_KEYS_ORDINE: frozenset[str] = frozenset({
 })
 # NB: billing_account_id NON e' aggiornabile (cliente immutabile post-creazione,
 # vedi aggiorna_ordine): a differenza di create, dove deriva soggetto_ruolo_id.
-_UPDATE_KEYS_ORDINE: frozenset[str] = frozenset({
+UPDATE_KEYS_ORDINE: frozenset[str] = frozenset({
     "utility_id", "valuta_id", "modalita_pagamento_id",
     "termine_pagamento_id", "fatturazione_trigger", "agente_soggetto_ruolo_id",
     "data", "meta", "fatturazione_immediata",
@@ -130,13 +130,13 @@ _UPDATE_KEYS_ORDINE: frozenset[str] = frozenset({
     # ⚠️ Una chiave fuori whitelist viene SCARTATA, non respinta: un client
     # vecchio che la manda ancora non riceve un errore — il valore semplicemente
     # non arriva. E' voluto, ed e' il motivo per cui BE e FE vanno insieme.
-_CREATE_KEYS_RIGA: frozenset[str] = frozenset({
+CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "articolo_id", "descrizione", "quantita", "qta_operativa",
     "uom_operativa_id", "factor_to_base", "prezzo_unitario", "sconto_percentuale",
     "meta",
     "data_consegna_richiesta_cliente", "data_consegna_confermata",
 })
-_UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
+UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "descrizione", "quantita", "qta_operativa", "uom_operativa_id",
     "factor_to_base", "prezzo_unitario", "sconto_percentuale", "meta",
     "data_consegna_richiesta_cliente", "data_consegna_confermata",
@@ -391,7 +391,7 @@ def delete_indirizzo(ordine_id: int, indirizzo_id: int) -> dict[str, Any]:
 #        trigger DB. soggetto_ruolo_id derivato dal billing_account se assente.
 def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
     repo = OrdiniRepository()
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in _CREATE_KEYS_ORDINE}
+    data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_ORDINE}
 
     billing_account_id = data.get("billing_account_id")
     soggetto_ruolo_id = data.get("soggetto_ruolo_id")
@@ -440,7 +440,7 @@ def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
 # Scopo: Aggiorna testata ordine (solo in DRAFT).
 #
 # Cliente immutabile post-creazione: billing_account_id NON e' nella whitelist
-# _UPDATE_KEYS_ORDINE. vendite.ordini denormalizza soggetto_ruolo_id (NOT NULL)
+# UPDATE_KEYS_ORDINE. vendite.ordini denormalizza soggetto_ruolo_id (NOT NULL)
 # accanto a billing_account_id, ma nessun trigger DB li ri-sincronizza su UPDATE
 # (trgfn_ordini_normalize tocca solo fatturazione_trigger): cambiare il BA
 # lascerebbe soggetto_ruolo_id stantio -> incoerenza cliente<->soggetto. Regola
@@ -484,7 +484,7 @@ def aggiorna_ordine(ordine_id: int, payload: dict[str, Any]) -> dict[str, Any]:
             function_name=f"{_FN}.aggiorna_ordine",
         )
 
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in _UPDATE_KEYS_ORDINE}
+    data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_ORDINE}
     ErrorManager.require(
         len(data) > 0,
         code="E_ORD_VALIDAZIONE",
@@ -883,7 +883,7 @@ def gestisci_riga(
         error_code="E_ORD_VALIDAZIONE",
     )
 
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in _CREATE_KEYS_RIGA}
+    data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_RIGA}
     _parse_date_riga(data, function_name=f"{_FN}.gestisci_riga")
     articolo_id = data.get("articolo_id")
     ErrorManager.require(
@@ -972,7 +972,7 @@ def aggiorna_riga(
         function_name=f"{_FN}.aggiorna_riga",
     )
     _get_riga_or_raise(repo, ordine_id, riga_id, op="aggiorna_riga")
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in _UPDATE_KEYS_RIGA}
+    data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_RIGA}
     ErrorManager.require(
         len(data) > 0,
         code="E_ORD_VALIDAZIONE",

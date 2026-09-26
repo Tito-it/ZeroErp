@@ -71,7 +71,7 @@ _TIPI_DATO: frozenset[str] = frozenset(
 _ALLINEAMENTI: frozenset[str] = frozenset({"left", "right", "center"})
 
 # Whitelist chiavi payload create. lista_id arriva dal path della view.
-_CREATE_KEYS: frozenset[str] = frozenset(
+CREATE_KEYS: frozenset[str] = frozenset(
     {
         "codice",
         "etichetta",
@@ -98,7 +98,7 @@ _CREATE_KEYS: frozenset[str] = frozenset(
 # Whitelist update: gli stessi campi + esclusione lista_id (immutabile,
 # non comparirebbe comunque nel payload). Il `codice` cambia con UNIQUE
 # check DB.
-_UPDATE_KEYS: frozenset[str] = _CREATE_KEYS
+UPDATE_KEYS: frozenset[str] = CREATE_KEYS
 
 _MAX_CODICE_LEN = 80
 _MAX_ETICHETTA_LEN = 120
@@ -200,7 +200,7 @@ class ListaColonnaAdminService:
 
         self._v.validate_allowed_keys(
             payload,
-            allowed=_CREATE_KEYS,
+            allowed=CREATE_KEYS,
             message="Payload colonna lista non valido.",
         )
         data = self._build_create_data(lista_id, payload)
@@ -251,7 +251,7 @@ class ListaColonnaAdminService:
 
         self._v.validate_allowed_keys(
             payload,
-            allowed=_UPDATE_KEYS,
+            allowed=UPDATE_KEYS,
             message="Payload colonna lista non valido.",
         )
         data = self._build_update_data(payload, current=current)
@@ -259,7 +259,7 @@ class ListaColonnaAdminService:
             bool(data),
             code=E_COLONNA_VALIDATION,
             message="Nessun campo aggiornabile presente nel payload.",
-            detail=f"allowed_keys={sorted(_UPDATE_KEYS)!r}",
+            detail=f"allowed_keys={sorted(UPDATE_KEYS)!r}",
         )
 
         try:

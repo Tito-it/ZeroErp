@@ -122,7 +122,7 @@ function rimuoviCollegamento() {
   store.rimuoviCollegamento()
 }
 
-useTabFreshness(TAB_ENTITIES.FATTURA, () => store.fetchList())
+useTabFreshness(store, TAB_ENTITIES.FATTURA)
 onMounted(() => {
   const q = route.query
   const idFiscale = typeof q.id_fiscale === 'string' ? q.id_fiscale.trim() : ''

@@ -17,6 +17,7 @@ import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
@@ -32,10 +33,10 @@ import {
   deleteBundleComponenti,
 } from '../api/listini'
 import ComponentiDialog from '../_shared/componenti/ComponentiDialog.vue'
-import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOptions'
+import { useArticoloUomOptions } from '../../catalogo/composables/useArticoloUomOptions'
 import { useListiniRigheStore } from '../stores/listiniRighe'
 import { MANAGE_ICONS } from '../../core/constants'
-import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
+import ArticoloLookup from '../../catalogo/components/ArticoloLookup.vue'
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
@@ -116,6 +117,12 @@ const DRAWER_WIDTH_RIGHE_LISTINO = '1000px'
 const formMode = ref(null)
 const rigaEditId = ref(null)
 const form = ref({})
+// Modifiche non salvate del form inline: conferma alla chiusura del drawer e
+// all'Annulla del form, scritta arancio nel titolo.
+const inline = useDrawerFormPreserve(form, {
+  visibile: () => props.visible && formMode.value !== null,
+})
+const modificato = inline.modificato
 
 // UoM operative dell'articolo selezionato (pattern ContrattoRigheDrawer).
 // Composable centralizzato (Fase 4.F1): autopick base solo in create.
@@ -178,6 +185,7 @@ function onNew() {
   formMode.value = 'create'
   rigaEditId.value = null
   resetUomOptions()
+  inline.fissa()
 }
 
 // Scopo: click riga (pattern standard liste = interazione principale).
@@ -210,6 +218,7 @@ function onRowClick(r) {
   }
   formMode.value = 'edit'
   rigaEditId.value = r.id
+  inline.fissa()
   // Edit: UoM gia' nel form, no autopick.
   loadUomPerArticolo(r.articolo_id)
 }
@@ -439,15 +448,19 @@ function onVariazioneApplied() {
 }
 
 const onClose = useDrawerClose(emit)
+// Chiusure per volonta' dell'utente: con il form inline modificato chiedono conferma.
+const chiudi = () => inline.chiudiConConferma(onClose)
+const annullaForm = () => inline.chiudiConConferma(closeForm)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
+  <Drawer :visible="visible" @update:visible="suVisibile"
     position="right" :style="{ width: DRAWER_WIDTH_RIGHE_LISTINO }" :dismissable="!hasChildOpen"
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :title="t('vendite.listini.tab_righe')" :icon="MANAGE_ICONS.RIGHE" />
+      <DrawerTitle :title="t('vendite.listini.tab_righe')" :icon="MANAGE_ICONS.RIGHE" :modificato="modificato" />
     </template>
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
@@ -587,10 +600,10 @@ const onClose = useDrawerClose(emit)
           </div>
         </div>
 
-        <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="closeForm" />
+        <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="annullaForm" />
       </template>
 
-      <FormFooter v-if="!formMode" close-only @cancel="onClose" />
+      <FormFooter v-if="!formMode" close-only @cancel="chiudi" />
     </div>
 
     <ApplicaVariazioneDialog

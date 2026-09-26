@@ -17,6 +17,7 @@ import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import { DRAWER_WIDTH } from '../../core/constants'
@@ -65,6 +66,9 @@ const DEFAULT_FORM = Object.freeze({
 })
 
 const form = ref({ ...DEFAULT_FORM })
+// Modifiche non salvate: fotografia all'apertura (anche in creazione), e
+// chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 const testLoading = ref(false)
 
 const isEdit = computed(() => props.mode === 'edit')
@@ -123,6 +127,7 @@ watch(() => props.visible, async (vis) => {
   } else {
     form.value = { ...DEFAULT_FORM }
   }
+  fissa()
 })
 
 async function handleSave() {
@@ -132,12 +137,17 @@ async function handleSave() {
   if (isEdit.value && !payload.smtp_password) {
     delete payload.smtp_password
   }
-  await execute(
+  const result = await execute(
     () => isEdit.value
       ? store.update(props.accountId, payload)
       : store.create(payload),
     { successMessage: t('notifications.save_success') }
   )
+  // Salvataggio fallito: il drawer resta aperto col lavoro dell'operatore (il
+  // padre su `saved` chiude — prima chiudeva anche sull'errore, e il lavoro
+  // si perdeva senza conferma).
+  if (result === null) return
+  fissa()
   emit('saved')
 }
 
@@ -164,12 +174,19 @@ async function handleTest() {
     testLoading.value = false
   }
 }
+// Uscita per volonta' dell'utente (Annulla, X, ESC, clic fuori): con
+// modifiche non salvate si chiede prima.
+const chiudi = () => chiudiConConferma(() => {
+  emit('update:visible', false)
+  emit('cancelled')
+})
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="v => emit('update:visible', v)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     :dismissable="true"
@@ -177,6 +194,7 @@ async function handleTest() {
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('amministrazione.email_account_title')"
         icon="pi pi-at"
@@ -279,7 +297,7 @@ async function handleTest() {
         :loading="saving"
         :disabled="!canSave"
         @save="handleSave"
-        @cancel="emit('cancelled')"
+        @cancel="chiudi"
       />
     </template>
   </Drawer>

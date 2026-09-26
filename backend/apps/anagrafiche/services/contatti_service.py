@@ -18,7 +18,7 @@ immediata. Se la regola cambia, cambia in un solo posto e il FE si
 allinea aggiornando solo l'UX (la validazione resta enforced dal BE).
 
 KEEP IN SYNC: le costanti _TRACKED_FIELDS e _REQUIRED_FIELDS sono
-duplicate in frontend/src/core/composables/useContattoForm.js
+duplicate in frontend/src/anagrafiche/composables/useContattoForm.js
 (TRACKED_FIELDS, REQUIRED_FIELDS). Se cambi qui aggiorna anche la'.
 """
 

@@ -200,22 +200,22 @@ function onKeydown(event) {
 /* Semaforo: bordo sinistro colorato, non riempimento — resta leggibile
    in dark mode e non compete col numero. Neutro = nessuna decorazione. */
 .kpi-sev-warn {
-  border-left: 3px solid var(--app-severity-warn, var(--p-orange-500));
+  border-left: 3px solid var(--app-severity-warn);
 }
 
 .kpi-sev-danger {
-  border-left: 3px solid var(--app-severity-danger, var(--p-red-500));
+  border-left: 3px solid var(--app-severity-danger);
 }
 
 .kpi-degradato {
-  color: var(--app-text-muted, var(--p-text-muted-color));
+  color: var(--app-text-muted);
 }
 
 .kpi-skeleton {
   height: 1.6rem; /* pari a .app-dash-stat-n: nessun salto al load */
   width: 3.5rem;
   border-radius: 4px;
-  background: var(--app-card-border, var(--p-content-border-color));
+  background: var(--app-card-border);
   opacity: 0.5;
   animation: kpi-pulse 1.2s ease-in-out infinite;
 }

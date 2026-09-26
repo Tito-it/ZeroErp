@@ -203,7 +203,7 @@ class UiAdminRepository:
     #    rifiutata comunque con `E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE` — ma la
     #    colonna non va nominata nemmeno qui, o l'applicazione chiederebbe al
     #    database una cosa che il database le vieta.
-    #    Perche' e come: `lista_definizione_admin_service._CREATE_KEYS`.
+    #    Perche' e come: `lista_definizione_admin_service.CREATE_KEYS`.
     def create_definizione(
         self,
         data: dict[str, Any],

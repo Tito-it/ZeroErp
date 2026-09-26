@@ -13,6 +13,7 @@ import { useI18n } from 'vue-i18n'
 import { useTemplateAssetDocumentiStore } from '../stores/templateAssetDocumenti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
@@ -56,7 +57,12 @@ const isEdit = computed(() => props.mode === 'edit')
 const isReadOnlyEffective = computed(() => props.readonly || isReadonly.value)
 
 const form = ref(emptyForm())
+// Modifiche non salvate: fotografia a form popolato, conferma alla chiusura
+// (BB useDrawerFormPreserve). Il file scelto sta fuori dal form: il
+// confronto ne raccoglie il nome.
 const selectedFile = ref(null)
+const formSalvato = computed(() => ({ ...form.value, file_nome: selectedFile.value?.name ?? null }))
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSalvato, { visibile: () => props.visible })
 const downloadLoading = ref(false)
 
 function emptyForm() {
@@ -101,6 +107,7 @@ async function loadDetail() {
     valido_al: parseIsoDate(data.valido_al),
     attivo: data.attivo ?? true,
   }
+  fissa()
 }
 
 watch(
@@ -115,6 +122,7 @@ watch(
       // Autopopulate centralizzato: null se admin globale (sceglie via
       // Select), id dell'emittente del profilo per operatore standard.
       form.value.emittente_fiscale_id = defaultEmittenteId.value
+      fissa()
     }
   },
 )
@@ -181,7 +189,8 @@ async function handleSave() {
       () => store.update(props.recordId, payload),
       { successMessage: t('config.modelli_documenti.asset.saved') },
     )
-    if (result !== null) emit('saved', result)
+    // Salvato: la fotografia diventa il salvato (il padre chiude dopo il refresh).
+    if (result !== null) { fissa(); emit('saved', result) }
   } else {
     // Build FormData multipart.
     const fd = new FormData()
@@ -200,7 +209,7 @@ async function handleSave() {
       () => store.upload(fd),
       { successMessage: t('config.modelli_documenti.asset.uploaded') },
     )
-    if (result !== null) emit('saved', result)
+    if (result !== null) { fissa(); emit('saved', result) }
   }
 }
 
@@ -208,12 +217,14 @@ function close() {
   emit('update:visible', false)
   emit('cancelled')
 }
+const chiudi = () => chiudiConConferma(close)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="v => emit('update:visible', v)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     :dismissable="true"
@@ -221,6 +232,7 @@ function close() {
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('config.modelli_documenti.asset.drawer_title')"
       />
@@ -368,7 +380,7 @@ function close() {
         :loading="loading"
         :disabled="!canSave"
         @save="handleSave"
-        @cancel="close"
+        @cancel="chiudi"
       />
     </template>
   </Drawer>

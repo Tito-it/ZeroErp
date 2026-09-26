@@ -1076,20 +1076,6 @@ a {
   color: var(--p-text-muted-color);
 }
 
-/* Pulsante modifica riga — icona matita.
- * Colori via --app-btn-edit-* in theme.css.
- * Uso: <Button icon="pi pi-pencil" text rounded size="small" class="app-edit-btn" /> */
-.app-edit-btn.p-button {
-  color: var(--app-btn-edit-color);
-}
-.app-edit-btn.p-button:hover:not(:disabled) {
-  color: var(--app-btn-edit-hover-color);
-  background: var(--app-btn-edit-hover-bg);
-}
-.app-edit-btn.p-button:disabled {
-  color: var(--app-btn-disabled-color);
-}
-
 /* Pulsante elimina riga — icona cestino.
  * Colori via --app-btn-delete-* in theme.css.
  * Uso: <Button :icon="MANAGE_ICONS.DELETE" text rounded size="small" class="app-delete-btn" /> */
@@ -1106,8 +1092,7 @@ a {
 
 /* Pulsante "Genera PDF" / azione PDF (motore documentale).
  * Colori via --app-btn-pdf-* in theme.css. Stesso aspetto del cestino
- * (rosso PDF) ma classe semantica distinta: usata da `GeneraPdfButton`
- * e da pulsanti download PDF nelle toolbar/lista documenti generati.
+ * (rosso PDF) ma classe semantica distinta: usata dai pulsanti download PDF nelle toolbar/lista documenti generati.
  * Uso: <Button icon="pi pi-file-pdf" text rounded size="small" class="app-pdf-btn" /> */
 .app-pdf-btn.p-button {
   color: var(--app-btn-pdf-color);
@@ -1326,18 +1311,37 @@ a {
 }
 
 /* Variante 3 colonne per campi corti (CIG, CUP, commessa).
- * Collassa a 1 colonna su schermi stretti (< 480px). */
+ * Collassa a 1 colonna quando il RIQUADRO che la contiene e' sotto i 25rem.
+ *   25rem (400px) sta SOTTO la larghezza utile del riquadro piu' stretto:
+ *   `DRAWER_WIDTH.SIMPLE` / `DIALOG_WIDTH.sm` = 480px meno il padding del
+ *   contenuto (2 x 1.25rem) = 440px. Una soglia a 480px li farebbe collassare
+ *   SEMPRE, anche a finestra piena — ed e' il difetto corretto il 2026-09-26.
+ *   ⚠️ Il numero e' scritto qui perche' una `@container` non accetta `var()`. */
 .form-grid-3col {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 0.75rem;
 }
 
-@media (max-width: 479px) {
+@container (max-width: 25rem) {
   .form-grid-2col,
   .form-grid-3col {
     grid-template-columns: 1fr;
   }
+}
+
+/* ===== I riquadri — dove si misurano le soglie dei form =====
+ * Una griglia di form si stringe perche' si stringe il DRAWER o la DIALOG in
+ * cui vive, non la finestra: le sue soglie sono `@container` (decisione Tid,
+ * 2026-09-26). Il contenitore e' il contenuto del drawer e quello di
+ * `AppDialog` (classe `app-riquadro` passata via `pt`): tutti e due hanno una
+ * larghezza fissata da `DRAWER_WIDTH` / `DIALOG_WIDTH`, e per questo possono
+ * portare la containment in larghezza senza collassare.
+ * ⚠️ Mai `app-riquadro` su un elemento largo quanto il suo contenuto: la
+ * containment gli toglie la larghezza intrinseca. */
+.p-drawer-content,
+.app-riquadro {
+  container-type: inline-size;
 }
 
 /* Riga inline per affiancare campi form (es. sesso + data nascita).
@@ -1348,7 +1352,7 @@ a {
   align-items: flex-start;
 }
 
-@media (max-width: 479px) {
+@container (max-width: 25rem) {
   .form-row-inline {
     flex-direction: column;
   }
@@ -1634,8 +1638,12 @@ a {
   font-size: 0.5rem;
 }
 
+/* Fattura = documento (base famiglia vendite, pi-file \e958) + overlay TIPO
+   euro. Fino al 2026-09-26 la base era la ricevuta (\ea06), la stessa di
+   Clienti: decisione Tid (R-10), la fattura e' un documento di vendita come
+   gli altri e il suo differenziatore e' l'euro. */
 .app-nav-icon-fatture::before {
-  content: "\ea06";
+  content: "\e958";
   top: 0.02rem;
   left: 0.16rem;
   font-size: 0.92rem;
@@ -1681,8 +1689,9 @@ a {
 
 /* Approvazioni prezzo = check-circle (pi-check-circle \e90a) + euro
    sovrapposto in alto a destra (pi-euro \e9bd). Semantica: "approva il
-   prezzo". Allineata al pattern preventivi/contratti/listini/fatture
-   che usano tutti l'overlay euro per le entita' vendite a valore. */
+   prezzo". L'euro qui significa PREZZO, come sui listini: base diversa dal
+   foglio dei documenti, quindi non collide con la Fattura (frontend-standards,
+   "Iconografia di dominio"). */
 .app-nav-icon-approvazioni-prezzo::before {
   content: "\e90a";
   top: 0.02rem;
@@ -2026,7 +2035,7 @@ a {
   justify-content: flex-end;
 }
 
-@media (max-width: 900px) {
+@container (max-width: 899.98px) {
   .app-righe-scelte__riga {
     grid-template-columns: 1fr auto;
   }
@@ -2891,7 +2900,7 @@ a {
   text-transform: capitalize;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .app-dash-layout {
     flex-direction: column;
   }
@@ -2985,4 +2994,24 @@ a {
  * fra «cos'è successo» e «cosa fare». Stessa ragione di ErroreRigaInfo. */
 .app-giornale-cosa {
   white-space: pre-line;
+}
+
+/* Badge dell'ANTEPRIMA del soggetto: indirizzi, contatti, conti e i badge
+ * che altri domini contribuiscono (accessi web). Globale perche' i badge
+ * contribuiti vivono in un altro componente: scoped, non si somiglierebbero. */
+.app-badge-anteprima {
+  font-size: 1.05rem;
+}
+
+/* Voce di un registro: una nota, un allegato, una sospensione, un evento di
+ * giornale. Filetto a sinistra e fondo tenue, lo stesso segno ovunque una
+ * scheda elenca le voci di una storia. Era scritta identica in quattro
+ * `<style scoped>` (GiornaleEventi e tre tab di pratica), con un
+ * `--p-surface-700` che in light mode non ha un corrispettivo: da qui il token
+ * `--app-voce-registro-bg`, con il suo valore per ciascun tema. */
+.app-voce-registro {
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--app-toolbar-border);
+  border-radius: 0 4px 4px 0;
+  background: var(--app-voce-registro-bg);
 }

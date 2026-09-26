@@ -23,14 +23,14 @@
 //        pura e senza import: e' cio' che ha la spec, e importarla da qui
 //        trascinerebbe store → auth → i18n → `localStorage` nel test.
 //        ⭐ E il pannello «Processi automatici» lo TIENE AGGIORNATO: quando
-//        ricarica i presidi, il pallino adotta quei numeri (sono gli stessi tre,
-//        letti un istante fa) invece di aspettare il prossimo giro.
+//        ricarica i presidi CONSEGNA quei numeri al pallino
+//        (`adottaTestataPresidi`), invece di aspettare il prossimo giro.
 // ------------------------------------------------------------
-import { computed, ref, watch } from 'vue'
-import { getPresidiConteggi } from '../../amministrazione/api/amministrazione'
-import { useProcessiAutomaticiStore } from '../../amministrazione/stores/processiAutomatici'
+import { computed, ref } from 'vue'
+import { getPresidiConteggi } from '../api/presidi'
 import { useRefreshPeriodico } from './useRefreshPeriodico'
 import { statoPallino } from '../utils/pallinoPresidi'
+import { creaSegnale } from '../segnale'
 
 // ⭐ 300 s e NON 60 come il badge code — deciso sul modello, non su una misura:
 //    quello segue il drenatore (~1/min); qui la sorgente piu' rapida a catalogo
@@ -39,6 +39,21 @@ import { statoPallino } from '../utils/pallinoPresidi'
 //    del costo, e il costo non e' nullo: ogni tick sono N `count(*)` su viste
 //    che scandiscono cataloghi, da ogni scheda aperta.
 export const PRESIDI_INTERVAL_MS = 300_000
+
+// Le istanze vive del pallino (una per topbar montata). Chi ha appena letto
+// la stessa testata con un'altra strada la CONSEGNA qui, invece di essere
+// letto da `core`: il verso della dipendenza e' amministrazione → core, mai il
+// contrario (frontend-standards §«Confini fra domini»).
+const adozioni = creaSegnale('adozione testata presidi')
+
+// Scopo: consegna al pallino una testata letta altrove — oggi dal pannello
+//        «Processi automatici», che la ricarica con i presidi. ⚠️ Una testata
+//        `null` (lettura fallita) non si consegna: il pallino tiene l'ultimo
+//        valore buono, come per gli errori del proprio giro.
+export function adottaTestataPresidi(testata) {
+  if (!testata) return
+  adozioni.emetti(testata)
+}
 
 export function usePresidiPolling() {
   const testata = ref(null)
@@ -79,23 +94,11 @@ export function usePresidiPolling() {
     },
   )
 
-  // ⭐ Il pannello e' la lettura piu' fresca che ci sia: quando finisce di
-  //    caricare i presidi (senza errore) il pallino adotta la SUA testata —
-  //    `presidiTestata` dello store, stessa forma e stessa funzione lato BE —
-  //    senza un secondo round-trip. Si guarda la transizione «caricamento →
-  //    finito», non i numeri: una ricarica che torna identica aggiorna
-  //    comunque l'ora. ⚠️ Lo store la da' `null` se la lettura e' fallita, e
-  //    un `null` qui NON si adotta: si tiene l'ultimo valore buono, come per
-  //    gli errori del proprio giro.
-  const processi = useProcessiAutomaticiStore()
-  watch(
-    () => processi.presidiLoading,
-    (loading, prima) => {
-      if (prima && !loading && processi.presidiTestata) {
-        adotta(processi.presidiTestata)
-      }
-    },
-  )
+  // ⭐ Il pannello «Processi automatici» e' la lettura piu' fresca che ci sia:
+  //    quando ricarica i presidi consegna qui la SUA testata (stessa forma,
+  //    stessa funzione lato BE) con `adottaTestataPresidi`, senza un secondo
+  //    round-trip e senza che `core` conosca il suo store.
+  adozioni.ascolta(adotta)
 
   // Scopo: refresh immediato fuori cadenza. `avvia({subito:true})` rispetta da
   //        se' il guard `abilitato`.

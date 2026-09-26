@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
+import { registraRouter } from './core/routerApp'
 import i18n, { loadLocaleMessages, DEFAULT_LOCALE } from './core/i18n'
 import { autoResetPlugin } from './core/pinia-plugins/auto-reset'
 
@@ -17,11 +18,18 @@ import './assets/theme.css'
 import './assets/main.css'
 import './assets/auth-pages.css'
 
+// ⭐ Le ISCRIZIONI dei domini ai registri di `core` e dei motori
+// (frontend-standards §«Confini fra domini», decisione Tid 2026-09-26): ogni
+// `<dominio>/iscrizioni.js` si carica qui, all'avvio e prima del mount, senza
+// che questo file ne nomini uno. Un dominio nuovo si aggiunge scrivendo il suo.
+import.meta.glob('./*/iscrizioni.js', { eager: true })
+
 const app = createApp(App)
 
 const pinia = createPinia()
 pinia.use(autoResetPlugin)
 app.use(pinia)
+registraRouter(router)
 app.use(router)
 app.use(PrimeVue, {
   theme: {

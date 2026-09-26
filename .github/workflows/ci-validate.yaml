@@ -626,11 +626,10 @@ jobs:
         working-directory: ./backend
         # I controlli di Django sulla configurazione di produzione (cookie,
         # HSTS, SSL, SECRET_KEY, DEBUG, X-Frame-Options, ...).
-        # ⚠️ `--tag security`: senza, il check riporta anche 127 avvisi
-        #    drf-spectacular (73 W002 + 54 W001 al 2026-09-26), che non
-        #    riguardano la sicurezza. Il loro cancello e' un altro: il registro
-        #    a cricchetto `apps/core/tests/test_schema_openapi_registro.py`,
-        #    che gira con la suite Django.
+        # ⚠️ `--tag security`: gli avvisi drf-spectacular (a ZERO dal
+        #    2026-09-26) li tiene a zero un altro cancello, il registro a
+        #    cricchetto `apps/core/tests/test_schema_openapi_registro.py`, che
+        #    gira con la suite Django. Senza il tag resterebbe `mail.E001`.
         # ⚠️ Un rilievo `security.*` e' un AVVISO: `check` esce 0 comunque.
         #    Il cancello lo fa il grep qui sotto, con l'elenco a cricchetto dei
         #    rilievi ACCETTATI. Si toglie una voce quando si chiude, mai si

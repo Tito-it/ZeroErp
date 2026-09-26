@@ -106,6 +106,7 @@ import { scegliRamoBanner, conteggiDaSegnalazioni } from '../_shared/lotti/ramoB
 import { motivoUscitaBloccata } from '../uscitaDalGiro'
 import FiltriLista from '../../core/components/FiltriLista.vue'
 import { useContrattoFiltriLocali } from '../../core/composables/useContrattoFiltriLocali'
+import { gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -1302,6 +1303,7 @@ function gruppoRiferimento(row) {
 function fatturaNumero(row) {
   return row.numero_documento || '—'
 }
+const suVisibile = gestoreVisibile(emit, onClose)
 </script>
 
 <template>
@@ -1310,7 +1312,7 @@ function fatturaNumero(row) {
     position="right"
     :style="{ width: DRAWER_WIDTH.WIDE }"
     :dismissable="true"
-    @update:visible="(v) => { if (!v) onClose() }"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
   >
     <template #header>

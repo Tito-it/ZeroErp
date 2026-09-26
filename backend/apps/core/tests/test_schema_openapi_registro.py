@@ -10,10 +10,12 @@
 #          serializer (`@extend_schema`), e nello schema l'endpoint c'e' ma e'
 #          VUOTO. Viola la regola di `api.md` §Test («ogni APIView ha
 #          `@extend_schema` su ogni metodo»).
-#        - W001, «due endpoint con lo stesso nome»: lista e dettaglio finiscono
-#          sullo stesso `operationId`, e drf-spectacular aggiunge `_2` al
-#          secondo IN ORDINE DI LETTURA delle rotte. Se l'ordine cambia, i due
-#          nomi si scambiano in silenzio sotto a un client generato.
+#        - W001, «due endpoint con lo stesso nome»: due operazioni sullo stesso
+#          `operationId`, e drf-spectacular aggiunge `_2` alla seconda in ordine
+#          ALFABETICO di percorso — un nome che dice un numero, e che si sposta
+#          se un percorso nuovo si ordina in mezzo. Le coppie lista/dettaglio le
+#          separa l'hook `nomi_lista_dettaglio` (openapi_extensions.py): qui
+#          arrivano solo le collisioni che una regola non sa nominare.
 #
 #        I rilievi di oggi stanno in `openapi_schema.baseline.json`, PER NOME
 #        (view e operationId), non per conto: un conto resta uguale quando una
@@ -173,8 +175,9 @@ class SchemaOpenApiRegistroTest(SimpleTestCase):
         self.assertEqual(
             nuove, [],
             "operationId in collisione nello schema OpenAPI "
-            "(drf_spectacular.W001): dare a una delle due view "
-            "`@extend_schema(operation_id=...)` esplicito. Non si aggiungono "
+            "(drf_spectacular.W001), che l'hook lista/dettaglio non risolve: "
+            "dare a una delle due `@extend_schema(operation_id=...)` esplicito. "
+            "Non si aggiungono "
             "al registro.\n  " + "\n  ".join(nuove),
         )
 

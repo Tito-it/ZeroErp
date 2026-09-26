@@ -27,6 +27,7 @@ import { etichettaColonna } from '../utils/i18nLabel'
 import { DRAWER_WIDTH } from '../constants'
 import { useConfirmAction } from '../composables/useConfirmAction'
 import { useDrawerContentReady } from '../composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../composables/useDrawerFormPreserve'
 
 
 const { confirmAction } = useConfirmAction()
@@ -62,12 +63,27 @@ const { t, te } = useI18n()
 // scartare modifiche di una sessione precedente di apertura modale.
 const localColonne = ref([])
 
+// Modifiche non salvate: si confronta l'elenco senza `ordine`, che il
+// riordino rinumera 1..N (l'ordine lo dice gia' la posizione: spostare e
+// rimettere a posto non e' una modifica), e con `visibile` come lo mostra
+// il toggle (assente = visibile). Prima del watch immediate (TDZ).
+const colonneDaSalvare = computed(() =>
+  localColonne.value.map((c) => ({
+    codice: c.codice,
+    visibile: c.visibile !== false,
+    larghezza: c.larghezza ?? null,
+  })),
+)
+const { fissa, chiudiConConferma } =
+  useDrawerFormPreserve(colonneDaSalvare, { visibile: () => props.visible })
+
 watch(
   () => [props.visible, props.config],
   ([open]) => {
     if (open && props.config?.colonne) {
       // Deep-clone per non mutare la config del genitore prima di Salva.
       localColonne.value = JSON.parse(JSON.stringify(props.config.colonne))
+      fissa()
     }
   },
   { immediate: true },
@@ -141,7 +157,7 @@ function onSave() {
 }
 
 function onCancel() {
-  emit('update:visible', false)
+  chiudiConConferma(() => emit('update:visible', false))
 }
 
 // Scopo: reset preferenza utente. Conferma dialog -> emit('reset').
@@ -157,6 +173,7 @@ function onReset() {
     },
   })
 }
+const suVisibile = gestoreVisibile(emit, onCancel)
 </script>
 
 <template>
@@ -166,7 +183,7 @@ function onReset() {
     :style="{ width: DRAWER_WIDTH.SIMPLE }"
     :modal="true"
     :dismissable="!loading"
-    @update:visible="emit('update:visible', $event)"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
   >
     <template #header>

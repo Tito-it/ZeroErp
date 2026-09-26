@@ -12,7 +12,6 @@ import { useArticoliStore } from '../stores/articoli'
 import ArticoliSearchTable from '../components/ArticoliSearchTable.vue'
 import ArticoloDrawer from '../components/ArticoloDrawer.vue'
 import ArticoloUomDrawer from '../components/ArticoloUomDrawer.vue'
-import ArticoloLottiDrawer from '../../magazzino/components/ArticoloLottiDrawer.vue'
 import ArticoloBomDrawer from '../components/ArticoloBomDrawer.vue'
 import ArticoloNoteDrawer from '../components/ArticoloNoteDrawer.vue'
 
@@ -30,9 +29,6 @@ const bomDrawerVisible = ref(false)
 const bomArticoloId = ref(null)
 const noteDrawerVisible = ref(false)
 const noteArticoloId = ref(null)
-// I lotti di magazzino: il drawer vive in `src/magazzino` (Q-1), qui si monta.
-const lottiDrawerVisible = ref(false)
-const lottiArticolo = ref(null)
 
 watch(() => route.fullPath, () => {
   if (route.name === 'catalogo-articoli' && ctx.entitaId) {
@@ -52,10 +48,6 @@ function onManageNote(data) {
   noteArticoloId.value = data.id
   noteDrawerVisible.value = true
 }
-function onManageLotti(data) {
-  lottiArticolo.value = data
-  lottiDrawerVisible.value = true
-}
 </script>
 
 <template>
@@ -66,7 +58,6 @@ function onManageLotti(data) {
       @manage-uom="onManageUom"
       @manage-bom="onManageBom"
       @manage-note="onManageNote"
-      @manage-lotti="onManageLotti"
     />
 
     <ArticoloDrawer
@@ -93,13 +84,6 @@ function onManageLotti(data) {
       :visible="noteDrawerVisible"
       @update:visible="v => noteDrawerVisible = v"
       :articolo-id="noteArticoloId"
-    />
-    <ArticoloLottiDrawer
-      :visible="lottiDrawerVisible"
-      @update:visible="v => lottiDrawerVisible = v"
-      :articolo-id="lottiArticolo?.id ?? null"
-      :articolo-codice="lottiArticolo?.codice ?? ''"
-      :requires-lotto="lottiArticolo?.requires_lotto ?? true"
     />
   </div>
 </template>

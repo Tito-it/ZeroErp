@@ -144,6 +144,12 @@
       "descrizione": "This list does not show which issuer each row comes from, and you are currently viewing more than one. Pick an issuer from the selector at the top right: the list opens right after.",
       "etichetta_tutti": "All issuers",
       "etichetta_ricerca": "You are searching across all issuers: entries with the same name may belong to different issuers."
+    },
+    "modifiche_non_salvate": {
+      "titolo": "Unsaved changes",
+      "messaggio": "There are unsaved changes: closing will discard them. Close anyway?",
+      "chiudi": "Close without saving",
+      "indicatore": "Unsaved changes"
     }
   },
   "strumenti": {
@@ -251,7 +257,6 @@
     "contabilita": "Accounting",
     "amm-software": "Admin Software",
     "strumenti": "Tools",
-    "personale": "Personal",
     "collapse": "Collapse",
     "expand": "Expand",
     "back_home": "Home",
@@ -269,9 +274,8 @@
   },
   "nav_menu": {
     "strumenti": {
-      "code-lavoro": "Work queues"
-    },
-    "personale": {
+      "code-lavoro": "Work queues",
+      "giornale": "Event journal",
       "email": "Email"
     },
     "amm-software": {
@@ -316,7 +320,6 @@
       "dashboard-competenza": "Invoicing accrual",
       "dashboard-backlog": "Invoicing backlog",
       "lotti": "Invoicing batches",
-      "giornale": "Event journal",
       "preventivi": "Quotes",
       "offerte": "Commercial offers",
       "ordini": "Sales orders",
@@ -571,10 +574,6 @@
   },
   "tabs": {
     "close": "Close tab",
-    "close_confirm_title": "Unsaved changes",
-    "close_confirm_message": "There are unsaved changes. Close anyway?",
-    "close_confirm_accept": "Close without saving",
-    "close_confirm_reject": "Cancel",
     "split_open": "Side by side",
     "split_close": "Close side view",
     "split_select": "Select tab to show alongside",
@@ -833,8 +832,6 @@
     "validation_error": "Please fill in all required fields."
   },
   "pagination": {
-    "page_of": "Page {page} of {total}",
-    "go_to_page": "Go to page",
     "rows_per_page": "Rows per page"
   },
   "actions": {
@@ -2193,9 +2190,7 @@
       "field_codice_commessa": "Order Code",
       "field_tipo_utenza": "Usage type",
       "field_classe_utenza": "Usage class",
-      "field_param_1_num": "Numeric parameter",
       "field_pdp": "PDP/POD",
-      "field_param_2_txt": "Text parameter (PDP/POD)",
       "field_nr_righe": "Number of rows",
       "field_utility_associata": "Associated utility",
       "field_articolo": "Article",
@@ -2264,7 +2259,6 @@
       "errore_generico": "Error while saving the contract row.",
       "drawer_righe_titolo": "Contract - Rows",
       "gestisci_righe": "Manage rows",
-      "gestisci_utility": "Manage utility",
       "aggiungi_riga": "New row",
       "nuova_riga": "New row",
       "modifica_riga": "Edit row",
@@ -2311,8 +2305,6 @@
       "ripristina_articolo_dialog_titolo": "Restore article in contract",
       "ripristina_articolo_dialog_messaggio": "Article {articolo} will become available again in the contract at the price list value. The exclusion will be removed. Confirm?",
       "ripristina_articolo_dialog_conferma": "Restore",
-      "utility_creata": "Utility created",
-      "utility_salvata": "Utility saved",
       "conferma_titolo": "Confirm status change",
       "conferma_cambio_stato": "Move the contract to status {stato}?",
       "stato_cambiato": "Status updated",
@@ -2861,8 +2853,7 @@
       "vedi_fatture": "View invoices",
       "collegamento_soggetto": "Invoices for entity {valore} — no date limit.",
       "collegamento_cliente": "Invoices for {valore} — no date limit.",
-      "collegamento_rimuovi": "Clear filter",
-      "sez_saldo": "Balance"
+      "collegamento_rimuovi": "Clear filter"
     },
     "indirizzi": {
       "da_soggetto": "from subject",
@@ -2979,7 +2970,7 @@
       "tipologia_placeholder": "Select type",
       "tipologia_utility_first": "Select utility first",
       "banner_emittente_corrente": "The new price list will be associated with fiscal issuer {nome}.",
-      "banner_admin_globale_no_create": "Global administrators cannot create price lists: an operator linked to a fiscal issuer is required.",
+      "banner_scegli_emittente": "To create a price list, first choose the fiscal issuer to work on (top bar): with «All issuers» it is not known which one to associate it with.",
       "field_codice_versione": "Version code",
       "field_valido_dal": "Valid from",
       "field_valido_al": "Valid to",
@@ -4507,8 +4498,7 @@
       "filtro_tipo": "Channel type",
       "filtro_tipo_tutti": "All",
       "nessun_canale": "No collection channel configured: until there is one, money arriving before the invoice has no perimeter.",
-      "titolo_nuovo": "New collection channel",
-      "titolo_modifica": "Collection channel",
+      "titolo_singolare": "Collection channel",
       "creato": "Channel created.",
       "aggiornato": "Channel updated.",
       "sezione_identita": "What kind of channel",
@@ -4605,6 +4595,18 @@
       "gia_corretta": "Already corrected by sheet {codice}: open that one and work there.",
       "e_la_correzione_di": "This sheet corrects {codice}",
       "e_stata_corretta_da": "This sheet has already been corrected by {codice}"
+    },
+    "saldi": {
+      "residuo": "Outstanding",
+      "in_lavorazione": "In progress",
+      "in_lavorazione_aiuto": "Already entered on a sheet and not yet posted: they do not reduce the outstanding amount.",
+      "incassato": "Collected",
+      "incassato_non_disponibile": "The collected amount is not available at this level: it is not zero, it is unknown.",
+      "nessun_movimento": "Nothing has arrived on this document yet.",
+      "non_letto": "The balance could not be read: retry before concluding there is nothing left to pay.",
+      "livello_non_pronto": "The balance for this level is not available yet.",
+      "include_riga_corrente": "The amount in progress also includes this line: at this level the balance cannot exclude it.",
+      "sezione": "Balance"
     }
   },
   "magazzino": {
@@ -5213,8 +5215,6 @@
     "visualizzazione_pratica": "Viewing practice code: {codice}",
     "apri_scheda": "Open case sheet",
     "modalita_tecnica": "Technical mode",
-    "mie_attivita_titolo": "My activities",
-    "mie_attivita_vuoto": "No activities",
     "mie_attivita_espandi": "Expand",
     "mie_attivita_comprimi": "Collapse"
   },
@@ -5242,17 +5242,7 @@
       "FATTURA": "Invoice"
     },
     "genera_pdf": {
-      "label": "Generate PDF",
-      "tooltip": "Generate and download the PDF document",
-      "success": "PDF document generated",
-      "no_template": "No document template configured for this source. Add a template in Configuration.",
-      "lookup_error": "Error retrieving applicable templates.",
       "download_error": "Error during PDF download."
-    },
-    "scelta_template": {
-      "title": "Choose document template",
-      "subtitle": "Multiple templates are available for this source: select the one to use for generation.",
-      "confirm": "Generate"
     },
     "lista": {
       "title": "Generated documents",
@@ -5505,8 +5495,8 @@
   },
   "anagrafiche": {
     "clienti": {
-      "banner_admin_globale_no_create": "You are logged in as global administrator: you cannot create billing accounts when fiscal issuers exist in the system. Operate as an operator of a specific issuer.",
       "banner_emittente_corrente": "The new client will be associated with fiscal issuer {nome}.",
+      "banner_scegli_emittente": "To create a client, first choose the fiscal issuer to work on (top bar): with «All issuers» it is not known which one to associate it with.",
       "search_placeholder": "Search by name, tax ID, code...",
       "filtro_utility": "Utility",
       "filtro_stato": "Status",
@@ -5920,17 +5910,6 @@
       "scelta_conferma": "Start",
       "scelta_errore": "Could not load issuers. Retry, or continue in read-only mode.",
       "scelta_rimanda": "Continue without selecting"
-    },
-    "saldi": {
-      "residuo": "Outstanding",
-      "in_lavorazione": "In progress",
-      "in_lavorazione_aiuto": "Already entered on a sheet and not yet posted: they do not reduce the outstanding amount.",
-      "incassato": "Collected",
-      "incassato_non_disponibile": "The collected amount is not available at this level: it is not zero, it is unknown.",
-      "nessun_movimento": "Nothing has arrived on this document yet.",
-      "non_letto": "The balance could not be read: retry before concluding there is nothing left to pay.",
-      "livello_non_pronto": "The balance for this level is not available yet.",
-      "include_riga_corrente": "The amount in progress also includes this line: at this level the balance cannot exclude it."
     },
     "email_log": {
       "stato": "Status",

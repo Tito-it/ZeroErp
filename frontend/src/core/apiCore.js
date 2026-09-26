@@ -5,6 +5,13 @@ import api from './api'
 
 const BASE = '/core'
 
+// --- Emittenti fiscali: il vocabolario che ogni dominio usa per il campo
+//     «emittente» (`useEmittenteFiscaleField`). L'endpoint lo serve
+//     `amm_software`, ma il lookup e' di tutti: per questo sta qui. ---
+export function listEmittentiFiscali() {
+  return api.get('/amm-software/lookup/emittenti-fiscali/')
+}
+
 // --- Lookup codici generico (qualifiche, stati, ecc.) ---
 
 export function lookupCodici(rel, params = {}) {

@@ -43,6 +43,7 @@ class BillingAccountLookupView(DomainAPIView):
     is_search_endpoint = True
 
     @extend_schema(
+        operation_id="anagrafiche_billing_account_lookup_list",
         parameters=[
             OpenApiParameter(
                 name="q",

@@ -245,7 +245,7 @@ function onFavoriteDragEnd() {
 .home-view h2 {
   margin-bottom: 1.5rem;
   font-weight: 600;
-  color: var(--p-text-color);
+  color: var(--app-text-color);
 }
 
 .favorites-panel {
@@ -268,7 +268,7 @@ function onFavoriteDragEnd() {
   margin: 0;
   font-size: var(--app-font-size-base);
   font-weight: 600;
-  color: var(--p-text-color);
+  color: var(--app-text-color);
 }
 
 .favorites-panel__title i {
@@ -311,14 +311,14 @@ function onFavoriteDragEnd() {
 }
 
 /* Tablet landscape */
-@media (max-width: 1024px) {
+@media (max-width: 1023.98px) {
   .favorites-grid {
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   }
 }
 
 /* Tablet portrait / mobile */
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .favorites-grid {
     grid-template-columns: repeat(2, 1fr);
   }

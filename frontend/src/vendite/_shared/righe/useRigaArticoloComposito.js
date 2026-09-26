@@ -26,7 +26,7 @@
 
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useArticoloUomOptions } from '../../../core/composables/useArticoloUomOptions'
+import { useArticoloUomOptions } from '../../../catalogo/composables/useArticoloUomOptions'
 import { useComponentiDialog } from '../componenti/useComponentiDialog'
 
 export function useRigaArticoloComposito({ store, parentId, riga, articoloObj, form }) {

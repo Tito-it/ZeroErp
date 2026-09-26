@@ -43,7 +43,7 @@ export function useSearchTable(store, options = {}) {
   const initialLimit = store.filters.limit
   const useResponsiveDefaultRows = initialLimit === PAGINATION.DEFAULT_ROWS
   const compactRowsQuery = typeof window !== 'undefined'
-    ? window.matchMedia(`(max-width: ${BREAKPOINTS.TABLET - 1}px)`)
+    ? window.matchMedia(`(width < ${BREAKPOINTS.TABLET}px)`)
     : null
   let userChangedRows = false
 

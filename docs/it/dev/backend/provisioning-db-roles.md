@@ -1,186 +1,146 @@
-# Provisioning ruoli DB (runtime + migrator + RLS)
+# Provisioning ruoli DB (runtime, migratore, RLS)
+
+> **Ultimo aggiornamento**: 26 settembre 2026
+>
+> **Destinatari**: chi prepara un database ZeroErp (sviluppo, CI, produzione) e
+> chi configura il backend che ci si collega.
+>
+> **Vedi anche** — guide correlate:
+>
+> * [Architettura permessi e autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
+> * [Architettura multi face auth](/guide/architettura-multi-face-auth) — vesti, RLS come difesa
+> * [Contratto GUC APP](/guide/contratto-guc-app) — l'identità che arriva al DB, fail-closed
+> * [Processi automatici — classe e identità](/guide/processi-automatici-classe-e-identita) — utenti tecnici dei job
+> * [Storicizzazione delle tabelle](/guide/storicizzazione-tabelle) — chi possiede le shadow di `storico`
+>
+> **Vedi anche** — sviluppo:
+>
+> * [Configurazione Django su backend-dev](configurazione-django.md) — dove si scrive `DB_USER`
+> * [Playbook operativo backend](play-book-operativo-backend.md) §7-bis — lo stesso passo, solo comandi
+
+---
 
 ## Scopo
-Definire un processo unico e ripetibile per configurare i ruoli PostgreSQL di
-ZeroErp in dev/stage/prod senza dipendere da utenti personali, allineato
-all'architettura attuale di permessi, multi-face auth e Row Level Security.
 
-## Contesto architetturale
-Questo documento va letto insieme a:
+Un processo unico e ripetibile per dare ai ruoli PostgreSQL di ZeroErp i
+privilegi giusti, **dagli script versionati e mai a mano**: un privilegio dato a
+mano esiste su una sola macchina, e il database ricostruito da zero (la CI) non
+lo ha ([linee-guida-sql §11.9](/linee-guida-sql)).
 
-- [architettura-permessi-e-autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
-- [architettura-multi-face-auth](/guide/architettura-multi-face-auth)
-- [contratto-guc-app](/guide/contratto-guc-app)
+## Il principio
 
-Punti fermi:
+* Il backend si collega **sempre** con un solo ruolo tecnico, `zeroerp_app`.
+* L'**identità** di chi sta operando non è il ruolo DB: arriva con le GUC di
+  sessione (`app.current_user_id`, `app.current_identita_id`,
+  `app.ruolo_applicativo`, `app.soggetto_ruolo_id`, …) che il backend imposta a
+  ogni richiesta. Contratto completo: [Contratto GUC APP](/guide/contratto-guc-app).
+* Le **policy RLS** filtrano le righe su quelle GUC, non sul nome del ruolo.
+  Senza GUC coerenti operano **fail-closed**: zero righe in lettura, rifiuto in
+  scrittura.
 
-- `zeroerp_app` e` un **ruolo tecnico PostgreSQL**, non un utente Django
-  `auth_user`.
-- L'identita` applicativa arriva al DB tramite GUC di sessione settate dal
-  backend (`JwtAuditAuthentication`), non tramite login DB dedicati per utente.
-- La RLS attiva per gli **OPERATORI** usa queste GUC per filtrare i dati; quindi
-  il ruolo runtime deve essere soggetto alle policy.
+Quindi:
 
-## Stato attuale RLS
-Stato allineato alle attivita` RLS attive al **2026-06-04**:
+* il **ruolo DB** dice *con quale utenza tecnica il backend parla a PostgreSQL*;
+* le **GUC** dicono *per conto di chi*;
+* la **RLS** decide *quali righe*.
 
-- branch **OPERATORE / scope emittente fiscale**: **attiva** (`ENABLE`, no
-  `FORCE`) su `vendite.fatture`, `vendite.fatture_scadenze`,
-  `vendite.fatturazione_lotti`, `vendite.ordini`, `vendite.preventivi`,
-  `vendite.contratti`, `vendite.offerte_commerciali`,
-  `documenti.documenti_generati`, `pratiche.pratiche`,
-  `anagrafiche.billing_account`;
-- branch **CLIENTE_PORTALE / FORNITORE_PORTALE / SHOP_CUSTOMER**: architettura e
-  policy presenti, ma attivazione runtime ancora differita per le API di
-  dominio relative.
+⛔ Cambiare `DB_USER` in un ruolo owner, superuser o `BYPASSRLS` **spegne la
+RLS** in silenzio. Il backend lo rifiuta: il middleware verifica a ogni richiesta
+che la connessione non scavalchi le policy, e se sì risponde
+`E_DB_ROLE_UNSAFE` (`core.services.system_context.connection_role_bypasses_rls`).
 
-## Ruoli standard
+## Ruoli
 
-### `zeroerp_app`
-Ruolo runtime usato da Django (`DB_USER`).
-
-Responsabilita':
-
-- esegue query e DML applicativi;
-- legge i GUC di sessione valorizzati dal backend;
-- e` il ruolo che deve vedere applicate le policy RLS.
-
-Requisiti:
-
-- deve essere `LOGIN`;
-- deve essere **non owner** delle tabelle dati applicative;
-- deve essere **`NOBYPASSRLS`**;
-- non deve essere usato per migrazioni Liquibase.
-
-### `titodb`
-Ruolo tecnico di migrazione/deploy usato da Liquibase.
-
-Responsabilita':
-
-- crea/aggiorna oggetti DB;
-- riceve le `ALTER DEFAULT PRIVILEGES` cosi` gli oggetti futuri concedono subito
-  i grant runtime a `zeroerp_app`.
+| Ruolo | Chi lo usa | Attributi attesi | Provisioning |
+| --- | --- | --- | --- |
+| `zeroerp_app` | il backend Django (`DB_USER`): web, management command, timer | `LOGIN`, **`NOBYPASSRLS`**, non owner delle tabelle | `scripts/sql/provision_db_roles.sql` |
+| migratore (`titodb` su dev, `zeroerp` in CI) | Liquibase; **owner** degli oggetti applicativi | `LOGIN`, non superuser | fuori dagli script: è il ruolo con cui si crea il database |
+| `zeroerp_log` | il canale di log via `dblink` (scrive `dbops.error_log` fuori dalla transazione che fallisce) | `LOGIN`, solo `INSERT` su `dbops.error_log` | `scripts/sql/provision_dblink_log_channel.sql` — vedi [dblink](/postgresql/dblink) |
+| `postgres` | provisioning, manutenzione, pgAgent | superuser | — |
 
 Note:
 
-- nelle attivazioni RLS correnti ZeroErp usa `ENABLE` e non `FORCE`, quindi
-  owner e superuser restano esenti per natura PostgreSQL;
-- `titodb` va trattato come ruolo di migrazione/owner, non come utente runtime.
+* La RLS è attiva in modalità `ENABLE`, **non** `FORCE`: owner e superuser ne
+  sono esenti per natura PostgreSQL. È per questo che il migratore e `postgres`
+  non vanno mai usati come utenza del backend.
+* I processi automatici (fatturazione, code di lavoro, stampa, email) girano
+  **come `zeroerp_app`**, con l'identità di un **utente tecnico per (processo ×
+  azienda)**, dentro il perimetro RLS di quell'azienda. Non esistono più canali
+  di sistema che scavalcano la RLS. Il modello sta nella guida
+  [Processi automatici](/guide/processi-automatici-classe-e-identita).
 
-### `postgres` o ruolo batch equivalente
-Ruolo esente usato per attivita` di manutenzione o batch DB puri quando serve
-operare fuori dal perimetro RLS applicativo.
+### ⚠️ `zeroerp_batch_fatturazione` — in ritiro
 
-Uso tipico:
+Era il ruolo `BYPASSRLS` con cui il batch notturno vedeva tutte le aziende,
+quando i processi non avevano un'identità propria.
 
-- pgAgent;
-- job SQL pianificati;
-- manutenzione/amministrazione DB.
-
-Non deve essere configurato come `DB_USER` del backend.
-
-### Ruoli batch per-job `zeroerp_batch_<job>` (canale di sistema headless)
-
-I processi headless applicativi (management command, cron, job) che operano su
-tabelle protette da RLS **senza** un'identita' operatore usano un ruolo dedicato
-**per singolo job** — non `zeroerp_app`, non `postgres`/`titodb`.
-
-Modello (vedi
-`dev/work-done/brief-db-contesto-sistema-batch-fatturazione-rls.md`):
-
-- `BYPASSRLS` — bypassa l'isolamento per-emittente (semantica corretta per un
-  processo di sistema che opera su **tutti** gli emittenti); trigger e constraint
-  di business restano comunque attivi;
-- `LOGIN`, `NOSUPERUSER NOCREATEDB NOCREATEROLE`;
-- **SELECT + EXECUTE ampi** sugli schemi applicativi (letture cross-tenant a basso
-  rischio; enumerare i lookup sarebbe fragile);
-- **DML (INSERT/UPDATE/DELETE) SOLO sul perimetro di scrittura del job**: il vettore
-  di danno di un ruolo `BYPASSRLS` e' la scrittura cross-tenant → va limitata. Una
-  tabella fuori perimetro fallisce **rumorosamente** (`permission denied`), non in
-  silenzio;
-- **NO membership di `zeroerp_app`** (darebbe read+write su tutto): grant espliciti;
-- usato via un **alias Django dedicato** (`DATABASES['system_<job>']`), **mai** come
-  `DB_USER` del web.
-
-> **Regola per-job**: un nuovo processo di sistema → **nuovo ruolo scoped**
-> (`zeroerp_batch_<job>`), mai allargare i grant di un ruolo esistente. Alla comparsa
-> del 2° job rivalutare "per-job vs ruolo condiviso-ma-scoped".
-
-Ruolo esistente: **`zeroerp_batch_fatturazione`** (batch di fatturazione).
-
-- Provisioning (admin DB): `scripts/sql/provision_db_role_batch_fatturazione.sql`
-  — `batch_password` è obbligatoria **solo per creare** il ruolo (dal 2026-09-14):
-  se il ruolo esiste e la password non viene passata, resta quella che ha. I ruoli
-  sono di cluster e i privilegi di database: è ciò che permette a `scripts/ci-local.sh`
-  di dare allo scratch la stessa postura della CI senza toccare la password del
-  worker di sviluppo.
-- Verifica postura: `scripts/sql/check_db_role_batch_fatturazione.sql`
-- CI: step psql-as-`postgres` in `.github/workflows/ci.yaml` ("Provision ruolo batch
-  fatturazione") che riusa lo stesso script
-- pgTAP: `db/pgtap/rls/test-role-batch-fatturazione-postura.sql`
-
-> **`BYPASSRLS` richiede superuser.** Il provisioning di questi ruoli (creazione +
-> attributo `BYPASSRLS`) va eseguito **come superuser** (`postgres`): lo script admin e
-> lo step CI girano come `postgres`. **Non** metterlo in un changeset Liquibase del flusso
-> ordinario: lì la connessione e' `zeroerp_app`/`titodb` (non-superuser) e l'`ALTER ROLE
-> ... BYPASSRLS` fallisce. I soli GRANT (senza attributi di ruolo) sarebbero invece
-> eseguibili dall'owner degli oggetti.
-
-## Come runtime e identita' si incontrano
-Il backend apre la connessione come `zeroerp_app`, poi `JwtAuditAuthentication`
-popola i GUC che rappresentano la veste applicativa della richiesta:
-
-- `app.current_user_id`
-- `app.current_identita_id`
-- `app.ruolo_applicativo`
-- `app.soggetto_ruolo_id`
-
-Questa separazione e` fondamentale:
-
-- il **ruolo DB** dice *con quale utenza tecnica il backend parla a PostgreSQL*;
-- i **GUC** dicono *per conto di quale identita` applicativa sta operando quella
-  richiesta*;
-- le **policy RLS** filtrano sulle righe usando i GUC, non il nome del ruolo DB.
-
-Conseguenza pratica: cambiare `DB_USER` da `zeroerp_app` a un ruolo owner o
-`BYPASSRLS` neutralizza la RLS e rompe il modello di sicurezza.
-
-## Script disponibili
-
-- Provisioning idempotente: `scripts/sql/provision_db_roles.sql`
-- Verifica grant runtime: `scripts/sql/check_db_role_access.sql`
-- **Scope congelato delle shadow di storico**: `scripts/sql/provision_storico_scope.sql`
-  (dall'11-09-2026). Da superuser, una volta: riassegna al migratore la proprietà
-  delle tabelle `storico.*` create dal job pgAgent come `postgres` (68 su 121 su
-  dev), aggiunge a tutte le colonne dello scope, accende la RLS dove la mappa dice
-  che la madre è protetta, rifà il backfill e revoca il `DELETE` all'applicazione.
-  ⚠️ Finché non passa, il changeSet `20260911-28` (trigger di storico) si ferma
-  con una `preCondition`, e i test 2/3/22 di
-  `db/pgtap/storico/test-storico-scope-congelato-v1.sql` sono rossi: è voluto.
+* **Il backend non lo usa più** dal 2026-09-05: l'alias `system_fatturazione`
+  in `settings.py` è stato tolto, e il test
+  `apps/core/tests/test_system_context_usage_whitelist.py` impedisce che un
+  canale `BYPASSRLS` ritorni.
+* **Il ruolo esiste ancora nel database** finché non si lancia il ritiro. Lo
+  dichiara `dbops.vw_processi_che_bypassano`, che legge `pg_roles` in diretta:
+  una riga = un bypass ancora vivo.
+  ([vw_processi_che_bypassano](/dbzero/dbops/manual/vw_processi_che_bypassano))
+* Il ritiro è `scripts/sql/retire_db_role_batch_fatturazione.sql`, da
+  superuser, perché il `DROP ROLE` di un ruolo `BYPASSRLS` lo richiede:
 
   ```bash
-  sudo -u postgres psql -X -d zeroerp -v migrator_role=titodb \
-       -f scripts/sql/provision_storico_scope.sql
+  psql -h <DB_HOST> -U postgres -d zeroerp \
+       -v batch_role=zeroerp_batch_fatturazione \
+       -f scripts/sql/retire_db_role_batch_fatturazione.sql
   ```
 
-  Regola e motivazione: guida *Storicizzazione delle tabelle*, sezione *Di chi è
-  una versione*; brief `brief-db-rls-storico-scope-congelato` §4b.
+  Chiuso quando `SELECT * FROM dbops.vw_processi_che_bypassano;` non restituisce
+  righe.
+* ⚠️ Finché il ritiro non è fatto, restano vivi anche i pezzi che lo creano:
+  `scripts/sql/provision_db_role_batch_fatturazione.sql`,
+  `check_db_role_batch_fatturazione.sql`, lo step «Provision ruolo batch
+  fatturazione» di `.github/workflows/ci-validate.yaml` e il pgTAP
+  `db/pgtap/rls/test-role-batch-fatturazione-postura.sql`. Vanno via **insieme**
+  al ruolo, non prima.
+* ⛔ Un processo nuovo **non** riceve un ruolo `BYPASSRLS`: riceve un utente
+  tecnico.
 
-Lo script di provisioning:
+## `provision_db_roles.sql` — cosa fa
 
-- crea il ruolo runtime se manca;
-- aggiorna sempre la password del ruolo runtime;
-- concede `CONNECT` e `TEMP` sul database;
-- imposta `search_path = django,public,config,dbops,script,anagrafiche`;
-- concede `USAGE`/DML/sequenze/funzioni sugli schemi applicativi whitelisted;
-- imposta le `ALTER DEFAULT PRIVILEGES` per il ruolo migrator.
+È **idempotente** e si rilancia senza danni. È anche l'**ultima parola** sulla
+postura di `zeroerp_app`: in CI (`ci-validate.yaml`) e in `scripts/ci-local.sh`
+gira **dopo** Liquibase **e dopo** `manage.py migrate`, perché le tabelle dello
+schema `django` nascono con il secondo.
 
-Gli schemi runtime sono centralizzati nello script. Oggi includono anche
-`documenti`, `pratiche` e `ui`; `django` e `maintenance` sono volutamente fuori
-dalla whitelist applicativa generale.
+1. Crea `zeroerp_app` se manca e ne **aggiorna sempre la password**.
+2. `CONNECT` e `TEMP` sul database.
+3. `search_path = django,public,config,dbops,script,anagrafiche` sul ruolo (lo
+   stesso di `settings.py`).
+4. Sugli schemi della **whitelist applicativa** — una sola tabella temporanea in
+   testa allo script, `_app_schemas`: `USAGE`, DML su tutte le tabelle,
+   sequenze, `EXECUTE` su tutte le funzioni, e le `ALTER DEFAULT PRIVILEGES` del
+   migratore, così gli oggetti creati dopo ereditano gli stessi privilegi. Gli
+   schemi che non esistono nel database corrente vengono saltati.
+   * `django` **è** nella whitelist: sedici funzioni `SECURITY INVOKER` leggono e
+     scrivono `django.auth_user` con il ruolo applicativo.
+   * `maintenance` **non** c'è: l'app ne riceve solo `USAGE` e il `SELECT` sul
+     giornale dei job; scrive attraverso `script.fn_job_run_start/end`.
+5. **Ritira** ciò che il grant largo del punto 4 ha dato ma il modello nega. Sono
+   le «porte»: tabelle che l'app legge ma scrive solo attraverso una funzione
+   `SECURITY DEFINER` del proprietario, e funzioni riservate a quei verbi.
+   Rientrano qui i registri append-only (`dbops.audit_log`, `dbops.error_log`),
+   lo schema `storico` senza `DELETE`, il ledger di magazzino, lo stato delle
+   credenziali, il pannello di configurazione, il registro degli owner.
+   L'elenco vivo è nei commenti dello script, uno per porta, ognuno con il suo
+   brief e il suo pgTAP.
 
-## Esecuzione provisioning (admin DB)
-Eseguire da host che raggiunge PostgreSQL con un utente amministrativo.
+⚠️ Ogni elenco di porte è scritto in **tre sedi** che devono coincidere: questo
+script, il loop di `90_end/ci_apply/20260205-41` e il changeSet forward della
+porta. Chi ne cambia una cambia le altre; i pgTAP di postura (per esempio
+`db/pgtap/dbops/test-registri-append-only-postura-v1.sql`,
+`db/pgtap/dbops/test-app-postura-schema-django-v1.sql`) lo segnalano se non lo
+fa.
+
+## Esecuzione
+
+Da un host che raggiunge PostgreSQL, con un utente amministrativo:
 
 ```bash
 psql "host=<DB_HOST> port=5432 dbname=zeroerp user=<ADMIN_DB_USER>" \
@@ -190,8 +150,41 @@ psql "host=<DB_HOST> port=5432 dbname=zeroerp user=<ADMIN_DB_USER>" \
   -f scripts/sql/provision_db_roles.sql
 ```
 
-## Verifica grant runtime
-Controllo rapido dei grant oggetto/schema:
+`migrator_role` ha default `titodb`, e `db_name` ha default il database
+corrente.
+
+Canale di log `dblink`, una volta per database:
+
+```bash
+psql "host=<DB_HOST> port=5432 dbname=zeroerp user=<ADMIN_DB_USER>" \
+  -v log_password='<PASSWORD_FOR_ZEROERP_LOG>' \
+  -f scripts/sql/provision_dblink_log_channel.sql
+```
+
+La password non va nelle GUC: lo script imposta solo il nome del *service*.
+Password e host stanno in `pg_service.conf`/`.pgpass`, come indica lo script alla
+fine.
+
+### Scope congelato delle shadow di `storico`
+
+`scripts/sql/provision_storico_scope.sql`, da superuser, **una volta per
+database**. Riassegna al migratore la proprietà delle tabelle `storico.*` create
+dal job pgAgent come `postgres`, aggiunge le colonne dello scope, accende la RLS
+dove la tabella madre è protetta, rifà il backfill e revoca il `DELETE`
+all'applicazione. Finché non passa, il changeSet `20260911-28` (trigger di
+storico) si ferma su una `preCondition`: è voluto.
+
+```bash
+sudo -u postgres psql -X -d zeroerp -v migrator_role=titodb \
+     -f scripts/sql/provision_storico_scope.sql
+```
+
+Regola e motivazione: guida [Storicizzazione delle tabelle](/guide/storicizzazione-tabelle),
+sezione «Di chi è una versione».
+
+## Verifiche
+
+### Privilegi
 
 ```bash
 psql "host=<DB_HOST> port=5432 dbname=zeroerp user=<ADMIN_DB_USER>" \
@@ -199,62 +192,53 @@ psql "host=<DB_HOST> port=5432 dbname=zeroerp user=<ADMIN_DB_USER>" \
   -f scripts/sql/check_db_role_access.sql
 ```
 
-## Verifica postura RLS
-`check_db_role_access.sql` verifica i grant, ma **non** basta per validare il
-comportamento RLS. Controllare anche:
+Lo script scorre tutti gli schemi non di sistema e non ha una lista scritta a
+mano: mostra cosa il ruolo vede e cosa no.
+
+### Attributi dei ruoli
 
 ```sql
-SELECT rolname, rolcanlogin, rolbypassrls
+SELECT rolname, rolcanlogin, rolbypassrls, rolsuper
 FROM pg_roles
-WHERE rolname IN ('zeroerp_app', 'titodb', 'postgres', 'zeroerp_batch_fatturazione');
+WHERE rolname LIKE 'zeroerp%' OR rolname IN ('titodb', 'postgres')
+ORDER BY 1;
+
+SELECT * FROM dbops.vw_processi_che_bypassano;   -- atteso: nessuna riga
 ```
 
-Atteso:
+Atteso: `zeroerp_app` e `zeroerp_log` hanno `rolcanlogin = true` e
+`rolbypassrls = false`.
 
-- `zeroerp_app`: `rolcanlogin = true`, `rolbypassrls = false`
-- `titodb`: ruolo tecnico di migrazione
-- `postgres`: superuser / ruolo esente
-- `zeroerp_batch_fatturazione`: `rolcanlogin = true`, `rolbypassrls = **true**` (ruolo
-  batch per-job; postura completa via `scripts/sql/check_db_role_batch_fatturazione.sql`)
-
-Controllare inoltre che la RLS sia davvero attiva sulle tabelle del lotto:
-
-```sql
-SELECT n.nspname AS schema_name,
-       c.relname AS table_name,
-       c.relrowsecurity AS rls_enabled,
-       c.relforcerowsecurity AS rls_forced
-FROM pg_class c
-JOIN pg_namespace n ON n.oid = c.relnamespace
-WHERE (n.nspname, c.relname) IN (
-  ('vendite', 'fatture'),
-  ('vendite', 'fatture_scadenze'),
-  ('vendite', 'fatturazione_lotti'),
-  ('vendite', 'ordini'),
-  ('vendite', 'preventivi'),
-  ('vendite', 'contratti'),
-  ('vendite', 'offerte_commerciali'),
-  ('documenti', 'documenti_generati'),
-  ('pratiche', 'pratiche'),
-  ('anagrafiche', 'billing_account')
-)
-ORDER BY 1, 2;
-```
-
-Atteso sullo stato corrente:
-
-- `rls_enabled = true`
-- `rls_forced = false`
-
-Se l'ambiente e` fuori allineamento e `zeroerp_app` risulta `BYPASSRLS`,
-correggere esplicitamente:
+Se `zeroerp_app` risulta `BYPASSRLS`:
 
 ```sql
 ALTER ROLE zeroerp_app NOBYPASSRLS;
 ```
 
+### RLS
+
+Il perimetro RLS cresce con il modello: non si verifica contro una lista scritta
+qui, che sarebbe vecchia al primo changeSet. Si legge dal catalogo:
+
+```sql
+SELECT n.nspname AS schema_name, c.relname AS table_name,
+       c.relrowsecurity AS rls_enabled, c.relforcerowsecurity AS rls_forced
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind IN ('r', 'p') AND c.relrowsecurity
+ORDER BY 1, 2;
+```
+
+Atteso: `rls_forced = false` su tutte (modalità `ENABLE`).
+
+Quali tabelle **devono** essere protette non si decide da questa query: lo
+presidiano i pgTAP in `db/pgtap/rls/` (struttura delle policy, perimetro dei
+satelliti, `test-rls-perimetro-scoperto.sql`).
+
 ## Configurazione Django
-In `backend/env.sh` e `backend/.env.systemd` usare:
+
+In `backend/env.sh` **e** `backend/.env.systemd` (su una variabile presente in
+tutti e due vince `env.sh`: vedi [Configurazione Django](configurazione-django.md)):
 
 ```bash
 DB_NAME=zeroerp
@@ -264,24 +248,17 @@ DB_HOST=<DB_HOST>
 DB_PORT=5432
 ```
 
-Dopo modifiche variabili:
-
-```bash
-sudo systemctl restart zeroerp-gunicorn
-```
+Poi `sudo systemctl restart zeroerp-gunicorn`.
 
 ## Note operative
 
-- Le `ALTER DEFAULT PRIVILEGES` vengono applicate per il ruolo migrator
-  (`titodb`) cosi` gli oggetti futuri ereditano i grant runtime.
-- Se nasce un nuovo schema applicativo, aggiornare la whitelist in
-  `scripts/sql/provision_db_roles.sql`.
-- I path HTTP autenticati devono passare da `JwtAuditAuthentication` e dal reset
-  simmetrico dei GUC; senza GUC coerenti, le policy RLS operano fail-closed.
-- CLI Django, management command e cron applicativi non passano automaticamente
-  dal flusso JWT: se leggono tabelle protette da RLS con `zeroerp_app`, possono
-  vedere zero righe o subire deny impliciti. In questi casi:
-  - o si impostano i GUC in modo esplicito e coerente;
-  - oppure si sposta l'operazione su job DB/batch esente governato a livello SQL.
-- Non usare `titodb` o `postgres` come utenza del backend per "aggirare" filtri:
-  significherebbe bypassare il perimetro di sicurezza atteso.
+* Uno **schema applicativo nuovo** si aggiunge a `_app_schemas` in
+  `provision_db_roles.sql`, e lo script si rilancia.
+* Una **tabella che l'app legge ma non deve scrivere direttamente** è una porta
+  nuova: va nelle tre sedi (sopra), con il suo pgTAP.
+* Una **query di diagnosi a mano** su una tabella con RLS, senza GUC, restituisce
+  **zero righe**, e sembra un dato. Per leggere come un operatore si impostano le
+  GUC (`SET app.current_user_id = …`, eccetera) come fa il backend; lo spiega il
+  [Contratto GUC APP](/guide/contratto-guc-app).
+* ⛔ Non si usa il migratore o `postgres` come utenza del backend per «aggirare»
+  un filtro: vorrebbe dire uscire dal perimetro di sicurezza.

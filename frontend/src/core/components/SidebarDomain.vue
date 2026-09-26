@@ -175,7 +175,7 @@ function handleToggleFavorite(item) {
   padding: 0.4rem 0.75rem;
   font-size: var(--app-font-size-sm);
   font-weight: 600;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   white-space: nowrap;
@@ -190,7 +190,7 @@ function handleToggleFavorite(item) {
 
 .favorite-star {
   font-size: 0.75rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   opacity: 0;
   transition: opacity var(--app-transition-fast), color var(--app-transition-fast);
   cursor: pointer;
@@ -212,7 +212,7 @@ function handleToggleFavorite(item) {
 
 .group-chevron {
   font-size: 0.75rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
 }
 
 .sidebar-submenu {
@@ -227,10 +227,10 @@ function handleToggleFavorite(item) {
 }
 
 .back-home {
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
 }
 
 .back-home:hover {
-  color: var(--p-text-color);
+  color: var(--app-text-color);
 }
 </style>

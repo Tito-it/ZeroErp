@@ -380,11 +380,11 @@ onBeforeUnmount(revokePreview)
   white-space: nowrap;
 }
 .documento-emissione__file-size {
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   font-size: 0.85rem;
 }
 .documento-emissione__allegati-empty {
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
   font-size: 0.9rem;
 }
 </style>

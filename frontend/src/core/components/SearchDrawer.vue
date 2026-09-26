@@ -8,7 +8,7 @@ import Select from 'primevue/select'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
-import api from '../api'
+import { lookupTipiRuoloRicerca, ricercaSoggetti } from '../api/ricerca'
 import { useApiHandler } from '../composables/useApiHandler'
 import { usePagination } from '../composables/usePagination'
 import { useContextStore } from '../../stores/context'
@@ -85,7 +85,7 @@ const showPaginator = computed(() => {
 // Scopo: carica i tipi ruolo visibili nella ricerca
 async function loadTipiRuolo() {
   const data = await execute(
-    () => api.get('/core/lookup/tipi-ruoli/', { params: { ricerca_visibile: true } }),
+    () => lookupTipiRuoloRicerca(),
     { silent: true }
   )
   if (data?.results) {
@@ -111,7 +111,7 @@ async function doSearch() {
   }
 
   const data = await execute(
-    () => api.get('/core/search/', { params }),
+    () => ricercaSoggetti(params),
     { silent: true }
   )
   if (data) {
@@ -425,6 +425,6 @@ watch(() => props.visible, (newVal) => {
 .search-empty {
   text-align: center;
   padding: 2rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
 }
 </style>

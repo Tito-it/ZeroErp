@@ -11,9 +11,9 @@ import { READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
 import { useContextStore } from '../../stores/context'
 import SoggettiSearchTable from '../components/SoggettiSearchTable.vue'
 import SoggettoDrawer from '../components/SoggettoDrawer.vue'
-import ContattiSoggettoDrawer from '../../core/components/ContattiSoggettoDrawer.vue'
-import IndirizziSoggettoDrawer from '../../core/components/IndirizziSoggettoDrawer.vue'
-import ContiBancariDrawer from '../../core/components/ContiBancariDrawer.vue'
+import ContattiSoggettoDrawer from '../components/ContattiSoggettoDrawer.vue'
+import IndirizziSoggettoDrawer from '../components/IndirizziSoggettoDrawer.vue'
+import ContiBancariDrawer from '../components/ContiBancariDrawer.vue'
 
 const drawer = useDrawerState()
 useReadonlyMode(READONLY_DOMAINS.ANAGRAFICHE, READONLY_MODELS.SOGGETTO)

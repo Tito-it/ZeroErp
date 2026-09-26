@@ -17,7 +17,7 @@
 //    fra `core/components` e `anagrafiche/` — non una strada nuova.
 import { ref } from 'vue'
 import i18n from './i18n'
-import router from '../router'
+import { routerApp } from './routerApp'
 import { registraDrawerChiudibile } from './composables/useDrawerChiusuraGlobale'
 import { bersagliRisolti } from './bersagli'
 
@@ -62,7 +62,7 @@ function vaiAl(risolto) {
     //  · `param`    → rotta con `:id`, per le entita' che hanno una pagina
     //    propria invece di un pannello (l'editor di una definizione workflow).
     const { name, queryKey, param } = risolto.rotta
-    router.push(
+    routerApp().push(
       param
         ? { name, params: { [param]: risolto.id } }
         : { name, query: { [queryKey]: risolto.id } },

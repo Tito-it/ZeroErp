@@ -13,7 +13,7 @@
 //        Convenzione valore firmato (negativo = sconto) allineata al resolver
 //        DB: ammessi valori negativi, rifiutato 0 per PERCENTUALE/VALORE_FISSO.
 //        PREZZO_FISSO accetta solo >= 0 (prezzo assoluto sostitutivo).
-import { ref, watch, computed, provide } from 'vue'
+import { ref, watch, computed, provide, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePromoArticoliStore } from '../stores/promoArticoli'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -23,12 +23,13 @@ import { useParameterDefaults } from '../../core/composables/useParameterDefault
 import { DRAWER_WIDTH } from '../../core/constants'
 import { addDaysToToday, parseIsoDate, toDateString } from '../../core/utils/date'
 import { paramBool, paramInt } from '../../core/utils/parameterCast'
-import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOptions'
+import { useArticoloUomOptions } from '../../catalogo/composables/useArticoloUomOptions'
 import { useEntityCapabilities } from '../../core/composables/useEntityCapabilities'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
-import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
+import ArticoloLookup from '../../catalogo/components/ArticoloLookup.vue'
 import TipoVariazioneSelect from './TipoVariazioneSelect.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
@@ -143,6 +144,9 @@ const form = ref({
   valido_al: null,
   attivo: true
 })
+// Modifiche non salvate: fotografia a form popolato (creazione o modifica),
+// chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 
 function resetForm() {
   form.value = {
@@ -224,10 +228,14 @@ watch(
     // valido_dal/attivo dai default seedati.
     await loadParamDefaults()
     if (isEdit.value) {
-      loadDetail()
+      await loadDetail()
     } else {
       resetForm()
     }
+    // Dopo il nextTick: il watch su articolo_obj qui sotto puo' ancora
+    // scrivere uom_id, e la fotografia deve vedere il form com'e' davvero.
+    await nextTick()
+    fissa()
   }
 )
 
@@ -302,19 +310,28 @@ async function handleSave() {
         : t('vendite.promo_articoli.created')
     }
   )
-  if (result !== null) emit('saved', result)
+  if (result !== null) {
+    // Salvato: il parent chiude dopo aver ricaricato la lista, e nel
+    // frattempo il drawer non deve dirsi «modificato».
+    fissa()
+    emit('saved', result)
+  }
 }
 
 function close() {
   emit('update:visible', false)
   emit('cancelled')
 }
+
+// Uscite per volonta' dell'utente: con modifiche non salvate si chiede prima.
+const chiudi = () => chiudiConConferma(close)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="v => emit('update:visible', v)"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
@@ -322,6 +339,7 @@ function close() {
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('vendite.promo_articoli.drawer_title')"
       />
@@ -468,7 +486,7 @@ function close() {
         :loading="loading"
         :disabled="!canSave"
         @save="handleSave"
-        @cancel="close"
+        @cancel="chiudi"
       />
       </template>
     </div>

@@ -1,389 +1,96 @@
-# Backend-dev (LXC) – Guida operativa e configurazioni Django + Gunicorn + Nginx
+# Backend-dev (LXC) — la macchina
 
-> 👀 **Vedi anche**    
-> Approfondimento dettagli installazione     
+> **Ultimo aggiornamento**: 26 settembre 2026
 >
-> * [Play-book-operativo](/dev/backend/play-book-operativo-backend).
-
-
-
-> **Obiettivo**: contenitore LXC Debian 12 su Proxmox per ospitare il backend **Django** del progetto *Zero ERP*, con **Gunicorn**, **Nginx**, **Redis** (cache/sessioni) e connessione sicura a **PostgreSQL** su VM `dbdev`. Include anche Tailscale per l’accesso amministrativo, UFW per il firewall e best practice di sicurezza.
+> **Destinatari**: chi crea, clona o mantiene il contenitore `backend-dev`.
+>
+> **Vedi anche**:
+>
+> * [Playbook operativo backend](play-book-operativo-backend.md) — la macchina da zero, solo comandi
+> * [Configurazione Django su backend-dev](configurazione-django.md) — sicurezza, env, Gunicorn, Nginx, troubleshooting
+> * [Provisioning ruoli DB](provisioning-db-roles.md) — `zeroerp_app`, migratore, RLS
 
 ---
+
+Questa pagina tiene solo ciò che riguarda **il contenitore**: com'è fatto, come
+si crea, come si clona e si salva. L'installazione passo per passo è nel
+[Playbook](play-book-operativo-backend.md); la configurazione dell'applicazione
+e le sue ragioni in [Configurazione Django](configurazione-django.md). Non si
+ricopiano qui: una copia invecchia in silenzio.
 
 ## 1) Architettura in sintesi
 
-* **Proxmox** → CT LXC `backend-dev` (Debian 12, non privilegiato).
+* **Proxmox** → CT LXC `backend-dev`, Debian, non privilegiato.
 * **Rete** → IP LAN + **Tailscale** (MagicDNS). SSH solo per manutenzione.
-* **App** → Django in **venv** Python, servito da **Gunicorn**.
-* **Reverse proxy** → **Nginx** su 80/443 (HTTPS con self-signed in dev; redirect 80→443).
-* **Cache/Sessioni** → **Redis** locale nel CT.
-* **DB** → **PostgreSQL** su VM `dbdev` (scram-sha-256), schema dedicato **`django`**.
+* **App** → il repository clonato in `/home/tid/apps/ZeroErp`; Django in un venv
+  Python (`backend/.venv`, Python da pyenv alla versione di `.python-version`),
+  servito da **Gunicorn** su loopback.
+* **Frontend in sviluppo** → dev server **Vite** su loopback.
+* **Reverse proxy** → **Nginx** su 80/443, unico ingresso (HTTPS self-signed in
+  sviluppo, redirect 80→443).
+* **Cache** → **Redis** locale.
+* **DB** → **PostgreSQL** su VM `dbdev` (scram-sha-256); il backend si collega
+  come `zeroerp_app`, soggetto alla RLS.
 
-Schema logico della path richiesta:
-
+```text
+Browser → Nginx :443 ─┬─ /api/, /health → Gunicorn 127.0.0.1:8000 → Django → PostgreSQL (dbdev)
+                      └─ il resto       → Vite 127.0.0.1:5173
 ```
-Client → (HTTPS) Nginx :443 → (HTTP loopback) Gunicorn :8000 → Django → PostgreSQL (VM dbdev)
-                                             ↘ static/media da Nginx (alias)
-```
-
----
 
 ## 2) Creazione CT (wizard Proxmox)
 
-* **Template**: `debian-12-standard_12.12-1_amd64.tar.zst`
-* **Hostname**: `backend-dev`
-* **CPU/RAM/Disk**: 2 vCPU / 4GB RAM / 20–30GB disco
-* **Features**: *unprivileged*, `keyctl=on` (ok), `nesting` opzionale
-* **Rete**: IP statico su `vmbr0` + (in seguito) Tailscale.
+* **Template**: Debian standard.
+* **Hostname**: `backend-dev`.
+* **CPU/RAM/Disk**: 2 vCPU / 4 GB RAM / 20–30 GB disco.
+* **Features**: *unprivileged*, `keyctl=on`, `nesting` opzionale.
+* **Rete**: IP statico su `vmbr0`, poi Tailscale.
 
-> **Nota TUN (Tailscale)** – Su **host Proxmox**, in `/etc/pve/lxc/<CTID>.conf`:
+> **TUN per Tailscale**: sull'**host Proxmox**, in `/etc/pve/lxc/<CTID>.conf`:
 
-```
+```text
 lxc.cgroup2.devices.allow: c 10:200 rwm
 lxc.mount.entry: /dev/net/tun dev/net/tun none bind,create=file
 ```
 
-Riavvia CT: `pct restart <CTID>`
-
----
-
-## 3) Post-install base nel CT
-
-### Locale & SSH
-
-```bash
-apt update && apt -y upgrade
-apt install -y locales openssh-server sudo
-sed -i 's/^# *\(it_IT.UTF-8 UTF-8\)/\1/' /etc/locale.gen
-sed -i 's/^# *\(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen
-locale-gen && update-locale LANG=it_IT.UTF-8
-```
-
-**Utente amministrativo** (es. `tid`) + sudo + chiave SSH:
-
-```bash
-adduser tid && usermod -aG sudo tid
-# ~/.ssh/authorized_keys con permessi (700 dir, 600 file)
-```
-
-**Hardening SSH** (`/etc/ssh/sshd_config`):
-
-```
-PermitRootLogin no
-```
-
-```bash
-systemctl enable --now ssh
-```
-
-### Tailscale
-
-```bash
-apt install -y curl gnupg
-curl -fsSL https://tailscale.com/install.sh | sh
-systemctl enable --now tailscaled
-# login (senza cert automatici):
-tailscale up --hostname=backend-dev
-```
-
-### DNS/Firewall
-
-* Se apt segnala errori DNS: impostare nameserver (p.es. `1.1.1.1`) o usare `tailscale up --accept-dns=false`.
-* **UFW** (sequenza sicura):
-
-```bash
-apt install -y ufw
-ufw allow 22/tcp
-ufw default deny incoming
-ufw default allow outgoing
-ufw allow 80/tcp
-ufw allow 443/tcp
-ufw enable
-ufw status verbose
-```
-
----
-
-## 4) Software applicativo
-
-```bash
-apt install -y \
-  python3-venv python3-pip python3-dev \
-  build-essential libpq-dev pkg-config \
-  postgresql-client \
-  nginx redis-server \
-  git ca-certificates curl unzip
-systemctl enable --now nginx redis-server
-```
-
-### Progetto Django
-
-```bash
-# workspace app
-mkdir -p /home/tid/apps/zeroerp && cd /home/tid/apps/zeroerp
-python3 -m venv .venv && source .venv/bin/activate
-pip install --upgrade pip
-pip install django gunicorn "psycopg[binary]" django-redis djangorestframework
-
-# crea progetto (inner package: zeroerp_backend)
-django-admin startproject zeroerp_backend .
-# struttura finale appiattita:
-# /home/tid/apps/zeroerp/
-#   ├─ .venv/
-#   ├─ manage.py
-#   └─ zeroerp_backend/ (settings.py, urls.py, wsgi.py, asgi.py)
-```
-
----
-
-## 5) Static & media (best practice)
-
-**Django** (`zeroerp_backend/settings.py`):
-
-```python
-import os
-STATIC_URL = "/static/"
-MEDIA_URL  = "/media/"
-STATIC_ROOT = "/var/www/zeroerp/static"
-MEDIA_ROOT  = "/var/www/zeroerp/media"
-```
-
-**FS & collectstatic**:
-
-```bash
-mkdir -p /var/www/zeroerp/static /var/www/zeroerp/media
-chown -R tid:tid /var/www/zeroerp
-source .venv/bin/activate && python manage.py collectstatic --noinput
-```
-
-**Nginx (blocchi server)** – `location` per static/media (vedi §8):
-
-```
-location /static/ { alias /var/www/zeroerp/static/; expires 7d; }
-location /media/  { alias /var/www/zeroerp/media/;  expires off; }
-```
-
----
-
-## 6) Connessione a PostgreSQL (VM `dbdev`)
-
-### Variabili d’ambiente (niente password in settings)
-
-**File** `/etc/zeroerp/zeroerp.env` (permessi 640; gruppo `tid`):
-
-```dotenv
-DJANGO_SECRET_KEY=⚠️_metti-chiave-lunga-random
-DJANGO_DEBUG=1
-# Swagger (/api/docs/, /api/schema/): segue DEBUG; con DEBUG=0 serve =1
-DJANGO_API_DOCS_ENABLED=1
-DJANGO_ALLOWED_HOSTS=backend-dev,backend-dev.tailXXXX.ts.net,localhost,127.0.0.1
-# Proxy fidati davanti al backend (Nginx = 1). Obbligatorio.
-DJANGO_TRUSTED_PROXY_COUNT=1
-# Base dei link nelle email: l'ingresso Nginx. Obbligatorio.
-FRONTEND_URL=https://backend-dev.tailXXXX.ts.net
-
-DB_NAME=⚠️_nome_db
-DB_USER=zeroerp_app
-DB_PASSWORD=⚠️_password_scram
-DB_HOST=⚠️_ip_o_hostname_dbdev
-DB_PORT=5432
-```
-
-Permessi:
-
-```bash
-install -d -m 0750 /etc/zeroerp
-printf "(vars)" | tee /etc/zeroerp/zeroerp.env >/dev/null
-chown root:tid /etc/zeroerp /etc/zeroerp/zeroerp.env
-chmod 750 /etc/zeroerp && chmod 640 /etc/zeroerp/zeroerp.env
-```
-
-**`settings.py`** – lettura env + DB + cache/sessioni:
-
-```python
-import os
-from django.core.exceptions import ImproperlyConfigured
-
-def env(name, default=None, required=False):
-    v = os.environ.get(name, default)
-    if required and (v is None or v == ""):  # utile in prod
-        raise ImproperlyConfigured(f"Missing env var: {name}")
-    return v
-
-SECRET_KEY = env("DJANGO_SECRET_KEY", "dev-insecure")
-DEBUG = env("DJANGO_DEBUG", "1") == "1"
-ALLOWED_HOSTS = [h.strip() for h in env("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")]
-API_DOCS_ENABLED = env("DJANGO_API_DOCS_ENABLED", "1" if DEBUG else "0") == "1"
-
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": env("DB_NAME", required=True),
-        "USER": env("DB_USER", required=True),
-        "PASSWORD": env("DB_PASSWORD", required=True),
-        "HOST": env("DB_HOST", "127.0.0.1"),
-        "PORT": env("DB_PORT", "5432"),
-        "OPTIONS": {
-            # search_path: primo 'django' così TUTTE le tabelle Django vivono lì
-            "options": "-c search_path=django,public,config,anagrafiche,vendite,acquisti,dbops",
-        },
-    }
-}
-
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": "redis://127.0.0.1:6379/1",
-    }
-}
-SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
-
-TIME_ZONE = "Europe/Rome"
-USE_TZ = True
-```
-
-### Lato PostgreSQL (solo una volta, su VM `dbdev`)
-
-```sql
--- ruolo applicativo
-CREATE ROLE zeroerp_app LOGIN PASSWORD '⚠️_password_scram' NOCREATEDB NOCREATEROLE;
-
--- schema dedicato per Django
-CREATE SCHEMA IF NOT EXISTS django AUTHORIZATION zeroerp_app;
-
--- imposta search_path del ruolo (garantisce creazione/lookup nello schema giusto)
-ALTER ROLE zeroerp_app IN DATABASE ⚠️yourdb
-  SET search_path = django, public, config, anagrafiche, vendite, acquisti, dbops;
-
--- (consigliato) hardening: evita CREATE accidentali in public
-REVOKE CREATE ON SCHEMA public FROM zeroerp_app;
-
--- pg_hba.conf (solo IP del CT; autenticazione SCRAM)
--- host  ⚠️yourdb  zeroerp_app  ⚠️IP_backend-dev/32  scram-sha-256
-```
-
-> **Nota migrazione**: se per errore le prime tabelle Django sono finite in `public`, spostarle con `ALTER TABLE public.<t> SET SCHEMA django;` (sequence collegate incluse se presenti).
-
-**Migrazioni & superuser** (con env caricato):
-
-```bash
-# shell: carica env (se permessi 640):
-set -a; source <(sudo cat /etc/zeroerp/zeroerp.env); set +a
-source .venv/bin/activate
-python manage.py migrate
-python manage.py createsuperuser
-```
-
----
-
-## 7) Sicurezza Django dietro proxy HTTPS
-
-Proxy fidati, cookie `Secure`, `CSRF_TRUSTED_ORIGINS` sono **già** in
-`zeroerp_backend/settings.py`, versionato: non si aggiunge niente a mano. Cosa fa
-ciascuna impostazione e come si verifica sta in un posto solo:
-[Configurazione Django](configurazione-django.md), «Sicurezza della superficie
-pubblica» e «Settings Django — punti chiave».
-
-> Se provi login in **HTTP**, i cookie `Secure` non vengono inviati ⇒ errore CSRF atteso. Mantieni redirect 80→443.
-
----
-
-## 8) Gunicorn (systemd) + Nginx
-
-### Gunicorn come servizio
-
-**Unit** `/etc/systemd/system/zeroerp-gunicorn.service`:
-
-```ini
-[Unit]
-Description=ZeroERP Django (Gunicorn)
-After=network.target
-
-[Service]
-User=tid
-Group=tid
-WorkingDirectory=/home/tid/apps/zeroerp
-Environment="PATH=/home/tid/apps/zeroerp/.venv/bin"
-EnvironmentFile=/etc/zeroerp/zeroerp.env
-ExecStart=/home/tid/apps/zeroerp/.venv/bin/gunicorn zeroerp_backend.wsgi:application \
-  --bind 127.0.0.1:8000 --workers 3 --timeout 60
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-systemctl daemon-reload
-systemctl enable --now zeroerp-gunicorn
-systemctl status zeroerp-gunicorn
-```
-
-### Nginx (HTTPS self‑signed + redirect)
-
-**Cert self-signed (solo dev)**:
-
-```bash
-openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
-  -keyout /etc/ssl/private/backend-dev.key \
-  -out /etc/ssl/certs/backend-dev.crt \
-  -subj "/CN=backend-dev.tailXXXX.ts.net"
-```
-
-**Virtual host** `/etc/nginx/sites-available/zeroerp`: la versione corrente sta
-**solo** in [configurazione-django.md](configurazione-django.md), «Nginx (vhost
-finale)» — `/api/` a Gunicorn con rate limiting, il resto al dev server Vite su
-loopback. Una copia qui invecchiava in silenzio (era rimasta senza rate limit
-né cintura).
-
-```bash
-ln -s /etc/nginx/sites-available/zeroerp /etc/nginx/sites-enabled/zeroerp
-nginx -t && systemctl reload nginx
-```
-
----
-
-## 9) Snapshot & backup
-
-* **Snapshot Proxmox**: comodo per rollback della *stessa* istanza (include identità Tailscale e cert self-signed; non usare per clonare nuovi ambienti senza sanificazione).
-* **Clone**: crea un nuovo CT; rigenerare **SSH host keys**, **cert**, rifare `tailscale up`, aggiornare `.env` (SECRET\_KEY/DB), `ALLOWED_HOSTS` e `server_name`.
-* **Backup `vzdump`**: se storage remoto, impostare `tmpdir: /var/tmp` per evitare errori `tar | zstd` su share instabili o piene.
-
----
-
-## 10) Punti di forza della configurazione
-
-* **Separazione netta DB ↔ App**: PostgreSQL su VM dedicata; l’app usa un **ruolo applicativo** a privilegi minimi.
-* **Schema dedicato `django`**: tutte le tabelle/framework Django in uno schema isolato; **`search_path`** coerente (settings + ruolo DB).
-* **Segreti fuori dal codice**: file env `/etc/zeroerp/zeroerp.env` (permessi 640) caricato da **systemd**.
-* **HTTPS da subito**: Nginx 443 con self-signed; redirect 80→443; impostazioni Django per proxy HTTPS (cookie `Secure`, CSRF trusted origins).
-* **Firewall minimale**: UFW solo **22/80/443** in ingresso; Redis e Gunicorn non esposti.
-* **Accesso amministrativo sicuro**: **Tailscale** (WireGuard) + SSH disabilitato per root.
-* **Static/media serviti da Nginx**: performance e separazione rispetto all’app.
-* **Facile migrazione**: CT leggero; DB esterno evita problemi dati in redeploy o spostamento CT→VM.
-
----
-
-## 11) Checklist rapida
-
-* [ ] LXC `backend-dev` attivo (TUN abilitato) + Tailscale con MagicDNS
-* [ ] UFW: deny incoming / allow outgoing; allow 22,80,443
-* [ ] Python venv + pacchetti (Django, Gunicorn, psycopg, redis)
-* [ ] `settings.py`: env vars, cache Redis, `search_path` con `django` primo
-* [ ] `/etc/zeroerp/zeroerp.env` creato (640) e referenziato in systemd unit
-* [ ] PostgreSQL: ruolo `zeroerp_app`, schema `django`, `pg_hba` con SCRAM e IP CT
-* [ ] `migrate` ok; (se necessario) tabelle spostate `public`→`django`
-* [ ] Gunicorn systemd attivo su 127.0.0.1:8000
-* [ ] Nginx 443 con self-signed, redirect 80→443, alias `/static` `/media`
-* [ ] Admin Django raggiungibile in HTTPS, CSS ok, login CSRF ok
-
----
-
-## 12) Prossimi passi (facoltativi)
-
-* **TLS pubblico** (Let’s Encrypt) su dominio reale; **HSTS** e `SECURE_SSL_REDIRECT` con `DEBUG=False`.
-* **Log & metriche** (journald → file, logrotate, access/error Nginx); health-check di Gunicorn.
-* **Celery/beat** se servono job asincroni; unit systemd dedicate.
-* **RLS/GUC** su Postgres per policy row-level, se multi-tenant.
-* **Pipeline CI/CD** per deploy ripetibili (migrazioni gestite in release).
+Poi `pct restart <CTID>` e si prosegue con il [Playbook](play-book-operativo-backend.md), §1.
+
+> **DNS**: se `apt` segnala errori di risoluzione, impostare un nameserver (per
+> esempio `1.1.1.1`) oppure usare `tailscale up --accept-dns=false`.
+
+## 3) Snapshot, clone e backup
+
+* **Snapshot Proxmox**: per il rollback della *stessa* istanza. Include identità
+  Tailscale e certificato self-signed: non si usa per clonare un ambiente nuovo
+  senza sanificarlo.
+* **Clone** in un CT nuovo: rigenerare le **SSH host keys** e il **certificato**,
+  rifare `tailscale up`, e nei file d'ambiente (`backend/env.sh` e
+  `backend/.env.systemd`) cambiare `DJANGO_SECRET_KEY`, le credenziali DB,
+  `DJANGO_ALLOWED_HOSTS` e `FRONTEND_URL`; nel vhost Nginx, `server_name`.
+* **Backup `vzdump`**: su storage remoto impostare `tmpdir: /var/tmp`, per
+  evitare errori `tar | zstd` su share instabili o piene.
+
+## 4) Le scelte della macchina
+
+* **DB separato dall'app**: PostgreSQL su VM dedicata; l'app usa un ruolo a
+  privilegi minimi, **non owner** e **senza `BYPASSRLS`**.
+* **Segreti fuori dal codice**: file d'ambiente per-host in `backend/`, non
+  versionati, letti da systemd e dai wrapper di avvio.
+* **Un solo ingresso**: Nginx con HTTPS da subito; Gunicorn, Vite e Redis non
+  sono esposti. UFW apre solo 80/443 (e 22, eventualmente solo su Tailscale).
+* **Accesso amministrativo**: Tailscale (WireGuard), login root via SSH
+  disabilitato.
+* **Facile da spostare**: il CT è leggero e il DB esterno evita problemi di dati
+  in un redeploy o nel passaggio da CT a VM.
+
+## 5) Checklist rapida
+
+* [ ] CT attivo, TUN abilitato, Tailscale con MagicDNS
+* [ ] UFW: deny incoming, allow outgoing; aperte solo 80, 443 (e 22)
+* [ ] repository clonato, venv da `requirements.txt`
+* [ ] `backend/env.sh` e `backend/.env.systemd` valorizzati, permessi 600
+* [ ] ruoli DB dal provisioning ([Provisioning ruoli DB](provisioning-db-roles.md)), `pg_hba` con SCRAM sull'IP del CT
+* [ ] migrazioni applicate (Liquibase, poi `manage.py migrate` come migratore)
+* [ ] `zeroerp-gunicorn` attivo, in ascolto **solo** su `127.0.0.1:8000`
+* [ ] Nginx 443 con il vhost di [Configurazione Django](configurazione-django.md), `default` disabilitato
+* [ ] timer e worker installati (`install-timers.sh`)
+* [ ] «Test di validazione» di [Configurazione Django](configurazione-django.md) tutti verdi, `check --deploy` pulito

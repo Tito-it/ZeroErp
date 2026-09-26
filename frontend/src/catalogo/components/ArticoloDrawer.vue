@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: Drawer crea/modifica articolo.
 //        Include combo conti contabili vendita/acquisto e auto-propose IVA da parameters.
-//        In edit: riepilogo UoM/BoM/Note/Lotti con pulsante "Gestisci" che apre sub-drawer dedicato.
+//        In edit: riepilogo UoM/BoM/Note (e le sezioni contribuite: lotti) con pulsante "Gestisci" che apre sub-drawer dedicato.
 //        ⭐ I LOTTI di magazzino (2026-09-21): la sezione compare solo se l'articolo
 //        e' `gestito_a_magazzino` (un lotto ha senso su merce che movimenta); con
 //        `requires_lotto` lo DICE. Il drawer vive in `src/magazzino` (Q-1 del piano
@@ -14,21 +14,22 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { listArticoloUom, listArticoloComponenti, makeArticoloNotesApi, getArticoloFormDefaults } from '../api/catalogo'
-import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH } from '../../core/constants'
 import { toDateString } from '../../core/utils/date'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import IvaSelect from '../../core/components/IvaSelect.vue'
 import ContoContabileSelect from '../../core/components/ContoContabileSelect.vue'
 import ArticoloUomDrawer from './ArticoloUomDrawer.vue'
 import ArticoloBomDrawer from './ArticoloBomDrawer.vue'
 import ArticoloNoteDrawer from './ArticoloNoteDrawer.vue'
-import ArticoloLottiDrawer from '../../magazzino/components/ArticoloLottiDrawer.vue'
-import { listLotti } from '../../magazzino/api/magazzino'
+import PuntoEstensione from '../../core/components/PuntoEstensione.vue'
+import { PUNTI_ESTENSIONE, precaricaPunto } from '../../core/estensioni'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
@@ -48,11 +49,18 @@ const props = defineProps({
   mode: { type: String, default: 'create' },
   articoloId: { type: [String, null], default: null }
 })
+
+// I contributi al punto si caricano ora, non quando il punto si monta.
+precaricaPunto(PUNTI_ESTENSIONE.ARTICOLO_DRAWER_SEZIONI)
+
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
 const form = ref({})
 const detail = ref(null)
+// Modifiche non salvate: fotografia all'apertura (anche in creazione) e
+// conferma se si chiude con modifiche (BB useDrawerFormPreserve).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 
 // Fase 5: lista campi immutabili dopo create. Arriva dal detail come metadata
 // (`detail.non_editable_fields`, fonte = `dbops.vw_non_editable_fields` + gap
@@ -79,9 +87,6 @@ const bomDrawerVisible = ref(false)
 const bomRiepilogo = ref([])
 const noteDrawerVisible = ref(false)
 const noteRiepilogo = ref([])
-const lottiDrawerVisible = ref(false)
-// Il conteggio dei lotti ATTIVI dell'articolo (`null` = non letto).
-const lottiCount = ref(null)
 
 function defaultForm() {
   return {
@@ -112,17 +117,6 @@ function resetForm() {
   uomRiepilogo.value = []
   bomRiepilogo.value = []
   noteRiepilogo.value = []
-}
-
-// Scopo: Il conteggio dei lotti attivi: una pagina da una riga, il totale lo
-//        dice l'envelope. Solo se l'articolo e' gestito a magazzino.
-async function loadLottiCount() {
-  lottiCount.value = null
-  if (!props.articoloId || !form.value.gestito_a_magazzino) return
-  try {
-    const res = await listLotti({ articolo_id: props.articoloId, attivo: true, limit: 1 })
-    lottiCount.value = res.data?.data?.count ?? 0
-  } catch { lottiCount.value = null }
 }
 
 // Scopo: Carica riepilogo UoM operative.
@@ -190,8 +184,9 @@ async function loadDetail() {
     gestito_a_magazzino: data.gestito_a_magazzino || false,
     lead_time_giorni: data.lead_time_giorni ?? null,
   }
+  fissa()
   // Carica riepilogo in parallelo
-  await Promise.all([loadUomRiepilogo(), loadBomRiepilogo(), loadNoteRiepilogo(), loadLottiCount()])
+  await Promise.all([loadUomRiepilogo(), loadBomRiepilogo(), loadNoteRiepilogo()])
 }
 
 // Fase 8 (A5): defaults form articolo via endpoint dedicato
@@ -217,6 +212,8 @@ watch(() => props.visible, async (v) => {
   } else {
     resetForm()
     await applyFormDefaults()
+    // Dopo i default: l'IVA proposta non e' una modifica dell'operatore.
+    fissa()
   }
 })
 
@@ -293,6 +290,10 @@ function close() {
   emit('cancelled')
 }
 
+// Chiusura per volonta' dell'utente: con modifiche non salvate chiede conferma.
+// Dopo il salvataggio riuscito resta `close()`, diretta.
+const chiudi = () => chiudiConConferma(close)
+
 // Fase 7: disattivazione/riattivazione come azione di dominio.
 // L'`attivo` non passa piu' da PATCH: pulsanti dedicati con conferma
 // e refresh detail al ritorno dall'API.
@@ -367,14 +368,15 @@ const drawerActions = computed(() => {
     },
   ]
 })
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
+  <Drawer :visible="visible" @update:visible="suVisibile"
     position="right" :style="{ width: DRAWER_WIDTH.COMPLEX }" :dismissable="true"
     @after-show="onAfterShow">
     <template #header>
-      <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('catalogo.articolo')" />
+      <DrawerTitle :modificato="modificato" :action="isEdit ? t('common.edit') : t('common.new')" :title="t('catalogo.articolo')" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
@@ -559,18 +561,15 @@ const drawerActions = computed(() => {
           </div>
         </template>
 
-        <!-- Sezione: Lotti di magazzino (edit mode, solo se gestito a magazzino) -->
-        <template v-if="isEdit && detail && form.gestito_a_magazzino">
-          <div class="app-drawer-section"><h4>{{ t('magazzino.lotti.titolo', { n: lottiCount ?? '…' }) }}</h4></div>
-          <div class="app-riepilogo-section">
-            <div v-if="!form.requires_lotto" class="app-riepilogo-empty">{{ t('magazzino.lotti.articolo_non_per_lotti') }}</div>
-            <div v-else-if="lottiCount === 0" class="app-riepilogo-empty">{{ t('magazzino.lotti.nessun_lotto') }}</div>
-            <Button v-if="!isReadonly"
-              :label="t('magazzino.lotti.gestisci')" :icon="MANAGE_ICONS.LOTTO_MAGAZZINO"
-              text size="small" class="app-action-btn app-escape mt-025"
-              @click="lottiDrawerVisible = true" />
-          </div>
-        </template>
+        <!-- Sezioni contribuite da altri domini (oggi: i lotti di magazzino).
+             La scheda offre il punto, non sa chi ci contribuisce: ogni
+             contributo decide da se' se mostrarsi (core/estensioni.js). -->
+        <PuntoEstensione
+          v-if="isEdit && detail"
+          :punto="PUNTI_ESTENSIONE.ARTICOLO_DRAWER_SEZIONI"
+          :articolo-id="props.articoloId"
+          :articolo="form"
+        />
 
         <!-- Sezione: Note riepilogo (edit mode) -->
         <template v-if="isEdit && detail">
@@ -594,7 +593,7 @@ const drawerActions = computed(() => {
         <i class="pi pi-spin pi-spinner" style="font-size: 1.5rem;"></i>
       </div>
 
-      <FormFooter v-if="contentReady" :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
+      <FormFooter v-if="contentReady" :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />
     </div>
   </Drawer>
 
@@ -604,14 +603,6 @@ const drawerActions = computed(() => {
     @update:visible="v => uomDrawerVisible = v"
     :articolo-id="props.articoloId"
     @saved="loadUomRiepilogo"
-  />
-  <!-- Sub-drawer Lotti di magazzino (dominio magazzino, Q-1) -->
-  <ArticoloLottiDrawer
-    :visible="lottiDrawerVisible"
-    @update:visible="v => { lottiDrawerVisible = v; if (!v) loadLottiCount() }"
-    :articolo-id="props.articoloId"
-    :articolo-codice="form.codice"
-    :requires-lotto="form.requires_lotto"
   />
   <!-- Sub-drawer Distinta Base -->
   <ArticoloBomDrawer

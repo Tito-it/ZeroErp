@@ -1044,7 +1044,7 @@ const azioniPagina = computed(() =>
 /* Rosso dal token PrimeVue, mai un esadecimale a mano: e' la convenzione gia'
    in uso per le spie di stato (`CodaStampaTab`). */
 .app-lotto-spia-errore {
-  color: var(--p-red-500);
+  color: var(--app-severity-danger);
 }
 /* Badge "numero lotti generati" nel mese (sidebar/stepper anno-mese). Neutro:
  * è un conteggio informativo, non un allarme (diverso dai badge errori/fermi
@@ -1054,6 +1054,6 @@ const azioniPagina = computed(() =>
   align-items: center;
   gap: 0.2rem;
   font-size: 0.8rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-text-muted);
 }
 </style>

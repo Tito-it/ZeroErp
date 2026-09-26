@@ -11,7 +11,7 @@
 import Toast from 'primevue/toast'
 import Button from 'primevue/button'
 import ConfirmDialog from 'primevue/confirmdialog'
-import DocumentoDrawerHost from './vendite/_shared/documenti/DocumentoDrawerHost.vue'
+import DocumentoDrawerHost from './core/components/DocumentoDrawerHost.vue'
 import { DIALOG_CHROME } from './core/constants'
 
 // Scopo: ESC sulla radice della ConfirmDialog — ferma la risalita e chiude la

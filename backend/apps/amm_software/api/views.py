@@ -147,7 +147,7 @@ class OperatoriDetailView(AdminAPIView):
 class OperatoriDisabilitaView(AdminAPIView):
     """POST disabilita operatore."""
 
-    @extend_schema(responses={200: inline_serializer(name="OperatoreDisabilitaResp", fields={"data": serializers.DictField()})})
+    @extend_schema(request=None, responses={200: inline_serializer(name="OperatoreDisabilitaResp", fields={"data": serializers.DictField()})})
     def post(self, request: Request, auth_user_id: int) -> JsonResponse:
         return success_response(AmmSoftwareService().disabilita_operatore(auth_user_id))
 
@@ -155,7 +155,7 @@ class OperatoriDisabilitaView(AdminAPIView):
 class OperatoriRiattivaView(AdminAPIView):
     """POST riattiva operatore disabilitato."""
 
-    @extend_schema(responses={200: inline_serializer(name="OperatoreRiattivaResp", fields={"data": serializers.DictField()})})
+    @extend_schema(request=None, responses={200: inline_serializer(name="OperatoreRiattivaResp", fields={"data": serializers.DictField()})})
     def post(self, request: Request, auth_user_id: int) -> JsonResponse:
         return success_response(AmmSoftwareService().riattiva_operatore(auth_user_id))
 

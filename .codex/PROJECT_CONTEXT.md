@@ -272,6 +272,13 @@ scritto: il modello protegge da un backend che **sbaglia**, non da uno
 **manomesso** (l'identità la dichiara il backend).
 
 ### Aperto — Media priorità
+- 🟡 **Colori PrimeVue ancora scritti nei componenti** (FE, registrato il
+  2026-09-26 alla chiusura di `work-done/analisi-fe-regole-standard-violate-dal-codice.md`
+  R-3): circa 60 `var(--p-*)` — `primary-700/500/50`, `yellow-*`, `blue-*`,
+  `surface-200/400`, `border-radius-sm`… — che non hanno ancora un token
+  `--app-*` perché il loro **significato** non è nominato. Si decide caso per
+  caso cosa dicono (il nome è il significato, non la tinta), poi un guard che
+  tenga lo zero. Regola: frontend-standards § «Stili CSS».
 - 🔴 **Il tetto d'area dei permessi non esiste** (BE + DB, difetto di
   modello, senza decisione; registrato il 2026-09-25 dall'analisi
   `work-in-progress/analisi-ui-permessi-operatore.md` §3, perché non si perda

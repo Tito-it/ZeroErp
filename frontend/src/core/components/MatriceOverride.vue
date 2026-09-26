@@ -206,7 +206,7 @@ const avvisoDi = (voce) => (props.avviso ? props.avviso(voce) : null)
 }
 .app-matrice-override-avviso {
   margin-left: 0.4rem;
-  color: var(--p-orange-500);
+  color: var(--app-warning-color);
 }
 .app-matrice-override-vuota {
   color: var(--app-text-muted);
