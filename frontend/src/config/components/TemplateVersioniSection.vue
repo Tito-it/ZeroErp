@@ -16,6 +16,7 @@ import { useI18n } from 'vue-i18n'
 import { useTemplateVersioniStore } from '../stores/templateVersioni'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 // `useConfirmAction` espone `confirmAction` (signature object con
 // `onAccept` callback). Memoria feedback_useconfirmaction_destructuring:
 // usare destructured + nome callback `onAccept` (non `accept`) per
@@ -82,6 +83,13 @@ const isNew = computed(() => editing.value && editingVersioneId.value === null)
 watch(editing, (v) => emit('form-aperto', v))
 
 const form = ref(emptyForm())
+// Modifiche non salvate del form versione. La sezione vive solo dentro il
+// drawer aperto (il Drawer la smonta alla chiusura): basta il form aperto.
+// `modificato` e `chiudiConConferma` vanno al drawer padre, che possiede la
+// chiusura (X/ESC/clic fuori).
+const { fissa, modificato, chiudiConConferma } =
+  useDrawerFormPreserve(form, { visibile: () => editing.value })
+defineExpose({ modificato, chiudiConConferma })
 function emptyForm() {
   return {
     titolo: '',
@@ -157,6 +165,7 @@ async function openCreate() {
   editingVersioneId.value = null
   form.value = emptyForm()
   editing.value = true
+  fissa()
 }
 
 async function openEdit(row) {
@@ -183,6 +192,7 @@ async function openEdit(row) {
     attivo: data.attivo ?? true,
   }
   editing.value = true
+  fissa()
 }
 
 function closeForm() {
@@ -435,7 +445,7 @@ async function confirmPubblica() {
         <Button
           :label="t('common.cancel')"
           severity="secondary"
-          @click="closeForm"
+          @click="chiudiConConferma(closeForm)"
           :disabled="loading"
         />
         <Button

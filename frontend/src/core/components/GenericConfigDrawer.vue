@@ -34,6 +34,7 @@ import {
   getConfigTableMetadata, getConfigRecord, createConfigRecord, updateConfigRecord,
 } from '../api/configTables'
 import { useDrawerContentReady } from '../composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../composables/useDrawerFormPreserve'
 
 
 
@@ -61,7 +62,14 @@ const { execute, loading, campiErrati } = useApiHandler()
 
 const columns = ref([])
 const form = ref({})
-const originalForm = ref({}) // Per calcolare delta in edit mode
+// La fotografia del form all'apertura (BB useDrawerFormPreserve): serve al
+// DELTA dell'edit (si manda solo cio' che e' cambiato) e alle modifiche non
+// salvate — conferma alla chiusura, «Modifica» arancio. Prima il drawer ne
+// teneva una copia propria.
+const {
+  fissa, modificato, chiudiConConferma, fotografia,
+} = useDrawerFormPreserve(form, { visibile: () => props.visible })
+const chiudi = () => chiudiConConferma(() => emit('update:visible', false))
 
 // ⛔ Il drawer e' UNO per il pannello e cambia tabella con `rel`: il metadata
 // va azzerato, o la seconda tabella si apre col form della prima (e il verbo
@@ -154,7 +162,7 @@ watch(() => props.visible, async (val) => {
   }
 
   form.value = newForm
-  originalForm.value = { ...newForm }
+  fissa()
 })
 
 // Validazione minima: almeno descrizione non vuota (se presente)
@@ -176,7 +184,7 @@ async function handleSave() {
       // vale il default del DB (un `null` esplicito lo scavalcherebbe). Il
       // boolean viaggia sempre: `false` e' un valore.
       if (col.widget === WIDGET.BOOLEAN || (val !== undefined && val !== null && val !== '')) payload[col.name] = val
-    } else if (!uguali(col, form.value[col.name], originalForm.value[col.name])) {
+    } else if (!uguali(col, form.value[col.name], fotografia.value?.[col.name])) {
       // Edit: manda SOLO i campi modificati (delta) — un trigger di lock su una
       // colonna non toccata non deve scattare.
       payload[col.name] = val
@@ -197,18 +205,24 @@ async function handleSave() {
     emit('update:visible', false)
   }
 }
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="emit('update:visible', $event)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.SIMPLE }"
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :action="mode === 'create' ? t('common.new') : t('common.edit')" :title="label" :icon="NAV_ICONS.TABELLE" />
+      <DrawerTitle
+        :modificato="modificato"
+        :action="mode === 'create' ? t('common.new') : t('common.edit')"
+        :title="label"
+        :icon="NAV_ICONS.TABELLE"
+      />
     </template>
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div class="form-grid">
@@ -258,7 +272,7 @@ async function handleSave() {
         :loading="loading"
         :disabled="!canSave"
         @save="handleSave"
-        @cancel="emit('update:visible', false)"
+        @cancel="chiudi"
       />
     </div>
   </Drawer>

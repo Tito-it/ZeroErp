@@ -2,27 +2,38 @@
 import DrawerTitle from './DrawerTitle.vue'
 import FormFooter from './FormFooter.vue'
 import Drawer from 'primevue/drawer'
+import { gestoreVisibile } from '../composables/useDrawerFormPreserve'
 
-defineProps({
+const props = defineProps({
   visible: { type: Boolean, required: true },
   title: { type: String, required: true },
   width: { type: String, default: '640px' },
   loading: { type: Boolean, default: false },
   saveDisabled: { type: Boolean, default: false },
   saveLabel: { type: String, default: null },
-  cancelLabel: { type: String, default: null }
+  cancelLabel: { type: String, default: null },
+  // Modifiche non salvate: il consumatore passa `modificato` e
+  // `chiudiConConferma` del suo useDrawerFormPreserve. Il guscio colora la
+  // scritta dell'azione e chiede conferma su ogni uscita (X, ESC, clic fuori,
+  // Annulla). Default: si esce e basta.
+  action: { type: String, default: '' },
+  modificato: { type: Boolean, default: false },
+  confermaUscita: { type: Function, default: (chiudi) => chiudi() },
 })
 
 const emit = defineEmits(['update:visible', 'save', 'cancel'])
 
 function handleCancel() {
-  emit('cancel')
-  emit('update:visible', false)
+  props.confermaUscita(() => {
+    emit('cancel')
+    emit('update:visible', false)
+  })
 }
 
 function handleSave() {
   emit('save')
 }
+const suVisibile = gestoreVisibile(emit, handleCancel)
 </script>
 
 <template>
@@ -32,10 +43,10 @@ function handleSave() {
     :style="{ width: width }"
     :modal="true"
     :dismissable="true"
-    @update:visible="emit('update:visible', $event)"
+    @update:visible="suVisibile"
   >
     <template #header>
-      <DrawerTitle :title="title" />
+      <DrawerTitle :title="title" :action="action" :modificato="modificato" />
     </template>
 
     <div class="drawer-body">

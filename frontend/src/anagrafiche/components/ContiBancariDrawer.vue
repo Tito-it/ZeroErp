@@ -8,6 +8,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useReadonlyMode, useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useContoBancarioForm } from '../composables/useContoBancarioForm'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useSoggettoRuoloCollection } from '../composables/useSoggettoRuoloCollection'
@@ -63,9 +64,11 @@ const {
   loadList: loadConti,
   startNew: onStartNew,
   startEdit: onStartEdit,
-  cancelForm: onCancelForm,
   saveForm: onSaveForm,
   deleteItem: onDelete,
+  modificato: modificatoInline,
+  annullaForm,
+  chiudiConConferma,
 } = useSoggettoRuoloCollection({
   visible: () => props.visible,
   context: () => props.context,
@@ -97,6 +100,9 @@ const {
     deleted: t('anagrafiche.conti_bancari.conto_eliminato'),
   },
   onSaved: () => emit('saved'),
+  // Modifiche non salvate: il form del conto piu' il conto del registro
+  // scelto dall'autocomplete (il Salva lo manda come conto_bancario_id).
+  formDaConfrontare: () => ({ ...conto.form, conto_bancario_id: conto.contoRegistroId.value }),
 })
 
 const pageActions = computed(() => [
@@ -131,17 +137,20 @@ function usoSeverity(uso) {
 
 // Scopo: chiusura drawer dal pulsante Chiudi del footer (modalita' lista).
 const onClose = useDrawerClose(emit)
+// Uscite dal drawer: con il form inline modificato si chiede prima.
+const chiudi = () => chiudiConConferma(onClose)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="emit('update:visible', $event)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
   >
     <template #header>
-      <DrawerTitle :action="formMode === 'new' ? t('common.new') : t('common.edit')" :title="t('anagrafiche.conti_bancari.titolo')" :icon="MANAGE_ICONS.CONTI_BANCARI" />
+      <DrawerTitle :modificato="modificatoInline" :action="formMode === 'new' ? t('common.new') : t('common.edit')" :title="t('anagrafiche.conti_bancari.titolo')" :icon="MANAGE_ICONS.CONTI_BANCARI" />
     </template>
 
     <!-- Livello oggetto BLOCCATO: pannello sostitutivo (safety net se
@@ -200,7 +209,7 @@ const onClose = useDrawerClose(emit)
 
       </template>
 
-      <FormFooter v-if="!formMode" close-only @cancel="onClose" />
+      <FormFooter v-if="!formMode" close-only @cancel="chiudi" />
 
       <!-- Form (aggiungi o modifica) -->
       <template v-if="formMode">
@@ -221,7 +230,7 @@ const onClose = useDrawerClose(emit)
           :loading="saving"
           :disabled="!conto.form.iban?.trim()"
           @save="onSaveForm"
-          @cancel="onCancelForm"
+          @cancel="annullaForm"
         />
       </template>
     </div>

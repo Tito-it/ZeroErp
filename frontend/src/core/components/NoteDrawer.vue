@@ -26,6 +26,7 @@ import { fetchParameterDefaults, lookupCodici } from '../apiCore'
 import { useApiHandler } from '../composables/useApiHandler'
 import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useDrawerClose } from '../composables/useDrawerClose'
+import { useDrawerFormPreserve, gestoreVisibile } from '../composables/useDrawerFormPreserve'
 import { useNote } from '../composables/useNote'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../constants'
 import LookupSelect from './LookupSelect.vue'
@@ -73,6 +74,11 @@ const PAGE_SIZE_DEFAULT = 200
 const formMode = ref(null)
 const editId = ref(null)
 const form = ref(defaultForm())
+// Modifiche non salvate del form inline (nuova/modifica nota): la fotografia
+// vive finche' il form e' aperto, e si azzera da sola quando torna la lista.
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, {
+  visibile: () => props.visible && formMode.value !== null,
+})
 const canSelectRiga = computed(() =>
   props.supportsRiga && props.righeOptions.length > 0,
 )
@@ -146,12 +152,17 @@ async function onStartNew() {
   formMode.value = 'new'
   editId.value = null
   form.value = defaultForm()
+  fissa()
   // Pre-fill lingua dal parametro sistema (best-effort, errori silenti).
   // L'utente puo' cambiare la selezione; il BE applica comunque il
   // fallback in save se id_lingua e' null.
   const linguaId = await resolveDefaultLinguaId()
   if (linguaId != null && formMode.value === 'new') {
+    // Il default arriva dopo: rientra nella fotografia solo se l'utente non
+    // ha ancora toccato niente (altrimenti fisseremmo anche le sue modifiche).
+    const intatto = !modificato.value
     form.value.id_lingua = linguaId
+    if (intatto) fissa()
   }
 }
 
@@ -166,6 +177,7 @@ function onStartEdit(n) {
     visibile: n.visibile !== false,
     solo_stampa: n.solo_stampa === true,
   }
+  fissa()
 }
 
 function onRowClick(event) {
@@ -179,12 +191,19 @@ function onCancelForm() {
   form.value = defaultForm()
 }
 
+// Annulla del form inline: con modifiche chiede conferma.
+const annullaForm = () => chiudiConConferma(onCancelForm)
+
 const canSaveForm = computed(() => {
   const txt = (form.value.testo_md || '').trim()
   return txt.length > 0 && form.value.id_stile != null
 })
 
 const onClose = useDrawerClose(emit)
+
+// Chiusura del drawer per volonta' dell'utente (X/ESC/clic fuori/Chiudi):
+// con il form inline modificato chiede conferma.
+const chiudi = () => chiudiConConferma(onClose)
 
 // Scopo: persistenza form. Patch in edit, create in new. Re-fetch lista al successo.
 async function onSaveForm() {
@@ -234,12 +253,13 @@ function rigaLabel(n) {
   const found = props.righeOptions.find(opt => opt.value === n.target_riga_id)
   return found ? found.label : `#${n.target_riga_id}`
 }
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="emit('update:visible', $event)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.WIDE }"
     @after-show="onAfterShow"
@@ -249,6 +269,7 @@ function rigaLabel(n) {
         :action="t('common.edit')"
         :title="title || t('note.titolo_default')"
         icon="pi pi-file-edit"
+        :modificato="modificato"
       />
     </template>
 
@@ -314,7 +335,7 @@ function rigaLabel(n) {
         </Column>
       </DataTable>
 
-      <FormFooter v-if="!formMode" close-only @cancel="onClose" />
+      <FormFooter v-if="!formMode" close-only @cancel="chiudi" />
 
       <template v-if="formMode">
         <div class="app-drawer-section">
@@ -383,7 +404,7 @@ function rigaLabel(n) {
           :loading="saveLoading"
           :disabled="!canSaveForm"
           @save="onSaveForm"
-          @cancel="onCancelForm"
+          @cancel="annullaForm"
         />
       </template>
     </div>

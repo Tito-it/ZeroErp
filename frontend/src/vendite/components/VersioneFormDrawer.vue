@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useListiniStore } from '../stores/listini'
 import { createVersione } from '../api/listini'
 import { getVersioneNewDefaults } from '../api/formDefaults'
@@ -40,6 +41,10 @@ const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved'])
 
 const form = ref({})
+// Modifiche non salvate: fotografia dopo i default BE, chiudere con
+// modifiche chiede conferma (BB useDrawerFormPreserve).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
+const chiudi = () => chiudiConConferma(() => emit('update:visible', false))
 // existing_drafts arriva dal BE (Fase 2.B5a): single source of truth.
 // Mantiene anche compat con lo store locale come fallback se l'endpoint
 // fallisce (resilienza al primo open offline).
@@ -78,6 +83,7 @@ watch(() => props.visible, async (v) => {
   }
   form.value = emptyForm()
   await loadDefaults()
+  fissa()
 })
 
 const canSave = computed(() =>
@@ -116,15 +122,16 @@ async function handleSave() {
 function close() {
   emit('update:visible', false)
 }
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
+  <Drawer :visible="visible" @update:visible="suVisibile"
     position="right" :style="{ width: DRAWER_WIDTH.STANDARD }"
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :action="t('common.new')" :title="t('vendite.listini.nuova_versione')" :icon="NAV_ICONS.HISTORY" />
+      <DrawerTitle :modificato="modificato" :action="t('common.new')" :title="t('vendite.listini.nuova_versione')" :icon="NAV_ICONS.HISTORY" />
     </template>
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
@@ -157,7 +164,7 @@ function close() {
         </div>
       </div>
 
-      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
+      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />
     </div>
   </Drawer>
 </template>

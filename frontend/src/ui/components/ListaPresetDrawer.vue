@@ -24,6 +24,7 @@ import LookupSelect from '../../core/components/LookupSelect.vue'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useUiPresetAdminStore } from '../stores/uiPresetAdmin'
 
@@ -75,6 +76,9 @@ function defaultForm() {
 }
 
 const form = ref(defaultForm())
+// Modifiche non salvate: fotografia a form popolato, conferma alla chiusura
+// (BB useDrawerFormPreserve). Prima del watch immediate (TDZ).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 
 // Watch su props.recordData per pre-popolare il form in edit. Usa la
 // risposta admin che include gia' tutti i campi.
@@ -96,6 +100,7 @@ watch(
     } else {
       form.value = defaultForm()
     }
+    fissa()
   },
   { immediate: true },
 )
@@ -167,12 +172,14 @@ function onCancel() {
   emit('cancelled')
   emit('update:visible', false)
 }
+const chiudi = () => chiudiConConferma(onCancel)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="(v) => emit('update:visible', v)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     :modal="true"
@@ -181,6 +188,7 @@ function onCancel() {
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('ui.admin.preset')"
         icon="pi pi-th-large"
@@ -295,7 +303,7 @@ function onCancel() {
       :loading="loading"
       :disabled="!canSave"
       @save="onSave"
-      @cancel="onCancel"
+      @cancel="chiudi"
     />
   </Drawer>
 </template>

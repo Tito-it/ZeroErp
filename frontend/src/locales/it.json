@@ -144,6 +144,12 @@
       "descrizione": "Questa lista non dice da quale emittente arriva ogni riga, e in questo momento ne stai guardando piu' di uno. Scegli l'emittente dalla combo in alto a destra: la lista si apre subito dopo.",
       "etichetta_tutti": "Tutti gli emittenti",
       "etichetta_ricerca": "Stai cercando in tutti gli emittenti: voci con lo stesso nome possono appartenere a emittenti diversi."
+    },
+    "modifiche_non_salvate": {
+      "titolo": "Modifiche non salvate",
+      "messaggio": "Ci sono modifiche non salvate: chiudendo andranno perse. Chiudere comunque?",
+      "chiudi": "Chiudi senza salvare",
+      "indicatore": "Modifiche non salvate"
     }
   },
   "strumenti": {
@@ -251,7 +257,6 @@
     "contabilita": "Contabilità",
     "amm-software": "Amm. Software",
     "strumenti": "Strumenti",
-    "personale": "Personale",
     "collapse": "Comprimi",
     "expand": "Espandi",
     "back_home": "Home",
@@ -269,9 +274,8 @@
   },
   "nav_menu": {
     "strumenti": {
-      "code-lavoro": "Code di lavoro"
-    },
-    "personale": {
+      "code-lavoro": "Code di lavoro",
+      "giornale": "Giornale eventi",
       "email": "Email"
     },
     "amm-software": {
@@ -316,7 +320,6 @@
       "dashboard-competenza": "Competenza fatturazione",
       "dashboard-backlog": "Backlog fatturazione",
       "lotti": "Lotti fatturazione",
-      "giornale": "Giornale eventi",
       "preventivi": "Preventivi",
       "offerte": "Offerte commerciali",
       "ordini": "Ordini di vendita",
@@ -571,10 +574,6 @@
   },
   "tabs": {
     "close": "Chiudi tab",
-    "close_confirm_title": "Modifiche non salvate",
-    "close_confirm_message": "Ci sono modifiche non salvate. Chiudere comunque?",
-    "close_confirm_accept": "Chiudi senza salvare",
-    "close_confirm_reject": "Annulla",
     "split_open": "Affianca",
     "split_close": "Chiudi affiancata",
     "split_select": "Seleziona tab da affiancare",
@@ -2971,7 +2970,7 @@
       "tipologia_placeholder": "Seleziona la tipologia",
       "tipologia_utility_first": "Seleziona prima l'utility",
       "banner_emittente_corrente": "Il nuovo listino verra' associato all'emittente fiscale {nome}.",
-      "banner_admin_globale_no_create": "Gli amministratori globali non possono creare listini: occorre un operatore collegato a un emittente fiscale.",
+      "banner_scegli_emittente": "Per creare un listino scegli prima, in alto, l'emittente fiscale su cui lavorare: con «Tutti gli emittenti» non si sa a quale associarlo.",
       "field_codice_versione": "Codice Versione",
       "field_valido_dal": "Valido Dal",
       "field_valido_al": "Valido Al",
@@ -4499,8 +4498,7 @@
       "filtro_tipo": "Tipo di canale",
       "filtro_tipo_tutti": "Tutti",
       "nessun_canale": "Nessun canale di incasso configurato: finché non ce n'è uno, il denaro che arriva prima della fattura non ha un perimetro.",
-      "titolo_nuovo": "Nuovo canale di incasso",
-      "titolo_modifica": "Canale di incasso",
+      "titolo_singolare": "Canale di incasso",
       "creato": "Canale creato.",
       "aggiornato": "Canale aggiornato.",
       "sezione_identita": "Che canale è",
@@ -5497,8 +5495,8 @@
   },
   "anagrafiche": {
     "clienti": {
-      "banner_admin_globale_no_create": "Sei loggato come amministratore globale: non puoi creare billing account quando esistono emittenti fiscali nel sistema. Operare come operatore di un emittente specifico.",
       "banner_emittente_corrente": "Il nuovo cliente verra' associato all'emittente fiscale {nome}.",
+      "banner_scegli_emittente": "Per creare un cliente scegli prima, in alto, l'emittente fiscale su cui lavorare: con «Tutti gli emittenti» non si sa a quale associarlo.",
       "search_placeholder": "Cerca per nome, CF, codice...",
       "filtro_utility": "Utility",
       "filtro_stato": "Stato",

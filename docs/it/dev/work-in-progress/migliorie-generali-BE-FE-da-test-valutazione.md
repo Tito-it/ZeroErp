@@ -25,8 +25,10 @@
 >
 > ✅ **Riallineato il 2026-09-26** sul repo: passate in §9 le voci chiuse dopo
 > il riordino — D1-d-bis (23-09), D5 (25-09), la schermata di D7 e D13-quater
-> (26-09) — e la metà sicurezza di D3-b. In §3 restano **D1-f, D2-b, D3-b, D3-c,
-> D9-a, D10-bis, D12**.
+> (26-09) — e la metà sicurezza di D3-b. Lo stesso giorno il registro
+> drf-spectacular di D3-b è andato a zero (`W001` 54 → 0, `W002` 73 → 0): D3-b
+> resta in §3 solo per la decisione sulla CI. In §3 restano **D1-f, D2-b, D3-b,
+> D3-c, D9-a, D10-bis, D12**.
 
 ---
 
@@ -219,28 +221,31 @@ può vedere.
 
 ### D3 — Lo schema OpenAPI e il ramo `--deploy` — D3-a chiuso il 09-09 (§9), restano D3-b e D3-c
 
-**Aperto — D3-b, la metà drf-spectacular**: la metà sicurezza è chiusa il
-2026-09-26 (§9). drf-spectacular aggancia i propri controlli al ramo `--deploy`,
+**D3-b, la metà drf-spectacular — registro a zero il 2026-09-26; resta la
+decisione sulla CI** (sotto). La metà sicurezza è chiusa lo stesso giorno (§9).
+drf-spectacular aggancia i propri controlli al ramo `--deploy`,
 e il passo di CI gira `--tag security`, quindi non ne vede nessuno.
 Rimisurato il **2026-09-26** con l'ambiente del job CI (`check --deploy`
 completo, 130 rilievi):
 
-| Rilievo                    | 09-09 | 09-26  | Cosa                                                                                                        |
-| -------------------------- | ----- | ------ | ----------------------------------------------------------------------------------------------------------- |
-| `drf_spectacular.W002`     | 66    | **73** | view per cui lo schema non trova il serializer (violano la regola `@extend_schema` di `AGENTS.md`)         |
-| `drf_spectacular.W001`     | 54    | **54** | collisioni di `operationId` (lista e dettaglio sullo stesso `…_retrieve`, risolte con `…_retrieve_2`)      |
-| `mail.E001`                | 1     | 1      | backend di posta di sviluppo: in CI va impostato quello giusto, non silenziato                             |
-| `security.W004` / `W008`   | —     | 1 + 1  | accettati dal cricchetto: sono D3-c                                                                         |
+| Rilievo                    | 09-09 | 09-26 (inizio) | 09-26 (fine) | Cosa                                                                                                        |
+| -------------------------- | ----- | -------------- | ------------ | ----------------------------------------------------------------------------------------------------------- |
+| `drf_spectacular.W002`     | 66    | 73             | **0**        | view per cui lo schema non trova il serializer (violano la regola `@extend_schema` di `AGENTS.md`)         |
+| `drf_spectacular.W001`     | 54    | 54             | **0**        | collisioni di `operationId` (lista e dettaglio sullo stesso `…_retrieve`, risolte con `…_retrieve_2`)      |
+| `mail.E001`                | 1     | 1              | 1            | backend di posta di sviluppo: in CI va impostato quello giusto, non silenziato                             |
+| `security.W004` / `W008`   | —     | 1 + 1          | 1 + 1        | accettati dal cricchetto: sono D3-c                                                                         |
+| **Totale `check --deploy`** | —    | 130            | **3**        | nessun rilievo drf-spectacular rimasto                                                                      |
 
-⚠️ Il **128** del commento nel passo CI non è il conto dei `W002`: è la somma
-dei rilievi drf-spectacular (73 + 54) più uno (commento corretto lo stesso
-giorno). Il registro era **cresciuto** di sette dal 09-09: senza un verso fa
+⚠️ Il **128** che il commento del passo CI riportava la mattina del 26-09 non
+era il conto dei `W002`: era la somma dei rilievi drf-spectacular (73 + 54) più
+uno. Il commento è stato corretto lo stesso giorno, e oggi dice «a ZERO». Il
+registro era **cresciuto** di sette dal 09-09: senza un verso fa
 quello che ci si aspetta.
 
 ✅ **Il verso c'è dal 2026-09-26**: `apps/core/tests/test_schema_openapi_registro.py`
 genera lo schema in memoria (senza DB, rotte condizionali comprese) e confronta
-i rilievi **per nome** con `openapi_schema.baseline.json` (73 view + 54
-`operationId`). Rosso su un nome nuovo, rosso su una voce sanata e non tolta,
+i rilievi **per nome** con `openapi_schema.baseline.json` (alla nascita 73
+view + 54 `operationId`; vuoto dalla sera del 26-09). Rosso su un nome nuovo, rosso su una voce sanata e non tolta,
 rosso su un rilievo di forma sconosciuta. Provato per mutazione: `@extend_schema`
 tolto da una view vera, voci tolte e aggiunte al registro, rotte condizionali
 spente — cinque rossi. ⚠️ Limite dichiarato nel test: il `W002` è **per view**,
@@ -394,7 +399,7 @@ endpoint esercita**: il giorno dello Stage C vanno considerate non collaudate.
 
 ---
 
-## 5. Scorecard — pesata, non mediata (stato al 2026-09-11)
+## 5. Scorecard — pesata, non mediata (stato al 2026-09-11, voti rivisti al 2026-09-26)
 
 Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione.
 
@@ -402,8 +407,8 @@ Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione
 | --------------------------------------- | ------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Catena di verifica — frontend**       | 🔴 alto  | **7/10**   | Cancello in CI dal 09-09 (§2.1), test di componente dal 23-09 (D1-d-bis). Manca `npm audit` (D1-f)                                                                                                                      |
 | **Analisi statica — backend**           | 🔴 alto  | **6,5/10** | `ruff` a registro zero dal 09-09 (§2.2). Manca il type checker (D2-b)                                                                                                                                                  |
-| **Catena di verifica — backend**        | 🔴 alto  | **8/10**   | Cancello duro, 4.560 test verdi, sette guardrail, `plpgsql_check`. Manca la profondità (D9) e il ramo `--deploy` (D3-b)                                                                                                |
-| **Contratto API pubblicato**            | 🟠 medio | **7/10**   | `securitySchemes` e `security:` su 815 operazioni (D3-a). `W002` e collisioni a zero (26-09)                                                                                                                         |
+| **Catena di verifica — backend**        | 🔴 alto  | **8/10**   | Cancello duro, 4.560 test verdi, sette guardrail, `plpgsql_check`. Manca la profondità (D9); `--deploy` a 3 rilievi, resta la decisione sulla CI (D3-b)                                                                                                |
+| **Contratto API pubblicato**            | 🟠 medio | **9/10**   | `securitySchemes` e `security:` su 815 operazioni (D3-a). `W002` e collisioni a zero con cricchetto per nome, schemi dei corpi letti dal contratto del service (26-09: era 7, fermo su quei due registri). Non è 10: `check --deploy` completo non è in CI (D3-b) |
 | **Contratto d'errore — lato backend**   | 🟠 medio | **9/10**   | 763 codici vivi, zero senza ripiego, zero orfani (§2.3)                                                                                                                                                                |
 | **Contratto d'errore — arrivo a video** | 🟠 medio | **8/10**   | `fields`, `targets`, `hint` a video (D4). Non è 10: chi chiama `notify.error` a mano resta fuori                                                                                                                       |
 | **Perimetro e permessi (applicativo)**  | 🟠 medio | **7,5/10** | Catena unica, fail-closed, reset GUC incondizionato. ✅ 25-09 D5 chiuso con presidio aree/catalogo. ✅ 12-09: lo skip muto (D15) deciso e chiuso su tutte e 15 le view, presidiato dagli attributi **e** dal percorso reale |
@@ -425,8 +430,9 @@ backend senza nessuna analisi statica — erano economiche e sono chiuse.
 ⚠️ **La frase sulla «production-readiness» non cambia**: un cancello di build
 prova che il codice si compila, non che faccia la cosa giusta. Resta aperto ciò
 che è **cantiere** e non configurazione — la profondità della suite backend e
-gli smoke in CI (D9-a), la metà drf-spectacular di `check --deploy` (D3-b) —
-più ciò che aspetta una decisione (D1-f, D2-b, D3-c, D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di là.
+gli smoke in CI (D9-a) — più ciò che aspetta una decisione (D1-f, D2-b, D3-b
+cioè `check --deploy` completo in CI con registro drf-spectacular già a zero,
+D3-c, D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di là.
 
 ### Lezioni di metodo, in quattro righe
 
@@ -484,11 +490,13 @@ più ciò che aspetta una decisione (D1-f, D2-b, D3-c, D10-bis). E il perimetro 
       di CI, poi il registro dei 73 `W002` e delle 54 collisioni (26-09) con un verso.
       ✅ **Il verso dal 2026-09-26**: `test_schema_openapi_registro.py`, cricchetto
       per nome. ✅ Stesso giorno W001 da 54 a **0** (hook lista/dettaglio +
-      tre nomi a mano). W002 73 → **0**. Resta la decisione se `check
-      --deploy` completo entra in CI (serve `mail.E001` nell'ambiente di CI).
+      tre nomi a mano). W002 73 → **0**: registro vuoto, `check --deploy`
+      completo da 130 a 3 rilievi. Resta la decisione se `check --deploy`
+      completo entra in CI (serve `mail.E001` nell'ambiente di CI).
       ⭐ **Metà sicurezza chiusa il 2026-09-26**: il passo «Django check --deploy
       (sicurezza)» di `ci-validate.yaml` gira `--tag security` con un cricchetto
-      (accettati solo W004/W008, cioè D3-c). Resta la metà drf-spectacular.
+      (accettati solo W004/W008, cioè D3-c). Metà drf-spectacular: registro a
+      zero lo stesso giorno; resta solo la decisione sulla CI (sopra).
 * [ ] **D3-c** — `SECURE_HSTS_SECONDS` / `SECURE_SSL_REDIRECT` (con chi gestisce
       nginx) e **decidere** sulla CSP.
       Proposta pronta: [brief sicurezza](brief-be-fe-sicurezza-header-token-mfa.md) §1.
@@ -507,7 +515,7 @@ più ciò che aspetta una decisione (D1-f, D2-b, D3-c, D10-bis). E il perimetro 
 * [x] **D6** — ✅ 2026-09-10: sonda `+1`, `troncato`, helper separati, test sul DB vero.
 * [x] **D7 (la decisione)** — ✅ 2026-09-11: piano §1, tredici rotte, due candidate al ritiro.
 * [x] **D7 (la schermata)** — ✅ 2026-09-26: lista del log aperta a ogni
-      operatore (dominio «Personale», voce «Email»), dopo la RLS per ambito.
+      operatore (Strumenti › Email, voce senza area; era il dominio «Personale»), dopo la RLS per ambito.
       L'outbox resta sotto `config` e vive nel piano (§2.3 passo 5).
 * [x] **D8** — ✅ 2026-09-10: tre view, otto store, guard `check-keepalive-onactivated.mjs`.
 * [x] **D8-bis** — ✅ 2026-09-10: dati compagni in `onActivated`, con `force`.
@@ -721,8 +729,8 @@ il resto è servizio legittimo. Corretto il docstring di
 ✅ **La schermata — 2026-09-26.** Scelta (a) di Tid (25-09): gli operatori
 vedono le mail del loro perimetro. Prerequisito DB chiuso il 25-09 (la RLS
 applica gli ambiti `REPARTO`/`OPERATORE`), poi la lista del log con
-`skip_area_check` sulla sola lettura e la schermata nel dominio «Personale»,
-voce «Email». Dettaglio:
+`skip_area_check` sulla sola lettura e la schermata in Strumenti › Email
+(era il dominio «Personale»). Dettaglio:
 [brief-db-email-visibilita-per-ambito.md](../work-done/brief-db-email-visibilita-per-ambito.md)
 §9.6. L'outbox resta sotto `config` fino all'azione `invia_email`: è nel
 [piano](piano-be-fe-endpoint-senza-porta.md) §2.3 passo 5, non qui.

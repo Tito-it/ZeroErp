@@ -52,7 +52,7 @@ import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDr
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
-import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { useNotify } from '../../core/composables/useNotify'
@@ -119,7 +119,9 @@ const readonlyPermessi = computed(() => parentReadonly.value || props.readonly)
 const form = ref(defaultForm())
 // La ricarica del dettaglio dopo una riga NON deve cancellare una descrizione
 // digitata e non salvata: il BB tiene la baseline e ripristina il pendente.
-const { preserva, reset: resetPreserva } = useDrawerFormPreserve(form)
+const { preserva, reset: resetPreserva, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
+// Uscita (X, ESC, clic fuori, Chiudi) con la testata non salvata: prima si chiede.
+const onChiudi = () => chiudiConConferma(onClose)
 
 function defaultForm() {
   return { data: null, descrizione: '' }
@@ -399,6 +401,7 @@ watch(
   },
   { immediate: true },
 )
+const suVisibile = gestoreVisibile(emit, onChiudi)
 </script>
 
 <template>
@@ -406,11 +409,12 @@ watch(
     :visible="visible"
     position="right"
     :style="{ width: DRAWER_WIDTH.WIDE }"
-    @update:visible="(v) => emit('update:visible', v)"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :title="t(`${f.i18n}.titolo_singolare`)"
         :icon="f.haPiano ? NAV_ICONS.INVENTARI : NAV_ICONS.RETTIFICHE"
       />
@@ -494,7 +498,7 @@ watch(
           :disabled="!canSaveTestata"
           :cancel-label="t('common.close')"
           @save="onSalvaTestata"
-          @cancel="onClose"
+          @cancel="onChiudi"
         />
 
         <!-- ══ Le righe ══ -->

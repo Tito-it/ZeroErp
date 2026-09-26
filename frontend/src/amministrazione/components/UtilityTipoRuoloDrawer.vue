@@ -10,6 +10,7 @@ import { useI18n } from 'vue-i18n'
 import { useUtilitiesTipiRuoloStore } from '../stores/utilitiesTipiRuolo'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -56,6 +57,9 @@ const form = ref({
   tipo_ruolo_id: null,
   attivo: true
 })
+// Modifiche non salvate: fotografia all'apertura (anche in creazione), e
+// chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 
 const activeTab = ref('dati')
 const usageRows = ref([])
@@ -65,6 +69,7 @@ const usageLoaded = ref(false)
 
 function resetForm() {
   form.value = { utility_id: null, tipo_ruolo_id: null, attivo: true }
+  fissa()
 }
 
 // Scopo: Reset stato tab Utilizzo. Eseguito ad ogni apertura del drawer per
@@ -85,6 +90,7 @@ async function loadDetail() {
     tipo_ruolo_id: data.tipo_ruolo_id ?? null,
     attivo: data.attivo ?? true
   }
+  fissa()
 }
 
 async function loadUsage() {
@@ -139,7 +145,7 @@ async function handleSave() {
       () => store.update(props.recordId, payload),
       { successMessage: t('amministrazione.matrice_utilities_ruoli.saved') }
     )
-    if (result !== null) emit('saved', result)
+    if (result !== null) { fissa(); emit('saved', result) }
   } else {
     const payload = {
       utility_id: form.value.utility_id,
@@ -150,20 +156,23 @@ async function handleSave() {
       () => store.create(payload),
       { successMessage: t('amministrazione.matrice_utilities_ruoli.created') }
     )
-    if (result !== null) emit('saved', result)
+    if (result !== null) { fissa(); emit('saved', result) }
   }
 }
 
 function close() {
-  emit('update:visible', false)
-  emit('cancelled')
+  chiudiConConferma(() => {
+    emit('update:visible', false)
+    emit('cancelled')
+  })
 }
+const suVisibile = gestoreVisibile(emit, close)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="v => emit('update:visible', v)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     :dismissable="true"
@@ -171,6 +180,7 @@ function close() {
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('amministrazione.matrice_utilities_ruoli.drawer_title')"
       />

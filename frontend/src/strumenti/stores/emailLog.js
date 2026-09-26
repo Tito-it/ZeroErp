@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Doc: JavaScript
-// Scopo: Pinia store delle email dell'operatore (sola lettura), dominio Personale.
+// Scopo: Pinia store delle email dell'operatore (sola lettura), dominio Strumenti.
 // ------------------------------------------------------------
 
 // ⭐ Stessa lista del log dell'admin (`config.email_log`), un'altra porta:
@@ -18,7 +18,7 @@ import { createListaStore } from '../../core/stores/createListaStore'
 import { defaultFiltroDataDaString } from '../../core/utils/date'
 import { listEmailLog } from '../../core/api/email'
 
-export const useEmailLogPersonaleStore = createListaStore('personale-email-log', {
+export const useEmailLogOperatoreStore = createListaStore('strumenti-email-log', {
   fetchPage: listEmailLog,
   // Parte piena: e' un registro, non una ricerca.
   startsEmpty: false,

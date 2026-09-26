@@ -43,7 +43,7 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDrawerActions'
 import { useSelezioneToggle } from '../../core/composables/useSelezioneToggle'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
-import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { lookupRisorseUmane } from '../../core/apiCore'
 import { DRAWER_WIDTH, PAGINATION } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
@@ -249,7 +249,17 @@ const testataSaving = ref(false)
 //    per cui `useDrawerFormPreserve` esiste. La baseline si azzera all'apertura
 //    (sotto, nel watch su `visible`/`commessaId`), o il non-salvato della
 //    commessa precedente finirebbe su quella nuova.
-const { preserva: preservaTestata, reset: resetTestata } = useDrawerFormPreserve(testataForm)
+// Il form e' «sporco» solo se differisce da cio' che il server ha detto: il
+// pulsante Salva si accende su una modifica vera, non sull'apertura. La
+// risposta e' quella della fotografia del BB, che la dice anche alla tab.
+const {
+  preserva: preservaTestata,
+  reset: resetTestata,
+  modificato: testataDirty,
+  chiudiConConferma,
+} = useDrawerFormPreserve(testataForm, { visibile: () => props.visible })
+// Uscita (X, ESC, clic fuori, Chiudi) con la testata non salvata: prima si chiede.
+const onChiudi = () => chiudiConConferma(onClose)
 
 // Scopo: allinea il form alla testata caricata (a ogni `loadStato`),
 //        ripristinando cio' che l'operatore aveva cambiato e non salvato.
@@ -260,16 +270,6 @@ watch(stato, (s) => {
     responsabile_risorsa_umana_id: s?.responsabile_risorsa_umana_id ?? null,
   }
   applica()
-})
-
-// Il form e' «sporco» solo se differisce da cio' che il server ha detto: il
-// pulsante Salva si accende su una modifica vera, non sull'apertura.
-const testataDirty = computed(() => {
-  const s = stato.value
-  if (!s) return false
-  const descrizione = (testataForm.value.descrizione || '').trim() || null
-  return descrizione !== (s.descrizione ?? null)
-    || (testataForm.value.responsabile_risorsa_umana_id ?? null) !== (s.responsabile_risorsa_umana_id ?? null)
 })
 
 // Le risorse umane ATTIVE (lookup cross-dominio, cache condivisa per chiave).
@@ -869,6 +869,7 @@ const drawerActions = computed(() => [
   },
   ...stateActions.value,
 ])
+const suVisibile = gestoreVisibile(emit, onChiudi)
 </script>
 
 <template>
@@ -877,7 +878,7 @@ const drawerActions = computed(() => [
     position="right"
     :style="{ width: DRAWER_WIDTH.XLARGE }"
     :dismissable="true"
-    @update:visible="(v) => { if (!v) onClose() }"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
   >
     <template #header>
@@ -1121,7 +1122,7 @@ const drawerActions = computed(() => [
 
       </template>
 
-      <FormFooter close-only @cancel="onClose" />
+      <FormFooter close-only @cancel="onChiudi" />
     </div>
 
     <!-- Dialog N7 — variazione prezzo eccezionale (prezzo + motivo). -->

@@ -2,37 +2,51 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Doc: JavaScript
-// Scopo: Il dominio Personale e' visibile a OGNI operatore interno: e' la forma
-//        a video dello `skip_area_check` delle rotte BE che serve (la lista
-//        del log email, 2026-09-26). Chi vede quale riga lo decide la RLS.
-// Note: ⛔ Il difetto che si presidia non da' errori: un `schemaDb` aggiunto al
-//       dominio lo farebbe sparire (sidebar e router) a chi non ha quell'area,
-//       mentre il backend risponde. Un cancello a video che il backend non ha.
+// Scopo: Il dominio Strumenti raccoglie voci di aree DIVERSE (code: `strumenti`,
+//        giornale: `vendite`, email dell'operatore: nessuna — `skip_area_check`
+//        BE). Il cancello d'area sta quindi sulla voce, non sul dominio
+//        (Tid 2026-09-26, assorbito il dominio «Personale»).
+// Note: ⛔ Il difetto che si presidia non da' errori: un `schemaDb` rimesso sul
+//       dominio farebbe sparire le email (sidebar e router) a chi non ha
+//       l'area `strumenti`, mentre il backend risponde. Un cancello a video
+//       che il backend non ha.
 //
 // Indice test:
-//  1. il dominio Personale non dichiara un'area e non e' riservato all'admin
-//  2. le sue voci puntano a rotte sotto /personale/
+//  1. il dominio Strumenti non dichiara un'area e non e' riservato all'admin
+//  2. ogni voce porta l'area del suo endpoint (email: nessuna)
+//  3. le voci puntano a rotte sotto /strumenti/
+//  4. il dominio Personale non esiste piu'
 // ------------------------------------------------------------
 
 import { describe, expect, it } from 'vitest'
 
 import { DOMAINS, DOMAIN_MENUS } from '../core/navigation'
 
-describe('dominio Personale', () => {
-  const personale = DOMAINS.find((d) => d.key === 'personale')
+describe('dominio Strumenti', () => {
+  const strumenti = DOMAINS.find((d) => d.key === 'strumenti')
+  const voce = (key) => DOMAIN_MENUS.strumenti.find((v) => v.key === key)
 
   it('non dichiara un\'area e non e\' riservato all\'admin', () => {
-    expect(personale).toBeDefined()
-    expect(personale.schemaDb).toBeUndefined()
-    expect(personale.adminOnly).toBeFalsy()
+    expect(strumenti).toBeDefined()
+    expect(strumenti.schemaDb).toBeUndefined()
+    expect(strumenti.adminOnly).toBeFalsy()
   })
 
-  it('le sue voci puntano a rotte sotto /personale/', () => {
-    const voci = DOMAIN_MENUS.personale
-    expect(voci.map((v) => v.key)).toContain('email')
-    for (const voce of voci) {
-      expect(voce.to.startsWith('/personale/')).toBe(true)
-      expect(voce.requireArea).toBeUndefined()
+  it('ogni voce porta l\'area del suo endpoint (email: nessuna)', () => {
+    expect(voce('code-lavoro').requireArea).toBe('strumenti')
+    expect(voce('giornale').requireArea).toBe('vendite')
+    expect(voce('email')).toBeDefined()
+    expect(voce('email').requireArea).toBeUndefined()
+  })
+
+  it('le voci puntano a rotte sotto /strumenti/', () => {
+    for (const v of DOMAIN_MENUS.strumenti) {
+      expect(v.to.startsWith('/strumenti/')).toBe(true)
     }
+  })
+
+  it('il dominio Personale non esiste piu\'', () => {
+    expect(DOMAINS.find((d) => d.key === 'personale')).toBeUndefined()
+    expect(DOMAIN_MENUS.personale).toBeUndefined()
   })
 })

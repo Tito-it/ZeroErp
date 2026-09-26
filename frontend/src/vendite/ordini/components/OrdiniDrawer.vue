@@ -74,7 +74,13 @@ const form = ref({})
 // senza, compilare la testata e poi salvare una RIGA (`@changed` → loadDetail)
 // la riportava com'era sul server, in silenzio. BB condiviso coi drawer
 // gemelli (difetto trovato sul DDT, 2026-08-17, identico qui).
-const { preserva: preservaForm, reset: resetFormPreserve } = useDrawerFormPreserve(form)
+const {
+  preserva: preservaForm,
+  reset: resetFormPreserve,
+  fissa: fissaForm,
+  modificato,
+  chiudiConConferma,
+} = useDrawerFormPreserve(form, { visibile: () => props.visible })
 const detail = ref(null)
 const noteDrawerVisible = ref(false)
 // Riepilogo IVA aggregato per aliquota (lettura da `vw_ordini_riepilogo_iva_dettaglio`).
@@ -362,6 +368,8 @@ const { close, onVisibleChange } = useDrawerAutosaveBozza({
   form,
   deleteDraft: (id) => store.elimina(id),
   righeCountGetter: () => detail.value?.righe_count ?? 0,
+  // Uscita con modifiche non salvate: prima si chiede (BB useDrawerFormPreserve).
+  confermaUscita: chiudiConConferma,
   messages: {
     bozzaCreata: t('vendite.ordini.bozza_creata'),
     abbandonoTitolo: t('vendite.ordini.abbandono_bozza_titolo'),
@@ -396,6 +404,10 @@ async function handleSave() {
       { successMessage: t('vendite.ordini.ordine_salvato') }
     )
     if (result !== null) {
+      // Salvato: la fotografia e' il form com'e' ora, PRIMA della ricarica —
+      // o `preserva` prenderebbe i valori appena salvati per «non salvati» e
+      // li rimetterebbe sopra quelli (eventualmente normalizzati) del server.
+      fissaForm()
       await loadDetail()
       emit('saved', result)
     }
@@ -581,6 +593,7 @@ const drawerActions = computed(() => {
     <template #header>
       <DrawerTitle
         :action="isEdit ? t('common.edit') : t('common.new')"
+        :modificato="modificato"
         :title="t('vendite.ordini.ordine')"
         :icon="NAV_ICONS.ORDINI"
       />

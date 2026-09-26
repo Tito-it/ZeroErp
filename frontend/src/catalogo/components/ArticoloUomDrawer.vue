@@ -5,12 +5,13 @@
 // qty_step, max_decimals, rounding_mode, forbid_fraction, require_lot, gtin,
 // valido_dal/al, attivo.
 
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { paramBool, paramNumber } from '../../core/utils/parameterCast'
 import { listArticoloUom, createArticoloUom, updateArticoloUom, deleteArticoloUom } from '../api/catalogo'
@@ -53,6 +54,12 @@ const listLoading = ref(false)
 const formMode = ref(null)
 const editId = ref(null)
 const form = ref({})
+
+// Modifiche non salvate del form inline (nuova/modifica UoM): la fotografia
+// vive finche' il form e' aperto, e si azzera da sola quando torna la lista.
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, {
+  visibile: () => props.visible && formMode.value !== null,
+})
 
 // Fase 5: campi immutabili dopo create per UoM operativa (envelope-level
 // dalla lista, fonte = `dbops.vw_non_editable_fields` + gap Python).
@@ -142,6 +149,8 @@ function onStartNew() {
   formMode.value = 'new'
   editId.value = null
   form.value = defaultForm()
+  // Dopo il giro di watch: `is_base` e' riscritto da `factor_to_base`.
+  nextTick(fissa)
 }
 
 function onStartEdit(row) {
@@ -164,6 +173,8 @@ function onStartEdit(row) {
     valido_al: row.valido_al ? new Date(row.valido_al + 'T00:00:00') : null,
     attivo: row.attivo ?? true,
   }
+  // Dopo il giro di watch: `is_base` e' riscritto da `factor_to_base`.
+  nextTick(fissa)
 }
 
 function onCancelForm() {
@@ -171,6 +182,9 @@ function onCancelForm() {
   editId.value = null
   form.value = defaultForm()
 }
+
+// Annulla del form inline: con modifiche chiede conferma.
+const annullaForm = () => chiudiConConferma(onCancelForm)
 
 const canSaveForm = computed(() => {
   return form.value.uom_id != null && form.value.factor_to_base > 0
@@ -287,18 +301,23 @@ function onRowSelect(event) {
 
 // Scopo: chiusura drawer dal pulsante Chiudi del footer (modalita' lista).
 const onClose = useDrawerClose(emit)
+
+// Chiusura del drawer per volonta' dell'utente (X/ESC/clic fuori/Chiudi):
+// con il form inline modificato chiede conferma.
+const chiudi = () => chiudiConConferma(onClose)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="emit('update:visible', $event)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :action="t('common.edit')" :title="t('catalogo.tab_uom')" :icon="MANAGE_ICONS.UOM" />
+      <DrawerTitle :action="t('common.edit')" :title="t('catalogo.tab_uom')" :icon="MANAGE_ICONS.UOM" :modificato="modificato" />
     </template>
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
@@ -358,7 +377,7 @@ const onClose = useDrawerClose(emit)
         </DataTable>
       </template>
 
-      <FormFooter v-if="!formMode" close-only @cancel="onClose" />
+      <FormFooter v-if="!formMode" close-only @cancel="chiudi" />
 
       <template v-if="formMode">
         <div class="app-drawer-section">
@@ -471,7 +490,7 @@ const onClose = useDrawerClose(emit)
           :loading="loading"
           :disabled="!canSaveForm"
           @save="onSaveForm"
-          @cancel="onCancelForm"
+          @cancel="annullaForm"
         />
       </template>
     </div>

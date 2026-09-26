@@ -99,7 +99,7 @@ function apriDettaglio(riga) {
 // vero; la regola resta scritta per il giorno di un permesso «tecnici».
 const giornaleRaggiungibile = computed(() => !auth.isAreaBlocked(READONLY_DOMAINS.VENDITE))
 function apriGiornale(riga) {
-  router.push({ name: 'vendite-giornale', query: { tx_id: riga.tx_id } })
+  router.push({ name: 'strumenti-giornale', query: { tx_id: riga.tx_id } })
 }
 
 // Scopo: copia il `tx_id` negli appunti, con un toast di conferma.

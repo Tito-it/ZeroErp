@@ -24,6 +24,7 @@ import FormFooter from '../FormFooter.vue'
 import { DRAWER_WIDTH } from '../../constants'
 import { useConfirmAction } from '../../composables/useConfirmAction'
 import { useDrawerContentReady } from '../../composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../composables/useDrawerFormPreserve'
 
 
 
@@ -53,12 +54,23 @@ const { t, te } = useI18n()
 // scartare modifiche di una sessione precedente.
 const localWidget = ref([])
 
+// Modifiche non salvate: si confronta cio' che il Salva manda (codice e
+// visibilita', nell'ordine dell'elenco), non `ordine`, che il riordino
+// rinumera 1..N — spostare e rimettere a posto non e' una modifica.
+// Prima del watch immediate che chiama `fissa()` (TDZ).
+const widgetDaSalvare = computed(() =>
+  localWidget.value.map(w => ({ codice: w.codice, visibile: Boolean(w.visibile) })),
+)
+const { fissa, chiudiConConferma } =
+  useDrawerFormPreserve(widgetDaSalvare, { visibile: () => props.visible })
+
 watch(
   () => [props.visible, props.config],
   ([open]) => {
     if (open && Array.isArray(props.config?.widget)) {
       localWidget.value = JSON.parse(JSON.stringify(props.config.widget))
         .sort((a, b) => (a.ordine ?? 0) - (b.ordine ?? 0))
+      fissa()
     }
   },
   { immediate: true },
@@ -111,7 +123,7 @@ function onSave() {
 }
 
 function onCancel() {
-  emit('update:visible', false)
+  chiudiConConferma(() => emit('update:visible', false))
 }
 
 function onReset() {
@@ -124,6 +136,7 @@ function onReset() {
     },
   })
 }
+const suVisibile = gestoreVisibile(emit, onCancel)
 </script>
 
 <template>
@@ -131,7 +144,7 @@ function onReset() {
     :visible="visible"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
-    @update:visible="emit('update:visible', $event)"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
   >
     <template #header>

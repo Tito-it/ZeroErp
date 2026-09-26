@@ -22,6 +22,7 @@ import { useOperatoriStore } from '../stores/operatori'
 import { useNotify } from '../../core/composables/useNotify'
 import { useLookup } from '../../core/composables/useLookup'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { MANAGE_ICONS } from '../../core/constants'
 import { listAreeFunzionali, listAzioniProcesso, getModelOverridesLookup } from '../api/amministrazione'
 import { listEmittentiFiscali } from '../../core/apiCore'
@@ -53,7 +54,11 @@ const emittentiFiscali = useLookup(listEmittentiFiscali, { immediate: true })
 
 const props = defineProps({
   authUserId: { type: Number, required: true },
-  readonly: { type: Boolean, default: false }
+  readonly: { type: Boolean, default: false },
+  // Visibilita' del drawer che ospita il tab: azzera le fotografie alla
+  // chiusura. Default true: il contenuto dei drawer si smonta comunque a
+  // drawer chiuso.
+  visible: { type: Boolean, default: true }
 })
 
 const isReadonly = computed(() => props.readonly || injectedReadonly.value)
@@ -86,6 +91,30 @@ const overrideOggetti = ref({})
 const localScopeMode = ref('GLOBAL')
 const localEmittenteId = ref(null)
 
+// Modifiche non salvate (BB useDrawerFormPreserve): UNA fotografia per
+// sezione, perche' ogni sezione ha il suo Salva — salvare le aree non deve
+// far sparire le modifiche pendenti sulle azioni. Il drawer padre legge
+// `modificato` e chiude con `chiudiConConferma` (defineExpose in fondo).
+// ⚠️ Lo scope si confronta COME LO MANDA il Salva (`_buildScopePayload`, piu'
+//    sotto): con GLOBAL l'emittente non viaggia, quindi un emittente scelto e
+//    poi abbandonato non e' una modifica.
+const scopeLocale = computed(() => _buildScopePayload())
+const _vis = { visibile: () => props.visible }
+const sezioni = {
+  aree: useDrawerFormPreserve(overrideAree, _vis),
+  azioni: useDrawerFormPreserve(overrideAzioni, _vis),
+  oggetti: useDrawerFormPreserve(overrideOggetti, _vis),
+  emittenti: useDrawerFormPreserve(scopeLocale, _vis),
+}
+const modificato = computed(() => Object.values(sezioni).some(sz => sz.modificato.value))
+
+// Scopo: chiude chiedendo conferma se una sezione ha modifiche (un solo dialog).
+function chiudiConConferma(chiudi) {
+  const sporca = Object.values(sezioni).find(sz => sz.modificato.value)
+  if (sporca) sporca.chiudiConConferma(chiudi)
+  else chiudi()
+}
+
 // Scopo: Carica tutto lo stato necessario per il componente.
 //        Viene chiamato dal watch su authUserId (immediate) e garantisce
 //        che currentOperatore, overrideAree/azioni, emittentiScope siano
@@ -104,6 +133,7 @@ async function loadAll(userId) {
     store.fetchEmittentiScope(userId)
   ])
   syncLocal()
+  Object.values(sezioni).forEach(sz => sz.fissa())
 }
 
 watch(() => props.authUserId, loadAll, { immediate: true })
@@ -226,10 +256,10 @@ const _toOggettoItem = (o) => ({
 })
 
 const saveAree = () =>
-  _saveOverride(store.saveOverrideAree, Object.values(overrideAree.value).map(_toAreaItem))
+  _saveOverride(store.saveOverrideAree, Object.values(overrideAree.value).map(_toAreaItem), sezioni.aree.fissa)
 
 const saveAzioni = () =>
-  _saveOverride(store.saveOverrideAzioni, Object.values(overrideAzioni.value).map(_toAzioneItem))
+  _saveOverride(store.saveOverrideAzioni, Object.values(overrideAzioni.value).map(_toAzioneItem), sezioni.azioni.fissa)
 
 // Costruzione payload Fase 2: GLOBAL -> emittenti_ids: []; SINGLE -> [id].
 // La validazione e' centralizzata sul BE (E_AMM_SCOPE_NON_AMMESSO se SINGLE
@@ -259,7 +289,10 @@ const saveEmittenti = () => {
     // Refresh asincrono lista operatori (la `emittenti_descrizione` puo'
     // essere cambiata): dopo il prossimo render frame per non interrompere
     // l'animazione del toast.
-    () => nextTick(() => store.fetchList().catch(() => {})),
+    () => {
+      sezioni.emittenti.fissa()
+      nextTick(() => store.fetchList().catch(() => {}))
+    },
   )
 }
 
@@ -377,7 +410,7 @@ function modelOverrideReason(row) {
 }
 
 const saveOggetti = () =>
-  _saveOverride(store.saveOverrideOggetti, Object.values(overrideOggetti.value).map(_toOggettoItem))
+  _saveOverride(store.saveOverrideOggetti, Object.values(overrideOggetti.value).map(_toOggettoItem), sezioni.oggetti.fissa)
 
 // Le tre opzioni di override di un'azione. ⚠️ Un `ToggleSwitch` qui NON basta:
 // avrebbe due stati per una realta' che ne ha tre — «abilitata», «negata» e
@@ -386,6 +419,8 @@ const azioneOptions = computed(() => [
   { label: t('amministrazione.azione_abilitata'), value: true },
   { label: t('amministrazione.azione_negata'), value: false },
 ])
+
+defineExpose({ modificato, chiudiConConferma })
 </script>
 
 <template>

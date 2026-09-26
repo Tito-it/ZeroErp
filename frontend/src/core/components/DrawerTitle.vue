@@ -4,18 +4,35 @@
 // (auto-visibile quando il drawer e' in modalita' readonly via inject).
 // Layout a 3 colonne: [azione] [icona + titolo centrato] [badge readonly].
 // Usare nel #header slot di ogni Drawer.
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import ReadonlyBadge from './ReadonlyBadge.vue'
 
-defineProps({
+const props = defineProps({
   action: { type: String, default: '' },
   title: { type: String, required: true },
-  icon: { type: String, default: '' }
+  icon: { type: String, default: '' },
+  // Ci sono modifiche non salvate (`modificato` di useDrawerFormPreserve):
+  // la scritta dell'azione («Modifica») diventa arancio, il colore
+  // dell'attenzione, finche' c'e' qualcosa da salvare (Tid, 2026-09-26).
+  // ⚠️ Un drawer senza `action` non avrebbe niente da colorare: al suo posto
+  //    compare la scritta «Modifiche non salvate», o il segnale non si vede.
+  modificato: { type: Boolean, default: false },
 })
+
+const { t } = useI18n()
+const scritta = computed(() =>
+  props.action || (props.modificato ? t('common.modifiche_non_salvate.indicatore') : ''),
+)
 </script>
 
 <template>
   <div class="app-drawer-title">
-    <span class="app-drawer-title-action">{{ action }}</span>
+    <span
+      class="app-drawer-title-action"
+      :class="{ 'app-drawer-title-action--modificato': modificato }"
+      v-tooltip.bottom="modificato ? t('common.modifiche_non_salvate.indicatore') : null"
+    >{{ scritta }}</span>
     <span class="app-drawer-title-entity">
       <i v-if="icon" :class="icon" class="app-drawer-title-icon" />
       {{ title }}
@@ -41,6 +58,10 @@ defineProps({
   color: var(--app-accent-color);
   white-space: nowrap;
   min-width: 4rem;
+}
+.app-drawer-title-action--modificato {
+  color: var(--app-warning-color);
+  font-weight: 700;
 }
 .app-drawer-title-entity {
   flex: 1;

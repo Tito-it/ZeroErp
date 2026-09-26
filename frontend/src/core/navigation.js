@@ -40,8 +40,6 @@ export const NAV_ICONS = Object.freeze({
   // futuro giri/job). pi-wrench = cassetta attrezzi, non-tecnico.
   STRUMENTI: 'pi pi-wrench',
   CODE_LAVORO: 'pi pi-inbox',
-  // Dominio PERSONALE (2026-09-26): le cose dell'operatore, non di un'area.
-  PERSONALE: 'pi pi-user',
   // Dominio INCASSI. ⚠️ Nessuna e' l'icona del dominio (`pi-credit-card`): una
   // voce di menu che ripete l'icona del suo dominio non distingue niente.
   DISTINTE: 'pi pi-wallet',
@@ -66,10 +64,10 @@ export const NAV_ICONS = Object.freeze({
   DISPONIBILITA: 'pi pi-gauge',
   MOVIMENTI: 'pi pi-book',
   // Osservabilita' (2026-09-19): il registro degli errori tecnici (Amm.
-  // Software) e il giornale trasversale degli eventi (Vendite ›
-  // Fatturazione). ⚠️ Il giornale ripete `pi-book` dei movimenti di
-  // magazzino: sono entrambi un REGISTRO che si legge in ordine di tempo, e la
-  // voce sta in un altro dominio.
+  // Software) e il giornale trasversale degli eventi (Strumenti). ⚠️ Il
+  // giornale ripete `pi-book` dei movimenti di magazzino: sono entrambi un
+  // REGISTRO che si legge in ordine di tempo, e la voce sta in un altro
+  // dominio.
   ERROR_LOG: 'pi pi-exclamation-triangle',
   GIORNALE: 'pi pi-book',
   HOME: 'pi pi-home',
@@ -145,19 +143,16 @@ export const DOMAINS = [
   { key: 'pagamenti', icon: NAV_ICONS.PAGAMENTI, to: '/pagamenti', schemaDb: 'pagamenti' },
   { key: 'contabilita', icon: NAV_ICONS.CONTABILITA, to: '/contabilita', schemaDb: 'contabilita' },
   { key: 'pratiche', icon: NAV_ICONS.PRATICHE, to: '/pratiche', schemaDb: 'pratiche' },
-  // Strumenti: viste operative trasversali, con AREA BE DEDICATA `strumenti`
-  // (decisione Tid 2026-07-21: non si apre `core` — che presidia anche il
-  // tracciamento infra — solo per le code). Prima voce: gestione code di
-  // lavoro/stampa (accesso primario = badge top bar; la voce menu e' la via
-  // secondaria — brief gestione-code P-1).
-  { key: 'strumenti', icon: NAV_ICONS.STRUMENTI, to: '/strumenti', schemaDb: 'strumenti' },
-  // Personale: cio' che appartiene all'OPERATORE e non a un'area — oggi le sue
-  // email (decisione Tid 2026-09-26). ⛔ SENZA `schemaDb`, di proposito: un
-  // dominio senza area non si blocca mai, ed e' la forma a video dello
-  // `skip_area_check` delle sue rotte BE. Chi vede quale riga lo decide la RLS.
-  // ⚠️ Una voce che qui chiede un'area rimetterebbe il cancello che il backend
-  // non ha: resta fuori, o va in un dominio d'area.
-  { key: 'personale', icon: NAV_ICONS.PERSONALE, to: '/personale' },
+  // Strumenti: viste operative trasversali. ⛔ SENZA `schemaDb` sul dominio,
+  // di proposito (Tid 2026-09-26, assorbe il dominio «Personale»): le sue voci
+  // appartengono ad aree DIVERSE — le code all'area BE `strumenti` (decisione
+  // Tid 2026-07-21: non si apre `core` solo per le code), il giornale a
+  // `vendite`, le email dell'operatore a nessuna (`skip_area_check` delle
+  // rotte BE, chi vede quale riga lo decide la RLS). Il cancello d'area sta
+  // quindi sulla VOCE (`requireArea`), non sul dominio: un `schemaDb` qui
+  // nasconderebbe le email a chi non ha l'area `strumenti`, mentre il backend
+  // risponde.
+  { key: 'strumenti', icon: NAV_ICONS.STRUMENTI, to: '/strumenti' },
   { key: 'config', icon: NAV_ICONS.CONFIG, to: '/config'},
   { key: 'amm-software', icon: NAV_ICONS.AMM_SOFTWARE, to: '/amm-software', adminOnly: true, schemaDb: 'amm_software' }
 ]
@@ -233,10 +228,6 @@ export const DOMAIN_MENUS = {
     { key: 'dashboard-competenza', icon: NAV_ICONS.DASHBOARD_COMPETENZA, to: '/vendite/dashboard-competenza' },
     { key: 'dashboard-backlog', icon: NAV_ICONS.DASHBOARD_BACKLOG, to: '/vendite/dashboard-backlog' },
     { key: 'lotti', icon: NAV_ICONS.LOTTI, to: '/vendite/lotti' },
-    // Il giornale trasversale degli eventi (osservabilita', pezzo G): accanto
-    // ai lotti perche' e' lo stesso mestiere visto dagli errori — «cosa e'
-    // andato storto, su tutto», con il salto al lotto e al documento.
-    { key: 'giornale', icon: NAV_ICONS.GIORNALE, to: '/vendite/giornale' },
     { key: 'preventivi', icon: NAV_ICONS.PREVENTIVI, to: '/vendite/preventivi' },
     { key: 'offerte', icon: NAV_ICONS.OFFERTE, to: '/vendite/offerte' },
     { key: 'ordini', icon: NAV_ICONS.ORDINI, to: '/vendite/ordini' },
@@ -289,11 +280,19 @@ export const DOMAIN_MENUS = {
     { key: 'canali-incasso', icon: NAV_ICONS.CANALI_INCASSO, to: '/pagamenti/canali-incasso' },
   ],
   'contabilita': [],
+  // ⚠️ Ogni voce dichiara la SUA area (o nessuna): il dominio non ne ha una.
   'strumenti': [
-    { key: 'code-lavoro', icon: NAV_ICONS.CODE_LAVORO, to: '/strumenti/code-lavoro' }
-  ],
-  'personale': [
-    { key: 'email', icon: NAV_ICONS.ENVELOPE, to: '/personale/email' }
+    // Accesso primario = badge top bar; la voce menu e' la via secondaria
+    // (brief gestione-code P-1).
+    { key: 'code-lavoro', icon: NAV_ICONS.CODE_LAVORO, to: '/strumenti/code-lavoro', requireArea: 'strumenti' },
+    // Il giornale trasversale degli eventi (osservabilita', pezzo G): «cosa e'
+    // andato storto, su tutto», con il salto al lotto e al documento. Dati e
+    // endpoint restano dell'area `vendite` (`/vendite/giornale/`): la voce ne
+    // porta il cancello.
+    { key: 'giornale', icon: NAV_ICONS.GIORNALE, to: '/strumenti/giornale', requireArea: 'vendite' },
+    // Le email dell'operatore (dal 2026-09-26). ⛔ Senza `requireArea`: e' la
+    // forma a video dello `skip_area_check` di `/core/email/log/`.
+    { key: 'email', icon: NAV_ICONS.ENVELOPE, to: '/strumenti/email' }
   ],
   'pratiche': [
     { key: 'home', icon: NAV_ICONS.HOME, to: '/pratiche' },
@@ -337,6 +336,30 @@ export function flattenMenu(items) {
   )
 }
 
+// Scopo: la voce di menu e' permessa all'utente? Filtro UNICO dei cancelli di
+// voce (`requireArea`, `requireAnyAction`), letto da sidebar, preferiti,
+// widget e router guard (estratto 2026-09-26, regola del 2, ok Tid).
+// ⛔ Il router DEVE leggere la stessa regola della sidebar: un cancello solo a
+// video lascia aprire la pagina dall'indirizzo, e l'utente trova una schermata
+// di 403 invece di «Accesso negato».
+// `auth` e' lo store (passato, non importato: questo modulo resta puro).
+export function isMenuItemAllowed(item, auth) {
+  if (!item) return false
+  if (item.requireArea && auth.isAreaBlocked(item.requireArea)) return false
+  if (Array.isArray(item.requireAnyAction) && item.requireAnyAction.length > 0) {
+    if (!auth.isSuperAdmin && !item.requireAnyAction.some(action => auth.isActionAllowed(action))) {
+      return false
+    }
+  }
+  return true
+}
+
+// Scopo: la voce di menu di una rotta, da `meta.domain` + `meta.menuKey`.
+export function findMenuItem(domain, menuKey) {
+  if (!domain || !menuKey) return null
+  return flattenMenu(DOMAIN_MENUS[domain]).find(item => item.key === menuKey) || null
+}
+
 // Risolve la label tab/breadcrumb dalla route meta usando i18n.
 // Usato da router guard e AppBreadcrumb per evitare duplicazione.
 export function resolveNavigationLabel({ domain, menuKey }, t, te = null) {
@@ -356,6 +379,22 @@ export function resolveNavigationLabel({ domain, menuKey }, t, te = null) {
 // mantenere le label allineate alla sidebar.
 export function resolveTabLabel(meta, t, te = null) {
   return resolveNavigationLabel(meta, t, te)
+}
+
+// Scopo: l'etichetta A VIDEO di una tab aperta, ricalcolata a ogni render
+// (estratto 2026-09-26, regola del 2, ok Tid: barra delle tab e pannello
+// affiancato). Un nome dato a mano (`customLabel`) vince; altrimenti si
+// risolve da `domain`/`menuKey` e solo in ultima istanza si ripiega sulla
+// `label` salvata.
+// ⛔ La `label` salvata e' una FOTOGRAFIA presa all'apertura: se la tab nasce
+// prima che i messaggi i18n siano caricati (boot, ripristino da localStorage)
+// contiene la chiave grezza (`nav_menu.vendite.ordini`), e dopo un cambio
+// lingua e' nella lingua vecchia. Mostrarla com'e' e' il difetto che questo
+// BB chiude.
+export function resolveTabDisplayLabel(tab, t, te = null) {
+  if (!tab) return ''
+  if (tab.customLabel) return tab.label
+  return resolveNavigationLabel(tab, t, te) || tab.label
 }
 
 // Risolve l'icona tab dalla route meta.

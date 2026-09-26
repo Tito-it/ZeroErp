@@ -6,6 +6,7 @@
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useContattoForm } from '../composables/useContattoForm'
 import { useSoggettoRuoloCollection } from '../composables/useSoggettoRuoloCollection'
 import {
@@ -50,9 +51,11 @@ const {
   formErrors,
   startNew: onStartNew,
   startEdit: onStartEdit,
-  cancelForm: onCancelForm,
   saveForm: onSaveForm,
   deleteItem: onDelete,
+  modificato: modificatoInline,
+  annullaForm,
+  chiudiConConferma,
 } = useSoggettoRuoloCollection({
   visible: () => props.visible,
   context: () => props.context,
@@ -86,21 +89,25 @@ const {
     deleted: t('anagrafiche.contatto.contatto_eliminato'),
   },
   onSaved: () => emit('saved'),
+  formDaConfrontare: () => ({ ...contatto.form }),
 })
 
 // Scopo: chiusura drawer dal pulsante Chiudi del footer (modalita' lista).
 const onClose = useDrawerClose(emit)
+// Uscite dal drawer: con il form inline modificato si chiede prima.
+const chiudi = () => chiudiConConferma(onClose)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="emit('update:visible', $event)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
   >
     <template #header>
-      <DrawerTitle :action="t('common.edit')" :title="t('anagrafiche.soggetti.section_contatto')" :icon="MANAGE_ICONS.CONTATTI" />
+      <DrawerTitle :modificato="modificatoInline" :action="t('common.edit')" :title="t('anagrafiche.soggetti.section_contatto')" :icon="MANAGE_ICONS.CONTATTI" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
@@ -157,7 +164,7 @@ const onClose = useDrawerClose(emit)
         </div>
       </template>
 
-      <FormFooter v-if="!formMode" close-only @cancel="onClose" />
+      <FormFooter v-if="!formMode" close-only @cancel="chiudi" />
 
       <!-- Form (aggiungi o modifica) -->
       <template v-if="formMode">
@@ -178,7 +185,7 @@ const onClose = useDrawerClose(emit)
           :loading="saving"
           :disabled="!contatto.form.nominativo?.trim()"
           @save="onSaveForm"
-          @cancel="onCancelForm"
+          @cancel="annullaForm"
         />
       </template>
     </div>

@@ -4,12 +4,14 @@
 // Context 'soggetto': lista piatta + form aggiungi/cambia (via matrice).
 // Context 'ruolo': cascata 3 livelli (istanza→ruolo→soggetto) con fonte badge.
 
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useIndirizzoSoggettoForm } from '../composables/useIndirizzoSoggettoForm'
+import { raccogliFormInline } from '../composables/raccogliFormInline'
 import {
   listSoggettoIndirizzi, createSoggettoIndirizzo, replaceSoggettoIndirizzo,
   listRuoloIndirizzi, createRuoloIndirizzo, deleteRuoloIndirizzo
@@ -72,6 +74,16 @@ const formMode = ref(null)
 const replaceId = ref(null)
 const replaceLabel = ref('')
 const comuneInitialItem = ref(null)
+
+// Modifiche non salvate (BB useDrawerFormPreserve) sul form inline
+// dell'indirizzo: conta solo a form aperto, e la fotografia si azzera quando
+// torna la lista. Chiudere il drawer o annullare il form con modifiche chiede conferma.
+const formIndirizzo = computed(() => raccogliFormInline({ indirizzo }))
+const {
+  fissa: fissaInline,
+  modificato: modificatoInline,
+  chiudiConConferma: chiudiInlineConConferma,
+} = useDrawerFormPreserve(formIndirizzo, { visibile: () => props.visible && formMode.value !== null })
 
 // Scopo: Carica indirizzi. In context 'ruolo' l'API ritorna indirizzi_ruolo + indirizzi_soggetto
 //        con campo 'fonte'. In context 'soggetto' ritorna lista piatta.
@@ -178,9 +190,10 @@ async function onStartNew() {
   } else {
     indirizzo.setMatrice(matriceDisponibile.value)
   }
+  fissaInline()
 }
 
-function onStartReplace(ind) {
+async function onStartReplace(ind) {
   formMode.value = 'replace'
   replaceId.value = ind.id
   replaceLabel.value = ind.tipo_indirizzo_descrizione
@@ -215,6 +228,19 @@ function onStartReplace(ind) {
       comuneInitialItem.value = null
     }
   })
+  // Fotografia DOPO i CAP: il watch del comune (useIndirizzoBase) gira dopo
+  // `withSuppressedChecks`, azzera il CAP e, se il comune ne ha uno solo, lo
+  // reimposta da se' a lookup arrivato. Fissare prima farebbe nascere il form
+  // «modificato» senza che l'operatore abbia toccato niente.
+  await nextTick()
+  if (indirizzo.loadingCap.value) {
+    await new Promise((fine) => {
+      const stop = watch(indirizzo.loadingCap, (caricando) => {
+        if (!caricando) { stop(); fine() }
+      })
+    })
+  }
+  if (formMode.value === 'replace' && replaceId.value === ind.id) fissaInline()
 }
 
 function onCancelForm() {
@@ -310,18 +336,21 @@ async function onDeleteRuolo(ind) {
 
 // Scopo: chiusura drawer dal pulsante Chiudi del footer (modalita' lista).
 const onClose = useDrawerClose(emit)
+const chiudi = () => chiudiInlineConConferma(onClose)
+const annullaForm = () => chiudiInlineConConferma(onCancelForm)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="emit('update:visible', $event)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :action="t('common.edit')" :title="t('indirizzi.indirizzo') + ' - ' + t(`anagrafiche.indirizzo_soggetto.context_${context}`)" :icon="NAV_ICONS.INDIRIZZO" />
+      <DrawerTitle :modificato="modificatoInline" :action="t('common.edit')" :title="t('indirizzi.indirizzo') + ' - ' + t(`anagrafiche.indirizzo_soggetto.context_${context}`)" :icon="NAV_ICONS.INDIRIZZO" />
     </template>
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
@@ -451,7 +480,7 @@ const onClose = useDrawerClose(emit)
           :loading="loading"
           :disabled="!indirizzo.canSave.value || addressNotFound"
           @save="onSaveForm"
-          @cancel="onCancelForm"
+          @cancel="annullaForm"
         />
       </template>
     </div>

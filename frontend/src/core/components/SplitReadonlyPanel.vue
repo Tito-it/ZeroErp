@@ -9,8 +9,9 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '../../stores/tabs'
 import { READONLY_KEY, BLOCKED_KEY } from '../composables/useReadonlyMode'
+import { resolveTabDisplayLabel } from '../navigation'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const router = useRouter()
 const tabs = useTabsStore()
 
@@ -28,6 +29,10 @@ const pinnedComponent = computed(() => {
   return match?.components?.default || null
 })
 
+// Etichetta ricalcolata come nella barra delle tab: la `label` salvata puo'
+// essere la chiave i18n grezza (tab aperta prima del caricamento dei messaggi).
+const pinnedLabel = computed(() => resolveTabDisplayLabel(tabs.pinnedTab, t, te))
+
 function handleSwap() {
   tabs.swapPanels()
   if (tabs.activeTab) router.push(tabs.activeTab.path)
@@ -39,7 +44,7 @@ function handleSwap() {
     <!-- Header pannello secondario -->
     <div class="split-panel-header">
       <i v-if="tabs.pinnedTab?.icon" :class="tabs.pinnedTab.icon" class="split-panel-icon"></i>
-      <span class="split-panel-label">{{ tabs.pinnedTab?.label }}</span>
+      <span class="split-panel-label">{{ pinnedLabel }}</span>
       <span class="split-readonly-badge">{{ t('tabs.split_readonly') }}</span>
       <div class="split-panel-actions">
         <button

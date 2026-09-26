@@ -31,6 +31,9 @@
 #  14. super_admin_puo_scegliere
 #  15. operatore_non_configurato_non_puo_scegliere
 #  16. senza_user_resta_il_calcolo_storico
+#  17. emittente attivo: nome e ruolo nel blocco
+#  18. modalita' globale: nome e ruolo assenti
+#  19. emittente attivo fuori scope: nome e ruolo assenti
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -49,11 +52,12 @@ _UTENTE = 42
 
 
 # Scopo: repository mockato con la configurazione del caso in esame.
-def _repo(*, permesso=None, preferenza=None, valida=True) -> MagicMock:
+def _repo(*, permesso=None, preferenza=None, valida=True, voci=None) -> MagicMock:
     repo = MagicMock()
     repo.get_emittente_di_permesso.return_value = permesso
     repo.get_preferenza.return_value = preferenza
     repo.is_scelta_valida.return_value = valida
+    repo.list_selezionabili.return_value = voci or []
     return repo
 
 
@@ -234,3 +238,35 @@ class PuoScegliereTests(SimpleTestCase):
     def test_senza_user_resta_il_calcolo_storico(self) -> None:
         d = EmittenteAttivoService(_repo(preferenza=None)).descrivi(_UTENTE, None)
         self.assertTrue(d["puo_scegliere"])
+
+
+class DatiEmittenteAttivoTests(SimpleTestCase):
+    """Nome e ruolo dell'emittente ATTIVO (2026-09-26): servono al FE per
+    scrivere dentro l'emittente scelto dal super admin (listini)."""
+
+    # 17. Con un emittente attivo il blocco porta il suo nome e il suo RUOLO,
+    #     letti con lo stesso criterio di scope delle opzioni della combo.
+    def test_emittente_attivo_porta_nome_e_ruolo(self) -> None:
+        repo = _repo(voci=[{
+            "emittente_fiscale_id": 44, "codice": "E44",
+            "ragione_sociale": "Rossi Srl", "soggetto_ruolo_id": 910,
+        }])
+        d = EmittenteAttivoService(repo).descrivi(_UTENTE, 44)
+        self.assertEqual(d["ragione_sociale"], "Rossi Srl")
+        self.assertEqual(d["soggetto_ruolo_id"], 910)
+        repo.list_selezionabili.assert_called_once_with(_UTENTE, solo_id=44)
+
+    # 18. In modalita' globale non c'e' un emittente su cui scrivere: le
+    #     chiavi mancano, e il repository non viene nemmeno interrogato.
+    def test_modalita_globale_senza_nome_e_ruolo(self) -> None:
+        repo = _repo(preferenza=44)
+        d = EmittenteAttivoService(repo).descrivi(_UTENTE, None)
+        self.assertNotIn("soggetto_ruolo_id", d)
+        self.assertNotIn("ragione_sociale", d)
+        repo.list_selezionabili.assert_not_called()
+
+    # 19. Un claim che non e' (piu') nello scope non inventa dati: chiavi
+    #     assenti, e il FE tratta la sessione come senza emittente di scrittura.
+    def test_emittente_attivo_fuori_scope_senza_dati(self) -> None:
+        d = EmittenteAttivoService(_repo(voci=[])).descrivi(_UTENTE, 44)
+        self.assertNotIn("soggetto_ruolo_id", d)

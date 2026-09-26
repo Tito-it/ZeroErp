@@ -71,6 +71,7 @@ import { formatCurrency, formatIvaLabel, formatNumber } from '../../core/utils/f
 import { gravitaGiornaleSeverity, statoDocFiscaleSeverity } from '../../core/utils/severity'
 import { downloadBlob } from '../../core/utils/download'
 import { getFatturaDettaglio, getFatturaGiornale } from '../api/fatture'
+import { gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -444,6 +445,7 @@ function onNoteSaved(total) {
   if (typeof total === 'number' && Number.isFinite(total)) noteCount.value = total
 }
 
+const suVisibile = gestoreVisibile(emit, onClose)
 </script>
 
 <template>
@@ -451,7 +453,7 @@ function onNoteSaved(total) {
     :visible="visible"
     position="right"
     :style="{ width: DRAWER_WIDTH.WIDE }"
-    @update:visible="(v) => { if (!v) onClose() }"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
   >
     <template #header>

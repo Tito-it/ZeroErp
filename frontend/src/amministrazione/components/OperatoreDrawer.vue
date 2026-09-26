@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerFormPreserve, gestoreVisibile, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
 import { useAuthUser } from '../../core/composables/useAuthUser'
 import { useLookup } from '../../core/composables/useLookup'
 import { listUnitaOrganizzative, invitaOperatore, reinviaInvito } from '../api/amministrazione'
@@ -120,6 +121,24 @@ const INITIAL_FORM = Object.freeze({
 })
 
 const form = ref({ ...INITIAL_FORM })
+// Modifiche non salvate: fotografia all'apertura, e chiudere con modifiche
+// chiede conferma (BB useDrawerFormPreserve). In creazione username/email
+// stanno in `auth.form` e il soggetto in `soggettoSelezionato`: il confronto
+// li raccoglie accanto al form (chiavi proprie, `form` ha gia' email/soggetto_id).
+const formSalvato = computed(() => ({
+  ...form.value,
+  auth_username: auth.form.username,
+  auth_email: auth.form.email,
+  soggetto_selezionato_id: soggettoSelezionato.value?.id ?? null
+}))
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSalvato, { visibile: () => props.visible })
+
+// Tab Permessi: ha i suoi Salva e la sua fotografia (espone `modificato` e
+// `chiudiConConferma`). Chiudere il drawer chiede conferma se UNO dei due ha
+// modifiche, con un solo dialog.
+const permessiTab = ref(null)
+const tutto = unisciFotografie({ modificato, chiudiConConferma }, () => permessiTab.value)
+const modificatoTutto = tutto.modificato
 
 // Scopo: Reset form a valori iniziali.
 function resetForm() {
@@ -159,9 +178,11 @@ watch(() => props.visible, async (val) => {
         emittenti_descrizione: u.emittenti_descrizione || '',
         last_login: u.last_login || null
       }
+      fissa()
     }
   } else {
     resetForm()
+    fissa()
   }
 })
 
@@ -215,6 +236,7 @@ async function onSave() {
       { successMessage: t('notifications.save_success') }
     )
     if (result !== null) {
+      fissa()
       emit('saved')
     }
   } else {
@@ -251,6 +273,7 @@ async function onSave() {
       if (result.credenziale_riusata) {
         notify.warn(t('amministrazione.credenziale_riusata', { username: result.username }))
       }
+      fissa()
       emit('saved')
     }
   }
@@ -317,7 +340,9 @@ function onInvita() {
   })
 }
 
-const onClose = useDrawerClose(emit, 'cancelled')
+const chiudiDiretto = useDrawerClose(emit, 'cancelled')
+const onClose = () => tutto.chiudiConConferma(chiudiDiretto)
+const suVisibile = gestoreVisibile(emit, onClose)
 </script>
 
 <template>
@@ -325,11 +350,11 @@ const onClose = useDrawerClose(emit, 'cancelled')
     :visible="props.visible"
     position="right"
     :style="{ width: larghezzaDrawer }"
-    @update:visible="val => emit('update:visible', val)"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('amministrazione.operatore')" :icon="NAV_ICONS.OPERATORE" />
+      <DrawerTitle :modificato="modificatoTutto" :action="isEdit ? t('common.edit') : t('common.new')" :title="t('amministrazione.operatore')" :icon="NAV_ICONS.OPERATORE" />
     </template>
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
@@ -508,7 +533,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
 
       <!-- Tab Permessi: solo modifica -->
       <TabPanel v-if="isEdit" value="permessi">
-        <OperatorePermessiTab :auth-user-id="props.authUserId" :readonly="isReadonly" />
+        <OperatorePermessiTab ref="permessiTab" :auth-user-id="props.authUserId" :readonly="isReadonly" :visible="props.visible" />
       </TabPanel>
       </TabPanels>
     </Tabs>

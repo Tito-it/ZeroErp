@@ -333,6 +333,24 @@ export const useAuthStore = defineStore('auth', () => {
       ?? null
   )
 
+  // Scopo: dello STESSO emittente di scrittura, il ruolo (`soggetti_ruoli.id`)
+  //        e il nome. Stesse due sorgenti, stessa precedenza.
+  // ⚠️ Il ruolo NON e' la PK (`feedback_emittente_pk_vs_soggetto_ruolo`): e'
+  //    la chiave dei listini (`emittente_soggetto_ruolo_id`). Per il super
+  //    admin arriva da `/me/` (`emittente_attivo.soggetto_ruolo_id`, dal
+  //    2026-09-26): prima non c'era, e il listino gli restava non creabile
+  //    anche dopo aver scelto l'emittente.
+  const emittenteScritturaSoggettoRuoloId = computed(
+    () => emittenteCorrente.value?.soggettoRuoloId
+      ?? emittenteAttivo.value?.soggetto_ruolo_id
+      ?? null
+  )
+  const emittenteScritturaNome = computed(
+    () => emittenteCorrente.value?.ragioneSociale
+      ?? emittenteAttivo.value?.ragione_sociale
+      ?? null
+  )
+
   // Scopo: Domini visibili. Filtri applicati:
   //   - adminOnly: solo SUPER_ADMIN (es. Amm. Software).
   //   - non adminOnly: solo operatori interni (OPERATORE). I portali e lo
@@ -465,6 +483,8 @@ export const useAuthStore = defineStore('auth', () => {
     isAdminGlobale,
     emittenteCorrente,
     emittenteAttivo,
+    emittenteScritturaSoggettoRuoloId,
+    emittenteScritturaNome,
     emittenteScritturaId,
     perimetroMultiEmittente,
     puoScegliereEmittente,

@@ -38,6 +38,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { lookupUbicazioni } from '../api/magazzino'
@@ -77,7 +78,13 @@ function formVuoto() {
   }
 }
 const form = ref(formVuoto())
-const originale = ref(formVuoto())
+// La fotografia del form all'apertura (BB useDrawerFormPreserve): serve al
+// DELTA dell'edit e alle modifiche non salvate — conferma alla chiusura,
+// «Modifica» arancio. Prima il drawer ne teneva una copia propria (`originale`).
+const {
+  fissa, modificato, chiudiConConferma, fotografia,
+} = useDrawerFormPreserve(form, { visibile: () => props.visible })
+const chiudi = () => chiudiConConferma(close)
 
 // Scopo: le ubicazioni del magazzino come opzioni del padre: etichetta
 //        «codice — descrizione». PURA (solo la risposta): finisce nella cache
@@ -111,7 +118,7 @@ async function loadDetail() {
     posizione: data.posizione || '',
     attivo: data.attivo ?? true,
   }
-  originale.value = { ...form.value }
+  fissa()
 }
 
 watch(
@@ -123,7 +130,7 @@ watch(
       loadDetail()
     } else {
       form.value = formVuoto()
-      originale.value = formVuoto()
+      fissa()
     }
   },
 )
@@ -140,7 +147,7 @@ const testoONull = (v) => (v && v.trim() ? v.trim() : null)
 function deltaEdit() {
   const payload = {}
   const f = form.value
-  const o = originale.value
+  const o = fotografia.value ?? formVuoto()
   if (f.codice.trim() !== o.codice) payload.codice = f.codice.trim()
   if (f.tipo_id !== o.tipo_id) payload.tipo_id = f.tipo_id
   if (f.parent_id !== o.parent_id) payload.parent_id = f.parent_id
@@ -183,16 +190,18 @@ async function handleSave() {
     close()
   }
 }
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
-    :visible="visible" @update:visible="v => emit('update:visible', v)"
+    :visible="visible" @update:visible="suVisibile"
     position="right" :style="{ width: DRAWER_WIDTH.SIMPLE }"
     @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('magazzino.ubicazioni.titolo_singolare')"
         :icon="MANAGE_ICONS.UBICAZIONI" />
@@ -253,7 +262,7 @@ async function handleSave() {
         </div>
       </div>
 
-      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
+      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />
     </div>
   </Drawer>
 </template>

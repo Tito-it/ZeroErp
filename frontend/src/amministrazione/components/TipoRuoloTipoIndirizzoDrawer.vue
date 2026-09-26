@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n'
 import { useTipiRuoloTipiIndirizzoStore } from '../stores/tipiRuoloTipiIndirizzo'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -64,6 +65,9 @@ const form = ref({
   fallback_tipo_indirizzo_id: null,
   attivo: true
 })
+// Modifiche non salvate: fotografia all'apertura (anche in creazione), e
+// chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 
 function resetForm() {
   form.value = {
@@ -76,6 +80,7 @@ function resetForm() {
   nonEditableFields.value = []
   fallbackOptions.value = []
   detail.value = null
+  fissa()
 }
 
 async function loadDetail() {
@@ -99,6 +104,7 @@ async function loadDetail() {
   fallbackOptions.value = Array.isArray(data.fallback_options)
     ? data.fallback_options
     : []
+  fissa()
 }
 
 watch(() => props.visible, (v) => {
@@ -139,7 +145,7 @@ async function handleSave() {
       () => store.update(props.recordId, payload),
       { successMessage: t('amministrazione.matrice_indirizzi_ruoli.saved') }
     )
-    if (result !== null) { emit('saved', result); close() }
+    if (result !== null) { fissa(); emit('saved', result); close() }
   } else {
     const payload = {
       tipo_ruolo_id: form.value.tipo_ruolo_id,
@@ -154,7 +160,7 @@ async function handleSave() {
       () => store.create(payload),
       { successMessage: t('amministrazione.matrice_indirizzi_ruoli.created') }
     )
-    if (result !== null) { emit('saved', result); close() }
+    if (result !== null) { fissa(); emit('saved', result); close() }
   }
 }
 
@@ -162,15 +168,20 @@ function close() {
   emit('update:visible', false)
   emit('cancelled')
 }
+// Uscita per volonta' dell'utente: con modifiche chiede conferma. Dopo il
+// salvataggio `close()` resta diretta.
+const chiudi = () => chiudiConConferma(close)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
+  <Drawer :visible="visible" @update:visible="suVisibile"
     position="right" :style="{ width: DRAWER_WIDTH.SIMPLE }" :dismissable="true"
     @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('amministrazione.matrice_indirizzi_ruoli.drawer_title')"
       />
@@ -247,7 +258,7 @@ function close() {
         </template>
       </div>
 
-      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
+      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />
     </div>
   </Drawer>
 </template>

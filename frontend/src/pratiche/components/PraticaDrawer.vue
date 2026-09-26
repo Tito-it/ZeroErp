@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n'
 import { usePraticheStore } from '../stores/pratiche'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { displayDate, toDateString } from '../../core/utils/date'
@@ -85,6 +86,18 @@ function defaultForm() {
 const resolverVisible = ref(false)
 const contestoSelezionato = ref(null)
 const istanzaSelezionata = ref(null)
+
+// Modifiche non salvate: fotografia a form popolato (apertura, ricarica,
+// salvataggio), chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
+// In creazione contesto e istanza scelti stanno fuori dal form: il confronto
+// ne raccoglie gli id. Dopo i loro ref: il computed li legge subito (TDZ).
+const formSalvato = computed(() => ({
+  ...form.value,
+  contesto_soggetto_id: contestoSelezionato.value?.soggetto_id ?? null,
+  contesto_soggetto_ruolo_id: contestoSelezionato.value?.soggetto_ruolo_id ?? null,
+  istanza_id: istanzaSelezionata.value?.id ?? null
+}))
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSalvato, { visibile: () => props.visible })
 
 // Solo il ruolo CLIENTE ha istanze (la catena istanza -> BA -> cliente vive
 // sul ramo CL); per gli altri ruoli il campo istanza non ha senso.
@@ -176,6 +189,7 @@ watch(() => props.visible, async (val) => {
     await preselectTipoPreset()
     await preselectPrioritaDefault()
   }
+  fissa()
 }, { immediate: true })
 
 // Scopo: preset tipo dal contesto del caller (filtro lista attivo): default
@@ -223,6 +237,7 @@ async function reloadDetail() {
   const d = await store.fetchDetail(props.praticaId)
   detail.value = d
   populateFormFromDetail(d)
+  fissa()
 }
 
 // --- Azioni stato pratica ---
@@ -342,7 +357,7 @@ async function onSave() {
       () => store.update(props.praticaId, payload),
       { successMessage: t('pratiche.pratica_salvata') }
     )
-    if (result !== null) emit('saved', result)
+    if (result !== null) { fissa(); emit('saved', result) }
   } else {
     const payload = {
       tipo_prestazione_id: form.value.tipo_prestazione_id,
@@ -361,7 +376,7 @@ async function onSave() {
       () => store.create(payload),
       { successMessage: t('pratiche.pratica_creata') }
     )
-    if (result !== null) emit('saved', result)
+    if (result !== null) { fissa(); emit('saved', result) }
   }
 }
 
@@ -373,6 +388,9 @@ const canSave = computed(() => {
 })
 
 const onClose = useDrawerClose(emit, 'cancelled')
+// Uscite per volonta' dell'utente: con modifiche non salvate si chiede prima.
+const chiudi = () => chiudiConConferma(onClose)
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
@@ -380,11 +398,12 @@ const onClose = useDrawerClose(emit, 'cancelled')
     :visible="props.visible"
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
-    @update:visible="val => emit('update:visible', val)"
+    @update:visible="suVisibile"
     @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('pratiche.pratica')"
         icon="pi pi-folder"
@@ -473,7 +492,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
           </div>
         </div>
         <div>
-          <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
+          <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="chiudi" />
         </div>
 
         <!-- Sotto-drawer: SoggettoResolver -->
@@ -566,7 +585,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
             </div>
 
             <div>
-              <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
+              <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="chiudi" />
             </div>
           </TabPanel>
 

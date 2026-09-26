@@ -10,6 +10,7 @@ import { useI18n } from 'vue-i18n'
 import { useCategorieClientiListiniStore } from '../stores/categorieClientiListini'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useNotify } from '../../core/composables/useNotify'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useLookup } from '../../core/composables/useLookup'
@@ -87,6 +88,9 @@ const form = ref({
   valido_al: null,
   attivo: true
 })
+// Modifiche non salvate: fotografia all'apertura (anche in creazione), e
+// chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 
 function resetForm() {
   form.value = {
@@ -102,6 +106,7 @@ function resetForm() {
     attivo: true
   }
   nonEditableFields.value = []
+  fissa()
 }
 
 async function loadDetail() {
@@ -131,6 +136,7 @@ async function loadDetail() {
   nonEditableFields.value = Array.isArray(data.non_editable_fields)
     ? data.non_editable_fields
     : []
+  fissa()
 }
 
 // Watch combinato su visible+recordId.
@@ -209,19 +215,22 @@ async function handleSave() {
         : t('amministrazione.matrice_categorie_listini.created')
     }
   )
-  if (result !== null) emit('saved', result)
+  if (result !== null) { fissa(); emit('saved', result) }
 }
 
 function close() {
-  emit('update:visible', false)
-  emit('cancelled')
+  chiudiConConferma(() => {
+    emit('update:visible', false)
+    emit('cancelled')
+  })
 }
+const suVisibile = gestoreVisibile(emit, close)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="v => emit('update:visible', v)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     :dismissable="true"
@@ -229,6 +238,7 @@ function close() {
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('amministrazione.matrice_categorie_listini.drawer_title')"
       />

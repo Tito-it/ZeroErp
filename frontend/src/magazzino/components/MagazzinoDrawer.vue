@@ -43,6 +43,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
 import { useNotify } from '../../core/composables/useNotify'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
@@ -89,7 +90,13 @@ function formVuoto() {
   }
 }
 const form = ref(formVuoto())
-const originale = ref(formVuoto())
+// La fotografia del form all'apertura (BB useDrawerFormPreserve): serve al
+// DELTA dell'edit e alle modifiche non salvate — conferma alla chiusura,
+// «Modifica» arancio. Prima il drawer ne teneva una copia propria (`originale`).
+const {
+  preserva, fissa, modificato, chiudiConConferma, fotografia,
+} = useDrawerFormPreserve(form, { visibile: () => props.visible })
+const chiudi = () => chiudiConConferma(close)
 
 // Scopo: il record come lo vuole `EmittenteFiscaleField` in edit (legge
 //        `emittente_fiscale_codice`; la riga del BE porta `emittente_codice`,
@@ -104,7 +111,11 @@ const soggettoIndirizzi = computed(() => (
   isEdit.value ? detail.value?.emittente_soggetto_id ?? null : soggettoIdSessione.value
 ))
 
+// ⚠️ Si ricarica anche alla chiusura del sotto-drawer delle ubicazioni: senza
+//    `preserva`, la descrizione digitata e non salvata tornava com'era sul
+//    server, in silenzio (difetto trovato il 2026-09-26).
 async function loadDetail() {
+  const applica = preserva()
   detail.value = null
   const data = await loadDetailOrClose(() => store.fetchDetail(props.magazzinoId))
   if (data == null) return
@@ -118,7 +129,7 @@ async function loadDetail() {
     predefinito: data.predefinito ?? false,
     attivo: data.attivo ?? true,
   }
-  originale.value = { ...form.value }
+  applica()
 }
 
 watch(
@@ -131,7 +142,7 @@ watch(
     } else {
       detail.value = null
       form.value = formVuoto()
-      originale.value = formVuoto()
+      fissa()
       // Il super admin ha il nome (e il soggetto) del suo emittente solo dal
       // lookup: si carica qui, come fa `EmittenteFiscaleField` per l'etichetta.
       if (isAdminMode.value) loadOptions()
@@ -167,7 +178,7 @@ function onIndirizzoScelto(ind) {
 function deltaEdit() {
   const payload = {}
   const f = form.value
-  const o = originale.value
+  const o = fotografia.value ?? formVuoto()
   if (f.descrizione.trim() !== o.descrizione) payload.descrizione = f.descrizione.trim()
   if (f.indirizzo_dettaglio_id !== o.indirizzo_dettaglio_id) payload.indirizzo_dettaglio_id = f.indirizzo_dettaglio_id
   for (const flag of ['usa_ubicazioni', 'predefinito', 'attivo']) {
@@ -187,7 +198,7 @@ async function handleSave() {
       () => store.update(props.magazzinoId, payload),
       { successMessage: t('magazzino.magazzini.salvato') },
     )
-    if (result !== null) emit('saved', result)
+    if (result !== null) { fissa(); emit('saved', result) }
   } else {
     const payload = {
       codice: form.value.codice.trim(),
@@ -200,7 +211,7 @@ async function handleSave() {
       () => store.create(payload),
       { successMessage: t('magazzino.magazzini.creato') },
     )
-    if (result !== null) emit('saved', result)
+    if (result !== null) { fissa(); emit('saved', result) }
   }
 }
 
@@ -209,16 +220,18 @@ async function handleSave() {
 function onUbicazioniChiuse() {
   if (isEdit.value) loadDetail()
 }
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
-    :visible="visible" @update:visible="v => emit('update:visible', v)"
+    :visible="visible" @update:visible="suVisibile"
     position="right" :style="{ width: DRAWER_WIDTH.STANDARD }"
     @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('magazzino.magazzini.titolo_singolare')"
         :icon="NAV_ICONS.MAGAZZINO" />
@@ -309,7 +322,7 @@ function onUbicazioniChiuse() {
         </div>
       </template>
 
-      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
+      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />
     </div>
   </Drawer>
 

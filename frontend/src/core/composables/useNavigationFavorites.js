@@ -5,7 +5,13 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
 import { useNavigationStore } from '../../stores/navigation'
 import { useTabsStore } from '../../stores/tabs'
-import { DOMAINS, DOMAIN_MENUS, flattenMenu, resolveNavigationLabel } from '../navigation'
+import {
+  DOMAINS,
+  DOMAIN_MENUS,
+  flattenMenu,
+  isMenuItemAllowed as isMenuItemAllowedPer,
+  resolveNavigationLabel
+} from '../navigation'
 
 export function useNavigationFavorites() {
   const { t, te } = useI18n()
@@ -14,16 +20,10 @@ export function useNavigationFavorites() {
   const nav = useNavigationStore()
   const tabs = useTabsStore()
 
-  // Scopo: replica il filtro visibilita' delle voci L2, usato anche da SidebarDomain.
+  // Scopo: filtro visibilita' delle voci L2 legato allo store auth. La regola
+  // e' il BB `isMenuItemAllowed` di core/navigation, la stessa del router.
   function isMenuItemAllowed(item) {
-    if (!item) return false
-    if (item.requireArea && auth.isAreaBlocked(item.requireArea)) return false
-    if (Array.isArray(item.requireAnyAction) && item.requireAnyAction.length > 0) {
-      if (!auth.isSuperAdmin && !item.requireAnyAction.some(action => auth.isActionAllowed(action))) {
-        return false
-      }
-    }
-    return true
+    return isMenuItemAllowedPer(item, auth)
   }
 
   // Scopo: trasforma domain/path salvati in localStorage in metadati UI renderizzabili.

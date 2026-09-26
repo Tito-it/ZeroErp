@@ -19,6 +19,7 @@ import DocumentoDrawerHost from '../../../core/components/DocumentoDrawerHost.vu
 import { useDocumentoDrawer } from '../../../core/composables/useDocumentoDrawer'
 import LineagePassaggiContenuto from './LineagePassaggiContenuto.vue'
 import { useDocumentoPassaggi } from './useDocumentoPassaggi'
+import { gestoreVisibile } from '../../../core/composables/useDrawerFormPreserve'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -55,12 +56,13 @@ function apriDocumento(row) {
 function onClose() {
   emit('update:visible', false)
 }
+const suVisibile = gestoreVisibile(emit, onClose)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="(v) => { if (!v) onClose() }"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     :dismissable="true">

@@ -2,7 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useNavigationStore } from '../stores/navigation'
 import { useTabsStore } from '../stores/tabs'
-import { DOMAINS, resolveTabLabel, resolveTabIcon } from '../core/navigation'
+import { DOMAINS, findMenuItem, isMenuItemAllowed, resolveTabLabel, resolveTabIcon } from '../core/navigation'
 import { FE_NAMESPACE, resolveRuoloFeConfig } from '../core/constants'
 import i18n from '../core/i18n'
 import { chiudiTuttiIDrawer } from '../core/composables/useDrawerChiusuraGlobale'
@@ -45,7 +45,7 @@ function resolvePathNamespace(path) {
 
 // Genera rotte placeholder per domini senza pagine dedicate
 function domainPlaceholderRoutes() {
-  const domainsWithRoutes = new Set(['amm-software', 'anagrafiche', 'catalogo', 'config', 'magazzino', 'pagamenti', 'pratiche', 'personale', 'strumenti', 'vendite'])
+  const domainsWithRoutes = new Set(['amm-software', 'anagrafiche', 'catalogo', 'config', 'magazzino', 'pagamenti', 'pratiche', 'strumenti', 'vendite'])
   return DOMAINS
     .filter(d => !domainsWithRoutes.has(d.key))
     .map(d => ({
@@ -361,12 +361,6 @@ const router = createRouter({
           meta: { domain: 'vendite', menuKey: 'lotti' }
         },
         {
-          path: 'vendite/giornale',
-          name: 'vendite-giornale',
-          component: () => import('../vendite/views/GiornaleListView.vue'),
-          meta: { domain: 'vendite', menuKey: 'giornale' }
-        },
-        {
           // Tool della fatturazione: contenitore a tab degli elenchi che il
           // giro automatico lascia a una persona. Prima voce: i fondi fattura
           // da decidere. Sta sotto `vendite` e non sotto `strumenti` perche' i
@@ -385,13 +379,22 @@ const router = createRouter({
           component: () => import('../strumenti/views/CodeLavoroView.vue'),
           meta: { domain: 'strumenti', menuKey: 'code-lavoro' }
         },
-
-        // --- Personale (dominio senza area: lo vede ogni operatore) ---
         {
-          path: 'personale/email',
-          name: 'personale-email',
-          component: () => import('../personale/views/EmailLogView.vue'),
-          meta: { domain: 'personale', menuKey: 'email' }
+          // Strumenti → Giornale eventi: la vista e il client restano in
+          // `vendite/` perche' dati ed endpoint sono di area vendite; qui sta
+          // solo la porta di menu (cancello: `requireArea` sulla voce).
+          path: 'strumenti/giornale',
+          name: 'strumenti-giornale',
+          component: () => import('../vendite/views/GiornaleListView.vue'),
+          meta: { domain: 'strumenti', menuKey: 'giornale' }
+        },
+        {
+          // Strumenti → Email: le mail dell'operatore, voce senza area
+          // (`skip_area_check` BE): la vede ogni operatore.
+          path: 'strumenti/email',
+          name: 'strumenti-email',
+          component: () => import('../strumenti/views/EmailLogView.vue'),
+          meta: { domain: 'strumenti', menuKey: 'email' }
         },
         {
           path: 'vendite/preventivi',
@@ -723,6 +726,16 @@ router.beforeEach(async (to) => {
         && domainConfig.schemaDb && auth.isAreaBlocked(domainConfig.schemaDb)) {
       return { name: 'forbidden' }
     }
+  }
+
+  // Guard di VOCE: i cancelli `requireArea`/`requireAnyAction` della voce di
+  // menu, con la stessa regola della sidebar (BB `isMenuItemAllowed`). Serve ai
+  // domini che portano l'area sulle voci e non su di se' (Strumenti): senza,
+  // la pagina si aprirebbe dall'indirizzo e il backend risponderebbe 403.
+  // Una rotta senza voce di menu (dettagli, pagine errore) non ha cancello qui.
+  const menuItem = findMenuItem(domain, to.meta.menuKey)
+  if (menuItem && !isMenuItemAllowed(menuItem, auth)) {
+    return { name: 'forbidden' }
   }
 
   // Imposta dominio attivo nello store navigation

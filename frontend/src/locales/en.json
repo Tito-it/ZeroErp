@@ -144,6 +144,12 @@
       "descrizione": "This list does not show which issuer each row comes from, and you are currently viewing more than one. Pick an issuer from the selector at the top right: the list opens right after.",
       "etichetta_tutti": "All issuers",
       "etichetta_ricerca": "You are searching across all issuers: entries with the same name may belong to different issuers."
+    },
+    "modifiche_non_salvate": {
+      "titolo": "Unsaved changes",
+      "messaggio": "There are unsaved changes: closing will discard them. Close anyway?",
+      "chiudi": "Close without saving",
+      "indicatore": "Unsaved changes"
     }
   },
   "strumenti": {
@@ -251,7 +257,6 @@
     "contabilita": "Accounting",
     "amm-software": "Admin Software",
     "strumenti": "Tools",
-    "personale": "Personal",
     "collapse": "Collapse",
     "expand": "Expand",
     "back_home": "Home",
@@ -269,9 +274,8 @@
   },
   "nav_menu": {
     "strumenti": {
-      "code-lavoro": "Work queues"
-    },
-    "personale": {
+      "code-lavoro": "Work queues",
+      "giornale": "Event journal",
       "email": "Email"
     },
     "amm-software": {
@@ -316,7 +320,6 @@
       "dashboard-competenza": "Invoicing accrual",
       "dashboard-backlog": "Invoicing backlog",
       "lotti": "Invoicing batches",
-      "giornale": "Event journal",
       "preventivi": "Quotes",
       "offerte": "Commercial offers",
       "ordini": "Sales orders",
@@ -571,10 +574,6 @@
   },
   "tabs": {
     "close": "Close tab",
-    "close_confirm_title": "Unsaved changes",
-    "close_confirm_message": "There are unsaved changes. Close anyway?",
-    "close_confirm_accept": "Close without saving",
-    "close_confirm_reject": "Cancel",
     "split_open": "Side by side",
     "split_close": "Close side view",
     "split_select": "Select tab to show alongside",
@@ -2971,7 +2970,7 @@
       "tipologia_placeholder": "Select type",
       "tipologia_utility_first": "Select utility first",
       "banner_emittente_corrente": "The new price list will be associated with fiscal issuer {nome}.",
-      "banner_admin_globale_no_create": "Global administrators cannot create price lists: an operator linked to a fiscal issuer is required.",
+      "banner_scegli_emittente": "To create a price list, first choose the fiscal issuer to work on (top bar): with «All issuers» it is not known which one to associate it with.",
       "field_codice_versione": "Version code",
       "field_valido_dal": "Valid from",
       "field_valido_al": "Valid to",
@@ -4499,8 +4498,7 @@
       "filtro_tipo": "Channel type",
       "filtro_tipo_tutti": "All",
       "nessun_canale": "No collection channel configured: until there is one, money arriving before the invoice has no perimeter.",
-      "titolo_nuovo": "New collection channel",
-      "titolo_modifica": "Collection channel",
+      "titolo_singolare": "Collection channel",
       "creato": "Channel created.",
       "aggiornato": "Channel updated.",
       "sezione_identita": "What kind of channel",
@@ -5497,8 +5495,8 @@
   },
   "anagrafiche": {
     "clienti": {
-      "banner_admin_globale_no_create": "You are logged in as global administrator: you cannot create billing accounts when fiscal issuers exist in the system. Operate as an operator of a specific issuer.",
       "banner_emittente_corrente": "The new client will be associated with fiscal issuer {nome}.",
+      "banner_scegli_emittente": "To create a client, first choose the fiscal issuer to work on (top bar): with «All issuers» it is not known which one to associate it with.",
       "search_placeholder": "Search by name, tax ID, code...",
       "filtro_utility": "Utility",
       "filtro_stato": "Status",

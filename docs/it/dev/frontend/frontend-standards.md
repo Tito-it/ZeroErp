@@ -65,11 +65,12 @@ src/
   magazzino/          ← dominio magazzino
   pagamenti/          ← dominio pagamenti
   contabilita/        ← dominio contabilita'
-  strumenti/          ← viste operative trasversali (area `strumenti`)
-  personale/          ← le cose dell'OPERATORE, non di un'area (dal 2026-09-26):
-                        dominio SENZA `schemaDb`, quindi visibile a ogni
-                        operatore interno — la forma a video dello
-                        `skip_area_check` delle sue rotte BE. Oggi: le sue email
+  strumenti/          ← viste operative trasversali. Dominio SENZA `schemaDb`
+                        (dal 2026-09-26): le voci sono di aree diverse e
+                        ognuna porta la sua con `requireArea` — code di lavoro
+                        (`strumenti`), giornale eventi (`vendite`: vista e
+                        client restano in `vendite/`), email dell'operatore
+                        (nessuna: `skip_area_check` BE, la vede ogni operatore)
   documenti/          ← MOTORE: generazione ed emissione dei documenti (PDF,
                         scelta template), condivisa dai domini che stampano
   config/             ← configurazione (tabelle, impostazioni, modelli documenti)
@@ -3623,9 +3624,20 @@ A differenza del BLOCCATO di area (dove il route guard impedisce la navigazione)
 `DrawerTitle` include **automaticamente** il badge readonly via inject. Zero codice aggiuntivo per lo sviluppatore:
 
 ```vue
-<Drawer :visible="visible" @update:visible="...">
+<script setup>
+// Modifiche non salvate (BB useDrawerFormPreserve): fotografia a form pronto,
+// conferma su ogni uscita, «Modifica» arancio nel titolo.
+const { fissa, modificato, chiudiConConferma } =
+  useDrawerFormPreserve(form, { visibile: () => props.visible })
+const chiudi = () => chiudiConConferma(onClose)
+// X, ESC e clic fuori escono come l'Annulla: lo STESSO `chiudi`.
+const suVisibile = gestoreVisibile(emit, chiudi)
+</script>
+
+<Drawer :visible="visible" @update:visible="suVisibile">
   <template #header>
     <DrawerTitle
+      :modificato="modificato"
       :action="isEdit ? t('common.edit') : t('common.new')"
       :title="t('...')"
       icon="pi pi-briefcase"
@@ -3637,10 +3649,18 @@ A differenza del BLOCCATO di area (dove il route guard impedisce la navigazione)
     <!-- form normale, disabled si propaga via .app-readonly -->
   </div>
 
-  <FormFooter @save="onSave" @cancel="onCancel" />
+  <FormFooter @save="onSave" @cancel="chiudi" />
   <!-- pulsante Salva nascosto automaticamente se readonly -->
 </Drawer>
 ```
+
+⛔ **Una via d'uscita sola** (2026-09-26): X, ESC, clic fuori e Annulla passano
+dallo **stesso** `chiudi`, cablato con `gestoreVisibile(emit, chiudi)` — mai un
+gestore `@update:visible` scritto a mano. Con due gestori la X e l'Annulla
+finivano per emettere eventi diversi. La chiusura **dopo un salvataggio
+riuscito** resta diretta (niente conferma: non c'è niente da perdere). Più form
+nello stesso drawer, ciascuno col suo Salva → `unisciFotografie(...)`, una
+domanda sola. Dettaglio: catalogo BB, voce `useDrawerFormPreserve`.
 
 **Regole operative drawer**:
 

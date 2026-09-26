@@ -7,6 +7,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useIndirizziStore } from '../stores/indirizzi'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useIndirizzoBase, buildCivicoPart } from '../composables/useIndirizzoBase'
@@ -51,6 +52,12 @@ const addr = useIndirizzoBase()
 const editDetail = ref(null)
 const attivo = ref(true)
 
+// Modifiche non salvate (BB useDrawerFormPreserve): il form salvato e' il form
+// indirizzo del composable piu' il toggle `attivo`, visti come un oggetto solo.
+const formSalvato = computed(() => ({ ...addr.form, attivo: attivo.value }))
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSalvato, { visibile: () => props.visible })
+const chiudi = () => chiudiConConferma(() => emit('update:visible', false))
+
 const isCreate = computed(() => props.mode === 'create')
 const canSave = computed(() => {
   if (isCreate.value) return addr.validate().length === 0
@@ -89,8 +96,10 @@ watch(() => props.visible, async (val) => {
         attivo.value = d.attivo ?? true
       } catch {
         emit('update:visible', false)
+        return
       }
     }
+    fissa()
   }
 })
 
@@ -121,18 +130,19 @@ async function handleSave() {
     }
   }
 }
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="emit('update:visible', $event)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :action="isCreate ? t('common.new') : t('common.edit')" :title="t('indirizzi.indirizzo')" :icon="NAV_ICONS.INDIRIZZO" />
+      <DrawerTitle :modificato="modificato" :action="isCreate ? t('common.new') : t('common.edit')" :title="t('indirizzi.indirizzo')" :icon="NAV_ICONS.INDIRIZZO" />
     </template>
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <!-- Localizzazione -->
@@ -243,7 +253,7 @@ async function handleSave() {
         :loading="loading"
         :disabled="!canSave || addressNotFound"
         @save="handleSave"
-        @cancel="emit('update:visible', false)"
+        @cancel="chiudi"
       />
     </div>
   </Drawer>

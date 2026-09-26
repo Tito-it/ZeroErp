@@ -25,8 +25,9 @@
 >   backend non ne tiene più una copia
 >   ([brief-db-email-visibilita-per-ambito.md](../work-done/brief-db-email-visibilita-per-ambito.md) §9).
 > * ✅ **§2.3 passi 1-4 fatti il 2026-09-26**: la lista del log è aperta a ogni
->   operatore (skip d'area, decisione di Tid) nel dominio frontend nuovo
->   «Personale», voce «Email». Dettaglio nel brief §9.6.
+>   operatore (skip d'area, decisione di Tid) nel dominio frontend
+>   Strumenti, voce «Email» senza `requireArea` (era il dominio «Personale», assorbito
+>   in Strumenti lo stesso giorno). Dettaglio nel brief §9.6.
 > * ⏸ **§2.3 passo 5 — l'outbox**: resta sotto `config`, e aspetta l'azione di
 >   processo `invia_email` (D15).
 
@@ -176,7 +177,7 @@ La schermata dell'operatore **riusa** il codice lista `config.email_log`.
 | --- | --- | --- |
 | §1 — la risposta per le tredici rotte | ✅ chiusa 2026-09-11 | `migliorie-generali-BE-FE-…` D7 (la decisione) |
 | §2.4 — docstring di `EmailLogOperatoreListView` | ✅ corretto 2026-09-11, con il blocco «⛔ lo scope non sta qui» sopra la classe | `core/api/email_views.py` |
-| §2.3 passi 1-4 — client, store, view, rotta/menu | ✅ **fatti** 2026-09-26. ⚠️ Due scostamenti dal piano: la voce non è in un dominio d'area ma nel dominio nuovo «Personale» (senza area, come lo skip), e la view non è una copia di quella admin ma il BB `EmailLogLista` che le serve entrambe | `core/api/email.js`, `personale/`, `core/components/EmailLogLista.vue` |
+| §2.3 passi 1-4 — client, store, view, rotta/menu | ✅ **fatti** 2026-09-26. ⚠️ Due scostamenti dal piano: la voce non è in un dominio d'area ma nel dominio Strumenti, voce senza `requireArea` (come lo skip; il dominio porta il cancello sulle voci, non su di sé), e la view non è una copia di quella admin ma il BB `EmailLogLista` che le serve entrambe | `core/api/email.js`, `strumenti/views/EmailLogView.vue`, `core/components/EmailLogLista.vue` |
 | §2.3 passo 5 — outbox | ⛔ non iniziato (per piano, dopo la lista) | — |
 | §2.4 — `/core/email/` in `api.md` | ✅ 2026-09-26, con la schermata | `api.md` §Endpoint attivi |
 | §2.5 — ritiro `job-summary`, `manual-lookup` | ⏸ non deciso: entrambe le rotte sono ancora registrate | `core/api/urls_v1.py`, `anagrafiche/api/urls.py` |

@@ -18,6 +18,12 @@ export const useTabsStore = defineStore('tabs', () => {
   // Flag reattivo: segnala ai componenti che il limite tab e' stato raggiunto
   const tabLimitReached = ref(false)
 
+  // Chi ha modifiche non salvate, per tab: path → insieme delle sorgenti
+  // (drawer) sporche. Una tab e' sporca finche' ALMENO UNA sua sorgente lo e':
+  // con un flag solo, il primo drawer che salva lo abbasserebbe anche per
+  // l'altro ancora aperto con le sue modifiche.
+  const sorgentiSporche = new Map()
+
   // --- Split view state ---
   const pinnedTabId = ref(null)
 
@@ -102,6 +108,7 @@ export const useTabsStore = defineStore('tabs', () => {
     if (pinnedTabId.value === tabId) {
       pinnedTabId.value = null
     }
+    sorgentiSporche.delete(tabs.value[idx].path)
     tabs.value.splice(idx, 1)
     // Se era la tab attiva, attiva la piu' vicina
     if (activeTabId.value === tabId) {
@@ -133,10 +140,18 @@ export const useTabsStore = defineStore('tabs', () => {
     activeTabId.value = tabs.value[prev].id
   }
 
-  // Imposta flag dirty su una tab
-  function setDirty(path, isDirty) {
+  // Scopo: una sorgente (un drawer, via `useDrawerFormPreserve`) dice se ha
+  //        modifiche non salvate; il flag `dirty` della tab ne e' la somma.
+  //        Lo leggono il pallino di ContentTabs, la conferma di chiusura
+  //        (`useConfirmCloseTab`) e l'avviso del cambio emittente.
+  function segnalaModifiche(path, sorgente, sporca) {
+    const insieme = sorgentiSporche.get(path) ?? new Set()
+    if (sporca) insieme.add(sorgente)
+    else insieme.delete(sorgente)
+    if (insieme.size) sorgentiSporche.set(path, insieme)
+    else sorgentiSporche.delete(path)
     const tab = tabs.value.find(t => t.path === path)
-    if (tab) tab.dirty = isDirty
+    if (tab) tab.dirty = insieme.size > 0
   }
 
   // Aggiorna la label di una tab
@@ -265,6 +280,7 @@ export const useTabsStore = defineStore('tabs', () => {
 
   // Chiudi tutte le tab (usato per logout)
   function closeAll() {
+    sorgentiSporche.clear()
     tabs.value = []
     activeTabId.value = null
     pinnedTabId.value = null
@@ -289,7 +305,7 @@ export const useTabsStore = defineStore('tabs', () => {
     activateTab,
     activateNextTab,
     activatePrevTab,
-    setDirty,
+    segnalaModifiche,
     updateLabel,
     setContextAware,
     findByPath,

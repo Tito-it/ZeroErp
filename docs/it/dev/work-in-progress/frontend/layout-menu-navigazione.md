@@ -882,28 +882,34 @@ Content tabs con contesto attivo
 > prevedeva `useDirtyState`, che alzava il flag `dirty` della tab dalla
 > pagina: non e' mai entrato in uso ed e' stato ritirato.
 
-🔴 **Oggi la funzione non e' attiva: i lettori ci sono, lo scrittore no.**
+🟡 **In corso dal 2026-09-26 — scelta A di Tid: lo scrittore parte dai drawer.**
 
-| Pezzo | Stato |
-| --- | --- |
-| `stores/tabs.js`: flag `dirty` per tab, `setDirty`, `hasDirtyTabs` | presente |
-| `ContentTabs.vue`: pallino arancio sulla tab sporca | presente |
-| `useConfirmCloseTab`: conferma alla chiusura (X, `Ctrl+W`) se la tab e' sporca | presente |
-| `EmittenteAttivoSelect.vue`: nel conferma del cambio emittente, «N schede con modifiche» | presente |
-| **Chi chiama `setDirty`** | **nessuno** |
+Fino a quel giorno i lettori c'erano (flag `dirty` in `stores/tabs.js`,
+pallino in `ContentTabs.vue`, conferma di chiusura in `useConfirmCloseTab`,
+avviso «N schede con modifiche» nel cambio emittente) e lo scrittore no:
+nessuno alzava il flag, e nessun errore lo segnalava.
 
-Il flag non si alza mai: il pallino non compare, la chiusura non chiede
-conferma, e il cambio emittente — che ricarica l'intera applicazione — non
-avvisa di un drawer con modifiche non salvate. Nessun errore lo segnala.
+⚠️ `useDirtyState` non aveva mai trovato un consumatore perche' le modifiche
+non vivono nella **pagina**: vivono nel **drawer** aperto sopra la lista. Lo
+scrittore quindi sta nei drawer:
 
-⚠️ Il motivo per cui `useDirtyState` non ha mai trovato un consumatore e' nel
-modello dell'interfaccia: le modifiche non vivono nella **pagina**, vivono nel
-**drawer** aperto sopra la lista, e sono i drawer a sapere se hanno un form
-cambiato. Una soluzione, se si decide di averla, parte dai drawer (il loro
-`FormFooter` sa gia' se c'e' qualcosa da salvare) e risale alla tab: non
-riprende il composable di pagina ritirato.
-
-**Da decidere** (Tid): costruire lo scrittore dai drawer, o ritirare i lettori.
+* la fotografia del form di `useDrawerFormPreserve` risponde anche «ci sono
+  modifiche non salvate?» (`modificato`);
+* con l'opzione `visibile` il drawer lo dice alla sua tab
+  (`tabs.segnalaModifiche(path, sorgente, sporca)`): una tab e' sporca finche'
+  almeno un suo drawer aperto ha modifiche; chiudere o salvare abbassa il
+  segnale;
+* ⭐ la protezione vera sta **alla chiusura del drawer** (`chiudiConConferma`):
+  con il drawer aperto il velo copre tab e topbar, e il primo clic sulla X di
+  una tab chiudeva il drawer — cioe' abbandonava le modifiche — prima di
+  arrivare alla tab (prova in-app di Tid, 2026-09-26). Chiudere un drawer con
+  modifiche chiede «Chiudi senza salvare?»; la scritta «Modifica» del titolo
+  e' arancio finche' c'e' qualcosa da salvare;
+* collegati (2026-09-26, due giri; il primo provato in-app da Tid): tutti i drawer
+  con un form da salvare, i form inline sotto una lista, i form a elenco e
+  quelli spezzati su piu' campi, i drawer generici (`EntityFormDrawer`,
+  `GenericConfigDrawer`, `AppDrawer`). Fuori: le AppDialog (piccoli form di
+  conferma), e il drawer del lotto di vendite, che non ha un form.
 
 ### Sprint 1 — Tutta l'infrastruttura di navigazione
 

@@ -16,7 +16,7 @@ import { useUiStore } from '../../stores/ui'
 import { useConfirmCloseTab } from '../composables/useConfirmCloseTab'
 import { useNotify } from '../composables/useNotify'
 import { BREAKPOINTS, TABS } from '../constants'
-import { resolveNavigationLabel } from '../navigation'
+import { resolveTabDisplayLabel } from '../navigation'
 
 const { t, te } = useI18n()
 const router = useRouter()
@@ -46,8 +46,7 @@ const remainingClass = computed(() => {
 const splitPopover = ref(null)
 
 function tabLabel(tab) {
-  if (tab.customLabel) return tab.label
-  return resolveNavigationLabel(tab, t, te) || tab.label
+  return resolveTabDisplayLabel(tab, t, te)
 }
 
 const mobileTabOptions = computed(() =>
@@ -131,7 +130,7 @@ function handlePinTab(tab) {
             v-tooltip.top="{ value: tabLabel(tab), showDelay: 600 }"
           >{{ tabLabel(tab) }}</span>
           <!-- Indicatore dirty -->
-          <span v-if="tab.dirty" class="tab-dirty-dot" v-tooltip.top="t('tabs.close_confirm_title')"></span>
+          <span v-if="tab.dirty" class="tab-dirty-dot" v-tooltip.top="t('common.modifiche_non_salvate.indicatore')"></span>
           <!-- Indicatore contesto attivo -->
           <span
             v-else-if="tab.contextAware && context.hasContext"

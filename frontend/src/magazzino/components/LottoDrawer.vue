@@ -25,6 +25,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DATE_FORMAT, DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { parseIsoDate, toDateStringOrNull } from '../../core/utils/date'
@@ -55,7 +56,13 @@ function formVuoto() {
   return { codice: '', data_arrivo: null, data_scadenza: null, attivo: true }
 }
 const form = ref(formVuoto())
-const originale = ref(formVuoto())
+// La fotografia del form all'apertura (BB useDrawerFormPreserve): serve al
+// DELTA dell'edit e alle modifiche non salvate — conferma alla chiusura,
+// «Modifica» arancio. Prima il drawer ne teneva una copia propria (`originale`).
+const {
+  fissa, modificato, chiudiConConferma, fotografia,
+} = useDrawerFormPreserve(form, { visibile: () => props.visible })
+const chiudi = () => chiudiConConferma(close)
 
 async function loadDetail() {
   const data = await loadDetailOrClose(() => store.fetchDetail(props.lottoId))
@@ -66,7 +73,7 @@ async function loadDetail() {
     data_scadenza: parseIsoDate(data.data_scadenza),
     attivo: data.attivo ?? true,
   }
-  originale.value = { ...form.value }
+  fissa()
 }
 
 watch(
@@ -78,7 +85,7 @@ watch(
       loadDetail()
     } else {
       form.value = formVuoto()
-      originale.value = formVuoto()
+      fissa()
     }
   },
 )
@@ -93,7 +100,7 @@ const canSave = computed(() => {
 function deltaEdit() {
   const payload = {}
   const f = form.value
-  const o = originale.value
+  const o = fotografia.value ?? formVuoto()
   if (f.codice.trim() !== o.codice) payload.codice = f.codice.trim()
   for (const k of ['data_arrivo', 'data_scadenza']) {
     if (toDateStringOrNull(f[k]) !== toDateStringOrNull(o[k])) payload[k] = toDateStringOrNull(f[k])
@@ -131,16 +138,18 @@ async function handleSave() {
     close()
   }
 }
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
-    :visible="visible" @update:visible="v => emit('update:visible', v)"
+    :visible="visible" @update:visible="suVisibile"
     position="right" :style="{ width: DRAWER_WIDTH.SIMPLE }"
     @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
+        :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('magazzino.lotti.titolo_singolare')"
         :icon="MANAGE_ICONS.LOTTO_MAGAZZINO" />
@@ -185,7 +194,7 @@ async function handleSave() {
         </div>
       </div>
 
-      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
+      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />
     </div>
   </Drawer>
 </template>

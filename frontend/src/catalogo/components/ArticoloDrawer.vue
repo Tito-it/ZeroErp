@@ -21,6 +21,7 @@ import FormFooter from '../../core/components/FormFooter.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import IvaSelect from '../../core/components/IvaSelect.vue'
 import ContoContabileSelect from '../../core/components/ContoContabileSelect.vue'
@@ -57,6 +58,9 @@ const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 const isEdit = computed(() => props.mode === 'edit')
 const form = ref({})
 const detail = ref(null)
+// Modifiche non salvate: fotografia all'apertura (anche in creazione) e
+// conferma se si chiude con modifiche (BB useDrawerFormPreserve).
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 
 // Fase 5: lista campi immutabili dopo create. Arriva dal detail come metadata
 // (`detail.non_editable_fields`, fonte = `dbops.vw_non_editable_fields` + gap
@@ -180,6 +184,7 @@ async function loadDetail() {
     gestito_a_magazzino: data.gestito_a_magazzino || false,
     lead_time_giorni: data.lead_time_giorni ?? null,
   }
+  fissa()
   // Carica riepilogo in parallelo
   await Promise.all([loadUomRiepilogo(), loadBomRiepilogo(), loadNoteRiepilogo()])
 }
@@ -207,6 +212,8 @@ watch(() => props.visible, async (v) => {
   } else {
     resetForm()
     await applyFormDefaults()
+    // Dopo i default: l'IVA proposta non e' una modifica dell'operatore.
+    fissa()
   }
 })
 
@@ -283,6 +290,10 @@ function close() {
   emit('cancelled')
 }
 
+// Chiusura per volonta' dell'utente: con modifiche non salvate chiede conferma.
+// Dopo il salvataggio riuscito resta `close()`, diretta.
+const chiudi = () => chiudiConConferma(close)
+
 // Fase 7: disattivazione/riattivazione come azione di dominio.
 // L'`attivo` non passa piu' da PATCH: pulsanti dedicati con conferma
 // e refresh detail al ritorno dall'API.
@@ -357,14 +368,15 @@ const drawerActions = computed(() => {
     },
   ]
 })
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
+  <Drawer :visible="visible" @update:visible="suVisibile"
     position="right" :style="{ width: DRAWER_WIDTH.COMPLEX }" :dismissable="true"
     @after-show="onAfterShow">
     <template #header>
-      <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('catalogo.articolo')" />
+      <DrawerTitle :modificato="modificato" :action="isEdit ? t('common.edit') : t('common.new')" :title="t('catalogo.articolo')" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
@@ -581,7 +593,7 @@ const drawerActions = computed(() => {
         <i class="pi pi-spin pi-spinner" style="font-size: 1.5rem;"></i>
       </div>
 
-      <FormFooter v-if="contentReady" :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
+      <FormFooter v-if="contentReady" :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />
     </div>
   </Drawer>
 

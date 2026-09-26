@@ -16,6 +16,14 @@
 //   - onAfterStartNew/onAfterStartEdit (Contatti carica sub-lookup
 //     tipiContatto/unitaOrganizzative; Conti non ha side-effect).
 //
+// ⭐ Modifiche non salvate del form inline (2026-09-26, regola del 2, ok Tid):
+//   le tiene la collection, che possiede `formMode` e l'avvio del form. Il
+//   drawer passa `formDaConfrontare` (cio' che il Salva manda) e riceve
+//   `modificato` (per <DrawerTitle>), `annullaForm` (Annulla del form, con
+//   conferma) e `chiudiConConferma` (per le uscite dal drawer). La fotografia
+//   si fissa dopo `onAfterStartNew/Edit`, conta solo a form aperto e si
+//   azzera quando torna la lista (BB useDrawerFormPreserve).
+//
 // NON adottato da IndirizziSoggettoDrawer (falso positivo parziale: matrice
 // tipi + mode replace + multi-riga divergono troppo).
 //
@@ -36,10 +44,12 @@
 //     confirmDelete: (item, doDelete) => confirmDelete(label(item), doDelete),
 //     messages: { created, saved, deleted },
 //     onSaved: () => emit('saved'),
+//     formDaConfrontare: () => ({ ...conto.form }),
 //   })
 
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { sortByFonte } from '../../core/utils/string'
 
 export function useSoggettoRuoloCollection(config) {
@@ -61,6 +71,7 @@ export function useSoggettoRuoloCollection(config) {
     confirmDelete,
     messages,
     onSaved,
+    formDaConfrontare = () => null,
   } = config
 
   // `campiErrati`: i campi che il backend (o il DB) indica da correggere
@@ -75,6 +86,11 @@ export function useSoggettoRuoloCollection(config) {
   const formMode = ref(null)
   const editId = ref(null)
   const formErrors = ref([])
+
+  // Fotografia del form inline: vive solo a form aperto.
+  const fotografia = useDrawerFormPreserve(computed(formDaConfrontare), {
+    visibile: () => visible() && formMode.value !== null,
+  })
 
   // Scopo: Azzera gli errori client E quelli del server. `campiErrati` si
   //        azzera da se' solo al prossimo `execute`: senza questo, il campo
@@ -127,6 +143,7 @@ export function useSoggettoRuoloCollection(config) {
     resetErrori()
     resetForm()
     onAfterStartNew?.()
+    fotografia.fissa()
   }
 
   function startEdit(item) {
@@ -135,6 +152,7 @@ export function useSoggettoRuoloCollection(config) {
     resetErrori()
     populateForm(item)
     onAfterStartEdit?.(item)
+    fotografia.fissa()
   }
 
   function cancelForm() {
@@ -222,5 +240,8 @@ export function useSoggettoRuoloCollection(config) {
     cancelForm,
     saveForm,
     deleteItem,
+    modificato: fotografia.modificato,
+    annullaForm: () => fotografia.chiudiConConferma(cancelForm),
+    chiudiConConferma: fotografia.chiudiConConferma,
   }
 }

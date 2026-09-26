@@ -4,16 +4,18 @@
 // Il payload unificato va al backend che scompone e crea in transazione.
 // I trigger DEFERRED verificano al COMMIT (contatti, indirizzi, dati societari).
 
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useSoggettiStore } from '../stores/soggetti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useSoggettoForm } from '../composables/useSoggettoForm'
 import { useContattoForm } from '../composables/useContattoForm'
 import { useIndirizzoSoggettoForm } from '../composables/useIndirizzoSoggettoForm'
 import { useDatiSocietariForm } from '../composables/useDatiSocietariForm'
+import { raccogliFormInline } from '../composables/raccogliFormInline'
 import { useLookup } from '../../core/composables/useLookup'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { lookupFormeGiuridiche } from '../../core/apiCore'
@@ -103,6 +105,24 @@ const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'saved', 'saved-with-data'])
 
+// Modifiche non salvate (BB useDrawerFormPreserve) sul form del soggetto, che
+// vive nel composable, e in creazione su cio' che il Salva manda con lui:
+// contatto, indirizzo e (se la sezione e' visibile) dati societari inline.
+// ⚠️ `props.mode` e non `isEdit`: `isEdit` e' dichiarato piu' sotto, e il BB
+//    puo' leggere il computed gia' alla sua creazione (TDZ).
+const formSoggetto = computed(() => (props.mode === 'edit'
+  ? soggetto.form
+  : {
+      ...soggetto.form,
+      ...raccogliFormInline({
+        contatto,
+        indirizzo,
+        datiSocietari: soggetto.showDatiSocietari.value ? datiSocietari : null,
+      }),
+    }))
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSoggetto, { visibile: () => props.visible })
+const chiudi = () => chiudiConConferma(() => emit('update:visible', false))
+
 const isEdit = computed(() => props.mode === 'edit')
 
 // Carica forme giuridiche filtrate al cambio tipo soggetto.
@@ -152,12 +172,6 @@ watch(
     contatto.form.nominativo = _buildNominativo()
   }
 )
-
-// Auto-select tipo contatto default (primo della lista, tipicamente "Principale")
-watch(() => contatto.tipiContatto.items.value, (items) => {
-  if (isEdit.value || contatto.form.tipo_contatto_id) return
-  if (items.length > 0) contatto.form.tipo_contatto_id = items[0].id
-})
 
 // Imposta matrice indirizzi nel composable quando cambia tipo soggetto
 watch(() => soggetto.matriceIndirizzi.value, (matrice) => {
@@ -291,9 +305,20 @@ watch(() => props.visible, async (val) => {
       soggetto.form.tipo_soggetto_dettaglio_id = props.tipoDefaultId
     }
   }
-
-  // Carica lookup contatto (lazy, non blocca)
-  contatto.tipiContatto.load()
+  // Lookup contatto e, in creazione, il tipo di default (il primo della lista,
+  // tipicamente «Principale»). ⚠️ PRIMA della fotografia: e' un valore del
+  // codice, non dell'operatore — scritto dopo, il drawer nasceva «modificato».
+  // E a ogni apertura: il lookup e' in cache, e un watch sulla lista non
+  // scattava piu' dalla seconda creazione in poi.
+  try { await contatto.tipiContatto.load() } catch { /* best-effort: resta da scegliere */ }
+  const tipi = contatto.tipiContatto.items.value
+  if (!isEdit.value && !contatto.form.tipo_contatto_id && tipi.length > 0) {
+    contatto.form.tipo_contatto_id = tipi[0].id
+  }
+  // Dopo il nextTick: i watch del form (nominativo, matrice indirizzi) hanno
+  // gia' scritto le loro derivazioni, e la fotografia le include.
+  await nextTick()
+  fissa()
 })
 
 // Scopo: Validazione aggregata di tutti i building block.
@@ -394,18 +419,19 @@ async function handleSave() {
     }
   }
 }
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="emit('update:visible', $event)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('anagrafiche.soggetti.soggetto')" :icon="NAV_ICONS.ANAGRAFICHE" />
+      <DrawerTitle :modificato="modificato" :action="isEdit ? t('common.edit') : t('common.new')" :title="t('anagrafiche.soggetti.soggetto')" :icon="NAV_ICONS.ANAGRAFICHE" />
     </template>
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <!-- Sezione: Dati soggetto -->
@@ -634,7 +660,7 @@ async function handleSave() {
         :loading="loading"
         :disabled="!canSave"
         @save="handleSave"
-        @cancel="emit('update:visible', false)"
+        @cancel="chiudi"
       />
     </div>
   </Drawer>

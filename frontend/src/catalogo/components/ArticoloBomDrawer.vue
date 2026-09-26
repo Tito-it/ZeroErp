@@ -28,6 +28,7 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { paramBool, paramNumber } from '../../core/utils/parameterCast'
 import {
@@ -170,6 +171,12 @@ const adding = ref(false)
 const viewing = ref(false)
 const isFormOpen = computed(() => adding.value || viewing.value)
 const isFormReadonly = computed(() => viewing.value)
+// Modifiche non salvate del form inline «nuovo componente» (anche la nuova
+// versione del Duplica). Il dettaglio in sola lettura (`viewing`) non ha
+// niente da salvare: resta fuori.
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, {
+  visibile: () => props.visible && adding.value,
+})
 const pageActions = computed(() => [
   {
     key: 'reload',
@@ -344,11 +351,19 @@ function onComponenteSelect(item) {
 function startAdd() {
   resetFormState()
   adding.value = true
+  fissa()
 }
 
 function cancelAdd() {
   resetFormState()
 }
+
+// Annulla del form inline: con modifiche chiede conferma.
+const annullaAdd = () => chiudiConConferma(cancelAdd)
+
+// Clic su una riga col form aperto: il dettaglio prende il posto del form,
+// quindi con modifiche chiede conferma come l'Annulla.
+const onRowClick = (row) => chiudiConConferma(() => openReadonlyDetail(row))
 
 // Scopo: apre la riga BoM nello stesso form, ma in sola lettura.
 // Le righe sono immutabili: il click riga serve solo a consultare i campi
@@ -382,6 +397,10 @@ function closeReadonlyDetail() {
 // Nasconde il footer in modalita' adding per non duplicarlo con Annulla/Salva
 // del form e non spingere il form sotto al fold.
 const onClose = useDrawerClose(emit)
+
+// Chiusura del drawer per volonta' dell'utente (X/ESC/clic fuori/Chiudi):
+// con il form inline modificato chiede conferma.
+const chiudi = () => chiudiConConferma(onClose)
 
 // Scopo: apre il dialog "Duplica versione". L'operazione di chiusura+apertura
 // e' atomica lato DB (Fase 3, fn_duplica_componente_versione): il FE non
@@ -450,6 +469,7 @@ async function confermaDuplicaVersione() {
     codice: sourceRow.componente_codice,
     descrizione: sourceRow.componente_descrizione,
   }
+  fissa()
 }
 
 const canSaveForm = computed(() => {
@@ -533,7 +553,9 @@ function buildRigaActions(row) {
       // E_BOM_SORGENTE_GIA_CHIUSA su righe chiuse). Stesso check truthy
       // di chiudi-riga e dell'inline edit valido_al.
       visible: !!row.puo_chiudersi,
-      command: () => onDuplicaVersione(row),
+      // Il Duplica riscrive il form «nuovo componente»: se e' aperto e
+      // modificato, prima si chiede (e prima della PATCH di chiusura).
+      command: () => chiudiConConferma(() => onDuplicaVersione(row)),
     },
     {
       key: 'chiudi-riga',
@@ -549,18 +571,19 @@ function buildRigaActions(row) {
     },
   ]
 }
+const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
   <Drawer
     :visible="visible"
-    @update:visible="emit('update:visible', $event)"
+    @update:visible="suVisibile"
     position="right"
     :style="{ width: DRAWER_WIDTH.WIDE }"
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :action="t('common.edit')" :title="t('catalogo.tab_bom')" :icon="MANAGE_ICONS.BOM" />
+      <DrawerTitle :action="t('common.edit')" :title="t('catalogo.tab_bom')" :icon="MANAGE_ICONS.BOM" :modificato="modificato" />
     </template>
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
@@ -642,7 +665,7 @@ function buildRigaActions(row) {
           :sort-order="1"
           removable-sort
           data-key="id"
-          @row-click="event => openReadonlyDetail(event.data)"
+          @row-click="event => onRowClick(event.data)"
         >
           <Column field="componente_codice" :header="t('catalogo.col_codice')" sortable style="width: 110px;">
             <template #body="{ data }">
@@ -797,13 +820,13 @@ function buildRigaActions(row) {
               :loading="loading"
               :disabled="!canSaveForm"
               @save="onSaveNew"
-              @cancel="cancelAdd"
+              @cancel="annullaAdd"
             />
           </template>
         </template>
       </template>
 
-      <FormFooter v-if="!isFormOpen" close-only @cancel="onClose" />
+      <FormFooter v-if="!isFormOpen" close-only @cancel="chiudi" />
     </div>
   </Drawer>
 
