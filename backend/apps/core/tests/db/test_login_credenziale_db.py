@@ -278,6 +278,10 @@ class LoginViewDbTests(_ViewVere):
         self.assertEqual(r.status_code, 403)
         errore = r.json()["error"]
         self.assertEqual(errore["code"], "E_UTENTE_BLOCCATO")
+        # I minuti del freno arrivano nel `message` (dal `20260925-52`): il
+        # login del frontend lo mostra com'e' (MESSAGGIO_DB_CON_DATO). Un `%s`
+        # rimasto letterale, o il ripiego senza numero, sarebbero rossi qui.
+        self.assertRegex(errore["message"], r"riprovare fra \d+ minuti")
 
         # Da un'altra macchina la credenziale non e' frenata: la password
         # giusta supera il check e la verifica, e si ferma alla veste (che
@@ -371,13 +375,18 @@ class CicloOperatoreDbTests(_ViewVere):
         self.email = email_finta.return_value
 
     # Scopo: Crea l'operatore dal service vero (madre P-2).
-    def _crea(self, *, email: str, username: str) -> dict:
+    def _crea(self, *, email: str, username: str, codice_fiscale: str | None = None,
+              riusa_auth_user_id: int | None = None) -> dict:
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
 
-        return AmmSoftwareService().create_operatore({
-            "cognome": "Prova", "nome": "Ciclo", "codice_fiscale": _codice_fiscale(),
+        payload = {
+            "cognome": "Prova", "nome": "Ciclo",
+            "codice_fiscale": codice_fiscale or _codice_fiscale(),
             "username": username, "email": email, "qualifica_id": self.qualifica_id,
-        })
+        }
+        if riusa_auth_user_id is not None:
+            payload["riusa_auth_user_id"] = riusa_auth_user_id
+        return AmmSoftwareService().create_operatore(payload)
 
     # Scopo: Invita col service vero; ritorna il token letto dal link dell'email.
     def _invita(self, auth_user_id: int) -> str:
@@ -423,28 +432,55 @@ class CicloOperatoreDbTests(_ViewVere):
         self.assertIsNotNone(User.objects.get(id=uid).last_login)  # D-8
         self.assertIs(self._veste_attiva(uid), True)
 
-    # ⏸️ Dichiarato, non a vuoto: su dbdev la madre e' gia' alla rev -51 (brief
-    # §12.7, il riuso vuole il CONSENSO: `p_riusa_auth_user_id`, altrimenti
-    # E_CREDENZIALE_DA_CONFERMARE), che in git non c'e' ancora. Il backend non
-    # si scrive su un contratto che non e' in git: quando la -51 arriva, il
-    # service passa il consenso e questo test lo esercita (piano §4.1).
-    @unittest.skip("attende la rev -51 della madre in git (consenso al riuso, brief §12.7)")
+    # ⭐ Il riuso vuole il CONSENSO (`20260925-51`, brief §12.7): la prima
+    # creazione si ferma con E_CREDENZIALE_DA_CONFERMARE, e passa solo
+    # dichiarando la credenziale trovata (`riusa_auth_user_id`).
     def test_credenziale_riusata_un_clic_e_password_intatta(self):
         # Una persona che ha gia' un accesso (qui senza vesti: basta la
         # credenziale con una password vera).
         persona = _nuova_credenziale()
         persona.email = f"{persona.username}@example.invalid"
         persona.save(update_fields=["email"])
+        cf = _codice_fiscale()
 
-        creato = self._crea(email=persona.email.upper(), username="ignorato_dalla_madre")
+        # Primo tempo: senza consenso si ferma. Il service non traduce: il
+        # DatabaseError arriva al middleware (punto 1 di api.md), che legge il
+        # codice dal canale strutturato, come qui. Il messaggio nomina lo
+        # username trovato: e' cio' che il dialog mostra all'admin.
+        # ⚠️ Ogni rifiuto in un savepoint: senza, la transazione del test
+        # resterebbe abortita per le chiamate dopo.
+        with self.assertRaises(DatabaseError) as ctx, transaction.atomic():
+            self._crea(email=persona.email.upper(), username="ignorato_dalla_madre",
+                       codice_fiscale=cf)
+        # ⚠️ Il canale strutturato, non `db_error_code`: quello ripiega sul
+        #    testo, e renderebbe verde il test anche senza il codice nel canale.
+        self.assertEqual(structured_db_error_code(ctx.exception), "E_CREDENZIALE_DA_CONFERMARE")
+        self.assertIn(persona.username, str(ctx.exception))
+
+        # La dichiarazione di un'ALTRA credenziale non passa: una che esiste
+        # davvero, non un id inventato (proverebbe solo «id inesistente»).
+        altra = _nuova_credenziale()
+        with self.assertRaises(DatabaseError) as ctx, transaction.atomic():
+            self._crea(email=persona.email.upper(), username="ignorato_dalla_madre",
+                       codice_fiscale=cf, riusa_auth_user_id=altra.id)
+        self.assertEqual(structured_db_error_code(ctx.exception), "E_CREDENZIALE_DA_CONFERMARE")
+
+        # Secondo tempo: confermata la credenziale trovata, si crea.
+        creato = self._crea(email=persona.email.upper(), username="ignorato_dalla_madre",
+                            codice_fiscale=cf, riusa_auth_user_id=persona.id)
         self.assertTrue(creato["credenziale_riusata"])
         self.assertEqual(creato["auth_user_id"], persona.id)
         self.assertEqual(creato["username"], persona.username)
 
-        # Veste spenta: la password e' giusta ma la porta e' chiusa.
+        # Prima dell'attivazione non si entra. Qui la credenziale non ha
+        # nessun'altra veste attiva, quindi `is_active` (l'OR delle vesti,
+        # guida multi-face §9) e' spento e l'autenticazione rifiuta prima di
+        # guardare la porta: 401, come per l'operatore nuovo. Con un'altra
+        # veste attiva (un cliente del portale) sarebbe il 403
+        # E_VESTE_NON_ATTIVA della porta chiusa.
+        self.assertIs(User.objects.get(id=persona.id).is_active, False)
         r = self._login(persona.username, _PASSWORD, "198.51.100.31")
-        self.assertEqual(r.status_code, 403)
-        self.assertEqual(r.json()["error"]["code"], "E_VESTE_NON_ATTIVA")
+        self.assertEqual(r.status_code, 401)
 
         token = self._invita(persona.id)
         self.assertFalse(self._richiede_password(token))

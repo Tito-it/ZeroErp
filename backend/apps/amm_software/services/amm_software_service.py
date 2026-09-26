@@ -18,6 +18,7 @@ from django.db import DatabaseError, transaction
 
 from apps.core.api.payload_validators import optional_int
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.permissions_cache import invalidate_department, invalidate_user
@@ -128,7 +129,7 @@ def _run_or_raise_super_admin_guard(repo_call: Callable[[], None]) -> None:
         if _E_PROFILO_ULTIMO_SUPER_ADMIN in msg:
             raise ServiceError(
                 code=_E_PROFILO_ULTIMO_SUPER_ADMIN,
-                message="Impossibile rimuovere l'ultimo super admin attivo.",
+                message=ErrorPolicyRegistry.resolve(_E_PROFILO_ULTIMO_SUPER_ADMIN).user_message,
                 detail=msg,
             ) from exc
         # Fase 5: il refactor DB di Fase 2 ha sostituito `RAISE EXCEPTION 22023`
@@ -167,7 +168,10 @@ class AmmSoftwareService:
     # utilizzabile e la persona la sceglie attivando. Se l'email e' gia' di
     # una credenziale (D-6) la si riusa: la risposta lo dice
     # (`credenziale_riusata`, `username` effettivo) perche' il pannello lo
-    # mostri all'admin.
+    # mostri all'admin. ⛔ Il riuso vuole il consenso (`20260925-51`): la
+    # prima chiamata va SENZA `riusa_auth_user_id`; sul 409
+    # `E_CREDENZIALE_DA_CONFERMARE` il pannello mostra la credenziale trovata e,
+    # confermato, rimanda con il suo id. Il service non lo deduce: lo passa.
     def create_operatore(self, payload: dict) -> dict[str, Any]:
         ErrorManager.require(
             "ruolo_sistema" not in payload,
@@ -240,6 +244,7 @@ class AmmSoftwareService:
             comune_nascita_id=optional_int(payload, "comune_nascita_id"),
             indirizzo_resid_dettaglio_id=optional_int(payload, "indirizzo_resid_dettaglio_id"),
             indirizzo_domfisc_dettaglio_id=optional_int(payload, "indirizzo_domfisc_dettaglio_id"),
+            riusa_auth_user_id=optional_int(payload, "riusa_auth_user_id"),
         )
         dettaglio = self._repo.get_operatore_detail(creato["auth_user_id"]) or {}
         return {**dettaglio, "credenziale_riusata": creato["credenziale_riusata"]}
@@ -290,12 +295,20 @@ class AmmSoftwareService:
     # `E_PROFILO_ULTIMO_SUPER_ADMIN`.
     def disabilita_operatore(self, auth_user_id: int) -> dict[str, Any]:
         operatore = self.get_operatore(auth_user_id)
+        # ⛔ `disable_reason` e' un CODICE (`ULTIMO_SUPER_ADMIN`, §16 del
+        #    brief blocco-login), non una spiegazione: non si ricopia nel
+        #    `detail`. Viaggia nel contesto, per il log. Il messaggio e'
+        #    quello del catalogo, come nella traduzione del trigger: preview e
+        #    autorita' dicono la stessa frase.
         if operatore.get("can_disable") is False:
             raise ServiceError(
                 code=_E_PROFILO_ULTIMO_SUPER_ADMIN,
-                message="Impossibile rimuovere l'ultimo super admin attivo.",
-                detail=operatore.get("disable_reason")
-                or "Deve esistere almeno un super admin attivo nel sistema.",
+                message=ErrorPolicyRegistry.resolve(_E_PROFILO_ULTIMO_SUPER_ADMIN).user_message,
+                detail="Deve esistere almeno un super admin attivo nel sistema.",
+                context={
+                    "auth_user_id": auth_user_id,
+                    "reason": operatore.get("disable_reason"),
+                },
             )
         # ⛔ Disattivazione e revoca delle sessioni in UNA transazione
         #    (2026-09-26): la disattivazione prima committava da sola, e una

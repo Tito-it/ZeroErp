@@ -39,18 +39,23 @@ class OperatoreDetailRow(OperatoreRow):
     Capability fields (Fase 1 multi-face, popolati da
     `script.fn_get_operatore_detail`):
 
-    - ``can_invite``/``invite_reason``: derivati da
-      ``script.fn_check_operatore_invitabile``. ``invite_reason`` e' una
-      stringa libera it-IT (vedi nota team DB sul pattern attuale; eventuale
-      futura migrazione a codici stabili va coordinata col FE che oggi
-      mostra il testo cosi' com'e').
+    ⭐ Ogni motivo e' una COPPIA (dal ``20260927-02``, §16 del brief
+    blocco-login): ``<verbo>_reason`` e' il **codice macchina** del primo
+    motivo (``VESTE_GIA_ATTIVA``, ``ULTIMO_SUPER_ADMIN``…), NULL se l'azione
+    e' ammessa; ``<verbo>_reason_key`` e' la **chiave i18n** della frase. Il
+    testo non viaggia (api.md §«Capability di riga»): lo compone il FE.
+
+    - ``can_invite``/``invite_reason``/``invite_reason_key``: derivati da
+      ``script.fn_check_operatore_invitabile`` (``reason``/``reason_key``).
     - ``can_disable``/``disable_reason``: preview del trigger DB
       ``trgfn_profili_accesso_bindings_guard_ultimo_super_admin``. **Non e'
       una garanzia**: in caso di race tra sessioni l'UPDATE puo' comunque
       fallire con ``E_PROFILO_ULTIMO_SUPER_ADMIN``. Il trigger resta
       l'autorita'; il FE usa la preview solo per nascondere il pulsante UX.
-    - ``can_demote_super_admin``/``demote_reason``: simmetrico per la
-      rimozione del binding SUPER_ADMIN.
+      Motivo: ``disable_reason``/``disable_reason_key``.
+    - ``can_demote_super_admin``/``demote_reason``/``demote_reason_key``:
+      simmetrico per la rimozione del binding SUPER_ADMIN. Stesso codice di
+      disable (la condizione e' una), chiave diversa (dice QUALE azione).
     """
     soggetto_id: str | None
     ragione_sociale_completa: str | None
@@ -72,3 +77,8 @@ class OperatoreDetailRow(OperatoreRow):
     # ⚠️ Non e' `attivo` (risorsa umana) ne' `is_active` (credenziale, da
     # tutte le vesti): e' l'unico campo che dice se QUESTA porta e' aperta.
     veste_attiva: bool | None
+    # Le chiavi i18n dei tre motivi (§16, `20260927-02`, in coda come nel
+    # RETURNS TABLE): NULL quando l'azione e' ammessa.
+    invite_reason_key: str | None
+    disable_reason_key: str | None
+    demote_reason_key: str | None

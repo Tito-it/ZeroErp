@@ -1214,7 +1214,22 @@
     "select_emittenti": "Seleziona emittenti",
     "invita_operatore": "Invia invito",
     "reinvia_invito": "Reinvia invito",
-    "accesso_gia_attivo": "Accesso gia' attivo: l'invito non serve.",
+    "operatori": {
+      "invito_reason": {
+        "utente_non_trovato": "Operatore non trovato: l'invito non si può inviare.",
+        "senza_veste_operatore": "L'operatore non ha un accesso da operatore: l'invito non si può inviare.",
+        "veste_gia_attiva": "Accesso già attivo: l'invito non serve.",
+        "piu_vesti_spente": "Ci sono più accessi da operatore spenti sulla stessa credenziale: serve un intervento manuale.",
+        "veste_fuori_finestra": "L'accesso da operatore è fuori dal periodo di validità: l'invito non si può inviare.",
+        "senza_email": "Nessun indirizzo email configurato: l'invito non si può inviare."
+      },
+      "disabilita_reason": {
+        "ultimo_super_admin": "È l'ultimo super admin attivo: non si può disattivarne l'accesso."
+      },
+      "rimuovi_super_admin_reason": {
+        "ultimo_super_admin": "È l'ultimo super admin attivo: non si può togliergli il ruolo."
+      }
+    },
     "invito_inviato": "Invito inviato",
     "invito_inviato_il": "Invito inviato il {data}",
     "invito_confirm_title": "Conferma invio invito",

@@ -634,6 +634,7 @@ una.** Le famiglie in servizio sono tre, e nessuna è il calco delle altre:
 | riga mapping BA                                      | `can_remove`        | `rimozione_blocco_reason`                 | `rimozione_blocco_reason_key`                                                                |
 | righe reso · coda accrediti                          | —                   | `annullo_blocco_codice` · `blocco_codice` | —                                                                                            |
 | riga del piano d'inventario (magazzino, 2026-09-23)  | — (`esito = NON_POSTABILE`) | `posting_blocco_reason`         | `posting_blocco_reason_key`                                                                  |
+| dettaglio operatore (amm. software, 2026-09-27)      | `can_invite` · `can_disable` · `can_demote_super_admin` | `invite_reason` · `disable_reason` · `demote_reason` | `invite_reason_key` · `disable_reason_key` · `demote_reason_key` |
 
 ⭐ **Solo le prime due sono terne coerenti** (la famiglia 1): motivo e chiave
 si ricavano dal nome del flag, quindi chi ne legge uno sa già come si chiamano
@@ -642,7 +643,7 @@ gli altri due — e il client le legge con un solo prefisso
 motivo che non discende dal flag; la quarta non ha flag **e** porta due nomi
 diversi per la stessa cosa su due superfici. La quinta, il piano d'inventario,
 non ha flag perché l'esito della riga lo è già, e porta la coppia col nome del
-verbo che blocca (`posting_`). E la terna `can_registra` · `can_registra_reason`
+verbo che blocca (`posting_`). La sesta, il dettaglio operatore, ha il flag col verbo (`can_invite`) e la coppia col solo verbo (`invite_reason`, `invite_reason_key`): il motivo non discende dal flag, come nella terza, ma motivo e chiave sì fra loro — il client le legge con `bloccoMotivo` e il prefisso del verbo (`motivoBloccoRiga(t, te, dettaglio, 'invite')`). E la terna `can_registra` · `can_registra_reason`
 · `can_registra_reason_key` del documento interno di magazzino è della famiglia 1. ⚠️ Il predicato di «Esegui ora»
 sta in **Python** (`avvio_manuale.motivi_esegui_ora`) perché la whitelist è del
 deploy e il database non conosce le unit — ma la regola del trasporto vale

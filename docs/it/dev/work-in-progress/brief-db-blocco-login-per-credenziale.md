@@ -10,12 +10,15 @@
 > B-9…B-16 committato (`e7dbbad73`).
 > 🟢 **§16** (i motivi del dettaglio operatore come codici): `20260927-01`,
 > `-02` **applicati il 2026-09-27**, test verdi. **Il lavoro DB del brief è
-> chiuso.** ⛔ Restano backend e frontend: B-17…B-19 e F-3 (§16.4) — finché
-> mancano, il drawer mostra codici al posto delle frasi e il rifiuto
-> dell'invito ripiega su un testo generico —, poi B-8 e F-1 (§12.8) e la guida
-> `architettura-multi-face-auth` §3.1 (§8). Elenco completo al §12.6.
+> chiuso.** 🟢 Backend e frontend del 2026-09-27 scritti (non committati):
+> B-17…B-19 e F-3 (§16.4), B-8 e F-1 (§12.8), la guida
+> `architettura-multi-face-auth` §3.1 (§8). ⛔ Resta **B-6** (§12.4), il
+> consenso al riuso della credenziale: il backend passa già
+> `p_riusa_auth_user_id`, ma il dialog non si può scrivere perché i dati da
+> confermare non arrivano al client. ⏳ **Richiesta al team DB al §17.**
+> Elenco completo al §12.6.
 >
-> **Da leggere per primo**: §16 (il lavoro aperto), poi §12.6 (cosa resta), §12
+> **Da leggere per primo**: §17 (il lavoro aperto), poi §12.6 (cosa resta), §12
 > (il P-2), §11 (il P-1) e §2.
 >
 > **Due lavori, in quest'ordine**: **P-1** login, blocco e cambio password
@@ -1081,15 +1084,18 @@ il ripiego non va avanti al catalogo):
   con la chiave i18n. ✅ Decisioni di Tid (2026-09-27): `motivo` ritirato, nomi
   dei campi invariati con `_reason_key` accanto. `20260927-01`, `-02`
   ✅ applicati (Tid, 2026-09-27), test verdi (§16.3).
-- ⏳ Backend/Frontend: **B-17…B-19** e **F-3** (§16.4) — ora urgenti: il DB
-  non emette più `motivo` né frasi.
-- ⏳ Backend/Frontend: **B-8** e **F-1** (§12.8). Verificato il 2026-09-26: il
-  ripiego in `error_messages_fallback.py` ha ancora il testo vecchio, e
-  `LoginView.vue` tiene `E_UTENTE_BLOCCATO` in `ERROR_CODE_MAP` («frase
-  chiusa»): i minuti del `-52` non arrivano all'operatore.
-- ⏳ Guida `architettura-multi-face-auth` §3.1 (del backend, §8), con la veste che
-  nasce spenta e porta/profili sganciati: verificato il 2026-09-26, non ancora
-  scritta.
+- ✅ Backend/Frontend: **B-17…B-19** e **F-3** (§16.4), 2026-09-27 (dettaglio
+  nel Registro). ⏳ Resta il controllo a video di F-3 (§16.4, ultima nota).
+- ✅ Backend/Frontend: **B-8** e **F-1** (§12.8), 2026-09-27: ripiego senza
+  `%s`, `E_UTENTE_BLOCCATO` fra i rifiuti che mostrano il `message` del DB;
+  `test_login_credenziale_db` pinna i minuti nell'envelope vero.
+- ✅ Guida `architettura-multi-face-auth` §3.1 (§8), 2026-09-27: una persona una
+  credenziale, veste spenta, porta e profili sganciati; corretta la riga che
+  dava il cambio password «acceso dall'invito» (smentita da A-1).
+- 🟡 Backend/Frontend: **B-6** (§12.4) — il consenso al riuso (`-51`).
+  ✅ 2026-09-27: `p_riusa_auth_user_id` va da view a madre, e
+  `test_login_credenziale_db` (non più sospeso) prova i due tempi sul DB vero.
+  ⏳ Il dialog di conferma **aspetta il DB**: §17.
 
 ## 13. R-7 — La risposta del login non dice se il nome esiste (disegno, 2026-09-25)
 
@@ -1472,6 +1478,72 @@ legge `disable_reason` né `demote_reason`, quindi il motivo di quei due pulsant
 spenti non arriva all'operatore. F-3 lo porta a video. Controllare che il tooltip
 compaia davvero, perché nessun presidio lo vede.
 
+## 17. Il dialog del consenso non ha i suoi dati (backend, 2026-09-27)
+
+### 17.1 Il problema, sul modello
+
+Il `-51` (§12.7) mette `auth_user_id`, `username` e `vesti` della credenziale
+trovata nel **contesto** di `E_CREDENZIALE_DA_CONFERMARE`, «per il dialog»
+(manual della madre, descrizione in `codici_errore.csv`). Ma il contesto
+**non è un canale verso il client**: `script.fn_log_and_raise_error` lo scrive
+in `dbops.error_log`, e l'eccezione porta solo messaggio, `DETAIL`, `HINT` e i
+tre canali strutturati — codice (`CONSTRAINT`), campo (`COLUMN`), bersaglio
+(`DATATYPE`). Verificato sul corpo della funzione (doc auto-gen, `RAISE … USING`).
+
+Quindi al backend arrivano l'email e lo username (nel messaggio), ma **non l'id
+da dichiarare** né le vesti da mostrare: il dialog di B-6 così com'è scritto non
+si può fare. E non esiste una lettura a DB «la credenziale di questa email, con
+le sue vesti»: la sola sede della lista delle vesti è la `jsonb_agg` dentro la
+madre.
+
+Le strade scartate (decisione di Tid, 2026-09-27): un canale generico di dati
+nell'eccezione (tocca `fn_log_and_raise_error` e i cinque punti di traduzione:
+cantiere a sé); la rilettura in Python di id e vesti (seconda copia della
+lettura delle vesti, e un campo nuovo nell'envelope).
+
+### 17.2 Cosa si chiede al team DB
+
+- Una funzione di **lettura** `script.fn_get_credenziale_per_email(p_email text)`
+  (nome a scelta del team DB) → `TABLE(auth_user_id integer, username text,
+  vesti jsonb)`: zero righe se l'email non ha credenziale; la credenziale la
+  trova `script.fn_get_auth_user_id_for_email` (quindi senza distinguere
+  maiuscole e minuscole, e con `E_CREDENZIALE_EMAIL_AMBIGUA` dove serve);
+  `vesti` nella forma che la madre già costruisce (`ruolo_applicativo`,
+  `attivo`, `soggetto`, in ordine di id).
+- ⭐ **Regola del 2**: la madre, nel passo 2-bis, legge username e vesti **da
+  questa funzione** al posto della sua `jsonb_agg`. Dialog e rifiuto leggono
+  così la stessa cosa, e non possono divergere.
+- ❓ **Da decidere (Tid / team DB): chi può chiamarla.** Dice se un'email ha un
+  accesso e con quali vesti: è un'informazione da amministratore. Lato backend
+  il solo chiamante sarà un endpoint `AdminAPIView` (SUPER_ADMIN); la domanda è
+  se metterle anche a DB il guard `script.fn_guard_super_admin`, come ai verbi
+  di blocco e sblocco (D-B1).
+- Manual della madre e descrizione di `E_CREDENZIALE_DA_CONFERMARE`: togliere
+  «il contesto porta … per il dialog», che promette un trasporto che non c'è;
+  il contesto resta, ma per il log.
+- pgTAP: la funzione sui tre casi (email nuova → zero righe; credenziale senza
+  vesti → `vesti = []`; credenziale con vesti), e la madre invariata
+  (`test-crea-operatore-riusa-credenziale-v1`).
+
+### 17.3 Cosa farà il backend e il frontend, dopo il changeSet
+
+| # | Dove | Cosa |
+| --- | --- | --- |
+| B-20 | `amm_software` | lettura nel repository e `GET …/operatori/credenziale-per-email/?email=` (`AdminAPIView`) |
+| F-4 | `OperatoreDrawer` | sul 409 `E_CREDENZIALE_DA_CONFERMARE` (senza toast: `azioniGestite`) legge la credenziale e apre un `AppDialog` con username e vesti; confermato, ripete la creazione con `riusa_auth_user_id` = l'id letto. Se nel frattempo la credenziale è cambiata la madre rifiuta di nuovo, e il dialog si ripropone: è la ragione per cui si dichiara un id e non un sì. `E_CREDENZIALE_ALTRA_PERSONA` non apre il dialog: si corregge l'email |
+
+✅ Già fatto (2026-09-27), e non dipende dal §17: `riusa_auth_user_id` da
+view a repository (`p_riusa_auth_user_id`), assente = `NULL`, cioè la prima
+chiamata chiede sempre la conferma. Test: `test_amm_software_service` (il
+trasporto) e `test_login_credenziale_db` (i due tempi sul DB vero, compresa la
+dichiarazione di un'altra credenziale rifiutata).
+
+⚠️ **Trovato strada facendo**, nello stesso test mai eseguito finché era
+sospeso: su una credenziale **senza altre vesti attive**, dopo la creazione
+`is_active` è spento (è l'OR delle vesti) e il login risponde **401**, non il
+403 `E_VESTE_NON_ATTIVA` che il test si aspettava. È il modello, non un
+difetto: il test è corretto, con la ragione scritta.
+
 ## Registro
 
 | Data | Chi | Cosa |
@@ -1509,6 +1581,9 @@ compaia davvero, perché nessun presidio lo vede.
 | 2026-09-27 | Tid | §16: `motivo` ritirato; nomi dei campi invariati, `_reason_key` accanto |
 | 2026-09-27 | DB | §16 scritto e provato (§16.3): `20260927-01` (check: `reason` + `reason_key`, `motivo` ritirato), `-02` (dettaglio: tre `_reason_key`, `DROP` + `CREATE`); due pgTAP adeguati (check plan 13). Manual aggiornati. Non applicato; con B-17…B-19 e F-3 (§16.4) |
 | 2026-09-27 | Tid | `20260927-01`, `-02` applicati; pgTAP verdi. Lavoro DB del brief chiuso. Resta a BE/FE: B-17…B-19, F-3 (§16.4), B-8, F-1 (§12.8), guida multi-face (§8) |
+| 2026-09-27 | BE | **B-17**: il rifiuto `E_INVITO_OPERATORE` prende il messaggio del catalogo (`ErrorPolicyRegistry`), `reason`/`reason_key` nel contesto; ripiego di `_check_invitabile` nella forma nuova. **B-18**: `invite_/disable_/demote_reason_key` in `OperatoreDetailRow`, docstring riscritta. **B-19**: il `detail` del rifiuto ultimo super admin non ricopia più il codice (va nel contesto). **B-8**: ripiego di `E_UTENTE_BLOCCATO` = frase del `-52` senza `%s`. Test: `test_invito_operatore`, `test_amm_software_service`, `test_login_credenziale_db` (+ i minuti nel `message` dell'envelope) verdi. Guida multi-face §3.1 e api.md (sesta famiglia di capability) |
+| 2026-09-27 | BE | B-6, parte che non dipende dal DB: `riusa_auth_user_id` dalla view alla madre; test del consenso sbloccato e verde. Trovato: i dati del dialog stanno nel contesto dell'errore, che non arriva al client (§17). Tid sceglie la lettura a DB + dialog; richiesta al team DB al §17.2 |
+| 2026-09-27 | FE | **F-3**: `OperatoreDrawer` rende i tre motivi col BB `bloccoMotivo` (prefissi `invite`/`disable`/`demote`), ritirato il ramo `veste_attiva`; i toggle «super admin» e «accesso attivo» spenti col motivo sotto quando `can_demote_super_admin`/`can_disable` sono falsi. Otto chiavi in `it.json`/`en.json`, ritirata `amministrazione.accesso_gia_attivo`. **F-1**: `E_UTENTE_BLOCCATO` in `MESSAGGIO_DB_CON_DATO`. `check_i18n_keys`, eslint e `npm run guards` verdi. ⚠️ Trovato: B-6 (consenso al riuso) mai fatto, §12.6 |
 
 ---
 {% include-markdown "signature-core.md" %}

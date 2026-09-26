@@ -286,7 +286,8 @@ class AmmSoftwareRepository:
         return results, total_count
 
     # Scopo: Restituisce il dettaglio completo di un operatore con conteggi
-    # override e i 6 campi capability (can_invite/disable/demote + reason).
+    # override e i 9 campi capability (can_invite/disable/demote + reason
+    # + reason_key, §16).
     #
     # Delega interamente a `script.fn_get_operatore_detail(p_auth_user_id)`
     # (Fase 1 multi-face): la fn DB e' single source of truth per la
@@ -581,6 +582,10 @@ class AmmSoftwareRepository:
     # ⛔ La veste OPERATORE nasce SEMPRE spenta: la accende l'attivazione
     # dell'invito. Credenziale gia' operatore (veste attiva o spenta) →
     # `E_CREDENZIALE_GIA_OPERATORE` dal DB.
+    # ⭐ Il riuso non e' silenzioso (`20260925-51`): `riusa_auth_user_id` e'
+    # la DICHIARAZIONE della credenziale che l'admin ha visto e confermato.
+    # Senza, o con un'altra, la madre ferma con `E_CREDENZIALE_DA_CONFERMARE`;
+    # su un'altra persona fisica con `E_CREDENZIALE_ALTRA_PERSONA`.
     # Ritorna {auth_user_id, username, credenziale_riusata}.
     def crea_operatore(
         self,
@@ -602,6 +607,7 @@ class AmmSoftwareRepository:
         comune_nascita_id: int | None = None,
         indirizzo_resid_dettaglio_id: int | None = None,
         indirizzo_domfisc_dettaglio_id: int | None = None,
+        riusa_auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         sql = """
             SELECT auth_user_id, username, credenziale_riusata
@@ -622,7 +628,8 @@ class AmmSoftwareRepository:
                 p_valido_al                      := %s::date,
                 p_comune_nascita_id              := %s,
                 p_indirizzo_resid_dettaglio_id   := %s,
-                p_indirizzo_domfisc_dettaglio_id := %s
+                p_indirizzo_domfisc_dettaglio_id := %s,
+                p_riusa_auth_user_id             := %s
             )
         """
         params = [
@@ -635,6 +642,7 @@ class AmmSoftwareRepository:
             comune_nascita_id,
             indirizzo_resid_dettaglio_id,
             indirizzo_domfisc_dettaglio_id,
+            riusa_auth_user_id,
         ]
         with connection.cursor() as cursor:
             cursor.execute(sql, params)

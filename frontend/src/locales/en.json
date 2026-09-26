@@ -1214,7 +1214,22 @@
     "select_emittenti": "Select issuers",
     "invita_operatore": "Send invitation",
     "reinvia_invito": "Resend invitation",
-    "accesso_gia_attivo": "Access already active: no invitation needed.",
+    "operatori": {
+      "invito_reason": {
+        "utente_non_trovato": "Operator not found: the invitation cannot be sent.",
+        "senza_veste_operatore": "The operator has no operator access: the invitation cannot be sent.",
+        "veste_gia_attiva": "Access already active: no invitation needed.",
+        "piu_vesti_spente": "There are several disabled operator accesses on the same credential: manual intervention required.",
+        "veste_fuori_finestra": "The operator access is outside its validity period: the invitation cannot be sent.",
+        "senza_email": "No email address configured: the invitation cannot be sent."
+      },
+      "disabilita_reason": {
+        "ultimo_super_admin": "This is the last active super admin: their access cannot be disabled."
+      },
+      "rimuovi_super_admin_reason": {
+        "ultimo_super_admin": "This is the last active super admin: the role cannot be removed."
+      }
+    },
     "invito_inviato": "Invitation sent",
     "invito_inviato_il": "Invitation sent on {data}",
     "invito_confirm_title": "Confirm invitation",

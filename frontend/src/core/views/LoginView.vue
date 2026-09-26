@@ -33,26 +33,25 @@ const loading = ref(false)
 // generico (niente enumeration di quali canali sono attivi).
 // `E_CREDENZIALE_BLOCCATA`: blocco deciso dall'amministratore, vale su
 // tutte le porte e non scade da solo (config.credenziali).
-// `E_UTENTE_BLOCCATO`: freno sulla sola coppia credenziale + provenienza. E'
-// una frase chiusa (i minuti restano nel contesto del DB): la frase del DB
-// non porta nessun dato in piu', e la chiave i18n e' tradotta.
 const ERROR_CODE_MAP = {
   E_UTENTE_DISABILITATO: 'auth.account_disabled',
   E_UTENTE_NON_ATTIVO: 'auth.account_not_active',
   E_UTENTE_SCADUTO: 'auth.account_expired',
   E_VESTE_NON_ATTIVA: 'auth.veste_non_attiva',
-  E_CREDENZIALE_BLOCCATA: 'auth.credential_locked',
-  E_UTENTE_BLOCCATO: 'auth.account_locked'
+  E_CREDENZIALE_BLOCCATA: 'auth.credential_locked'
 }
 
 // Rifiuti per cui si mostra la frase del DB (`message`), perche' porta un
 // dato che la chiave i18n non ha; la chiave e' il ripiego se manca.
-// `E_LOGIN_ATTESA` porta i secondi da aspettare.
+// `E_LOGIN_ATTESA` porta i secondi da aspettare; `E_UTENTE_BLOCCATO` (il
+// freno sulla sola coppia credenziale + provenienza) i minuti, dal
+// `20260925-52` — prima era una frase chiusa e stava in ERROR_CODE_MAP.
 // ⛔ Non `detail`: per questi codici porta la CAUSA del catalogo («Dopo molti
 // tentativi…»), senza il numero. Verificato sull'envelope vero, 2026-09-25
 // (test_login_credenziale_db).
 const MESSAGGIO_DB_CON_DATO = {
-  E_LOGIN_ATTESA: 'auth.login_wait'
+  E_LOGIN_ATTESA: 'auth.login_wait',
+  E_UTENTE_BLOCCATO: 'auth.account_locked'
 }
 
 function resolveLoginError(err) {

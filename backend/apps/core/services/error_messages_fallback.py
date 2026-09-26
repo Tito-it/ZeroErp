@@ -1162,7 +1162,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_UPDATE_NOT_ALLOWED": "Modifica non permessa su questa riga.",
     "E_USER_DISABILITATO": "Utente disabilitato. Contattare l'amministratore.",
     "E_USER_EMITTENTE_DELETE_VIETATO": "Eliminazione vietata: l'associazione utente-emittente puo' essere rimossa solo come parte della disattivazione utente.",
-    "E_UTENTE_BLOCCATO": "Account temporaneamente bloccato per troppi tentativi.",
+    "E_UTENTE_BLOCCATO": "Troppi tentativi non riusciti da questa postazione: riprovare fra qualche minuto.",
     "E_UTENTE_DISABILITATO": "Account disabilitato. Contattare l'amministratore.",
     "E_UTENTE_NON_ATTIVO": "Account non ancora attivo.",
     "E_UTENTE_SCADUTO": "Account scaduto. Contattare l'amministratore.",

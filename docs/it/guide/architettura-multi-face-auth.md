@@ -131,6 +131,27 @@ anagrafiche.identita_digitali
   stesso tempo, riferite allo stesso `auth_user` o a `auth_user` diversi.
 - `ruolo_applicativo` dice **in quale veste** l'utente si logga; la veste e'
   scelta dal canale/namespace di login, non da un toggle runtime.
+- ⭐ **Una persona, una credenziale.** L'email della credenziale e' unica,
+  senza distinguere maiuscole e minuscole (`script.fn_get_auth_user_id_for_email`
+  e' l'unica lettura per email). Creare un operatore su un'email che ha gia'
+  una credenziale **riusa quella** — nome utente e password restano i suoi —
+  ma non in silenzio: il DB chiede la conferma
+  (`E_CREDENZIALE_DA_CONFERMARE`, il messaggio nomina lo username trovato)
+  e la creazione si ripete dichiarando l'id della credenziale confermata
+  (`riusa_auth_user_id`): un id e non un sì, così una credenziale cambiata
+  nel frattempo ferma di nuovo; se la
+  credenziale e' di un'altra persona fisica il riuso e' rifiutato
+  (`E_CREDENZIALE_ALTRA_PERSONA`: l'email e' sbagliata).
+- ⭐ **La veste nasce spenta** e la accende solo l'**attivazione** dell'invito:
+  nessuno entra da una porta prima di averla accettata. Se la credenziale ha
+  gia' una password, l'attivazione e' un clic; altrimenti chiede di sceglierla.
+- ⭐ **Porta e profili sono due domande.** La veste attiva dice se la porta e'
+  aperta; il binding in `config.profili_accesso_bindings` dice cosa si puo'
+  fare dentro. Un profilo (anche SUPER_ADMIN) si assegna a una veste spenta,
+  e spegnere una veste non chiede di togliere prima i profili: li ritrova alla
+  riaccensione. Chi legge i permessi chiede entrambe le cose (`fn_is_super_admin`,
+  `fn_get_profili_accesso_applicabili`); l'ultimo SUPER_ADMIN attivo lo
+  protegge `E_PROFILO_ULTIMO_SUPER_ADMIN`.
 - ⛔ **La veste non porta stato della password.** Tentativi falliti, blocco,
   cambio password obbligatorio e (quando ci sara') l'obbligo di TOTP sono della
   **credenziale**: la password e' una sola e vale per tutte le porte, quindi chi
@@ -180,8 +201,11 @@ del frontend lo intercetta prima di leggere il codice.
   ferma chi **inonda** l'endpoint; il freno per provenienza (N password
   sbagliate sulla stessa credenziale) ferma chi **prova** una credenziale. Il
   primo non sa quale credenziale si prova, il secondo non conta le richieste.
-- Il **cambio password obbligatorio** e' della credenziale: acceso dall'invito
-  operatore, spento da qualunque nuova password (cambio, reset, attivazione).
+- Il **cambio password obbligatorio** e' della credenziale: lo accende solo il
+  verbo dedicato (`script.fn_imposta_deve_cambiare_password`), lo spegne
+  qualunque nuova password (cambio, reset, attivazione). ⛔ L'invito **non**
+  lo accende e non tocca la password: la credenziale puo' essere di una
+  persona che ha gia' un'altra veste, e la sua password vale anche li'.
 
 ### 3.2 Il vincolo "persona fisica pura" si sposta
 
