@@ -33,7 +33,14 @@ from apps.vendite.api.indirizzi_documento_views import (
 from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import preventivi_service
 from apps.core.api.openapi_params import param_ricerca_full
-from apps.vendite.api._componenti_schema import COMPONENTE_PATCH_REQUEST
+from apps.vendite.api._schema_da_contratto import schema_da_contratto
+from apps.vendite.api._componenti_schema import (
+    COMPONENTE_PATCH_REQUEST,
+    COMPONENTI_LIST_PARAMETERS,
+    COMPONENTI_LIST_RESPONSE,
+    PREVIEW_COMPONENTI_REQUEST,
+    PREVIEW_COMPONENTI_RESPONSE,
+)
 
 # Codice lista configurabile (catalogo ui.lista_definizione id=5). Usato
 # dall'export per risolvere colonne visibili/ordine/permessi dell'utente.
@@ -58,6 +65,39 @@ def _parse_righe_ids(payload: dict[str, object]) -> list[int] | None:
         function_name="apps.vendite.api.preventivi_views._parse_righe_ids",
     )
     return [int(r) for r in righe_ids]
+
+
+# Il corpo che `_parse_righe_ids` legge — push in commessa e genera ordine: una
+# sede sola accanto al parser, che e' il contratto.
+_RIGHE_IDS_REQUEST = inline_serializer(
+    name="PreventivoRigheIdsReq",
+    fields={"righe_ids": serializers.ListField(
+        child=serializers.IntegerField(), required=False, allow_null=True,
+        help_text="Omessa: tutte le righe eleggibili. Una lista vuota e' un errore.",
+    )},
+)
+
+
+# ── Schemi OpenAPI dei corpi: le chiavi dal contratto del service ──────────
+# ⭐ Dal 2026-09-26: gli schemi scritti a mano pubblicavano `iva_id` (chiuso da
+#    `I6`) e `quantita` (la calcola il trigger), che il service ignorava, e ne
+#    tacevano altre che il service legge.
+_PREVENTIVO_CREATE_REQUEST = schema_da_contratto(
+    "PreventivoCreateRequest", preventivi_service.CREATE_KEYS_PREVENTIVO,
+    obbligatorie=("utility_id",),
+)
+_PREVENTIVO_UPDATE_REQUEST = schema_da_contratto(
+    "PreventivoUpdateRequest", preventivi_service.UPDATE_KEYS_PREVENTIVO,
+)
+_PREVENTIVO_RIGA_CREATE_REQUEST = schema_da_contratto(
+    "PreventivoRigaCreateRequest", preventivi_service.CREATE_KEYS_RIGA,
+    obbligatorie=("articolo_id",),
+)
+# In modifica: le colonne scritte in blocco + le due chiavi lette a parte.
+_PREVENTIVO_RIGA_UPDATE_REQUEST = schema_da_contratto(
+    "PreventivoRigaUpdateRequest",
+    preventivi_service.UPDATE_KEYS_RIGA | preventivi_service.UPDATE_RIGA_LETTE_A_PARTE,
+)
 
 
 # ── Lista + Creazione ──
@@ -124,20 +164,7 @@ class ApiPreventiviList(DomainAPIView):
         return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
     @extend_schema(
-        request=inline_serializer(
-            name="PreventivoCreateRequest",
-            fields={
-                "utility_id": serializers.IntegerField(),
-                "billing_account_id": serializers.IntegerField(required=False, allow_null=True),
-                "istanza_utility_id": serializers.IntegerField(required=False, allow_null=True),
-                "valuta_id": serializers.IntegerField(required=False, allow_null=True),
-                "termine_pagamento_id": serializers.IntegerField(required=False, allow_null=True),
-                "validita_dal": serializers.DateField(required=False, allow_null=True),
-                "validita_al": serializers.DateField(required=False, allow_null=True),
-                "competenza_mese": serializers.DateField(required=False, allow_null=True),
-                "fatturazione_immediata": serializers.BooleanField(required=False),
-            },
-        ),
+        request=_PREVENTIVO_CREATE_REQUEST,
         responses={200: inline_serializer(
             name="PreventivoCreateResponse",
             fields={
@@ -263,16 +290,7 @@ class ApiPreventivoDetail(DomainAPIView):
         return success_response(data)
 
     @extend_schema(
-        request=inline_serializer(
-            name="PreventivoUpdateRequest",
-            fields={
-                "billing_account_id": serializers.IntegerField(required=False, allow_null=True),
-                "validita_dal": serializers.DateField(required=False, allow_null=True),
-                "validita_al": serializers.DateField(required=False, allow_null=True),
-                "competenza_mese": serializers.DateField(required=False, allow_null=True),
-                "fatturazione_immediata": serializers.BooleanField(required=False),
-            },
-        ),
+        request=_PREVENTIVO_UPDATE_REQUEST,
         responses={200: inline_serializer(
             name="PreventivoUpdateResponse",
             fields={"data": inline_serializer(name="PreventivoUpdateData", fields={
@@ -416,6 +434,7 @@ class ApiPreventivoRevisione(DomainAPIView):
     area_funzionale = "vendite"
 
     @extend_schema(
+        request=None,
         responses={200: inline_serializer(
             name="PreventivoRevisioneResponse",
             fields={"data": serializers.DictField()},
@@ -436,6 +455,7 @@ class ApiPreventivoGeneraOrdine(DomainAPIView):
     area_funzionale = "vendite"
 
     @extend_schema(
+        request=_RIGHE_IDS_REQUEST,
         responses={200: inline_serializer(
             name="PreventivoGeneraOrdineResponse",
             fields={"data": serializers.DictField()},
@@ -605,41 +625,7 @@ class ApiPreventivoRigheList(DomainAPIView):
         return success_response(data)
 
     @extend_schema(
-        request=inline_serializer(
-            name="PreventivoRigaCreateRequest",
-            fields={
-                "articolo_id": serializers.CharField(),
-                "descrizione": serializers.CharField(required=False, allow_null=True),
-                "quantita": serializers.DecimalField(max_digits=22, decimal_places=6, required=False),
-                "prezzo_unitario": serializers.DecimalField(max_digits=22, decimal_places=10, required=False),
-                "sconto_percentuale": serializers.DecimalField(max_digits=5, decimal_places=2, required=False),
-                "iva_id": serializers.IntegerField(required=False, allow_null=True),
-                "uom_operativa_id": serializers.IntegerField(required=False, allow_null=True),
-                "ordine": serializers.IntegerField(required=False, allow_null=True),
-                "data_consegna_richiesta_cliente": serializers.DateField(
-                    required=False, allow_null=True,
-                    help_text="Quando il cliente vuole la merce (Blocco A). Nullable.",
-                ),
-                "componenti_overrides": serializers.DictField(
-                    required=False,
-                    help_text=(
-                        "Mappa {componente_id: prezzo} per prezzi manuali sui "
-                        "componenti BoM del padre composito. Richiede azione "
-                        "`prezzo_override_manuale`."
-                    ),
-                ),
-                "componenti_attivazioni": serializers.DictField(
-                    required=False,
-                    child=serializers.BooleanField(),
-                    help_text=(
-                        "Mappa {componente_id: bool} per attivare componenti "
-                        "opzionali del padre composito (default DB: "
-                        "obbligatori attivi, opzionali disattivi). Disattivare "
-                        "obbligatori e' bloccato dal trigger DB."
-                    ),
-                ),
-            },
-        ),
+        request=_PREVENTIVO_RIGA_CREATE_REQUEST,
         responses={200: inline_serializer(
             name="PreventivoRigaCreateResponse",
             fields={"data": inline_serializer(name="PreventivoRigaCreateData", fields={
@@ -667,15 +653,7 @@ class ApiPreventivoRigaDetail(DomainAPIView):
     area_funzionale = "vendite"
 
     @extend_schema(
-        request=inline_serializer(
-            name="PreventivoRigaUpdateRequest",
-            fields={
-                "quantita": serializers.DecimalField(max_digits=22, decimal_places=6, required=False),
-                "prezzo_unitario": serializers.DecimalField(max_digits=22, decimal_places=10, required=False),
-                "sconto_percentuale": serializers.DecimalField(max_digits=5, decimal_places=2, required=False),
-                "data_consegna_richiesta_cliente": serializers.DateField(required=False, allow_null=True),
-            },
-        ),
+        request=_PREVENTIVO_RIGA_UPDATE_REQUEST,
         responses={200: inline_serializer(
             name="PreventivoRigaUpdateResponse",
             fields={"data": inline_serializer(name="PreventivoRigaUpdateData", fields={
@@ -742,20 +720,8 @@ class ApiPreventivoRigaPreviewComponenti(DomainAPIView):
     area_funzionale = "vendite"
 
     @extend_schema(
-        request=inline_serializer(
-            name="PreventivoRigaPreviewComponentiRequest",
-            fields={
-                "articolo_id": serializers.UUIDField(),
-                "uom_operativa_id": serializers.IntegerField(required=False, allow_null=True),
-                "quantita": serializers.DecimalField(
-                    max_digits=22, decimal_places=10,
-                ),
-            },
-        ),
-        responses={200: inline_serializer(
-            name="PreventivoRigaPreviewComponentiResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        request=PREVIEW_COMPONENTI_REQUEST,
+        responses={200: PREVIEW_COMPONENTI_RESPONSE},
     )
     # Scopo: Restituisce via POST la preview componenti CASO A per drawer riga.
     def post(
@@ -791,23 +757,8 @@ class ApiPreventivoRigaComponentiList(DomainAPIView):
     is_search_endpoint = True
 
     @extend_schema(
-        parameters=[
-            OpenApiParameter(
-                name="solo_attivi",
-                type=bool,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "Default true: solo componenti `attivo=TRUE` "
-                    "(retrocompat expander tabella righe). false: include "
-                    "anche opzionali disattivati, usato dall'EDIT panel."
-                ),
-            ),
-        ],
-        responses={200: inline_serializer(
-            name="PreventivoRigaComponentiListResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        parameters=COMPONENTI_LIST_PARAMETERS,
+        responses={200: COMPONENTI_LIST_RESPONSE},
     )
     # Scopo: Restituisce via GET la lista componenti di una riga padre.
     #        Query param `solo_attivi` (default true) controlla se includere
@@ -1053,12 +1004,7 @@ class ApiPreventivoPushCommessa(DomainAPIView):
     post_permission = "push_commessa_preventivi"
 
     @extend_schema(
-        request=inline_serializer(
-            name="PreventivoPushCommessaRequest",
-            fields={"righe_ids": serializers.ListField(
-                child=serializers.IntegerField(), required=False, allow_null=True,
-            )},
-        ),
+        request=_RIGHE_IDS_REQUEST,
         responses={200: inline_serializer(
             name="PreventivoPushCommessaResponse",
             fields={"data": serializers.DictField()},
@@ -1115,6 +1061,7 @@ class ApiPreventivoCompletaSmistamento(DomainAPIView):
     area_funzionale = "vendite"
 
     @extend_schema(
+        request=None,
         responses={200: inline_serializer(
             name="PreventivoCompletaSmistamentoResponse",
             fields={"data": inline_serializer(

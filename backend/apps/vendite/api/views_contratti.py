@@ -36,7 +36,14 @@ from apps.vendite.api.indirizzi_documento_views import (
 from apps.vendite.services import contratti_service
 from apps.vendite.services.contratti_service import ContrattiService
 from apps.core.api.openapi_params import param_ricerca_full
-from apps.vendite.api._componenti_schema import COMPONENTE_PATCH_REQUEST
+from apps.vendite.api._schema_da_contratto import schema_da_contratto
+from apps.vendite.api._componenti_schema import (
+    COMPONENTE_PATCH_REQUEST,
+    COMPONENTI_LIST_PARAMETERS,
+    COMPONENTI_LIST_RESPONSE,
+    PREVIEW_COMPONENTI_REQUEST,
+    PREVIEW_COMPONENTI_RESPONSE,
+)
 
 # Codice lista configurabile (ui.lista_definizione) per contratti.
 _LISTA_CODICE_CONTRATTI = "vendite.contratti"
@@ -47,50 +54,26 @@ _LISTA_CODICE_CONTRATTI = "vendite.contratti"
 # =================================================================
 
 
-_CONTRATTO_CREATE_REQUEST = inline_serializer(
-    name="VenditeContrattoCreateReq",
-    fields={
-        # Post brief simmetria 2026-05-26: opzionale. Se omesso il trigger DB
-        # `script.trgfn_default_emittente_fiscale` (BB unico dal 2026-09-15,
-        # al posto di `trgfn_contratti_default_emittente`) lo deriva dalla GUC
-        # `app.current_user_id` (operatore non-admin). L'admin globale lo
-        # specifica esplicitamente; il guard DB rifiuta coppie BA<->EF
-        # incoerenti.
-        "emittente_fiscale_id": serializers.IntegerField(required=False, allow_null=True),
-        "billing_account_id": serializers.IntegerField(),
-        "istanza_utility_id": serializers.IntegerField(),
-        "utility_id": serializers.IntegerField(),
-        "ambito": serializers.CharField(required=False),
-        "valido_dal": serializers.DateField(),
-        "valido_al": serializers.DateField(required=False, allow_null=True),
-        "parent_contratto_id": serializers.IntegerField(required=False, allow_null=True),
-        "data": serializers.DateField(required=False),
-        "listino_id": serializers.IntegerField(required=False, allow_null=True),
-        "tipo_variazione_globale": serializers.CharField(required=False, allow_null=True),
-        "valore_variazione_globale": serializers.DecimalField(
-            max_digits=10, decimal_places=4, required=False, allow_null=True,
-        ),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-        "utility": serializers.DictField(required=False),
-    },
+# ── Schemi OpenAPI dei corpi: le chiavi dal contratto del service ──────────
+# La utility 1:1 del contratto: creazione e modifica hanno contratti propri.
+_UTILITY_CREATE_REQUEST = schema_da_contratto(
+    "VenditeContrattoUtilityCreateReq", contratti_service.UTILITY_CREATE_KEYS,
+)
+_UTILITY_UPDATE_REQUEST = schema_da_contratto(
+    "VenditeContrattoUtilityUpdateReq", contratti_service.UTILITY_UPDATE_KEYS,
+)
+# La classe, non l'istanza: una per uso (l'istanza legata a un campo non si
+# riusa, e due classi con lo stesso nome fanno uno schema sbagliato).
+_UTILITY_CREATE_CLS = type(_UTILITY_CREATE_REQUEST)
+_CONTRATTO_CREATE_REQUEST = schema_da_contratto(
+    "VenditeContrattoCreateReq", contratti_service.CREATE_KEYS_TESTATA,
+    obbligatorie=("billing_account_id", "istanza_utility_id", "utility_id", "valido_dal"),
+    speciali={"utility": _UTILITY_CREATE_CLS(required=False, allow_null=True)},
 )
 
 
-_CONTRATTO_PATCH_REQUEST = inline_serializer(
-    name="VenditeContrattoPatchReq",
-    fields={
-        "ambito": serializers.CharField(required=False),
-        "valido_dal": serializers.DateField(required=False),
-        "valido_al": serializers.DateField(required=False, allow_null=True),
-        "parent_contratto_id": serializers.IntegerField(required=False, allow_null=True),
-        "data": serializers.DateField(required=False),
-        "listino_id": serializers.IntegerField(required=False, allow_null=True),
-        "tipo_variazione_globale": serializers.CharField(required=False, allow_null=True),
-        "valore_variazione_globale": serializers.DecimalField(
-            max_digits=10, decimal_places=4, required=False, allow_null=True,
-        ),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-    },
+_CONTRATTO_PATCH_REQUEST = schema_da_contratto(
+    "VenditeContrattoPatchReq", contratti_service.UPDATE_KEYS_TESTATA,
 )
 
 
@@ -340,67 +323,14 @@ class ApiContrattoCambiaStato(DomainAPIView):
 # =================================================================
 
 
-_RIGA_CREATE_REQUEST = inline_serializer(
-    name="VenditeContrattoRigaCreateReq",
-    fields={
-        "articolo_id": serializers.UUIDField(),
-        # Refactor modalita 2026-05-15: tipo_eccezione obbligatorio.
-        # OVERRIDE = prezzo personalizzato per articolo del listino.
-        # ESCLUSIONE = articolo del listino non disponibile (prezzo NULL).
-        # AGGIUNTA = articolo fuori-listino aggiunto al contratto.
-        "tipo_eccezione": serializers.ChoiceField(
-            choices=["OVERRIDE", "ESCLUSIONE", "AGGIUNTA"],
-        ),
-        "tipo_erogazione": serializers.CharField(required=False),
-        "fonte_quantita_attesa": serializers.CharField(required=False),
-        "periodicita": serializers.CharField(required=False),
-        "generazione_canone": serializers.CharField(required=False),
-        "competenza_canone": serializers.CharField(required=False),
-        "prezzo_unitario": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "quantita": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "qta_operativa": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "uom_operativa_id": serializers.IntegerField(required=False, allow_null=True),
-        "factor_to_base": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False,
-        ),
-        "ordine": serializers.IntegerField(required=False),
-        "attivo": serializers.BooleanField(required=False),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-    },
+_RIGA_CREATE_REQUEST = schema_da_contratto(
+    "VenditeContrattoRigaCreateReq", contratti_service.CREATE_KEYS_RIGA,
+    obbligatorie=("articolo_id", "tipo_eccezione"),
 )
 
 
-_RIGA_PATCH_REQUEST = inline_serializer(
-    name="VenditeContrattoRigaPatchReq",
-    fields={
-        "tipo_erogazione": serializers.CharField(required=False),
-        "fonte_quantita_attesa": serializers.CharField(required=False),
-        "periodicita": serializers.CharField(required=False),
-        "generazione_canone": serializers.CharField(required=False),
-        "competenza_canone": serializers.CharField(required=False),
-        "prezzo_unitario": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "quantita": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "qta_operativa": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "uom_operativa_id": serializers.IntegerField(required=False, allow_null=True),
-        "factor_to_base": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False,
-        ),
-        "ordine": serializers.IntegerField(required=False),
-        "attivo": serializers.BooleanField(required=False),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-    },
+_RIGA_PATCH_REQUEST = schema_da_contratto(
+    "VenditeContrattoRigaPatchReq", contratti_service.UPDATE_KEYS_RIGA,
 )
 
 
@@ -549,26 +479,13 @@ class ApiContrattoRigaDetail(DomainAPIView):
 # =================================================================
 
 
-_UTILITY_REQUEST = inline_serializer(
-    name="VenditeContrattoUtilityReq",
-    fields={
-        "istanza_dati_precontrattuali_id": serializers.IntegerField(required=False, allow_null=True),
-        "tipo_utenza_id": serializers.IntegerField(required=False, allow_null=True),
-        "classe_utenza_id": serializers.IntegerField(required=False, allow_null=True),
-        "param_1_num": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "param_2_txt": serializers.CharField(required=False, allow_null=True),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-    },
-)
 
 
 class ApiContrattoUtility(DomainAPIView):
     area_funzionale = "vendite"
 
     @extend_schema(
-        request=_UTILITY_REQUEST,
+        request=_UTILITY_CREATE_REQUEST,
         responses={200: inline_serializer(
             name="VenditeContrattoUtilityCreateResp",
             fields={"data": serializers.DictField()},
@@ -581,7 +498,7 @@ class ApiContrattoUtility(DomainAPIView):
         )
 
     @extend_schema(
-        request=_UTILITY_REQUEST,
+        request=_UTILITY_UPDATE_REQUEST,
         responses={200: inline_serializer(
             name="VenditeContrattoUtilityPatchResp",
             fields={"data": serializers.DictField()},
@@ -603,18 +520,6 @@ class ApiContrattoUtility(DomainAPIView):
 #   PATCH/DELETE /righe/<rid>/componenti/<cid>/  -> CRUD singolo componente
 
 
-_RIGA_PREVIEW_COMPONENTI_REQUEST = inline_serializer(
-    name="VenditeContrattoRigaPreviewComponentiReq",
-    fields={
-        "articolo_id": serializers.UUIDField(),
-        "uom_operativa_id": serializers.IntegerField(required=False, allow_null=True),
-        "quantita": serializers.DecimalField(
-            max_digits=22, decimal_places=10, required=True,
-        ),
-    },
-)
-
-
 class ApiContrattoRigaPreviewComponenti(DomainAPIView):
     """POST /api/v1/vendite/contratti/<id>/righe/preview-componenti/
 
@@ -629,11 +534,8 @@ class ApiContrattoRigaPreviewComponenti(DomainAPIView):
     area_funzionale = "vendite"
 
     @extend_schema(
-        request=_RIGA_PREVIEW_COMPONENTI_REQUEST,
-        responses={200: inline_serializer(
-            name="VenditeContrattoRigaPreviewComponentiResp",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        request=PREVIEW_COMPONENTI_REQUEST,
+        responses={200: PREVIEW_COMPONENTI_RESPONSE},
     )
     def post(self, request: Request, contratto_id: int) -> JsonResponse:
         # Cattura auth_user_id PRIMA dell'handler chiuso: il service risolve
@@ -672,19 +574,8 @@ class ApiContrattoRigaComponentiList(DomainAPIView):
     area_funzionale = "vendite"
 
     @extend_schema(
-        parameters=[
-            OpenApiParameter(
-                name="solo_attivi", type=bool, default=True,
-                description=(
-                    "Default true: solo componenti attivi. Se false include "
-                    "anche opzionali disattivati (EDIT panel)."
-                ),
-            ),
-        ],
-        responses={200: inline_serializer(
-            name="VenditeContrattoRigaComponentiListResp",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        parameters=COMPONENTI_LIST_PARAMETERS,
+        responses={200: COMPONENTI_LIST_RESPONSE},
     )
     def get(
         self, request: Request, contratto_id: int, riga_id: int,

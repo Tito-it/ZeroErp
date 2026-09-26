@@ -55,8 +55,8 @@ from django.test import SimpleTestCase
 from apps.core.services.service_errors import ServiceError
 from apps.ui.db.ui_admin_repository import UiAdminRepository
 from apps.ui.services.lista_definizione_admin_service import (
-    _CREATE_KEYS,
-    _UPDATE_KEYS,
+    CREATE_KEYS,
+    UPDATE_KEYS,
     E_DEFINIZIONE_IN_USE,
     E_DEFINIZIONE_NOT_FOUND,
     E_DEFINIZIONE_VALIDATION,
@@ -394,14 +394,14 @@ class ListaDefinizioneMultiEmittenteFuoriScritturaTests(SimpleTestCase):
     _MOTIVO = (
         "`multi_emittente` si accende SOLO dal seed lista_definizione.csv: "
         "e' una capacita' del software, non una preferenza. Vedi il commento "
-        "accanto a _CREATE_KEYS e il trigger DB "
+        "accanto a CREATE_KEYS e il trigger DB "
         "ui.trgfn_lista_definizione_guard_multi_emittente."
     )
 
     # 19) Le due whitelist del payload.
     def test_multi_emittente_fuori_dalle_whitelist(self) -> None:
-        self.assertNotIn("multi_emittente", _CREATE_KEYS, self._MOTIVO)
-        self.assertNotIn("multi_emittente", _UPDATE_KEYS, self._MOTIVO)
+        self.assertNotIn("multi_emittente", CREATE_KEYS, self._MOTIVO)
+        self.assertNotIn("multi_emittente", UPDATE_KEYS, self._MOTIVO)
 
     # 20) Il COMPORTAMENTO, non solo la struttura: un payload che lo contiene
     #     viene rifiutato, e il repository non viene nemmeno chiamato.

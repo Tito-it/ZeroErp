@@ -46,6 +46,8 @@ from __future__ import annotations
 from django.http import JsonResponse
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
+
+from apps.core.api.schema_da_contratto import schema_da_contratto
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
 
@@ -54,6 +56,11 @@ from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.permissions import cache_permessi_richiesta
 from apps.core.api.success_responses import success_response
 from apps.core.services.permissions_resolver import PermissionResolver
+from apps.ui.services import (
+    lista_colonna_admin_service,
+    lista_definizione_admin_service,
+    lista_preset_admin_service,
+)
 from apps.ui.services.lista_colonna_admin_service import (
     ListaColonnaAdminService,
 )
@@ -66,6 +73,7 @@ from apps.ui.services.lista_definizione_admin_service import (
 from apps.ui.services.lista_preset_admin_service import (
     ListaPresetAdminService,
 )
+from apps.ui.api._schema_ui import TIPI_UI
 
 
 # Serializer envelope risposta. Le 11 view ritornano JSON eterogeneo,
@@ -78,6 +86,33 @@ _DATA_RESPONSE = inline_serializer(
     },
 )
 
+
+# ── Schemi OpenAPI dei corpi: le chiavi dal contratto del service ──────────
+# ⚠️ Il preset nasce sotto la sua lista: `lista_id` e' nel contratto del
+#    service ma lo mette la view dal PERCORSO, sovrascrivendo il corpo.
+_PRESET_CREATE_REQUEST = schema_da_contratto(
+    "UiAdminPresetCreateRequest",
+    lista_preset_admin_service.CREATE_KEYS - {"lista_id"}, tipi=TIPI_UI,
+    obbligatorie=("codice", "descrizione", "ambito"),
+)
+_PRESET_UPDATE_REQUEST = schema_da_contratto(
+    "UiAdminPresetUpdateRequest", lista_preset_admin_service.UPDATE_KEYS, tipi=TIPI_UI,
+)
+_DEFINIZIONE_CREATE_REQUEST = schema_da_contratto(
+    "UiAdminDefinizioneCreateRequest", lista_definizione_admin_service.CREATE_KEYS,
+    tipi=TIPI_UI, obbligatorie=("codice", "descrizione", "schema_dati"),
+)
+_DEFINIZIONE_UPDATE_REQUEST = schema_da_contratto(
+    "UiAdminDefinizioneUpdateRequest", lista_definizione_admin_service.UPDATE_KEYS,
+    tipi=TIPI_UI,
+)
+_COLONNA_CREATE_REQUEST = schema_da_contratto(
+    "UiAdminColonnaCreateRequest", lista_colonna_admin_service.CREATE_KEYS, tipi=TIPI_UI,
+    obbligatorie=("codice", "etichetta", "tipo_colonna", "tipo_dato", "ordine_default"),
+)
+_COLONNA_UPDATE_REQUEST = schema_da_contratto(
+    "UiAdminColonnaUpdateRequest", lista_colonna_admin_service.UPDATE_KEYS, tipi=TIPI_UI,
+)
 
 # Scopo: Verifica che l'utente abbia almeno una delle azioni passate
 #        (OR-azioni). SUPER_ADMIN bypass. Solleva PermissionDenied
@@ -171,21 +206,7 @@ class ApiAdminPresetListView(DomainAPIView):
         )
 
     @extend_schema(
-        request=inline_serializer(
-            name="UiAdminPresetCreateRequest",
-            fields={
-                "codice": serializers.CharField(),
-                "descrizione": serializers.CharField(),
-                "ambito": serializers.CharField(),
-                "profilo_accesso_id": serializers.IntegerField(required=False, allow_null=True),
-                "emittente_fiscale_id": serializers.IntegerField(required=False, allow_null=True),
-                "is_default": serializers.BooleanField(required=False),
-                "pagina_dimensione": serializers.IntegerField(required=False, allow_null=True),
-                "ordinamento_default": serializers.JSONField(required=False, allow_null=True),
-                "filtri_default": serializers.JSONField(required=False, allow_null=True),
-                "attivo": serializers.BooleanField(required=False),
-            },
-        ),
+        request=_PRESET_CREATE_REQUEST,
         responses={200: _DATA_RESPONSE},
     )
     # Scopo: Crea un nuovo preset per la lista. lista_id viene dal path.
@@ -214,7 +235,7 @@ class ApiAdminPresetDetailView(DomainAPIView):
     patch_permission = "ui_preset_manage"
     delete_permission = "ui_preset_manage"
 
-    @extend_schema(responses={200: _DATA_RESPONSE})
+    @extend_schema(request=_PRESET_UPDATE_REQUEST, responses={200: _DATA_RESPONSE})
     # Scopo: Aggiorna campi mutabili di un preset.
     def patch(self, request: Request, preset_id: int) -> JsonResponse:
         result = ListaPresetAdminService().update_preset(
@@ -366,17 +387,7 @@ class ApiAdminListaDefinizioneAdminView(AdminAPIView):
         )
 
     @extend_schema(
-        request=inline_serializer(
-            name="UiAdminDefinizioneCreateRequest",
-            fields={
-                "codice": serializers.CharField(),
-                "descrizione": serializers.CharField(),
-                "schema_dati": serializers.CharField(),
-                "vista_sql": serializers.CharField(required=False, allow_null=True, allow_blank=True),
-                "note": serializers.CharField(required=False, allow_null=True, allow_blank=True),
-                "attivo": serializers.BooleanField(required=False),
-            },
-        ),
+        request=_DEFINIZIONE_CREATE_REQUEST,
         responses={200: _DATA_RESPONSE},
     )
     # Scopo: Crea una nuova definizione lista. Idempotency-Key
@@ -408,7 +419,7 @@ class ApiAdminListaDefinizioneAdminDetailView(AdminAPIView):
             ListaDefinizioneAdminService().get_definizione(lista_id)
         )
 
-    @extend_schema(responses={200: _DATA_RESPONSE})
+    @extend_schema(request=_DEFINIZIONE_UPDATE_REQUEST, responses={200: _DATA_RESPONSE})
     # Scopo: Aggiorna campi mutabili della definizione. Tutti i campi
     #        sono mutabili: codice cambia con UNIQUE check DB.
     def patch(self, request: Request, lista_id: int) -> JsonResponse:
@@ -449,30 +460,7 @@ class ApiAdminListaColonnaListView(AdminAPIView):
         )
 
     @extend_schema(
-        request=inline_serializer(
-            name="UiAdminColonnaCreateRequest",
-            fields={
-                "codice": serializers.CharField(),
-                "etichetta": serializers.CharField(),
-                "etichetta_estesa": serializers.CharField(required=False, allow_null=True, allow_blank=True),
-                "etichetta_i18n_key": serializers.CharField(required=False, allow_null=True, allow_blank=True),
-                "campo_sorgente": serializers.CharField(required=False, allow_null=True, allow_blank=True),
-                "tipo_colonna": serializers.CharField(),
-                "tipo_dato": serializers.CharField(),
-                "formato": serializers.CharField(required=False, allow_null=True, allow_blank=True),
-                "larghezza_default": serializers.IntegerField(required=False, allow_null=True),
-                "ordine_default": serializers.IntegerField(),
-                "allineamento": serializers.CharField(required=False),
-                "gruppo": serializers.CharField(required=False, allow_null=True, allow_blank=True),
-                "gruppo_ordine": serializers.IntegerField(required=False, allow_null=True),
-                "filtrabile": serializers.BooleanField(required=False),
-                "ordinabile": serializers.BooleanField(required=False),
-                "esportabile": serializers.BooleanField(required=False),
-                "ricercabile_full": serializers.BooleanField(required=False),
-                "sensibile": serializers.BooleanField(required=False),
-                "attivo": serializers.BooleanField(required=False),
-            },
-        ),
+        request=_COLONNA_CREATE_REQUEST,
         responses={200: _DATA_RESPONSE},
     )
     # Scopo: Crea una nuova colonna nella lista indicata. Idempotency-Key
@@ -504,7 +492,7 @@ class ApiAdminListaColonnaDetailView(AdminAPIView):
             ListaColonnaAdminService().get_colonna(colonna_id)
         )
 
-    @extend_schema(responses={200: _DATA_RESPONSE})
+    @extend_schema(request=_COLONNA_UPDATE_REQUEST, responses={200: _DATA_RESPONSE})
     # Scopo: Aggiorna campi mutabili della colonna. lista_id e' immutabile
     #        (per spostare una colonna fra liste, cancellarla e ricrearla).
     def patch(self, request: Request, colonna_id: int) -> JsonResponse:

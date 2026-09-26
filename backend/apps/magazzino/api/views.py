@@ -269,6 +269,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
 
         @extend_schema(
             operation_id=f"magazzino_{op}_registra",
+            request=None,
             responses={200: inline_serializer(
                 name=f"Magazzino{prefisso}Registra",
                 fields={

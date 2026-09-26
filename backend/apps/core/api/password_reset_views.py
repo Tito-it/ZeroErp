@@ -19,7 +19,8 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.http import JsonResponse
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.views import APIView
@@ -48,6 +49,21 @@ _token_service = TokenService()
 _email_service = EmailDispatchService()
 
 
+# I corpi che i due gestori leggono. La richiesta risponde sempre lo stesso
+# messaggio (anche senza `username`): nessun dato su chi esiste.
+_RESET_REQUEST_REQUEST = inline_serializer(
+    name="CorePasswordResetRequestReq",
+    fields={"username": serializers.CharField()},
+)
+_RESET_CONFIRM_REQUEST = inline_serializer(
+    name="CorePasswordResetConfirmReq",
+    fields={
+        "token": serializers.CharField(),
+        "new_password": serializers.CharField(),
+        "new_password_confirm": serializers.CharField(),
+    },
+)
+
 class PasswordResetRequestView(APIView):
     """POST: richiesta reset password — invia email con link.
     Sempre 200, anche se email non esiste (sicurezza: non rivelare email registrate)."""
@@ -56,7 +72,7 @@ class PasswordResetRequestView(APIView):
     authentication_classes = []
     throttle_classes = [PasswordResetRateThrottle]
 
-    @extend_schema(summary="Richiesta reset password", responses={200: dict})
+    @extend_schema(request=_RESET_REQUEST_REQUEST, summary="Richiesta reset password", responses={200: dict})
     # Scopo: Riceve username, cerca utente attivo con email configurata,
     #        genera token e invia email con link reset.
     #        Risponde sempre 200 per non rivelare se l'utente esiste.
@@ -138,7 +154,7 @@ class PasswordResetConfirmView(APIView):
     authentication_classes = []
     throttle_classes = [PasswordResetRateThrottle]
 
-    @extend_schema(summary="Conferma reset password", responses={200: dict})
+    @extend_schema(request=_RESET_CONFIRM_REQUEST, summary="Conferma reset password", responses={200: dict})
     # Scopo: Consuma token, imposta nuova password, blacklista token JWT,
     #        invia email di conferma, ritorna messaggio (senza nuovi token).
     def post(self, request: Request) -> JsonResponse:

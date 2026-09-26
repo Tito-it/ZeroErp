@@ -56,6 +56,8 @@ from apps.magazzino.db.anagrafiche_magazzino_repository import (
     UBICAZIONI_SORT_COLUMNS,
 )
 from apps.magazzino.services import anagrafiche_magazzino_service as svc
+from apps.core.api.schema_da_contratto import schema_da_contratto
+from apps.magazzino.api._schema_magazzino import TIPI_MAGAZZINO
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.core.api.openapi_params import param_ricerca_full
@@ -68,6 +70,30 @@ from apps.core.api.openapi_params import param_ricerca_full
 _LISTA_MAGAZZINI = "magazzino.magazzini"
 _LISTA_UBICAZIONI = "magazzino.ubicazioni"
 _LISTA_LOTTI = "magazzino.lotti"
+
+# ── Schemi OpenAPI dei corpi: le chiavi dal contratto del service ──────────
+_MAGAZZINO_CREATE_REQUEST = schema_da_contratto(
+    "MagazzinoMagazzinoCreateReq", svc.CREATE_KEYS_MAGAZZINO, tipi=TIPI_MAGAZZINO,
+    obbligatorie=("codice", "descrizione", "indirizzo_dettaglio_id"),
+)
+_MAGAZZINO_UPDATE_REQUEST = schema_da_contratto(
+    "MagazzinoMagazzinoUpdateReq", svc.UPDATE_KEYS_MAGAZZINO, tipi=TIPI_MAGAZZINO,
+)
+_UBICAZIONE_CREATE_REQUEST = schema_da_contratto(
+    "MagazzinoUbicazioneCreateReq", svc.CREATE_KEYS_UBICAZIONE, tipi=TIPI_MAGAZZINO,
+    obbligatorie=("codice", "tipo_id"),
+)
+_UBICAZIONE_UPDATE_REQUEST = schema_da_contratto(
+    "MagazzinoUbicazioneUpdateReq", svc.UPDATE_KEYS_UBICAZIONE, tipi=TIPI_MAGAZZINO,
+)
+_LOTTO_CREATE_REQUEST = schema_da_contratto(
+    "MagazzinoLottoCreateReq", svc.CREATE_KEYS_LOTTO, tipi=TIPI_MAGAZZINO,
+    obbligatorie=("articolo_id", "codice", "data_arrivo"),
+)
+_LOTTO_UPDATE_REQUEST = schema_da_contratto(
+    "MagazzinoLottoUpdateReq", svc.UPDATE_KEYS_LOTTO, tipi=TIPI_MAGAZZINO,
+)
+
 
 # ⛔ Nessun 400 sotto soglia (brief-db-be-fe-ricerca-soglia-per-lista §6 a,
 #    Tid 2026-09-26): il termine corto lo ignora il BB, sulla soglia del
@@ -119,7 +145,7 @@ class ApiMagazziniList(DomainAPIView):
             limit=p["limit"], offset=p["offset"],
         ))
 
-    @extend_schema(operation_id="magazzino_magazzini_create", responses={200: RISPOSTA_GENERICA})
+    @extend_schema(request=_MAGAZZINO_CREATE_REQUEST, operation_id="magazzino_magazzini_create", responses={200: RISPOSTA_GENERICA})
     # Scopo: Crea un magazzino (l'emittente lo mette il DB dalla GUC).
     def post(self, request: Request) -> JsonResponse:
         return handle_post_json(request, handler=svc.crea_magazzino, require_idempotency_key=True)
@@ -162,7 +188,7 @@ class ApiMagazzinoDetail(DomainAPIView):
     def get(self, request: Request, magazzino_id: int) -> JsonResponse:
         return success_response(svc.get_magazzino(magazzino_id))
 
-    @extend_schema(operation_id="magazzino_magazzini_update", responses={200: RISPOSTA_GENERICA})
+    @extend_schema(request=_MAGAZZINO_UPDATE_REQUEST, operation_id="magazzino_magazzini_update", responses={200: RISPOSTA_GENERICA})
     # Scopo: Aggiorna per delta (compreso `attivo`: disattiva/riattiva).
     def patch(self, request: Request, magazzino_id: int) -> JsonResponse:
         return handle_detail_patch(request, svc.aggiorna_magazzino, magazzino_id)
@@ -201,7 +227,7 @@ class ApiUbicazioniList(DomainAPIView):
             limit=p["limit"], offset=p["offset"],
         ))
 
-    @extend_schema(operation_id="magazzino_ubicazioni_create", responses={200: RISPOSTA_GENERICA})
+    @extend_schema(request=_UBICAZIONE_CREATE_REQUEST, operation_id="magazzino_ubicazioni_create", responses={200: RISPOSTA_GENERICA})
     # Scopo: Crea un'ubicazione nel magazzino del path.
     def post(self, request: Request, magazzino_id: int) -> JsonResponse:
         return handle_post_json(
@@ -245,7 +271,7 @@ class ApiUbicazioneDetail(DomainAPIView):
     def get(self, request: Request, magazzino_id: int, ubicazione_id: int) -> JsonResponse:
         return success_response(svc.get_ubicazione(magazzino_id, ubicazione_id))
 
-    @extend_schema(operation_id="magazzino_ubicazioni_update", responses={200: RISPOSTA_GENERICA})
+    @extend_schema(request=_UBICAZIONE_UPDATE_REQUEST, operation_id="magazzino_ubicazioni_update", responses={200: RISPOSTA_GENERICA})
     # Scopo: Aggiorna per delta. ⚠️ Non `handle_detail_patch`: la risorsa e'
     #        la COPPIA (magazzino, ubicazione) e il BB conosce una sola chiave.
     def patch(self, request: Request, magazzino_id: int, ubicazione_id: int) -> JsonResponse:
@@ -285,7 +311,7 @@ class ApiLottiList(DomainAPIView):
             limit=p["limit"], offset=p["offset"],
         ))
 
-    @extend_schema(operation_id="magazzino_lotti_create", responses={200: RISPOSTA_GENERICA})
+    @extend_schema(request=_LOTTO_CREATE_REQUEST, operation_id="magazzino_lotti_create", responses={200: RISPOSTA_GENERICA})
     # Scopo: Crea un lotto (`articolo_id` nel payload).
     def post(self, request: Request) -> JsonResponse:
         return handle_post_json(request, handler=svc.crea_lotto, require_idempotency_key=True)
@@ -324,7 +350,7 @@ class ApiLottoDetail(DomainAPIView):
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
         return success_response(svc.get_lotto(lotto_id))
 
-    @extend_schema(operation_id="magazzino_lotti_update", responses={200: RISPOSTA_GENERICA})
+    @extend_schema(request=_LOTTO_UPDATE_REQUEST, operation_id="magazzino_lotti_update", responses={200: RISPOSTA_GENERICA})
     # Scopo: Aggiorna per delta.
     def patch(self, request: Request, lotto_id: int) -> JsonResponse:
         return handle_detail_patch(request, svc.aggiorna_lotto, lotto_id)

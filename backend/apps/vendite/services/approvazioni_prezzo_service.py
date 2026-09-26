@@ -176,7 +176,7 @@ def _require_sorgente(sorgente: str) -> dict[str, Any]:
 
 # Scopo: le colonne di riga che il workflow L3 scrive, e SOLO lui (il
 #        contratto dell'operatore le rifiuta: `COMPONENTE_PATCH_OPERATORE`,
-#        `_UPDATE_KEYS_RIGA`). Dichiarate qui perche' il presidio
+#        `UPDATE_KEYS_RIGA`). Dichiarate qui perche' il presidio
 #        `test_whitelist_service_dentro_repository` le trovi accanto alle chiavi
 #        dell'operatore: il repository deve saperle scrivere tutte.
 CAMPI_RIGA_WORKFLOW_L3: frozenset[str] = frozenset({

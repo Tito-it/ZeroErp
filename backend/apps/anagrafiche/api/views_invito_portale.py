@@ -215,6 +215,7 @@ class ClientiDisattivaPortaleView(DomainAPIView):
     area_funzionale = "anagrafiche"
 
     @extend_schema(
+        request=None,
         summary="Disattiva accesso portale del cliente",
         responses={200: inline_serializer(
             name="ClienteDisattivaPortaleResp",
@@ -240,6 +241,7 @@ class ClientiDisattivaShopView(DomainAPIView):
     area_funzionale = "anagrafiche"
 
     @extend_schema(
+        request=None,
         summary="Disattiva accesso shop del cliente",
         responses={200: inline_serializer(
             name="ClienteDisattivaShopResp",
@@ -265,6 +267,7 @@ class FornitoriDisattivaPortaleView(DomainAPIView):
     area_funzionale = "anagrafiche"
 
     @extend_schema(
+        request=None,
         summary="Disattiva accesso portale del fornitore",
         responses={200: inline_serializer(
             name="FornitoreDisattivaPortaleResp",

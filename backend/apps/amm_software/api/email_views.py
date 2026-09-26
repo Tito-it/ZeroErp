@@ -12,7 +12,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from django.http import JsonResponse
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from rest_framework import serializers
+
+from apps.core.api.schema_da_contratto import schema_da_contratto
+from apps.core.api.schema_email import TIPI_EMAIL
 from rest_framework.request import Request
 
 from apps.core.api.base_views import AdminAPIView
@@ -49,6 +53,37 @@ _TEMPLATE_PATCH_KEYS: frozenset[str] = frozenset({
     "codice", "oggetto", "corpo_html", "corpo_testo", "lingua", "attivo",
     "unita_organizzativa_id", "tipo_prestazione_id", "variabili_disponibili",
 })
+
+# In CREAZIONE le chiavi sono le stesse della PATCH (i gestori leggono
+# esattamente quelle), e fuori contratto e' un 400 come nella PATCH.
+# ⭐ Dichiarato il 2026-09-26: prima la creazione leggeva le chiavi una per una
+#    e ignorava in silenzio le altre, mentre la PATCH accanto le rifiutava.
+_ACCOUNT_CREATE_KEYS: frozenset[str] = _ACCOUNT_PATCH_KEYS
+_TEMPLATE_CREATE_KEYS: frozenset[str] = _TEMPLATE_PATCH_KEYS
+
+# ── Schemi OpenAPI dei corpi: le chiavi dal contratto ────────────────────
+_ACCOUNT_CREATE_REQUEST = schema_da_contratto(
+    "AmmEmailAccountCreateReq", _ACCOUNT_CREATE_KEYS, tipi=TIPI_EMAIL,
+    obbligatorie=("codice", "descrizione", "email_from"),
+)
+_ACCOUNT_PATCH_REQUEST = schema_da_contratto(
+    "AmmEmailAccountPatchReq", _ACCOUNT_PATCH_KEYS, tipi=TIPI_EMAIL,
+)
+_TEMPLATE_CREATE_REQUEST = schema_da_contratto(
+    "AmmEmailTemplateCreateReq", _TEMPLATE_CREATE_KEYS, tipi=TIPI_EMAIL,
+    obbligatorie=("codice", "oggetto", "corpo_html"),
+)
+_TEMPLATE_PATCH_REQUEST = schema_da_contratto(
+    "AmmEmailTemplatePatchReq", _TEMPLATE_PATCH_KEYS, tipi=TIPI_EMAIL,
+)
+
+
+# L'anteprima di un template: le variabili con cui renderlo (facoltative).
+_PREVIEW_REQUEST = inline_serializer(
+    name="AmmEmailTemplatePreviewReq",
+    fields={"variabili": serializers.DictField(required=False, allow_null=True)},
+)
+
 
 
 # Scopo: Deriva la capability di test connessione di un account email.
@@ -140,10 +175,13 @@ class EmailAccountListView(AdminAPIView):
         )
         return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
-    @extend_schema(responses={200: dict})
+    @extend_schema(request=_ACCOUNT_CREATE_REQUEST, responses={200: dict})
     # Scopo: Crea un nuovo account email SMTP.
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
+            PayloadValidator(validation_code=E_EMAIL_ADMIN).validate_allowed_keys(
+                payload, allowed=_ACCOUNT_CREATE_KEYS, message="Campi dell'account non ammessi.",
+            )
             codice = (payload.get("codice") or "").strip().upper()
             ErrorManager.require(bool(codice), code=E_EMAIL_ADMIN, message="Codice obbligatorio.")
 
@@ -189,7 +227,7 @@ class EmailAccountDetailView(AdminAPIView):
         assert result is not None
         return success_response(_enrich_account_with_capability(result))
 
-    @extend_schema(responses={200: dict})
+    @extend_schema(request=_ACCOUNT_PATCH_REQUEST, responses={200: dict})
     # Scopo: Aggiorna parzialmente un account email.
     # ⛔ Dal 2026-09-26 una chiave fuori `_ACCOUNT_PATCH_KEYS` e' un 400
     #    `E_EMAIL_ADMIN`, non piu' uno scarto silenzioso (un PATCH che «riesce»
@@ -246,7 +284,7 @@ class EmailAccountTestView(AdminAPIView):
     Cosi' il FE puo' aggiornare in-place la riga senza una GET extra.
     """
 
-    @extend_schema(responses={200: dict})
+    @extend_schema(request=None, responses={200: dict})
     # Scopo: Verifica connessione SMTP senza inviare email. Persiste l'esito
     #        in meta jsonb e ritorna risultato + capability aggiornate.
     def post(self, request: Request, account_id: int) -> JsonResponse:
@@ -318,10 +356,13 @@ class EmailTemplateListView(AdminAPIView):
         )
         return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
-    @extend_schema(responses={200: dict})
+    @extend_schema(request=_TEMPLATE_CREATE_REQUEST, responses={200: dict})
     # Scopo: Crea un nuovo template email.
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
+            PayloadValidator(validation_code=E_EMAIL_ADMIN).validate_allowed_keys(
+                payload, allowed=_TEMPLATE_CREATE_KEYS, message="Campi del template non ammessi.",
+            )
             codice = (payload.get("codice") or "").strip().upper()
             ErrorManager.require(bool(codice), code=E_EMAIL_ADMIN, message="Codice obbligatorio.")
 
@@ -359,7 +400,7 @@ class EmailTemplateDetailView(AdminAPIView):
         ErrorManager.require(result is not None, code=E_EMAIL_ADMIN, message="Template non trovato.")
         return success_response(result or {})
 
-    @extend_schema(responses={200: dict})
+    @extend_schema(request=_TEMPLATE_PATCH_REQUEST, responses={200: dict})
     # Scopo: Aggiorna parzialmente un template email.
     # ⛔ Dal 2026-09-26 una chiave fuori `_TEMPLATE_PATCH_KEYS` e' un 400
     #    `E_EMAIL_ADMIN`, non uno scarto silenzioso. `EmailTemplateDrawer`
@@ -412,7 +453,7 @@ class EmailTemplatePreviewView(AdminAPIView):
     sandbox (defense-in-depth — Fase 6 amm-software).
     """
 
-    @extend_schema(responses={200: dict})
+    @extend_schema(request=_PREVIEW_REQUEST, responses={200: dict})
     # Scopo: Renderizza un template con variabili di esempio e sanifica
     #        l'HTML risultante prima di restituirlo al client.
     def post(self, request: Request, template_id: int) -> JsonResponse:

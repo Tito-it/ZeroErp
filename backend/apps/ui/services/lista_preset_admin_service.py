@@ -59,7 +59,7 @@ _AMBITI_AMMESSI: frozenset[str] = frozenset(
 
 # Whitelist chiavi del payload create. Comprende immutabili (`lista_id`,
 # `ambito`, `profilo_accesso_id`, `emittente_fiscale_id`) + mutabili.
-_CREATE_KEYS: frozenset[str] = frozenset(
+CREATE_KEYS: frozenset[str] = frozenset(
     {
         "lista_id",
         "codice",
@@ -77,7 +77,7 @@ _CREATE_KEYS: frozenset[str] = frozenset(
 
 # Whitelist chiavi del payload update. Esclude gli immutabili. Per
 # cambiare ambito/refs si crea un nuovo preset.
-_UPDATE_KEYS: frozenset[str] = frozenset(
+UPDATE_KEYS: frozenset[str] = frozenset(
     {
         "codice",
         "descrizione",
@@ -178,7 +178,7 @@ class ListaPresetAdminService:
     ) -> dict[str, Any]:
         self._v.validate_allowed_keys(
             payload,
-            allowed=_CREATE_KEYS,
+            allowed=CREATE_KEYS,
             message="Payload preset non valido.",
         )
         data = self._build_create_data(payload)
@@ -232,7 +232,7 @@ class ListaPresetAdminService:
 
         self._v.validate_allowed_keys(
             payload,
-            allowed=_UPDATE_KEYS,
+            allowed=UPDATE_KEYS,
             message="Payload preset non valido.",
         )
         data = self._build_update_data(payload)
@@ -240,7 +240,7 @@ class ListaPresetAdminService:
             bool(data),
             code=E_PRESET_VALIDATION,
             message="Nessun campo aggiornabile presente nel payload.",
-            detail=f"allowed_keys={sorted(_UPDATE_KEYS)!r}",
+            detail=f"allowed_keys={sorted(UPDATE_KEYS)!r}",
         )
 
         try:

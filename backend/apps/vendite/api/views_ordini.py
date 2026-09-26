@@ -37,12 +37,63 @@ from apps.vendite.api.indirizzi_documento_views import (
 from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import ordini_service
 from apps.core.api.openapi_params import param_ricerca_full
-from apps.vendite.api._componenti_schema import COMPONENTE_PATCH_REQUEST
+from apps.vendite.api._componenti_schema import (
+    COMPONENTE_PATCH_REQUEST,
+    COMPONENTI_LIST_PARAMETERS,
+    COMPONENTI_LIST_RESPONSE,
+    PREVIEW_COMPONENTI_REQUEST,
+    PREVIEW_COMPONENTI_RESPONSE,
+    componenti_overrides_field,
+)
+from apps.vendite.api._schema_da_contratto import CAMBIA_STATO_REQUEST, schema_da_contratto
 
 # Codice lista configurabile (catalogo ui.lista_definizione id=7). Usato
 # dall'export per risolvere colonne visibili/ordine/permessi dell'utente.
 _LISTA_CODICE_ORDINI = "vendite.ordini"
 
+
+# ── Schemi OpenAPI dei corpi: le chiavi dal contratto del service ──────────
+_ORDINE_CREATE_REQUEST = schema_da_contratto(
+    "VenditeOrdineCreateReq", ordini_service.CREATE_KEYS_ORDINE,
+)
+_ORDINE_UPDATE_REQUEST = schema_da_contratto(
+    "VenditeOrdineUpdateReq", ordini_service.UPDATE_KEYS_ORDINE,
+)
+_ORDINE_RIGA_CREATE_REQUEST = schema_da_contratto(
+    "VenditeOrdineRigaCreateReq", ordini_service.CREATE_KEYS_RIGA,
+    obbligatorie=("articolo_id",),
+    speciali={"componenti_overrides": componenti_overrides_field()},
+)
+_ORDINE_RIGA_UPDATE_REQUEST = schema_da_contratto(
+    "VenditeOrdineRigaUpdateReq", ordini_service.UPDATE_KEYS_RIGA,
+)
+# Evasione parziale: la forma che legge `_parse_righe_evasione`.
+_ORDINE_GENERA_DDT_REQUEST = inline_serializer(
+    name="VenditeOrdineGeneraDdtReq",
+    fields={
+        "righe": serializers.ListField(
+            required=False,
+            help_text="Omessa: evade tutto il residuo dell'ordine.",
+            child=inline_serializer(
+                name="VenditeOrdineRigaDaEvadere",
+                fields={
+                    "ordine_riga_id": serializers.IntegerField(),
+                    "qta_da_evadere": serializers.DecimalField(
+                        max_digits=22, decimal_places=10,
+                        required=False, allow_null=True,
+                    ),
+                },
+            ),
+        ),
+    },
+)
+_ORDINE_RESPONSE = inline_serializer(
+    name="VenditeOrdineResp", fields={"data": serializers.DictField()},
+)
+_ORDINE_LISTA_RESPONSE = inline_serializer(
+    name="VenditeOrdineListaResp",
+    fields={"data": serializers.ListField(child=serializers.DictField())},
+)
 
 # Scopo: normalizza le `righe` da evadere dal body di genera-ddt. Assente/null =
 #        tutto il residuo dell'ordine (None). Lista vuota = errore esplicito: NON
@@ -130,6 +181,10 @@ class ApiOrdiniList(DomainAPIView):
         )
         return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
+    @extend_schema(
+        request=_ORDINE_CREATE_REQUEST,
+        responses={200: _ORDINE_RESPONSE},
+    )
     # Scopo: Crea nuovo ordine in stato BOZZA (DRAFT).
     def post(self, request: Request) -> JsonResponse:
         return handle_post_json(request, handler=ordini_service.crea_ordine)
@@ -205,10 +260,17 @@ class ApiOrdineDetail(DomainAPIView):
 
     area_funzionale = "vendite"
 
+    @extend_schema(
+        responses={200: _ORDINE_RESPONSE},
+    )
     # Scopo: Dettaglio testata ordine + capability.
     def get(self, request: Request, ordine_id: int) -> JsonResponse:
         return success_response(ordini_service.get_ordine(int(ordine_id)))
 
+    @extend_schema(
+        request=_ORDINE_UPDATE_REQUEST,
+        responses={200: _ORDINE_RESPONSE},
+    )
     # Scopo: Aggiorna testata ordine (solo DRAFT). PATCH usa request.data
     #        (api.md §handle_post_json vs request.data): DRF ha gia' parsato il
     #        body; handle_post_json rileggerebbe il raw consumato.
@@ -217,6 +279,9 @@ class ApiOrdineDetail(DomainAPIView):
             ordini_service.aggiorna_ordine(int(ordine_id), dict(request.data)),
         )
 
+    @extend_schema(
+        responses={200: _ORDINE_RESPONSE},
+    )
     # Scopo: Hard-delete ordine (abbandono bozza, solo DRAFT).
     def delete(self, request: Request, ordine_id: int) -> JsonResponse:
         return success_response(ordini_service.elimina_ordine(int(ordine_id)))
@@ -260,6 +325,10 @@ class ApiOrdineConferma(DomainAPIView):
 
     area_funzionale = "vendite"
 
+    @extend_schema(
+        request=None,
+        responses={200: _ORDINE_RESPONSE},
+    )
     def post(self, request: Request, ordine_id: int) -> JsonResponse:
         user = getattr(request.user, "username", None) or None
         return success_response(ordini_service.conferma(int(ordine_id), user=user))
@@ -270,6 +339,10 @@ class ApiOrdinePush(DomainAPIView):
 
     area_funzionale = "vendite"
 
+    @extend_schema(
+        request=None,
+        responses={200: _ORDINE_RESPONSE},
+    )
     def post(self, request: Request, ordine_id: int) -> JsonResponse:
         user = getattr(request.user, "username", None) or None
         return success_response(ordini_service.push_a_commessa(int(ordine_id), user=user))
@@ -282,6 +355,10 @@ class ApiOrdineCambiaStato(DomainAPIView):
 
     area_funzionale = "vendite"
 
+    @extend_schema(
+        request=CAMBIA_STATO_REQUEST,
+        responses={200: _ORDINE_RESPONSE},
+    )
     def post(self, request: Request, ordine_id: int) -> JsonResponse:
         return handle_post_json(
             request,
@@ -333,10 +410,17 @@ class ApiOrdineRighe(DomainAPIView):
 
     area_funzionale = "vendite"
 
+    @extend_schema(
+        responses={200: _ORDINE_LISTA_RESPONSE},
+    )
     # Scopo: Lista righe dell'ordine.
     def get(self, request: Request, ordine_id: int) -> JsonResponse:
         return success_response(ordini_service.list_righe(int(ordine_id)))
 
+    @extend_schema(
+        request=_ORDINE_RIGA_CREATE_REQUEST,
+        responses={200: _ORDINE_RESPONSE},
+    )
     # Scopo: Aggiunge una riga (solo DRAFT). Pricing via BB condiviso.
     def post(self, request: Request, ordine_id: int) -> JsonResponse:
         auth_user_id = get_scope_user_id(request)
@@ -353,6 +437,10 @@ class ApiOrdineRigaDetail(DomainAPIView):
 
     area_funzionale = "vendite"
 
+    @extend_schema(
+        request=_ORDINE_RIGA_UPDATE_REQUEST,
+        responses={200: _ORDINE_RESPONSE},
+    )
     def patch(self, request: Request, ordine_id: int, riga_id: int) -> JsonResponse:
         return success_response(
             ordini_service.aggiorna_riga(
@@ -361,6 +449,9 @@ class ApiOrdineRigaDetail(DomainAPIView):
             ),
         )
 
+    @extend_schema(
+        responses={200: _ORDINE_RESPONSE},
+    )
     def delete(self, request: Request, ordine_id: int, riga_id: int) -> JsonResponse:
         return success_response(
             ordini_service.elimina_riga(int(ordine_id), int(riga_id)),
@@ -375,6 +466,10 @@ class ApiOrdineRigaPreviewComponenti(DomainAPIView):
 
     area_funzionale = "vendite"
 
+    @extend_schema(
+        request=PREVIEW_COMPONENTI_REQUEST,
+        responses={200: PREVIEW_COMPONENTI_RESPONSE},
+    )
     def post(self, request: Request, ordine_id: int) -> JsonResponse:
         auth_user_id = get_scope_user_id(request)
 
@@ -399,6 +494,10 @@ class ApiOrdineRigaComponentiList(DomainAPIView):
 
     area_funzionale = "vendite"
 
+    @extend_schema(
+        parameters=COMPONENTI_LIST_PARAMETERS,
+        responses={200: COMPONENTI_LIST_RESPONSE},
+    )
     def get(self, request: Request, ordine_id: int, riga_id: int) -> JsonResponse:
         solo_attivi = qp_bool(request.query_params.get("solo_attivi"), default=True)
         return success_response(
@@ -424,6 +523,9 @@ class ApiOrdineRigaComponenteDetail(DomainAPIView):
             ),
         )
 
+    @extend_schema(
+        responses={200: _ORDINE_RESPONSE},
+    )
     def delete(
         self, request: Request, ordine_id: int, riga_id: int, componente_id: int,
     ) -> JsonResponse:
@@ -447,6 +549,7 @@ class ApiOrdineGeneraDdt(DomainAPIView):
     area_funzionale = "vendite"
 
     @extend_schema(
+        request=_ORDINE_GENERA_DDT_REQUEST,
         responses={200: inline_serializer(
             name="OrdineGeneraDdtResponse",
             fields={"data": serializers.DictField()},

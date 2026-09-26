@@ -127,16 +127,16 @@ def _get_riga_or_raise(
 # Whitelist campi testata accettati in create/update (null_vs_empty -> None).
 # Il resto (BA/destinatario/utility/valuta/emittente) e' EREDITATO dal DDT
 # sorgente via trgfn_resi_normalize e immutabile (non_editable_fields).
-_CREATE_KEYS_RESO: frozenset[str] = frozenset({"ddt_id", "data", "meta", "righe"})
-_UPDATE_KEYS_RESO: frozenset[str] = frozenset({"data", "meta"})
+CREATE_KEYS_RESO: frozenset[str] = frozenset({"ddt_id", "data", "meta", "righe"})
+UPDATE_KEYS_RESO: frozenset[str] = frozenset({"data", "meta"})
 # NB: `quantita` (base) NON e' accettata nel payload riga: il trigger DB
 # `trgfn_qta_from_operativa` su INSERT la calcola SEMPRE da qta_operativa
 # (E_QTA_MISSING se assente) e su UPDATE un set diretto della base senza
 # input operativi creerebbe un'incoerenza silente base<->operativa.
-_CREATE_KEYS_RIGA: frozenset[str] = frozenset({
+CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "ddt_riga_id", "tipo_reso_id", "qta_operativa", "motivo", "meta",
 })
-_UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
+UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "tipo_reso_id", "qta_operativa", "motivo", "meta",
 })
 
@@ -418,7 +418,7 @@ def resolve_filtri_coda_export_label(
 #        transazione (compone 2+ scritture — guardrail atomicita' api.md).
 def crea_reso(payload: dict[str, Any]) -> dict[str, Any]:
     repo = ResiRepository()
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in _CREATE_KEYS_RESO}
+    data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_RESO}
 
     ddt_id = _PAYLOAD.require_positive_int(
         data, "ddt_id",
@@ -507,7 +507,7 @@ def crea_reso(payload: dict[str, Any]) -> dict[str, Any]:
 def aggiorna_reso(reso_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     repo = ResiRepository()
     _assert_stato(repo, reso_id, _STATI_MODIFICABILI, op="aggiorna_reso")
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in _UPDATE_KEYS_RESO}
+    data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_RESO}
     ErrorManager.require(
         len(data) > 0,
         code="E_RESO_VALIDAZIONE",
@@ -814,7 +814,7 @@ def aggiorna_riga(
     repo = ResiRepository()
     _richiedi_righe_in_bozza(repo, reso_id, verbo="modificare", op="aggiorna_riga")
     _get_riga_or_raise(repo, reso_id, riga_id, op="aggiorna_riga")
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in _UPDATE_KEYS_RIGA}
+    data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_RIGA}
     ErrorManager.require(
         len(data) > 0,
         code="E_RESO_VALIDAZIONE",
@@ -851,7 +851,7 @@ def _crea_riga(
     repo: ResiRepository, reso_id: int, ddt_id: int, payload: dict[str, Any],
     *, riga_nr: int | None = None,
 ) -> dict[str, Any]:
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in _CREATE_KEYS_RIGA}
+    data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_RIGA}
     fn = f"{_FN}._crea_riga"
 
     ddt_riga_id = _PAYLOAD.require_positive_int(

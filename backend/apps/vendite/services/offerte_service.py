@@ -213,7 +213,7 @@ _FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
 # `trgfn_offerte_commerciali_gen_codice` (BEFORE INSERT). Il campo `codice` NON
 # va piu' nel payload: se inviato si rifiuta come unknown_key (defense-in-depth
 # applicativo; il trigger DB e' la garanzia ultima).
-_CREATE_KEYS_OFFERTA: frozenset[str] = frozenset({
+CREATE_KEYS_OFFERTA: frozenset[str] = frozenset({
     "emittente_fiscale_id",
     "billing_account_id",
     "istanza_utility_id",
@@ -243,7 +243,7 @@ _CREATE_KEYS_OFFERTA: frozenset[str] = frozenset({
 # Whitelist payload update offerta (testata). Sub-set di create (immutabili:
 # codice/uid/stato_doc_offerta_id/revisione_numero/revisione_padre_id e
 # tutti i campi audit/timestamp di transizione).
-_UPDATE_KEYS_OFFERTA: frozenset[str] = frozenset({
+UPDATE_KEYS_OFFERTA: frozenset[str] = frozenset({
     "emittente_fiscale_id",
     "billing_account_id",
     "istanza_utility_id",
@@ -272,7 +272,7 @@ _UPDATE_KEYS_OFFERTA: frozenset[str] = frozenset({
 _TIPI_ECCEZIONE_CON_GATE: frozenset[str] = frozenset({"OVERRIDE", "AGGIUNTA"})
 
 
-_CREATE_KEYS_ECCEZIONE: frozenset[str] = frozenset({
+CREATE_KEYS_ECCEZIONE: frozenset[str] = frozenset({
     "articolo_id",
     "tipo_eccezione",
     "tipo_erogazione",
@@ -299,15 +299,15 @@ _CREATE_KEYS_ECCEZIONE: frozenset[str] = frozenset({
 # `componenti_overrides` non re-spedito in update (la BoM e' contratto
 # immutabile post-init); la modifica prezzi componente passa via endpoint
 # CRUD dedicato `PATCH .../componenti/<cid>/`.
-_UPDATE_KEYS_ECCEZIONE: frozenset[str] = frozenset(
-    _CREATE_KEYS_ECCEZIONE - {
+UPDATE_KEYS_ECCEZIONE: frozenset[str] = frozenset(
+    CREATE_KEYS_ECCEZIONE - {
         "articolo_id", "tipo_eccezione", "componenti_overrides",
     }
 )
 
 
 # Whitelist payload utility (create).
-_CREATE_KEYS_UTILITY: frozenset[str] = frozenset({
+CREATE_KEYS_UTILITY: frozenset[str] = frozenset({
     "istanza_utility_id",
     "utility_id",
     "istanza_dati_precontrattuali_id",
@@ -320,8 +320,8 @@ _CREATE_KEYS_UTILITY: frozenset[str] = frozenset({
 
 
 # Whitelist payload utility (update): istanza_utility_id/utility_id immutabili.
-_UPDATE_KEYS_UTILITY: frozenset[str] = frozenset(
-    _CREATE_KEYS_UTILITY - {"istanza_utility_id", "utility_id"}
+UPDATE_KEYS_UTILITY: frozenset[str] = frozenset(
+    CREATE_KEYS_UTILITY - {"istanza_utility_id", "utility_id"}
 )
 
 
@@ -500,7 +500,7 @@ class OfferteService:
     #        atterrato 2026-05-25): non va nel payload (rifiutato dalla
     #        whitelist). Lo stato BOZZA si risolve via lookup `codice_interno`.
     def crea_offerta(self, payload: dict[str, Any]) -> dict[str, Any]:
-        self._v.validate_allowed_keys(payload, allowed=_CREATE_KEYS_OFFERTA)
+        self._v.validate_allowed_keys(payload, allowed=CREATE_KEYS_OFFERTA)
         # Validazioni applicative minime (il DB rifinisce gli invarianti via
         # CHECK chk_offerte_*).
         for required in (
@@ -541,7 +541,7 @@ class OfferteService:
             {k: v for k, v in payload.items() if k != "utility"},
         )
         data["stato_doc_offerta_id"] = stato_bozza_id
-        # `codice` NON in payload (vedi nota _CREATE_KEYS_OFFERTA): il trigger
+        # `codice` NON in payload (vedi nota CREATE_KEYS_OFFERTA): il trigger
         # BEFORE INSERT genera OFC-NNNNNNN via `script.fn_generate_codice`.
         # `revisione_numero` ha default DB = 1.
         with self._db_errors({"billing_account_id": payload.get("billing_account_id")}):
@@ -575,7 +575,7 @@ class OfferteService:
         merged = dict(utility_payload)
         merged.setdefault("istanza_utility_id", offerta_payload.get("istanza_utility_id"))
         merged.setdefault("utility_id", offerta_payload.get("utility_id"))
-        self._v.validate_allowed_keys(merged, allowed=_CREATE_KEYS_UTILITY)
+        self._v.validate_allowed_keys(merged, allowed=CREATE_KEYS_UTILITY)
         merged = self._con_meta_normalizzato(merged)
         for required in ("istanza_utility_id", "utility_id"):
             ErrorManager.require(
@@ -600,7 +600,7 @@ class OfferteService:
         self, offerta_id: int, payload: dict[str, Any]
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        self._v.validate_allowed_keys(payload, allowed=_UPDATE_KEYS_OFFERTA)
+        self._v.validate_allowed_keys(payload, allowed=UPDATE_KEYS_OFFERTA)
         self._guard_payload_non_vuoto(payload, op="aggiorna_offerta")
         self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
         # Split testata vs utility prima del repo. La testata non ha la
@@ -632,7 +632,7 @@ class OfferteService:
     # Scopo: Upsert del record utility 1:1 contestualmente al PATCH testata.
     #        Distingue create (nessuna utility ancora) da update (utility
     #        esistente) tramite lookup; entrambi i rami applicano la stessa
-    #        whitelist (`_CREATE_KEYS_UTILITY` per create, `_UPDATE_KEYS_UTILITY`
+    #        whitelist (`CREATE_KEYS_UTILITY` per create, `UPDATE_KEYS_UTILITY`
     #        per update — istanza_utility_id/utility_id immutabili dopo
     #        la creazione del record).
     def _upsert_utility_inline(
@@ -650,9 +650,9 @@ class OfferteService:
         # SCONOSCIUTA si rifiuta (400), come nel ramo create: fino al
         # 2026-09-26 l'intersezione con la whitelist la scartava in silenzio —
         # un salvataggio «riuscito» senza aver scritto il campo.
-        self._v.validate_allowed_keys(utility_payload, allowed=_CREATE_KEYS_UTILITY)
+        self._v.validate_allowed_keys(utility_payload, allowed=CREATE_KEYS_UTILITY)
         update_payload = self._con_meta_normalizzato({
-            k: v for k, v in utility_payload.items() if k in _UPDATE_KEYS_UTILITY
+            k: v for k, v in utility_payload.items() if k in UPDATE_KEYS_UTILITY
         })
         if not update_payload:
             return
@@ -920,7 +920,7 @@ class OfferteService:
         auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        self._v.validate_allowed_keys(payload, allowed=_CREATE_KEYS_ECCEZIONE)
+        self._v.validate_allowed_keys(payload, allowed=CREATE_KEYS_ECCEZIONE)
         payload = self._con_meta_normalizzato(payload)
         self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
         for required in ("articolo_id", "tipo_eccezione", "fonte_quantita_attesa"):
@@ -1064,7 +1064,7 @@ class OfferteService:
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.guard_positive_int(eccezione_id, field="eccezione_id")
-        self._v.validate_allowed_keys(payload, allowed=_UPDATE_KEYS_ECCEZIONE)
+        self._v.validate_allowed_keys(payload, allowed=UPDATE_KEYS_ECCEZIONE)
         payload = self._con_meta_normalizzato(payload)
         # Flag opt-in workflow L3 (estratto prima del guard non-vuoto: non e' un
         # campo di update di per se').
@@ -1397,7 +1397,7 @@ class OfferteService:
         self, offerta_id: int, payload: dict[str, Any]
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        self._v.validate_allowed_keys(payload, allowed=_CREATE_KEYS_UTILITY)
+        self._v.validate_allowed_keys(payload, allowed=CREATE_KEYS_UTILITY)
         payload = self._con_meta_normalizzato(payload)
         self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
         for required in ("istanza_utility_id", "utility_id"):
@@ -1421,7 +1421,7 @@ class OfferteService:
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.guard_positive_int(utility_id, field="utility_id")
-        self._v.validate_allowed_keys(payload, allowed=_UPDATE_KEYS_UTILITY)
+        self._v.validate_allowed_keys(payload, allowed=UPDATE_KEYS_UTILITY)
         payload = self._con_meta_normalizzato(payload)
         self._guard_payload_non_vuoto(payload, op="aggiorna_utility")
         self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)

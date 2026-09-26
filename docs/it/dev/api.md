@@ -2151,8 +2151,11 @@ accendere un cancello, non nella peggiore.
 * Ogni `APIView` su `/api/v1/` ha `@extend_schema` su ogni metodo HTTP pubblico,
   con `request` (se il metodo ha un corpo) **e** `responses`: senza uno dei due
   drf-spectacular non trova il serializer (`W002`) e l'endpoint esce vuoto
-  dallo schema. Lista e dettaglio con lo stesso `operationId` (`W001`) si
-  separano con `operation_id=`. Presidio dal 2026-09-26:
+  dallo schema. Lista e dettaglio (`/x/`, `/x/{id}/`) avrebbero lo stesso
+  `operationId` (`W001`): li separa l'hook `nomi_lista_dettaglio`
+  (`apps/core/api/openapi_extensions.py`) in `x_list` / `x_retrieve`, senza
+  toccare le view; le altre collisioni vogliono `operation_id=` esplicito.
+  Presidio dal 2026-09-26:
   `apps/core/tests/test_schema_openapi_registro.py`, registro a cricchetto
   `openapi_schema.baseline.json` — rosso su una view o un `operationId` nuovi,
   rosso anche su una voce sanata e non tolta. ⚠️ Il `W002` è **per view**: una

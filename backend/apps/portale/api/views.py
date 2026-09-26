@@ -84,6 +84,7 @@ class ProfileActivateShopView(PortaleAPIView):
     skip_area_check = True
 
     @extend_schema(
+        request=None,
         summary="Attiva veste SHOP_CUSTOMER per utente portale cliente",
         responses={200: inline_serializer(
             name="ActivateShopResp",

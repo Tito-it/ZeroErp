@@ -288,7 +288,7 @@ class DdtAggiornaTests(SimpleTestCase):
     @patch(_REPO)
     def test_aggiorna_ddt_ba_invariato_tollerato(self, repo_cls) -> None:
         # BA reinviato invariato dal form: tollerato ma escluso dall'UPDATE
-        # (non in whitelist _UPDATE_KEYS_DDT). Aggiorna solo gli altri campi.
+        # (non in whitelist UPDATE_KEYS_DDT). Aggiorna solo gli altri campi.
         # Lettura singola: guard stato + confronto BA dalla stessa testata.
         repo = repo_cls.return_value
         repo.get_ddt.return_value = {
@@ -638,12 +638,12 @@ class DdtRigaSenzaPrezzoTests(SimpleTestCase):
         })
 
         # ⭐ E' la WHITELIST il cancello vero: `iva_id` non e' in
-        #    `_CREATE_KEYS_RIGA`, quindi non entra nemmeno in `data`. Questa
+        #    `CREATE_KEYS_RIGA`, quindi non entra nemmeno in `data`. Questa
         #    asserzione morde ANCHE se qualcuno rimettesse la chiave, perche'
         #    allora `payload_iva_id` tornerebbe 999.
         self.assertIsNone(self.iva.call_args.kwargs["payload_iva_id"])
-        self.assertNotIn("iva_id", ddt_service._CREATE_KEYS_RIGA)
-        self.assertNotIn("iva_id", ddt_service._UPDATE_KEYS_RIGA)
+        self.assertNotIn("iva_id", ddt_service.CREATE_KEYS_RIGA)
+        self.assertNotIn("iva_id", ddt_service.UPDATE_KEYS_RIGA)
         self.assertEqual(repo.create_riga.call_args.kwargs["iva_id"], 9)
 
 

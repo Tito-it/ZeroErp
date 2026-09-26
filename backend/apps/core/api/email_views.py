@@ -39,7 +39,8 @@ import os
 from typing import Any
 
 from django.http import FileResponse, JsonResponse
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.parsers import MultiPartParser
 from rest_framework.request import Request
 
@@ -50,7 +51,9 @@ from apps.core.api.payload_validators import optional_int, parse_list_params
 from apps.core.api.success_responses import success_response
 from apps.core.db.email_repository import EmailRepository
 from apps.core.services.email_allegati_storage import E_EMAIL_OP, percorso_allegato
-from apps.core.services.email_outbox_service import EmailOutboxService
+from apps.core.services.email_outbox_service import DRAFT_EDITABILI, EmailOutboxService
+from apps.core.api.schema_da_contratto import schema_da_contratto
+from apps.core.api.schema_email import TIPI_EMAIL
 from apps.core.services.email_constants import AMBITI_EMAIL, elenco_stati_email_log
 from apps.core.services.auth_helpers import (
     extract_emittente_attivo_from_request,
@@ -66,13 +69,44 @@ from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 #    chi lo importava da questo modulo non si accorge dello spostamento.
 AMBITI_OUTBOX = AMBITI_EMAIL
 
+# ── Schemi OpenAPI dei corpi ──────────────────────────────────────────────
+# La bozza da template: le chiavi che `EmailPrepareView` legge. L'ambito ha il
+# suo dominio da `AMBITI_OUTBOX` (la stessa costante che il gestore controlla).
+_PREPARE_REQUEST = inline_serializer(
+    name="CoreEmailPrepareReq",
+    fields={
+        "codice_template": serializers.CharField(),
+        "destinatario": serializers.CharField(),
+        "ambito": serializers.ChoiceField(choices=sorted(AMBITI_OUTBOX)),
+        "unita_organizzativa_id": serializers.IntegerField(
+            required=False, allow_null=True,
+            help_text="Obbligatoria con ambito REPARTO.",
+        ),
+        "lingua": serializers.CharField(required=False, allow_null=True),
+        "variabili": serializers.DictField(required=False, allow_null=True),
+        "destinatari_cc": serializers.ListField(
+            child=serializers.CharField(), required=False, allow_null=True,
+        ),
+    },
+)
+# La modifica di una bozza: le chiavi dal contratto del service.
+_BOZZA_PATCH_REQUEST = schema_da_contratto(
+    "CoreEmailBozzaPatchReq", DRAFT_EDITABILI, tipi=TIPI_EMAIL,
+)
+# Un allegato alla bozza: multipart, campo `file`.
+_ALLEGATO_UPLOAD_REQUEST = inline_serializer(
+    name="CoreEmailAllegatoUploadReq",
+    fields={"file": serializers.FileField()},
+)
+
+
 
 class EmailPrepareView(DomainAPIView):
     """POST: prepara bozza email da template + variabili."""
 
     area_funzionale = "config"
 
-    @extend_schema(responses={200: dict})
+    @extend_schema(request=_PREPARE_REQUEST, responses={200: dict})
     # Scopo: Prepara una bozza email renderizzando un template con variabili.
     #
     # ⛔ `ambito` E' OBBLIGATORIO, e dal 2026-09-05 non ha piu' un default.
@@ -204,7 +238,7 @@ class EmailOutboxDetailView(DomainAPIView):
         assert result is not None
         return success_response(result)
 
-    @extend_schema(responses={200: dict})
+    @extend_schema(request=_BOZZA_PATCH_REQUEST, responses={200: dict})
     # Scopo: Modifica oggetto, corpo, CC di una bozza DRAFT.
     def patch(self, request: Request, outbox_id: int) -> JsonResponse:
         repo = EmailRepository()
@@ -225,7 +259,7 @@ class EmailOutboxSendView(DomainAPIView):
 
     area_funzionale = "config"
 
-    @extend_schema(responses={200: dict})
+    @extend_schema(request=None, responses={200: dict})
     # Scopo: Conferma e invia una bozza email (DRAFT -> SENT).
     def post(self, request: Request, outbox_id: int) -> JsonResponse:
         repo = EmailRepository()
@@ -243,7 +277,7 @@ class EmailOutboxCancelView(DomainAPIView):
 
     area_funzionale = "config"
 
-    @extend_schema(responses={200: dict})
+    @extend_schema(request=None, responses={200: dict})
     # Scopo: Annulla una bozza email (DRAFT -> CANCELLED).
     def post(self, request: Request, outbox_id: int) -> JsonResponse:
         repo = EmailRepository()
@@ -267,7 +301,7 @@ class EmailAllegatoUploadView(DomainAPIView):
     area_funzionale = "config"
     parser_classes = [MultiPartParser]
 
-    @extend_schema(responses={200: dict})
+    @extend_schema(request={"multipart/form-data": _ALLEGATO_UPLOAD_REQUEST}, responses={200: dict})
     # Scopo: Upload file allegato a una bozza DRAFT.
     def post(self, request: Request, outbox_id: int) -> JsonResponse:
         repo = EmailRepository()

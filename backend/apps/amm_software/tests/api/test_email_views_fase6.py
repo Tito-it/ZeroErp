@@ -24,6 +24,10 @@ Indice test eseguiti:
 13) test_patch_chiave_estranea_rifiutata — PATCH account con chiave fuori contratto → 400 E_EMAIL_ADMIN
 14) test_patch_template_payload_del_drawer_passa — PATCH template col payload reale del drawer
 15) test_patch_template_chiave_estranea_rifiutata — PATCH template con chiave fuori contratto → 400
+16) test_create_account_payload_del_drawer_passa — POST account col payload del drawer → create_account
+17) test_create_account_chiave_estranea_rifiutata — POST account fuori contratto → 400, prima scartata
+18) test_create_template_passa — POST template con le chiavi del contratto → create_template
+19) test_create_template_chiave_estranea_rifiutata — POST template fuori contratto → 400
 """
 
 import json
@@ -32,8 +36,10 @@ from unittest.mock import MagicMock, patch
 
 from apps.amm_software.api.email_views import (
     EmailAccountDetailView,
+    EmailAccountListView,
     EmailAccountTestView,
     EmailTemplateDetailView,
+    EmailTemplateListView,
     EmailTemplatePreviewView,
 )
 from apps.core.services.error_manager import ServiceError
@@ -238,6 +244,74 @@ class TestEmailTemplatePatchChiavi(TestCase):
             view.patch(request, 3)
         self.assertEqual(ctx.exception.code, "E_EMAIL_ADMIN")
         repo.update_template.assert_not_called()
+
+class TestEmailCreateChiavi(TestCase):
+    """POST di account e template: stesso contratto della PATCH (2026-09-26).
+    Prima la creazione leggeva le chiavi una per una e ignorava le altre."""
+
+    _ACCOUNT_DEL_DRAWER = {
+        "codice": "main", "descrizione": "Principale", "smtp_host": "smtp.x.it",
+        "smtp_port": 587, "smtp_use_tls": True, "smtp_use_ssl": False,
+        "smtp_username": "u", "smtp_password": "segreta", "email_from": "a@x.it",
+        "email_reply_to": "", "unita_organizzativa_id": None, "attivo": True,
+    }
+
+    @patch(REPO_PATH)
+    def test_create_account_payload_del_drawer_passa(self, mock_repo_cls: MagicMock) -> None:
+        # Scopo: il form di `EmailAccountDrawer` in creazione (con password)
+        # arriva al repository.
+        repo = mock_repo_cls.return_value
+        repo.create_account.return_value = 7
+        repo.get_account.return_value = {"id": 7}
+        view = EmailAccountListView()
+        view.check_permissions = MagicMock()
+        response = view.post(_admin_request("POST", body=self._ACCOUNT_DEL_DRAWER))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(repo.create_account.call_args.kwargs["codice"], "MAIN")
+
+    @patch(REPO_PATH)
+    def test_create_account_chiave_estranea_rifiutata(self, mock_repo_cls: MagicMock) -> None:
+        # Scopo: ⛔ fuori contratto e' un 400 `E_EMAIL_ADMIN` che la nomina, come
+        # nella PATCH: il repository non viene toccato.
+        repo = mock_repo_cls.return_value
+        view = EmailAccountListView()
+        view.check_permissions = MagicMock()
+        body = {**self._ACCOUNT_DEL_DRAWER, "meta": {"x": 1}}
+        # `handle_post_json` traduce l'errore nella risposta: si legge quella.
+        response = view.post(_admin_request("POST", body=body))
+        self.assertEqual(response.status_code, 400)
+        errore = json.loads(response.content)
+        self.assertEqual(errore["error"]["code"], "E_EMAIL_ADMIN")
+        self.assertIn("meta", errore["error"]["detail"])
+        repo.create_account.assert_not_called()
+
+    @patch(REPO_PATH)
+    def test_create_template_passa(self, mock_repo_cls: MagicMock) -> None:
+        # Scopo: le chiavi del contratto arrivano al repository.
+        repo = mock_repo_cls.return_value
+        repo.create_template.return_value = 3
+        repo.get_template.return_value = {"id": 3}
+        view = EmailTemplateListView()
+        view.check_permissions = MagicMock()
+        body = {"codice": "t", "oggetto": "Ciao", "corpo_html": "<p>x</p>", "lingua": "it"}
+        response = view.post(_admin_request("POST", body=body))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(repo.create_template.call_args.kwargs["codice"], "T")
+
+    @patch(REPO_PATH)
+    def test_create_template_chiave_estranea_rifiutata(self, mock_repo_cls: MagicMock) -> None:
+        # Scopo: ⛔ fuori contratto e' un 400, non uno scarto silenzioso.
+        repo = mock_repo_cls.return_value
+        view = EmailTemplateListView()
+        view.check_permissions = MagicMock()
+        body = {"codice": "t", "oggetto": "Ciao", "corpo_html": "<p>x</p>", "campo_ignoto": 1}
+        response = view.post(_admin_request("POST", body=body))
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(json.loads(response.content)["error"]["code"], "E_EMAIL_ADMIN")
+        repo.create_template.assert_not_called()
+
 
 # =================================================================
 # EmailAccountTestView — POST persiste outcome + ritorna detail enriched

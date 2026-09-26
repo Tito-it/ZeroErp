@@ -184,7 +184,7 @@ CI senza toccare il workflow.
 | --- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | D1  | Il frontend non ha nessun cancello                                     | ✅ 09-09 e D1-d-bis 23-09 — **in §9** · resta la **decisione di D1-f**                           |
 | D2  | Backend senza analisi statica                                          | ✅ 09-09/10 — **in §9** · resta **D2-b** (type checker)                                          |
-| D3  | Lo schema OpenAPI si dichiara anonimo; `check --deploy` fuori dalla CI | ✅ D3-a e la metà sicurezza di D3-b — **in §9** · restano **D3-b** (sanare 127 voci, cricchetto dal 26-09), **D3-c** |
+| D3  | Lo schema OpenAPI si dichiara anonimo; `check --deploy` fuori dalla CI | ✅ D3-a e la metà sicurezza di D3-b — **in §9** · restano **D3-b** (registro a zero dal 26-09; resta la decisione su `check --deploy` completo in CI), **D3-c** |
 | D4  | `hint` trasportato e mai reso a video                                  | ✅ 09-09 — **in §9**                                                                             |
 | D5  | `area_funzionale = "ai_assistant"` non a catalogo                      | ✅ 09-25 — **in §9**                                                                             |
 | D6  | Il `count` che è un'eco                                                | ✅ 09-10 — **in §9**                                                                             |
@@ -246,7 +246,68 @@ tolto da una view vera, voci tolte e aggiunte al registro, rotte condizionali
 spente — cinque rossi. ⚠️ Limite dichiarato nel test: il `W002` è **per view**,
 quindi una view ancora nel registro non è protetta sugli altri metodi.
 
-**Resta aperto — sanare il registro** (73 + 54 → 0) e, a registro vuoto,
+✅ **W001: 54 → 3 lo stesso giorno.** 51 erano coppie lista/dettaglio
+(`/x/` e `/x/{id}/`, entrambe `x_retrieve`: drf-spectacular toglie i parametri
+dal nome e per una `APIView` in GET dice sempre `retrieve`). Le separa **una**
+regola, l'hook `nomi_lista_dettaglio` in `apps/core/api/openapi_extensions.py`
+(`x_list` / `x_retrieve`, solo fra operazioni già in collisione) — non 51
+`operation_id` a mano, che per le 13 coppie fabbricate da factory (note,
+documenti) non avrebbero avuto una sede. Test del contratto
+`test_openapi_nomi_lista_dettaglio.py`; tre mutazioni, tre rossi.
+✅ **Le 3 rimaste, a mano, stesso giorno → W001 a zero.** Non avevano la forma
+lista/dettaglio: i due lookup (`/x/lookup/` contro `/x/{id}/lookup/`, il
+parametro in mezzo) prendono `…_lookup_list` / `…_lookup_retrieve`; le tabelle
+di configurazione `core_config_tables_list`, e i loro record un gruppo proprio,
+`core_config_tables_records_{list,create,retrieve,partial_update}` — tutti i
+verbi, non solo i GET in collisione, perché i verbi di un oggetto non si
+separano. Il registro dei W001 è vuoto e resta nel file.
+⚠️ Correzione: il `_2` di drf-spectacular segue l'ordine **alfabetico** dei
+percorsi, non quello di lettura delle rotte — il rischio di scambio era più
+piccolo di come era stato descritto, ma il nome restava un numero.
+
+✅ **W002, lotto vendite — 73 → 42 lo stesso giorno.** 31 view di ordini, DDT,
+resi e preventivi. Lo schema del corpo si **legge** dal contratto del service
+(building block `_schema_da_contratto`, regola del 2, ok Tid): i dodici
+`CREATE_KEYS_*`/`UPDATE_KEYS_*` sono diventati pubblici e una chiave senza tipo
+ferma l'import — perché una chiave fuori contratto il service la **scarta in
+silenzio**, e uno schema ricopiato resterebbe indietro senza nessun errore. Gli
+schemi dei componenti (preview, elenco) sono stati estratti in
+`_componenti_schema`, ritirando sei copie. I due cambi stato (ordini, DDT)
+condividono `CAMBIA_STATO_REQUEST` (decisione di Tid): **vendite a zero W002**.
+🔴→✅ **Trovato strada facendo, e chiuso lo stesso giorno (decisione di Tid)**:
+lo schema a mano della creazione riga di **preventivi** pubblicava ancora
+`iva_id` (ritirato il 2026-08-31, `I6`) e `quantita`, che il service ignorava.
+Misurati tutti: **tutti e dieci** gli schemi a mano di preventivi, contratti e
+offerte divergevano dal contratto (in meno: `codice_cig`/`cup`/`commessa`,
+`valuta_id`, `richiesta_approvazione`, `componenti_overrides`, …). Ora si
+leggono dal contratto anche loro; preventivi, che il contratto di creazione non
+l'aveva (le chiavi si leggevano una per una), ha `CREATE_KEYS_PREVENTIVO` e
+`CREATE_KEYS_RIGA` applicati in ingresso come in ordini. Presidio:
+`vendite/tests/api/test_schema_da_contratto.py` (31 schemi confrontati coi
+loro contratti).
+
+✅ **W002, lotto core + amm_software — 40 → 17 lo stesso giorno.** Il building
+block `schema_da_contratto` è **traslocato in core** (regola del 2, ok Tid) con
+i tipi per dominio: vendite tiene il suo dizionario, email ne ha uno condiviso
+(`core/api/schema_email.py`) fra bozze, template e account. Le due creazioni di
+amm_software (account, template), che leggevano le chiavi una per una e
+ignoravano le altre mentre la PATCH accanto le rifiutava, hanno ora il loro
+contratto e rifiutano allo stesso modo (400 `E_EMAIL_ADMIN`). La tabella di
+configurazione generica (`config/tables/<rel>/`) dichiara il corpo come oggetto
+libero, con il perché nel codice: le colonne le descrive `/metadata/` a runtime.
+
+✅ **W002 a ZERO, stesso giorno (2026-09-26).** Ultimi lotti: anagrafiche,
+pratiche, portale (POST senza corpo), ui (contratti dei tre service di
+amministrazione liste, dizionario `ui/api/_schema_ui.py`; il preset in
+creazione pubblica il contratto meno `lista_id`, che viene dal percorso),
+magazzino (le due azioni `registra` fabbricate, e le anagrafiche: le chiavi di
+creazione/modifica, calcolate dentro le funzioni, sono diventate costanti col
+nome usate dal service e dallo schema). Il registro resta nel file, vuoto.
+`check --deploy` completo: da **130** rilievi a **3** — nessuno di
+drf-spectacular; restano `mail.E001` (backend di posta dell'ambiente) e
+`security.W004`/`W008` (D3-c).
+
+**Resta aperto — la decisione**: a registro vuoto,
 decidere se il test basta o se `check --deploy` completo entra in CI (serve
 anche `mail.E001` sistemato).
 
@@ -342,7 +403,7 @@ Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione
 | **Catena di verifica — frontend**       | 🔴 alto  | **7/10**   | Cancello in CI dal 09-09 (§2.1), test di componente dal 23-09 (D1-d-bis). Manca `npm audit` (D1-f)                                                                                                                      |
 | **Analisi statica — backend**           | 🔴 alto  | **6,5/10** | `ruff` a registro zero dal 09-09 (§2.2). Manca il type checker (D2-b)                                                                                                                                                  |
 | **Catena di verifica — backend**        | 🔴 alto  | **8/10**   | Cancello duro, 4.560 test verdi, sette guardrail, `plpgsql_check`. Manca la profondità (D9) e il ramo `--deploy` (D3-b)                                                                                                |
-| **Contratto API pubblicato**            | 🟠 medio | **7/10**   | `securitySchemes` e `security:` su 815 operazioni (D3-a). Restano 73 `W002` e 54 collisioni (26-09)                                                                                                                  |
+| **Contratto API pubblicato**            | 🟠 medio | **7/10**   | `securitySchemes` e `security:` su 815 operazioni (D3-a). `W002` e collisioni a zero (26-09)                                                                                                                         |
 | **Contratto d'errore — lato backend**   | 🟠 medio | **9/10**   | 763 codici vivi, zero senza ripiego, zero orfani (§2.3)                                                                                                                                                                |
 | **Contratto d'errore — arrivo a video** | 🟠 medio | **8/10**   | `fields`, `targets`, `hint` a video (D4). Non è 10: chi chiama `notify.error` a mano resta fuori                                                                                                                       |
 | **Perimetro e permessi (applicativo)**  | 🟠 medio | **7,5/10** | Catena unica, fail-closed, reset GUC incondizionato. ✅ 25-09 D5 chiuso con presidio aree/catalogo. ✅ 12-09: lo skip muto (D15) deciso e chiuso su tutte e 15 le view, presidiato dagli attributi **e** dal percorso reale |
@@ -422,7 +483,9 @@ più ciò che aspetta una decisione (D1-f, D2-b, D3-c, D10-bis). E il perimetro 
 * [ ] **D3-b** — `manage.py check --deploy` in CI: prima `mail.E001` nell'ambiente
       di CI, poi il registro dei 73 `W002` e delle 54 collisioni (26-09) con un verso.
       ✅ **Il verso dal 2026-09-26**: `test_schema_openapi_registro.py`, cricchetto
-      per nome. Resta da sanare il registro.
+      per nome. ✅ Stesso giorno W001 da 54 a **0** (hook lista/dettaglio +
+      tre nomi a mano). W002 73 → **0**. Resta la decisione se `check
+      --deploy` completo entra in CI (serve `mail.E001` nell'ambiente di CI).
       ⭐ **Metà sicurezza chiusa il 2026-09-26**: il passo «Django check --deploy
       (sicurezza)» di `ci-validate.yaml` gira `--tag security` con un cricchetto
       (accettati solo W004/W008, cioè D3-c). Resta la metà drf-spectacular.
@@ -544,9 +607,10 @@ più ciò che aspetta una decisione (D1-f, D2-b, D3-c, D10-bis). E il perimetro 
 * **Smoke in CI (D9-a).** Tutti e sedici cercano i soggetti nei dati esistenti:
   su un DB di CI ricostruito da zero il cancello nascerebbe verde per
   sottrazione. Prima devono fabbricarsi i soggetti.
-* **Sanare il registro drf-spectacular (D3-b).** Il cricchetto c'è dal 26-09 e
-  il numero non può più salire; restano 73 view e 54 `operationId` da
-  sistemare una per una.
+* **`check --deploy` completo in CI (D3-b).** Il registro drf-spectacular è a
+  zero dal 26-09 e il test lo tiene a zero; resta da decidere se il passo di
+  CI toglie `--tag security`, e per farlo va sistemato `mail.E001`
+  nell'ambiente di CI (il backend di posta giusto, non silenziato).
 * **`acquisti` / `magazzino` (D11).** Il cantiere è aperto (stato in
   `PROJECT_CONTEXT.md`): `magazzino` avanza a lotti, `acquisti` è ancora a
   zero. Il voto di simmetria (§5) si muove con quello.

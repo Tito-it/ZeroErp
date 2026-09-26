@@ -71,7 +71,7 @@ class SessioneRevocaView(DomainAPIView):
 
     skip_area_check = True
 
-    @extend_schema(summary="Revoca sessione specifica", responses={204: None})
+    @extend_schema(request=None, summary="Revoca sessione specifica", responses={204: None})
     # Scopo: Revoca una sessione per sid — blacklista tutti i token JWT associati.
     def post(self, request: Request, jti: str) -> Response:
         sid = jti  # il parametro URL si chiama jti ma ora contiene un sid
@@ -107,6 +107,7 @@ class SessioniRevocaTutteView(DomainAPIView):
     skip_area_check = True
 
     @extend_schema(
+        request=None,
         summary="Revoca tutte le altre sessioni",
         responses={200: inline_serializer(
             name="SessioniRevocaTutteResponse",

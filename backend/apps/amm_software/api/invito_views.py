@@ -21,7 +21,7 @@ from apps.anagrafiche.services.invito_operatore_service import InvitoOperatoreSe
 class InvitaOperatoreView(AdminAPIView):
     """POST: invia invito al primo accesso per un operatore."""
 
-    @extend_schema(summary="Invia invito operatore", responses={200: dict})
+    @extend_schema(request=None, summary="Invia invito operatore", responses={200: dict})
     # Scopo: Genera token invito, imposta password temporanea, invia email.
     def post(self, request: Request, auth_user_id: int) -> JsonResponse:
         service = InvitoOperatoreService()
@@ -32,7 +32,7 @@ class InvitaOperatoreView(AdminAPIView):
 class ReinviaInvitoView(AdminAPIView):
     """POST: reinvia invito (invalida token precedente, genera nuovo)."""
 
-    @extend_schema(summary="Reinvia invito operatore", responses={200: dict})
+    @extend_schema(request=None, summary="Reinvia invito operatore", responses={200: dict})
     # Scopo: Invalida token invito precedente e ne genera uno nuovo.
     def post(self, request: Request, auth_user_id: int) -> JsonResponse:
         service = InvitoOperatoreService()

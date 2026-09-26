@@ -40,7 +40,14 @@ from apps.vendite.api.indirizzi_documento_views import (
 from apps.vendite.services import offerte_service
 from apps.vendite.services.offerte_service import OfferteService
 from apps.core.api.openapi_params import param_ricerca_full
-from apps.vendite.api._componenti_schema import COMPONENTE_PATCH_REQUEST
+from apps.vendite.api._schema_da_contratto import schema_da_contratto
+from apps.vendite.api._componenti_schema import (
+    COMPONENTE_PATCH_REQUEST,
+    COMPONENTI_LIST_PARAMETERS,
+    COMPONENTI_LIST_RESPONSE,
+    PREVIEW_COMPONENTI_REQUEST,
+    PREVIEW_COMPONENTI_RESPONSE,
+)
 
 # Codice lista configurabile (catalogo ui.lista_definizione id=6). Usato
 # dall'export per risolvere colonne visibili/ordine/permessi dell'utente.
@@ -51,48 +58,40 @@ _LISTA_CODICE_OFFERTE = "vendite.offerte"
 # Schemas inline per drf-spectacular
 # =================================================================
 
-
-_OFFERTA_CREATE_REQUEST = inline_serializer(
-    name="VenditeOffertaCreateReq",
-    fields={
-        # Step 5 atterrato 2026-05-25: `codice` generato dal trigger DB
-        # (BEFORE INSERT). Non va piu' nel payload — rifiutato come
-        # unknown_key dalla whitelist applicativa.
-        "emittente_fiscale_id": serializers.IntegerField(),
-        "billing_account_id": serializers.IntegerField(),
-        "istanza_utility_id": serializers.IntegerField(),
-        "utility_id": serializers.IntegerField(),
-        "listino_id": serializers.IntegerField(),
-        "listino_versione_id": serializers.IntegerField(required=False, allow_null=True),
-        "valore_variazione_globale": serializers.DecimalField(
-            max_digits=10, decimal_places=4, required=False, allow_null=True,
-        ),
-        "tipo_variazione_globale": serializers.CharField(required=False, allow_null=True),
-        "validita_dal": serializers.DateField(),
-        "validita_al": serializers.DateField(required=False, allow_null=True),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-    },
+# ── Schemi OpenAPI dei corpi: le chiavi dal contratto del service ──────────
+_UTILITY_CREATE_REQUEST = schema_da_contratto(
+    "VenditeOffertaUtilityCreateReq", offerte_service.CREATE_KEYS_UTILITY,
+    obbligatorie=("istanza_utility_id", "utility_id"),
+)
+_UTILITY_PATCH_REQUEST = schema_da_contratto(
+    "VenditeOffertaUtilityPatchReq", offerte_service.UPDATE_KEYS_UTILITY,
+)
+# La classe, non l'istanza: una per uso (vedi views_contratti).
+_UTILITY_CREATE_CLS = type(_UTILITY_CREATE_REQUEST)
+_OFFERTA_CREATE_REQUEST = schema_da_contratto(
+    "VenditeOffertaCreateReq", offerte_service.CREATE_KEYS_OFFERTA,
+    obbligatorie=(
+        "emittente_fiscale_id", "billing_account_id", "istanza_utility_id",
+        "utility_id", "listino_id", "validita_dal",
+    ),
+    speciali={"utility": _UTILITY_CREATE_CLS(required=False, allow_null=True)},
+)
+_OFFERTA_PATCH_REQUEST = schema_da_contratto(
+    "VenditeOffertaPatchReq", offerte_service.UPDATE_KEYS_OFFERTA,
+    # La utility in modifica e' un upsert: si valida col contratto di creazione.
+    speciali={"utility": _UTILITY_CREATE_CLS(required=False, allow_null=True)},
+)
+_ECCEZIONE_CREATE_REQUEST = schema_da_contratto(
+    "VenditeOffertaEccezioneCreateReq", offerte_service.CREATE_KEYS_ECCEZIONE,
+    obbligatorie=("articolo_id", "tipo_eccezione", "fonte_quantita_attesa"),
+)
+_ECCEZIONE_PATCH_REQUEST = schema_da_contratto(
+    "VenditeOffertaEccezionePatchReq", offerte_service.UPDATE_KEYS_ECCEZIONE,
 )
 
 
-_OFFERTA_PATCH_REQUEST = inline_serializer(
-    name="VenditeOffertaPatchReq",
-    fields={
-        "emittente_fiscale_id": serializers.IntegerField(required=False),
-        "billing_account_id": serializers.IntegerField(required=False),
-        "istanza_utility_id": serializers.IntegerField(required=False),
-        "utility_id": serializers.IntegerField(required=False),
-        "listino_id": serializers.IntegerField(required=False),
-        "listino_versione_id": serializers.IntegerField(required=False, allow_null=True),
-        "valore_variazione_globale": serializers.DecimalField(
-            max_digits=10, decimal_places=4, required=False, allow_null=True,
-        ),
-        "tipo_variazione_globale": serializers.CharField(required=False, allow_null=True),
-        "validita_dal": serializers.DateField(required=False),
-        "validita_al": serializers.DateField(required=False, allow_null=True),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-    },
-)
+
+
 
 
 _ESITO_REQUEST = inline_serializer(
@@ -112,100 +111,12 @@ _ANNULLA_REQUEST = inline_serializer(
 )
 
 
-_ECCEZIONE_CREATE_REQUEST = inline_serializer(
-    name="VenditeOffertaEccezioneCreateReq",
-    fields={
-        "articolo_id": serializers.UUIDField(),
-        "tipo_eccezione": serializers.ChoiceField(
-            choices=["OVERRIDE", "ESCLUSIONE", "AGGIUNTA"],
-        ),
-        "tipo_erogazione": serializers.CharField(required=False),
-        "fonte_quantita_attesa": serializers.CharField(),
-        "periodicita": serializers.CharField(required=False),
-        "generazione_canone": serializers.CharField(required=False),
-        "competenza_canone": serializers.CharField(required=False),
-        "prezzo_unitario": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "quantita": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "qta_operativa": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "uom_operativa_id": serializers.IntegerField(required=False, allow_null=True),
-        "factor_to_base": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False,
-        ),
-        "ordine": serializers.IntegerField(required=False),
-        "attivo": serializers.BooleanField(required=False),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-    },
-)
 
 
-_ECCEZIONE_PATCH_REQUEST = inline_serializer(
-    name="VenditeOffertaEccezionePatchReq",
-    fields={
-        "tipo_erogazione": serializers.CharField(required=False),
-        "fonte_quantita_attesa": serializers.CharField(required=False),
-        "periodicita": serializers.CharField(required=False),
-        "generazione_canone": serializers.CharField(required=False),
-        "competenza_canone": serializers.CharField(required=False),
-        "prezzo_unitario": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "quantita": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "qta_operativa": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "uom_operativa_id": serializers.IntegerField(required=False, allow_null=True),
-        "factor_to_base": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False,
-        ),
-        "ordine": serializers.IntegerField(required=False),
-        "attivo": serializers.BooleanField(required=False),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-    },
-)
 
 
-_UTILITY_CREATE_REQUEST = inline_serializer(
-    name="VenditeOffertaUtilityCreateReq",
-    fields={
-        "istanza_utility_id": serializers.IntegerField(),
-        "utility_id": serializers.IntegerField(),
-        "istanza_dati_precontrattuali_id": serializers.IntegerField(
-            required=False, allow_null=True,
-        ),
-        "tipo_utenza_id": serializers.IntegerField(required=False, allow_null=True),
-        "classe_utenza_id": serializers.IntegerField(required=False, allow_null=True),
-        "param_1_num": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "param_2_txt": serializers.CharField(required=False, allow_null=True),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-    },
-)
 
 
-_UTILITY_PATCH_REQUEST = inline_serializer(
-    name="VenditeOffertaUtilityPatchReq",
-    fields={
-        "istanza_dati_precontrattuali_id": serializers.IntegerField(
-            required=False, allow_null=True,
-        ),
-        "tipo_utenza_id": serializers.IntegerField(required=False, allow_null=True),
-        "classe_utenza_id": serializers.IntegerField(required=False, allow_null=True),
-        "param_1_num": serializers.DecimalField(
-            max_digits=18, decimal_places=6, required=False, allow_null=True,
-        ),
-        "param_2_txt": serializers.CharField(required=False, allow_null=True),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-    },
-)
 
 
 # =================================================================
@@ -723,18 +634,6 @@ class ApiOffertaEccezioneDetail(DomainAPIView):
 #   PATCH/DELETE /eccezioni/<eid>/componenti/<cid>/  -> CRUD singolo
 
 
-_ECCEZIONE_PREVIEW_COMPONENTI_REQUEST = inline_serializer(
-    name="VenditeOffertaEccezionePreviewComponentiReq",
-    fields={
-        "articolo_id": serializers.UUIDField(),
-        "uom_operativa_id": serializers.IntegerField(required=False, allow_null=True),
-        "quantita": serializers.DecimalField(
-            max_digits=22, decimal_places=10, required=True,
-        ),
-    },
-)
-
-
 class ApiOffertaEccezionePreviewComponenti(DomainAPIView):
     """POST /api/v1/vendite/offerte/<id>/eccezioni/preview-componenti/
 
@@ -747,11 +646,8 @@ class ApiOffertaEccezionePreviewComponenti(DomainAPIView):
     area_funzionale = "vendite"
 
     @extend_schema(
-        request=_ECCEZIONE_PREVIEW_COMPONENTI_REQUEST,
-        responses={200: inline_serializer(
-            name="VenditeOffertaEccezionePreviewComponentiResp",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        request=PREVIEW_COMPONENTI_REQUEST,
+        responses={200: PREVIEW_COMPONENTI_RESPONSE},
     )
     def post(self, request: Request, offerta_id: int) -> JsonResponse:
         auth_user_id = get_scope_user_id(request)
@@ -782,19 +678,8 @@ class ApiOffertaEccezioneComponentiList(DomainAPIView):
     area_funzionale = "vendite"
 
     @extend_schema(
-        parameters=[
-            OpenApiParameter(
-                name="solo_attivi", type=bool, default=True,
-                description=(
-                    "Default true: solo componenti attivi. Se false include "
-                    "anche opzionali disattivati (EDIT panel)."
-                ),
-            ),
-        ],
-        responses={200: inline_serializer(
-            name="VenditeOffertaEccezioneComponentiListResp",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        parameters=COMPONENTI_LIST_PARAMETERS,
+        responses={200: COMPONENTI_LIST_RESPONSE},
     )
     def get(
         self, request: Request, offerta_id: int, eccezione_id: int,

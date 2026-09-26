@@ -506,7 +506,7 @@ class DdtRepository(
     # ⛔ Whitelist RIGIDA del BB `execute_dynamic_update` (2026-09-26): una
     #    chiave fuori lista e' `ValueError`, non uno scarto. E' l'elenco delle
     #    colonne che QUESTO metodo scrive, non il contratto dell'operatore (che
-    #    sta nel service, `ddt_service._UPDATE_KEYS_DDT / _UPDATE_KEYS_RIGA`): se il service ne aggiunge una, va aggiunta
+    #    sta nel service, `ddt_service.UPDATE_KEYS_DDT / UPDATE_KEYS_RIGA`): se il service ne aggiunge una, va aggiunta
     #    qui — e dimenticarlo e' un errore che si vede, non un campo perso.
     TESTATA_UPDATE_COLUMNS: frozenset[str] = frozenset({
         "utility_id", "valuta_id", "mittente_soggetto_ruolo_id",

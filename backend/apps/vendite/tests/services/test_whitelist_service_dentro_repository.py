@@ -47,22 +47,22 @@ class WhitelistServiceDentroRepositoryTests(TestCase):
     #    + il workflow L3 sulle righe che lo conoscono) ⊆ colonne del repository.
     def test_whitelist_service_dentro_repository(self) -> None:
         coppie = {
-            "ddt testata": (ddt_service._UPDATE_KEYS_DDT, DdtRepository.TESTATA_UPDATE_COLUMNS),
-            "ddt riga": (ddt_service._UPDATE_KEYS_RIGA, DdtRepository.RIGA_UPDATE_COLUMNS),
+            "ddt testata": (ddt_service.UPDATE_KEYS_DDT, DdtRepository.TESTATA_UPDATE_COLUMNS),
+            "ddt riga": (ddt_service.UPDATE_KEYS_RIGA, DdtRepository.RIGA_UPDATE_COLUMNS),
             "ordini testata": (
-                ordini_service._UPDATE_KEYS_ORDINE, OrdiniRepository.TESTATA_UPDATE_COLUMNS,
+                ordini_service.UPDATE_KEYS_ORDINE, OrdiniRepository.TESTATA_UPDATE_COLUMNS,
             ),
-            "ordini riga": (ordini_service._UPDATE_KEYS_RIGA, OrdiniRepository.RIGA_UPDATE_COLUMNS),
-            "resi testata": (resi_service._UPDATE_KEYS_RESO, ResiRepository.TESTATA_UPDATE_COLUMNS),
-            "resi riga": (resi_service._UPDATE_KEYS_RIGA, ResiRepository.RIGA_UPDATE_COLUMNS),
+            "ordini riga": (ordini_service.UPDATE_KEYS_RIGA, OrdiniRepository.RIGA_UPDATE_COLUMNS),
+            "resi testata": (resi_service.UPDATE_KEYS_RESO, ResiRepository.TESTATA_UPDATE_COLUMNS),
+            "resi riga": (resi_service.UPDATE_KEYS_RIGA, ResiRepository.RIGA_UPDATE_COLUMNS),
             "preventivi testata": (
-                preventivi_service._UPDATE_KEYS_PREVENTIVO,
+                preventivi_service.UPDATE_KEYS_PREVENTIVO,
                 PreventiviRepository.TESTATA_UPDATE_COLUMNS,
             ),
             # La data di consegna il service la aggiunge a parte (normalizzata
             # da `_data_consegna_da_payload`); i campi L3 li scrive il workflow.
             "preventivi riga": (
-                preventivi_service._UPDATE_KEYS_RIGA
+                preventivi_service.UPDATE_KEYS_RIGA
                 | {preventivi_service._CHIAVE_DATA_CONSEGNA}
                 | CAMPI_RIGA_WORKFLOW_L3,
                 PreventiviRepository.RIGA_UPDATE_COLUMNS,
@@ -73,29 +73,29 @@ class WhitelistServiceDentroRepositoryTests(TestCase):
             # sotto-oggetto `utility` (va alla sua tabella). Sulle righe i
             # campi L3 li scrive il workflow approvazioni.
             "contratti testata": (
-                contratti_service._UPDATE_KEYS_TESTATA,
+                contratti_service.UPDATE_KEYS_TESTATA,
                 ContrattiRepository.TESTATA_UPDATE_COLUMNS,
             ),
             "contratti riga": (
-                (contratti_service._UPDATE_KEYS_RIGA - {"richiesta_approvazione"})
+                (contratti_service.UPDATE_KEYS_RIGA - {"richiesta_approvazione"})
                 | CAMPI_RIGA_WORKFLOW_L3,
                 ContrattiRepository.RIGA_UPDATE_COLUMNS,
             ),
             "contratti utility": (
-                contratti_service._UTILITY_UPDATE_KEYS,
+                contratti_service.UTILITY_UPDATE_KEYS,
                 ContrattiRepository.UTILITY_UPDATE_COLUMNS,
             ),
             "offerte testata": (
-                offerte_service._UPDATE_KEYS_OFFERTA - {"utility"},
+                offerte_service.UPDATE_KEYS_OFFERTA - {"utility"},
                 OfferteRepository.TESTATA_UPDATE_COLUMNS,
             ),
             "offerte eccezione": (
-                (offerte_service._UPDATE_KEYS_ECCEZIONE - {"richiesta_approvazione"})
+                (offerte_service.UPDATE_KEYS_ECCEZIONE - {"richiesta_approvazione"})
                 | CAMPI_RIGA_WORKFLOW_L3,
                 OfferteRepository.ECCEZIONE_UPDATE_COLUMNS,
             ),
             "offerte utility": (
-                offerte_service._UPDATE_KEYS_UTILITY,
+                offerte_service.UPDATE_KEYS_UTILITY,
                 OfferteRepository.UTILITY_UPDATE_COLUMNS,
             ),
         }
@@ -115,23 +115,23 @@ class WhitelistServiceDentroRepositoryTests(TestCase):
         consumate = {"componenti_overrides", "richiesta_approvazione", "utility"}
         coppie = {
             "contratti riga": (
-                (contratti_service._CREATE_KEYS_RIGA - consumate) | CAMPI_RIGA_WORKFLOW_L3,
+                (contratti_service.CREATE_KEYS_RIGA - consumate) | CAMPI_RIGA_WORKFLOW_L3,
                 ContrattiRepository.RIGA_CREATE_COLUMNS,
             ),
             "contratti utility": (
-                contratti_service._UTILITY_CREATE_KEYS | {"istanza_utility_id", "utility_id"},
+                contratti_service.UTILITY_CREATE_KEYS | {"istanza_utility_id", "utility_id"},
                 ContrattiRepository.UTILITY_CREATE_COLUMNS,
             ),
             "offerte testata": (
-                (offerte_service._CREATE_KEYS_OFFERTA - consumate) | {"stato_doc_offerta_id"},
+                (offerte_service.CREATE_KEYS_OFFERTA - consumate) | {"stato_doc_offerta_id"},
                 OfferteRepository.TESTATA_CREATE_COLUMNS,
             ),
             "offerte eccezione": (
-                (offerte_service._CREATE_KEYS_ECCEZIONE - consumate) | CAMPI_RIGA_WORKFLOW_L3,
+                (offerte_service.CREATE_KEYS_ECCEZIONE - consumate) | CAMPI_RIGA_WORKFLOW_L3,
                 OfferteRepository.ECCEZIONE_CREATE_COLUMNS,
             ),
             "offerte utility": (
-                offerte_service._CREATE_KEYS_UTILITY,
+                offerte_service.CREATE_KEYS_UTILITY,
                 OfferteRepository.UTILITY_CREATE_COLUMNS,
             ),
         }

@@ -333,12 +333,12 @@ class OrdiniRigaComponentiOverrideTests(SimpleTestCase):
         )
 
         # ⭐ E' la WHITELIST il cancello vero: `iva_id` non e' in
-        #    `_CREATE_KEYS_RIGA`, quindi non entra nemmeno in `data`. Questa
+        #    `CREATE_KEYS_RIGA`, quindi non entra nemmeno in `data`. Questa
         #    asserzione morde ANCHE se qualcuno rimettesse la chiave, perche'
         #    allora `payload_iva_id` tornerebbe 999.
         self.assertIsNone(iva.call_args.kwargs["payload_iva_id"])
-        self.assertNotIn("iva_id", ordini_service._CREATE_KEYS_RIGA)
-        self.assertNotIn("iva_id", ordini_service._UPDATE_KEYS_RIGA)
+        self.assertNotIn("iva_id", ordini_service.CREATE_KEYS_RIGA)
+        self.assertNotIn("iva_id", ordini_service.UPDATE_KEYS_RIGA)
         self.assertEqual(repo.create_riga.call_args.kwargs["iva_id"], 9)
 
 
