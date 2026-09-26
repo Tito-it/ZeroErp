@@ -27,6 +27,7 @@
 | CHECK | chk_tabelle_gestibili_codice_interno_qualificato |  |
 | CHECK | chk_tabelle_gestibili_nomi_forma |  |
 | CHECK | chk_tabelle_gestibili_oggetto_forma |  |
+| CHECK | chk_tabelle_gestibili_pannello_implica_lookup |  |
 | PRIMARY KEY | pk_tabelle_gestibili | id |
 | UNIQUE | uq_tabelle_gestibili_codice_interno | codice_interno |
 

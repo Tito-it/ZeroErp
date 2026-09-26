@@ -149,6 +149,18 @@ SELECT is(
           --   e SOLO DOPO il flag — ⚠️ mai il flag prima della colonna, o il
           --   test 6 esce da zero.
           'config.email_log',
+          -- ⭐ 2026-09-27 — brief-db-liste-datatable-grezze, riga 4: ogni riga
+          --   e' l'override di UN emittente su una riga della matrice utility /
+          --   tipi ruolo, e la lista (tab «Utilizzo», pannello di
+          --   amministrazione) le mostra di aziende diverse. Il biglietto e'
+          --   pagato dalla colonna `emittente_codice` (campo_sorgente
+          --   `emittente_codice`, attiva), che il test 6 riconosce.
+          'config.utilities_tipi_ruolo_usage',
+          -- ⭐ 2026-09-27 — Tid, brief-db-liste-datatable-grezze §8 punto 7:
+          --   ogni template e' di UN emittente (`emittente_fiscale_id` NOT
+          --   NULL), e la colonna `emittente_ragione_sociale` (id 310, attiva)
+          --   c'era gia': il biglietto era pagato, mancava la dichiarazione.
+          'documenti.template_documenti',
           -- ⭐ 2026-09-18 — D-5 di Tid, stesso brief: un preset PUO' essere di
           --   un'azienda (`ambito = emittente_fiscale`), e la colonna «Emittente»
           --   (id 873, campo_sorgente `emittente_ragione_sociale`) e' attiva dal

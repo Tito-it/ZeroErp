@@ -81,3 +81,17 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 80,80,magazzini_default,Vista standard magazzini,sistema,,,t,25,,t,2026-09-21 00:00:00,mctit
 81,81,ubicazioni_default,Vista standard ubicazioni di un magazzino,sistema,,,t,25,,t,2026-09-21 00:00:00,mctit
 82,82,lotti_default,Vista standard lotti di un articolo,sistema,,,t,25,"[{""col"":""data_arrivo"",""dir"":""desc""}]",t,2026-09-21 00:00:00,mctit
+83,83,sessioni_attive_default,Vista standard sessioni attive,sistema,,,t,25,"[{""col"":""data_ultimo_evento"",""dir"":""desc""}]",t,2026-09-27 00:00:00,mctit
+84,84,documenti_sorgente_default,Vista standard documenti generati di una sorgente,sistema,,,t,25,"[{""col"":""generato_at"",""dir"":""desc""}]",t,2026-09-27 00:00:00,mctit
+85,85,flussi_default,Vista standard flussi di una pratica,sistema,,,t,25,"[{""col"":""sequenza"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
+86,86,utilities_tipi_ruolo_usage_default,Vista standard emittenti che usano la matrice,sistema,,,t,25,"[{""col"":""emittente_descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
+87,87,reparti_default,Vista standard reparti,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
+88,88,template_versioni_default,Vista standard versioni di un template,sistema,,,t,25,"[{""col"":""versione"",""dir"":""desc""}]",t,2026-09-27 00:00:00,mctit
+89,89,preventivo_revisioni_default,Vista standard revisioni di un preventivo,sistema,,,t,25,"[{""col"":""rev"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
+90,90,offerta_revisioni_default,Vista standard revisioni di un'offerta commerciale,sistema,,,t,25,"[{""col"":""revisione_numero"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
+91,91,regioni_default,Vista standard regioni,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
+92,92,province_default,Vista standard province,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
+93,93,stati_default,Vista standard stati,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
+94,94,comuni_default,Vista standard comuni,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
+95,95,codici_postali_default,Vista standard codici postali,sistema,,,t,25,"[{""col"":""comune_descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
+96,96,toponomastica_default,Vista standard toponomastica,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit

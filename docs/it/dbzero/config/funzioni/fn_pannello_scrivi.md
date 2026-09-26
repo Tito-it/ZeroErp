@@ -18,11 +18,6 @@ AS $function$
 --   dal pannello di configurazione, applicando il livello TUTTO sull'oggetto
 --   a cui la tabella appartiene. Ritorna la riga scritta.
 DECLARE
-    -- Le colonne che il pannello non scrive: le stesse escluse dal backend
-    -- (config_metadata_repository._EXCLUDED_COLUMNS) piu' la chiave.
-    c_escluse   CONSTANT text[] := ARRAY['id', 'data_insert', 'user_insert',
-                                         'data_update', 'user_update', 'tx_id',
-                                         'storicizza', 'uid'];
     v_voce      config.tabelle_gestibili%ROWTYPE;
     v_nome      text;      -- schema.tabella quotato, composto dalla lista
     v_relid     oid;
@@ -77,15 +72,9 @@ BEGIN
             VARIADIC ARRAY[]::text[]);
     END IF;
 
-    SELECT array_agg(a.attname::text ORDER BY a.attnum)
-      INTO v_scrivibili
-      FROM pg_catalog.pg_attribute a
-     WHERE a.attrelid = v_relid
-       AND a.attnum > 0
-       AND NOT a.attisdropped
-       AND a.attgenerated = ''
-       AND a.attidentity <> 'a'
-       AND a.attname::text <> ALL (c_escluse);
+    -- Le colonne scrivibili hanno una sede sola, letta anche dal metadata
+    -- del backend (20260927-21).
+    v_scrivibili := config.fn_pannello_colonne_scrivibili(p_tabella);
 
     SELECT array_agg(k ORDER BY k)
       INTO v_chiavi
@@ -136,13 +125,16 @@ BEGIN
         END IF;
     END IF;
 
-    -- 4. La riga, nella forma che il backend restituiva: senza le escluse, con id.
-    RETURN v_riga - array_remove(c_escluse, 'id');
+    -- 4. La riga, con i campi del form: id e le colonne scrivibili.
+    RETURN (SELECT jsonb_object_agg(e.key, e.value)
+              FROM jsonb_each(v_riga) AS e
+             WHERE e.key = 'id'
+                OR e.key = ANY (v_scrivibili));
 END;
 $function$
 
 COMMENT ON FUNCTION config.fn_pannello_scrivi(p_tabella text, p_id bigint, p_dati jsonb)
-IS 'VERBO del pannello di configurazione (modello «una scrittura = un verbo», D-3 di brief-db-permesso-nel-verbo-di-scrittura). Scrive una riga di una tabella di config.tabelle_gestibili con pannello = true: p_id NULL = INSERT, altrimenti UPDATE per id. Passo 0: tabella in lista, esistente e SENZA RLS (il verbo non sa rimettere un perimetro, D-P2) -> altrimenti E_PANNELLO_TABELLA_NON_AMMESSA. Passo 1: script.fn_guard_livello(utente, app_label, model_name, TUTTO) sull''oggetto della riga di lista, non sull''area del pannello (E_PERMESSO_NEGATO). Passo 2: p_dati oggetto jsonb non vuoto (E_PANNELLO_DATI_VUOTI) con sole colonne scrivibili — escluse id, audit, tx_id, storicizza, uid, generate e identity ALWAYS — e una chiave estranea si RIFIUTA (E_PANNELLO_CAMPO_NON_AMMESSO con campo, D-P3). Passo 3: valori convertiti da jsonb_populate_record sul tipo di riga, scritte solo le colonne del payload; UPDATE su id assente -> E_PANNELLO_RIGA_NON_TROVATA. Ritorna la riga senza le colonne escluse tranne id. I trigger della tabella scattano come sempre. Nessun DELETE. SECURITY DEFINER del proprietario con search_path bloccato; il nome della tabella si compone dalla lista con format(%I.%I). Brief: brief-db-pannello-config-verbo-generico §3.3.';
+IS 'VERBO del pannello di configurazione (modello «una scrittura = un verbo», D-3 di brief-db-permesso-nel-verbo-di-scrittura). Scrive una riga di una tabella di config.tabelle_gestibili con pannello = true: p_id NULL = INSERT, altrimenti UPDATE per id. Passo 0: tabella in lista, esistente e SENZA RLS (il verbo non sa rimettere un perimetro, D-P2) -> altrimenti E_PANNELLO_TABELLA_NON_AMMESSA. Passo 1: script.fn_guard_livello(utente, app_label, model_name, TUTTO) sull''oggetto della riga di lista, non sull''area del pannello (E_PERMESSO_NEGATO). Passo 2: p_dati oggetto jsonb non vuoto (E_PANNELLO_DATI_VUOTI) con sole colonne scrivibili, che da'' config.fn_pannello_colonne_scrivibili (sede unica della regola, letta anche dal metadata del backend); una chiave estranea si RIFIUTA (E_PANNELLO_CAMPO_NON_AMMESSO con campo, D-P3). Passo 3: valori convertiti da jsonb_populate_record sul tipo di riga, scritte solo le colonne del payload; UPDATE su id assente -> E_PANNELLO_RIGA_NON_TROVATA. Ritorna la riga con id e le colonne scrivibili, cioe'' i campi del form. I trigger della tabella scattano come sempre. Nessun DELETE. SECURITY DEFINER del proprietario con search_path bloccato; il nome della tabella si compone dalla lista con format(%I.%I). Brief: brief-db-pannello-config-verbo-generico §3.3 e §6.';
 ```
 
 ---

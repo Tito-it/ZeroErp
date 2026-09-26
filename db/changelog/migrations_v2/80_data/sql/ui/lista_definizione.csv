@@ -12,7 +12,7 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert,multi
 11,vendite.resi_da_riconsegnare,Resi da ri-consegnare,vendite,vw_resi_da_riconsegnare,t,2026-07-14 00:00:00,mctit,f,t,3
 12,vendite.lotti,Lotti di fatturazione,vendite,NULL,t,2026-07-30 00:00:00,mctit,t,t,3
 13,anagrafiche.categorie_clienti,Categorie clienti,anagrafiche,categorie_clienti,t,2026-07-31 00:00:00,mctit,f,t,1
-14,config.utilities_tipi_ruolo,Matrice utility / tipi ruolo,config,NULL,t,2026-07-31 00:00:00,mctit,f,t,1
+14,config.utilities_tipi_ruolo,Matrice utility / tipi ruolo,config,NULL,t,2026-07-31 00:00:00,mctit,f,f,1
 15,anagrafiche.indirizzi,Indirizzi,anagrafiche,vw_indirizzi_dettaglio,t,2026-07-31 00:00:00,mctit,f,t,3
 16,config.tipi_ruolo_tipi_indirizzo,Matrice tipi ruolo / tipi indirizzo,config,NULL,t,2026-07-31 00:00:00,mctit,f,t,1
 17,pratiche.pratiche,Pratiche,pratiche,NULL,t,2026-07-31 00:00:00,mctit,f,t,3
@@ -22,7 +22,7 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert,multi
 21,catalogo.unita_misura,Unita di misura,catalogo,NULL,t,2026-07-31 00:00:00,mctit,f,t,1
 22,catalogo.conversioni_uom,Conversioni tra unita di misura,catalogo,NULL,t,2026-07-31 00:00:00,mctit,f,t,1
 23,vendite.promo_articoli,Promozioni articolo,vendite,NULL,t,2026-08-01 00:00:00,mctit,f,t,3
-24,documenti.template_documenti,Template documenti,documenti,NULL,t,2026-08-01 00:00:00,mctit,f,t,1
+24,documenti.template_documenti,Template documenti,documenti,NULL,t,2026-08-01 00:00:00,mctit,t,t,1
 25,documenti.template_asset,Asset dei template documenti,documenti,NULL,t,2026-08-01 00:00:00,mctit,f,t,1
 26,catalogo.articoli,Articoli di catalogo,catalogo,vw_articoli_dettaglio,t,2026-08-01 00:00:00,mctit,f,t,3
 27,vendite.listini,Listini di vendita,vendite,NULL,t,2026-08-01 00:00:00,mctit,f,t,3
@@ -81,3 +81,17 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert,multi
 80,magazzino.magazzini,Magazzini dell'emittente,magazzino,NULL,t,2026-09-21 00:00:00,mctit,f,t,3
 81,magazzino.ubicazioni,Ubicazioni di un magazzino,magazzino,NULL,t,2026-09-21 00:00:00,mctit,f,t,3
 82,magazzino.lotti,Lotti di un articolo,magazzino,NULL,t,2026-09-21 00:00:00,mctit,f,f,3
+83,core.sessioni_attive,Sessioni attive dell'utente,dbops,NULL,t,2026-09-27 00:00:00,mctit,f,f,3
+84,documenti.documenti_sorgente,Documenti generati di una sorgente,documenti,NULL,t,2026-09-27 00:00:00,mctit,f,t,3
+85,pratiche.flussi,Flussi di una pratica,pratiche,NULL,t,2026-09-27 00:00:00,mctit,f,t,3
+86,config.utilities_tipi_ruolo_usage,Emittenti che usano una riga della matrice utility / tipi ruolo,anagrafiche,NULL,t,2026-09-27 00:00:00,mctit,t,t,3
+87,amm.reparti,Reparti e profili di accesso,config,NULL,t,2026-09-27 00:00:00,mctit,f,f,1
+88,documenti.template_versioni,Versioni di un template documento,documenti,NULL,t,2026-09-27 00:00:00,mctit,f,t,3
+89,vendite.preventivo_revisioni,Revisioni di un preventivo,vendite,NULL,t,2026-09-27 00:00:00,mctit,f,t,3
+90,vendite.offerta_revisioni,Revisioni di un'offerta commerciale,vendite,NULL,t,2026-09-27 00:00:00,mctit,f,t,3
+91,config.regioni,Regioni,config,vw_regioni_lista,t,2026-09-27 00:00:00,mctit,f,f,3
+92,config.province,Province,config,vw_province_lista,t,2026-09-27 00:00:00,mctit,f,f,1
+93,config.stati,Stati (nazioni),config,stati,t,2026-09-27 00:00:00,mctit,f,f,1
+94,config.comuni,Comuni,config,vw_comuni_lista,t,2026-09-27 00:00:00,mctit,f,f,3
+95,config.codici_postali,Codici postali (CAP),config,vw_codici_postali_lista,t,2026-09-27 00:00:00,mctit,f,f,3
+96,config.toponomastica,Toponomastica (tipi di strada),config,toponomastica,t,2026-09-27 00:00:00,mctit,f,f,3

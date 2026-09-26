@@ -1,0 +1,125 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CATENA DELLE REVISIONI DI UN'OFFERTA PRENDE UN NOME — passo 3 di 4: il pregresso
+#   Brief: brief-db-liste-datatable-grezze.md §3.2
+#
+#   Le offerte che esistono gia' prendono la radice della loro catena, risalita
+#   con la stessa ricorsione che oggi scrive il backend. Su un database da zero
+#   la tabella e' vuota e l'UPDATE tocca zero righe. Idempotente: tocca solo le
+#   righe con la radice ancora NULL.
+#
+#   ⚠️ I trigger UTENTE della tabella sono SOSPESI per la durata dell'UPDATE e
+#   riaccesi subito dopo — solo quelli che erano accesi (forma di 20260805-14).
+#   La radice non e' una modifica del documento, e' un nome dato a un fatto che
+#   c'era gia': non deve spostare `data_update`/`user_update` (audit), ne'
+#   passare dai guard (scope emittente, coerenza BA/emittente, require_attivo
+#   sui padri) che giudicano una MODIFICA e su righe storiche potrebbero dire
+#   di no per ragioni che con la radice non c'entrano. I trigger interni delle
+#   FK restano accesi (qui la FK non c'e' ancora: arriva al passo 4).
+#   ⚠️ I trigger si cercano per stato (`tgenabled`), non per nome: su un
+#   database da zero quelli generati da `ci_apply` qui non esistono ancora.
+#
+#   Separato dal passo 4 di proposito: un UPDATE e un ALTER TABLE nella stessa
+#   transazione muoiono se l'UPDATE lascia eventi trigger in sospeso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260927-05-backfill-offerte-commerciali-revisione-radice-mctit.yaml
+
+  - changeSet:
+      id: 20260927-05-backfill-offerte-commerciali-revisione-radice
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Passo 3 di 4 della catena delle revisioni di vendite.offerte_commerciali: le offerte
+        esistenti prendono revisione_radice_id (risalita ricorsiva di revisione_padre_id), a
+        trigger utente sospesi. Zero righe su un DB da zero. Brief:
+        brief-db-liste-datatable-grezze.md §3.2.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: offerte_commerciali
+            columnName: revisione_radice_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $bonifica$
+              DECLARE
+                  r          record;
+                  v_sospesi  text[] := '{}';
+                  v_n        integer;
+                  v_orfane   integer;
+              BEGIN
+                  FOR r IN
+                      SELECT t.tgname
+                        FROM pg_trigger t
+                       WHERE t.tgrelid = 'vendite.offerte_commerciali'::regclass
+                         AND NOT t.tgisinternal
+                         AND t.tgenabled <> 'D'
+                  LOOP
+                      EXECUTE format('ALTER TABLE vendite.offerte_commerciali DISABLE TRIGGER %I', r.tgname);
+                      v_sospesi := v_sospesi || r.tgname::text;
+                  END LOOP;
+
+                  WITH RECURSIVE catena AS (
+                      SELECT oc.id, oc.id AS radice_id
+                        FROM vendite.offerte_commerciali oc
+                       WHERE oc.revisione_padre_id IS NULL
+                      UNION ALL
+                      SELECT f.id, c.radice_id
+                        FROM vendite.offerte_commerciali f
+                        JOIN catena c ON f.revisione_padre_id = c.id
+                  )
+                  UPDATE vendite.offerte_commerciali oc
+                     SET revisione_radice_id = c.radice_id
+                    FROM catena c
+                   WHERE c.id = oc.id
+                     AND oc.revisione_radice_id IS NULL;
+                  GET DIAGNOSTICS v_n = ROW_COUNT;
+
+                  FOREACH r.tgname IN ARRAY v_sospesi
+                  LOOP
+                      EXECUTE format('ALTER TABLE vendite.offerte_commerciali ENABLE TRIGGER %I', r.tgname);
+                  END LOOP;
+
+                  -- Riaccesi tutti, sempre: un trigger rimasto spento e' un guard
+                  -- che non guarda piu', senza che nessuno se ne accorga.
+                  IF EXISTS (
+                      SELECT 1 FROM pg_trigger t
+                       WHERE t.tgrelid = 'vendite.offerte_commerciali'::regclass
+                         AND t.tgname = ANY (v_sospesi)
+                         AND t.tgenabled = 'D'
+                  ) THEN
+                      RAISE EXCEPTION 'bonifica revisione_radice_id: un trigger sospeso non si e'' riacceso';
+                  END IF;
+
+                  -- Una riga che la ricorsione non raggiunge sta in un ciclo di
+                  -- padri (nessuna rev.1 alla sua origine): il modello non lo
+                  -- ammette, e il passo 4 (NOT NULL) morirebbe senza dire perche'.
+                  SELECT count(*) INTO v_orfane
+                    FROM vendite.offerte_commerciali
+                   WHERE revisione_radice_id IS NULL;
+                  IF v_orfane > 0 THEN
+                      RAISE EXCEPTION 'bonifica revisione_radice_id: % offerte senza una rev.1 all''origine della catena (ciclo di revisione_padre_id)', v_orfane;
+                  END IF;
+
+                  RAISE NOTICE 'revisione_radice_id valorizzata su % offerte (trigger sospesi e riaccesi: %)',
+                               v_n, cardinality(v_sospesi);
+              END
+              $bonifica$;
+      rollback:
+        - sql:
+            sql: |
+              -- Il passo 1 toglie la colonna: qui non c'e' niente da disfare.
+              SELECT 1;

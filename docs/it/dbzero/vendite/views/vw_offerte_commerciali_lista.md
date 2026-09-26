@@ -65,7 +65,8 @@ SELECT o.id,
     sdo.is_superato AS is_superata,
     sdo.is_abortito,
     lin.frontiera_natura_doc_codice_interno,
-    lin.frontiera_tipo_codice_interno
+    lin.frontiera_tipo_codice_interno,
+    o.revisione_radice_id
    FROM ((((((((((((vendite.offerte_commerciali o
      JOIN config.stati_doc_offerte sdo ON ((sdo.id = o.stato_doc_offerta_id)))
      LEFT JOIN anagrafiche.istanze_utilities iu ON ((iu.id = o.istanza_utility_id)))

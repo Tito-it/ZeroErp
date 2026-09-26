@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CATENA DELLE REVISIONI DI UN'OFFERTA PRENDE UN NOME — passo 4 di 4: i vincoli
+#   Brief: brief-db-liste-datatable-grezze.md §3.2
+#
+#   NOT NULL: ogni offerta sta in una catena (anche la rev.1, su se' stessa), e
+#   il trigger del passo 2 la deriva sempre. FK verso la tabella stessa: la
+#   radice e' una riga vera.
+#   ⛔ L'indice sulla FK NON si scrive qui: lo governa la policy
+#   (dbops.fk_index_policy, riga in 80_data/sql/vendite/
+#   fk_index_policy_revisione_radice.csv; linee-guida-sql §8.7 «Mai a mano»).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260927-06-alter-offerte-commerciali-revisione-radice-vincoli-mctit.yaml
+
+  - changeSet:
+      id: 20260927-06-alter-offerte-commerciali-revisione-radice-vincoli
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Passo 4 di 4 della catena delle revisioni di vendite.offerte_commerciali:
+        revisione_radice_id NOT NULL + FK fk_offerte_commerciali_revisione_radice verso la tabella
+        stessa. Brief: brief-db-liste-datatable-grezze.md §3.2.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: offerte_commerciali
+            columnName: revisione_radice_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.offerte_commerciali
+                ALTER COLUMN revisione_radice_id SET NOT NULL;
+
+              ALTER TABLE vendite.offerte_commerciali
+                ADD CONSTRAINT fk_offerte_commerciali_revisione_radice
+                FOREIGN KEY (revisione_radice_id)
+                REFERENCES vendite.offerte_commerciali (id);
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.offerte_commerciali
+                DROP CONSTRAINT IF EXISTS fk_offerte_commerciali_revisione_radice;
+              ALTER TABLE vendite.offerte_commerciali
+                ALTER COLUMN revisione_radice_id DROP NOT NULL;
