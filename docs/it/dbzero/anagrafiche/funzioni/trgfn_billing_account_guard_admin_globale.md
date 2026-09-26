@@ -33,6 +33,10 @@ BEGIN
         RETURN NEW;
     END IF;
 
+    -- La regola sta in fn_check_user_can_create_ba (rev 2026-08-04):
+    -- serve un emittente su cui scrivere, cioe' una riga in
+    -- user_emittenti_fiscali oppure app.current_emittente_id valido
+    -- per l'utente; senza, passa solo un'istanza a zero emittenti attivi.
     v_can_create := script.fn_check_user_can_create_ba(v_user_id);
 
     IF v_can_create IS NOT TRUE THEN
@@ -41,7 +45,7 @@ BEGIN
             TG_NAME,
             'E_BA_ADMIN_GLOBALE_VIETATO',
             jsonb_build_object(
-                'detail', 'Admin globale non puo'' creare billing account quando esistono emittenti fiscali',
+                'detail', 'Nessun emittente fiscale su cui scrivere (ne'' riga in user_emittenti_fiscali ne'' app.current_emittente_id valido) ed esistono emittenti attivi: billing account non creabile',
                 'auth_user_id', v_user_id,
                 'codice_ba', NEW.codice
             ),
@@ -55,7 +59,7 @@ END
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_billing_account_guard_admin_globale()
-IS 'Guard BEFORE INSERT su billing_account: vieta agli admin globali (utenti senza riga in user_emittenti_fiscali) di creare BA quando esistono emittenti fiscali attivi. Skip se GUC app.current_user_id non impostato (seed/bootstrap). Solleva E_BA_ADMIN_GLOBALE_VIETATO.';
+IS 'Guard BEFORE INSERT su billing_account: rifiuta la creazione quando l''utente non ha un emittente fiscale su cui scrivere, cioe'' ne'' una riga in config.user_emittenti_fiscali ne'' un app.current_emittente_id valido per lui (tipicamente il super admin in «Tutti gli emittenti»), ed esistono emittenti fiscali attivi. La regola e'' delegata a script.fn_check_user_can_create_ba (rev 2026-08-04). Skip se GUC app.current_user_id non impostato (seed/bootstrap). Solleva E_BA_ADMIN_GLOBALE_VIETATO (il nome del codice resta per compatibilita'').';
 ```
 
 ---

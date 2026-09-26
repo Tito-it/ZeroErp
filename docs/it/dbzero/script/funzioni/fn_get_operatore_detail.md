@@ -9,7 +9,7 @@ CREATE FUNCTION fn_get_operatore_detail(p_auth_user_id integer)
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_operatore_detail(p_auth_user_id integer)
- RETURNS TABLE(auth_user_id integer, username character varying, email character varying, first_name character varying, last_name character varying, soggetto_cognome text, soggetto_nome text, soggetto_id uuid, ragione_sociale_completa text, codice_fiscale text, is_super_admin boolean, ruolo_applicativo text, is_active boolean, unita_organizzativa_id integer, unita_organizzativa_nome text, risorsa_umana_id bigint, attivo boolean, valido_dal text, valido_al text, override_aree_count bigint, override_azioni_count bigint, emittenti_count bigint, emittenti_descrizione text, last_login timestamp with time zone, invito_inviato_at timestamp with time zone, deve_cambiare_password boolean, can_invite boolean, invite_reason text, can_disable boolean, disable_reason text, can_demote_super_admin boolean, demote_reason text, veste_attiva boolean)
+ RETURNS TABLE(auth_user_id integer, username character varying, email character varying, first_name character varying, last_name character varying, soggetto_cognome text, soggetto_nome text, soggetto_id uuid, ragione_sociale_completa text, codice_fiscale text, is_super_admin boolean, ruolo_applicativo text, is_active boolean, unita_organizzativa_id integer, unita_organizzativa_nome text, risorsa_umana_id bigint, attivo boolean, valido_dal text, valido_al text, override_aree_count bigint, override_azioni_count bigint, emittenti_count bigint, emittenti_descrizione text, last_login timestamp with time zone, invito_inviato_at timestamp with time zone, deve_cambiare_password boolean, can_invite boolean, invite_reason text, can_disable boolean, disable_reason text, can_demote_super_admin boolean, demote_reason text, veste_attiva boolean, invite_reason_key text, disable_reason_key text, demote_reason_key text)
  LANGUAGE plpgsql
  STABLE
 AS $function$
@@ -42,6 +42,11 @@ BEGIN
     --   veste_attiva: lo stato di QUELLA veste (NULL se non ce n'e'
     --   nessuna). Ne' attivo (risorsa umana) ne' is_active
     --   (credenziale, derivato da tutte le vesti) lo dicevano.
+    --
+    -- Rev 20260927-01/-02 (brief §16):
+    --   I motivi sono CODICI con la loro chiave i18n, non frasi.
+    --   invite_reason/_key li inoltra dalla check (sede unica);
+    --   disable e demote: ULTIMO_SUPER_ADMIN, una chiave per verbo.
     -- =========================================================
     RETURN QUERY
     WITH ctx AS (
@@ -81,10 +86,10 @@ BEGIN
         -- rev 2026-09-25 (D-7): il flag e' della CREDENZIALE.
         script.fn_get_deve_cambiare_password(au.id),
         (ctx.inv_jsonb ->> 'invitabile')::boolean              AS can_invite,
-        ctx.inv_jsonb ->> 'motivo'                             AS invite_reason,
+        ctx.inv_jsonb ->> 'reason'                             AS invite_reason,
         NOT ctx.is_last_sa                                     AS can_disable,
         CASE WHEN ctx.is_last_sa
-             THEN 'Ultimo SUPER_ADMIN attivo: disabilitarlo causerebbe il lockout del sistema'
+             THEN 'ULTIMO_SUPER_ADMIN'
              ELSE NULL
         END                                                    AS disable_reason,
         CASE WHEN ctx.is_sa
@@ -93,10 +98,20 @@ BEGIN
         END                                                    AS can_demote_super_admin,
         CASE
              WHEN NOT ctx.is_sa  THEN NULL
-             WHEN ctx.is_last_sa THEN 'Ultimo SUPER_ADMIN attivo: la rimozione del binding causerebbe il lockout del sistema'
+             WHEN ctx.is_last_sa THEN 'ULTIMO_SUPER_ADMIN'
              ELSE NULL
         END                                                    AS demote_reason,
-        id.attivo                                              AS veste_attiva
+        id.attivo                                              AS veste_attiva,
+        ctx.inv_jsonb ->> 'reason_key'                         AS invite_reason_key,
+        CASE WHEN ctx.is_last_sa
+             THEN 'amministrazione.operatori.disabilita_reason.ultimo_super_admin'
+             ELSE NULL
+        END                                                    AS disable_reason_key,
+        CASE
+             WHEN NOT ctx.is_sa  THEN NULL
+             WHEN ctx.is_last_sa THEN 'amministrazione.operatori.rimuovi_super_admin_reason.ultimo_super_admin'
+             ELSE NULL
+        END                                                    AS demote_reason_key
       FROM django.auth_user au
       LEFT JOIN LATERAL (
           SELECT idg.soggetto_ruolo_id, idg.ruolo_applicativo,
@@ -138,7 +153,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_operatore_detail(p_auth_user_id integer)
-IS 'Riga di dettaglio operatore + 6 capability per il drawer admin (Fase 1 P1 2026-04-29; Fase 7 cleanup 2026-04-29: rimossa call interna fn_get_ruolo_sistema E rimossa colonna ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''). Migra in DB la query inline da Python e calcola capability via funzioni esistenti come single source of truth: fn_check_operatore_invitabile, fn_is_super_admin, fn_check_ultimo_super_admin_attivo. emittenti_descrizione aggrega la ragione_sociale_completa dei soggetti emittenti (Fase 1 cantiere emittente 2026-08-02: caduto il fallback su emittenti_fiscali.descrizione, valore e ORDER BY). LANGUAGE plpgsql STABLE. La colonna deve_cambiare_password e'' della CREDENZIALE (D-7, rev 2026-09-25): si legge da script.fn_get_deve_cambiare_password. Rev 20260925-54 (R-9): UNA riga anche con piu'' vesti OPERATORE — quella attiva, altrimenti la spenta piu'' recente (data_insert, poi id) — e la colonna veste_attiva, lo stato di quella veste (NULL senza veste OPERATORE).';
+IS 'Riga di dettaglio operatore + capability per il drawer admin (Fase 1 P1 2026-04-29; Fase 7 cleanup 2026-04-29: rimossa call interna fn_get_ruolo_sistema E rimossa colonna ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''). Migra in DB la query inline da Python e calcola capability via funzioni esistenti come single source of truth: fn_check_operatore_invitabile, fn_is_super_admin, fn_check_ultimo_super_admin_attivo. emittenti_descrizione aggrega la ragione_sociale_completa dei soggetti emittenti (Fase 1 cantiere emittente 2026-08-02: caduto il fallback su emittenti_fiscali.descrizione, valore e ORDER BY). LANGUAGE plpgsql STABLE. La colonna deve_cambiare_password e'' della CREDENZIALE (D-7, rev 2026-09-25): si legge da script.fn_get_deve_cambiare_password. Rev 20260925-54 (R-9): UNA riga anche con piu'' vesti OPERATORE — quella attiva, altrimenti la spenta piu'' recente (data_insert, poi id) — e la colonna veste_attiva, lo stato di quella veste (NULL senza veste OPERATORE). ⭐ Rev 20260927-02 (brief-db-blocco-login-per-credenziale §16): i motivi sono CODICI con la chiave i18n, non frasi. invite_reason/invite_reason_key = reason/reason_key di fn_check_operatore_invitabile (codici e chiavi nel suo COMMENT). disable_reason = ULTIMO_SUPER_ADMIN, disable_reason_key = amministrazione.operatori.disabilita_reason.ultimo_super_admin. demote_reason = ULTIMO_SUPER_ADMIN, demote_reason_key = amministrazione.operatori.rimuovi_super_admin_reason.ultimo_super_admin. Tutti NULL quando l''azione e'' ammessa (e demote anche quando non si applica).';
 ```
 
 ---
