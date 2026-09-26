@@ -115,7 +115,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_AUTH_CHIAMATA_NON_VALIDA": "Chiamata non valida a una funzione della credenziale.",
     "E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA": "Errore configurazione automazione chiusura. Contattare l'amministratore di sistema.",
     "E_BATCH_ARRAY_DISALLINEATI": "Errore interno nella generazione delle righe.",
-    "E_BA_ADMIN_GLOBALE_VIETATO": "Un amministratore globale non puo' creare billing account quando esistono emittenti fiscali. Operare come operatore di un emittente specifico.",
+    "E_BA_ADMIN_GLOBALE_VIETATO": "Per creare un cliente serve un emittente fiscale su cui lavorare: scegli l'emittente in alto (con «Tutti gli emittenti» non si sa a quale associarlo).",
     # ⚠️ La frase NON nomina piu' «fatture o commesse»: dal 2026-08-31 la storia
     #    e' qualunque documento gia' NUMERATO su un registro — DDT, ordini e resi
     #    compresi — e si deriva da `vendite.famiglie_documento`. Una frase che ne

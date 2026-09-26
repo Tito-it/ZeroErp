@@ -6,9 +6,9 @@
 > **Tipo:** allineamento di seed, piccolo. Decisione di Tid del 2026-09-26:
 > *«aggiungere al catalogo»*.
 >
-> **Stato:** 🟡 lato DB chiuso il 2026-09-26 (righe 939/940 applicate da Tid,
-> pgTAP verdi, nessuna regressione). **Resta la ricaduta BE (§3)**, che va nello
-> stesso merge verso `Tito-dev`.
+> **Stato:** ✅ chiuso il 2026-09-26. Lato DB righe 939/940 applicate da Tid
+> (pgTAP verdi); ricaduta BE (§3) fatta su `dev/backend-tid` lo stesso giorno,
+> test 10 e 10-bis verdi.
 
 ---
 

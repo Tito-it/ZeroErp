@@ -172,8 +172,11 @@ class ClientiService:
     # =================================================================
 
     # Scopo: Guard applicativo refactor operatore-emittenti (Q6).
-    #        Blocca la creazione BA per admin globale quando esistono
-    #        emittenti fiscali nel sistema. Difesa "early reject" per
+    #        Blocca la creazione BA quando la sessione non lavora dentro un
+    #        emittente fiscale (super admin in «Tutti gli emittenti») ed
+    #        esistono emittenti nel sistema (regola della rev 2026-08-04 di
+    #        `fn_check_user_can_create_ba`). Il codice conserva il nome
+    #        storico `…ADMIN_GLOBALE…`. Difesa "early reject" per
     #        dare un errore pulito (E_BA_ADMIN_GLOBALE_VIETATO, 403)
     #        invece di un fallimento generico del trigger DB.
     #        Defense-in-depth: il trigger
@@ -188,9 +191,9 @@ class ClientiService:
             raise ServiceError(
                 code=E_BA_ADMIN_GLOBALE_VIETATO,
                 message=(
-                    "Un amministratore globale non puo' creare billing "
-                    "account quando esistono emittenti fiscali. Operare "
-                    "come operatore di un emittente specifico."
+                    "Per creare un cliente serve un emittente fiscale su cui "
+                    "lavorare: scegli l'emittente in alto (con «Tutti gli "
+                    "emittenti» non si sa a quale associarlo)."
                 ),
             )
 
