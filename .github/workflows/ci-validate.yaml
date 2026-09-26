@@ -604,6 +604,36 @@ jobs:
           source .venv/bin/activate
           python manage.py check
 
+      - name: Django check --deploy (sicurezza)
+        working-directory: ./backend
+        # I controlli di Django sulla configurazione di produzione (cookie,
+        # HSTS, SSL, SECRET_KEY, DEBUG, X-Frame-Options, ...).
+        # ⚠️ `--tag security`: senza, il check riporta anche 127 avvisi
+        #    drf-spectacular (73 W002 + 54 W001 al 2026-09-26), che non
+        #    riguardano la sicurezza. Il loro cancello e' un altro: il registro
+        #    a cricchetto `apps/core/tests/test_schema_openapi_registro.py`,
+        #    che gira con la suite Django.
+        # ⚠️ Un rilievo `security.*` e' un AVVISO: `check` esce 0 comunque.
+        #    Il cancello lo fa il grep qui sotto, con l'elenco a cricchetto dei
+        #    rilievi ACCETTATI. Si toglie una voce quando si chiude, mai si
+        #    aggiunge per far passare una PR.
+        #    - W004 (HSTS) e W008 (SSL_REDIRECT): header HTTPS, rimandati
+        #      (registro migliorie, voce D3-c).
+        # ⭐ La chiave si GENERA qui: il segnaposto del job (`ci-placeholder`)
+        #    fa scattare W009, come la farebbe scattare in produzione.
+        run: |
+          source .venv/bin/activate
+          export DJANGO_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(64))')"
+          export DJANGO_DEBUG=0
+          out="$(python manage.py check --deploy --tag security 2>&1)" || { echo "$out"; exit 1; }
+          echo "$out"
+          nuovi="$(grep -oE '\(security\.[EW][0-9]+\)' <<<"$out" \
+                   | grep -vE 'security\.(W004|W008)\)' || true)"
+          if [ -n "$nuovi" ]; then
+            echo "::error::check --deploy: rilievi di sicurezza non accettati: $nuovi"
+            exit 1
+          fi
+
       - name: Django migrate (schema django)
         working-directory: ./backend
         run: |

@@ -97,12 +97,20 @@ di errore del BE: `useApiHandler` lo tratta come errore HTTP generico.
 
 ## 🔐 Variabili d’ambiente (dev)
 
-**`env.sh`** (usata in shell e dal wrapper):
+**`backend/.env`** (usata in shell e dal wrapper; il servizio systemd legge la
+stessa lista, senza `export`, da `backend/.env.systemd`). Il modello versionato,
+con i soli nomi, è **`backend/.env.example`**: si copia e si valorizza.
+
+> ⛔ **I due file veri non si committano**: contengono i segreti della macchina.
+> Li tiene fuori `.gitignore` e, se ci rientrassero, li ferma gitleaks al
+> commit. Regole e strumenti: [Sicurezza e qualità statica](../sicurezza-e-qualita-statica.md).
 
 ```bash
-# ~/apps/ZeroErp/backend/env.sh
-export DJANGO_SECRET_KEY="<generare>"
-export DJANGO_DEBUG="1"
+# ~/apps/ZeroErp/backend/.env
+# Obbligatoria, senza default: python -c "import secrets; print(secrets.token_urlsafe(64))"
+export DJANGO_SECRET_KEY="<generata>"
+# Default SPENTO: si accende a mano solo dove serve
+export DJANGO_DEBUG="0"
 # Swagger/OpenAPI (/api/docs/, /api/schema/): segue DEBUG; "1" per averlo con DEBUG=0
 export DJANGO_API_DOCS_ENABLED="1"
 # Host ammessi: LAN + Tailscale (IP E nome MagicDNS: Nginx passa a Django il nome
@@ -126,7 +134,7 @@ export DB_PORT="5432"
 
 ```bash
 cd ~/apps/ZeroErp/backend
-set -a; source ./env.sh; set +a
+set -a; source ./.env; set +a
 ```
 
 ---
@@ -283,7 +291,8 @@ def env(name, default=None, required=False):
         raise ImproperlyConfigured(f"Missing env var: {name}")
     return v
 
-DEBUG = env("DJANGO_DEBUG", "1") == "1"
+SECRET_KEY = env("DJANGO_SECRET_KEY", required=True)   # nessun ripiego
+DEBUG = env("DJANGO_DEBUG", "0") == "1"                  # default spento
 ALLOWED_HOSTS = [h.strip() for h in env("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")]
 # Swagger/OpenAPI: strumento di sviluppo, segue DEBUG salvo scelta esplicita
 API_DOCS_ENABLED = env("DJANGO_API_DOCS_ENABLED", "1" if DEBUG else "0") == "1"

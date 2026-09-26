@@ -1083,6 +1083,16 @@ function buildParams(f, _termine, ricerca) {
 ⛔ Nessun numero nel codice della lista: `RICERCA.MIN_CARATTERI` è il ripiego
 finché la configurazione non è arrivata (`null`).
 
+⭐ **Un tasto che non cambia la richiesta non ricarica** (dal 2026-09-26). Il
+watcher della casella chiede allo store `ricercaCambiaLaRichiesta(termine)`
+(BB `useListaEmptyStateFetch`): se il `search` che partirebbe è quello
+dell'ultima richiesta partita — termine sotto soglia, o uguale dopo il `trim` —
+lo store si allinea e basta, senza fetch e senza tornare a pagina 1. Senza,
+sulle liste col filtro data di default (preventivi, offerte, ordini) «a» e «ab»
+ricaricavano la stessa lista senza `search`. ⚠️ Uno store scritto a mano sul BB
+la **espone** nel suo `return`, come `ricercaMinCaratteri`: se manca, la lista
+ricarica a ogni tasto.
+
 ```js
 const hasSearched = ref(false)
 

@@ -2141,8 +2141,15 @@ accendere un cancello, non nella peggiore.
       self.addCleanup(patcher.stop)
   ```
 
-* Ogni `APIView` su `/api/v1/` ha `@extend_schema` su ogni metodo HTTP pubblico
-  (warning di drf-spectacular in CI).
+* Ogni `APIView` su `/api/v1/` ha `@extend_schema` su ogni metodo HTTP pubblico,
+  con `request` (se il metodo ha un corpo) **e** `responses`: senza uno dei due
+  drf-spectacular non trova il serializer (`W002`) e l'endpoint esce vuoto
+  dallo schema. Lista e dettaglio con lo stesso `operationId` (`W001`) si
+  separano con `operation_id=`. Presidio dal 2026-09-26:
+  `apps/core/tests/test_schema_openapi_registro.py`, registro a cricchetto
+  `openapi_schema.baseline.json` — rosso su una view o un `operationId` nuovi,
+  rosso anche su una voce sanata e non tolta. ⚠️ Il `W002` è **per view**: una
+  view ancora nel registro non è protetta sugli altri metodi.
 * **Prova locale come la CI**:
 
   ```bash

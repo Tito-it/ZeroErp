@@ -1,0 +1,283 @@
+# Brief BE/FE — Sicurezza: header HTTPS, token fuori da `localStorage`, secondo fattore, ruff `B`
+
+> **Destinatari:** team backend e frontend (`dev/backend-tid`); chi gestisce nginx per §1;
+> team DB (`dev/db-tid`) per la sola §3.3.
+>
+> **Tipo:** quattro lavori indipendenti, raccolti qui perché nascono dalla stessa revisione
+> di sicurezza del 2026-09-26. Si possono fare in qualunque ordine; l'ordine consigliato è in §5.
+>
+> **Stato:** 📝 da fare. Decisioni di Tid del 2026-09-26: §1 *«facciamo dopo»*, §2–§4
+> *«più avanti»*. Questo brief le tiene pronte.
+>
+> **Contesto:** [Sicurezza e qualità statica](../sicurezza-e-qualita-statica.md), sezione
+> «Aperto». Registro del debito: [migliorie generali](migliorie-generali-BE-FE-da-test-valutazione.md),
+> voce D3-c per §1.
+
+---
+
+## 1. Header HTTPS: HSTS, redirect, Content-Security-Policy
+
+### 1.1 Cosa manca
+
+| Header / impostazione | Oggi | Cosa protegge |
+| --- | --- | --- |
+| `Strict-Transport-Security` (HSTS) | assente | il browser non prova più l'HTTP in chiaro dopo la prima visita: chiude la finestra del primo `http://` intercettabile |
+| `SECURE_SSL_REDIRECT` | assente in Django; nginx fa già `308` da 80 a 443 | il redirect non dipende da un solo strato |
+| `Content-Security-Policy` | assente, né in nginx né in `index.html` | limita da dove la pagina può caricare script, stili, frame e connessioni: uno script iniettato non parte, o non riesce a spedire fuori ciò che legge |
+
+`check --deploy` in CI accetta oggi `security.W004` (HSTS) e `security.W008` (redirect) nel suo
+elenco a cricchetto (`ci-validate.yaml`, passo «Django check --deploy (sicurezza)»). **Chiusa §1, le
+due voci si tolgono da quell'elenco.**
+
+⭐ La CSP è l'argomento più pesante: i token JWT stanno in `localStorage` (§2), quindi leggibili da
+qualunque script giri nella pagina. Oggi la postura regge perché la superficie è a zero
+(`v-html` assente e presidiato da eslint, un solo client HTTP), ma nessun header limita il danno
+se la superficie si aprisse.
+
+### 1.2 Dove si mettono
+
+* **HSTS e redirect → in Django** (`settings.py`, ramo non-DEBUG), guidati da variabili
+  d'ambiente. Sono versionati, li verifica `check --deploy`, e valgono qualunque proxy ci sia
+  davanti. nginx può ripeterli, ma la sede è una.
+* **CSP → in nginx.** La CSP serve sulla pagina HTML, e la pagina HTML non la serve Django (in
+  sviluppo la serve Vite, in produzione la build statica): Django serve solo JSON. La
+  configurazione di nginx va quindi **documentata** in
+  [configurazione-django.md](../backend/configurazione-django.md) (vhost), che è la sua sede.
+
+### 1.3 HSTS — attenzione prima di accenderlo
+
+⛔ HSTS dice al browser di **rifiutare** il sito se il certificato non è valido, senza più il
+pulsante «procedi comunque». La macchina di sviluppo usa oggi un certificato **auto-firmato**
+(vhost in `configurazione-django.md`): con HSTS acceso, il sito diventa irraggiungibile da ogni
+browser che l'ha visitato, fino alla scadenza di `max-age`.
+
+Proposta:
+
+* `SECURE_HSTS_SECONDS` da env (`DJANGO_SECURE_HSTS_SECONDS`), **obbligatoria quando
+  `DEBUG=0`**, senza default: chi mette in piedi una macchina deve scegliere. In CI si imposta al
+  valore di produzione, così `check --deploy` la vede.
+* Si parte con un valore **breve** (`300` secondi), si verifica, poi si sale (un anno).
+* `SECURE_HSTS_INCLUDE_SUBDOMAINS` e `SECURE_HSTS_PRELOAD` **spenti**: il preload è di fatto
+  irreversibile e riguarda il dominio intero, non ZeroErp.
+* ❓ **Decisione di Tid:** sulla macchina di sviluppo, si passa a un certificato valido (per
+  esempio `tailscale cert` per il nome `*.ts.net`) e si accende HSTS anche lì, oppure la macchina
+  di sviluppo resta con `DJANGO_SECURE_HSTS_SECONDS=0` dichiarato?
+
+### 1.4 Redirect HTTPS — il caso `/health`
+
+`SECURE_SSL_REDIRECT = True` dietro nginx funziona grazie a `SECURE_PROXY_SSL_HEADER`, già
+impostato. Ma una chiamata **diretta** a Gunicorn in HTTP (un controllo locale su
+`http://127.0.0.1:8000/health`, un worker, uno script) riceverebbe un `301` invece della risposta.
+
+* `SECURE_REDIRECT_EXEMPT = [r"^health$"]`, e si cercano gli altri chiamanti locali prima di
+  accendere (`grep` su `backend/bin/`, `scripts/`, unit systemd, `ci.yaml` smoke test).
+* Da env come HSTS (`DJANGO_SECURE_SSL_REDIRECT`), default acceso con `DEBUG=0`.
+
+### 1.5 CSP — la politica di partenza
+
+Ricavata da ciò che il frontend usa oggi (verificato sul codice il 2026-09-26):
+
+* **`blob:` nei frame** — l'anteprima PDF (`DocumentoEmissioneDialog.vue`) carica un
+  `URL.createObjectURL` in un `<iframe>`;
+* **`srcdoc` con `sandbox=""`** — l'anteprima email (`EmailTemplateDrawer.vue`): è già isolata,
+  la CSP non la tocca;
+* **stili inline** — PrimeVue inietta elementi `<style>` a runtime: serve `'unsafe-inline'` in
+  `style-src` (o un nonce, che PrimeVue supporta ma chiede lavoro sul render dell'HTML);
+* nessun `eval`, nessun `new Function`, nessuna risorsa esterna in `index.html`.
+
+```nginx
+# Produzione (build statica). Prima come Report-Only, poi applicata.
+add_header Content-Security-Policy-Report-Only "
+  default-src 'self';
+  script-src 'self';
+  style-src 'self' 'unsafe-inline';
+  img-src 'self' data: blob:;
+  font-src 'self' data:;
+  connect-src 'self';
+  frame-src 'self' blob:;
+  object-src 'none';
+  base-uri 'self';
+  form-action 'self';
+  frame-ancestors 'none'
+" always;
+add_header Referrer-Policy "same-origin" always;
+add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+```
+
+* **Sviluppo (Vite)**: l'HMR apre un websocket sulla stessa porta della pagina e inietta script
+  e stili: `connect-src 'self' wss:` e `script-src 'self' 'unsafe-inline'` sul solo blocco di
+  sviluppo. ⚠️ Due politiche vuol dire due posti da tenere allineati: vanno scritte una accanto
+  all'altra nel vhost documentato, con la differenza commentata.
+* **Passi**: `Report-Only` per un giro di collaudo a video su tutte le aree (le violazioni
+  compaiono nella console del browser), poi `Content-Security-Policy`.
+* `frame-ancestors 'none'` sostituisce l'`X-Frame-Options: DENY` che Django già manda sulle
+  risposte API.
+
+### 1.6 Verifica
+
+* `check --deploy --tag security` verde **senza** W004/W008 nell'elenco accettati;
+* test Django: con `DEBUG=0` le risposte portano `Strict-Transport-Security`; `/health` in HTTP
+  diretto non viene rediretto;
+* a mano: `curl -kI https://<host>/` mostra la CSP; collaudo a video senza violazioni in console.
+
+---
+
+## 2. Token JWT fuori da `localStorage`
+
+### 2.1 Il problema
+
+`frontend/src/core/storage.js` tiene **access e refresh token in `localStorage`**. Qualunque script
+che giri nella pagina li legge e li può spedire altrove; il refresh vale un giorno
+(`REFRESH_TOKEN_LIFETIME`) e con la rotazione si rinnova. È la ragione per cui §1 pesa.
+
+### 2.2 La forma proposta
+
+| Token | Oggi | Proposta |
+| --- | --- | --- |
+| **refresh** | `localStorage` | cookie `HttpOnly; Secure; SameSite=Strict`, con `Path` ristretto all'endpoint di refresh **del proprio canale** (`/api/v1/admin/token/refresh/`, `…/portale/…`, `…/shop/…`). Lo script della pagina non lo vede mai |
+| **access** | `localStorage` | **solo in memoria** (variabile del modulo di `core/api.js`). Al ricaricamento della pagina si ottiene con un refresh silenzioso |
+| durata access | 60 minuti, commentata «Per sviluppo» | 5–15 minuti: col refresh silenzioso non costa niente all'utente |
+
+Il canale di login (`LOGIN_CHANNEL`) resta in `localStorage`: non è un segreto, serve a scegliere
+l'endpoint di refresh dopo un ricaricamento.
+
+### 2.3 Backend
+
+* Le view di login e di refresh dei tre canali (`zeroerp_backend/urls.py`) scrivono il refresh
+  nel cookie invece che nel corpo della risposta, e la view di refresh lo **legge dal cookie**.
+  Il corpo restituisce il solo access token.
+* Logout e revoca (`logout_view`, `revoca_token`) mettono in blacklist **e** cancellano il cookie.
+* **CSRF**: un endpoint che si autentica con un cookie è esposto al CSRF. `SameSite=Strict` lo
+  chiude sui browser attuali; in più il refresh pretende un header custom (per esempio
+  `X-Requested-With`), che un form di un altro sito non può mandare.
+* I token multi-veste (`api_multi_veste_token`) e il claim `sid` seguono la stessa forma: da
+  verificare uno per uno, con i test.
+
+### 2.4 Frontend
+
+* `storage.js`: tolte le chiavi dei due token; `core/api.js` tiene l'access in memoria e fa il
+  refresh silenzioso all'avvio e su 401 (la coda esiste già).
+* ⚠️ **Più schede aperte.** Oggi le schede condividono i token tramite `localStorage`. Con il
+  refresh in cookie e la **rotazione con blacklist** accesa, due schede che rinnovano insieme
+  presentano lo stesso refresh: la seconda trova il token già in blacklist e l'utente viene
+  buttato fuori. Serve una di queste, da decidere:
+  * coordinamento fra schede con `BroadcastChannel` (una sola scheda rinnova, le altre ricevono
+    il nuovo access);
+  * oppure un breve periodo di tolleranza lato backend sul refresh appena ruotato.
+* `guard:pinia` e il reset al logout restano come sono.
+
+### 2.5 Verifica
+
+* test Django: login → nel corpo nessun refresh, cookie con i quattro attributi; refresh senza
+  cookie → 401; refresh con header mancante → 403; logout → cookie cancellato e token in blacklist;
+* test FE (vitest): nessun token scritto in `localStorage`;
+* collaudo a video: ricarica pagina, due schede aperte per più di una durata dell'access, logout
+  da una scheda.
+
+---
+
+## 3. Secondo fattore di autenticazione (TOTP)
+
+### 3.1 Cosa esiste già
+
+* **DB**: la tabella `config.auth_totp_device` (1:1 con `auth_user`: secret cifrato, flag
+  `abilitato`/`confermato`, hash dei codici di recupero, anti-replay con `ultimo_codice_usato`).
+  Doc: `docs/it/dbzero/config/manual/auth_totp_device.md`.
+* **Backend**: niente. Nessun servizio, nessuna view, nessun riferimento alla tabella in
+  `backend/apps`.
+* **La credenziale** (`config.credenziali`, dal 2026-09-25) tiene tentativi, blocco e cambio
+  password obbligato. Il vecchio `totp_obbligatorio` è stato tolto da `identita_digitali`
+  (changeSet `20260925-25`, decisione D-10) con la nota *«quando il TOTP si farà, l'obbligo sarà
+  della credenziale»*.
+
+### 3.2 ⚠️ Documentazione DB da allineare
+
+Il manuale `auth_totp_device.md` descrive un **`TotpService`** che non esiste e un campo
+**`totp_obbligatorio` su `risorse_umane_auth_user`** che non esiste più. Anche il manuale di
+`credenziali.md` dice che `totp_obbligatorio` «esce da `identita_digitali`» verso la credenziale,
+ma la colonna non c'è. Una guida che descrive un disegno mai costruito va riscritta sullo stato
+attuale (standard delle guide): chiesto al team DB in §3.3.
+
+### 3.3 Richiesta al team DB
+
+1. **Dove sta l'obbligo del secondo fattore.** Proposta: colonna `totp_obbligatorio` su
+   `config.credenziali`, come dice la nota di D-10. ❓ Da decidere con Tid se l'obbligo è per
+   credenziale, per ruolo (per esempio sempre per il super admin) o entrambi.
+2. **Funzioni di scrittura** del device (registra, conferma, disabilita, consuma un codice di
+   recupero, anti-replay) sul modello di `config.credenziali`: niente RLS (si legge prima del
+   login, quando un perimetro non c'è ancora), **all'app solo `SELECT`**, ogni scrittura da una
+   funzione di `script`. Da verificare sulla postura attuale di `auth_totp_device`: che GRANT ha
+   `zeroerp_app` su una tabella che oggi nessuno usa.
+3. **Allineare i due manuali** di §3.2.
+
+### 3.4 Backend e frontend
+
+* **Flusso di login a due passi**: password corretta e device attivo → risposta
+  `two_factor_required` con un token di sfida **breve** (pochi minuti, monouso), non un JWT
+  d'accesso; secondo passo con il codice → JWT. Il freno sui tentativi e il throttle valgono
+  anche per il codice (6 cifre = un milione di combinazioni: senza freno, si indovinano).
+* **Setup**: segreto generato dal backend, mostrato come QR code **una volta**, confermato con il
+  primo codice; codici di recupero mostrati una volta.
+* **Middleware** che obbliga al setup chi ha l'obbligo e non ha un device attivo, sul modello di
+  `PasswordChangeRequiredMiddleware`.
+* ❓ **Dipendenze — ok di Tid richiesto** (regola: nessuna dipendenza nuova senza conferma):
+  * TOTP: `pyotp`, oppure RFC 6238 scritta sulla libreria standard (`hmac`, `hashlib`,
+    `struct`: una trentina di righe, più i test con i vettori della RFC);
+  * QR code: generato nel backend (`qrcode`, SVG) o nel frontend (una libreria npm).
+
+### 3.5 ⛔ Prerequisito: separare la chiave di cifratura dalla `SECRET_KEY`
+
+Oggi `crypto_service` ricava la chiave Fernet dalla `SECRET_KEY`. Con i segreti TOTP cifrati
+così, **ruotare la `SECRET_KEY` spegnerebbe il secondo fattore di tutti gli utenti**, oltre a
+rendere illeggibili le password SMTP: la rotazione della chiave di Django diventerebbe
+un'operazione che nessuno vuole fare, cioè non si farebbe.
+
+Proposta, **prima** del TOTP:
+
+* chiave dedicata `DJANGO_FIELD_ENCRYPTION_KEYS` (obbligatoria), separata dalla `SECRET_KEY`;
+* `MultiFernet` con **più chiavi**: si cifra con la prima, si decifra con tutte. Ruotare vuol dire
+  aggiungere una chiave in testa e ri-cifrare con calma, senza rompere niente;
+* un comando di gestione per la ri-cifratura, e la migrazione dei dati cifrati di oggi (password
+  SMTP) dalla chiave derivata alla chiave nuova.
+
+---
+
+## 4. ruff `B` (bugbear)
+
+Accenderla, con la disciplina di `ruff.toml`: si sana, poi si accende, e il cancello nasce a zero.
+
+Rilievi al 2026-09-26 (`ruff check --select B --statistics .`), come fatto datato:
+
+| Regola | Rilievi | Cosa chiede |
+| --- | --- | --- |
+| `B905` | 47 | `zip()` senza `strict=`: tronca **in silenzio** alla lista più corta. Una per una: `strict=True` dove le due liste devono essere lunghe uguali (quasi sempre), `strict=False` scritto dove la troncatura è voluta |
+| `B007` | 11 | variabile del ciclo non usata: `_` o un nome che inizia con `_` |
+| `B904` | 8 | `raise` dentro un `except` senza `from`. `ruff.toml` le ha già guardate e scartate (sono `raise AssertionError("unreachable")`): si mettono in `ignore` con il motivo, non si toccano |
+| `B023` | 6 | una funzione definita nel ciclo che usa la variabile del ciclo: legge il valore **dell'ultimo giro**. Da guardare una per una, possono essere difetti veri |
+
+Da fare nello stesso giro: `select` in `ruff.toml` più la voce di commento con le decisioni, e la
+riga della tabella «famiglie accese» nel documento tecnico.
+
+---
+
+## 5. Ordine consigliato
+
+1. **§3.5 chiave di cifratura separata**: è piccola, sblocca §3, e rende indolore ruotare la
+   `SECRET_KEY` (quella rimasta nella storia del repo: non urgente, il repo è privato, ma è il
+   momento naturale per farlo).
+2. **§4 ruff `B`**: solo backend, nessuna decisione aperta.
+3. **§1 header**, prima come `Report-Only`: non rompe niente, e intanto si raccolgono le
+   violazioni.
+4. **§2 token in cookie**: tocca login, refresh e logout di tre canali, più il FE. Va fatto
+   **prima** di rendere applicata la CSP? No, sono indipendenti, ma insieme chiudono lo stesso
+   rischio (uno script iniettato): conviene tenerli vicini.
+5. **§3 TOTP**, dopo le decisioni del DB (§3.3) e l'ok sulle dipendenze (§3.4).
+
+## 6. Decisioni aperte per Tid
+
+| # | Domanda | § |
+| --- | --- | --- |
+| 1 | Certificato valido e HSTS acceso anche sulla macchina di sviluppo, o HSTS a 0 dichiarato? | 1.3 |
+| 2 | Più schede aperte: coordinamento `BroadcastChannel` o tolleranza sul refresh ruotato? | 2.4 |
+| 3 | Obbligo del secondo fattore: per credenziale, per ruolo, o entrambi? | 3.3 |
+| 4 | Dipendenze TOTP e QR: librerie o codice nostro? | 3.4 |

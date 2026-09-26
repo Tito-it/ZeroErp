@@ -43,9 +43,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-#SECRET_KEY = 'django-insecure-g1_6cz@zezij7v4s8@^s@tm)s3fzw29bz%!s6zppub-$&f042='
-SECRET_KEY = env("DJANGO_SECRET_KEY", "dev-insecure")
+# ⛔ Nessun default: la chiave firma JWT e sessioni e da essa deriva la chiave
+#    Fernet (`crypto_service`). Un ripiego costante e' una chiave PUBBLICA —
+#    sta nel repo — e il backend partirebbe lo stesso senza dirlo.
+#    Generarla: python -c "import secrets; print(secrets.token_urlsafe(64))"
+SECRET_KEY = env("DJANGO_SECRET_KEY", required=True)
 
 
 # SECURITY WARNING: don't run with debug turned on in production!
@@ -59,7 +61,10 @@ SECRET_KEY = env("DJANGO_SECRET_KEY", "dev-insecure")
 #    "dbdev.tailXXXX.ts.net",             # se un giorno servi il BE anche dal nodo DB
 #]
 
-DEBUG = env("DJANGO_DEBUG", "1") == "1"
+# ⛔ Default SPENTO: il DEBUG si accende esplicitamente (`DJANGO_DEBUG=1`) sulla
+#    macchina che lo vuole. Col default acceso, un env file dimenticato apre
+#    le pagine d'errore con le impostazioni e Swagger (che segue DEBUG).
+DEBUG = env("DJANGO_DEBUG", "0") == "1"
 ALLOWED_HOSTS = [h.strip() for h in env("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")]
 API_EXCEPTION_MIDDLEWARE_ENABLED = env("DJANGO_API_EXCEPTION_MIDDLEWARE_ENABLED", "1") == "1"
 API_RETRY_AFTER_SECONDS = int(env("DJANGO_API_RETRY_AFTER_SECONDS", "3"))

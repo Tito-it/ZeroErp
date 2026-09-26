@@ -279,16 +279,11 @@ python manage.py createsuperuser
 
 ## 7) Sicurezza Django dietro proxy HTTPS
 
-In `settings.py`:
-
-```python
-CSRF_TRUSTED_ORIGINS = [
-    "https://backend-dev.tailXXXX.ts.net",
-]
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-```
+Proxy fidati, cookie `Secure`, `CSRF_TRUSTED_ORIGINS` sono **già** in
+`zeroerp_backend/settings.py`, versionato: non si aggiunge niente a mano. Cosa fa
+ciascuna impostazione e come si verifica sta in un posto solo:
+[Configurazione Django](configurazione-django.md), «Sicurezza della superficie
+pubblica» e «Settings Django — punti chiave».
 
 > Se provi login in **HTTP**, i cookie `Secure` non vengono inviati ⇒ errore CSRF atteso. Mantieni redirect 80→443.
 

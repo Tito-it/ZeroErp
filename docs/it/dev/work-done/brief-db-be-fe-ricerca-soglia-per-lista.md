@@ -40,7 +40,7 @@
 > la soglia a catalogo della lista che interroga; applicata lo stesso giorno
 > (§6 b-bis), insieme a un difetto trovato strada facendo: la configurazione
 > del resolver non era mai passata sul DB vero (cast `bigint[]` su un codice).
-> **Nessuna decisione aperta.** Resta la prova a video di Tid.
+> **Nessuna decisione aperta.** ~~Resta la prova a video di Tid.~~ ✅ fatta, vedi sotto.
 >
 > **Stato 2026-09-26 (chiusura):** ✅ revisione critica del diff prima del
 > commit, esito in **§8**: sei difetti corretti (fra cui la ricerca universale,
@@ -48,6 +48,11 @@
 > resolver letto dall'enum, i mock del catalogo in una sede sola. **Brief
 > chiuso e spostato in `work-done/`.** Suite BE 5022/5022 sulle app toccate con
 > E2E (2 skip), FE 354/354.
+>
+> **Stato 2026-09-26 (collaudo):** ✅ **prova a video di Tid superata** — «KG»
+> su unità di misura filtra, il resolver soggetti cerca dalla soglia della
+> lista, i preventivi non ricaricano al 1° e 2° carattere (§8-bis). FE
+> 360/360. **Cantiere chiuso.**
 
 ---
 
@@ -380,13 +385,13 @@ decidere se legge `RICERCA_MIN_CARATTERI` (e il FE `RICERCA.MIN_CARATTERI`) o se
 1. ✅ **Team DB**: §4 scritta il 2026-09-25 (§4-bis), coi pgTAP; §1 scritta il
    2026-09-24. ✅ Applicate entrambe il 2026-09-26, pgTAP verdi.
 2. ✅ **BE + FE**: §5, nello stesso giro — scritto il 2026-09-26 (§5-bis).
-   ⏳ Prova a video di Tid. Era: **sbloccato**. Il BE legge la soglia
+   ✅ Prova a video di Tid superata il 2026-09-26 (§9). Era: **sbloccato**. Il BE legge la soglia
    con `SELECT ricerca_min_caratteri FROM ui.fn_lista_da_codice(%s)` e la
    passa al FE dalla chiave `ricerca_min_caratteri` del jsonb del risolutore
    (§4-bis). Con §1 applicata, `test_seed_offre_tutto_cio_che_il_backend_sa_ordinare`
    deve tornare verde.
 3. ✅ **Tid**: §6 a (strada 2) e §6 b (strada 1) decise e applicate il
-   2026-09-26. ⏳ Prova a video.
+   2026-09-26. ✅ Prova a video superata lo stesso giorno (§9).
 
 Fine cantiere: nessuna chiamata al BB passa `min_caratteri`, nessuna view
 dichiara la soglia a mano, e «KG» su unità di misura filtra a video.
@@ -466,4 +471,27 @@ ricevono (`canaliIncasso`, `codeJobs`, `fondiFatturaDaDecidere`, `lotti`,
   altro file di test scrive i percorsi delle due letture. Il mock di
   `test_config_resolver` resta a parte: sostituisce un altro nome
   (`soggetti_repository.soglia_ricerca`).
+
+
+**§8-bis. Segnalazione di Tid a video, 2026-09-26** — «i preventivi partono a
+cercare al primo carattere». Non era la soglia (a catalogo `vendite.preventivi`
+è 3, e «a» non partiva come `search`): la lista ha il filtro data di default,
+che conta come filtro attivo, e a ogni tasto sotto soglia la guardia lasciava
+ripartire la **stessa** richiesta senza `search`. Corretto nel BB
+`useListaEmptyStateFetch` con `ricercaCambiaLaRichiesta(termine)`, chiesta dal
+watcher di `useSearchTable`: se il `search` che partirebbe è quello dell'ultima
+richiesta partita, nessuna fetch e nessun ritorno a pagina 1. Presidi:
+`useListaStoreCore.spec` 18-22 e `useListaConfigurabilePage.spec` 6 (rosso con
+la correzione tolta). Doc: catalogo BB frontend, `frontend-standards` §ricerca.
+
+## 9. Collaudo a video — 2026-09-26 ✅ superato (Tid)
+
+| Prova | Esito |
+| --- | --- |
+| «KG» su unità di misura (lista a soglia 1): la lista filtra | ✅ |
+| Ricerca del soggetto (`SoggettoResolver`): cerca dalla soglia della lista `anagrafiche.soggetti`, il placeholder dice il numero vero | ✅ |
+| Preventivi (lista a soglia 3 col filtro data di default): «a» e «ab» non ricaricano, «abc» cerca (§8-bis) | ✅ |
+
+Fine cantiere raggiunta: nessuna chiamata al BB passa `min_caratteri`, nessuna
+view dichiara la soglia a mano, e «KG» su unità di misura filtra a video.
 

@@ -1,0 +1,45 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: configurazione gitleaks
+# Scopo: nessun segreto entra nel repo. Presidiata dall'hook pre-commit
+#        `gitleaks`, che gira anche in CI (`pre-commit run` sui file cambiati:
+#        li' scansiona i COMMIT del range, vedi `.pre-commit-config.yaml`).
+# ------------------------------------------------------------
+#
+# ⭐ Si ESTENDONO le regole di default (chiavi AWS, GitHub, JWT, chiavi
+#    private, generic-api-key, ...): le regole qui sotto si aggiungono.
+#
+# ⛔ PERCHE' SERVE UNA REGOLA DEL PROGETTO, ed e' la ragione di questo file.
+#    Il caso che l'ha fatto nascere — `backend/.env` tracciato con la
+#    SECRET_KEY di Django e la password del DB — le regole di default NON lo
+#    vedono: la chiave di Django comincia con `django-insecure-` (bassa
+#    entropia apparente, prefisso noto) e una password umana e' corta.
+#    Provato sulla storia intera il 2026-09-26: 8 rilievi, tutti falsi
+#    positivi, e il `.env` vero non c'era. Un cancello che non vede il caso
+#    per cui e' stato acceso e' verde per sottrazione.
+#
+# ⚠️ Falsi positivi: si risolvono restringendo la regola o con un
+#    `# gitleaks:allow` in riga, MAI spegnendo una regola intera. I rilievi
+#    storici gia' valutati stanno in `.gitleaksignore`, per impronta.
+
+[extend]
+useDefault = true
+
+# Un'assegnazione `NOME_CON_SEGRETO=valore` dentro un file di ambiente
+# (`.env`, `.env.*`, `internal*.env`, `env.sh`, `.env.systemd`). Il modello
+# `.env.example` e' DENTRO il perimetro di proposito: e' tracciato, quindi e'
+# proprio li' che un valore vero entrerebbe per distrazione. I segnaposto
+# `<...>` e le espansioni `${...}` / `$VAR` sono ammessi.
+[[rules]]
+id = "zeroerp-env-segreto"
+description = "Segreto assegnato in un file di ambiente"
+regex = '''(?i)\b[A-Z0-9_]*(?:SECRET|PASSWORD|PASSWD|PWD|TOKEN|API_?KEY|PRIVATE_?KEY)[A-Z0-9_]*[ \t]*=[ \t]*["']?([^\s"'#]{4,})'''
+secretGroup = 1
+path = '''(?i)(?:^|/)(?:[^/]*\.env(?:\.[^/]*)?|env\.sh)$'''
+keywords = ["secret", "password", "passwd", "pwd", "token", "key"]
+
+[[rules.allowlists]]
+description = "Segnaposto e riferimenti a variabili"
+regexTarget = "secret"
+regexes = ['''^<[^>]*>$''', '''^\$''']

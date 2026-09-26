@@ -52,6 +52,21 @@ export default defineConfig([
     },
   },
 
+  // ⛔ Niente `v-html` (2026-09-26): inserisce HTML senza escape, cioe' la
+  //    porta d'ingresso di uno script iniettato — e i token JWT stanno in
+  //    localStorage, leggibili da quello script. Oggi le occorrenze sono ZERO:
+  //    la regola le tiene tali. L'HTML che arriva dall'utente si ripulisce nel
+  //    backend (`html_sanitizer_service`); un caso vero che lo richieda si
+  //    discute prima, e si marca sul punto con il motivo.
+  // Doc: docs/it/dev/sicurezza-e-qualita-statica.md, «Frontend».
+  {
+    name: 'app/no-v-html',
+    files: ['**/*.vue'],
+    rules: {
+      'vue/no-v-html': 'error',
+    },
+  },
+
   ...pluginOxlint.buildFromOxlintConfigFile('.oxlintrc.json'),
 
   skipFormatting,
