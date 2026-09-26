@@ -1142,11 +1142,10 @@ rimborsare una parte e riportare il resto. **Paginata dal 2026-09-02**, come
 ogni lista configurabile: bundle standard `limit`/`offset` di
 `parse_list_params`, envelope `{ "results": […], "count": N }`.
 
-⛔ `order_by`/`order_dir` **non** vengono da `parse_list_params`, e non è una
-svista: quel bundle ha un `order_by` di default (`descrizione`) che qui non è
-colonna di niente, e normalizza l'assenza di `order_dir` ad `asc` — quindi il
-default DESC del repository non verrebbe **mai** raggiunto. Nessun errore, solo
-un elenco al contrario ([api.md](../../../dev/api.md) §`parse_list_params`).
+⛔ `order_by` **non** viene da `parse_list_params`, e non è una svista: quel
+bundle ha un `order_by` di default (`descrizione`) che qui non è colonna di
+niente. `order_dir` sì: assente è `None`, e decide il default DESC del
+repository ([api.md](../../../dev/api.md) §`parse_list_params`).
 
 L'**export** (`?formato=csv|xlsx`) è una rotta **sorella**, non una
 sotto-risorsa dell'atto. Stesso `lista_codice` della lista a video

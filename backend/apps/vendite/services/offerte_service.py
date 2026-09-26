@@ -54,6 +54,7 @@ from apps.vendite.services._approvazioni_prezzo_constants import (
     STATO_APPROVAZIONE_PENDING,
 )
 from apps.vendite.services._componenti_service_helpers import (
+    dati_patch_componente,
     normalize_componenti_overrides,
     resolve_emittente_sr_id_for_testata,
 )
@@ -383,7 +384,7 @@ class OfferteService:
         order_dir: str = "desc",
         auth_user_id: int | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
-        self._v.validate_order_by(order_by, allowed=_ORDER_BY_OFFERTE)
+        self._v.validate_order_by(order_by, allowed=_ORDER_BY_OFFERTE, order_dir=order_dir)
         # ⭐ La soglia del termine (vuoto o sotto 3 caratteri → non filtra) la
         #    applica il BB `add_ricerca_full_condition` nel repository, uguale
         #    per tutte le liste. Fino al 2026-09-23 qui era un 400: il frontend
@@ -536,7 +537,9 @@ class OfferteService:
             message="Stato BOZZA non configurato in config.stati_doc_offerte.",
         )
         assert stato_bozza_id is not None
-        data: dict[str, Any] = {k: v for k, v in payload.items() if k != "utility"}
+        data: dict[str, Any] = self._con_meta_normalizzato(
+            {k: v for k, v in payload.items() if k != "utility"},
+        )
         data["stato_doc_offerta_id"] = stato_bozza_id
         # `codice` NON in payload (vedi nota _CREATE_KEYS_OFFERTA): il trigger
         # BEFORE INSERT genera OFC-NNNNNNN via `script.fn_generate_codice`.
@@ -573,6 +576,7 @@ class OfferteService:
         merged.setdefault("istanza_utility_id", offerta_payload.get("istanza_utility_id"))
         merged.setdefault("utility_id", offerta_payload.get("utility_id"))
         self._v.validate_allowed_keys(merged, allowed=_CREATE_KEYS_UTILITY)
+        merged = self._con_meta_normalizzato(merged)
         for required in ("istanza_utility_id", "utility_id"):
             ErrorManager.require(
                 merged.get(required) is not None,
@@ -609,7 +613,9 @@ class OfferteService:
                 message="Campo 'utility' deve essere oggetto.",
                 context={"got": type(utility_payload).__name__},
             )
-        testata_payload = {k: v for k, v in payload.items() if k != "utility"}
+        testata_payload = self._con_meta_normalizzato(
+            {k: v for k, v in payload.items() if k != "utility"},
+        )
         # Guard: payload "vuoto" dopo aver estratto utility non e' un no-op
         # (l'upsert utility e' un side-effect valido).
         if not testata_payload and utility_payload is None:
@@ -639,9 +645,15 @@ class OfferteService:
             assert offerta is not None
             self._add_utility_inline(offerta_id, offerta, utility_payload)
             return
-        # Update: filtra il payload sulla whitelist update (immutabili gli id).
-        update_keys = set(utility_payload.keys()) & _UPDATE_KEYS_UTILITY
-        update_payload = {k: utility_payload[k] for k in update_keys}
+        # Update: gli id (`istanza_utility_id`/`utility_id`) sono immutabili e
+        # il sotto-oggetto del form li riporta: si tolgono. ⛔ Ma una chiave
+        # SCONOSCIUTA si rifiuta (400), come nel ramo create: fino al
+        # 2026-09-26 l'intersezione con la whitelist la scartava in silenzio —
+        # un salvataggio «riuscito» senza aver scritto il campo.
+        self._v.validate_allowed_keys(utility_payload, allowed=_CREATE_KEYS_UTILITY)
+        update_payload = self._con_meta_normalizzato({
+            k: v for k, v in utility_payload.items() if k in _UPDATE_KEYS_UTILITY
+        })
         if not update_payload:
             return
         self._repo.update_utility(int(existing["id"]), update_payload)
@@ -909,6 +921,7 @@ class OfferteService:
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.validate_allowed_keys(payload, allowed=_CREATE_KEYS_ECCEZIONE)
+        payload = self._con_meta_normalizzato(payload)
         self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
         for required in ("articolo_id", "tipo_eccezione", "fonte_quantita_attesa"):
             ErrorManager.require(
@@ -1052,6 +1065,7 @@ class OfferteService:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.guard_positive_int(eccezione_id, field="eccezione_id")
         self._v.validate_allowed_keys(payload, allowed=_UPDATE_KEYS_ECCEZIONE)
+        payload = self._con_meta_normalizzato(payload)
         # Flag opt-in workflow L3 (estratto prima del guard non-vuoto: non e' un
         # campo di update di per se').
         richiesta_approvazione = bool(payload.pop("richiesta_approvazione", False))
@@ -1271,6 +1285,15 @@ class OfferteService:
             offerta_id=offerta_id, eccezione_id=eccezione_id,
             componente_id=componente_id,
         )
+        # ⛔ Contratto dell'OPERATORE (BB unico per i cinque documenti), non
+        #    la whitelist del repository: fino al 2026-09-26 qui si validava
+        #    contro `COMPONENTE_UPDATE_ALLOWED`, che contiene
+        #    `stato_approvazione_prezzo` — un operatore poteva approvarsi da
+        #    solo un prezzo L3 PENDING. `origine_prezzo` la deriva il server.
+        payload = dati_patch_componente(
+            payload,
+            function_name="offerte_service.update_componente_eccezione",
+        )
         with self._db_errors(
             {"componente_id": componente_id, "eccezione_id": eccezione_id},
             fallback_message=(
@@ -1375,6 +1398,7 @@ class OfferteService:
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.validate_allowed_keys(payload, allowed=_CREATE_KEYS_UTILITY)
+        payload = self._con_meta_normalizzato(payload)
         self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
         for required in ("istanza_utility_id", "utility_id"):
             ErrorManager.require(
@@ -1398,6 +1422,7 @@ class OfferteService:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.guard_positive_int(utility_id, field="utility_id")
         self._v.validate_allowed_keys(payload, allowed=_UPDATE_KEYS_UTILITY)
+        payload = self._con_meta_normalizzato(payload)
         self._guard_payload_non_vuoto(payload, op="aggiorna_utility")
         self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
         existing = self._repo.get_utility(offerta_id)
@@ -1423,6 +1448,24 @@ class OfferteService:
     #        comunque `get_offerta(...)` — l'operatore vedrebbe un "successo"
     #        ingannevole sul tasto Salva quando in realta' non e' stato
     #        scritto nulla.
+    # Scopo: Normalizza `meta` (se presente) con il BB `optional_meta`:
+    #        oggetto JSON (dict, o stringa che ne contiene uno) -> dict,
+    #        `null` -> `{}`, qualunque altra cosa -> 400 E_VENDITE_VALIDATION.
+    #        Ritorna una COPIA del payload (il chiamante non vede la mutazione).
+    # ⭐ 2026-09-26, migrazione delle scritture sul BB core. Fino a quel giorno
+    #    il `meta` del client arrivava al repository COSI' COM'ERA e
+    #    `to_write_param` lo passava a `json.dumps`: una stringa diventava uno
+    #    SCALARE stringa jsonb, un numero un numero — su una colonna che il
+    #    modello vuole oggetto (`NOT NULL DEFAULT '{}'` su tutte e tre le
+    #    tabelle), e che il gate prezzo rilegge come dict. E `null` arrivava
+    #    come NULL contro il NOT NULL (errore DB generico). Ora la regola e'
+    #    quella di contratti/promo: un oggetto o un 400 parlante, `null` =
+    #    reset a `{}`.
+    def _con_meta_normalizzato(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if "meta" not in payload:
+            return payload
+        return {**payload, "meta": self._v.optional_meta(payload)}
+
     def _guard_payload_non_vuoto(
         self, payload: dict[str, Any], *, op: str
     ) -> None:

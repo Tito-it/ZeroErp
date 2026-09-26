@@ -39,6 +39,7 @@ from apps.vendite.api.indirizzi_documento_views import (
 from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import ddt_service
 from apps.core.api.openapi_params import param_ricerca_full
+from apps.vendite.api._componenti_schema import COMPONENTE_PATCH_REQUEST
 
 # Codice lista (ui.lista_definizione) usato dall'export per risolvere
 # colonne visibili/ordine/permessi dell'utente.
@@ -356,6 +357,7 @@ class ApiDdtRigaComponenteDetail(DomainAPIView):
 
     area_funzionale = "vendite"
 
+    @extend_schema(request=COMPONENTE_PATCH_REQUEST, responses={200: dict})
     # Scopo: Aggiorna un componente BoM (prezzo/attivo/meta, solo DRAFT).
     def patch(
         self, request: Request, ddt_id: int, riga_id: int, componente_id: int,

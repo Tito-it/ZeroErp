@@ -286,7 +286,7 @@ class TestOperatoriPatchView(TestCase):
 
 class TestOperatoriDisabilitaView(TestCase):
 
-    @patch("apps.amm_software.services.amm_software_service._blacklist_user_tokens")
+    @patch("apps.amm_software.services.amm_software_service.blocca_token_sessioni")
     @patch("apps.amm_software.services.amm_software_service.invalidate_user")
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_disabilita_success(self, MockRepo: MagicMock, mock_invalidate: MagicMock, mock_blacklist: MagicMock) -> None:
@@ -302,7 +302,7 @@ class TestOperatoriDisabilitaView(TestCase):
         self.assertEqual(response.status_code, 200)
         repo_instance.disabilita_operatore.assert_called_once_with(1)
 
-    @patch("apps.amm_software.services.amm_software_service._blacklist_user_tokens")
+    @patch("apps.amm_software.services.amm_software_service.blocca_token_sessioni")
     @patch("apps.amm_software.services.amm_software_service.invalidate_user")
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_disabilita_invalidates_cache(self, MockRepo: MagicMock, mock_invalidate: MagicMock, mock_blacklist: MagicMock) -> None:

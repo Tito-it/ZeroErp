@@ -13,20 +13,25 @@ from uuid import UUID
 from django.db import connection
 
 from apps.core.db._helpers import row_to_dict, rows_to_list
-from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, sql_set_clause
 
-COMPONENTE_WRITE_COLUMNS: dict[str, str] = {
-    "componente_id": "uuid",
-    "coeff_qta": "numeric",
-    "partecipa_qta": "bool",
-    "determina_qta_padre": "bool",
-    "obbligatorio": "bool",
-    "valido_dal": "date",
-    "valido_al": "date",
-    "attivo": "bool",
-    "esposto_in_fattura": "bool",
-    "meta": "jsonb",
-}
+# Colonne SCRIVIBILI di una riga BoM: whitelist RIGIDA del BB di scrittura
+# (2026-09-26 — prima mappa nome -> tipo per `sql_placeholder`/`to_write_param`,
+# ritirati). `meta` (jsonb) arriva dal service come dict o None: il BB lo
+# casta da solo, `jsonb=` non serve. `prodotto_id` NON e' qui: lo scrive il
+# repository dal path (`create_componente`), mai il payload.
+COMPONENTE_WRITE_COLUMNS: frozenset[str] = frozenset({
+    "componente_id",
+    "coeff_qta",
+    "partecipa_qta",
+    "determina_qta_padre",
+    "obbligatorio",
+    "valido_dal",
+    "valido_al",
+    "attivo",
+    "esposto_in_fattura",
+    "meta",
+})
 
 COMPONENTE_DETAIL_COLUMNS: tuple[str, ...] = (
     "ac.id",
@@ -66,19 +71,26 @@ COMPONENTE_DETAIL_COLUMNS: tuple[str, ...] = (
     "CASE WHEN ac.valido_al IS NULL THEN NULL ELSE 'RIGA_GIA_CHIUSA' END AS motivo_non_chiudibile",
 )
 
-NOTA_WRITE_COLUMNS: dict[str, str] = {
-    "target_riga_id": "uuid",
-    "anchor_tipo": "text",
-    "posizione": "text",
-    "seq": "int",
-    "testo": "text",
-    "testo_md": "text",
-    "id_stile": "int",
-    "id_lingua": "int",
-    "visibile": "bool",
-    "solo_stampa": "bool",
-    "meta": "jsonb",
-}
+# Colonne SCRIVIBILI di una nota catalogo: whitelist RIGIDA del BB di
+# scrittura (2026-09-26, come COMPONENTE_WRITE_COLUMNS). `target_tipo` e
+# `target_id` NON sono qui: li decide il repository (partizione e padre).
+# ⚠️ `testo`/`testo_md`: il BB strippa le stringhe, ma il service le ha gia'
+#    strippate (`_extract_string` -> `extract_optional_string`): nessun
+#    cambio. `meta` e' NOT NULL a DB (DEFAULT '{}'): un `null` esplicito
+#    fallisce al vincolo, oggi come prima.
+NOTA_WRITE_COLUMNS: frozenset[str] = frozenset({
+    "target_riga_id",
+    "anchor_tipo",
+    "posizione",
+    "seq",
+    "testo",
+    "testo_md",
+    "id_stile",
+    "id_lingua",
+    "visibile",
+    "solo_stampa",
+    "meta",
+})
 
 NOTE_RESOLVE_COLUMNS: tuple[str, ...] = (
     "n.id AS nota_id",
@@ -192,52 +204,31 @@ class CatalogoBomRepository:
             return row_to_dict(cursor)
 
     # Scopo: Inserisce un componente BoM sul prodotto indicato.
+    # ⛔ Dal 2026-09-26 una chiave fuori `COMPONENTE_WRITE_COLUMNS` e'
+    #    `RuntimeError` (BB), non piu' scartata: il 400 lo da' il service
+    #    (`_extract_componente_payload`). Il padre viene dal path e si scrive
+    #    PER ULTIMO, quindi VINCE: il payload non puo' spostare la riga su un
+    #    altro prodotto (e il service `prodotto_id` non lo ammette).
     def create_componente(self, articolo_id: UUID | str, data: dict[str, Any]) -> UUID:
-        fields = [("prodotto_id", articolo_id), *[(key, value) for key, value in data.items() if key in COMPONENTE_WRITE_COLUMNS]]
-
-        column_names = [field_name for field_name, _ in fields]
-        placeholders = ", ".join(
-            "%s" if field_name == "prodotto_id" else sql_placeholder(COMPONENTE_WRITE_COLUMNS[field_name])
-            for field_name, _ in fields
+        riga = execute_dynamic_insert(
+            "catalogo.articoli_componenti",
+            {**data, "prodotto_id": articolo_id},
+            allowed=COMPONENTE_WRITE_COLUMNS | {"prodotto_id"},
         )
-        params = [
-            field_value if field_name == "prodotto_id" else to_write_param(field_value, COMPONENTE_WRITE_COLUMNS[field_name])
-            for field_name, field_value in fields
-        ]
-
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                INSERT INTO catalogo.articoli_componenti ({", ".join(column_names)})
-                VALUES ({placeholders})
-                RETURNING id
-                """,
-                params,
-            )
-            row = cursor.fetchone()
-
-        assert row is not None
-        return row[0]
+        return riga["id"]
 
     # Scopo: Aggiorna un componente BoM soltanto se appartiene al prodotto indicato.
+    #        Il WHERE (perimetro del padre) lo scrive il metodo: SET dal BB
+    #        `sql_set_clause`, whitelist RIGIDA. Payload vuoto -> False.
     def update_componente(
         self,
         articolo_id: UUID | str,
         componente_row_id: UUID | str,
         data: dict[str, Any],
     ) -> bool:
-        fields = [(key, value) for key, value in data.items() if key in COMPONENTE_WRITE_COLUMNS]
-        if not fields:
+        if not data:
             return False
-
-        set_clause = ", ".join(
-            f"{field_name} = {sql_placeholder(COMPONENTE_WRITE_COLUMNS[field_name])}"
-            for field_name, _ in fields
-        )
-        params = [
-            to_write_param(field_value, COMPONENTE_WRITE_COLUMNS[field_name])
-            for field_name, field_value in fields
-        ]
+        set_clause, params = sql_set_clause(data, allowed=COMPONENTE_WRITE_COLUMNS)
         params.extend([articolo_id, componente_row_id])
 
         with connection.cursor() as cursor:
@@ -247,7 +238,7 @@ class CatalogoBomRepository:
                 SET {set_clause}
                 WHERE prodotto_id = %s
                   AND id = %s
-                """,
+                """,  # noqa: S608 — SET da sql_set_clause (colonne verificate sulla whitelist COMPONENTE_WRITE_COLUMNS), valori come parametri
                 params,
             )
             return cursor.rowcount > 0
@@ -278,7 +269,7 @@ class CatalogoBomRepository:
                 FROM catalogo.vw_articoli_note vn
                 WHERE vn.articolo_id = %s
                 ORDER BY vn.nota_anchor_tipo ASC, vn.nota_posizione ASC, vn.nota_seq ASC, vn.nota_id ASC
-                """,
+                """,  # noqa: S608 — proiezione dalla costante _NOTA_PARTITIONED_COLUMNS, valori come parametri
                 [articolo_id],
             )
             return rows_to_list(cursor)
@@ -300,7 +291,7 @@ class CatalogoBomRepository:
                 FROM catalogo.vw_articoli_note vn
                 WHERE vn.articolo_id = %s
                   AND vn.nota_id = %s
-                """,
+                """,  # noqa: S608 — proiezione dalla costante _NOTA_PARTITIONED_COLUMNS, valori come parametri
                 [articolo_id, nota_id],
             )
             return row_to_dict(cursor)
@@ -321,7 +312,7 @@ class CatalogoBomRepository:
                     {_NOTA_PARTITIONED_COLUMNS}
                 FROM catalogo.vw_articoli_componenti_note vn
                 WHERE vn.nota_id = %s
-                """,
+                """,  # noqa: S608 — proiezione dalla costante _NOTA_PARTITIONED_COLUMNS, valori come parametri
                 [nota_id],
             )
             return row_to_dict(cursor)
@@ -353,61 +344,29 @@ class CatalogoBomRepository:
                 WHERE vn.articolo_componente_id = %s
                 ORDER BY vn.nota_anchor_tipo ASC, vn.nota_posizione ASC,
                          vn.nota_seq ASC, vn.nota_id ASC
-                """,
+                """,  # noqa: S608 — proiezione dalla costante _NOTA_PARTITIONED_COLUMNS, valori come parametri
                 [str(componente_id)],
             )
             return rows_to_list(cursor)
 
     # Scopo: Inserisce una nota nella partizione indicata da target_tipo.
+    # ⛔ Whitelist RIGIDA dal 2026-09-26 (vedi `create_componente`): il 400
+    #    lo da' il service (`_extract_nota_payload`). `target_tipo`/`target_id`
+    #    li decide il repository, scritti PER ULTIMI: vincono sul payload.
     def create_nota(self, target_tipo: str, target_id: str | UUID, data: dict[str, Any]) -> int:
-        fields = [
-            ("target_tipo", target_tipo),
-            ("target_id", str(target_id)),
-            *[(key, value) for key, value in data.items() if key in NOTA_WRITE_COLUMNS],
-        ]
-
-        column_names = [field_name for field_name, _ in fields]
-        placeholders = ", ".join(
-            "%s"
-            if field_name in {"target_tipo", "target_id"}
-            else sql_placeholder(NOTA_WRITE_COLUMNS[field_name])
-            for field_name, _ in fields
+        riga = execute_dynamic_insert(
+            "catalogo.note",
+            {**data, "target_tipo": target_tipo, "target_id": str(target_id)},
+            allowed=NOTA_WRITE_COLUMNS | {"target_tipo", "target_id"},
         )
-        params = [
-            field_value
-            if field_name in {"target_tipo", "target_id"}
-            else to_write_param(field_value, NOTA_WRITE_COLUMNS[field_name])
-            for field_name, field_value in fields
-        ]
-
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                INSERT INTO catalogo.note ({", ".join(column_names)})
-                VALUES ({placeholders})
-                RETURNING id
-                """,
-                params,
-            )
-            row = cursor.fetchone()
-
-        assert row is not None
-        return int(row[0])
+        return int(riga["id"])
 
     # Scopo: Aggiorna una nota in modo sicuro usando anche il target_tipo come discriminante.
+    #        SET dal BB `sql_set_clause` (whitelist RIGIDA), WHERE del metodo.
     def update_nota(self, nota_id: int, target_tipo: str, data: dict[str, Any]) -> bool:
-        fields = [(key, value) for key, value in data.items() if key in NOTA_WRITE_COLUMNS]
-        if not fields:
+        if not data:
             return False
-
-        set_clause = ", ".join(
-            f"{field_name} = {sql_placeholder(NOTA_WRITE_COLUMNS[field_name])}"
-            for field_name, _ in fields
-        )
-        params = [
-            to_write_param(field_value, NOTA_WRITE_COLUMNS[field_name])
-            for field_name, field_value in fields
-        ]
+        set_clause, params = sql_set_clause(data, allowed=NOTA_WRITE_COLUMNS)
         params.extend([target_tipo, nota_id])
 
         with connection.cursor() as cursor:
@@ -417,7 +376,7 @@ class CatalogoBomRepository:
                 SET {set_clause}
                 WHERE target_tipo = %s
                   AND id = %s
-                """,
+                """,  # noqa: S608 — SET da sql_set_clause (colonne verificate sulla whitelist NOTA_WRITE_COLUMNS), valori come parametri
                 params,
             )
             return cursor.rowcount > 0

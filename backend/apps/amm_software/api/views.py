@@ -368,8 +368,6 @@ class ProcessiListView(AdminAPIView):
             limit=qp_int(qp.get("limit"), DEFAULT_LIMIT),
             offset=qp_int(qp.get("offset"), 0),
             order_by=qp_str(qp.get("order_by")),
-            # ⚠️ Il valore GREZZO: `parse_list_params` normalizzerebbe a "asc" e
-            #    annullerebbe il default del repository.
             order_dir=qp_str(qp.get("order_dir")),
         ))
 
@@ -694,9 +692,7 @@ class ErrorLogListView(AdminAPIView):
     # Scopo: Restituisce via GET l'elenco paginato degli errori tecnici col
     #        catalogo dei messaggi (codice, classe, frase, causa, soluzione) e
     #        il `context` com'e'.
-    # ⛔ `order_dir` GREZZO e non dal bundle: `parse_list_params` normalizza
-    #    l'assenza ad `asc`, e il ripiego DESC della data non verrebbe mai
-    #    raggiunto (api.md §parse_list_params).
+    # ⭐ `order_dir` assente = `None`: decide il ripiego DESC della data.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         p = parse_list_params(
@@ -708,7 +704,7 @@ class ErrorLogListView(AdminAPIView):
             limit=p["limit"],
             offset=p["offset"],
             order_by=p["order_by"],
-            order_dir=qp_str(qp.get("order_dir")),
+            order_dir=p["order_dir"],
         ))
 
 

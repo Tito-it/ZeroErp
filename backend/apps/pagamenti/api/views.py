@@ -355,10 +355,9 @@ class ApiDistintaRighe(DomainAPIView):
     # Scopo: Restituisce via GET le righe attive della distinta, paginate.
     # ⚠️ PAGINATA dal 2026-09-18 (decisione di Tid), come ogni lista
     #    configurabile: bundle standard `parse_list_params` per `limit`/`offset`.
-    # ⛔ `order_by`/`order_dir` GREZZI e non dal bundle: quello normalizza
-    #    l'assenza di `order_dir` ad `asc`, e il default del repository (`id
-    #    DESC`, le date DESC) non verrebbe mai raggiunto (api.md
-    #    §parse_list_params).
+    # ⛔ `order_by` GREZZO e non dal bundle: il suo default (`"descrizione"`)
+    #    qui non e' una colonna. `order_dir` dal bundle: assente = `None`, e
+    #    decide il default del repository (`id DESC`, le date DESC).
     def get(self, request: Request, contabile_id: int) -> JsonResponse:
         qp = request.query_params
         p = parse_list_params(qp)
@@ -369,7 +368,7 @@ class ApiDistintaRighe(DomainAPIView):
                 limit=p["limit"],
                 offset=p["offset"],
                 order_by=qp_str(qp.get("order_by")),
-                order_dir=qp_str(qp.get("order_dir")),
+                order_dir=p["order_dir"],
                 scartate=_scartate(request),
             )
         )
@@ -984,7 +983,7 @@ class ApiRateList(DomainAPIView):
             limit=p["limit"],
             offset=p["offset"],
             order_by=qp_str(qp.get("order_by")),
-            order_dir=qp_str(qp.get("order_dir")),
+            order_dir=p["order_dir"],
         )
         return success_response(data)
 
@@ -1275,13 +1274,10 @@ class ApiFatturaSistemazioni(DomainAPIView):
     #    resto.
     # ⚠️ PAGINATA dal 2026-09-02, come ogni altra lista configurabile: bundle
     #    standard `parse_list_params` per `limit`/`offset`.
-    # ⛔ `order_by`/`order_dir` NON vengono da `parse_list_params`, e non e' una
-    #    svista: quel bundle ha un `order_by` di default (`"descrizione"`) che
-    #    qui non e' colonna di niente, e normalizza l'assenza di `order_dir` ad
-    #    `"asc"` — quindi non e' mai `None` e il default del repository non
-    #    verrebbe MAI raggiunto. E' lo stesso difetto gia' corretto sui titoli
-    #    sfondati: nessun errore, solo un elenco ordinato al contrario di come
-    #    qualcuno lo aveva pensato.
+    # ⛔ `order_by` NON viene da `parse_list_params`, e non e' una svista: quel
+    #    bundle ha un `order_by` di default (`"descrizione"`) che qui non e'
+    #    colonna di niente. `order_dir` dal bundle: assente = `None`, e decide
+    #    il default del repository.
     def get(self, request: Request, fattura_id: int) -> JsonResponse:
         qp = request.query_params
         p = parse_list_params(qp)
@@ -1291,7 +1287,7 @@ class ApiFatturaSistemazioni(DomainAPIView):
                 limit=p["limit"],
                 offset=p["offset"],
                 order_by=qp_str(qp.get("order_by")),
-                order_dir=qp_str(qp.get("order_dir")),
+                order_dir=p["order_dir"],
             )
         )
 

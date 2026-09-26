@@ -205,7 +205,7 @@ def pr_run_commesse_push(
                         commessa_id=commessa_id,
                         righe_ids=attivita_per_commessa.get(commessa_id, []),
                     )
-            except Exception as exc:  # noqa: BLE001 — best-effort, report-driven
+            except Exception as exc:  # best-effort, report-driven
                 # Una sola composizione del messaggio: finisce sia nel report
                 # (con le coordinate davanti) sia nel payload dell'evento. Due
                 # `f"{type(exc).__name__}: {exc}"` scritti a mano avrebbero
@@ -1007,14 +1007,18 @@ def fn_list_commessa_attivita(
     # Ordinamento validato PRIMA di toccare il DB (un parametro sbagliato non
     # deve costare un round-trip): whitelist ATTIVITA_SORT_COLUMNS, specchio
     # della mappa chiusa dentro la fn. None = ordine storico ca.id.
-    if order_by is not None:
-        order_by, order_dir = validate_order_params(
-            order_by,
-            (order_dir or "asc").lower(),
-            allowed_columns=ATTIVITA_SORT_COLUMNS,
-            error_code="E_COMMESSA_VALIDATION",
-            function_name="vendite.commesse_service.fn_list_commessa_attivita",
-        )
+    # ⚠️ Si valida SEMPRE, non solo con la colonna (2026-09-26): la direzione
+    #    va giudicata anche sul ramo «ordine storico», che la ignora — prima
+    #    `?order_dir=giu` senza `order_by` arrivava muto alla fn. `nullable`
+    #    ammette l'assenza di entrambi, come prima il ramo saltato.
+    order_by, order_dir = validate_order_params(
+        order_by,
+        order_dir,
+        allowed_columns=ATTIVITA_SORT_COLUMNS,
+        error_code="E_COMMESSA_VALIDATION",
+        function_name="vendite.commesse_service.fn_list_commessa_attivita",
+        nullable=True,
+    )
     # Filtro movimento: vocabolario chiuso, validato PRIMA del round-trip come
     # l'ordinamento. ⚠️ Vuoto e None sono la STESSA cosa — «tutti i movimenti» —
     # e non un valore da validare: un filtro azzerato dal frontend arriva come

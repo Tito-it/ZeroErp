@@ -68,7 +68,6 @@ logger = logging.getLogger(__name__)
 # sicuro per farne divergere uno — e la divergenza si vede solo dal lato che
 # rifiuta, cioe' come «ordinamento non ammesso» su una colonna che c'e'.
 _SORT_BY_VALIDI: tuple[str, ...] = tuple(LOTTO_FATTURE_SORT_COLUMNS)
-_SORT_DIR_VALIDI: tuple[str, ...] = ("asc", "desc")
 
 
 # Scopo: Valida page/page_size con E_VENDITE_VALIDATION e restituisce l'offset calcolato.
@@ -118,9 +117,9 @@ def _paging_o_export(
 #    specie di duplicato, e va letto PRIMA di estrarre, non dopo.
 #    Stessa forma di `_validate_enum` qui sotto, per la stessa ragione.
 #
-# ⚠️ Il `lower()` sta qui e non nel BB: le liste di vendite accettano `ASC` da
-#    sempre, e allargare il confronto nel BB l'avrebbe allargato anche ai
-#    tredici chiamanti che non l'hanno mai voluto.
+# ⭐ Nessun `lower()` qui: dal 2026-09-26 il BB giudica la direzione con
+#    `order_dir_ammessa` (maiuscole e spazi ammessi ovunque). Il `lower()` che
+#    stava qui compensava il confronto case-sensitive di allora.
 def _valida_ordinamento(
     order_by: str | None,
     order_dir: str | None,
@@ -130,7 +129,7 @@ def _valida_ordinamento(
 ) -> None:
     validate_order_params(
         order_by,
-        order_dir.lower() if order_dir is not None else None,
+        order_dir,
         allowed_columns=whitelist,
         error_code="E_VENDITE_VALIDATION",
         function_name=function_name,
@@ -457,21 +456,16 @@ def fn_list_lotto_fatture(
         page=page, page_size=page_size, max_rows=max_rows,
         function_name="vendite.vendite_service.fn_list_lotto_fatture",
     )
-    _validate_enum(
+    # ⛔ Colonna e direzione col BB `validate_order_params` (2026-09-26), non
+    #    con due `_validate_enum`: la direzione aveva qui un suo insieme
+    #    `("asc", "desc")` case-sensitive, cioe' `DESC` era un 400 su questa
+    #    lista e passava sulle altre. Il BB giudica con `order_dir_ammessa`.
+    sort_by, sort_dir = validate_order_params(
         sort_by,
-        allowed=_SORT_BY_VALIDI,
-        param_name="sort_by",
-        function_name="vendite.vendite_service.fn_list_lotto_fatture",
-        nullable=False,
-        log_to_db=True,
-    )
-    _validate_enum(
         sort_dir,
-        allowed=_SORT_DIR_VALIDI,
-        param_name="sort_dir",
+        allowed_columns=_SORT_BY_VALIDI,
+        error_code="E_VENDITE_VALIDATION",
         function_name="vendite.vendite_service.fn_list_lotto_fatture",
-        nullable=False,
-        log_to_db=True,
     )
     repository = VenditeRepository()
     results: list[LottoFattureRow]
@@ -2214,7 +2208,7 @@ def get_giornale_trasversale(
         #    Storia di un'entita'): qui la gravita' e' gia' un FILTRO, e la
         #    domanda che resta e' «cosa e' successo per ultimo».
         sort_by=order_by or "quando",
-        sort_dir=(order_dir or "desc").lower(),
+        sort_dir=order_dir or "desc",
     )
     # ⚠️ Il totale e' quello che l'elenco MOSTRA: le vive, piu' le ritirate se
     #    le si e' chieste. `info_vive` qui non entra: le INFO non sono mai
@@ -2262,7 +2256,7 @@ def fn_fondi_fattura_da_decidere(
     # order_by/order_dir (regola del 2: in questo file ce n'erano gia' sei).
     order_by, order_dir = validate_order_params(
         order_by or "data",
-        (order_dir or "desc").lower(),
+        order_dir or "desc",
         allowed_columns=frozenset(VenditeRepository.FONDI_DA_DECIDERE_SORT_COLUMNS),
         error_code="E_VENDITE_VALIDATION",
         function_name=_FN_FONDI_DA_DECIDERE,

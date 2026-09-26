@@ -1693,7 +1693,7 @@ class CommesseRepository(EventLogRepositoryMixin):
         with connection.cursor() as cursor:
             # Total count (stessi filtri, senza LIMIT/OFFSET).
             cursor.execute(
-                f"SELECT COUNT(*) FROM vendite.commesse_attivita ca WHERE {where_sql}",
+                f"SELECT COUNT(*) FROM vendite.commesse_attivita ca WHERE {where_sql}",  # noqa: S608 — WHERE da clausole letterali con %s, valori come parametri
                 where_params,
             )
             count_row = cursor.fetchone()

@@ -71,9 +71,8 @@ def fetch_preset_base_snapshot(
     emittente_fiscale_id: int | None,
 ) -> tuple[int | None, Any | None]:
     fk_column = _PRESET_SNAPSHOT_TABLES.get(preset_table)
-    assert fk_column is not None, (
-        f"tabella preset non in whitelist: {preset_table}"
-    )
+    if fk_column is None:
+        raise ValueError(f"tabella preset non in whitelist: {preset_table}")
 
     # 1. preset di ruolo (priorita ASC)
     with connection.cursor() as cursor:
@@ -92,7 +91,7 @@ def fetch_preset_base_snapshot(
                AND p.attivo      = TRUE
              ORDER BY pa.priorita ASC
              LIMIT 1
-            """,
+            """,  # noqa: S608 — tabella/FK da whitelist _PRESET_SNAPSHOT_TABLES, GUC letterale, valori come parametri
             [auth_user_id, entity_id],
         )
         row = cursor.fetchone()
@@ -112,7 +111,7 @@ def fetch_preset_base_snapshot(
                    AND is_default           = TRUE
                    AND attivo               = TRUE
                  LIMIT 1
-                """,
+                """,  # noqa: S608 — tabella/FK da whitelist _PRESET_SNAPSHOT_TABLES, valori come parametri
                 [entity_id, emittente_fiscale_id],
             )
             row = cursor.fetchone()
@@ -130,7 +129,7 @@ def fetch_preset_base_snapshot(
                AND is_default  = TRUE
                AND attivo      = TRUE
              LIMIT 1
-            """,
+            """,  # noqa: S608 — tabella/FK da whitelist _PRESET_SNAPSHOT_TABLES, valori come parametri
             [entity_id],
         )
         row = cursor.fetchone()

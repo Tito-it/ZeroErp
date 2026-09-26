@@ -28,10 +28,27 @@ from apps.core.db.email_repository import EmailRepository
 from apps.core.services.email_service import EmailDispatchService, smtp_non_configurato
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.html_sanitizer_service import sanitize_email_html
+from apps.core.services.payload_helpers import PayloadValidator
 
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 
 E_EMAIL_ADMIN = "E_EMAIL_ADMIN"
+
+# Chiavi ammesse nella PATCH di un account email: il contratto dell'operatore.
+# `smtp_password` e' la password IN CHIARO (la cifra il repository); `meta`
+# (esito dell'ultimo test) la scrive solo l'endpoint di test.
+_ACCOUNT_PATCH_KEYS: frozenset[str] = frozenset({
+    "codice", "descrizione", "smtp_host", "smtp_port", "smtp_use_tls",
+    "smtp_use_ssl", "smtp_username", "smtp_password", "email_from",
+    "email_reply_to", "unita_organizzativa_id", "attivo",
+})
+
+# Le chiavi che la PATCH di un template email sa scrivere (2026-09-26, stessa
+# regola dell'account): una chiave fuori lista e' un 400, non uno scarto.
+_TEMPLATE_PATCH_KEYS: frozenset[str] = frozenset({
+    "codice", "oggetto", "corpo_html", "corpo_testo", "lingua", "attivo",
+    "unita_organizzativa_id", "tipo_prestazione_id", "variabili_disponibili",
+})
 
 
 # Scopo: Deriva la capability di test connessione di un account email.
@@ -174,12 +191,19 @@ class EmailAccountDetailView(AdminAPIView):
 
     @extend_schema(responses={200: dict})
     # Scopo: Aggiorna parzialmente un account email.
+    # ⛔ Dal 2026-09-26 una chiave fuori `_ACCOUNT_PATCH_KEYS` e' un 400
+    #    `E_EMAIL_ADMIN`, non piu' uno scarto silenzioso (un PATCH che «riesce»
+    #    senza aver scritto il campo). Il drawer admin (`EmailAccountDrawer`)
+    #    manda solo queste chiavi — verificato quel giorno.
     def patch(self, request: Request, account_id: int) -> JsonResponse:
         data = request.data
         repo = EmailRepository()
         ErrorManager.require(
             repo.get_account(account_id) is not None,
             code=E_EMAIL_ADMIN, message="Account non trovato.",
+        )
+        PayloadValidator(validation_code=E_EMAIL_ADMIN).validate_allowed_keys(
+            data, allowed=_ACCOUNT_PATCH_KEYS, message="Campi dell'account non modificabili.",
         )
 
         update_fields: dict[str, Any] = {}
@@ -337,12 +361,18 @@ class EmailTemplateDetailView(AdminAPIView):
 
     @extend_schema(responses={200: dict})
     # Scopo: Aggiorna parzialmente un template email.
+    # ⛔ Dal 2026-09-26 una chiave fuori `_TEMPLATE_PATCH_KEYS` e' un 400
+    #    `E_EMAIL_ADMIN`, non uno scarto silenzioso. `EmailTemplateDrawer`
+    #    manda `oggetto`, `corpo_html`, `corpo_testo` — verificato quel giorno.
     def patch(self, request: Request, template_id: int) -> JsonResponse:
         data = request.data
         repo = EmailRepository()
         ErrorManager.require(
             repo.get_template(template_id) is not None,
             code=E_EMAIL_ADMIN, message="Template non trovato.",
+        )
+        PayloadValidator(validation_code=E_EMAIL_ADMIN).validate_allowed_keys(
+            data, allowed=_TEMPLATE_PATCH_KEYS, message="Campi del template non modificabili.",
         )
 
         update_fields: dict[str, Any] = {}
@@ -450,10 +480,9 @@ class EmailLogListView(AdminAPIView):
             limit=p["limit"],
             offset=p["offset"],
             order_by=p["order_by"],
-            # `parse_list_params` default 'asc'; per i log il default e' DESC
-            # (il piu' recente in testa), quindi lo si forza solo quando
-            # l'operatore non ha scelto.
-            order_dir=qp.get("order_dir") or "desc",
+            # Assente = `None`: il default DESC dei log (il piu' recente in
+            # testa) lo applica `EmailRepository.list_logs`, in una sede sola.
+            order_dir=p["order_dir"],
         )
         return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 

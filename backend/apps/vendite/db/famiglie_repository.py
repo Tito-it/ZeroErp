@@ -50,6 +50,7 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
 )
+from apps.core.db.sql_write_helpers import execute_dynamic_update
 
 _VISTA = "vendite.vw_famiglie_documento_lista"
 
@@ -354,19 +355,23 @@ class FamiglieDocumentoRepository:
 
     # Scopo: aggiorna le colonne ammesse. Ritorna le righe toccate, cosi' il
     #        service distingue «non esiste» da «fatto».
+    # ⭐ BB core `execute_dynamic_update` (2026-09-26). Whitelist RIGIDA: una
+    #    chiave fuori `_CAMPI_UPDATE` e' `RuntimeError`, non piu' uno scarto
+    #    silenzioso — il 400 lo da' il service (`_verifica_chiavi`).
+    # ⛔ `prefisso_default` NON si strippa (`letterali`): e' il prefisso che i
+    #    registri della famiglia ereditano, cioe' un pezzo del numero stampato,
+    #    e uno spazio ai bordi li' e' contenuto. Le altre stringhe si strippano.
+    # ⚠️ Il BB ritorna un bool (`rowcount > 0`): per id l'UPDATE tocca al piu'
+    #    una riga, quindi 1/0 e' la stessa informazione di prima.
     def update_famiglia(self, famiglia_id: int, dati: dict[str, Any]) -> int:
-        colonne = [c for c in _CAMPI_UPDATE if c in dati]
-        if not colonne:
-            return 0
-        set_sql = ", ".join(f"{c} = %s" for c in colonne)
-        sql = f"""
-            UPDATE vendite.famiglie_documento
-               SET {set_sql}
-             WHERE id = %s
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [*[dati[c] for c in colonne], famiglia_id])
-            return cursor.rowcount
+        toccata = execute_dynamic_update(
+            "vendite.famiglie_documento",
+            famiglia_id,
+            dati,
+            allowed=_CAMPI_UPDATE,
+            letterali=("prefisso_default",),
+        )
+        return int(toccata)
 
     # Scopo: accende o spegne la famiglia — un verbo suo, non un PATCH generico.
     # ⛔ Qui non si ricontrolla se e' spegnibile: a rifiutare e'

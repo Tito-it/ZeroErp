@@ -111,7 +111,7 @@ class TipiRuoloTipiIndirizzoService:
         order_by: str = "tipo_ruolo_descrizione",
         order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        self._v.validate_order_by(order_by, allowed=_ORDER_BY_VALIDI)
+        self._v.validate_order_by(order_by, allowed=_ORDER_BY_VALIDI, order_dir=order_dir)
         return self._repo.list_matrice(
             search=search,
             attivo=attivo,

@@ -32,6 +32,7 @@ from apps.core.services.testata_guard import riga_del_padre_o_not_found, testata
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.db.ordini_repository import OrdiniRepository
 from apps.vendite.services._componenti_service_helpers import (
+    dati_patch_componente,
     normalize_componenti_overrides,
 )
 from apps.vendite.services._indirizzi_documento_helpers import (
@@ -1051,11 +1052,15 @@ def update_componente(
         scope, documento="Ordine", documento_id=ordine_id, verbo="modificare",
         function_name=f"{_FN}.update_componente",
     )
-    # NB: `esposto_in_fattura` NON e' aggiornabile qui — e' un flag della BoM di
-    # catalogo (articoli_componenti, JOIN a lettura), non una colonna di
-    # ordini_righe_componenti: il mixin lo scarterebbe in silenzio.
-    allowed = {"prezzo_unitario", "attivo", "meta"}
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in allowed}
+    # Contratto dell'operatore unico per i cinque documenti (BB): chiavi
+    # estranee -> 400, `origine_prezzo` derivata dal prezzo. ⚠️ Fino al
+    # 2026-09-26 qui c'era un filtro locale che SCARTAVA in silenzio le chiavi
+    # estranee, compresa l'`origine_prezzo` mandata dal pannello: l'origine
+    # manuale non veniva mai scritta.
+    data = dati_patch_componente(
+        payload, function_name=f"{_FN}.update_componente",
+        error_code="E_ORD_VALIDAZIONE",
+    )
     with _db_errors("update_componente"):
         repo.update_componente(componente_id, **data)
     return {"componente_id": componente_id, "updated": True}

@@ -36,6 +36,7 @@ from apps.vendite.api.indirizzi_documento_views import (
 from apps.vendite.services import contratti_service
 from apps.vendite.services.contratti_service import ContrattiService
 from apps.core.api.openapi_params import param_ricerca_full
+from apps.vendite.api._componenti_schema import COMPONENTE_PATCH_REQUEST
 
 # Codice lista configurabile (ui.lista_definizione) per contratti.
 _LISTA_CODICE_CONTRATTI = "vendite.contratti"
@@ -697,42 +698,6 @@ class ApiContrattoRigaComponentiList(DomainAPIView):
         )
 
 
-# Schema OpenAPI allineato a `COMPONENTE_UPDATE_ALLOWED` (whitelist mixin
-# `ComponentiRepositoryMixin`). Tutti i campi sono opzionali e applicati in
-# delta. Campi struttura (`componente_id`, `articolo_componente_id`,
-# `coeff_qta_snapshot`, `riga_contratto_id`, `quantita`) sono silenziosamente
-# ignorati dal mixin (defense-in-depth).
-_RIGA_COMPONENTE_PATCH_REQUEST = inline_serializer(
-    name="VenditeContrattoRigaComponentePatchReq",
-    fields={
-        "prezzo_unitario": serializers.DecimalField(
-            max_digits=22, decimal_places=10, required=False, allow_null=True,
-        ),
-        "iva_id": serializers.IntegerField(required=False, allow_null=True),
-        "uom_operativa_id": serializers.IntegerField(required=False, allow_null=True),
-        "factor_to_base": serializers.DecimalField(
-            max_digits=22, decimal_places=10, required=False, allow_null=True,
-        ),
-        "qta_operativa": serializers.DecimalField(
-            max_digits=22, decimal_places=10, required=False, allow_null=True,
-        ),
-        "origine_prezzo": serializers.CharField(required=False, allow_null=True),
-        "prezzo_resolver_context": serializers.JSONField(
-            required=False, allow_null=True,
-        ),
-        "stato_approvazione_prezzo": serializers.CharField(
-            required=False, allow_null=True,
-        ),
-        "pratica_approvazione_prezzo_id": serializers.IntegerField(
-            required=False, allow_null=True,
-        ),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-        "ordine": serializers.IntegerField(required=False, allow_null=True),
-        "attivo": serializers.BooleanField(required=False),
-    },
-)
-
-
 class ApiContrattoRigaComponenteDetail(DomainAPIView):
     """PATCH/DELETE /api/v1/vendite/contratti/<id>/righe/<rid>/componenti/<cid>/
 
@@ -748,7 +713,7 @@ class ApiContrattoRigaComponenteDetail(DomainAPIView):
     area_funzionale = "vendite"
 
     @extend_schema(
-        request=_RIGA_COMPONENTE_PATCH_REQUEST,
+        request=COMPONENTE_PATCH_REQUEST,
         responses={200: inline_serializer(
             name="VenditeContrattoRigaComponentePatchResp",
             fields={"data": serializers.DictField()},

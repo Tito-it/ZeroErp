@@ -99,7 +99,7 @@ def _doc_sorgente_lateral(anchor_cond: str) -> str:
             ORDER BY (ps.ruolo_link = 'ROOT') DESC, ps.id DESC
             LIMIT 1
         ) ds ON true
-    """
+    """  # noqa: S608 — anchor_cond letterale dei chiamanti, mai da input
 
 
 # Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
@@ -260,7 +260,7 @@ class PraticheRepository:
             FROM pratiche.pratiche p
             {self._PRATICA_JOINS_BASE}
             {where_clause}
-        """
+        """  # noqa: S608 — join costanti di classe, WHERE da frammenti letterali + colonne _RICERCA_PRATICHE, valori come parametri
 
         data_sql = f"""
             SELECT {self._PRATICA_SELECT}
@@ -269,7 +269,7 @@ class PraticheRepository:
             {where_clause}
             ORDER BY {ordinamento}
             LIMIT %s OFFSET %s
-        """
+        """  # noqa: S608 — costanti di classe, WHERE letterale, ORDER BY da sql_order_clause su PRATICHE_ORDER_COLS, valori come parametri
 
         with connection.cursor() as cursor:
             cursor.execute(count_sql, params)
@@ -294,7 +294,7 @@ class PraticheRepository:
             FROM pratiche.pratiche p
             {self._PRATICA_JOINS}
             WHERE p.id = %s
-        """
+        """  # noqa: S608 — _PRATICA_SELECT/_JOINS costanti di classe, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
             return row_to_dict(cursor)
@@ -369,7 +369,7 @@ class PraticheRepository:
             UPDATE pratiche.pratiche
             SET {', '.join(set_parts)}
             WHERE id = %s
-        """
+        """  # noqa: S608 — SET dalla whitelist locale allowed_fields, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
 
@@ -452,7 +452,7 @@ class PraticheRepository:
             {self._FLUSSO_JOINS}
             WHERE f.pratica_id = %s
             ORDER BY f.sequenza, f.id
-        """
+        """  # noqa: S608 — _FLUSSO_SELECT/_JOINS costanti di classe, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
             return rows_to_list(cursor)
@@ -464,7 +464,7 @@ class PraticheRepository:
             FROM pratiche.flussi f
             {self._FLUSSO_JOINS}
             WHERE f.id = %s
-        """
+        """  # noqa: S608 — _FLUSSO_SELECT/_JOINS costanti di classe, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [flusso_id])
             return row_to_dict(cursor)
@@ -562,7 +562,7 @@ class PraticheRepository:
             UPDATE pratiche.flussi
             SET {', '.join(set_parts)}
             WHERE id = %s
-        """
+        """  # noqa: S608 — SET dalla whitelist locale allowed_fields, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             ErrorManager.require(
@@ -681,7 +681,7 @@ class PraticheRepository:
             {_doc_sorgente_lateral("ps.pratica_id = p.id AND ps.flusso_id = f.id")}
             WHERE p.id = %s
             ORDER BY tf.sequenza, tf.id
-        """
+        """  # noqa: S608 — _DOC_SORGENTE_SELECT costante e lateral con anchor letterale, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id, pratica_id])
             return rows_to_list(cursor)
@@ -1018,7 +1018,7 @@ class PraticheRepository:
             FROM pratiche.sospensioni
             WHERE pratica_id = %s AND flusso_id IS NULL AND data_fine IS NULL
             LIMIT 1
-        """
+        """  # noqa: S608 — _SOSPENSIONE_COLS costante di classe, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
             return row_to_dict(cursor)
@@ -1030,7 +1030,7 @@ class PraticheRepository:
             FROM pratiche.sospensioni
             WHERE pratica_id = %s AND flusso_id = %s AND data_fine IS NULL
             LIMIT 1
-        """
+        """  # noqa: S608 — _SOSPENSIONE_COLS costante di classe, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id, flusso_id])
             return row_to_dict(cursor)
@@ -1042,7 +1042,7 @@ class PraticheRepository:
             FROM pratiche.sospensioni
             WHERE pratica_id = %s
             ORDER BY data_inizio DESC, id DESC
-        """
+        """  # noqa: S608 — _SOSPENSIONE_COLS costante di classe, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
             return rows_to_list(cursor)
@@ -1069,7 +1069,7 @@ class PraticheRepository:
             {self._NOTA_JOINS}
             WHERE n.pratica_id = %s
             ORDER BY n.data_insert DESC, n.id DESC
-        """
+        """  # noqa: S608 — _NOTA_SELECT/_JOINS costanti di classe, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
             return rows_to_list(cursor)
@@ -1147,7 +1147,7 @@ class PraticheRepository:
             {self._ALLEGATO_JOINS}
             WHERE a.pratica_id = %s
             ORDER BY a.data_insert DESC, a.id DESC
-        """
+        """  # noqa: S608 — _ALLEGATO_SELECT/_JOINS costanti di classe, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
             return rows_to_list(cursor)
@@ -1365,7 +1365,7 @@ class PraticheRepository:
             FROM pratiche.fn_coda_lavoro_operatore(%s, %s) WITH ORDINALITY c
             {_doc_sorgente_lateral("ps.pratica_id = c.pratica_id AND ps.flusso_id = c.flusso_id")}
             ORDER BY c.ordinality
-        """
+        """  # noqa: S608 — _DOC_SORGENTE_SELECT costante e lateral con anchor letterale, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [risorsa_umana_id, emittente_fiscale_id])
             return rows_to_list(cursor)

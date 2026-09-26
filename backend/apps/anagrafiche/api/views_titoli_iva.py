@@ -62,11 +62,8 @@ class SoggettoTitoliIvaView(DomainAPIView):
     #        imponibile gia' applicato) e `ambito_incompleto` (Q2).
     # ⚠️ PAGINATA dal 2026-09-02, come ogni altra lista configurabile: bundle
     #    standard `parse_list_params` per `limit`/`offset`/`order_by`.
-    # ⛔ `order_dir` NON viene da `parse_list_params`: quello normalizza
-    #    l'assenza a `"asc"` e non restituisce mai `None`, quindi il default
-    #    STORICO del repository (validita' piu' lunga per prima) non verrebbe
-    #    mai raggiunto — la lista si aprirebbe ordinata al contrario senza che
-    #    nessuno l'abbia chiesto. E' lo stesso difetto corretto sui sfondati.
+    # ⭐ `order_dir` dal bundle: assente = `None` (dal 2026-09-26), e decide
+    #    il default STORICO del repository (validita' piu' lunga per prima).
     def get(self, request: Request, soggetto_id: str) -> JsonResponse:
         qp = request.query_params
         p = parse_list_params(qp)
@@ -80,7 +77,7 @@ class SoggettoTitoliIvaView(DomainAPIView):
             #    repository come una richiesta — che lui scarta perche' fuori
             #    whitelist, cioe' la cosa giusta per il motivo sbagliato.
             order_by=qp_str(qp.get("order_by")),
-            order_dir=qp_str(qp.get("order_dir")),
+            order_dir=p["order_dir"],
         ))
 
     @extend_schema(
@@ -268,11 +265,10 @@ class SoggettoTitoloIvaMovimentiView(DomainAPIView):
     )
     # Scopo: Il registro del titolo: fatture, note di credito e forzature.
     # ⚠️ PAGINATO (lista 65): il registro cresce a ogni fattura.
-    # ⛔ `order_by`/`order_dir` si leggono GREZZI (`qp_str`), non da
-    #    `parse_list_params`: quello normalizza l'assenza a `"asc"` e ha un
-    #    default suo (`"descrizione"`) che qui non e' una colonna di niente —
-    #    e il default vero del repository e' «il piu' recente per primo», che
-    #    non verrebbe mai raggiunto.
+    # ⛔ `order_by` si legge GREZZO (`qp_str`), non da `parse_list_params`:
+    #    il bundle ha un default suo (`"descrizione"`) che qui non e' una
+    #    colonna di niente. `order_dir` dal bundle: assente = `None`, e decide
+    #    il default del repository, «il piu' recente per primo».
     def get(self, request: Request, soggetto_id: str, titolo_id: int) -> JsonResponse:
         qp = request.query_params
         p = parse_list_params(qp)
@@ -281,7 +277,7 @@ class SoggettoTitoloIvaMovimentiView(DomainAPIView):
             limit=p["limit"],
             offset=p["offset"],
             order_by=qp_str(qp.get("order_by")),
-            order_dir=qp_str(qp.get("order_dir")),
+            order_dir=p["order_dir"],
         ))
 
     @extend_schema(
@@ -372,16 +368,11 @@ class TitoliIvaSfondatiView(DomainAPIView):
             limit=p["limit"],
             offset=p["offset"],
             order_by=p["order_by"],
-            # ⛔ NON `p["order_dir"]`, ed e' un difetto che ho scritto e corretto
-            #    il 2026-09-02: `parse_list_params` normalizza l'assenza a
-            #    `"asc"` e non restituisce mai `None`, quindi il `default_desc`
-            #    del repository non veniva MAI raggiunto. Effetto: la lista di
-            #    presidio si sarebbe ordinata per eccedenza CRESCENTE — il caso
-            #    piu' grave in ultima pagina, su una schermata che esiste per
-            #    metterlo davanti. Nessun errore, solo l'ordine al contrario.
-            # ⭐ Il valore grezzo (`None` se il client non chiede) e' il pattern
-            #    gia' in uso in `pagamenti` per tutte le liste a default DESC.
-            order_dir=qp_str(qp.get("order_dir")),
+            # ⭐ Assente = `None` (dal 2026-09-26 `parse_list_params` non lo
+            #    normalizza piu' ad "asc"): decide il `default_desc` del
+            #    repository, il caso piu' grave per primo. Fino ad allora qui
+            #    si rileggeva il valore grezzo per aggirare il bundle.
+            order_dir=p["order_dir"],
         )
         return success_response(dati)
 

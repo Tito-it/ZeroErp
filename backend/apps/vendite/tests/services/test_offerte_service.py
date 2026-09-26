@@ -57,6 +57,7 @@ Indice test eseguiti:
 48) preview_componenti_eccezione_offerta_not_found      [BoM preview 404]
 49) list_componenti_eccezione_ownership_violata         [BoM security]
 50) update_componente_eccezione_payload_vuoto_fallisce  [BoM whitelist]
+50b) update_componente_eccezione_campi_del_workflow_rifiutati [BoM auto-approvazione L3]
 51) update_componente_eccezione_ownership_violata       [BoM security]
 52) delete_componente_eccezione_ok                      [BoM happy path]
 
@@ -67,6 +68,13 @@ Gate prezzo L1/L2/L3 (refactor-prezzi 2026-06-01):
 56) apply_gate_eccezione_l3_pending_setta_stato         [L3 PENDING + pratica]
 57) resolve_override_prezzo_offerta_skip_senza_listino  [guard listino None]
 58) apply_gate_eccezione_preserva_meta_esistente        [fallback_meta no-clobber]
+
+Scritture sul BB core (2026-09-26):
+59) aggiorna_offerta_meta_stringa_json_diventa_dict      [meta normalizzato nel service]
+60) aggiorna_offerta_meta_null_diventa_oggetto_vuoto     [NOT NULL DEFAULT '{}']
+61) crea_eccezione_meta_non_oggetto_e_400                [400, repo non chiamato]
+62) aggiorna_utility_meta_non_oggetto_e_400              [400, repo non chiamato]
+63) aggiorna_offerta_utility_inline_chiave_estranea_e_400 [niente scarto silenzioso]
 """
 
 from unittest import TestCase
@@ -1119,7 +1127,9 @@ class OfferteServiceTests(TestCase):
         self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
 
     # Scopo: update_componente_eccezione con payload fuori whitelist
-    #        (campi struttura immutabili) -> 400 "nessun campo aggiornato".
+    #        (campi struttura immutabili) -> 400 che NOMINA la chiave, e il
+    #        repository non viene chiamato. ⛔ Fino al 2026-09-26 la chiave
+    #        arrivava al mixin, che la scartava in silenzio.
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
     def test_update_componente_eccezione_payload_vuoto_fallisce(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
@@ -1130,13 +1140,40 @@ class OfferteServiceTests(TestCase):
         repo.get_componente.return_value = {
             "id": 7, "eccezione_offerta_id": 42,
         }
-        repo.update_componente.return_value = False  # whitelist scarta tutto
 
         with self.assertRaises(ServiceError) as cm:
             OfferteService().update_componente_eccezione(
                 1, 42, 7, {"componente_id": "x"},  # struttura immutabile
             )
         self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(cm.exception.context["unknown_keys"], ["componente_id"])
+        repo.update_componente.assert_not_called()
+
+    # Scopo: ⛔ l'operatore NON puo' approvarsi un prezzo L3 (stesso rifiuto
+    #        di preventivi e contratti). Fino al 2026-09-26 la PATCH validava
+    #        contro la whitelist del REPOSITORY, che contiene
+    #        `stato_approvazione_prezzo`. ⚠️ Sono chiavi che il repository
+    #        AMMETTE: e' il caso che distingue il codice vecchio dal nuovo.
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_update_componente_eccezione_campi_del_workflow_rifiutati(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.get_eccezione.return_value = {"id": 42, "offerta_id": 1}
+        repo.get_componente.return_value = {
+            "id": 7, "eccezione_offerta_id": 42,
+        }
+        for payload in (
+            {"stato_approvazione_prezzo": "APPROVED"},
+            {"pratica_approvazione_prezzo_id": 7},
+            {"prezzo_unitario": "1.00", "origine_prezzo": "CONTRATTO_LISTINO"},
+        ):
+            with self.subTest(payload=payload):
+                with self.assertRaises(ServiceError) as cm:
+                    OfferteService().update_componente_eccezione(1, 42, 7, payload)
+                self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        repo.update_componente.assert_not_called()
 
     # Scopo: update_componente tenta tampering (componente non appartiene
     #        all'eccezione) -> 404.
@@ -1384,3 +1421,82 @@ class OfferteGatePrezzoTests(TestCase):
         self.assertEqual(payload["meta"]["origine_prezzo"], "MANUALE")
         # Nessun workflow L3 → niente stato/pratica nel payload.
         self.assertNotIn("stato_approvazione_prezzo", payload)
+
+
+class OfferteScrittureBbTests(TestCase):
+    """Scritture sul BB core (2026-09-26): il service consegna al repository
+    un `meta` OGGETTO e rifiuta (400) cio' che prima si scartava o si
+    serializzava in silenzio."""
+
+    def _svc(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.get_offerta.return_value = _make_offerta_dict()
+        repo.list_eccezioni.return_value = []
+        repo.get_utility.return_value = {"id": 99, "tipo_utenza_id": 5}
+        return OfferteService(), repo
+
+    # 59. ⭐ Una stringa che contiene un oggetto JSON arriva al repository come
+    #     dict (prima: `json.dumps` di nuovo -> scalare stringa jsonb).
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_aggiorna_offerta_meta_stringa_json_diventa_dict(self, repo_cls, _atomic):
+        svc, repo = self._svc(repo_cls, _atomic)
+        svc.aggiorna_offerta(1, {"meta": '{"nota": "x"}'})
+        repo.update_offerta.assert_called_once_with(1, {"meta": {"nota": "x"}})
+
+    # 60. `null` = reset a `{}`: la colonna e' NOT NULL DEFAULT '{}' (prima:
+    #     NULL al database, violazione NOT NULL con errore generico).
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_aggiorna_offerta_meta_null_diventa_oggetto_vuoto(self, repo_cls, _atomic):
+        svc, repo = self._svc(repo_cls, _atomic)
+        svc.aggiorna_offerta(1, {"meta": None})
+        repo.update_offerta.assert_called_once_with(1, {"meta": {}})
+
+    # 61. ⛔ Un `meta` che non e' un oggetto e' un 400 educato, non un errore
+    #     di cast al database (o, prima, uno scalare scritto in silenzio).
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_crea_eccezione_meta_non_oggetto_e_400(self, repo_cls, _atomic):
+        svc, repo = self._svc(repo_cls, _atomic)
+        with self.assertRaises(ServiceError) as cm:
+            svc.crea_eccezione(1, {
+                "articolo_id": "00000000-0000-7000-8000-000000000abc",
+                "tipo_eccezione": "ESCLUSIONE",
+                "fonte_quantita_attesa": "FISSA",
+                "meta": 42,
+            })
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(cm.exception.context.get("field"), "meta")
+        repo.create_eccezione.assert_not_called()
+
+    # 62. Stessa regola sull'utility 1:1 (stringa che non e' un oggetto).
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_aggiorna_utility_meta_non_oggetto_e_400(self, repo_cls, _atomic):
+        svc, repo = self._svc(repo_cls, _atomic)
+        with self.assertRaises(ServiceError) as cm:
+            svc.aggiorna_utility(1, 99, {"meta": '"solo una stringa"'})
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(cm.exception.context.get("field"), "meta")
+        repo.update_utility.assert_not_called()
+
+    # 63. ⛔ Il sotto-oggetto `utility` nel PATCH di testata: una chiave
+    #     SCONOSCIUTA e' un 400 (prima l'intersezione con la whitelist la
+    #     scartava). Gli id immutabili, che il form riporta, si tolgono ancora.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_aggiorna_offerta_utility_inline_chiave_estranea_e_400(self, repo_cls, _atomic):
+        svc, repo = self._svc(repo_cls, _atomic)
+        with self.assertRaises(ServiceError) as cm:
+            svc.aggiorna_offerta(1, {"utility": {"tipo_utenza_id": 7, "colore": "blu"}})
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        repo.update_utility.assert_not_called()
+
+        svc.aggiorna_offerta(1, {"utility": {"tipo_utenza_id": 7, "utility_id": 3}})
+        repo.update_utility.assert_called_once_with(99, {"tipo_utenza_id": 7})

@@ -26,7 +26,8 @@ Indice test eseguiti:
 12) update_codice_vuoto_e_400_col_campo
 13) duplicato_codice_in_modifica_accende_codice
 14) duplicato_codice_in_creazione_accende_codice_interno
-15) duplicato_codice_in_creazione_col_codice_nel_payload_resta_codice_interno
+15) codice_in_creazione_rifiutato
+15-bis) attivo_in_modifica_rifiutato
 """
 
 from unittest import TestCase
@@ -264,12 +265,25 @@ class FamiglieCodiceTests(TestCase):
         self.assertEqual(ctx.exception.context.get("field"), "codice_interno")
         self.assertIn("codice di un'altra", ctx.exception.message)
 
-    # 15. ⚠️ Il campo lo decide il VERBO: un client che in creazione manda
-    #     anche `codice` (non scritto: non e' in `_CAMPI_CREATE`) non deve
-    #     spostare l'errore su un campo che il database ha ignorato.
-    @patch.object(_REPO, "crea_famiglia",
-                  side_effect=_integrity("uq_famiglie_documento_codice"))
-    def test_duplicato_codice_in_creazione_col_codice_nel_payload_resta_codice_interno(self, _crea):
+    # 15. ⛔ Un client che in creazione manda anche `codice` (non e' in
+    #     `_CAMPI_CREATE`: alla nascita lo copia il trigger) e' RIFIUTATO con
+    #     400, prima del database (2026-09-26). Fino a quel giorno il repository
+    #     lo scartava in silenzio, e questo test verificava solo che l'errore di
+    #     duplicato non finisse sul campo ignorato.
+    @patch.object(_REPO, "crea_famiglia")
+    def test_codice_in_creazione_rifiutato(self, crea):
         with self.assertRaises(ServiceError) as ctx:
             FamiglieDocumentoService().crea_famiglia({**_CREATE_MINIMO, "codice": "FT"})
-        self.assertEqual(ctx.exception.context.get("field"), "codice_interno")
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("unknown_keys"), ["codice"])
+        crea.assert_not_called()
+
+    # 15-bis. ⛔ Stessa regola in modifica: `attivo` ha il suo verbo, e spedito
+    #     nel PATCH e' un 400 — non un «salvato» senza aver scritto niente.
+    @patch.object(_REPO, "update_famiglia")
+    def test_attivo_in_modifica_rifiutato(self, update):
+        with self.assertRaises(ServiceError) as ctx:
+            FamiglieDocumentoService().update_famiglia(3, {"descrizione": "X", "attivo": False})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("unknown_keys"), ["attivo"])
+        update.assert_not_called()

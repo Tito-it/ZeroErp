@@ -22,6 +22,7 @@ Indice test eseguiti:
  9c) test_update_operatore_super_admin_guard_dbtrigger — race condition trigger 384
  9d) test_update_operatore_attivo_only — solo attivo passa al repo
 10) test_disabilita_operatore_ok — disabilita e invalida cache + blacklist
+10b) test_disabilita_operatore_revoca_fallita_propaga — revoca e disattivazione in una transazione
 11) test_disabilita_operatore_not_found — id inesistente
 11a) test_disabilita_operatore_ultimo_super_admin_preview — preview Python (fast-path)
 11b) test_disabilita_operatore_ultimo_super_admin_dbtrigger — race condition trigger 384
@@ -61,7 +62,36 @@ from apps.core.services.service_errors import ServiceError
 REPO = "apps.amm_software.services.amm_software_service.AmmSoftwareRepository"
 INVALIDATE_USER = "apps.amm_software.services.amm_software_service.invalidate_user"
 INVALIDATE_DEPT = "apps.amm_software.services.amm_software_service.invalidate_department"
-BLACKLIST = "apps.amm_software.services.amm_software_service._blacklist_user_tokens"
+BLACKLIST = "apps.amm_software.services.amm_software_service.blocca_token_sessioni"
+TRANSACTION = "apps.amm_software.services.amm_software_service.transaction"
+
+
+# Scopo: `django.db.transaction` finto, senza database: `atomic()` esegue i
+#        callback di `on_commit` SOLO se il blocco esce senza eccezioni, come
+#        il commit vero. Basta a provare l'ORDINE (cosa sta dentro la
+#        transazione, cosa aspetta il commit), non il ROLLBACK, che e' del DB.
+class _TransazioneFinta:
+    def __init__(self) -> None:
+        self._in_attesa: list = []
+
+    def on_commit(self, callback) -> None:
+        self._in_attesa.append(callback)
+
+    def atomic(self):
+        finta = self
+
+        class _Blocco:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, tipo, _valore, _tb):
+                callback, finta._in_attesa = finta._in_attesa, []
+                if tipo is None:
+                    for cb in callback:
+                        cb()
+                return False
+
+        return _Blocco()
 
 
 class TestCreateOperatore(TestCase):
@@ -299,10 +329,11 @@ class TestUpdateOperatore(TestCase):
 class TestDisabilitaOperatore(TestCase):
     """Test AmmSoftwareService.disabilita_operatore()."""
 
+    @patch(TRANSACTION, new_callable=_TransazioneFinta)
     @patch(BLACKLIST)
     @patch(INVALIDATE_USER)
     @patch(REPO)
-    def test_disabilita_operatore_ok(self, mock_repo_cls, mock_invalidate, mock_blacklist):
+    def test_disabilita_operatore_ok(self, mock_repo_cls, mock_invalidate, mock_blacklist, _tx):
         """Disabilita, invalida cache, blacklist token."""
         mock_repo = mock_repo_cls.return_value
         mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
@@ -311,6 +342,25 @@ class TestDisabilitaOperatore(TestCase):
         mock_repo.disabilita_operatore.assert_called_once_with(1)
         mock_invalidate.assert_called_once_with(1)
         mock_blacklist.assert_called_once_with(1)
+
+    # Scopo: la revoca delle sessioni FALLISCE → l'errore propaga e la cache
+    #        NON si invalida: la disattivazione e la revoca stanno nella stessa
+    #        transazione, e senza commit non c'e' niente da invalidare. Prima
+    #        la disattivazione committava da sola e l'operatore restava
+    #        disattivato con le sessioni vive.
+    @patch(TRANSACTION, new_callable=_TransazioneFinta)
+    @patch(BLACKLIST)
+    @patch(INVALIDATE_USER)
+    @patch(REPO)
+    def test_disabilita_operatore_revoca_fallita_propaga(
+        self, mock_repo_cls, mock_invalidate, mock_blacklist, _tx,
+    ):
+        mock_repo_cls.return_value.get_operatore_detail.return_value = {"auth_user_id": 1}
+        mock_blacklist.side_effect = DatabaseError("scrittura blacklist fallita")
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+        with self.assertRaises(DatabaseError):
+            AmmSoftwareService().disabilita_operatore(1)
+        mock_invalidate.assert_not_called()
 
     @patch(REPO)
     def test_disabilita_operatore_not_found(self, mock_repo_cls):
@@ -341,11 +391,12 @@ class TestDisabilitaOperatore(TestCase):
     # Scopo: Preview UX passa (can_disable=true) ma il trigger DB rifiuta
     # comunque per race tra sessioni. Il service traduce DatabaseError in
     # ServiceError E_PROFILO_ULTIMO_SUPER_ADMIN.
+    @patch(TRANSACTION, new_callable=_TransazioneFinta)
     @patch(BLACKLIST)
     @patch(INVALIDATE_USER)
     @patch(REPO)
     def test_disabilita_operatore_ultimo_super_admin_dbtrigger(
-        self, mock_repo_cls, _mock_invalidate, _mock_blacklist
+        self, mock_repo_cls, _mock_invalidate, _mock_blacklist, _tx,
     ):
         mock_repo = mock_repo_cls.return_value
         mock_repo.get_operatore_detail.return_value = {

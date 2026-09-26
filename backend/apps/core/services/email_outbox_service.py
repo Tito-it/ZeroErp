@@ -23,11 +23,19 @@ from apps.core.services.email_allegati_storage import percorso_allegato, radice_
 from apps.core.services.email_service import CANALE_CONSOLE, EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
+from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.service_errors import ServiceError
 
 logger = logging.getLogger("zeroerp.email")
 
 E_OUTBOX = "E_OUTBOX"
+
+# Campi della bozza che l'operatore puo' modificare (PATCH outbox). Coincide
+# oggi con `EmailRepository._OUTBOX_UPDATE_COLS`, ma e' il contratto
+# dell'operatore: puo' essere piu' stretto delle colonne scrivibili.
+_DRAFT_EDITABILI: frozenset[str] = frozenset({
+    "oggetto", "corpo_html", "corpo_testo", "destinatario", "destinatari_cc",
+})
 
 # ⭐ «Gli allegati si toccano solo in bozza» e' una regola del DATABASE
 #    (`config.trgfn_email_allegato_guard_solo_bozza`, 2026-09-25): il pre-check
@@ -120,16 +128,30 @@ class EmailOutboxService:
         return self._repo.get_outbox(outbox_id) or {}
 
     # Scopo: Aggiorna campi editabili di una bozza DRAFT.
+    # ⛔ Dal 2026-09-26 una chiave fuori `_DRAFT_EDITABILI` e' un 400
+    #    (`E_OUTBOX`), non piu' uno scarto silenzioso: un PATCH che «riesce»
+    #    senza aver scritto il campo e' il difetto che non da' errore. Il
+    #    repository, dietro, e' RIGIDO (RuntimeError): la regola dell'operatore
+    #    si dice qui, prima. `destinatari_cc` va a una colonna `text[]`: lista
+    #    di stringhe o null, altrimenti il cast del DB sarebbe un 500.
     def update_draft(self, outbox_id: int, **kwargs: Any) -> dict[str, Any]:
         outbox = self._repo.get_outbox(outbox_id)
         ErrorManager.require(outbox is not None, code=E_OUTBOX, message="Bozza non trovata.")
         assert outbox is not None
         ErrorManager.require(outbox["stato"] == "DRAFT", code=E_OUTBOX, message="Solo bozze DRAFT sono modificabili.")
 
-        # Filtra solo campi editabili (stessa whitelist del repository)
-        fields = {k: v for k, v in kwargs.items() if k in EmailRepository._OUTBOX_UPDATE_COLS}
-        if fields:
-            self._repo.update_outbox(outbox_id, **fields)
+        PayloadValidator(validation_code=E_OUTBOX).validate_allowed_keys(
+            kwargs, allowed=_DRAFT_EDITABILI, message="Campi della bozza non modificabili.",
+        )
+        cc = kwargs.get("destinatari_cc")
+        ErrorManager.require(
+            cc is None or (isinstance(cc, list) and all(isinstance(x, str) for x in cc)),
+            code=E_OUTBOX,
+            message="I destinatari in copia devono essere una lista di indirizzi.",
+            detail=f"destinatari_cc={cc!r}",
+        )
+        if kwargs:
+            self._repo.update_outbox(outbox_id, **kwargs)
 
         return self._repo.get_outbox(outbox_id) or {}
 

@@ -69,23 +69,29 @@ _V = PayloadValidator(
 
 
 # Scopo: Valida ordinamento lista listini contro whitelist locale.
-def _validate_order(order_by: str, order_dir: str, function_name: str) -> tuple[str, str]:
+def _validate_order(order_by: str, order_dir: str | None, function_name: str) -> tuple[str, str | None]:
     return validate_order_params(
         order_by,
         order_dir,
         allowed_columns=_ORDER_BY_VALIDI,
         error_code="E_VENDITE_VALIDATION",
+        # `nullable`: direzione assente -> `None` e decide il default del
+        # repository (`parse_list_params` non inventa piu' "asc", 2026-09-26).
+        nullable=True,
         function_name=function_name,
     )
 
 
 # Scopo: Valida ordinamento lista righe listino contro whitelist locale.
-def _validate_righe_order(order_by: str, order_dir: str, function_name: str) -> tuple[str, str]:
+def _validate_righe_order(order_by: str, order_dir: str | None, function_name: str) -> tuple[str, str | None]:
     return validate_order_params(
         order_by,
         order_dir,
         allowed_columns=_RIGHE_ORDER_BY_VALIDI,
         error_code="E_VENDITE_VALIDATION",
+        # `nullable`: direzione assente -> `None` e decide il default del
+        # repository (`parse_list_params` non inventa piu' "asc", 2026-09-26).
+        nullable=True,
         function_name=function_name,
     )
 

@@ -23,6 +23,7 @@ from apps.core.db._helpers import (
     rows_to_list,
     sql_order_clause,
 )
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 
 
 # Whitelist colonne ammesse per ORDER BY: protegge da SQL injection sul
@@ -121,6 +122,17 @@ _FROM_JOINS = """
 """
 
 
+# Colonne scrivibili (whitelist RIGIDA dei BB di scrittura, 2026-09-26).
+# In update mancano le 4 dimensioni della riga: sono immutabili.
+_UPDATE_COLS: frozenset[str] = frozenset({
+    "listino_id", "tipo_variazione", "valore_variazione",
+    "valido_dal", "valido_al", "meta", "attivo",
+})
+_CREATE_COLS: frozenset[str] = _UPDATE_COLS | {
+    "categoria_cliente_id", "utility_id", "emittente_soggetto_ruolo_id", "classe_utenza_id",
+}
+
+
 class CategorieClientiListiniRepository:
     """Accesso DB alla matrice `anagrafiche.categorie_clienti_listini`."""
 
@@ -194,7 +206,7 @@ class CategorieClientiListiniRepository:
                 SELECT COUNT(*)
                   {_FROM_JOINS}
                 {where_clause}
-                """,  # noqa: S608
+                """,
                 params,
             )
             row = cursor.fetchone()
@@ -209,7 +221,7 @@ class CategorieClientiListiniRepository:
                 {where_clause}
                  ORDER BY {ordinamento}
                  LIMIT %s OFFSET %s
-                """,  # noqa: S608
+                """,
                 params + [safe_limit, safe_offset],
             )
             results = rows_to_list(cursor)
@@ -224,7 +236,7 @@ class CategorieClientiListiniRepository:
                 SELECT {_SELECT_COLS}
                   {_FROM_JOINS}
                  WHERE m.id = %s
-                """,  # noqa: S608
+                """,
                 [record_id],
             )
             return row_to_dict(cursor)
@@ -236,66 +248,21 @@ class CategorieClientiListiniRepository:
     # Scopo: Inserisce una nuova riga di matrice usando solo colonne
     #        whitelisted. `validita` NON e' scrivibile: e' STORED generated
     #        column (PG 18) calcolata automaticamente da valido_dal/valido_al.
+    #        BB `execute_dynamic_insert` (2026-09-26): whitelist RIGIDA
+    #        `_CREATE_COLS`, `meta` dict -> `::jsonb`, None scrive NULL.
     def create_matrice(self, data: dict[str, Any]) -> int:
-        write_cols = (
-            "categoria_cliente_id",
-            "utility_id",
-            "emittente_soggetto_ruolo_id",
-            "classe_utenza_id",
-            "listino_id",
-            "tipo_variazione",
-            "valore_variazione",
-            "valido_dal",
-            "valido_al",
-            "meta",
-            "attivo",
+        riga = execute_dynamic_insert(
+            "anagrafiche.categorie_clienti_listini", data, allowed=_CREATE_COLS,
         )
-        cols: list[str] = []
-        vals: list[Any] = []
-        for col in write_cols:
-            if col in data:
-                cols.append(col)
-                vals.append(data[col])
-        placeholders = ["%s"] * len(cols)
-        sql = f"""
-            INSERT INTO anagrafiche.categorie_clienti_listini ({", ".join(cols)})
-            VALUES ({", ".join(placeholders)})
-            RETURNING id
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+        return int(riga["id"])
 
     # Scopo: Aggiorna una riga matrice sui soli campi forniti. Le 4+1 FK
     #        dimensionali (categoria, utility, emittente, classe_utenza)
     #        sono immutabili lato service (non arrivano nel payload di
-    #        update). Qui il repository accetta qualsiasi whitelisted.
+    #        update) e FUORI da `_UPDATE_COLS`: se arrivassero qui sarebbe
+    #        `RuntimeError` (BB `execute_dynamic_update`, 2026-09-26).
     def update_matrice(self, record_id: int, data: dict[str, Any]) -> bool:
-        write_cols = (
-            "listino_id",
-            "tipo_variazione",
-            "valore_variazione",
-            "valido_dal",
-            "valido_al",
-            "meta",
-            "attivo",
+        return execute_dynamic_update(
+            "anagrafiche.categorie_clienti_listini", record_id, data,
+            allowed=_UPDATE_COLS,
         )
-        set_parts: list[str] = []
-        vals: list[Any] = []
-        for col in write_cols:
-            if col in data:
-                set_parts.append(f"{col} = %s")
-                vals.append(data[col])
-        if not set_parts:
-            return False
-        vals.append(record_id)
-        sql = f"""
-            UPDATE anagrafiche.categorie_clienti_listini
-               SET {", ".join(set_parts)}
-             WHERE id = %s
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return cursor.rowcount > 0

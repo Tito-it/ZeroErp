@@ -14,6 +14,7 @@ from typing import Any
 from django.db import connection
 
 from apps.anagrafiche.db._helpers import get_or_create_soggetto_ruolo
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
@@ -71,6 +72,21 @@ _RICERCA_EMITTENTE_BA = RicercaFull("anagrafiche.emittente_billing_account", {
 })
 
 
+# Campi editabili sull'emittente (codice escluso: bloccato dal trigger lock_columns).
+# `descrizione` tolta il 2026-08-02 con la DROP della colonna: il nome
+# dell'emittente si cambia sul SOGGETTO, non qui.
+# ⚠️ Whitelist RIGIDA del BB `execute_dynamic_update` (2026-09-26): e' anche la
+#    base del contratto PATCH che `EmittentiFiscaliService` valida (400).
+EMITTENTE_UPDATE_ALLOWED: frozenset[str] = frozenset({
+    "attivo",
+    "regime_fiscale_rf",
+    "bollo_auto",
+    "bollo_soglia",
+    "rounding_policy",
+    "valuta_id",
+})
+
+
 class EmittentiFiscaliRepository:
     """Accesso DB per emittenti fiscali."""
 
@@ -105,6 +121,13 @@ class EmittentiFiscaliRepository:
     def get_or_create_ruolo_emittente(self, soggetto_id: str) -> int:
         return get_or_create_soggetto_ruolo(soggetto_id, 'EF')
 
+    # Colonne scrivibili in create (whitelist RIGIDA del BB, 2026-09-26).
+    _CREATE_COLS: frozenset[str] = frozenset({
+        "soggetto_ruolo_id", "codice",
+        "attivo", "regime_fiscale_rf", "bollo_auto", "bollo_soglia",
+        "rounding_policy", "valuta_id",
+    })
+
     # Scopo: Crea record emittente fiscale.
     #        I trigger DB gestiscono: guard ruolo EF, normalize, audit, tx_id, storicizzazione,
     #        bootstrap del default mapping in emittenti_fiscali_billing_account (primo emittente).
@@ -112,38 +135,16 @@ class EmittentiFiscaliRepository:
     #        `descrizione` non esiste piu' dal 2026-08-02 (DROP `20260802-22`): il
     #        nome dell'emittente e' la ragione sociale del soggetto, non un testo
     #        digitato a parte.
+    # ⭐ Dal 2026-09-26 compone il BB `execute_dynamic_insert` con
+    #    `skip_none=True`: le colonne opzionali a None si OMETTONO, cosi' il
+    #    DEFAULT del DB resta attivo (la semantica di prima). Una chiave fuori
+    #    `_CREATE_COLS` e' `RuntimeError`: i kwargs li scrive il service.
     def create_emittente(self, **kwargs: Any) -> int:
-        # Colonne fisse obbligatorie
-        cols = ["soggetto_ruolo_id", "codice"]
-        vals: list[Any] = [
-            kwargs["soggetto_ruolo_id"],
-            kwargs["codice"],
-        ]
-        # Colonne opzionali: incluse solo se valorizzate (non None)
-        _OPTIONAL = [
-            "attivo",
-            "regime_fiscale_rf",
-            "bollo_auto",
-            "bollo_soglia",
-            "rounding_policy",
-            "valuta_id",
-        ]
-        for col in _OPTIONAL:
-            val = kwargs.get(col)
-            if val is not None:
-                cols.append(col)
-                vals.append(val)
-        placeholders = ["%s"] * len(cols)
-        sql = f"""
-            INSERT INTO anagrafiche.emittenti_fiscali ({", ".join(cols)})
-            VALUES ({", ".join(placeholders)})
-            RETURNING id
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return row[0]
+        riga = execute_dynamic_insert(
+            "anagrafiche.emittenti_fiscali", kwargs,
+            allowed=self._CREATE_COLS, skip_none=True,
+        )
+        return riga["id"]
 
     # =================================================================
     # Lista e dettaglio
@@ -240,17 +241,6 @@ class EmittentiFiscaliRepository:
     # Aggiornamento
     # =================================================================
 
-    # Campi editabili sull'emittente (codice escluso: bloccato dal trigger lock_columns).
-    # `descrizione` tolta il 2026-08-02 con la DROP della colonna: il nome
-    # dell'emittente si cambia sul SOGGETTO, non qui.
-    _UPDATE_ALLOWED = {
-        "attivo",
-        "regime_fiscale_rf",
-        "bollo_auto",
-        "bollo_soglia",
-        "rounding_policy",
-        "valuta_id",
-    }
     _UPDATE_NULLABLE = {
         "regime_fiscale_rf",
         "rounding_policy",
@@ -260,21 +250,20 @@ class EmittentiFiscaliRepository:
 
     # Scopo: Aggiorna campi editabili di un emittente fiscale (delta update).
     #        Il campo codice e' bloccato dal trigger DB (lock_columns) e va escluso.
+    #        BB `execute_dynamic_update` (2026-09-26): whitelist RIGIDA
+    #        `EMITTENTE_UPDATE_ALLOWED`, le chiavi le valida prima il service (400).
     def update_emittente(self, emittente_id: int, data: dict[str, Any]) -> bool:
+        # Copia: non si muta l'input del chiamante.
+        valori = dict(data)
         # Normalizza stringhe vuote a None per campi nullable
         for k in self._UPDATE_NULLABLE:
-            if k in data and isinstance(data[k], str) and not data[k].strip():
-                data[k] = None
-        fields = [(k, v) for k, v in data.items() if k in self._UPDATE_ALLOWED]
-        if not fields:
-            return False
-        set_clause = ", ".join(f"{f[0]} = %s" for f in fields)
-        values: list[Any] = [f[1] for f in fields]
-        values.append(emittente_id)
-        sql = f"UPDATE anagrafiche.emittenti_fiscali SET {set_clause} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, values)
-            return cursor.rowcount > 0
+            val = valori.get(k)
+            if isinstance(val, str) and not val.strip():
+                valori[k] = None
+        return execute_dynamic_update(
+            "anagrafiche.emittenti_fiscali", emittente_id, valori,
+            allowed=EMITTENTE_UPDATE_ALLOWED,
+        )
 
     # =================================================================
     # Risoluzione id <-> soggetto_ruolo_id
@@ -532,13 +521,13 @@ class EmittentiFiscaliBillingAccountRepository:
 # =================================================================
 
 
-_UTILITIES_UPDATE_ALLOWED = {
+UTILITIES_UPDATE_ALLOWED: frozenset[str] = frozenset({
     "minimo_soglia_min",
     "minimo_soglia_max",
     "arrotondamento_importi_dec",
     "metodo_arrotondamento_importi",
     "attivo",
-}
+})
 _UTILITIES_UPDATE_NULLABLE = {
     "minimo_soglia_min",
     "minimo_soglia_max",
@@ -588,55 +577,36 @@ class EmittentiFiscaliUtilitiesRepository:
         minimo_soglia_max: Any = None,
         attivo: bool | None = None,
     ) -> int:
-        cols = [
-            "emittente_soggetto_ruolo_id",
-            "utility_id",
-            "arrotondamento_importi_dec",
-            "metodo_arrotondamento_importi",
-        ]
-        vals: list[Any] = [
-            emittente_soggetto_ruolo_id,
-            utility_id,
-            arrotondamento_importi_dec,
-            metodo_arrotondamento_importi,
-        ]
-        if minimo_soglia_min is not None:
-            cols.append("minimo_soglia_min")
-            vals.append(minimo_soglia_min)
-        if minimo_soglia_max is not None:
-            cols.append("minimo_soglia_max")
-            vals.append(minimo_soglia_max)
-        if attivo is not None:
-            cols.append("attivo")
-            vals.append(attivo)
-        placeholders = ["%s"] * len(cols)
-        sql = f"""
-            INSERT INTO anagrafiche.emittenti_fiscali_utilities ({", ".join(cols)})
-            VALUES ({", ".join(placeholders)})
-            RETURNING id
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return row[0]
+        # BB `execute_dynamic_insert` (2026-09-26). `allowed=None`: le chiavi
+        # sono i nomi letterali qui sotto. `skip_none=True`: gli opzionali a
+        # None si omettono e resta il DEFAULT del DB, come prima.
+        riga = execute_dynamic_insert(
+            "anagrafiche.emittenti_fiscali_utilities",
+            {
+                "emittente_soggetto_ruolo_id": emittente_soggetto_ruolo_id,
+                "utility_id": utility_id,
+                "arrotondamento_importi_dec": arrotondamento_importi_dec,
+                "metodo_arrotondamento_importi": metodo_arrotondamento_importi,
+                "minimo_soglia_min": minimo_soglia_min,
+                "minimo_soglia_max": minimo_soglia_max,
+                "attivo": attivo,
+            },
+            allowed=None, skip_none=True,
+        )
+        return riga["id"]
 
     # Scopo: Aggiorna campi editabili (delta update). utility_id e' immutabile (PK logica).
+    #        BB `execute_dynamic_update` (2026-09-26): whitelist RIGIDA
+    #        `UTILITIES_UPDATE_ALLOWED`, le chiavi le valida prima il service.
     def update_record(self, record_id: int, data: dict[str, Any]) -> bool:
         clean = dict(data)
         for k in _UTILITIES_UPDATE_NULLABLE:
             if k in clean and isinstance(clean[k], str) and not clean[k].strip():
                 clean[k] = None
-        fields = [(k, v) for k, v in clean.items() if k in _UTILITIES_UPDATE_ALLOWED]
-        if not fields:
-            return False
-        set_clause = ", ".join(f"{f[0]} = %s" for f in fields)
-        values: list[Any] = [f[1] for f in fields]
-        values.append(record_id)
-        sql = f"UPDATE anagrafiche.emittenti_fiscali_utilities SET {set_clause} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, values)
-            return cursor.rowcount > 0
+        return execute_dynamic_update(
+            "anagrafiche.emittenti_fiscali_utilities", record_id, clean,
+            allowed=UTILITIES_UPDATE_ALLOWED,
+        )
 
     # Scopo: Elimina un record utility per id.
     def delete_record(self, record_id: int) -> bool:

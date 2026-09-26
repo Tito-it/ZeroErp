@@ -33,84 +33,30 @@ from apps.core.db._helpers import (
     call_jsonb_fn,
     row_to_dict,
     rows_to_list,
+    sql_order_clause,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
-from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
 
 
-# Mappa colonna -> tipo speciale (jsonb). Le altre colonne usano '%s'.
-_COLUMN_TYPES: dict[str, str] = {"meta": "jsonb"}
-
-
-# Scopo: Adatta placeholder e value per colonne con tipo speciale (jsonb).
-def _ph_and_val(col: str, value: Any) -> tuple[str, Any]:
-    col_type = _COLUMN_TYPES.get(col)
-    if col_type is None:
-        return "%s", value
-    return sql_placeholder(col_type), to_write_param(value, col_type)
-
-
-# Scopo: Costruisce SQL INSERT e relativi parametri filtrando `data` sulla
-#        whitelist colonne `write_cols`. `fixed_cols` permette di inserire
-#        colonne valorizzate dal repository (es. `offerta_id` figli) che non
-#        provengono dal payload. Ritorna (sql_str, params).
-def _build_insert(
-    table: str,
-    write_cols: tuple[str, ...],
-    data: dict[str, Any],
-    *,
-    fixed_cols: dict[str, Any] | None = None,
-    returning: str = "id",
-) -> tuple[str, list[Any]]:
-    cols: list[str] = []
-    vals: list[Any] = []
-    placeholders: list[str] = []
-    for col, val in (fixed_cols or {}).items():
-        cols.append(col)
-        placeholders.append("%s")
-        vals.append(val)
-    for col in write_cols:
-        if col in data:
-            ph, v = _ph_and_val(col, data[col])
-            cols.append(col)
-            placeholders.append(ph)
-            vals.append(v)
-    sql = (
-        f"INSERT INTO {table} ({', '.join(cols)}) "  # noqa: S608
-        f"VALUES ({', '.join(placeholders)}) RETURNING {returning}"
-    )
-    return sql, vals
-
-
-# Scopo: Costruisce SQL UPDATE e relativi parametri filtrando `data` sulla
-#        whitelist colonne `write_cols`. Aggiunge il WHERE su `where_col` =
-#        `where_val`. Se `data` non porta alcuna colonna mutabile, ritorna
-#        (None, ...) per segnalare no-op al chiamante.
-def _build_update(
-    table: str,
-    write_cols: tuple[str, ...],
-    data: dict[str, Any],
-    *,
-    where_col: str,
-    where_val: Any,
-) -> tuple[str | None, list[Any]]:
-    set_parts: list[str] = []
-    vals: list[Any] = []
-    for col in write_cols:
-        if col in data:
-            ph, v = _ph_and_val(col, data[col])
-            set_parts.append(f"{col} = {ph}")
-            vals.append(v)
-    if not set_parts:
-        return None, vals
-    vals.append(where_val)
-    sql = (
-        f"UPDATE {table} SET {', '.join(set_parts)} "  # noqa: S608
-        f"WHERE {where_col} = %s"
-    )
-    return sql, vals
+# Colonne jsonb delle tre tabelle scritte qui (testata, eccezioni, utility):
+# dichiarate al BB `execute_dynamic_insert`/`execute_dynamic_update`, cosi' una
+# STRINGA che vi arrivasse e' letta come testo JSON (regola Tid 2026-09-26) e
+# non come uno scalare stringa jsonb.
+# ⭐ 2026-09-26: qui vivevano `_ph_and_val`/`_build_insert`/`_build_update`,
+#    copia locale della composizione dinamica (gemella di quella di
+#    `contratti_repository`), ritirata a favore del BB core. Il loro filtro
+#    `if col in data` SCARTAVA IN SILENZIO le chiavi fuori lista: ora e'
+#    `RuntimeError` nel BB, e il contratto dell'operatore lo fa rispettare il
+#    service (`validate_allowed_keys`, 400) prima di arrivare qui.
+_JSONB_COLS: tuple[str, ...] = ("meta",)
+# ⚠️ Il padre (`offerta_id`) delle INSERT figlie arriva dal PATH e si mette
+#    per ULTIMO nel dict (`{**data, "offerta_id": ...}`): se `data` lo
+#    portasse, vince il path — mai una riga scritta sotto un altro padre. Che
+#    `data` non lo porti lo garantisce il service (le sue whitelist non lo
+#    contengono).
 
 
 # Whitelist ORDER BY per la lista offerte (SQL injection safe).
@@ -149,6 +95,14 @@ _ORDER_COLS_OFFERTE: dict[str, str] = {
     "pratica_numero": "v.pratica_numero",
     "fase": "v.fase",
 }
+
+# Le colonne DATA della whitelist: senza direzione indicata partono DESC (regola
+# Tid 2026-09-02, `colonne_desc` di `sql_order_clause`). Coincidono con le date
+# ordinabili del seed — lo verifica `test_liste_configurabili_seed` (test 10).
+_ORDER_COLS_OFFERTE_DATA: frozenset[str] = frozenset({
+    "validita_dal", "validita_al", "data_emissione", "data_accettazione",
+    "data_rifiuto", "data_annullamento", "data_insert",
+})
 
 
 # === Costante LISTA (vista canonica DEF-8, 2026-06-03) ===
@@ -452,13 +406,25 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         search: str | None = None,
         solo_ultima_revisione: bool = True,
         order_by: str = "data_insert",
-        order_dir: str = "DESC",
+        order_dir: str | None = None,
         limit: int = 25,
         offset: int = 0,
         auth_user_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        order_col = _ORDER_COLS_OFFERTE.get(order_by, _ORDER_COLS_OFFERTE["data_insert"])
-        order_dir_safe = "ASC" if str(order_dir).upper() == "ASC" else "DESC"
+        # ⛔ Ordinamento dal BB `sql_order_clause` (2026-09-26). La copia a mano
+        #    che c'era («tutto cio' che non e' ASC e' DESC») trasformava in DESC
+        #    qualunque direzione estranea, e inchiodava lo spareggio `v.id` a
+        #    DESC anche ordinando ASC. Ora: direzione estranea = `ValueError`,
+        #    NULL come valore minimo, spareggio allineato al verso. Il service
+        #    ha gia' validato colonna e direzione col codice di dominio
+        #    (`validate_order_by`), quindi un `order_by` fuori whitelist qui e'
+        #    un errore di programmazione: `rifiuta_fuori_whitelist`.
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=_ORDER_COLS_OFFERTE, default="v.data_insert",
+            default_desc=True, colonne_desc=_ORDER_COLS_OFFERTE_DATA,
+            tiebreak="v.id", rifiuta_fuori_whitelist=True,
+        )
         where_clause, params = self._build_offerte_filters(
             billing_account_id=billing_account_id,
             stato_codice_interno=stato_codice_interno,
@@ -477,9 +443,9 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             SELECT v.*
               {_FROM_LISTA_OFFERTE}
               {where_clause}
-             ORDER BY {order_col} {order_dir_safe}, v.id DESC
+             ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
-        """  # noqa: S608
+        """
         params.extend([limit, offset])
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
@@ -514,7 +480,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             SELECT COUNT(*)
               {_FROM_LISTA_OFFERTE}
               {where_clause}
-        """  # noqa: S608
+        """
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             row = cursor.fetchone()
@@ -529,7 +495,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
                 SELECT {_SELECT_COLS_OFFERTA}
                   {_FROM_JOINS_OFFERTA}
                  WHERE o.id = %s
-                """,  # noqa: S608
+                """,
                 [offerta_id],
             )
             return row_to_dict(cursor)
@@ -580,7 +546,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
     # `codice` escluso da Step 5 (2026-05-25): generato dal trigger DB
     # `trgfn_offerte_commerciali_gen_codice` (BEFORE INSERT); il repository
     # non lo tocca, defense-in-depth applicativa.
-    _OFFERTA_CREATE_COLS: tuple[str, ...] = (
+    TESTATA_CREATE_COLUMNS: frozenset[str] = frozenset({
         "emittente_fiscale_id",
         "billing_account_id",
         "istanza_utility_id",
@@ -596,13 +562,13 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         "revisione_numero",
         "revisione_padre_id",
         "meta",
-    )
+    })
 
     # Colonne aggiornabili in update (sotto-set di create senza chiavi
     # gestionali: `codice`, `stato_doc_offerta_id`, `revisione_*`).
     # `valuta_id`: snapshot fissato al CREATE, immutabile in update (simmetrico
     # a `vendite.preventivi`; eventuale lock applicativo a discrezione del DB).
-    _OFFERTA_UPDATE_COLS: tuple[str, ...] = (
+    TESTATA_UPDATE_COLUMNS: frozenset[str] = frozenset({
         "emittente_fiscale_id",
         "billing_account_id",
         "istanza_utility_id",
@@ -614,30 +580,24 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         "validita_dal",
         "validita_al",
         "meta",
-    )
+    })
 
+    # ⛔ Whitelist RIGIDA (BB): una chiave fuori `TESTATA_CREATE_COLUMNS` e'
+    #    `RuntimeError`, non piu' uno scarto silenzioso (2026-09-26).
     def create_offerta(self, data: dict[str, Any]) -> int:
-        sql, vals = _build_insert(
-            "vendite.offerte_commerciali", self._OFFERTA_CREATE_COLS, data,
+        riga = execute_dynamic_insert(
+            "vendite.offerte_commerciali", data,
+            allowed=self.TESTATA_CREATE_COLUMNS, jsonb=_JSONB_COLS,
         )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+        return int(riga["id"])
 
     # Scopo: Aggiorna testata offerta. `codice`/`uid`/`stato_doc_offerta_id`
     #        immutabili tramite questo metodo (per lo stato c'e' update_stato).
     def update_offerta(self, offerta_id: int, data: dict[str, Any]) -> bool:
-        sql, vals = _build_update(
-            "vendite.offerte_commerciali", self._OFFERTA_UPDATE_COLS, data,
-            where_col="id", where_val=offerta_id,
+        return execute_dynamic_update(
+            "vendite.offerte_commerciali", offerta_id, data,
+            allowed=self.TESTATA_UPDATE_COLUMNS, jsonb=_JSONB_COLS,
         )
-        if sql is None:
-            return False
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return cursor.rowcount > 0
 
     # Scopo: Cambia lo stato documentale dell'offerta. Il trigger DB
     #        trgfn_offerte_commerciali_guard_transizione verifica che la
@@ -690,7 +650,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
                   {_FROM_JOINS_ECCEZIONE}
                  WHERE e.offerta_id = %s
                  ORDER BY e.ordine ASC, e.id ASC
-                """,  # noqa: S608
+                """,
                 [offerta_id],
             )
             return rows_to_list(cursor)
@@ -719,15 +679,16 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
                 SELECT {_SELECT_COLS_ECCEZIONE}
                   {_FROM_JOINS_ECCEZIONE}
                  WHERE e.id = %s
-                """,  # noqa: S608
+                """,
                 [eccezione_id],
             )
             return row_to_dict(cursor)
 
     # Colonne scrivibili eccezione: in create includono `articolo_id`/
-    # `tipo_eccezione` (immutabili dopo INSERT); in update vengono filtrati
-    # via `_ECCEZIONE_UPDATE_COLS`.
-    _ECCEZIONE_CREATE_COLS: tuple[str, ...] = (
+    # `tipo_eccezione` (immutabili dopo INSERT), assenti da
+    # `ECCEZIONE_UPDATE_COLUMNS` (in update sono `RuntimeError`, non scartate). `offerta_id` NON e' qui: arriva dall'URL
+    # e lo aggiunge `create_eccezione`.
+    ECCEZIONE_CREATE_COLUMNS: frozenset[str] = frozenset({
         "articolo_id",
         "tipo_eccezione",
         "tipo_erogazione",
@@ -746,9 +707,9 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         # Approvazione prezzo L3 (migration 20260601-01, simmetria contratti_righe).
         "stato_approvazione_prezzo",
         "pratica_approvazione_prezzo_id",
-    )
+    })
 
-    _ECCEZIONE_UPDATE_COLS: tuple[str, ...] = (
+    ECCEZIONE_UPDATE_COLUMNS: frozenset[str] = frozenset({
         "tipo_erogazione",
         "fonte_quantita_attesa",
         "periodicita",
@@ -766,39 +727,27 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         # (`_update_riga_offerta`) e dal gate (REJECTED/meta motivazione).
         "stato_approvazione_prezzo",
         "pratica_approvazione_prezzo_id",
-    )
+    })
 
     # Scopo: Inserisce un'eccezione offerta. I 5 CHECK constraint DB
     #        (chk_offerte_eccezioni_*) validano coerenza prezzo/canone/
     #        fonte/erogazione/qta — qui solo passaggio colonne whitelisted.
     def create_eccezione(self, offerta_id: int, data: dict[str, Any]) -> int:
-        sql, vals = _build_insert(
+        riga = execute_dynamic_insert(
             "vendite.offerte_commerciali_eccezioni",
-            self._ECCEZIONE_CREATE_COLS,
-            data,
-            fixed_cols={"offerta_id": offerta_id},
+            {**data, "offerta_id": offerta_id},
+            allowed={"offerta_id", *self.ECCEZIONE_CREATE_COLUMNS},
+            jsonb=_JSONB_COLS,
         )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+        return int(riga["id"])
 
     # Scopo: Aggiorna un'eccezione offerta sul subset mutabile (articolo_id
     #        e tipo_eccezione immutabili — un cambio = delete+create).
     def update_eccezione(self, eccezione_id: int, data: dict[str, Any]) -> bool:
-        sql, vals = _build_update(
-            "vendite.offerte_commerciali_eccezioni",
-            self._ECCEZIONE_UPDATE_COLS,
-            data,
-            where_col="id",
-            where_val=eccezione_id,
+        return execute_dynamic_update(
+            "vendite.offerte_commerciali_eccezioni", eccezione_id, data,
+            allowed=self.ECCEZIONE_UPDATE_COLUMNS, jsonb=_JSONB_COLS,
         )
-        if sql is None:
-            return False
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return cursor.rowcount > 0
 
     # Scopo: Cancella un'eccezione offerta (hard delete). Guard stato BOZZA
     #        a livello service.
@@ -950,14 +899,14 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
                 SELECT {_SELECT_COLS_UTILITY}
                   {_FROM_JOINS_UTILITY}
                  WHERE ou.offerta_id = %s
-                """,  # noqa: S608
+                """,
                 [offerta_id],
             )
             return row_to_dict(cursor)
 
     # Colonne scrivibili utility (create con istanza_utility_id/utility_id,
     # update senza — immutabili: cambio = delete+create).
-    _UTILITY_CREATE_COLS: tuple[str, ...] = (
+    UTILITY_CREATE_COLUMNS: frozenset[str] = frozenset({
         "istanza_utility_id",
         "utility_id",
         "istanza_dati_precontrattuali_id",
@@ -966,48 +915,36 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         "param_1_num",
         "param_2_txt",
         "meta",
-    )
+    })
 
-    _UTILITY_UPDATE_COLS: tuple[str, ...] = (
+    UTILITY_UPDATE_COLUMNS: frozenset[str] = frozenset({
         "istanza_dati_precontrattuali_id",
         "tipo_utenza_id",
         "classe_utenza_id",
         "param_1_num",
         "param_2_txt",
         "meta",
-    )
+    })
 
     # Scopo: Crea il record utility 1:1 (UNIQUE offerta_id; un INSERT
     #        duplicato fallisce con violazione UNIQUE → mappato dal service).
     def create_utility(self, offerta_id: int, data: dict[str, Any]) -> int:
-        sql, vals = _build_insert(
+        riga = execute_dynamic_insert(
             "vendite.offerte_commerciali_utilities",
-            self._UTILITY_CREATE_COLS,
-            data,
-            fixed_cols={"offerta_id": offerta_id},
+            {**data, "offerta_id": offerta_id},
+            allowed={"offerta_id", *self.UTILITY_CREATE_COLUMNS},
+            jsonb=_JSONB_COLS,
         )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+        return int(riga["id"])
 
     # Scopo: Aggiorna il record utility sul subset mutabile (istanza_utility_id
     #        e utility_id NON modificabili: cambiano solo eliminando+ricreando
     #        l'offerta, come per il contratto).
     def update_utility(self, utility_row_id: int, data: dict[str, Any]) -> bool:
-        sql, vals = _build_update(
-            "vendite.offerte_commerciali_utilities",
-            self._UTILITY_UPDATE_COLS,
-            data,
-            where_col="id",
-            where_val=utility_row_id,
+        return execute_dynamic_update(
+            "vendite.offerte_commerciali_utilities", utility_row_id, data,
+            allowed=self.UTILITY_UPDATE_COLUMNS, jsonb=_JSONB_COLS,
         )
-        if sql is None:
-            return False
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return cursor.rowcount > 0
 
     # =================================================================
     # Lookup di supporto

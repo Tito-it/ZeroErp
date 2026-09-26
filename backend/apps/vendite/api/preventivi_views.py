@@ -33,6 +33,7 @@ from apps.vendite.api.indirizzi_documento_views import (
 from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import preventivi_service
 from apps.core.api.openapi_params import param_ricerca_full
+from apps.vendite.api._componenti_schema import COMPONENTE_PATCH_REQUEST
 
 # Codice lista configurabile (catalogo ui.lista_definizione id=5). Usato
 # dall'export per risolvere colonne visibili/ordine/permessi dell'utente.
@@ -95,8 +96,8 @@ class ApiPreventiviList(DomainAPIView):
     # Scopo: Restituisce via GET l'elenco paginato dei preventivi vendita.
     #        Paginazione standard limit/offset via parse_list_params (allineata
     #        a clienti/contratti/offerte/ordini; il vecchio page/page_size era
-    #        l'unico outlier del dominio). order_dir mantiene il default 'desc'
-    #        di dominio (parse_list_params defaulta 'asc'). Usa direttamente
+    #        l'unico outlier del dominio). order_dir assente -> il default 'desc'
+    #        di dominio, scritto qui. Usa direttamente
     #        list_preventivi_rows + paginated_envelope (mirror views_ordini); il
     #        wrapper list_preventivi(page/page_size) resta per AI tool + test.
     def get(self, request: Request) -> JsonResponse:
@@ -836,17 +837,7 @@ class ApiPreventivoRigaComponenteDetail(DomainAPIView):
     area_funzionale = "vendite"
 
     @extend_schema(
-        request=inline_serializer(
-            name="PreventivoRigaComponenteUpdateRequest",
-            fields={
-                "prezzo_unitario": serializers.DecimalField(
-                    max_digits=22, decimal_places=10, required=False,
-                ),
-                "origine_prezzo": serializers.CharField(required=False),
-                "iva_id": serializers.IntegerField(required=False),
-                "ordine": serializers.IntegerField(required=False),
-            },
-        ),
+        request=COMPONENTE_PATCH_REQUEST,
         responses={200: inline_serializer(
             name="PreventivoRigaComponenteUpdateResponse",
             fields={"data": inline_serializer(
@@ -857,9 +848,9 @@ class ApiPreventivoRigaComponenteDetail(DomainAPIView):
             )},
         )},
     )
-    # Scopo: Aggiorna componente via PATCH. Solo campi nella whitelist
-    #        repo `_COMPONENTE_UPDATE_ALLOWED` sono applicati: gli altri
-    #        vengono ignorati silenziosamente (defense-in-depth).
+    # Scopo: Aggiorna componente via PATCH. Solo i campi del contratto
+    #        operatore `COMPONENTE_PATCH_OPERATORE`: gli altri sono un 400
+    #        (`E_PREV_VALIDAZIONE`, dal 2026-09-26 — prima ignorati in silenzio).
     #        `riga_id` URL passato al service per check anti-tampering
     #        (deve matchare la riga padre reale del componente).
     def patch(
@@ -895,7 +886,7 @@ class ApiPreventivoRigaComponenteDetail(DomainAPIView):
     #        reale del componente).
     def delete(
         self,
-        request: Request,  # noqa: ARG002 — DRF richiede signature
+        request: Request,  # DRF richiede signature
         preventivo_id: int,
         riga_id: int,
         componente_id: int,

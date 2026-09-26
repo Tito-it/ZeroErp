@@ -386,7 +386,7 @@ def calcola_digest(
             #    catalogo dice di se'.
             if conteggio and riga["natura"] == NATURA_ZERO:
                 righe = repo.prime_righe(riga, limite=righe_nel_messaggio)
-        except Exception as exc:  # noqa: BLE001 — isolamento per presidio voluto
+        except Exception as exc:  # isolamento per presidio voluto
             logger.warning(
                 "presidi_digest.presidio_non_letto vista=%s errore=%s",
                 riga["vista"], exc, exc_info=True,
@@ -506,7 +506,7 @@ def _leggi_battito(
             #    il messaggio ignora `attivo` quando la tolleranza e' `None`.
             soglia_minuti=tolleranza if tolleranza is not None else 0,
         )
-    except Exception as exc:  # noqa: BLE001 — il battito non affonda il digest
+    except Exception as exc:  # il battito non affonda il digest
         logger.warning("presidi_digest.battito_non_letto errore=%s", exc, exc_info=True)
         return None
     return Battito(

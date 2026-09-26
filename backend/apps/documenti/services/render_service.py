@@ -97,19 +97,25 @@ def _guard_versione_minima(versione: dict[str, Any]) -> None:
 
 # Scopo: Render Jinja del sorgente HTML con `context` come namespace.
 #        `StrictUndefined`: variabile mancante nel context -> eccezione
-#        parlante (fail-fast), non stringa vuota silenziosa. I template
-#        documentali sono creati da admin via Configurazione e sono fidati:
-#        autoescape disabilitato per non doppio-escape contenuti pre-formattati
-#        nel template stesso. Eventuali stringhe utente nel context vanno
-#        passate gia' escapate dal builder (responsabilita' del dominio
-#        sorgente).
+#        parlante (fail-fast), non stringa vuota silenziosa.
+# ⛔ `autoescape=True`, e il posto giusto e' QUI, non nei builder. Il context
+#    porta dati scritti dagli utenti (ragioni sociali, indirizzi, descrizioni
+#    riga, note): senza escape un `<link rel="attachment" href="file://...">`
+#    in un campo anagrafica diventava HTML vero, e WeasyPrint lo avrebbe
+#    eseguito — un file del server allegato al PDF. Fino al 2026-09-26
+#    l'escape era delegato a «ogni builder», e nessuno dei quattro lo faceva:
+#    una protezione che dipende da ogni punto di trasporto non c'e'.
+# ⚠️ L'escape tocca solo i VALORI interpolati: l'HTML scritto nel template dal
+#    configuratore resta com'e'. Un blocco del context che fosse GIA' HTML
+#    (oggi nessuno) va marcato `markupsafe.Markup` dal builder, mai con
+#    `|safe` nel template.
 def _render_html_with_jinja(html_template: str, context: dict[str, Any]) -> str:
     # Import locale: evita di pagare il costo di parsing Jinja a meno che
     # il render non sia effettivamente invocato.
     from jinja2 import Environment, StrictUndefined
     from jinja2 import TemplateError as _JinjaTemplateError
     env = Environment(
-        autoescape=False,
+        autoescape=True,
         undefined=StrictUndefined,
         keep_trailing_newline=True,
     )

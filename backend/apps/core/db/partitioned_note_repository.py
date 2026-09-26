@@ -17,6 +17,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import fetchone_scalar, row_to_dict, rows_to_list
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, sql_set_clause
 
 # Regex per validare SQL identifier dotted (schema.tabella). I parametri del
 # constructor sono governati dal codice applicativo, ma il guard intercetta
@@ -50,6 +51,14 @@ _NOTE_CREATE_COLUMNS: frozenset[str] = frozenset({
     "meta",
     "target_riga_id",
 })
+
+# Colonne dell'INSERT: la whitelist del payload + le due chiavi imposte dal
+# repository.
+_NOTE_INSERT_COLUMNS: frozenset[str] = _NOTE_CREATE_COLUMNS | {"target_tipo", "target_id"}
+
+# Colonne jsonb dichiarate al BB (regola Tid 2026-09-26: una stringa li' e'
+# testo JSON; il service oggi passa solo dict da `optional_meta`).
+_NOTE_JSONB: tuple[str, ...] = ("meta",)
 
 # Whitelist colonne aggiornabili in UPDATE (esclude target_*).
 _NOTE_UPDATE_COLUMNS: frozenset[str] = frozenset({
@@ -271,51 +280,46 @@ class PartitionedNoteRepository:
             cursor.execute(sql, [self._target_tipo, target_id])
             return int(fetchone_scalar(cursor))
 
-    # Scopo: INSERT su partizione. `payload` filtrato sulla whitelist;
-    #        `target_tipo`/`target_id` sono governati dal repository.
-    #        RETURNING id (la pk composita ha id locale alla partizione).
+    # Scopo: INSERT su partizione (BB `execute_dynamic_insert`, 2026-09-26).
+    #        `target_tipo`/`target_id` sono governati dal repository: imposti
+    #        DOPO il payload, vincono. RETURNING id (la pk composita ha id locale
+    #        alla partizione).
+    #        ⛔ Whitelist RIGIDA: una chiave fuori `_NOTE_CREATE_COLUMNS` e'
+    #        RuntimeError (prima scartata in silenzio). Il service valida le
+    #        chiavi del client con un 400 (`validate_allowed_keys`).
+    #        ⚠️ Fino a quel giorno `meta` (dict) arrivava nudo al cursor, che non
+    #        lo sa adattare: ogni nota con `meta` era un 500. Il BB lo serializza.
+    #        Lo strip del BB su `testo`/`testo_md` non cambia niente: il service
+    #        li strippa gia' (`optional_string`).
     def create(self, target_id: int, payload: dict[str, Any]) -> int:
-        cols: list[str] = ["target_tipo", "target_id"]
-        vals: list[Any] = [self._target_tipo, target_id]
-        placeholders: list[str] = ["%s", "%s"]
-        for key, value in payload.items():
-            if key not in _NOTE_CREATE_COLUMNS:
-                continue
-            cols.append(key)
-            vals.append(value)
-            placeholders.append("%s")
-        sql = (
-            f"INSERT INTO {self._partition_table} "  # noqa: S608
-            f"({', '.join(cols)}) VALUES ({', '.join(placeholders)}) "
-            f"RETURNING id"
+        riga = execute_dynamic_insert(
+            self._partition_table,
+            {**payload, "target_tipo": self._target_tipo, "target_id": target_id},
+            allowed=_NOTE_INSERT_COLUMNS,
+            jsonb=_NOTE_JSONB,
         )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return int(fetchone_scalar(cursor))
+        return int(riga["id"])
 
     # Scopo: UPDATE su partizione con pk composita (target_tipo, id) + target_id
-    #        difensivo. `patch` filtrato sulla whitelist. Restituisce True se la
-    #        riga e' stata aggiornata.
+    #        difensivo. SET dal BB `sql_set_clause` (whitelist RIGIDA
+    #        `_NOTE_UPDATE_COLUMNS`: `target_*` fuori lista e' RuntimeError).
+    #        `patch` vuoto -> False senza SQL. Restituisce True se la riga e'
+    #        stata aggiornata.
     def update(
         self, note_id: int, target_id: int, patch: dict[str, Any],
     ) -> bool:
-        set_parts: list[str] = []
-        params: list[Any] = []
-        for key, value in patch.items():
-            if key not in _NOTE_UPDATE_COLUMNS:
-                continue
-            set_parts.append(f"{key} = %s")
-            params.append(value)
-        if not set_parts:
+        if not patch:
             return False
-        params.extend([self._target_tipo, note_id, target_id])
+        clausola, params = sql_set_clause(
+            patch, allowed=_NOTE_UPDATE_COLUMNS, jsonb=_NOTE_JSONB,
+        )
         sql = (
-            f"UPDATE {self._partition_table} "  # noqa: S608
-            f"SET {', '.join(set_parts)} "
+            f"UPDATE {self._partition_table} "  # noqa: S608 — tabella dal costruttore (verificata da _validate_sql_identifier), colonne verificate da sql_set_clause, valori come parametri
+            f"SET {clausola} "
             f"WHERE target_tipo = %s AND id = %s AND target_id = %s"
         )
         with connection.cursor() as cursor:
-            cursor.execute(sql, params)
+            cursor.execute(sql, [*params, self._target_tipo, note_id, target_id])
             return cursor.rowcount > 0
 
     # Scopo: DELETE su partizione. Hard delete (le note non hanno colonna `attivo`).

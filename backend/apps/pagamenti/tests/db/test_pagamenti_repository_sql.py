@@ -30,17 +30,25 @@ Indice test eseguiti:
 15) CataloghiTests.test_lo_stato_dell_abbinamento_esiste_a_catalogo
 16) CataloghiTests.test_i_motivi_fuori_capienza_sono_quelli_della_vista
 17) CataloghiTests.test_i_codici_errore_del_service_esistono_a_catalogo
+18) EnteIncassoScrittureTests.test_regole_match_esce_castata_a_jsonb
+19) EnteIncassoScrittureTests.test_regole_match_si_legge_come_oggetto
+20) EnteIncassoScrittureTests.test_insert_colonna_fuori_whitelist_rifiutata
+21) EnteIncassoScrittureTests.test_insert_passa_dal_bb_con_la_regola_jsonb
 """
 
 import csv
 import re
 from pathlib import Path
 from unittest import TestCase
+from unittest.mock import patch
 
 from apps.core.services.error_manager import ServiceError
 from apps.pagamenti.db import pagamenti_repository as repo_mod
 from apps.pagamenti.db.pagamenti_repository import (
     _COLONNE_DISTINTA_AGGIORNABILI,
+    _COLONNE_ENTE_INCASSO_AGGIORNABILI,
+    _COLONNE_ENTE_INCASSO_INSERIBILI,
+    _JSONB_COLS,
     _COLONNE_RIGA_AGGIORNABILI,
     DISTINTE_SORT_COLUMNS,
     RATE_FUORI_CAPIENZA_SORT_COLUMNS,
@@ -120,6 +128,47 @@ class UpdateWhitelistTests(TestCase):
     def test_la_riga_non_aggiorna_le_colonne_della_testata(self):
         self.assertNotIn("importo_dichiarato", _COLONNE_RIGA_AGGIORNABILI)
         self.assertNotIn("importo", _COLONNE_DISTINTA_AGGIORNABILI)
+
+
+class EnteIncassoScrittureTests(TestCase):
+    """🔴 `regole_match` e' jsonb NOT NULL: una regola sola per scriverla e leggerla.
+
+    Fino al 2026-09-26 l'INSERT la castava con un'eccezione scritta a mano,
+    l'UPDATE no, e la lettura la serviva come STRINGA (il driver restituisce
+    jsonb come testo e `_shape` non la decodificava). Nessun errore: un
+    contratto che in ingresso vuole un oggetto e in uscita da' una stringa.
+    """
+
+    def test_regole_match_esce_castata_a_jsonb(self):
+        clause, params = PagamentiRepository._set_clause(
+            {"regole_match": '{"a": 1}'}, _COLONNE_ENTE_INCASSO_AGGIORNABILI, "x"
+        )
+        self.assertEqual(clause, "regole_match = %s::jsonb")
+        self.assertEqual(params, ['{"a": 1}'])
+
+    def test_regole_match_si_legge_come_oggetto(self):
+        riga = PagamentiRepository._shape({"regole_match": '{"a": 1}', "meta": "{}"})
+        self.assertEqual(riga["regole_match"], {"a": 1})
+        self.assertEqual(riga["meta"], {})
+
+    # ⛔ L'INSERT passa dallo stesso cancello dell'UPDATE: prima componeva le
+    #    colonne da `list(campi)` senza whitelist nel repository.
+    def test_insert_colonna_fuori_whitelist_rifiutata(self):
+        with patch.object(repo_mod, "execute_dynamic_insert") as bb:
+            with self.assertRaises(ServiceError):
+                PagamentiRepository().create_ente_incasso(
+                    {"codice": "X", "codice_interno": "Y"}
+                )
+            bb.assert_not_called()
+
+    def test_insert_passa_dal_bb_con_la_regola_jsonb(self):
+        with patch.object(repo_mod, "execute_dynamic_insert", return_value={"id": 9}) as bb:
+            esito = PagamentiRepository().create_ente_incasso({"codice": "X"})
+        self.assertEqual(esito, 9)
+        kwargs = bb.call_args.kwargs
+        self.assertEqual(kwargs["allowed"], _COLONNE_ENTE_INCASSO_INSERIBILI)
+        self.assertEqual(kwargs["jsonb"], _JSONB_COLS)
+        self.assertIn("regole_match", _JSONB_COLS)
 
 
 class CataloghiTests(TestCase):

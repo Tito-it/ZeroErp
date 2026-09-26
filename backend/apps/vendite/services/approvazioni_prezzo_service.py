@@ -174,6 +174,16 @@ def _require_sorgente(sorgente: str) -> dict[str, Any]:
     return cfg
 
 
+# Scopo: le colonne di riga che il workflow L3 scrive, e SOLO lui (il
+#        contratto dell'operatore le rifiuta: `COMPONENTE_PATCH_OPERATORE`,
+#        `_UPDATE_KEYS_RIGA`). Dichiarate qui perche' il presidio
+#        `test_whitelist_service_dentro_repository` le trovi accanto alle chiavi
+#        dell'operatore: il repository deve saperle scrivere tutte.
+CAMPI_RIGA_WORKFLOW_L3: frozenset[str] = frozenset({
+    "stato_approvazione_prezzo", "pratica_approvazione_prezzo_id", "meta",
+})
+
+
 def _update_riga_workflow(
     *,
     sorgente: str,
@@ -182,6 +192,12 @@ def _update_riga_workflow(
 ) -> None:
     # Scopo: UPDATE workflow su riga (stato_approvazione_prezzo / pratica_id /
     #        meta). Dispatch via callable iniettato in `_SORGENTE_CONFIG`.
+    # ⛔ Un campo fuori `CAMPI_RIGA_WORKFLOW_L3` e' un errore di programmazione
+    #    (`RuntimeError`, 500 col traceback): la dichiarazione e' cio' che il
+    #    presidio confronta col repository, e deve restare vera.
+    fuori = sorted(set(fields) - CAMPI_RIGA_WORKFLOW_L3)
+    if fuori:
+        raise RuntimeError(f"_update_riga_workflow: campi non del workflow L3: {fuori}")
     cfg = _require_sorgente(sorgente)
     cfg["update_riga"](riga_id, fields)
 
@@ -860,7 +876,7 @@ def _invia_email_richiesta_approvazione(
             #    preso da un parametro — quindi e' `SISTEMA`.
             ambito="SISTEMA",
         )
-    except Exception as exc:  # noqa: BLE001 - best-effort, log + continue
+    except Exception as exc:  # best-effort, log + continue
         logger.warning(
             "Email notifica approvazione prezzo fallita per pratica %s: %s",
             pratica_id, exc,
@@ -891,7 +907,7 @@ def _risolvi_email_approver(emittente_fiscale_id: int) -> str | None:
             )
             if valore and str(valore).strip():
                 return str(valore).strip()
-    except Exception:  # noqa: BLE001 - parameter non configurato = skip email
+    except Exception:  # parameter non configurato = skip email
         return None
     return None
 

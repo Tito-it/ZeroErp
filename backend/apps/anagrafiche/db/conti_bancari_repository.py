@@ -13,7 +13,8 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list
+from apps.core.db._helpers import row_to_dict, rows_to_list, pattern_contiene
+from apps.core.db.sql_write_helpers import sql_set_clause
 
 # Colonne comuni per le query sui legami (soggetto e ruolo).
 # Il blocco JOIN conto_bancari + bank_branches e' identico per tutte le liste.
@@ -30,38 +31,50 @@ _LEGAME_CONTO_JOIN = """
               LEFT JOIN anagrafiche.bank_branches bb
                 ON bb.id = cb.bank_branch_id"""
 
-# Campi ammessi e nullable per update legami.
-# istanza_utility_id ammesso solo per legame ruolo (non soggetto), ma il filtro
-# avviene a livello service, qui e' generico.
-_LEGAME_ALLOWED = {
+# Colonne SCRIVIBILI dagli update dei legami (BB `sql_set_clause`, whitelist
+# RIGIDA dal 2026-09-26: una colonna fuori lista e' `RuntimeError`).
+# ⛔ Due liste e non una: `istanza_utility_id` esiste SOLO su
+#    `soggetti_ruoli_conti_bancari`. Fino al 2026-09-26 la lista era unica
+#    («il filtro avviene a livello service» — ma il service non filtrava): una
+#    PATCH del legame SOGGETTO con `istanza_utility_id` componeva un UPDATE su
+#    una colonna che non c'e', cioe' un 500 da PostgreSQL.
+# ⚠️ Sono il perimetro del REPOSITORY; il contratto del payload lo valida
+#    `ContiBancariService` (400), partendo da qui.
+LEGAME_SOGGETTO_UPDATE_COLS: frozenset[str] = frozenset({
     "uso", "predefinito", "valido_dal", "valido_al",
-    "intestazione_dichiarata", "verificato", "bloccato", "istanza_utility_id",
-}
+    "intestazione_dichiarata", "verificato", "bloccato",
+})
+LEGAME_RUOLO_UPDATE_COLS: frozenset[str] = LEGAME_SOGGETTO_UPDATE_COLS | {"istanza_utility_id"}
 _LEGAME_NULLABLE = {"valido_dal", "valido_al", "intestazione_dichiarata", "istanza_utility_id"}
 
 
-def _normalize_legame_data(data: dict[str, Any]) -> list[tuple[str, Any]]:
-    """Normalizza stringhe vuote a None e filtra campi ammessi per update legame."""
+# Scopo: Normalizza stringhe vuote a None sui campi nullable. Ritorna una
+#        COPIA: `data` e' spesso `request.data`, non si muta l'input.
+def _normalize_legame_data(data: dict[str, Any]) -> dict[str, Any]:
+    valori = dict(data)
     for k in _LEGAME_NULLABLE:
-        if k in data and isinstance(data[k], str) and not data[k].strip():
-            data[k] = None
-    return [(k, v) for k, v in data.items() if k in _LEGAME_ALLOWED]
+        val = valori.get(k)
+        if isinstance(val, str) and not val.strip():
+            valori[k] = None
+    return valori
 
 
+# Scopo: UPDATE generico per legami conto bancario (soggetto o ruolo).
+#        SET dal BB `sql_set_clause` (2026-09-26), il WHERE di ownership lo
+#        scrive questo helper. `table`/`pk_col`/`owner_cast` sono LITERAL dei
+#        metodi `update_conto_*`, mai input.
 def _update_legame(
     table: str, pk_col: str,
     record_id: int, owner_id: Any, owner_cast: str,
-    data: dict[str, Any],
+    data: dict[str, Any], allowed: frozenset[str],
 ) -> bool:
-    """UPDATE generico per legami conto bancario (soggetto o ruolo)."""
-    fields = _normalize_legame_data(data)
-    if not fields:
+    valori = _normalize_legame_data(data)
+    if not valori:
         return False
-    set_clause = ", ".join([f"{f[0]} = %s" for f in fields])
-    values: list[Any] = [f[1] for f in fields]
+    set_clause, values = sql_set_clause(valori, allowed=allowed)
     values.extend([record_id, owner_id])
     sql = (
-        f"UPDATE {table} SET {set_clause} "  # noqa: S608
+        f"UPDATE {table} SET {set_clause} "  # noqa: S608 — table/pk_col/owner_cast literal dei metodi update_conto_*, SET da sql_set_clause (colonne in whitelist), valori come parametri
         f"WHERE id = %s AND {pk_col} = %s{owner_cast}"
     )
     with connection.cursor() as cursor:
@@ -81,7 +94,7 @@ class ContiBancariRepository:
     def search_conti_bancari(
         self, search: str, limit: int = 10,
     ) -> list[dict[str, Any]]:
-        search_pattern = f"%{search.strip()}%"
+        search_pattern = pattern_contiene(search)
         sql = """
             SELECT cb.id, cb.iban, cb.bic_swift,
                    cb.intestatario_predefinito, cb.paese,
@@ -167,7 +180,7 @@ class ContiBancariRepository:
               {_LEGAME_CONTO_JOIN.format(alias='scb')}
              WHERE scb.soggetto_id = %s::uuid
              ORDER BY scb.uso, scb.predefinito DESC, scb.id
-        """
+        """  # noqa: S608 — _LEGAME_CONTO_COLS/_JOIN costanti di modulo con alias letterale, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [soggetto_id])
             return rows_to_list(cursor)
@@ -212,6 +225,7 @@ class ContiBancariRepository:
         return _update_legame(
             "anagrafiche.soggetti_conti_bancari", "soggetto_id",
             conto_soggetto_id, soggetto_id, "::uuid", data,
+            LEGAME_SOGGETTO_UPDATE_COLS,
         )
 
     # Scopo: Elimina legame soggetto ↔ conto con ownership check.
@@ -251,7 +265,7 @@ class ContiBancariRepository:
               {_LEGAME_CONTO_JOIN.format(alias='srcb')}
              WHERE srcb.soggetto_ruolo_id = %s
              ORDER BY srcb.uso, srcb.predefinito DESC, srcb.id
-        """
+        """  # noqa: S608 — _LEGAME_CONTO_COLS/_JOIN costanti di modulo con alias letterale, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [soggetto_ruolo_id])
             return rows_to_list(cursor)
@@ -273,7 +287,7 @@ class ContiBancariRepository:
                 ON sr.soggetto_id = scb.soggetto_id
              WHERE sr.id = %s
              ORDER BY scb.uso, scb.predefinito DESC, scb.id
-        """
+        """  # noqa: S608 — _LEGAME_CONTO_COLS/_JOIN costanti di modulo con alias letterale, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [soggetto_ruolo_id])
             return rows_to_list(cursor)
@@ -320,6 +334,7 @@ class ContiBancariRepository:
         return _update_legame(
             "anagrafiche.soggetti_ruoli_conti_bancari", "soggetto_ruolo_id",
             conto_ruolo_id, soggetto_ruolo_id, "", data,
+            LEGAME_RUOLO_UPDATE_COLS,
         )
 
     # Scopo: Elimina legame ruolo ↔ conto con ownership check.
@@ -361,7 +376,7 @@ class ContiBancariRepository:
     def search_bank_branches(
         self, search: str, limit: int = 10,
     ) -> list[dict[str, Any]]:
-        search_pattern = f"%{search.strip()}%"
+        search_pattern = pattern_contiene(search)
         sql = """
             SELECT bb.id, bb.name AS filiale_nome,
                    bb.bank_code, bb.branch_code,

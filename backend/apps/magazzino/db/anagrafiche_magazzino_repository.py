@@ -27,11 +27,17 @@
 #
 #       ⚠️ Le SQL interpolano SOLO identificatori dalle whitelist di questo
 #       modulo (colonne scrivibili, ordinamento); i VALORI viaggiano nei `params`.
+#
+#       ⭐ 2026-09-26: le scritture passano dai BB core (`execute_dynamic_insert`
+#       / `execute_dynamic_update` / `sql_set_clause`); i privati `_inserisci`,
+#       `_aggiorna`, `_segnaposto`, `_valore` sono ritirati. ⛔ La whitelist e'
+#       RIGIDA: una chiave fuori dalle `*_COLONNE` e' `RuntimeError` (500), non
+#       piu' uno scarto silenzioso — il contratto dell'operatore lo chiude il
+#       service (`validate_allowed_keys`, 400) prima di arrivare qui.
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from django.db import connection
@@ -39,13 +45,17 @@ from django.db import connection
 from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
-    fetchone_scalar,
     jsonb_out,
     rows_to_list,
     sql_order_clause,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
-from apps.magazzino.db._helpers import guard_canale_sistema, lista_paginata
+from apps.core.db.sql_write_helpers import (
+    execute_dynamic_insert,
+    execute_dynamic_update,
+    sql_set_clause,
+)
+from apps.magazzino.db._helpers import guard_canale_sistema, lista_paginata, meta_mai_null
 from apps.magazzino.types import LottoRow, MagazzinoRow, UbicazioneRow
 
 _FN = "magazzino.anagrafiche_magazzino_repository"
@@ -123,21 +133,13 @@ UBICAZIONI_COLONNE: frozenset[str] = frozenset(
 )
 LOTTI_COLONNE: frozenset[str] = frozenset({"codice", "data_arrivo", "data_scadenza", "attivo", "meta"})
 
+# Le colonne jsonb: decodificate in lettura (`_shape`) e dichiarate ai BB di
+# scrittura — un dict va da solo, una STRINGA e' testo JSON (regola jsonb di
+# Tid del 2026-09-26). Il `None` su `meta` (NOT NULL) lo sistema `meta_mai_null`.
 _JSONB_COLS = ("meta",)
-# I cast espliciti dei segnaposto: il jsonb e l'uuid dell'articolo (il driver
-# consegna stringhe, e `articolo_id = 'abc'` senza cast sarebbe un confronto
-# text/uuid rifiutato dal planner).
-_CAST: dict[str, str] = {"meta": "::jsonb", "articolo_id": "::uuid"}
-
-
-# Scopo: Il segnaposto della colonna, col suo cast.
-def _segnaposto(col: str) -> str:
-    return "%s" + _CAST.get(col, "")
-
-
-# Scopo: Il valore della colonna come lo vuole il driver (jsonb serializzato).
-def _valore(col: str, val: Any) -> Any:
-    return json.dumps(val or {}) if col in _JSONB_COLS else val
+# L'uuid dell'articolo del lotto viaggia come stringa (`str(articolo_id)`):
+# cast esplicito nel segnaposto dell'INSERT.
+_CASTS_LOTTO: dict[str, str] = {"articolo_id": "uuid"}
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -211,43 +213,6 @@ class AnagraficheMagazzinoRepository:
                 row[col] = jsonb_out(row[col]) or {}
         return row
 
-    # Scopo: `INSERT … RETURNING id` sulle sole colonne ammesse; `meta` come jsonb.
-    # ⚠️ `tabella` e le chiavi di `valori` sono identificatori di questo modulo,
-    #    filtrati dalla whitelist della tabella: mai input utente.
-    @staticmethod
-    def _inserisci(tabella: str, valori: dict[str, Any], ammesse: frozenset[str]) -> int:
-        colonne = [c for c in valori if c in ammesse]
-        segnaposto = [_segnaposto(c) for c in colonne]
-        params = [_valore(c, valori[c]) for c in colonne]
-        sql = f"INSERT INTO {tabella} ({', '.join(colonne)}) VALUES ({', '.join(segnaposto)}) RETURNING id"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return int(fetchone_scalar(cursor))
-
-    # Scopo: `UPDATE` per DELTA sulle sole colonne ammesse. Zero righe = la riga
-    #        non c'e' (o non e' visibile). `extra_where` lega la figlia al padre
-    #        (l'ubicazione al SUO magazzino).
-    @staticmethod
-    def _aggiorna(
-        tabella: str, riga_id: int, campi: dict[str, Any], ammesse: frozenset[str],
-        *, extra_where: str = "", extra_params: list[Any] | None = None,
-    ) -> int:
-        set_parts: list[str] = []
-        params: list[Any] = []
-        for col, val in campi.items():
-            if col not in ammesse:
-                continue
-            set_parts.append(f"{col} = {_segnaposto(col)}")
-            params.append(_valore(col, val))
-        if not set_parts:
-            return 0
-        params.append(int(riga_id))
-        params.extend(extra_params or [])
-        sql = f"UPDATE {tabella} SET {', '.join(set_parts)} WHERE id = %s {extra_where}"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount
-
     # ══════════════════════════════════════════════════════════════
     #  Magazzini
     # ══════════════════════════════════════════════════════════════
@@ -295,13 +260,20 @@ class AnagraficheMagazzinoRepository:
     # Scopo: Crea il magazzino. `emittente_fiscale_id` NON viaggia: lo mette il
     #        DB dalla GUC (`trgfn_default_emittente_fiscale('SOLLEVA')`).
     def create_magazzino(self, valori: dict[str, Any]) -> int:
-        return self._inserisci("magazzino.magazzini", valori, MAGAZZINI_COLONNE)
+        riga = execute_dynamic_insert(
+            "magazzino.magazzini", meta_mai_null(valori), allowed=MAGAZZINI_COLONNE, jsonb=_JSONB_COLS,
+        )
+        return int(riga["id"])
 
     # Scopo: Aggiorna il magazzino per delta. Il lock su `codice` e i guard
     #        (`usa_ubicazioni` a registro vuoto, disattivazione con figli) sono
-    #        del DB: qui si esegue e si riporta.
-    def update_magazzino(self, magazzino_id: int, campi: dict[str, Any]) -> int:
-        return self._aggiorna("magazzino.magazzini", magazzino_id, campi, MAGAZZINI_COLONNE)
+    #        del DB: qui si esegue e si riporta. `False` = la riga non c'e' (o
+    #        non e' visibile), o `campi` vuoto.
+    def update_magazzino(self, magazzino_id: int, campi: dict[str, Any]) -> bool:
+        return execute_dynamic_update(
+            "magazzino.magazzini", int(magazzino_id), meta_mai_null(campi),
+            allowed=MAGAZZINI_COLONNE, jsonb=_JSONB_COLS,
+        )
 
     # ══════════════════════════════════════════════════════════════
     #  Ubicazioni (figlie del magazzino)
@@ -355,20 +327,26 @@ class AnagraficheMagazzinoRepository:
     #        magazzino e niente cicli: lo decide `trgfn_ubicazioni_guard_parent`.
     def create_ubicazione(self, magazzino_id: int, valori: dict[str, Any]) -> int:
         # Il padre viene dal path e VINCE su un eventuale `magazzino_id` nel
-        # payload; il filtro sulle colonne ammesse lo fa `_inserisci`.
-        return self._inserisci(
+        # payload (il service non lo ammette fra le chiavi comunque).
+        riga = execute_dynamic_insert(
             "magazzino.ubicazioni",
-            {**valori, "magazzino_id": int(magazzino_id)},
-            UBICAZIONI_COLONNE | {"magazzino_id"},
+            meta_mai_null({**valori, "magazzino_id": int(magazzino_id)}),
+            allowed=UBICAZIONI_COLONNE | {"magazzino_id"},
+            jsonb=_JSONB_COLS,
         )
+        return int(riga["id"])
 
     # Scopo: Aggiorna l'ubicazione per delta, legata al SUO magazzino nella
-    #        `WHERE`: un id di un altro magazzino e' zero righe, cioe' 404.
-    def update_ubicazione(self, magazzino_id: int, ubicazione_id: int, campi: dict[str, Any]) -> int:
-        return self._aggiorna(
-            "magazzino.ubicazioni", ubicazione_id, campi, UBICAZIONI_COLONNE,
-            extra_where="AND magazzino_id = %s", extra_params=[int(magazzino_id)],
-        )
+    #        `WHERE`: un id di un altro magazzino e' zero righe, cioe' 404 —
+    #        per questo il SET dal BB `sql_set_clause` e il WHERE scritto qui.
+    def update_ubicazione(self, magazzino_id: int, ubicazione_id: int, campi: dict[str, Any]) -> bool:
+        if not campi:
+            return False
+        set_sql, params = sql_set_clause(meta_mai_null(campi), allowed=UBICAZIONI_COLONNE, jsonb=_JSONB_COLS)
+        sql = f"UPDATE magazzino.ubicazioni SET {set_sql} WHERE id = %s AND magazzino_id = %s"  # noqa: S608 — SET da sql_set_clause (colonne verificate sulla whitelist UBICAZIONI_COLONNE), valori come parametri
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [*params, int(ubicazione_id), int(magazzino_id)])
+            return cursor.rowcount > 0
 
     # ══════════════════════════════════════════════════════════════
     #  Lotti (figli dell'articolo)
@@ -413,13 +391,18 @@ class AnagraficheMagazzinoRepository:
     # Scopo: Crea il lotto dell'articolo. Articolo attivo, chiave (articolo,
     #        codice), scadenza >= arrivo: li decide il DB.
     def create_lotto(self, articolo_id: str, valori: dict[str, Any]) -> int:
-        return self._inserisci(
+        riga = execute_dynamic_insert(
             "magazzino.lotti",
-            {**valori, "articolo_id": str(articolo_id)},
-            LOTTI_COLONNE | {"articolo_id"},
+            meta_mai_null({**valori, "articolo_id": str(articolo_id)}),
+            allowed=LOTTI_COLONNE | {"articolo_id"},
+            jsonb=_JSONB_COLS,
+            casts=_CASTS_LOTTO,
         )
+        return int(riga["id"])
 
     # Scopo: Aggiorna il lotto per delta. ⛔ `articolo_id` non e' fra le
     #        colonne: un lotto nasce del suo articolo.
-    def update_lotto(self, lotto_id: int, campi: dict[str, Any]) -> int:
-        return self._aggiorna("magazzino.lotti", lotto_id, campi, LOTTI_COLONNE)
+    def update_lotto(self, lotto_id: int, campi: dict[str, Any]) -> bool:
+        return execute_dynamic_update(
+            "magazzino.lotti", int(lotto_id), meta_mai_null(campi), allowed=LOTTI_COLONNE, jsonb=_JSONB_COLS,
+        )

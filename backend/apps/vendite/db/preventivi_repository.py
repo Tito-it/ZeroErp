@@ -602,6 +602,28 @@ class PreventiviRepository(
             assert result is not None
             return result
 
+    # ⛔ Whitelist RIGIDA del BB `execute_dynamic_update` (2026-09-26): una
+    #    chiave fuori lista e' `ValueError`, non uno scarto. E' l'elenco delle
+    #    colonne che QUESTI metodi scrivono, non il contratto dell'operatore:
+    #    la testata la scrivono `preventivi_service.aggiorna_preventivo` (tupla
+    #    inline) e `cambia_stato` (fatturazione_immediata/competenza_mese
+    #    all'accettazione); la riga anche il workflow L3
+    #    (`approvazioni_prezzo_service`: stato_approvazione_prezzo,
+    #    pratica_approvazione_prezzo_id, meta). Chi aggiunge un campo a monte
+    #    lo aggiunge qui: dimenticarlo e' un errore che si vede.
+    TESTATA_UPDATE_COLUMNS: frozenset[str] = frozenset({
+        "billing_account_id", "istanza_utility_id",
+        "valuta_id", "termine_pagamento_id",
+        "validita_dal", "validita_al", "competenza_mese",
+        "fatturazione_immediata", "meta",
+    })
+    RIGA_UPDATE_COLUMNS: frozenset[str] = frozenset({
+        "descrizione", "qta_operativa", "uom_operativa_id",
+        "factor_to_base", "prezzo_unitario", "sconto_percentuale",
+        "ordine", "meta", "data_consegna_richiesta_cliente",
+        "stato_approvazione_prezzo", "pratica_approvazione_prezzo_id",
+    })
+
     # Scopo: Aggiorna campi modificabili della testata preventivo.
     # Accetta anche None per azzerare campi nullable.
     # Campi jsonb (meta) vengono serializzati con json.dumps e cast ::jsonb.
@@ -610,7 +632,10 @@ class PreventiviRepository(
         preventivo_id: int,
         **kwargs: Any,
     ) -> bool:
-        return execute_dynamic_update("vendite.preventivi", preventivo_id, kwargs)
+        return execute_dynamic_update(
+            "vendite.preventivi", preventivo_id, kwargs,
+            allowed=self.TESTATA_UPDATE_COLUMNS,
+        )
 
     # Scopo: Risolve l'id del preventivo agganciato come ROOT a una pratica
     #        (pratiche_sorgenti, sorgente PREVENTIVO). Unica fonte di verita' del
@@ -618,7 +643,7 @@ class PreventiviRepository(
     #        PREVENTIVAZIONE). Ritorna la rev ATTIVA del numero agganciato (segue
     #        la revisione viva), None se nessun ROOT preventivo.
     def get_preventivo_id_by_pratica_root(self, pratica_id: int) -> int | None:
-        sql = f"SELECT p_attivo.id {_ROOT_PREVENTIVO_ATTIVO_FROM} AND ps.pratica_id = %s LIMIT 1"  # noqa: S608
+        sql = f"SELECT p_attivo.id {_ROOT_PREVENTIVO_ATTIVO_FROM} AND ps.pratica_id = %s LIMIT 1"
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
             row = cursor.fetchone()
@@ -631,7 +656,7 @@ class PreventiviRepository(
     #        flusso. L'indice unico parziale garantisce al piu' 1 riga. Ritorna la
     #        rev ATTIVA del numero agganciato (segue la revisione viva).
     def get_preventivo_id_by_flusso_root(self, flusso_id: int) -> int | None:
-        sql = f"SELECT p_attivo.id {_ROOT_PREVENTIVO_ATTIVO_FROM} AND ps.flusso_id = %s LIMIT 1"  # noqa: S608
+        sql = f"SELECT p_attivo.id {_ROOT_PREVENTIVO_ATTIVO_FROM} AND ps.flusso_id = %s LIMIT 1"
         with connection.cursor() as cursor:
             cursor.execute(sql, [flusso_id])
             row = cursor.fetchone()
@@ -864,7 +889,10 @@ class PreventiviRepository(
     # Scopo: Aggiorna una riga preventivo esistente.
     # Campi jsonb (meta) vengono serializzati con json.dumps e cast ::jsonb.
     def update_riga(self, riga_id: int, **kwargs: Any) -> bool:
-        return execute_dynamic_update("vendite.preventivi_righe", riga_id, kwargs)
+        return execute_dynamic_update(
+            "vendite.preventivi_righe", riga_id, kwargs,
+            allowed=self.RIGA_UPDATE_COLUMNS,
+        )
 
     # Scopo: Elimina una riga preventivo (HARD DELETE).
     # Pattern simmetrico a `contratti_repository.delete_riga`: l'eliminazione

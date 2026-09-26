@@ -116,7 +116,7 @@ class RuoloIndirizziView(DomainAPIView):
                      WHERE v.soggetto_ruolo_id = %s
                        AND v.istanza_utility_id = %s
                      ORDER BY v.tipo_indirizzo_id, v.indirizzo_id
-                """
+                """  # noqa: S608 — _COLS/_RESOLVE_UTILITY costanti di modulo, valori come parametri
                 cursor.execute(sql_ist, [soggetto_ruolo_id, istanza_utility_id])
                 l1 = rows_to_list(cursor)
                 results.extend(l1)
@@ -132,7 +132,7 @@ class RuoloIndirizziView(DomainAPIView):
                  WHERE v.soggetto_ruolo_id = %s
                    AND v.istanza_utility_id IS NULL
                  ORDER BY v.tipo_indirizzo_id, v.indirizzo_id
-            """
+            """  # noqa: S608 — _COLS/_RESOLVE_UTILITY costanti di modulo, valori come parametri
             cursor.execute(sql_ruolo, [soggetto_ruolo_id])
             l2 = rows_to_list(cursor)
             for c in l2:
@@ -147,7 +147,7 @@ class RuoloIndirizziView(DomainAPIView):
                   FROM anagrafiche.vw_indirizzi_resolved_soggetto v
                  WHERE v.soggetto_id = %s::uuid
                  ORDER BY v.tipo_indirizzo_id, v.indirizzo_id
-            """
+            """  # noqa: S608 — _COLS/_RESOLVE_UTILITY costanti di modulo, valori come parametri
             cursor.execute(sql_sogg, [soggetto_id])
             l3 = rows_to_list(cursor)
             for c in l3:
@@ -250,14 +250,10 @@ class RuoloIndirizziDetailView(DomainAPIView):
     )
     # Scopo: Aggiorna indirizzo con ownership check sul ruolo.
     def patch(self, request: Request, soggetto_ruolo_id: int, indirizzo_id: int) -> JsonResponse:
-        updated = _repo.update_indirizzo_ruolo(
-            indirizzo_id, soggetto_ruolo_id, request.data,
+        # Dal service (2026-09-26): e' li' che si validano le chiavi del payload.
+        return success_response(
+            SoggettiService().update_indirizzo_ruolo(soggetto_ruolo_id, indirizzo_id, request.data)
         )
-        ErrorManager.require(
-            updated, code=E_ANAG_NOT_FOUND,
-            message="Indirizzo non trovato o non appartiene al ruolo.",
-        )
-        return success_response({"updated": True})
 
     @extend_schema(
         responses={200: inline_serializer(

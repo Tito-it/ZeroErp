@@ -16,7 +16,7 @@ Indice test eseguiti:
  6) AuditAuthViewsTests.test_refresh_success_propaga_gucs
  7) AuditAuthViewsTests.test_refresh_username_non_risolvibile_fail_open
  8) AuditAuthViewsTests.test_veste_non_attiva_non_registra_tentativo
- 9) AuditAuthViewsTests.test_base_astratta_guard_solleva_assertion
+ 9) AuditAuthViewsTests.test_base_astratta_guard_solleva_runtime_error
  9b) AuditAuthViewsTests.test_login_senza_provenienza_rifiuta_senza_cercare_l_utente
  9c) AuditAuthViewsTests.test_login_fallito_registra_con_la_provenienza
  9d) AuditAuthViewsTests.test_login_riuscito_registra_e_legge_il_flag_della_credenziale
@@ -29,7 +29,7 @@ Indice test eseguiti:
 12) ExtractIdentitaIdFromRefreshTests.test_invalid_token_fail_open
 12b) DecodeRefreshPayloadTests.test_none_returns_empty_dict
 12c) DecodeRefreshPayloadTests.test_invalid_token_returns_empty_dict
-13) RefreshCrossNamespaceGuardTests.test_base_astratta_guard_solleva_assertion
+13) RefreshCrossNamespaceGuardTests.test_base_astratta_guard_solleva_runtime_error
 14) RefreshCrossNamespaceGuardTests.test_admin_refresh_accetta_operatore
 15) RefreshCrossNamespaceGuardTests.test_admin_refresh_rifiuta_portale
 16) RefreshCrossNamespaceGuardTests.test_admin_refresh_rifiuta_claim_assente
@@ -483,15 +483,15 @@ class AuditAuthViewsTests(TestCase):
         mock_super_post.assert_not_called()
 
     # Scopo: Verifica il guard di astrazione. Chiamare direttamente
-    # AuditTokenObtainPairView().post() senza subclasse -> AssertionError.
+    # AuditTokenObtainPairView().post() senza subclasse -> RuntimeError.
     # Previene regressione silente in cui qualcuno usa la base class
     # in urls.py o in test dimenticando serializer_class: il JWT emesso
     # sarebbe senza claim identita_id/ruolo_applicativo (multi-face broken).
-    def test_base_astratta_guard_solleva_assertion(self):
+    def test_base_astratta_guard_solleva_runtime_error(self):
         view = AuditTokenObtainPairView()
         request = MagicMock()
         request.data = {"username": "tid"}
-        with self.assertRaises(AssertionError) as ctx:
+        with self.assertRaises(RuntimeError) as ctx:
             view.post(request)
         self.assertIn("astratta", str(ctx.exception))
 
@@ -536,16 +536,16 @@ class RefreshCrossNamespaceGuardTests(TestCase):
     Impedisce che un refresh portale venga girato su /admin/token/refresh/
     e viceversa (rumore semantico cross-path)."""
 
-    def test_base_astratta_guard_solleva_assertion(self):
+    def test_base_astratta_guard_solleva_runtime_error(self):
         """AuditTokenRefreshView e' astratta: `as_view()` diretto senza
-        subclass → AssertionError. Consistenza con §8.3.3 A1
+        subclass → RuntimeError. Consistenza con §8.3.3 A1
         (AuditTokenObtainPairView). Previene che qualcuno registri la
         base direttamente in urls, bypassando il guard cross-namespace."""
         view = AuditTokenRefreshView()
         self.assertEqual(tuple(view.expected_ruoli_applicativi), ())
         request = MagicMock()
         request.data = {"refresh": "r.x.y"}
-        with self.assertRaises(AssertionError) as ctx:
+        with self.assertRaises(RuntimeError) as ctx:
             view.post(request)
         self.assertIn("astratta", str(ctx.exception))
 

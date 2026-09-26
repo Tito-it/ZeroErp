@@ -604,7 +604,7 @@ class ApiListinoVersioneBundleDetail(DomainAPIView):
     )
     # Scopo: Preview BoM + prezzi bundle gia' definiti.
     def get(
-        self, request: Request, listino_id: int, ver_id: int, padre_id: str,  # noqa: ARG002
+        self, request: Request, listino_id: int, ver_id: int, padre_id: str,
     ) -> JsonResponse:
         results = fn_preview_bundle(listino_id, ver_id, padre_id)
         return success_response(results)

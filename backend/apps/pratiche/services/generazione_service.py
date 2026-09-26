@@ -26,13 +26,11 @@ def genera_pratica_manuale(flusso_id: int, regola_id: int) -> int:
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
     ErrorManager.require(
         regola_id > 0,
         code="E_INVALID_ID",
         message="regola_id deve essere > 0",
     )
-    assert regola_id > 0
 
     # Verifica che il flusso esista.
     pratiche_repo = PraticheRepository()
@@ -56,7 +54,6 @@ def get_regole_applicabili(flusso_id: int) -> list[RegolaGenerazioneRow]:
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
 
     pratiche_repo = PraticheRepository()
     flusso = pratiche_repo.get_flusso(flusso_id)
@@ -81,7 +78,6 @@ def get_pratiche_generate(flusso_id: int) -> list[PraticaRow]:
         code="E_INVALID_ID",
         message="flusso_id deve essere > 0",
     )
-    assert flusso_id > 0
 
     gen_repo = GenerazioneRepository()
     return gen_repo.get_pratiche_generate_da_flusso(flusso_id)

@@ -140,7 +140,7 @@ class ConfigPanelRegistroDbTests(TestCase):
                             attivo_only=False, page=1, page_size=1,
                         )
                         self.assertIsInstance(dati["count"], int, rel)
-                except Exception as exc:  # noqa: BLE001 — si raccoglie, si asserisce sotto
+                except Exception as exc:  # si raccoglie, si asserisce sotto
                     rotte[rel] = str(exc).splitlines()[0]
             transaction.set_rollback(True)
         self.assertEqual(rotte, {}, "rel del registro FE che la lista del pannello non sa servire")

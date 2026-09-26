@@ -147,7 +147,7 @@ class Command(BaseCommand):
                     emittente_attivo_id=badge["emittente_fiscale_id"],
                 ):
                     parziale = self._esegui_giro(options)
-            except Exception as exc:  # noqa: BLE001 — isolamento per azienda voluto
+            except Exception as exc:  # isolamento per azienda voluto
                 logger.warning(
                     "send_pending_emails.azienda_fallita emittente=%s badge=%s errore=%s",
                     badge["emittente_codice"], badge["username"], exc, exc_info=True,

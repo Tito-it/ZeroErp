@@ -17,6 +17,7 @@ from typing import Any
 from django.db import DatabaseError
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import PayloadValidator
 from apps.pratiche.db.definizioni_repository import (
     CHILD_SPECS,
     EDGE_SPECS,
@@ -150,7 +151,15 @@ def pubblica_definizione(definizione_id: int) -> dict[str, Any]:
 # Scopo: estrae dal payload i soli campi in `fields`, trimmando le stringhe (vuoto
 # → None). Cleaner condiviso da step/figli/archi. Non decide default né valida
 # enum/FK: sono constraint DB (una sola verità).
+# ⛔ Dal 2026-09-26 una chiave fuori `fields` è un 400 `E_VALIDATION_INPUT`, non
+#    più uno scarto silenzioso: un PATCH che «riesce» senza aver scritto il campo
+#    è il difetto che non dà errore (e il repository, dietro, è RIGIDO:
+#    RuntimeError). I form dell'editor (DefinizioneStepForm, Step*Tab, Archi*Tab)
+#    mandano solo chiavi scrivibili — verificato quel giorno.
 def _clean_writable(fields: tuple[str, ...], payload: dict[str, Any]) -> dict[str, Any]:
+    PayloadValidator(validation_code="E_VALIDATION_INPUT").validate_allowed_keys(
+        payload, allowed=frozenset(fields), message="Campi non modificabili nel payload.",
+    )
     data: dict[str, Any] = {}
     for k in fields:
         if k not in payload:

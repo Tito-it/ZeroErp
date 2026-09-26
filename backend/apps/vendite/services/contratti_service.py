@@ -63,6 +63,7 @@ from apps.vendite.db.contratti_repository import (
 )
 from apps.vendite.db.listini_repository import ListiniRepository
 from apps.vendite.services._componenti_service_helpers import (
+    dati_patch_componente,
     normalize_componenti_overrides,
     resolve_emittente_sr_id_for_testata,
 )
@@ -112,7 +113,7 @@ _CODICI_ATTO_MAX_LEN: dict[str, int] = {
 #   whitelist per stato ATTIVO e mapper li derivano tutti da qui. Scriverli tre
 #   volte a mano significherebbe tre punti da tenere allineati per una lista che
 #   non cambia mai insieme.
-# 📌 L'unico altro posto che li nomina e' `_UPDATE_WRITE_COLS` nel repository, ed
+# 📌 L'unico altro posto che li nomina e' `TESTATA_UPDATE_COLUMNS` nel repository, ed
 #   e' voluto che resti esplicito: e' il TERZO anello, e `ContrattiCatenaUpdateTests`
 #   esiste proprio per confrontare i tre anelli fra loro — derivarlo dallo stesso
 #   oggetto renderebbe il confronto vero per costruzione, cioe' spegnerebbe il
@@ -618,7 +619,7 @@ class ContrattiService:
         order_dir: str = "desc",
         max_limit: int = 200,
     ) -> tuple[list[dict[str, Any]], int]:
-        self._v.validate_order_by(order_by, allowed=_ORDER_BY_CONTRATTI)
+        self._v.validate_order_by(order_by, allowed=_ORDER_BY_CONTRATTI, order_dir=order_dir)
         if ambito is not None:
             ErrorManager.require(
                 ambito in _AMBITI_VALIDI,
@@ -1792,6 +1793,14 @@ class ContrattiService:
             contratto_id=contratto_id, riga_id=riga_id,
             componente_id=componente_id, verbo="modificare",
             function_name="contratti_service.update_componente_riga",
+        )
+        # ⛔ Contratto dell'OPERATORE (BB unico per i cinque documenti), non
+        #    la whitelist del repository: fino al 2026-09-26 qui si validava
+        #    contro `COMPONENTE_UPDATE_ALLOWED`, che contiene
+        #    `stato_approvazione_prezzo` — un operatore poteva approvarsi da
+        #    solo un prezzo L3 PENDING. `origine_prezzo` la deriva il server.
+        payload = dati_patch_componente(
+            payload, function_name="contratti_service.update_componente_riga",
         )
         with self._map_db_errors(
             {"componente_id": componente_id, "riga_id": riga_id},

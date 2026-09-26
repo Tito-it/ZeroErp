@@ -49,8 +49,11 @@ class EmailLogOperatoreViewTests(SimpleTestCase):
         self.assertEqual(kwargs["order_dir"], "asc")
         self.assertEqual((kwargs["limit"], kwargs["offset"]), (10, 20))
 
-    # 2. Un registro si legge dal piu' recente.
+    # 2. Un registro si legge dal piu' recente. ⭐ Senza verso la view passa
+    #    `None` (dal 2026-09-26 `parse_list_params` non inventa piu' "asc"):
+    #    il DESC lo applica `EmailRepository.list_logs`, in una sede sola —
+    #    prima lo forzava anche la view, con un `or "desc"` gemello.
     def test_senza_verso_il_registro_si_apre_dal_piu_recente(self):
         kwargs = self._chiama("")
         self.assertEqual(kwargs["order_by"], "data_insert")
-        self.assertEqual(kwargs["order_dir"], "desc")
+        self.assertIsNone(kwargs["order_dir"])

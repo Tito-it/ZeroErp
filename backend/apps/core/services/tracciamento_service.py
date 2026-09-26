@@ -107,7 +107,7 @@ def fn_list_error_logs(
     #    senza parametro l'ordine lo decide il default dichiarato a catalogo.
     validate_order_params(
         order_by,
-        order_dir.lower() if order_dir is not None else None,
+        order_dir,
         allowed_columns=ERROR_LOG_SORT_COLUMNS,
         error_code="E_CORE_VALIDATION",
         function_name=fn,

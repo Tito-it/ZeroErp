@@ -35,6 +35,12 @@
 // 15. `ricercaMinCaratteri` nasce `null`: vale la soglia di progetto
 // 16. a 1: `paramsFiltro` (cioe' anche l'export) e la fetch mandano «K»
 // 17. a 1: con `ricercaCorta: 'svuota'` «K» non svuota, cerca
+//  — il tasto che non cambia la richiesta (`ricercaCambiaLaRichiesta`) —
+// 18. lista a video col filtro data (i preventivi): 1-2 caratteri non la cambiano
+// 19. dal termine valido a quello corto la richiesta cambia: si torna senza `search`
+// 20. lo stesso termine con uno spazio in coda non cambia la richiesta
+// 21. lista non ancora caricata e `ricercaCorta: 'svuota'`: decide la fetch
+// 22. dopo una richiesta fallita lo stesso termine riprova
 // ------------------------------------------------------------
 
 import { describe, it, expect, vi } from 'vitest'
@@ -228,5 +234,64 @@ describe('useListaStoreCore — la soglia della ricerca e della lista', () => {
     s.filters.value.search = 'K'
     expect(await s.fetchList()).toBe(true)
     expect(fetchPage.mock.calls[0][0].search).toBe('K')
+  })
+})
+
+describe('useListaStoreCore — il tasto che non cambia la richiesta', () => {
+  // ⭐ Il caso di Tid (2026-09-26): la lista dei preventivi parte col filtro
+  //    data di default, che conta come filtro attivo. Digitare «a» e «ab»
+  //    ricaricava la STESSA lista pesante senza `search`, e a video sembrava
+  //    una ricerca partita al primo carattere.
+  function listaPreventivi(fetchPage) {
+    return useListaStoreCore({
+      fetchPage,
+      filterDefaults: { data_da: '2026-07-01' },
+      gateKeys: ['data_da'],
+    })
+  }
+
+  it('lista a video col filtro data: 1-2 caratteri non cambiano la richiesta', async () => {
+    const s = listaPreventivi(spiaFetch())
+    expect(await s.fetchList()).toBe(true)
+    expect(s.ricercaCambiaLaRichiesta('a')).toBe(false)
+    expect(s.ricercaCambiaLaRichiesta('ab')).toBe(false)
+    expect(s.ricercaCambiaLaRichiesta('abc')).toBe(true)
+  })
+
+  it('dal termine valido a quello corto la richiesta cambia', async () => {
+    const s = listaPreventivi(spiaFetch())
+    s.filters.value.search = 'abc'
+    await s.fetchList()
+    // La lista a video e' filtrata per «abc»: con «ab» nella casella non lo e' piu'.
+    expect(s.ricercaCambiaLaRichiesta('ab')).toBe(true)
+    expect(s.ricercaCambiaLaRichiesta('abcd')).toBe(true)
+  })
+
+  it('lo stesso termine con uno spazio in coda non cambia la richiesta', async () => {
+    const s = listaPreventivi(spiaFetch())
+    s.filters.value.search = 'abc'
+    await s.fetchList()
+    expect(s.ricercaCambiaLaRichiesta('abc ')).toBe(false)
+  })
+
+  it("lista non ancora caricata e ricercaCorta 'svuota': decide la fetch", async () => {
+    // Non ancora caricata: la guardia empty-state e' della fetch.
+    expect(listaPreventivi(spiaFetch()).ricercaCambiaLaRichiesta('a')).toBe(true)
+    // 'svuota': il termine corto svuota per scelta, e lo svuotamento e' della fetch.
+    const s = useListaStoreCore({ fetchPage: spiaFetch(), startsEmpty: false, ricercaCorta: 'svuota' })
+    await s.fetchList()
+    expect(s.ricercaCambiaLaRichiesta('a')).toBe(true)
+  })
+
+  it('dopo una richiesta fallita lo stesso termine riprova', async () => {
+    const fetchPage = spiaFetch()
+    const s = listaPreventivi(fetchPage)
+    await s.fetchList()
+    fetchPage.mockRejectedValueOnce(new Error('rete'))
+    // Il core non ri-solleva: l'errore diventa `erroreCaricamento`.
+    expect(await s.fetchList()).toBe(false)
+    expect(s.erroreCaricamento.value).toBe(true)
+    // La lista a video e' ancora quella di prima, ma la richiesta non e' nota.
+    expect(s.ricercaCambiaLaRichiesta('a')).toBe(true)
   })
 })

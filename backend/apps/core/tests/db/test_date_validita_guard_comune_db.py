@@ -109,7 +109,7 @@ class DateValiditaGuardComuneDbTests(unittest.TestCase):
         try:
             with transaction.atomic():
                 fn()
-        except Exception as exc:  # noqa: BLE001 — la strada e' cio' che si prova
+        except Exception as exc:  # la strada e' cio' che si prova
             api = ErrorTranslator.to_api_error(exc)
             with self.subTest(punto=punto):
                 self.assertEqual(

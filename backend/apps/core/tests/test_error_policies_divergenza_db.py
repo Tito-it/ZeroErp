@@ -107,7 +107,7 @@ class ErrorPoliciesDivergenzaDb(TestCase):
         from django.db import connection
 
         with connection.cursor() as cur:
-            cur.execute(f"SELECT count(*), count(DISTINCT codice) FROM {_VISTA}")  # noqa: S608
+            cur.execute(f"SELECT count(*), count(DISTINCT codice) FROM {_VISTA}")
             row = cur.fetchone()
         assert row is not None
         righe, distinti = row

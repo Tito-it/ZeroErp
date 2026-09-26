@@ -109,7 +109,7 @@ def list_eccedenze(
     )
     order_by, order_dir = validate_order_params(
         order_by or "eccedenza_cliente",
-        (order_dir or "desc").lower(),
+        order_dir or "desc",
         allowed_columns=frozenset(ECCEDENZE_SORT_COLUMNS),
         error_code=E_VALIDAZIONE,
         function_name=f"{_FN}.list_eccedenze",

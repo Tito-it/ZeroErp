@@ -119,7 +119,7 @@ class AuditTokenObtainPairView(TokenObtainPairView):
     throttle_classes = [LoginRateThrottle]
     # `serializer_class = None` + guard in post() rendono la base effettivamente
     # astratta: chiamare `AuditTokenObtainPairView.as_view()` direttamente
-    # senza override di serializer_class solleva AssertionError subito.
+    # senza override di serializer_class solleva RuntimeError subito.
     serializer_class = None  # type: ignore[assignment]
 
     @extend_schema(summary="Login JWT con audit e blocco utente", responses={200: dict})
@@ -133,13 +133,14 @@ class AuditTokenObtainPairView(TokenObtainPairView):
         from apps.core.api.multi_veste_token_serializer import (
             MultiVesteTokenSerializer,
         )
-        assert self.serializer_class is not None and issubclass(
+        if self.serializer_class is None or not issubclass(
             self.serializer_class, MultiVesteTokenSerializer
-        ), (
-            "AuditTokenObtainPairView e' astratta: usa AdminTokenView / "
-            "PortaleTokenView / ShopTokenView (o una nuova subclass con "
-            "serializer_class subclass di MultiVesteTokenSerializer)."
-        )
+        ):
+            raise RuntimeError(
+                "AuditTokenObtainPairView e' astratta: usa AdminTokenView / "
+                "PortaleTokenView / ShopTokenView (o una nuova subclass con "
+                "serializer_class subclass di MultiVesteTokenSerializer)."
+            )
 
         django_request = request._request if hasattr(request, "_request") else request
 
@@ -399,7 +400,7 @@ class AuditTokenRefreshView(TokenRefreshView):
     # Le 3 subclass override con il subset di ruoli del loro namespace.
     # `expected_ruoli_applicativi = ()` + guard in post() rendono la
     # base effettivamente astratta: chiamare as_view() direttamente
-    # senza override solleva AssertionError.
+    # senza override solleva RuntimeError.
     expected_ruoli_applicativi: tuple[str, ...] = ()
 
     @extend_schema(summary="Refresh JWT con audit sessione", responses={200: dict})
@@ -410,11 +411,12 @@ class AuditTokenRefreshView(TokenRefreshView):
         # Previene regressione silente in cui qualcuno usa la base class
         # in urls.py o in test dimenticando l'override: il refresh
         # funzionerebbe cross-namespace senza check.
-        assert self.expected_ruoli_applicativi, (
-            "AuditTokenRefreshView e' astratta: usa AdminTokenRefreshView / "
-            "PortaleTokenRefreshView / ShopTokenRefreshView (o una nuova "
-            "subclass con expected_ruoli_applicativi settato)."
-        )
+        if not self.expected_ruoli_applicativi:
+            raise RuntimeError(
+                "AuditTokenRefreshView e' astratta: usa AdminTokenRefreshView / "
+                "PortaleTokenRefreshView / ShopTokenRefreshView (o una nuova "
+                "subclass con expected_ruoli_applicativi settato)."
+            )
 
         # Guard cross-namespace: rifiuta il refresh di un token la cui
         # veste non rientra nel set ammesso dal namespace del path

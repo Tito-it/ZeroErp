@@ -25,7 +25,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import corsa_conclusa
+from apps.core.db._helpers import corsa_conclusa, pattern_contiene
 from apps.core.types import JobRunLogRow
 
 
@@ -57,7 +57,7 @@ def _cte_corse(conditions: list[str]) -> str:
               {where_conclusa}
              ORDER BY jobname, started_at DESC, id DESC
         )
-    """
+    """  # noqa: S608 — conditions: frammenti letterali dei chiamanti (chiave meta validata in list_job_summary), valori come parametri
 
 
 class MaintenanceRepository:
@@ -77,7 +77,7 @@ class MaintenanceRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[JobRunLogRow], int]:
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        search_pattern = pattern_contiene(search)
         with connection.cursor() as cursor:
             cursor.execute(
                 """

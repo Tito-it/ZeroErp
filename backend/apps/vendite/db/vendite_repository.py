@@ -30,6 +30,7 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
     sql_lateral_primo_motivo,
+    sql_order_clause,
     sql_order_direction,
     sql_tiebreak_direction,
 )
@@ -170,6 +171,9 @@ LOTTO_FATTURE_SORT_COLUMNS: dict[str, str] = {
     "totale_doc": "f.totale_doc",
     "totale_a_pagare": "f.totale_a_pagare",
 }
+# Le colonne DATA di `LOTTO_FATTURE_SORT_COLUMNS`: senza direzione indicata
+# partono DESC (regola Tid 2026-09-02, `colonne_desc` di `sql_order_clause`).
+LOTTO_FATTURE_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data"})
 
 # Ordinamenti ammessi sui GRUPPI di un lotto — i documenti che il lotto ha
 # preso in carico, con l'esito di ciascuno (brief-db-esito-gruppo-lotto §6).
@@ -638,7 +642,7 @@ class VenditeRepository:
                    FROM vendite.fatturazione_lotti_esiti e_c
                   WHERE e_c.lotto_id = fl.id
                     AND e_c.stato_esecuzione = '{STATO_ESECUZIONE_COMPLETED}') AS n_esiti_completati
-    """
+    """  # noqa: S608 — costanti di modulo STATO_ESECUZIONE_* letterali
 
     _LOTTO_JOINS = f"""
             LEFT JOIN config.utilities u
@@ -1006,7 +1010,7 @@ class VenditeRepository:
             {self._LOTTO_JOINS}
             {where_clause}
             GROUP BY fl.stato_lotto
-        """
+        """  # noqa: S608 — WHERE da _lotti_where (clausole letterali con %s), JOIN da costante _LOTTO_JOINS, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             rows = cursor.fetchall()
@@ -1061,7 +1065,7 @@ class VenditeRepository:
             FROM vendite.fatturazione_lotti fl
             {joins}
             {where_clause}
-        """
+        """  # noqa: S608 — WHERE da _lotti_where (clausole letterali con %s), JOIN da costante _LOTTO_JOINS, valori come parametri
 
         # ORDER BY server-side (corretto su TUTTE le pagine, non solo su quella
         # visibile): colonna dalla whitelist + direzione, con tiebreak stabile
@@ -1070,8 +1074,11 @@ class VenditeRepository:
         # prima), cioe' esattamente il comportamento precedente: la lista non
         # cambia aspetto finche' l'utente non tocca un'intestazione.
         sort_col = self.LOTTI_SORT_COLUMNS.get(order_by or "")
+        # ⛔ Direzione risolta PRIMA del ramo (2026-09-26): il ramo storico la
+        #    ignora, e un `order_dir` estraneo passava muto (il service non la
+        #    valida). Il BB la rifiuta anche quando poi non la si usa.
+        direction = sql_order_direction(order_dir)
         if sort_col is not None:
-            direction = sql_order_direction(order_dir)
             tiebreak_dir = sql_tiebreak_direction(direction)
             order_clause = f"ORDER BY {sort_col} {direction}, fl.id {tiebreak_dir}"
         else:
@@ -1084,7 +1091,7 @@ class VenditeRepository:
             {where_clause}
             {order_clause}
             LIMIT %s OFFSET %s
-        """
+        """  # noqa: S608 — WHERE da _lotti_where (clausole letterali con %s), JOIN da costante _LOTTO_JOINS, valori come parametri; ORDER BY da whitelist LOTTI_SORT_COLUMNS + sql_order_direction
 
         with connection.cursor() as cursor:
             cursor.execute(count_sql, params)
@@ -1191,7 +1198,7 @@ class VenditeRepository:
                   ) d(data_doc) ON TRUE
                  WHERE {perimetro}
                  ORDER BY d.data_doc NULLS LAST, fl.id
-                """.format(
+                """.format(  # noqa: S608 — costante SQL_DATA_DOCUMENTO_CORRENTE + perimetro da costruisci_perimetro_lotti_numerabili, valori come parametri
                     data_corrente=SQL_DATA_DOCUMENTO_CORRENTE.format(lotto="fl.id"),
                     perimetro=perimetro,
                 ),
@@ -1221,7 +1228,7 @@ class VenditeRepository:
             FROM vendite.fatturazione_lotti fl
             {self._LOTTO_JOINS}
             {where_clause}
-        """
+        """  # noqa: S608 — colonne/JOIN da costanti di classe, WHERE letterale + BB scope emittente, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             row = cursor.fetchone()
@@ -1362,7 +1369,7 @@ class VenditeRepository:
                 d.emittente_ragione_sociale
             FROM vendite.vw_dash_aperto_documenti d
             {where_clause}
-        """
+        """  # noqa: S608 — WHERE da clausole letterali con %s, valori come parametri
 
         # ORDER BY server-side (corretto su TUTTE le pagine, non solo quella
         # visibile): colonna dalla whitelist DASH_APERTO_SORT_COLUMNS + direzione
@@ -1729,7 +1736,7 @@ class VenditeRepository:
             LEFT JOIN catalogo.articoli art
                 ON art.id = a.articolo_id
             {where_clause}
-        """
+        """  # noqa: S608 — WHERE da clausole letterali con %s, valori come parametri
 
         # Una sola valutazione della vista (CTE materializzata + COUNT(*) OVER)
         # con CLAMP dell'offset all'ultima pagina reale, come le altre liste dei
@@ -1889,7 +1896,7 @@ class VenditeRepository:
                 a.emittente_ragione_sociale
             FROM vendite.vw_dash_competenza_attivita a
             {where_clause}
-        """
+        """  # noqa: S608 — WHERE da clausole letterali con %s, valori come parametri
 
         rows, total_count = self._query_paged_view(
             select_sql=select_sql,
@@ -1998,7 +2005,7 @@ class VenditeRepository:
             {where_clause}
             GROUP BY a.commessa_id, a.commessa_codice, a.cliente_display,
                      a.emittente_ragione_sociale
-        """
+        """  # noqa: S608 — WHERE da clausole letterali con %s, valori come parametri
         # ⚠️ `emittente_ragione_sociale` entra nel GROUP BY, e non e' indolore:
         #    se una commessa avesse attivita' di emittenti DIVERSI si
         #    spezzerebbe in piu' righe: i totali resterebbero giusti e il
@@ -2393,7 +2400,7 @@ class VenditeRepository:
                 g.ultimo_lotto_pre_fiscale
             FROM vendite.vw_dash_competenza_gruppi g
             {where_clause}
-            """,
+            """,  # noqa: S608 — WHERE da _where_gruppi (clausole letterali + BB add_ricerca_full_condition), valori come parametri
             order_by=order_clause,
             params=params,
             limit=limit,
@@ -2759,7 +2766,7 @@ class VenditeRepository:
                                          x.registro_id ASC NULLS LAST),
                              '[]'::jsonb) FROM registri x),
                     (SELECT COUNT(*)::int FROM base)
-                """,
+                """,  # noqa: S608 — colonne da costante _ACCESSORI_COLONNE_AGGREGATI + _where_gruppi_filtri, WHERE letterali, valori come parametri
                 # ⛔ L'ordine segue i SEGNAPOSTO NEL TESTO, non la logica: la
                 # CTE `filtrato` sta prima di `riepilogo`, quindi i parametri
                 # dei filtri precedono la costante degli oneri. Invertirli non
@@ -2876,7 +2883,7 @@ class VenditeRepository:
                 e.n_commesse_fallite
             FROM vendite.vw_dash_competenza_errori e
             {where_clause}
-        """
+        """  # noqa: S608 — WHERE da clausole letterali con %s, valori come parametri
 
         # ORDER BY server-side (stessa convenzione delle altre liste dash):
         # colonna dalla whitelist + direzione, NULLS LAST esplicito (le colonne
@@ -3119,7 +3126,7 @@ class VenditeRepository:
                 d.emittente_ragione_sociale
             FROM vendite.vw_dash_backlog_documenti d
             {where_clause}
-        """
+        """  # noqa: S608 — WHERE da clausole letterali con %s, valori come parametri
 
         # ORDER BY server-side (corretto su TUTTE le pagine): colonna dalla
         # whitelist DASH_BACKLOG_SORT_COLUMNS + direzione ASC/DESC, tiebreak
@@ -3358,7 +3365,7 @@ class VenditeRepository:
                 {select_cols}
             FROM vendite.vw_fondi_fattura_da_decidere v
             {where_clause}
-        """
+        """  # noqa: S608 — colonne da costante _FONDI_DA_DECIDERE_COLONNE, WHERE letterale + BB scope emittente, valori come parametri
 
         # ORDER BY server-side (corretto su TUTTE le pagine). Default: le fatture
         # piu' recenti prima — l'elenco non e' una coda per anzianita', e' la
@@ -3464,12 +3471,14 @@ class VenditeRepository:
         safe_limit = max(1, min(int(max_rows or limit), tetto))
         safe_offset = max(0, int(offset))
 
-        # Ordinamento: solo valori dalla whitelist entrano nella query.
-        sort_col = LOTTO_FATTURE_SORT_COLUMNS.get(sort_by, "fllf.fattura_id")
-        safe_dir = "DESC" if sort_dir.lower() == "desc" else "ASC"
-        order_clause = f"{sort_col} {safe_dir}"
-        if sort_by != "fattura_id":
-            order_clause += ", fllf.fattura_id ASC"
+        # Ordinamento: solo valori dalla whitelist entrano nella query — BB
+        # `sql_order_clause` (NULL come valore minimo; tiebreak `fattura_id`
+        # allineato alla direzione, e omesso quando e' gia' la colonna scelta).
+        order_clause = sql_order_clause(
+            sort_by, sort_dir,
+            colonne=LOTTO_FATTURE_SORT_COLUMNS, default="fllf.fattura_id",
+            colonne_desc=LOTTO_FATTURE_SORT_COLONNE_DATA, tiebreak="fllf.fattura_id",
+        )
 
         # WHERE obbligatorio su lotto_id; filtri opzionali aggiunti dinamicamente.
         conditions: list[str] = ["fllf.lotto_id = %s"]
@@ -3566,7 +3575,7 @@ class VenditeRepository:
             FROM vendite.fatturazione_lotti_fatture fllf
             {joins}
             {where_clause}
-        """
+        """  # noqa: S608 — JOIN letterali, WHERE letterale + BB scope emittente, valori come parametri
 
         data_sql = f"""
             SELECT
@@ -3639,7 +3648,7 @@ class VenditeRepository:
             {where_clause}
             ORDER BY {order_clause}
             LIMIT %s OFFSET %s
-        """
+        """  # noqa: S608 — JOIN/LATERAL letterali, ORDER BY da whitelist LOTTO_FATTURE_SORT_COLUMNS, valori come parametri
 
         with connection.cursor() as cursor:
             cursor.execute(count_sql, params)
@@ -3800,10 +3809,15 @@ class VenditeRepository:
 
         # Ordinamento: solo valori dalla whitelist entrano nella query.
         sort_col = LOTTO_GRUPPI_SORT_COLUMNS.get(sort_by or "")
-        safe_dir = "DESC" if str(sort_dir).lower() == "desc" else "ASC"
         order_params: list[Any] = []
         if sort_col is not None:
-            order_clause = f"ORDER BY {sort_col} {safe_dir} NULLS LAST, gruppo_key ASC"
+            # Direzione dal BB `sql_order_direction` (NULL come valore minimo).
+            # ⚠️ `gruppo_key ASC` resta fisso: e' il criterio di raggruppamento
+            #    della tabella «Regola d'uso» del catalogo BB, non uno spareggio
+            #    tecnico da allineare.
+            order_clause = (
+                f"ORDER BY {sort_col} {sql_order_direction(sort_dir)}, gruppo_key ASC"
+            )
         else:
             # ⭐ DEFAULT: i falliti in cima. Non e' l'ordine alfabetico dello
             #    stato — che metterebbe `ERRORE` dopo `COMPLETED` — ma la
@@ -4403,7 +4417,7 @@ class VenditeRepository:
               LEFT JOIN config.nature_doc_fiscale ndf ON ndf.id = f.natura_doc_id
              WHERE fr.{col_filtro} = %s
              ORDER BY f.anno, f.numero
-        """
+        """  # noqa: S608 — colonne da dict costante _RETTIFICHE_VERSI, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [verso, int(fattura_id)])
             return rows_to_list(cursor)
@@ -4511,7 +4525,7 @@ class VenditeRepository:
         # solo dati sporchi da refactor (stesso pattern del repo note).
         if not re.fullmatch(r"[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)?", target_table):
             raise ValueError(f"target_table non valida: {target_table!r}")
-        sql = f"SELECT uid::text FROM {target_table} WHERE id = %s"
+        sql = f"SELECT uid::text FROM {target_table} WHERE id = %s"  # noqa: S608 — tabella da config.sorgenti (regclass seedata) validata da regex identificatore, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [doc_id])
             row = cursor.fetchone()
@@ -4937,9 +4951,10 @@ class VenditeRepository:
         # Senza documento questa lettura non ha significato — non e' «tutte le
         # code», e' un chiamante rotto (il BB, senza documento, risponderebbe
         # la vista intera: qui quella risposta non e' una domanda).
-        assert ddt_id is not None or ordine_id is not None, (
-            "_list_coda_su_partite: serve un documento (ddt_id o ordine_id)"
-        )
+        if ddt_id is None and ordine_id is None:
+            raise ValueError(
+                "_list_coda_su_partite: serve un documento (ddt_id o ordine_id)"
+            )
         lettura = lettura_coda_per_documento(vista, ddt_id=ddt_id, ordine_id=ordine_id)
         where = f"WHERE {lettura.condizione}" if lettura.condizione is not None else ""
         sql = f"""

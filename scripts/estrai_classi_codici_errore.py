@@ -78,7 +78,7 @@ CLASSE_FORZATA = {
     "W_TXID_NOT_REGISTERED": "AVVISO",
 }
 
-TOKEN_NULL = "NULL"  # convenzione CSV del progetto: token letterale, non cella vuota
+TOKEN_NULL = "NULL"  # convenzione CSV del progetto: token letterale, non cella vuota  # noqa: S105 — segnaposto del parser, non un segreto
 
 
 # Scopo: Legge il catalogo e torna {codice: obsoleto_dal}, preferendo la riga 'it'.

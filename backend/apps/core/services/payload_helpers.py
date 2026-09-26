@@ -30,6 +30,7 @@ from uuid import UUID
 
 from django.db import DatabaseError, IntegrityError
 
+from apps.core.db._helpers import order_dir_ammessa
 from apps.core.services.db_error_fields import APP_ERROR_CODE_RE, diagnostica_db
 from apps.core.services.error_manager import ErrorManager
 
@@ -142,14 +143,26 @@ class PayloadValidator:
     # Whitelist colonne ORDER BY
     # =================================================================
 
-    # Scopo: Valida che `order_by` sia nella whitelist di colonne ammesse.
+    # Scopo: Valida che `order_by` sia nella whitelist di colonne ammesse E
+    #        che `order_dir`, se indicato, sia una direzione riconosciuta.
     #        Coerente con policy anti-SQL-injection sui parametri di
     #        ordinamento lista (ogni repo ha la sua _ORDER_COLS).
+    # ⛔ `order_dir` e' OBBLIGATORIO come argomento (2026-09-26): fino a quel
+    #    giorno questo metodo guardava la sola colonna, e i sette service che
+    #    lo usavano — alcuni con il commento «validazione order_by/dir» sopra —
+    #    lasciavano passare `?order_dir=giu`, che il repository trasformava in
+    #    ASC. Renderlo obbligatorio fa si' che chi valida la colonna non possa
+    #    dimenticare la direzione.
+    # ⭐ Il predicato e' `order_dir_ammessa` del BB SQL, non una copia di
+    #    `{asc, desc}`: il service rifiuta ESATTAMENTE cio' che il repository
+    #    rifiuterebbe (maiuscole e spazi ammessi, assente = default), solo con
+    #    il codice di dominio invece del generico `E_VALIDATION_INPUT`.
     def validate_order_by(
         self,
         order_by: str,
         *,
         allowed: frozenset[str],
+        order_dir: str | None,
         log_to_db: bool | None = None,
         function_name: str | None = None,
     ) -> None:
@@ -159,6 +172,14 @@ class PayloadValidator:
             message="Parametri ordinamento non validi.",
             detail=f"order_by deve essere uno tra: {', '.join(sorted(allowed))}",
             context={"order_by": order_by},
+            **self._em_kwargs(log_to_db=log_to_db, function_name=function_name),
+        )
+        ErrorManager.require(
+            order_dir_ammessa(order_dir),
+            code=self._code,
+            message="Parametri ordinamento non validi.",
+            detail="order_dir deve essere 'asc' o 'desc'",
+            context={"order_dir": order_dir},
             **self._em_kwargs(log_to_db=log_to_db, function_name=function_name),
         )
 

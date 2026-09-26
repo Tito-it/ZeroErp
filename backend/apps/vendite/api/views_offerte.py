@@ -40,6 +40,7 @@ from apps.vendite.api.indirizzi_documento_views import (
 from apps.vendite.services import offerte_service
 from apps.vendite.services.offerte_service import OfferteService
 from apps.core.api.openapi_params import param_ricerca_full
+from apps.vendite.api._componenti_schema import COMPONENTE_PATCH_REQUEST
 
 # Codice lista configurabile (catalogo ui.lista_definizione id=6). Usato
 # dall'export per risolvere colonne visibili/ordine/permessi dell'utente.
@@ -734,37 +735,6 @@ _ECCEZIONE_PREVIEW_COMPONENTI_REQUEST = inline_serializer(
 )
 
 
-_ECCEZIONE_COMPONENTE_PATCH_REQUEST = inline_serializer(
-    name="VenditeOffertaEccezioneComponentePatchReq",
-    fields={
-        "prezzo_unitario": serializers.DecimalField(
-            max_digits=22, decimal_places=10, required=False, allow_null=True,
-        ),
-        "iva_id": serializers.IntegerField(required=False, allow_null=True),
-        "uom_operativa_id": serializers.IntegerField(required=False, allow_null=True),
-        "factor_to_base": serializers.DecimalField(
-            max_digits=22, decimal_places=10, required=False, allow_null=True,
-        ),
-        "qta_operativa": serializers.DecimalField(
-            max_digits=22, decimal_places=10, required=False, allow_null=True,
-        ),
-        "origine_prezzo": serializers.CharField(required=False, allow_null=True),
-        "prezzo_resolver_context": serializers.JSONField(
-            required=False, allow_null=True,
-        ),
-        "stato_approvazione_prezzo": serializers.CharField(
-            required=False, allow_null=True,
-        ),
-        "pratica_approvazione_prezzo_id": serializers.IntegerField(
-            required=False, allow_null=True,
-        ),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-        "ordine": serializers.IntegerField(required=False, allow_null=True),
-        "attivo": serializers.BooleanField(required=False),
-    },
-)
-
-
 class ApiOffertaEccezionePreviewComponenti(DomainAPIView):
     """POST /api/v1/vendite/offerte/<id>/eccezioni/preview-componenti/
 
@@ -849,7 +819,7 @@ class ApiOffertaEccezioneComponenteDetail(DomainAPIView):
     area_funzionale = "vendite"
 
     @extend_schema(
-        request=_ECCEZIONE_COMPONENTE_PATCH_REQUEST,
+        request=COMPONENTE_PATCH_REQUEST,
         responses={200: inline_serializer(
             name="VenditeOffertaEccezioneComponentePatchResp",
             fields={"data": serializers.DictField()},

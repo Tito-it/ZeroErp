@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from django.db import connection, transaction
 
-from apps.core.db._helpers import fetchone_scalar, rows_to_list
+from apps.core.db._helpers import fetchone_scalar, rows_to_list, pattern_contiene
 
 
 class AnagraficheRepository:
@@ -78,9 +78,12 @@ class AnagraficheRepository:
         params: list[object] = []
         if solo_attive:
             condizioni.append("v.risorsa_umana_attivo = true")
-        if search:
+        # La guardia legge il PATTERN, non il termine grezzo: «  » e' un
+        # termine assente, e con `if search:` diventava `ILIKE NULL` (zero righe).
+        pattern = pattern_contiene(search)
+        if pattern is not None:
             condizioni.append("v.ragione_sociale_completa ILIKE %s")
-            params.append(f"%{search}%")
+            params.append(pattern)
         return self._risorse_umane_lookup(condizioni, params)
 
     # Scopo: Una risorsa umana per id, nella stessa forma del lookup, o None.

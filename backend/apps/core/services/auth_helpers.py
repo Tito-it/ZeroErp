@@ -19,9 +19,6 @@ from typing import Any
 
 from django.contrib.auth.models import User
 from django.db import transaction
-from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services.auth_constants import (
@@ -29,6 +26,7 @@ from apps.core.services.auth_constants import (
     JWT_CLAIM_IDENTITA_ID,
 )
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.revoca_token import blocca_token_sessioni
 from apps.core.services.token_service import TokenService
 
 logger = logging.getLogger("security")
@@ -140,11 +138,4 @@ def apply_new_password(
         repo.set_deve_cambiare_password(user.id, False)
 
         if blacklist_tokens:
-            for ot in OutstandingToken.objects.filter(user=user):
-                try:
-                    RefreshToken(ot.token).blacklist()
-                except TokenError:
-                    logger.debug(
-                        "Blacklist token fallita per user_id=%s: token gia' invalido",
-                        user.id,
-                    )
+            blocca_token_sessioni(user.id)

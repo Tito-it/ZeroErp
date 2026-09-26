@@ -165,21 +165,6 @@ export const STATO_CONTRATTO = Object.freeze({
 // `_approvazioni_prezzo_constants.META_KEY_RIGA_PREVENTIVO_ID`.
 export const META_KEY_RIGA_PREVENTIVO_ID = 'riga_preventivo_id'
 
-// Codici origine prezzo del pricing resolver v5 (6 valori, modello unificato
-// componenti BoM 2026-05-13). Allineato al CHECK DB su
-// `vendite.preventivi_righe_componenti.origine_prezzo` e su
-// `vendite.preventivi_righe.origine_prezzo` (quando esteso).
-// `LISTINO_BUNDLE`: nuovo STADIO 0 del resolver bundle-aware — prezzo
-// componente in contesto padre composito, vince su CATEGORIA standalone.
-export const ORIGINE_PREZZO = Object.freeze({
-  PROMO: 'PROMO',
-  CONTRATTO_OVERRIDE: 'CONTRATTO_OVERRIDE',
-  CONTRATTO_LISTINO: 'CONTRATTO_LISTINO',
-  CATEGORIA: 'CATEGORIA',
-  LISTINO_BUNDLE: 'LISTINO_BUNDLE',
-  MANUALE: 'MANUALE',
-})
-
 // Tipi eccezione su `vendite.contratti_righe.tipo_eccezione` (ENUM nativo
 // `vendite.tipo_eccezione_contratto`). Refactor modalita 2026-05-15.
 // `DA_LISTINO` non e' un valore della colonna ma una pseudo-origine

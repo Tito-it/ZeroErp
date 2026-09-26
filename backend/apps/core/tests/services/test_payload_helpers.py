@@ -64,6 +64,7 @@ Indice test eseguiti:
 53) test_map_integrity_fk_preferita_su_specific — review: piu' constraint precisi -> il piu' specifico vince via word boundary
 54) test_validate_order_by_ok                   — nuovo helper V6-B2 review
 55) test_validate_order_by_invalid              — nuovo helper V6-B2 review
+55b) test_validate_order_by_rifiuta_una_direzione_estranea — 2026-09-26: la direzione e' validata insieme alla colonna
 56) test_reject_keys_empty_ok                   — nuovo helper V6-B2 review
 57) test_reject_keys_presente                   — nuovo helper V6-B2 review
 58) test_require_decimal_ok_int_float_str        — 2026-09-18: int, float e stringa passano da `str` (Decimal esatto)
@@ -572,12 +573,27 @@ class TestValidateOrderBy(_Base):
     _ALLOWED = frozenset({"codice", "descrizione", "data_insert"})
 
     def test_validate_order_by_ok(self):
-        self.v.validate_order_by("codice", allowed=self._ALLOWED)
+        # La direzione ASSENTE e' ammessa (prende il default del repository),
+        # e maiuscole/spazi valgono come nel BB SQL.
+        for order_dir in (None, "", "asc", "desc", " DESC "):
+            with self.subTest(order_dir=order_dir):
+                self.v.validate_order_by("codice", allowed=self._ALLOWED, order_dir=order_dir)
 
     def test_validate_order_by_invalid(self):
         with self.assertRaisesValidation() as ctx:
-            self.v.validate_order_by("random_col", allowed=self._ALLOWED)
+            self.v.validate_order_by("random_col", allowed=self._ALLOWED, order_dir="asc")
         self.assertEqual(ctx.exception.code, _CODE)
+
+    # ⛔ 2026-09-26: prima il metodo guardava la sola colonna, e `?order_dir=giu`
+    #    arrivava al repository che lo trasformava in ASC. Ora e' il 400 di
+    #    dominio, con il campo nel context.
+    def test_validate_order_by_rifiuta_una_direzione_estranea(self):
+        for order_dir in ("giu", "desc;", "ASC NULLS LAST"):
+            with self.subTest(order_dir=order_dir):
+                with self.assertRaisesValidation() as ctx:
+                    self.v.validate_order_by("codice", allowed=self._ALLOWED, order_dir=order_dir)
+                self.assertEqual(ctx.exception.code, _CODE)
+                self.assertEqual(ctx.exception.context, {"order_dir": order_dir})
 
 
 class TestRejectKeys(_Base):

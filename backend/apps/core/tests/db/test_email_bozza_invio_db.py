@@ -34,6 +34,9 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
    la query della view (`list_logs`) da' la propria mail `OPERATORE` e non
    quella di un collega DELLO STESSO emittente. E' il caso che la sola
    whitelist emittente non sapeva escludere.
+5) EmailBozzaInvioDbTests.test_modificare_la_bozza_scrive_i_cc_come_array
+   `update_draft` scrive `destinatari_cc` come `text[]` (cast array del BB,
+   2026-09-26) e rifiuta una chiave estranea con `E_OUTBOX`.
 """
 from __future__ import annotations
 
@@ -180,6 +183,38 @@ class EmailBozzaInvioDbTests(unittest.TestCase):
                 with self.assertRaises(DatabaseError) as ctx, transaction.atomic():
                     EmailOutboxService().remove_attachment(allegato_id)
                 self.assertEqual(db_error_code(ctx.exception), "E_EMAIL_ALLEGATO_NON_BOZZA")
+                raise _Annulla
+        except _Annulla:
+            pass
+
+    # 5. La modifica della bozza dal service: `destinatari_cc` arriva come
+    #    `text[]` (cast array del BB `sql_set_clause`, 2026-09-26), le
+    #    stringhe strippate; una chiave estranea e' un 400 `E_OUTBOX`.
+    def test_modificare_la_bozza_scrive_i_cc_come_array(self):
+        from apps.core.services.email_outbox_service import EmailOutboxService
+        from apps.core.services.service_errors import ServiceError
+
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                emittente, operatore = self._costruisci(cur)
+                outbox_id, _ = self._bozza_con_allegato(emittente, operatore)
+
+                EmailOutboxService().update_draft(
+                    outbox_id, oggetto="  Offerta rivista  ",
+                    destinatari_cc=["uno@esempio.test", "due@esempio.test"],
+                )
+                cur.execute(
+                    "SELECT oggetto, destinatari_cc FROM config.email_outbox WHERE id = %s",
+                    [outbox_id],
+                )
+                self.assertEqual(
+                    cur.fetchone(),
+                    ("Offerta rivista", ["uno@esempio.test", "due@esempio.test"]),
+                )
+
+                with self.assertRaises(ServiceError) as ctx:
+                    EmailOutboxService().update_draft(outbox_id, stato="SENT")
+                self.assertEqual(ctx.exception.code, "E_OUTBOX")
                 raise _Annulla
         except _Annulla:
             pass

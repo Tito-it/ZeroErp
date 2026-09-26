@@ -34,7 +34,7 @@ from apps.core.db._helpers import (
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.vendite.db._coda_documento_filtro import lettura_coda_per_documento
-from apps.core.db.sql_write_helpers import execute_dynamic_update
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 
 # Scopo: Whitelist colonne ORDER BY per la lista resi (SQL injection safe). Le
 #        chiavi sono i `campo_sorgente` del catalogo liste ('vendite.resi') che
@@ -674,30 +674,38 @@ class ResiRepository:
         data: date | None = None,
         meta: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        cols: list[str] = ["sorgente_tipo_id", "sorgente_uid", "stato_doc_reso_id"]
-        vals: list[Any] = [sorgente_tipo_id, sorgente_uid, stato_doc_reso_id]
-        if data is not None:
-            cols.append("data")
-            vals.append(data)
-        cols.append("meta")
-        placeholders = ["%s"] * (len(cols) - 1) + ["%s::jsonb"]
-        vals.append(json.dumps(meta or {}))
-        sql = (  # noqa: S608 — colonne whitelisted (chiavi statiche)
-            f"INSERT INTO vendite.resi ({', '.join(cols)}) "
-            f"VALUES ({', '.join(placeholders)}) "
-            f"RETURNING id, uid::text AS uid, numero"
+        # BB `execute_dynamic_insert`: `data` None si omette (`skip_none`) e
+        # vale il DEFAULT CURRENT_DATE; chiavi letterali del metodo.
+        return execute_dynamic_insert(
+            "vendite.resi",
+            {
+                "sorgente_tipo_id": sorgente_tipo_id,
+                "sorgente_uid": sorgente_uid,
+                "stato_doc_reso_id": stato_doc_reso_id,
+                "data": data,
+                "meta": meta or {},
+            },
+            allowed=None, skip_none=True,
+            returning="id, uid::text AS uid, numero",
         )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            result = row_to_dict(cursor)
-            assert result is not None
-            return result
+
+    # ⛔ Whitelist RIGIDA del BB `execute_dynamic_update` (2026-09-26): una
+    #    chiave fuori lista e' `ValueError`, non uno scarto. E' l'elenco delle
+    #    colonne che QUESTO metodo scrive, non il contratto dell'operatore (che
+    #    sta nel service, `resi_service._UPDATE_KEYS_RESO / _UPDATE_KEYS_RIGA`): se il service ne aggiunge una, va aggiunta
+    #    qui — e dimenticarlo e' un errore che si vede, non un campo perso.
+    TESTATA_UPDATE_COLUMNS: frozenset[str] = frozenset({"data", "meta"})
+    RIGA_UPDATE_COLUMNS: frozenset[str] = frozenset({
+        "tipo_reso_id", "qta_operativa", "motivo", "meta",
+    })
 
     # Scopo: Aggiorna campi modificabili della testata reso (data/meta: il
     #        resto e' ereditato dal DDT sorgente e immutabile — vedi
     #        non_editable_fields della fn capabilities). Meta ::jsonb via BB.
     def update_reso(self, reso_id: int, **kwargs: Any) -> bool:
-        return execute_dynamic_update("vendite.resi", reso_id, kwargs)
+        return execute_dynamic_update(
+            "vendite.resi", reso_id, kwargs, allowed=self.TESTATA_UPDATE_COLUMNS,
+        )
 
     # Scopo: Hard-delete reso (flusso abbandono bozza orfana). Guard di dominio
     #        (stato DRAFT, 0 righe) applicati nel service.
@@ -767,7 +775,9 @@ class ResiRepository:
 
     # Scopo: Aggiorna una riga reso esistente (qta/tipo/motivo/meta). Meta ::jsonb.
     def update_riga(self, riga_id: int, **kwargs: Any) -> bool:
-        return execute_dynamic_update("vendite.resi_righe", riga_id, kwargs)
+        return execute_dynamic_update(
+            "vendite.resi_righe", riga_id, kwargs, allowed=self.RIGA_UPDATE_COLUMNS,
+        )
 
     # Scopo: Elimina una riga reso (HARD DELETE, solo con testata DRAFT — guard
     #        nel service; il ponte ri-consegna esiste solo post-conferma).

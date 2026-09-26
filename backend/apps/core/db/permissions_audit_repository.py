@@ -102,7 +102,7 @@ class PermissionsAuditRepository:
             if tabella and tabella != label:
                 continue
             unions.append(
-                f"SELECT '{label}' AS tabella, "
+                f"SELECT '{label}' AS tabella, "  # noqa: S608 — label/schema_table dalla costante _USER_TABLES, valori come parametri
                 f"s.valid_from, s.tipo_operazione, s.user_insert, "
                 f"s.snapshot, s.tx_id::text "
                 f"FROM {schema_table} s "
@@ -121,7 +121,7 @@ class PermissionsAuditRepository:
                 else:
                     where = f"WHERE {_PROFILO_VIA_BINDING_SUBQUERY}"
                 unions.append(
-                    f"SELECT '{label}' AS tabella, "
+                    f"SELECT '{label}' AS tabella, "  # noqa: S608 — label/schema_table dalla costante _DEPT_TABLES, where letterale, valori come parametri
                     f"s.valid_from, s.tipo_operazione, s.user_insert, "
                     f"s.snapshot, s.tx_id::text "
                     f"FROM {schema_table} s "

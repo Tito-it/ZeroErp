@@ -182,7 +182,7 @@ class RicercaFullDbTests(unittest.TestCase):
                     add_ricerca_full_condition(conditions, params, "abc", risolvi())
                     self.assertTrue(conditions, codice)
                     cur.execute(
-                        f"EXPLAIN SELECT 1 FROM {vista} v WHERE {' AND '.join(conditions)}",  # noqa: S608
+                        f"EXPLAIN SELECT 1 FROM {vista} v WHERE {' AND '.join(conditions)}",
                         params,
                     )
 

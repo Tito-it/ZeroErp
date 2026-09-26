@@ -389,7 +389,7 @@ def list_distinte(
 ) -> dict[str, Any]:
     order_by, order_dir = validate_order_params(
         order_by or "data_contabile",
-        (order_dir or "desc").lower(),
+        order_dir or "desc",
         allowed_columns=frozenset(DISTINTE_SORT_COLUMNS),
         error_code=E_VALIDAZIONE,
         function_name=f"{_FN}.list_distinte",
@@ -698,7 +698,7 @@ def list_righe(
     search: str | None = None,
 ) -> dict[str, Any]:
     order_by, order_dir = validate_order_params(
-        order_by, order_dir.lower() if order_dir else None,
+        order_by, order_dir,
         allowed_columns=DISTINTA_RIGHE_SORT_COLUMNS,
         error_code=E_VALIDAZIONE,
         function_name=f"{_FN}.list_righe",
@@ -1206,7 +1206,7 @@ def list_coda_righe(
     )
     order_by, order_dir = validate_order_params(
         order_by or "data_pagamento",
-        (order_dir or "desc").lower(),
+        order_dir or "desc",
         allowed_columns=frozenset(RIGHE_SORT_COLUMNS),
         error_code=E_VALIDAZIONE,
         function_name=f"{_FN}.list_coda_righe",
@@ -1270,7 +1270,7 @@ def list_rate_fuori_capienza(
     )
     order_by, order_dir = validate_order_params(
         order_by or "data_scadenza",
-        (order_dir or "desc").lower(),
+        order_dir or "desc",
         allowed_columns=frozenset(RATE_FUORI_CAPIENZA_SORT_COLUMNS),
         error_code=E_VALIDAZIONE,
         function_name=f"{_FN}.list_rate_fuori_capienza",

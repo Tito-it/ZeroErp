@@ -212,12 +212,11 @@ class EmailOutboxDetailView(DomainAPIView):
         ErrorManager.require(outbox is not None, code=E_EMAIL_OP, message="Bozza non trovata.")
         assert outbox is not None
 
-        data = request.data
+        # ⛔ Il payload passa INTERO: le chiavi estranee le rifiuta il service
+        #    con un 400 (2026-09-26). Fino a quel giorno la view le filtrava qui
+        #    e un campo sbagliato «riusciva» senza essere scritto.
         service = EmailOutboxService()
-        result = service.update_draft(outbox_id, **{
-            k: data[k] for k in ("oggetto", "corpo_html", "corpo_testo", "destinatari_cc", "destinatario")
-            if k in data
-        })
+        result = service.update_draft(outbox_id, **dict(request.data))
         return success_response(result)
 
 
@@ -341,7 +340,7 @@ class EmailAllegatoDownloadView(DomainAPIView):
         ErrorManager.require(os.path.exists(abs_path), code=E_EMAIL_OP, message="File non trovato su storage.")
 
         return FileResponse(
-            open(abs_path, "rb"),  # noqa: SIM115
+            open(abs_path, "rb"),
             content_type=allegato["mime_type"],
             as_attachment=True,
             filename=allegato["nome_file"],
@@ -419,10 +418,9 @@ class EmailLogOperatoreListView(DomainAPIView):
             limit=p["limit"],
             offset=p["offset"],
             order_by=p["order_by"],
-            # `parse_list_params` normalizza il verso ad 'asc' (api.md): per un
-            # registro il default e' il piu' recente in cima, quindi il valore
-            # si legge GREZZO.
-            order_dir=qp.get("order_dir") or "desc",
+            # Assente = `None`: il default DESC dei log (il piu' recente in
+            # cima) lo applica `EmailRepository.list_logs`, in una sede sola.
+            order_dir=p["order_dir"],
         )
         return success_response({"count": total, "results": results})
 

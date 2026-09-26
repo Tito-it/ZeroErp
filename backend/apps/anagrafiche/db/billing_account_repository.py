@@ -16,7 +16,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import escape_ilike, rows_to_list
+from apps.core.db._helpers import rows_to_list, pattern_contiene
 
 # Scopo: Clausole WHERE condivise tra query count e query data del lookup BA.
 # Mantenere allineate le due query: qualsiasi nuovo filtro va aggiunto qui.
@@ -117,7 +117,7 @@ class BillingAccountRepository:
     ) -> tuple[list[dict[str, Any]], int]:
         # Pattern ILIKE su 4 colonne in OR per ricerca testuale.
         # Escape wildcard per evitare match indesiderati su '%' e '_' nei dati utente.
-        search_pattern = f"%{escape_ilike(q)}%"
+        search_pattern = pattern_contiene(q)
 
         # Scope emittente: lista di ruoli emittente autorizzati, None = bypass (superuser).
         # Una lista vuota significa "operatore senza emittenti autorizzati": in quel caso
@@ -139,7 +139,7 @@ class BillingAccountRepository:
             SELECT COUNT(*)
             {_LOOKUP_FROM}
             {_LOOKUP_WHERE}
-        """  # noqa: S608
+        """
 
         data_sql = f"""
             SELECT
@@ -150,7 +150,7 @@ class BillingAccountRepository:
                       srd.id_fiscale_univoco_cf_piva ASC NULLS LAST,
                       ba.id ASC
              LIMIT %s
-        """  # noqa: S608
+        """
 
         with connection.cursor() as cursor:
             cursor.execute(count_sql, where_params)
@@ -259,7 +259,7 @@ class BillingAccountRepository:
             {_LOOKUP_SELECT_COLUMNS}
             {_LOOKUP_FROM}
              WHERE ba.id = %s
-        """  # noqa: S608
+        """
         with connection.cursor() as cursor:
             cursor.execute(sql, [billing_account_id])
             rows = rows_to_list(cursor)
@@ -281,7 +281,7 @@ class BillingAccountRepository:
               LEFT JOIN config.valute v ON v.id = ef.valuta_id
              WHERE ef.id = anagrafiche.fn_get_emittente_fiscale_pk(%s)
              LIMIT 1
-        """  # noqa: S608
+        """
         with connection.cursor() as cursor:
             cursor.execute(sql, [billing_account_id])
             from apps.core.db._helpers import row_to_dict
@@ -325,7 +325,7 @@ class BillingAccountRepository:
                AND cl.soggetto_ruolo_id  = %s
                AND cl.utility_id         = %s
              LIMIT 1
-        """  # noqa: S608
+        """
         with connection.cursor() as cursor:
             cursor.execute(
                 sql, [istanza_utility_id, soggetto_ruolo_id, utility_id],

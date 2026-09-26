@@ -38,7 +38,7 @@ from apps.core.services.token_service import TokenService
 logger = logging.getLogger("security")
 
 E_RESET = "E_RESET_PASSWORD"
-_RESET_TOKEN_TIPO = "RESET_PASSWORD"
+_RESET_TOKEN_TIPO = "RESET_PASSWORD"  # noqa: S105 — codice del tipo token, non un segreto
 _RESET_SCADENZA_ORE = 1
 _TEMPLATE_RESET = "RESET_PASSWORD"
 _TEMPLATE_CONFERMA = "CAMBIO_PASSWORD_CONFERMA"

@@ -20,6 +20,7 @@ from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
 from apps.anagrafiche.db._helpers import resolve_soggetto_id
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
+from apps.anagrafiche.services.soggetti_service import SoggettiService
 from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND
 from apps.anagrafiche.services._validators import create_with_dedup
 
@@ -75,7 +76,7 @@ class RuoloContattiView(DomainAPIView):
                 sql_ist = f"""
                     SELECT {_COLS}, 'istanza' AS fonte FROM anagrafiche.contatti c {_JOIN}
                      WHERE c.soggetto_ruolo_id = %s AND c.istanza_utility_id = %s ORDER BY c.id
-                """
+                """  # noqa: S608 — _COLS/_JOIN letterali locali, valori come parametri
                 cursor.execute(sql_ist, [soggetto_ruolo_id, istanza_utility_id])
                 l1 = rows_to_list(cursor)
                 results.extend(l1)
@@ -87,7 +88,7 @@ class RuoloContattiView(DomainAPIView):
             sql_ruolo = f"""
                 SELECT {_COLS}, 'ruolo' AS fonte FROM anagrafiche.contatti c {_JOIN}
                  WHERE c.soggetto_ruolo_id = %s AND c.istanza_utility_id IS NULL ORDER BY c.id
-            """
+            """  # noqa: S608 — _COLS/_JOIN letterali locali, valori come parametri
             cursor.execute(sql_ruolo, [soggetto_ruolo_id])
             l2 = rows_to_list(cursor)
             for c in l2:
@@ -99,7 +100,7 @@ class RuoloContattiView(DomainAPIView):
             sql_sogg = f"""
                 SELECT {_COLS}, 'soggetto' AS fonte FROM anagrafiche.contatti c {_JOIN}
                  WHERE c.soggetto_id = %s::uuid AND c.soggetto_ruolo_id IS NULL ORDER BY c.id
-            """
+            """  # noqa: S608 — _COLS/_JOIN letterali locali, valori come parametri
             cursor.execute(sql_sogg, [soggetto_id])
             l3 = rows_to_list(cursor)
             for c in l3:
@@ -172,10 +173,10 @@ class RuoloContattiDetailView(DomainAPIView):
     )
     # Scopo: Aggiorna contatto con ownership check sul ruolo.
     def patch(self, request: Request, soggetto_ruolo_id: int, contatto_id: int) -> JsonResponse:
-        updated = _repo.update_contatto(contatto_id, request.data, soggetto_ruolo_id=soggetto_ruolo_id)
-        ErrorManager.require(updated, code=E_ANAG_NOT_FOUND,
-                             message="Contatto non trovato o non appartiene al ruolo.")
-        return success_response({"updated": True})
+        # Dal service (2026-09-26): e' li' che si validano le chiavi del payload.
+        return success_response(
+            SoggettiService().update_contatto_ruolo(soggetto_ruolo_id, contatto_id, request.data)
+        )
 
     @extend_schema(
         responses={200: inline_serializer(name="RuoloContattoDeleteResp", fields={"data": serializers.DictField()})},

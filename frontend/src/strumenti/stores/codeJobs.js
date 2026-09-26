@@ -108,17 +108,22 @@ function createCodaJobsStore(id, fetchPage, { orderBy }) {
     // niente di nascosto da dichiarare.
     const archiviateCount = ref(0)
 
-    const { items, totalRecords, loading, hasSearched, fetchList } =
-      useListaEmptyStateFetch({
-        filters,
-        buildParams: buildCodaParams,
-        fetchPage,
-        alwaysFetch: true,
-        // ⛔ L'hook vive nel BB e non nel `fetchPage`: li' fuori applicherebbe
-        // il conteggio anche alle risposte SCARTATE dal guard anti-race, e il
-        // numero racconterebbe un contesto diverso dalla lista sopra di se'.
-        onPayload: (payload) => { archiviateCount.value = payload.archiviate_count ?? 0 },
-      })
+    // `lista`: lo stato del BB, esposto INTERO nel `return` (`...lista`).
+    // ⛔ Non si elencano i suoi ref a mano: un ref nuovo del BB (com'e'
+    //    successo con `ricercaFull`, `ricercaMinCaratteri`,
+    //    `ricercaCambiaLaRichiesta`) arriverebbe solo agli store che lo
+    //    ricordano — e senza errore sugli altri.
+    const lista = useListaEmptyStateFetch({
+      filters,
+      buildParams: buildCodaParams,
+      fetchPage,
+      alwaysFetch: true,
+      // ⛔ L'hook vive nel BB e non nel `fetchPage`: li' fuori applicherebbe
+      // il conteggio anche alle risposte SCARTATE dal guard anti-race, e il
+      // numero racconterebbe un contesto diverso dalla lista sopra di se'.
+      onPayload: (payload) => { archiviateCount.value = payload.archiviate_count ?? 0 },
+    })
+    const { fetchList } = lista
 
     // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
     // nascita, e come si riportano li' («Pulisci filtri»).
@@ -141,7 +146,8 @@ function createCodaJobsStore(id, fetchPage, { orderBy }) {
     })
 
     return {
-      items, totalRecords, loading, hasSearched, filters, fetchList,
+      ...lista,
+      filters,
       archiviateCount,
       chiaviFiltro, filtriDefault, filtriNeutri, azzeraFiltri,
     }

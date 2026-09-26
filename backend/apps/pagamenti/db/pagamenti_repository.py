@@ -43,6 +43,7 @@ from apps.core.db.emittente_scope_helpers import (
     add_emittente_scope_condition_risolta,
     fetch_emittenti_scope_ids,
 )
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, sql_set_clause
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.system_context import connection_role_bypasses_rls
 from apps.pagamenti.types import (
@@ -685,7 +686,7 @@ _ENTE_INCASSO_SELECT = f"""
       LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srp
              ON srp.soggetto_ruolo_id = e.soggetto_ruolo_id
       {_UTILITY_DEL_CONTO_JOIN}
-"""
+"""  # noqa: S608 — _UTILITY_DEL_CONTO_JOIN costante di modulo
 
 # Le colonne aggiornabili di un canale. ⛔ `codice_interno` NON c'e': e' la
 # chiave stabile con cui il resto del sistema lo nomina, e cambiarla romperebbe
@@ -695,6 +696,13 @@ _COLONNE_ENTE_INCASSO_AGGIORNABILI = frozenset(
      "soggetto_ruolo_id", "bank_branch_id", "soggetto_ruolo_conto_bancario_id",
      "formato_flusso", "regole_match", "meta"}
 )
+# Le colonne con cui un canale NASCE. Oggi coincidono con le aggiornabili (anche
+# `codice_interno` resta fuori: il service non lo compila), ma e' una domanda
+# diversa e ha un nome suo — il giorno in cui divergono, divergono qui.
+# 🔴 Prima di questa costante l'INSERT componeva le colonne da `list(campi)`
+#    SENZA whitelist nel repository: l'«ultimo cancello» valeva per l'UPDATE e
+#    non per l'INSERT.
+_COLONNE_ENTE_INCASSO_INSERIBILI = _COLONNE_ENTE_INCASSO_AGGIORNABILI
 
 # Colonne ordinabili degli ATTI DI SISTEMAZIONE di una fattura (lista 61).
 # ⛔ Chiavata sui `campo_sorgente` FISICI, non sui codici logici: il frontend
@@ -757,8 +765,15 @@ ENTI_INCASSO_SORT_COLUMNS: dict[str, str] = {
 # ⚠️ Idem per `validazione_blocco_dettaglio` e `righe_per_stato` (il dettaglio
 #    della distinta): il primo riempie la frase del «Porta a VALIDATA» spento,
 #    il secondo e' l'array che il dialog di validazione elenca.
+# ⚠️ `regole_match` (jsonb NOT NULL di `enti_incasso`) mancava fino al
+#    2026-09-26, e il difetto era muto: il dettaglio del canale la serviva come
+#    STRINGA (il driver restituisce jsonb come testo e `_shape` non la
+#    decodificava) mentre il contratto in ingresso la vuole oggetto; e l'UPDATE
+#    la scriveva senza `::jsonb`, mentre l'INSERT la castava con un'eccezione
+#    scritta a mano accanto a questa lista — due regole per la stessa colonna.
 _JSONB_COLS = (
     "meta", "elimina_blocco_dettaglio", "validazione_blocco_dettaglio", "righe_per_stato",
+    "regole_match",
 )
 
 # 🔴 Le colonne che questo repository accetta di aggiornare, e non e' una
@@ -824,13 +839,13 @@ class PagamentiRepository:
             ) q
             {order_clause}
             LIMIT %s OFFSET %s
-        """
+        """  # noqa: S608 — select_sql da costanti del modulo, order_clause da sql_order_clause su whitelist, valori come parametri
         # ⚠️ Il conteggio di ripiego serve SOLO a pagina oltre l'ultima: li' la
         # window function non ha righe su cui calcolare il totale e
         # risponderebbe zero. Senza, a chi e' rimasto su una pagina stantia di
         # una lista che si e' accorciata sotto di lui diremmo «nessun
         # risultato» — una cosa falsa, con l'aria di un dato.
-        count_sql = f"SELECT COUNT(*) FROM ({select_sql}) q"
+        count_sql = f"SELECT COUNT(*) FROM ({select_sql}) q"  # noqa: S608 — select_sql da costanti del modulo e frammenti letterali, valori come parametri
         return fetch_paged_with_total(
             data_sql,
             [*params, limit, offset],
@@ -856,7 +871,7 @@ class PagamentiRepository:
               FROM pagamenti.vendite_contabili_stati
              WHERE {_sql_stato_vivo()}
              ORDER BY ordine NULLS LAST, id
-        """
+        """  # noqa: S608 — _sql_stato_vivo(): frammento letterale
         with connection.cursor() as cursor:
             cursor.execute(sql)
             return rows_to_list(cursor)  # type: ignore[return-value]
@@ -871,7 +886,7 @@ class PagamentiRepository:
               FROM pagamenti.vendite_contabili_righe_stati
              WHERE {_sql_stato_vivo()}
              ORDER BY ordine NULLS LAST, id
-        """
+        """  # noqa: S608 — _sql_stato_vivo(): frammento letterale
         with connection.cursor() as cursor:
             cursor.execute(sql)
             return rows_to_list(cursor)  # type: ignore[return-value]
@@ -980,7 +995,7 @@ class PagamentiRepository:
               ) q
               {_LATERAL_VALIDAZIONE}
               {_RIGHE_PER_STATO_LATERAL}
-        """
+        """  # noqa: S608 — _DISTINTA_SELECT e LATERAL costanti di modulo, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(contabile_id)])
             rows = rows_to_list(cursor)
@@ -1049,29 +1064,34 @@ class PagamentiRepository:
             row = cursor.fetchone()
         return int(row[0])
 
-    # Scopo: Compone la clausola SET di un UPDATE parziale, verificando che
-    #        OGNI nome di colonna sia nella whitelist del suo oggetto.
-    # ⛔ Nessun nome arriva mai in SQL senza passare di qui.
+    # Scopo: Verifica che OGNI nome di colonna di una scrittura sia nella
+    #        whitelist del suo oggetto — UPDATE e INSERT, stesso cancello.
+    # ⚠️ Il BB fa lo stesso controllo (ValueError); questo resta davanti per
+    #    parlare col codice del modulo (`_E_CHIAMATA`), come ha sempre fatto.
     @staticmethod
-    def _set_clause(
+    def _verifica_colonne(
         campi: dict[str, Any], consentite: frozenset[str], metodo: str
-    ) -> tuple[str, list[Any]]:
+    ) -> None:
         fuori = sorted(c for c in campi if c not in consentite)
         ErrorManager.require(
             not fuori,
             code=_E_CHIAMATA,
-            message="Aggiornamento non ammesso su queste colonne.",
-            detail=f"Colonne non aggiornabili: {', '.join(fuori)}",
+            message="Scrittura non ammessa su queste colonne.",
+            detail=f"Colonne non ammesse: {', '.join(fuori)}",
             function_name=f"{_FN}.{metodo}",
         )
-        assegnazioni: list[str] = []
-        params: list[Any] = []
-        for colonna, valore in campi.items():
-            assegnazioni.append(
-                f"{colonna} = %s::jsonb" if colonna in _JSONB_COLS else f"{colonna} = %s"
-            )
-            params.append(valore)
-        return ", ".join(assegnazioni), params
+
+    # Scopo: Compone la clausola SET di un UPDATE parziale, verificando che
+    #        OGNI nome di colonna sia nella whitelist del suo oggetto.
+    # ⛔ Nessun nome arriva mai in SQL senza passare di qui.
+    # ⭐ La composizione e' il BB `sql_set_clause` (2026-09-26): le colonne di
+    #    `_JSONB_COLS` escono `::jsonb` col valore gia' serializzato dal service.
+    @classmethod
+    def _set_clause(
+        cls, campi: dict[str, Any], consentite: frozenset[str], metodo: str
+    ) -> tuple[str, list[Any]]:
+        cls._verifica_colonne(campi, consentite, metodo)
+        return sql_set_clause(campi, allowed=consentite, jsonb=_JSONB_COLS)
 
     # Scopo: Aggiorna i campi che una persona compila sulla testata.
     # ⛔ Lo stato NON passa di qui: cambiarlo e' un'azione, e la matrice delle
@@ -1089,7 +1109,7 @@ class PagamentiRepository:
             UPDATE pagamenti.vendite_contabili
                SET {set_clause}
              WHERE id = %s
-        """
+        """  # noqa: S608 — SET da _set_clause su whitelist _COLONNE_DISTINTA_AGGIORNABILI, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return cursor.rowcount
@@ -1290,7 +1310,7 @@ class PagamentiRepository:
             UPDATE pagamenti.vendite_contabili_righe
                SET {set_clause}
              WHERE id = %s
-        """
+        """  # noqa: S608 — SET da _set_clause su whitelist _COLONNE_RIGA_AGGIORNABILI, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return cursor.rowcount
@@ -1400,7 +1420,7 @@ class PagamentiRepository:
                AND {_sql_stato_vivo("sd")}
                AND {_sql_stato_vivo("sa")}
              ORDER BY 1, 2, 3
-        """
+        """  # noqa: S608 — _sql_stato_vivo() con alias letterali
         distinta: list[tuple[str, str]] = []
         riga: list[tuple[str, str]] = []
         with connection.cursor() as cursor:
@@ -1691,7 +1711,7 @@ class PagamentiRepository:
             cond_p, params_p = _condizioni("p")
             where_p = ("WHERE " + " AND ".join(cond_p)) if cond_p else ""
             perimetro_sql = (
-                f"SELECT p.scadenza_id FROM vendite.vw_fatture_scadenze_lista p {where_p}"
+                f"SELECT p.scadenza_id FROM vendite.vw_fatture_scadenze_lista p {where_p}"  # noqa: S608 — where_p da frammenti letterali di _condizioni con alias letterale, valori come parametri
             )
             select_sql = f"""
                 SELECT v.*,
@@ -1834,7 +1854,7 @@ class PagamentiRepository:
 
         return self._lista_paginata(
             select_sql=(
-                f"SELECT v.* FROM pagamenti.vw_rate_fuori_capienza v {where_clause}"
+                f"SELECT v.* FROM pagamenti.vw_rate_fuori_capienza v {where_clause}"  # noqa: S608 — WHERE da frammenti letterali + colonne _RICERCA_RATE_FUORI_CAPIENZA, valori come parametri
             ),
             params=params,
             order_clause=(
@@ -1986,7 +2006,7 @@ class PagamentiRepository:
                AND (src.valido_dal IS NULL OR src.valido_dal <= CURRENT_DATE)
                AND COALESCE(src.valido_al, 'infinity'::date) >= CURRENT_DATE
              ORDER BY src.predefinito DESC, cb.iban
-        """
+        """  # noqa: S608 — _UTILITY_DEL_CONTO_JOIN costante di modulo, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(soggetto_ruolo_id)])
             return rows_to_list(cursor)
@@ -1995,21 +2015,19 @@ class PagamentiRepository:
     # ⚠️ Nessuna funzione madre: e' un `INSERT` su una tabella di
     #    configurazione, e i quattro guard (tipo/filiale, conto di incasso,
     #    coerenza PSP, scope emittente) parlano da soli.
+    # ⭐ Stesso cancello dell'UPDATE (`_verifica_colonne`) e stessa regola
+    #    jsonb (`_JSONB_COLS`), via il BB `execute_dynamic_insert`.
     def create_ente_incasso(self, campi: dict[str, Any]) -> int:
-        colonne = list(campi)
-        segnaposti = ", ".join(
-            "%s::jsonb" if c in _JSONB_COLS or c == "regole_match" else "%s"
-            for c in colonne
+        self._verifica_colonne(
+            campi, _COLONNE_ENTE_INCASSO_INSERIBILI, "create_ente_incasso"
         )
-        sql = f"""
-            INSERT INTO pagamenti.enti_incasso ({", ".join(colonne)})
-            VALUES ({segnaposti})
-            RETURNING id
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [campi[c] for c in colonne])
-            row = cursor.fetchone()
-        return int(row[0])
+        riga = execute_dynamic_insert(
+            "pagamenti.enti_incasso",
+            campi,
+            allowed=_COLONNE_ENTE_INCASSO_INSERIBILI,
+            jsonb=_JSONB_COLS,
+        )
+        return int(riga["id"])
 
     # Scopo: Aggiorna un canale di incasso.
     def update_ente_incasso(self, ente_id: int, campi: dict[str, Any]) -> int:
@@ -2023,7 +2041,7 @@ class PagamentiRepository:
             UPDATE pagamenti.enti_incasso
                SET {set_clause}
              WHERE id = %s
-        """
+        """  # noqa: S608 — SET da _set_clause su whitelist _COLONNE_ENTE_INCASSO_AGGIORNABILI, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return cursor.rowcount
@@ -2073,7 +2091,7 @@ class PagamentiRepository:
               LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd
                      ON srd.soggetto_ruolo_id = v.cliente_soggetto_ruolo_id
               {where_clause}
-        """
+        """  # noqa: S608 — WHERE da frammenti letterali + colonne _RICERCA_ECCEDENZE, valori come parametri
         return self._lista_paginata(
             select_sql=select_sql,
             params=params,
@@ -2249,7 +2267,7 @@ class PagamentiRepository:
                    COUNT(*) OVER () AS total_count
              {_SISTEMAZIONI_FROM_WHERE}
              ORDER BY {ordinamento}{paginazione}
-        """  # noqa: S608
+        """
         return fetch_paged_with_total(
             data_sql,
             params,
@@ -2258,7 +2276,7 @@ class PagamentiRepository:
             #    divergono, e il giorno in cui divergono il totale parla di un
             #    insieme diverso da quello che si sta guardando.
             fallback_count_sql=(
-                f"SELECT count(*) {_SISTEMAZIONI_FROM_WHERE}"  # noqa: S608
+                f"SELECT count(*) {_SISTEMAZIONI_FROM_WHERE}"
             ),
             fallback_params=[int(fattura_id)],
             offset=offset,

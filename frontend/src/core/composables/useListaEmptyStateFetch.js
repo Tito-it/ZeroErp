@@ -27,7 +27,8 @@
 //    (no flash vuoto). Usato dalla factory `createCrudStore` con startsEmpty:false.
 //
 // Ritorna lo stato reattivo (items/totalRecords/loading/hasSearched/sospesa/
-// ricercaFull/ricercaMinCaratteri) + fetchList.
+// ricercaFull/ricercaMinCaratteri) + fetchList + `ricercaCambiaLaRichiesta`
+// (vedi li').
 // Lo store espone questi ref nel proprio `return` insieme a `filters` e alle
 // azioni CRUD.
 
@@ -51,7 +52,12 @@
 // chiamata ancora in corso.
 import { ref } from 'vue'
 import { useFetchVersion } from './useFetchVersion'
-import { termineCorto, termineRicerca } from '../utils/listParams'
+import { paramsRicerca, termineCorto, termineRicerca } from '../utils/listParams'
+
+// «Nessuna richiesta nota»: prima della prima fetch, dopo `svuota()`, dopo un
+// errore. Un `Symbol` e non `undefined`, che e' gia' un valore legittimo
+// («richiesta partita senza `search`»).
+const NESSUNA_RICHIESTA = Symbol('nessuna-richiesta')
 
 // `ricercaCorta` (2026-08-10, migrazione delle 19 store che avevano il ciclo a
 // mano): cosa fa una lista `alwaysFetch` quando nel campo search ci sono 1-2
@@ -139,6 +145,10 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
   //    il frontend mandava da tre: «KG» non arrivava mai.
   const ricercaMinCaratteri = ref(null)
   const fv = useFetchVersion()
+  // Il parametro `search` dell'ultima richiesta PARTITA (non arrivata: una
+  // richiesta in volo per «abc» conta gia', o cancellando fino ad «ab» la
+  // lista filtrata atterrerebbe sotto una casella che non cerca piu').
+  let ricercaInviata = NESSUNA_RICHIESTA
 
   // Scopo: riporta la lista allo stato vuoto E scarta le risposte in volo.
   // L'invalidate e' la parte che non si puo' omettere: senza, una fetch gia'
@@ -150,6 +160,7 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
   // senza emittente corrente).
   function svuota() {
     fv.invalidate()
+    ricercaInviata = NESSUNA_RICHIESTA
     items.value = []
     totalRecords.value = 0
     hasSearched.value = false
@@ -207,6 +218,7 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
     // frattempo non ne e' partita una piu' recente.
     const tag = fv.tag()
     if (!silent) loading.value = true
+    ricercaInviata = paramsRicerca(f, ricerca).search
     try {
       const res = await fetchPage(buildParams(f, searchTerm, ricerca))
       if (!fv.isCurrent(tag)) return false   // risposta stantia: la lista NON si tocca
@@ -220,6 +232,11 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
       // poter distinguere «lista aggiornata» da «guardia/risposta scartata»,
       // altrimenti il secondo giro parte sui dati di un'altra chiamata.
       return true
+    } catch (err) {
+      // Una richiesta fallita non e' una lista a video: il tasto successivo
+      // deve poter riprovare, anche con lo stesso termine.
+      if (fv.isCurrent(tag)) ricercaInviata = NESSUNA_RICHIESTA
+      throw err
     } finally {
       // Lo spinner lo spegne solo la fetch corrente: una risposta scartata che
       // lo spegnesse lascerebbe la lista senza indicazione mentre una chiamata
@@ -228,8 +245,31 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
     }
   }
 
+  // Scopo: il nuovo termine della casella cambia la richiesta? `false` se il
+  //        parametro `search` che partirebbe e' lo stesso dell'ultima richiesta
+  //        partita: allora non c'e' niente da rifare. Lo chiede `useSearchTable`
+  //        prima di ricaricare a ogni tasto.
+  // ⭐ Un termine sotto la soglia della lista NON e' una ricerca
+  //    (`paramsRicerca` non lo manda): su una lista gia' a video, digitare il
+  //    1° e il 2° carattere non cambia niente. Fino al 2026-09-26 li' ripartiva
+  //    la STESSA richiesta senza `search` — sui preventivi (e sulle liste col
+  //    filtro data di default, che conta come filtro attivo) una lista pesante
+  //    ricaricata identica, che a video sembrava una ricerca partita al primo
+  //    carattere. Stessa cosa per «abc » dopo «abc»: il `trim` la rende uguale.
+  // ⚠️ `true` quando decide `fetchList` senza chiamare il backend: lista non
+  //    ancora caricata (la guardia empty-state), lista sospesa, e le liste che
+  //    partono piene con `ricercaCorta: 'svuota'`, che sul termine corto
+  //    SVUOTANO per scelta (vedi sopra) — lo svuotamento e' locale.
+  function ricercaCambiaLaRichiesta(termine) {
+    if (sospesa.value || !hasSearched.value || ricercaInviata === NESSUNA_RICHIESTA) return true
+    const ricerca = { minCaratteri: ricercaMinCaratteri.value }
+    const f = { ...filters.value, search: termine }
+    if (alwaysFetch && ricercaCorta === 'svuota' && termineCorto(termineRicerca(f), ricerca)) return true
+    return paramsRicerca(f, ricerca).search !== ricercaInviata
+  }
+
   return {
     items, totalRecords, loading, hasSearched, sospesa, ricercaFull, ricercaMinCaratteri,
-    fetchList, svuota,
+    fetchList, svuota, ricercaCambiaLaRichiesta,
   }
 }

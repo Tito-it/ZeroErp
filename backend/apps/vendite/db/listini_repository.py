@@ -21,8 +21,9 @@ from apps.core.db._helpers import (
     extract_paginated,
     row_to_dict,
     rows_to_list,
+    sql_order_clause,
 )
-from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
+from apps.core.db.sql_write_helpers import execute_dynamic_insert, sql_set_clause
 
 logger = logging.getLogger(__name__)
 
@@ -126,47 +127,6 @@ _RICERCA_LISTINI_RIGHE = RicercaFull(
 )
 
 
-# Scopo: Prepara colonne, placeholder e parametri per un INSERT dinamico su colonne whitelisted.
-def _prepare_insert_parts(
-    *,
-    base_fields: list[tuple[str, Any]],
-    extra_data: dict[str, Any],
-    column_types: dict[str, str],
-) -> tuple[list[str], str, list[Any]]:
-    fields = list(base_fields) + [
-        (key, value) for key, value in extra_data.items() if key in column_types
-    ]
-    column_names = [field_name for field_name, _ in fields]
-    placeholders = ", ".join(
-        "%s" if field_name not in column_types else sql_placeholder(column_types[field_name])
-        for field_name, _ in fields
-    )
-    params = [
-        field_value if field_name not in column_types else to_write_param(field_value, column_types[field_name])
-        for field_name, field_value in fields
-    ]
-    return column_names, placeholders, params
-
-
-# Scopo: Prepara SET clause e parametri per un UPDATE dinamico su colonne whitelisted.
-def _prepare_update_parts(
-    *,
-    data: dict[str, Any],
-    column_types: dict[str, str],
-) -> tuple[str, list[Any]] | None:
-    fields = [(key, value) for key, value in data.items() if key in column_types]
-    if not fields:
-        return None
-    set_clause = ", ".join(
-        f"{field_name} = {sql_placeholder(column_types[field_name])}" for field_name, _ in fields
-    )
-    params = [
-        to_write_param(field_value, column_types[field_name])
-        for field_name, field_value in fields
-    ]
-    return set_clause, params
-
-
 class ListiniRepository:
     """Repository SQL per listini, versioni, righe (F2-BE-13: rimosso CRUD associazioni)."""
 
@@ -185,8 +145,14 @@ class ListiniRepository:
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
-        order_column = LISTINI_ORDER_COLUMNS[order_by]
-        safe_order_dir = "DESC" if order_dir.lower() == "desc" else "ASC"
+        # BB `sql_order_clause` (NULL come valore minimo, tiebreak `l.id`
+        # allineato). Rigido: il service ha gia' validato `order_by`/`order_dir`
+        # contro la stessa whitelist, un valore estraneo qui e' un errore.
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=LISTINI_ORDER_COLUMNS, default="l.codice", tiebreak="l.id",
+            rifiuta_fuori_whitelist=True,
+        )
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -213,7 +179,7 @@ class ListiniRepository:
               LEFT JOIN config.utilities u ON u.id = l.utility_id
               LEFT JOIN config.listini_tipologie lt ON lt.id = l.tipologia_id
             {where_clause}
-        """
+        """  # noqa: S608 — WHERE da clausole letterali/BB add_ricerca_full_condition, ORDER BY da whitelist LISTINI_ORDER_COLUMNS, valori come parametri
         data_sql = f"""
             SELECT
                 l.id,
@@ -240,9 +206,9 @@ class ListiniRepository:
               LEFT JOIN config.utilities u ON u.id = l.utility_id
               LEFT JOIN config.listini_tipologie lt ON lt.id = l.tipologia_id
             {where_clause}
-             ORDER BY {order_column} {safe_order_dir}, l.id {safe_order_dir}
+             ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
-        """
+        """  # noqa: S608 — WHERE da clausole letterali/BB add_ricerca_full_condition, ORDER BY da whitelist LISTINI_ORDER_COLUMNS, valori come parametri
 
         with connection.cursor() as cursor:
             cursor.execute(count_sql, params)
@@ -381,35 +347,18 @@ class ListiniRepository:
 
     # Scopo: Inserisce il listino usando solo colonne write ammesse.
     def create_listino(self, data: dict[str, Any]) -> int:
-        insert_parts = _prepare_insert_parts(
-            base_fields=[],
-            extra_data=data,
-            column_types=LISTINO_CREATE_COLUMNS,
+        # BB `execute_dynamic_insert`: whitelist RIGIDA sulle chiavi di
+        # LISTINO_CREATE_COLUMNS (payload vuoto o chiave estranea -> ValueError).
+        riga = execute_dynamic_insert(
+            "vendite.listini", data, allowed=LISTINO_CREATE_COLUMNS,
         )
-        column_names, placeholders, params = insert_parts
-        if not column_names:
-            raise ValueError("create_listino_empty_payload")
-
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                INSERT INTO vendite.listini ({", ".join(column_names)})
-                VALUES ({placeholders})
-                RETURNING id
-                """,
-                params,
-            )
-            row = cursor.fetchone()
-
-        assert row is not None
-        return int(row[0])
+        return int(riga["id"])
 
     # Scopo: Aggiorna il listino sui soli campi forniti nel payload.
     def update_listino(self, listino_id: int, data: dict[str, Any]) -> bool:
-        update_parts = _prepare_update_parts(data=data, column_types=LISTINO_UPDATE_COLUMNS)
-        if update_parts is None:
+        if not data:
             return False
-        set_clause, params = update_parts
+        set_clause, params = sql_set_clause(data, allowed=LISTINO_UPDATE_COLUMNS)
         params.append(listino_id)
 
         with connection.cursor() as cursor:
@@ -418,7 +367,7 @@ class ListiniRepository:
                 UPDATE vendite.listini
                    SET {set_clause}
                  WHERE id = %s
-                """,
+                """,  # noqa: S608 — SET dal BB sql_set_clause su whitelist *_UPDATE_COLUMNS, valori come parametri
                 params,
             )
             return cursor.rowcount > 0
@@ -511,32 +460,20 @@ class ListiniRepository:
 
     # Scopo: Inserisce una nuova versione nel listino target.
     def create_versione(self, listino_id: int, data: dict[str, Any]) -> int:
-        column_names, placeholders, params = _prepare_insert_parts(
-            base_fields=[("listino_id", listino_id)],
-            extra_data=data,
-            column_types=VERSIONE_CREATE_COLUMNS,
+        # `listino_id` e' la chiave del padre, fuori dal payload: la whitelist
+        # la nomina esplicitamente accanto alle colonne del payload.
+        riga = execute_dynamic_insert(
+            "vendite.listini_versioni",
+            {"listino_id": listino_id, **data},
+            allowed={"listino_id", *VERSIONE_CREATE_COLUMNS},
         )
-
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                INSERT INTO vendite.listini_versioni ({", ".join(column_names)})
-                VALUES ({placeholders})
-                RETURNING id
-                """,
-                params,
-            )
-            row = cursor.fetchone()
-
-        assert row is not None
-        return int(row[0])
+        return int(riga["id"])
 
     # Scopo: Aggiorna la versione mantenendo il perimetro del listino.
     def update_versione(self, listino_id: int, versione_id: int, data: dict[str, Any]) -> bool:
-        update_parts = _prepare_update_parts(data=data, column_types=VERSIONE_UPDATE_COLUMNS)
-        if update_parts is None:
+        if not data:
             return False
-        set_clause, params = update_parts
+        set_clause, params = sql_set_clause(data, allowed=VERSIONE_UPDATE_COLUMNS)
         params.extend([listino_id, versione_id])
 
         with connection.cursor() as cursor:
@@ -546,7 +483,7 @@ class ListiniRepository:
                    SET {set_clause}
                  WHERE listino_id = %s
                    AND id = %s
-                """,
+                """,  # noqa: S608 — SET dal BB sql_set_clause su whitelist *_UPDATE_COLUMNS, valori come parametri
                 params,
             )
             return cursor.rowcount > 0
@@ -562,32 +499,23 @@ class ListiniRepository:
         src_versione_id: int,
         target_data: dict[str, Any],
     ) -> int:
-        # 1) INSERT testata nuova versione (forza stato BOZZA, ignora attivo/meta dal payload)
-        target_columns: dict[str, str] = {
-            key: value
-            for key, value in VERSIONE_CREATE_COLUMNS.items()
-            if key in {"codice_versione", "valido_dal", "valido_al"}
-        }
-        column_names, placeholders, params = _prepare_insert_parts(
-            base_fields=[("listino_id", listino_id)],
-            extra_data=target_data,
-            column_types=target_columns,
-        )
-
         # Guardrail atomicità (review 2026-07-08): INSERT testata + INSERT righe clonate
         # resi self-atomici (o versione+righe complete o rollback). Nested=savepoint.
         with transaction.atomic(), connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                INSERT INTO vendite.listini_versioni ({", ".join(column_names)}, stato)
-                VALUES ({placeholders}, 'BOZZA')
-                RETURNING id
-                """,
-                params,
+            # 1) INSERT testata nuova versione, stato BOZZA forzato.
+            #    ⛔ Whitelist RIGIDA (BB `execute_dynamic_insert`): attivo/meta
+            #    NON si clonano, e il payload li ha gia' tolti il service
+            #    (`fn_clone_versione`, `clonable_fields`). Qui non si scartano
+            #    in silenzio: se arrivassero sarebbe un errore del chiamante.
+            target_versione_id = int(
+                execute_dynamic_insert(
+                    "vendite.listini_versioni",
+                    {"listino_id": listino_id, **target_data, "stato": "BOZZA"},
+                    allowed={
+                        "listino_id", "codice_versione", "valido_dal", "valido_al", "stato",
+                    },
+                )["id"]
             )
-            row = cursor.fetchone()
-            assert row is not None
-            target_versione_id = int(row[0])
 
             # 2) Copy delle righe ATTIVE della sorgente nella nuova versione.
             #    Pricing v5: le dimensioni contesto (BA/utility/emittente)
@@ -674,7 +602,7 @@ class ListiniRepository:
                            COALESCE(ac.valido_al, {_SQL_DATE_INFINITY}),
                            COALESCE(target_v.valido_al, {_SQL_DATE_INFINITY})
                        )
-                """,
+                """,  # noqa: S608 — costante di modulo _SQL_DATE_INFINITY, valori come parametri
                 [target_versione_id, target_versione_id, src_versione_id],
             )
 
@@ -833,8 +761,16 @@ class ListiniRepository:
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
-        order_column = RIGHE_ORDER_COLUMNS.get(order_by, "ad.descrizione")
-        safe_order_dir = "DESC" if order_dir.lower() == "desc" else "ASC"
+        # BB `sql_order_clause`, rigido come `list_listini`. Il default e'
+        # l'ALIAS di uscita `articolo_descrizione`: dopo la UNION l'ORDER BY
+        # vede solo i nomi proiettati — il vecchio ripiego `ad.descrizione`
+        # avrebbe fatto fallire la query. Tiebreak `row_key` (chiave univoca
+        # della riga, standalone o composito) allineato alla direzione.
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=RIGHE_ORDER_COLUMNS, default="articolo_descrizione",
+            tiebreak="row_key", rifiuta_fuori_whitelist=True,
+        )
 
         conditions: list[str] = ["r.listino_versione_id = %s"]
         params: list[Any] = [versione_id]
@@ -964,9 +900,9 @@ class ListiniRepository:
             SELECT *, COUNT(*) OVER() AS total_count
               FROM unione
             {where_unione}
-             ORDER BY {order_column} {safe_order_dir} NULLS LAST, row_key ASC
+             ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
-        """  # noqa: S608 — order_column da whitelist, direzione normalizzata
+        """  # noqa: S608 — ordinamento dal BB sql_order_clause su whitelist RIGHE_ORDER_COLUMNS
 
         # L'ordine dei parametri segue il testo SQL: gamba 1 (join_guard +
         # where), gamba 2 (join_guard + where), la ricerca sulla unione, poi
@@ -1014,32 +950,18 @@ class ListiniRepository:
 
     # Scopo: Inserisce una riga prezzo nella versione target.
     def create_riga(self, versione_id: int, data: dict[str, Any]) -> int:
-        column_names, placeholders, params = _prepare_insert_parts(
-            base_fields=[("listino_versione_id", versione_id)],
-            extra_data=data,
-            column_types=RIGA_CREATE_COLUMNS,
+        riga = execute_dynamic_insert(
+            "vendite.listini_righe",
+            {"listino_versione_id": versione_id, **data},
+            allowed={"listino_versione_id", *RIGA_CREATE_COLUMNS},
         )
-
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                INSERT INTO vendite.listini_righe ({", ".join(column_names)})
-                VALUES ({placeholders})
-                RETURNING id
-                """,
-                params,
-            )
-            row = cursor.fetchone()
-
-        assert row is not None
-        return int(row[0])
+        return int(riga["id"])
 
     # Scopo: Aggiorna una riga prezzo nel perimetro listino/versione.
     def update_riga(self, listino_id: int, versione_id: int, riga_id: int, data: dict[str, Any]) -> bool:
-        update_parts = _prepare_update_parts(data=data, column_types=RIGA_UPDATE_COLUMNS)
-        if update_parts is None:
+        if not data:
             return False
-        set_clause, params = update_parts
+        set_clause, params = sql_set_clause(data, allowed=RIGA_UPDATE_COLUMNS)
         params.extend([listino_id, versione_id, riga_id])
 
         with connection.cursor() as cursor:
@@ -1052,7 +974,7 @@ class ListiniRepository:
                    AND v.listino_id = %s
                    AND r.listino_versione_id = %s
                    AND r.id = %s
-                """,
+                """,  # noqa: S608 — SET dal BB sql_set_clause su whitelist *_UPDATE_COLUMNS, valori come parametri
                 params,
             )
             return cursor.rowcount > 0
@@ -1227,7 +1149,7 @@ class ListiniRepository:
                           )
                    )
                  ORDER BY v.valido_al ASC, l.codice
-                """,
+                """,  # noqa: S608 — filtro letterale da _filter_versioni_in_scadenza, valori come parametri
                 {"giorni": giorni},
             )
             return rows_to_list(cursor)
@@ -1529,7 +1451,7 @@ class ListiniRepository:
                                COALESCE(bom.bom_valido_al, {_SQL_DATE_INFINITY}),
                                COALESCE(%s::date, {_SQL_DATE_INFINITY})
                            )
-                    """,
+                    """,  # noqa: S608 — costante di modulo _SQL_DATE_INFINITY, valori come parametri
                     [
                         r["articolo_componente_id"],
                         versione_id,

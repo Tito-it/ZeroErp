@@ -25,9 +25,17 @@ from typing import Any
 from django.db import IntegrityError, transaction
 
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.payload_helpers import map_integrity_error, vincolo_violato
+from apps.core.services.payload_helpers import (
+    PayloadValidator,
+    map_integrity_error,
+    vincolo_violato,
+)
 from apps.core.services.value_normalizer import empty_to_none
-from apps.vendite.db.famiglie_repository import FamiglieDocumentoRepository
+from apps.vendite.db.famiglie_repository import (
+    _CAMPI_CREATE,
+    _CAMPI_UPDATE,
+    FamiglieDocumentoRepository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +87,7 @@ class FamiglieDocumentoService:
 
     def __init__(self) -> None:
         self.repo = FamiglieDocumentoRepository()
+        self._v = PayloadValidator(validation_code=E_VENDITE_VALIDATION)
 
     # =================================================================
     # Lettura
@@ -115,7 +124,24 @@ class FamiglieDocumentoService:
     def _normalizza(self, payload: dict[str, Any]) -> dict[str, Any]:
         return {k: empty_to_none(v) for k, v in payload.items()}
 
+    # Scopo: il contratto delle chiavi di ogni verbo — le colonne che il
+    #        repository scrive (i parametri della madre in creazione).
+    # ⛔ Una chiave in piu' e' un 400 parlante, dal 2026-09-26. Fino a quel
+    #    giorno il repository la SCARTAVA IN SILENZIO (`if c in dati`, e in
+    #    creazione `dati.get(c)` sui soli parametri della madre): un
+    #    salvataggio «riuscito» senza aver scritto il campo — per esempio
+    #    `attivo` o `codice` spediti in modifica, che hanno il loro verbo.
+    def _verifica_chiavi(
+        self, payload: dict[str, Any], *, ammesse: tuple[str, ...], verbo: str,
+    ) -> None:
+        self._v.validate_allowed_keys(
+            payload,
+            allowed=frozenset(ammesse),
+            message=f"Campi non ammessi in {verbo} della famiglia di documento.",
+        )
+
     def crea_famiglia(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self._verifica_chiavi(payload, ammesse=_CAMPI_CREATE, verbo="creazione")
         dati = self._normalizza(payload)
         for campo, messaggio in _OBBLIGATORI_CREATE:
             if not dati.get(campo):
@@ -139,6 +165,7 @@ class FamiglieDocumentoService:
     def update_famiglia(
         self, famiglia_id: int, payload: dict[str, Any]
     ) -> dict[str, Any]:
+        self._verifica_chiavi(payload, ammesse=_CAMPI_UPDATE, verbo="modifica")
         dati = self._normalizza(payload)
         # Il `codice` si cambia, non si svuota: e' NOT NULL con un CHECK di non
         # vuoto, e un `""` normalizzato a NULL arriverebbe come violazione
@@ -188,8 +215,9 @@ class FamiglieDocumentoService:
         if vincolo_violato(exc, [_UQ_CODICE]) is not None:
             # ⚠️ Il campo lo decide il VERBO, non la presenza della chiave nel
             #    payload: in creazione il `codice` non si scrive (non e' in
-            #    `_CAMPI_CREATE`), ma un client che lo mandasse comunque lo
-            #    avrebbe in `dati` — e l'errore nominerebbe un campo ignorato.
+            #    `_CAMPI_CREATE`, e dal 2026-09-26 `_verifica_chiavi` lo
+            #    rifiuta prima) — il vincolo violato e' quello del codice nato
+            #    dal `codice_interno`.
             campo = "codice" if in_modifica else "codice_interno"
             ErrorManager.raise_error(
                 code=E_VENDITE_DUPLICATO,

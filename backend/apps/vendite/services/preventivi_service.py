@@ -37,6 +37,7 @@ from apps.vendite.services._smistamento_gate_helpers import (
     transiziona_a_evaso_se_smistato,
 )
 from apps.vendite.services._componenti_service_helpers import (
+    dati_patch_componente,
     normalize_componenti_attivazioni,
     normalize_componenti_overrides,
     resolve_emittente_sr_id_for_testata,
@@ -70,6 +71,28 @@ _FN = "vendite.preventivi_service"
 # Solo la FORMA si controlla qui (una data malformata e' un 400 col campo
 # acceso, non un 500 dal DB): nessun CHECK di dominio, per scelta (brief §2.3).
 _CHIAVE_DATA_CONSEGNA = "data_consegna_richiesta_cliente"
+
+# Scopo: il contratto dell'operatore sull'UPDATE di testata e di riga, come
+#        `_UPDATE_KEYS_*` di ddt/ordini/resi. Fino al 2026-09-26 erano due tuple
+#        INLINE nel ciclo, e chi cercava «la whitelist dei preventivi» per nome
+#        non la trovava. ⭐ Il presidio
+#        `test_whitelist_service_dentro_repository` le confronta con le
+#        colonne che il repository sa scrivere.
+# ⚠️ `utility_id` NON c'e': e' immutabile (`fn_available_actions_preventivo`
+#    la mette sempre in `non_editable_fields`). `iva_id` nemmeno (`I6`,
+#    2026-08-31: l'aliquota la decide il risolutore). `quantita` e' derivata
+#    dal trigger: la sorgente e' `qta_operativa`.
+_UPDATE_KEYS_PREVENTIVO: frozenset[str] = frozenset({
+    "billing_account_id", "istanza_utility_id",
+    "valuta_id", "termine_pagamento_id",
+    "validita_dal", "validita_al", "competenza_mese",
+    "fatturazione_immediata", "meta",
+})
+_UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
+    "descrizione", "qta_operativa", "uom_operativa_id",
+    "factor_to_base", "prezzo_unitario", "sconto_percentuale",
+    "ordine", "meta",
+})
 _V_RIGA = PayloadValidator(validation_code="E_PREV_VALIDAZIONE")
 
 
@@ -490,12 +513,7 @@ def aggiorna_preventivo(preventivo_id: int, payload: dict[str, Any]) -> dict[str
     # include sempre utility_id) e quindi NON e' nella whitelist: per cambiarla
     # serve creare un nuovo preventivo.
     update_fields: dict[str, Any] = {}
-    for key in (
-        "billing_account_id", "istanza_utility_id",
-        "valuta_id", "termine_pagamento_id",
-        "validita_dal", "validita_al", "competenza_mese",
-        "fatturazione_immediata", "meta",
-    ):
+    for key in _UPDATE_KEYS_PREVENTIVO:
         if key in payload:
             val = payload[key]
             update_fields[key] = empty_to_none(val) if isinstance(val, str) else val
@@ -1063,14 +1081,7 @@ def aggiorna_riga(
     # ⚠️ E non si ri-risolve in UPDATE, ed e' corretto: `articolo_id` non e' in
     #    questo elenco — l'articolo di una riga non si cambia — quindi non c'e'
     #    niente, qui, che possa spostare la risposta.
-    # ⚠️ Questa e' una TUPLA INLINE e non una `frozenset` come sugli altri due
-    #    domini: chi cerca «la whitelist di riga dei preventivi» per nome non la
-    #    trova.
-    for key in (
-        "descrizione", "qta_operativa", "uom_operativa_id",
-        "factor_to_base", "prezzo_unitario", "sconto_percentuale",
-        "ordine", "meta",
-    ):
+    for key in _UPDATE_KEYS_RIGA:
         if key in payload:
             update_fields[key] = payload[key]
     # La data di consegna richiesta: presente nel payload -> si scrive (anche
@@ -1685,7 +1696,7 @@ def update_componente(
     componente_id: int,
     payload: dict[str, Any],
     *,
-    auth_user_id: int | None = None,  # noqa: ARG001 — riservato a L1/L2/L3 futuro
+    auth_user_id: int | None = None,  # riservato a L1/L2/L3 futuro
 ) -> dict[str, Any]:
     repo = PreventiviRepository()
     _load_componente_for_modification(
@@ -1694,9 +1705,17 @@ def update_componente(
         verbo="modificare", function_name=f"{_FN}.update_componente",
     )
 
-    # Solo campi della whitelist repo finiscono nell'UPDATE (defense-in-depth).
+    # ⛔ Contratto dell'OPERATORE (BB unico per i cinque documenti), non la
+    #    whitelist del repository: fino al 2026-09-26 qui si validava contro
+    #    `COMPONENTE_UPDATE_ALLOWED`, che contiene `stato_approvazione_prezzo`
+    #    — un operatore poteva approvarsi da solo un prezzo L3 PENDING.
+    #    `origine_prezzo` la deriva il server dal prezzo.
     # Il prezzo_unitario del padre verra' ricalcolato dal trigger DB.
-    updated = repo.update_componente(componente_id, **payload)
+    data = dati_patch_componente(
+        payload, function_name=f"{_FN}.update_componente",
+        error_code="E_PREV_VALIDAZIONE",
+    )
+    updated = repo.update_componente(componente_id, **data)
     ErrorManager.require(
         updated,
         code="E_PREV_COMPONENTE_NOT_FOUND",

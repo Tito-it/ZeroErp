@@ -23,6 +23,8 @@ Indice test eseguiti:
 13) AttachmentTests.test_su_una_mail_non_in_bozza_risponde_col_codice_del_db
 14) DeleteFileTests.test_un_percorso_fuori_radice_non_si_cancella
 15) DeleteFileTests.test_riga_rifiutata_toglie_il_file_scritto
+16) UpdateDraftTests.test_update_draft_chiave_estranea_rifiutata
+17) UpdateDraftTests.test_update_draft_cc_non_lista_rifiutato
 """
 
 import os
@@ -145,13 +147,40 @@ class UpdateDraftTests(TestCase):
         repo = MockRepo.return_value
         repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
         repo.update_outbox.return_value = True
-        # Mock _OUTBOX_UPDATE_COLS referenziato dal service
-        MockRepo._OUTBOX_UPDATE_COLS = frozenset({"oggetto", "corpo_html", "corpo_testo", "destinatario", "destinatari_cc"})
 
         service = EmailOutboxService()
-        service.update_draft(10, oggetto="Nuovo oggetto")
+        service.update_draft(10, oggetto="Nuovo oggetto", destinatari_cc=["a@b.it"])
 
-        repo.update_outbox.assert_called_once()
+        repo.update_outbox.assert_called_once_with(
+            10, oggetto="Nuovo oggetto", destinatari_cc=["a@b.it"],
+        )
+
+    # Scopo: ⛔ Una chiave estranea e' un 400 `E_OUTBOX`, non uno scarto
+    #        silenzioso (2026-09-26): il repository non viene toccato.
+    @patch(_DISPATCH)
+    @patch(_REPO)
+    def test_update_draft_chiave_estranea_rifiutata(self, MockRepo, MockDispatch):
+        repo = MockRepo.return_value
+        repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
+
+        with self.assertRaises(ServiceError) as ctx:
+            EmailOutboxService().update_draft(10, oggetto="X", stato="SENT")
+        self.assertEqual(ctx.exception.code, "E_OUTBOX")
+        self.assertIn("stato", ctx.exception.detail)
+        repo.update_outbox.assert_not_called()
+
+    # Scopo: `destinatari_cc` non lista di stringhe: 400, non il 500 del cast
+    #        `text[]` sul DB.
+    @patch(_DISPATCH)
+    @patch(_REPO)
+    def test_update_draft_cc_non_lista_rifiutato(self, MockRepo, MockDispatch):
+        repo = MockRepo.return_value
+        repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
+
+        with self.assertRaises(ServiceError) as ctx:
+            EmailOutboxService().update_draft(10, destinatari_cc="a@b.it")
+        self.assertEqual(ctx.exception.code, "E_OUTBOX")
+        repo.update_outbox.assert_not_called()
 
     # Scopo: Verifica che modificare una bozza non-DRAFT lanci errore.
     @patch(_DISPATCH)

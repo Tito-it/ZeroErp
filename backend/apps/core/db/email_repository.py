@@ -32,9 +32,9 @@ from apps.core.db._helpers import (
     jsonb_out,
     row_to_dict,
     rows_to_list,
-    sql_order_direction,
+    sql_order_clause,
 )
-from apps.core.db.sql_write_helpers import execute_dynamic_update
+from apps.core.db.sql_write_helpers import execute_dynamic_update, sql_set_clause
 from apps.core.services import crypto_service
 
 
@@ -92,20 +92,13 @@ _RICERCA_EMAIL_TEMPLATE = RicercaFull("config.email_template", ("codice", "ogget
 _RICERCA_EMAIL_LOG = RicercaFull("config.email_log", ("destinatario", "oggetto"))
 
 
-# Scopo: risolve la clausola ORDER BY dalla whitelist, con fallback esplicito.
-#        Il tiebreaker sull'id lo aggiunge il chiamante: e' l'unica cosa che
-#        cambia fra le tre liste (`ea.id`, `et.id`, `el.id`). La direzione passa
-#        da `sql_order_direction` (convenzione di casa: NULL come valore
-#        minimo), non da un if riscritto qui.
-def _email_order_clause(
-    order_by: str | None,
-    order_dir: str | None,
-    *,
-    colonne: dict[str, str],
-    default: str,
-) -> str:
-    colonna = colonne.get(order_by or "", default)
-    return f"{colonna} {sql_order_direction(order_dir)}"
+# ⛔ Le tre liste ordinano col BB `sql_order_clause` (2026-09-26, regola del
+#    2): qui c'era `_email_order_clause`, una sua copia locale con lo spareggio
+#    scritto a mano in ogni query e FISSO (`el.id DESC` anche ordinando ASC) —
+#    il difetto che il BB corregge dal 2026-08-03. Le date dei log aprono DESC
+#    (`colonne_desc`, regola «le date hanno sempre default DESC»): quali sono
+#    le date lo dice il catalogo, e `test_liste_configurabili_seed` lo presidia.
+_EMAIL_LOG_COLONNE_DATA: frozenset[str] = frozenset({"data_insert"})
 
 
 class EmailRepository:
@@ -136,9 +129,9 @@ class EmailRepository:
         )
 
         where = " AND ".join(conditions) if conditions else "TRUE"
-        order_clause = _email_order_clause(
+        order_clause = sql_order_clause(
             order_by, order_dir,
-            colonne=EMAIL_ACCOUNT_ORDER_COLUMNS, default="ea.codice",
+            colonne=EMAIL_ACCOUNT_ORDER_COLUMNS, default="ea.codice", tiebreak="ea.id",
         )
         sql = f"""
             SELECT ea.id, ea.codice, ea.descrizione,
@@ -151,7 +144,7 @@ class EmailRepository:
               FROM config.email_account ea
               LEFT JOIN config.unita_organizzative uo ON uo.id = ea.unita_organizzativa_id
              WHERE {where}
-             ORDER BY {order_clause}, ea.id
+             ORDER BY {order_clause}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params.extend([limit, offset])
@@ -251,35 +244,31 @@ class EmailRepository:
         "smtp_username", "email_from", "email_reply_to", "attivo",
     })
 
-    # Scopo: Aggiorna un account email. Se smtp_password fornita, la ri-crittografa.
+    # Scopo: Aggiorna un account email (BB `execute_dynamic_update`, dal
+    #        2026-09-26). Se smtp_password fornita, la ri-crittografa: la
+    #        password in chiaro NON passa dal BB (lo strip la cambierebbe), ci
+    #        passa il cifrato, che non ha spazi ai bordi.
+    #        ⛔ Whitelist RIGIDA: una chiave fuori `_ACCOUNT_UPDATE_COLS` e'
+    #        RuntimeError (fino a quel giorno veniva scartata in silenzio). La
+    #        PATCH admin compone i kwargs da una lista letterale di campi.
+    #        `smtp_password_encrypted` NON e' un kwarg ammesso: la scrive solo
+    #        questo metodo, dalla password in chiaro.
     def update_account(self, account_id: int, **kwargs: Any) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-
-        # Gestione speciale: password in chiaro → crittografata
-        if "smtp_password" in kwargs:
-            raw_pw = kwargs.pop("smtp_password")
-            if raw_pw:
-                fields.append("smtp_password_encrypted = %s")
-                params.append(crypto_service.encrypt(raw_pw))
-
-        for col, val in kwargs.items():
-            if col not in self._ACCOUNT_UPDATE_COLS:
-                continue
-            if isinstance(val, str):
-                val = val.strip()
-            fields.append(f"{col} = %s")
-            params.append(val)
-
-        if not fields:
-            return False
-
-        fields.append("data_update = now()")
-        params.append(account_id)
-        sql = f"UPDATE config.email_account SET {', '.join(fields)} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount > 0
+        raw_pw = kwargs.pop("smtp_password", None)
+        values: dict[str, Any] = dict(kwargs)
+        allowed: frozenset[str] = self._ACCOUNT_UPDATE_COLS
+        if raw_pw:
+            if "smtp_password_encrypted" in values:
+                raise RuntimeError(
+                    "update_account: smtp_password_encrypted non e' un kwarg ammesso"
+                )
+            values["smtp_password_encrypted"] = crypto_service.encrypt(raw_pw)
+            allowed = allowed | {"smtp_password_encrypted"}
+        return execute_dynamic_update(
+            "config.email_account", account_id, values,
+            allowed=allowed,
+            extra_set="data_update = now()",
+        )
 
     # Scopo: Elimina un account email per ID.
     def delete_account(self, account_id: int) -> bool:
@@ -355,12 +344,11 @@ class EmailRepository:
         where = " AND ".join(conditions) if conditions else "TRUE"
         # Default storico a due chiavi (`codice, lingua`): un template esiste in
         # piu' lingue, e separarle a video renderebbe la lista illeggibile.
-        order_clause = _email_order_clause(
+        order_clause = sql_order_clause(
             order_by, order_dir,
-            colonne=EMAIL_TEMPLATE_ORDER_COLUMNS, default="et.codice",
+            colonne=EMAIL_TEMPLATE_ORDER_COLUMNS,
+            default_clause="et.codice ASC, et.lingua ASC", tiebreak="et.id",
         )
-        if not order_by:
-            order_clause = "et.codice ASC, et.lingua ASC"
         sql = f"""
             SELECT et.id, et.codice,
                    et.unita_organizzativa_id,
@@ -373,7 +361,7 @@ class EmailRepository:
               FROM config.email_template et
               LEFT JOIN config.unita_organizzative uo ON uo.id = et.unita_organizzativa_id
              WHERE {where}
-             ORDER BY {order_clause}, et.id
+             ORDER BY {order_clause}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params.extend([limit, offset])
@@ -669,9 +657,10 @@ class EmailRepository:
 
         where = " AND ".join(conditions) if conditions else "TRUE"
         # Default `data_insert DESC`: un log si legge dal piu' recente.
-        order_clause = _email_order_clause(
-            order_by or "data_insert", order_dir or "desc",
-            colonne=EMAIL_LOG_ORDER_COLUMNS, default="el.data_insert",
+        order_clause = sql_order_clause(
+            order_by, order_dir,
+            colonne=EMAIL_LOG_ORDER_COLUMNS, default="el.data_insert", default_desc=True,
+            colonne_desc=_EMAIL_LOG_COLONNE_DATA, tiebreak="el.id",
         )
         # `emittente_ragione_sociale` e' la colonna 872 del catalogo (lista
         # `config.email_log`, D-4 del brief perimetro-emittente-cataloghi-
@@ -701,7 +690,7 @@ class EmailRepository:
               LEFT JOIN anagrafiche.soggetti s_ef
                      ON s_ef.id = sr_ef.soggetto_id
              WHERE {where}
-             ORDER BY {order_clause}, el.id DESC
+             ORDER BY {order_clause}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params.extend([limit, offset])
@@ -868,22 +857,29 @@ class EmailRepository:
         "oggetto", "corpo_html", "corpo_testo", "destinatario", "destinatari_cc",
     })
 
-    # Scopo: Aggiorna campi editabili di una bozza DRAFT.
+    # Scopo: Aggiorna campi editabili di una bozza DRAFT (BB `sql_set_clause`,
+    #        dal 2026-09-26: il WHERE porta anche `stato = 'DRAFT'`, quindi non
+    #        e' il per-id di `execute_dynamic_update`). Stringhe strip, None
+    #        scrive NULL, niente da aggiornare -> False senza SQL.
+    #        ⭐ `destinatari_cc` e' `text[]`: il cast array del BB passa la list
+    #        cosi' com'e' e psycopg la adatta ad array (senza, il BB l'avrebbe
+    #        serializzata in JSON).
+    #        ⛔ Whitelist RIGIDA: una chiave fuori `_OUTBOX_UPDATE_COLS` e'
+    #        RuntimeError (fino a quel giorno veniva scartata in silenzio). Il
+    #        service (`EmailOutboxService.update_draft`) rifiuta prima le chiavi
+    #        estranee del client con un 400.
     def update_outbox(self, outbox_id: int, **kwargs: Any) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-        for col, val in kwargs.items():
-            if col not in self._OUTBOX_UPDATE_COLS:
-                continue
-            if isinstance(val, str):
-                val = val.strip()
-            fields.append(f"{col} = %s")
-            params.append(val)
-        if not fields:
+        if not kwargs:
             return False
-        fields.append("data_update = now()")
+        clausola, params = sql_set_clause(
+            kwargs, allowed=self._OUTBOX_UPDATE_COLS,
+            casts={"destinatari_cc": "text[]"},
+        )
         params.append(outbox_id)
-        sql = f"UPDATE config.email_outbox SET {', '.join(fields)} WHERE id = %s AND stato = 'DRAFT'"  # noqa: S608
+        sql = (
+            f"UPDATE config.email_outbox SET {clausola}, data_update = now() "  # noqa: S608 — clausola composta da sql_set_clause (colonne whitelisted, valori come parametri)
+            "WHERE id = %s AND stato = 'DRAFT'"
+        )
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return cursor.rowcount > 0

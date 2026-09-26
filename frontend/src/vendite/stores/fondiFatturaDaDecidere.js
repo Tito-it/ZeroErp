@@ -65,13 +65,18 @@ export const useFondiFatturaDaDecidereStore = defineStore(
       order_dir: 'desc',
     })
 
-    const { items, totalRecords, loading, hasSearched, fetchList } =
-      useListaEmptyStateFetch({
-        filters,
-        buildParams,
-        fetchPage: listFondiFatturaDaDecidere,
-        alwaysFetch: true,
-      })
+    // `lista`: lo stato del BB, esposto INTERO nel `return` (`...lista`).
+    // ⛔ Non si elencano i suoi ref a mano: un ref nuovo del BB (com'e'
+    //    successo con `ricercaFull`, `ricercaMinCaratteri`,
+    //    `ricercaCambiaLaRichiesta`) arriverebbe solo agli store che lo
+    //    ricordano — e senza errore sugli altri.
+    const lista = useListaEmptyStateFetch({
+      filters,
+      buildParams,
+      fetchPage: listFondiFatturaDaDecidere,
+      alwaysFetch: true,
+    })
+    const { fetchList } = lista
 
     // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
     // nascita, e come si riportano li' («Pulisci filtri»).
@@ -80,7 +85,8 @@ export const useFondiFatturaDaDecidereStore = defineStore(
     })
 
     return {
-      items, totalRecords, loading, hasSearched, filters, fetchList,
+      ...lista,
+      filters,
       chiaviFiltro, filtriDefault, azzeraFiltri,
     }
   },

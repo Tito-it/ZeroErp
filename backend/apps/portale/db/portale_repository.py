@@ -294,7 +294,7 @@ class PortaleRepository:
             if idx > 100:
                 # Fallback: aggiunge random — il caller vedra' eventuale
                 # errore UNIQUE dal DB se persiste.
-                import secrets  # noqa: PLC0415
+                import secrets
                 candidate = f"{base}_{secrets.token_hex(4)}"
                 break
         return candidate

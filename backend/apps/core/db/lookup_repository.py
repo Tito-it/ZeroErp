@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from apps.core.db._helpers import rows_to_list
+from apps.core.db._helpers import rows_to_list, pattern_contiene
 
 from typing import Any, ClassVar
 
@@ -414,7 +414,7 @@ class LookupRepository:
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        search_pattern = pattern_contiene(search)
 
         sql = """
             SELECT c.id,

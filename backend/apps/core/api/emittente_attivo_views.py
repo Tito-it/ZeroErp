@@ -34,7 +34,7 @@ from apps.core.services.auth_constants import JWT_CLAIM_EMITTENTE_ATTIVO_ID
 from apps.core.services.emittente_attivo_service import EmittenteAttivoService
 from apps.core.services.service_errors import ServiceError
 
-E_EMITTENTE_ATTIVO_TOKEN = "E_EMITTENTE_ATTIVO_TOKEN"
+E_EMITTENTE_ATTIVO_TOKEN = "E_EMITTENTE_ATTIVO_TOKEN"  # noqa: S105 — codice errore, non un segreto
 
 
 class EmittenteAttivoView(DomainAPIView):

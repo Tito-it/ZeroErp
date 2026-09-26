@@ -21,7 +21,62 @@ from typing import Any
 from django.contrib.auth import get_user_model
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.permissions_resolver import PermissionResolver
+from apps.core.services.value_normalizer import empty_to_none
+
+
+# Scopo: il contratto dell'OPERATORE sulla PATCH di un componente BoM, uguale
+#        per i cinque documenti (preventivi, contratti, offerte, ordini, ddt).
+#        E' cio' che il client puo' mandare, NON cio' che il repository sa
+#        scrivere (`COMPONENTE_UPDATE_ALLOWED` del mixin, che e' piu' largo).
+#
+# ⛔ La differenza fra i due insiemi e' il punto. Fino al 2026-09-26 preventivi,
+#    contratti e offerte validavano il payload del client contro la whitelist
+#    del REPOSITORY, che contiene anche `stato_approvazione_prezzo` e
+#    `pratica_approvazione_prezzo_id`: un operatore poteva mandare
+#    `{"stato_approvazione_prezzo": "APPROVED"}` su un componente PENDING e
+#    approvarsi da solo un prezzo fuori policy (il guard DB ammette la
+#    transizione PENDING->APPROVED quando cambia solo lo stato). Quei due
+#    campi li scrive SOLO il workflow L3 (`approvazioni_prezzo_service`).
+#
+# ⛔ `origine_prezzo` NON arriva dal client: un prezzo scritto dall'operatore
+#    e' `MANUALE` per definizione, e lo dice il server. Accettarlo dal client
+#    permetteva di dichiarare «LISTINO» un prezzo scritto a mano. Negli ordini
+#    e nei DDT, inoltre, il filtro locale lo scartava in silenzio: l'origine
+#    manuale non veniva mai scritta.
+COMPONENTE_PATCH_OPERATORE: frozenset[str] = frozenset({
+    "prezzo_unitario",
+    "attivo",
+    "meta",
+})
+# L'origine di un prezzo scritto a mano: la leggono questo BB (PATCH dei
+# componenti) e il gate prezzi di riga (`_pricing_gate_helpers`), una sede.
+ORIGINE_PREZZO_MANUALE = "MANUALE"
+
+
+# Scopo: valida il payload della PATCH contro `COMPONENTE_PATCH_OPERATORE`
+#        (400 con `error_code` del dominio sulle chiavi estranee), normalizza
+#        le stringhe vuote a None e deriva `origine_prezzo` dal prezzo: un
+#        prezzo scritto -> `MANUALE`; un prezzo tolto (solo i DDT lo ammettono,
+#        prezzo e origine sono facoltativi insieme) -> origine NULL.
+def dati_patch_componente(
+    payload: dict[str, Any],
+    *,
+    function_name: str,
+    error_code: str = "E_VENDITE_VALIDATION",
+) -> dict[str, Any]:
+    PayloadValidator(validation_code=error_code).validate_allowed_keys(
+        payload, allowed=COMPONENTE_PATCH_OPERATORE,
+        message="Payload componente non valido.",
+        function_name=function_name,
+    )
+    data = {k: empty_to_none(v) for k, v in payload.items()}
+    if "prezzo_unitario" in data:
+        data["origine_prezzo"] = (
+            ORIGINE_PREZZO_MANUALE if data["prezzo_unitario"] is not None else None
+        )
+    return data
 
 
 # Scopo: Valida e normalizza `componenti_overrides` (modello unificato).

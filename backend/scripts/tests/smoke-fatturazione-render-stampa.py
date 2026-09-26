@@ -171,7 +171,7 @@ check("2) il context espone le chiavi di contratto", not mancanti,
 try:
     html = _render_html_with_jinja(versione["html_template"], ctx)
     reso = True
-except Exception as exc:  # noqa: BLE001 — lo smoke deve riportare, non propagare
+except Exception as exc:  # lo smoke deve riportare, non propagare
     reso = False
     html = ""
     check("3) il render Jinja non solleva", False, f"{type(exc).__name__}: {exc}")
@@ -256,7 +256,7 @@ try:
     pdf = render_pdf(template_versione=versione, context=ctx)
     check("7) il PDF si genera e non e' un guscio vuoto",
           pdf.startswith(b"%PDF") and len(pdf) > 5000, f"{len(pdf)} byte")
-except Exception as exc:  # noqa: BLE001
+except Exception as exc:
     check("7) il PDF si genera e non e' un guscio vuoto", False,
           f"{type(exc).__name__}: {exc}")
 
@@ -284,7 +284,7 @@ try:
         and celle_rotte[i][j_importo] == "-"
         for i, riga in enumerate(righe_ctx)
     )
-except Exception:  # noqa: BLE001 — anche sollevare va bene: il difetto emerge
+except Exception:  # anche sollevare va bene: il difetto emerge
     intercettato = True
 check("8) auto-verifica: il presidio del caso 5 e' vivo", intercettato,
       "rimuovendo `importo_riga` dal context il documento deve mostrare '-' "

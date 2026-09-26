@@ -92,7 +92,7 @@ class IndirizziDocumentoRepositoryMixin:
               LEFT JOIN anagrafiche.billing_account ba
                 ON ba.id = d.billing_account_id
              WHERE d.id = %s
-        """
+        """  # noqa: S608 — tabella/colonne da attributi di classe letterali della sottoclasse, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [documento_id])
             row = cursor.fetchone()
@@ -146,7 +146,7 @@ class IndirizziDocumentoRepositoryMixin:
               LEFT JOIN config.tipi_indirizzi tio ON tio.id = ai.tipo_indirizzo_id
              WHERE di.{fk} = %s
              ORDER BY di.tipo_indirizzo_id
-        """
+        """  # noqa: S608 — tabella/colonne da attributi di classe letterali della sottoclasse, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [documento_id])
             return [_snapshot_to_dict(r) for r in rows_to_list(cursor)]
@@ -228,7 +228,7 @@ class IndirizziDocumentoRepositoryMixin:
                 origine_soggetto_ruolo_id = EXCLUDED.origine_soggetto_ruolo_id
             RETURNING id, {fk}, tipo_indirizzo_id, snapshot,
                       origine_indirizzo_id, origine_soggetto_ruolo_id
-        """
+        """  # noqa: S608 — tabella/colonne da attributi di classe letterali della sottoclasse, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [
                 documento_id,
@@ -250,7 +250,7 @@ class IndirizziDocumentoRepositoryMixin:
             DELETE FROM {self._indirizzi_table}
              WHERE id = %s AND {fk} = %s
             RETURNING id
-        """
+        """  # noqa: S608 — tabella/colonne da attributi di classe letterali della sottoclasse, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [indirizzo_row_id, documento_id])
             return cursor.fetchone() is not None

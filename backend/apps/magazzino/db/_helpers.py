@@ -14,6 +14,12 @@
 #
 #       ⚠️ `order_clause` si compone dalle WHITELIST e MAI da input utente: qui
 #       dentro finisce in una stringa SQL.
+#
+#       ⭐ 2026-09-26: `meta_mai_null`, la regola `meta` NOT NULL che i due
+#       repository scrivevano ciascuno a modo suo dentro la composizione SQL
+#       (`_valore` qui, `json.dumps(val or {})` nel documento interno) — la
+#       composizione e' passata ai BB core `execute_dynamic_insert` /
+#       `execute_dynamic_update` / `sql_set_clause`, la regola di DOMINIO resta qui.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -48,6 +54,18 @@ def guard_canale_sistema(function_name: str) -> None:
     )
 
 
+# Scopo: La colonna `meta` di OGNI tabella scritta dal dominio (magazzini,
+#        ubicazioni, lotti, testate e righe del documento interno) e' `jsonb
+#        NOT NULL DEFAULT '{}'` (docs/it/dbzero/magazzino/tabelle): un `None`
+#        diventerebbe NULL e un 23502, quindi `None` vale «meta vuoto» — `{}`.
+#        Non si tocca un `meta` ASSENTE: all'INSERT resta il DEFAULT del DB, in
+#        un PATCH la colonna non viaggia. Restituisce una COPIA se cambia.
+def meta_mai_null(valori: dict[str, Any]) -> dict[str, Any]:
+    if "meta" in valori and valori["meta"] is None:
+        return {**valori, "meta": {}}
+    return valori
+
+
 # Scopo: Esegue una lista paginata: pagina + totale in UNA valutazione
 #        (`COUNT(*) OVER ()`), e il conteggio di ripiego sulla pagina stantia.
 def lista_paginata(
@@ -64,8 +82,8 @@ def lista_paginata(
         ) q
         ORDER BY {order_clause}
         LIMIT %s OFFSET %s
-    """
-    count_sql = f"SELECT COUNT(*) FROM ({select_sql}) q"
+    """  # noqa: S608 — select_sql dalle SELECT costanti dei repository del dominio, order_clause da sql_order_clause/whitelist *_SORT_COLUMNS; valori come parametri
+    count_sql = f"SELECT COUNT(*) FROM ({select_sql}) q"  # noqa: S608 — select_sql dalle SELECT costanti dei repository del dominio; valori come parametri
     return fetch_paged_with_total(
         data_sql,
         [*params, limit, offset],

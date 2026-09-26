@@ -37,6 +37,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.permissions_resolver import PermissionResolver
+from apps.vendite.services._componenti_service_helpers import ORIGINE_PREZZO_MANUALE
 from apps.vendite.services.pricing_service import (
     PARAM_MAX_MAGGIORAZIONE_PCT,
     PARAM_MAX_SCONTO_PCT,
@@ -541,7 +542,7 @@ def resolve_or_check_override_prezzo(
     )
 
     meta_patch: dict[str, Any] = {
-        "origine_prezzo": "MANUALE",
+        "origine_prezzo": ORIGINE_PREZZO_MANUALE,
         "prezzo_resolver_context": resolver_context,
         "prezzo_applicato": str(payload_decimal),
         "override_user_id": auth_user_id,

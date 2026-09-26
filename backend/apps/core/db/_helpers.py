@@ -120,6 +120,23 @@ def escape_ilike(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+# Scopo: il pattern «contiene» di una ricerca `ILIKE`: termine ripulito dagli
+#        spazi, metacaratteri escapati, `%` ai due lati. `None` se il termine e'
+#        assente o vuoto — il chiamante lo usa col suo `%s::text IS NULL OR`.
+# ⛔ E' l'UNICO modo di costruire il pattern. Fino al 2026-09-26 la riga
+#    `f"%{search.strip()}%"` era scritta a mano in 18 punti e `escape_ilike`
+#    in 5: nei 18 un `%` o un `_` scritti dall'utente facevano da jolly
+#    («50%» trovava ogni riga che contiene 50, «A_1» anche «AB1»). Un difetto che non da'
+#    errore, da' solo righe in piu'.
+def pattern_contiene(termine: str | None) -> str | None:
+    if termine is None:
+        return None
+    pulito = termine.strip()
+    if not pulito:
+        return None
+    return f"%{escape_ilike(pulito)}%"
+
+
 # Soglia di progetto delle ricerche che NON sono una lista a catalogo: il 400
 # di `require_min_search_length` (ricerca universale, lookup), i tool
 # dell'assistente. ⛔ Non il resolver soggetti: cerca con la lista
@@ -162,11 +179,11 @@ class RicercaFull:
 
     def __post_init__(self) -> None:
         if not self.lista_codice:
-            raise ValueError("RicercaFull: lista_codice vuoto")
+            raise RuntimeError("RicercaFull: lista_codice vuoto")
         # ⚠️ `("numero")` e' una STRINGA, non una tupla: iterata darebbe una
         #    colonna per lettera, tutte valide per il controllo dei nomi.
         if isinstance(self.colonne, str):
-            raise ValueError(
+            raise RuntimeError(
                 f"RicercaFull {self.lista_codice}: colonne e' una stringa, serve una tupla o una mappa"
             )
         # Congelata su una copia: validata qui, non deve poter cambiare dopo
@@ -177,16 +194,16 @@ class RicercaFull:
         )
         object.__setattr__(self, "colonne", congelate)
         if not self.colonne:
-            raise ValueError(f"RicercaFull {self.lista_codice}: nessuna colonna di ricerca")
+            raise RuntimeError(f"RicercaFull {self.lista_codice}: nessuna colonna di ricerca")
         for nome in self.colonne:
             # Chiavi scritte nel codice, non input utente: il controllo
             # trasforma un errore di dichiarazione in un errore chiaro.
             if not _NOME_COLONNA.match(nome):
-                raise ValueError(f"RicercaFull {self.lista_codice}: colonna non valida {nome!r}")
+                raise RuntimeError(f"RicercaFull {self.lista_codice}: colonna non valida {nome!r}")
         if isinstance(self.colonne, Mapping):
             for nome, espressione in self.colonne.items():
                 if not str(espressione).strip():
-                    raise ValueError(f"RicercaFull {self.lista_codice}: espressione vuota per {nome!r}")
+                    raise RuntimeError(f"RicercaFull {self.lista_codice}: espressione vuota per {nome!r}")
 
     # Scopo: `campo_sorgente → espressione SQL`, con l'alias per la forma a tupla.
     def espressioni(self, alias: str) -> dict[str, str]:
@@ -309,7 +326,7 @@ def add_ricerca_full_condition(
     #    sbagliato passerebbe ogni lista aperta senza ricerca e salterebbe al
     #    primo operatore che cerca.
     if not _NOME_COLONNA.match(alias):
-        raise ValueError(f"add_ricerca_full_condition: alias non valido {alias!r}")
+        raise RuntimeError(f"add_ricerca_full_condition: alias non valido {alias!r}")
     # Il termine di soli spazi e' un termine vuoto: non vale una lettura.
     termine = (termine or "").strip()
     if not termine:
@@ -331,7 +348,7 @@ def add_ricerca_full_condition(
     conditions.append(
         "(" + " OR ".join(f"({e})::text ILIKE %s" for e in attive) + ")"
     )
-    params.extend([f"%{escape_ilike(termine)}%"] * len(attive))
+    params.extend([pattern_contiene(termine)] * len(attive))
 
 
 def fetchone_scalar(cursor) -> Any:
@@ -366,7 +383,7 @@ def call_jsonb_fn(fn_name: str, *args: Any) -> dict[str, Any]:
         )
     """
     placeholders = ", ".join(["%s"] * len(args))
-    sql = f"SELECT {fn_name}({placeholders}) AS payload"  # noqa: S608
+    sql = f"SELECT {fn_name}({placeholders}) AS payload"
     with connection.cursor() as cursor:
         cursor.execute(sql, list(args))
         row = cursor.fetchone()
@@ -451,10 +468,47 @@ def sql_order_direction(
 
     `default_desc=True` per le liste che ordinano dal piu' recente quando il
     chiamante non specifica nulla.
+
+    ⛔ **Una direzione INDICATA e non riconosciuta e' `ValueError`, non ASC**
+    (decisione Tid 2026-09-26). Fino a quel giorno `giu`, `discendente` o
+    `DESC NULLS LAST` diventavano ASC in silenzio: la lista rispondeva 200,
+    ordinata al contrario di cio' che era stato chiesto, e nessuno lo vedeva.
+    Il predicato e' `order_dir_ammessa`: assente (None, vuota, soli spazi) =
+    il default; `asc`/`desc` con maiuscole e spazi qualsiasi = quella; il
+    resto e' rifiutato.
+
+    ⭐ Il messaggio e' il token `order_dir_invalid`, la convenzione dei
+    parametri di query (`qp_int_optional` & C. in `payload_validators`): su un
+    percorso `/api/` l'eccezione sale a `ApiExceptionMiddleware`, che la
+    traduce in **400 `E_VALIDATION_INPUT`** — lo stesso 400 di `?page=abc`.
+    Chi vuole il codice del proprio dominio valida prima, nel service
+    (`list_helpers.validate_order_params`, `PayloadValidator.validate_order_by`).
     """
-    fallback = "desc" if default_desc else "asc"
-    is_desc = (order_dir or fallback).strip().lower() == "desc"
+    if not order_dir_ammessa(order_dir):
+        raise ValueError("order_dir_invalid")
+    indicata = (order_dir or "").strip().lower()
+    is_desc = (indicata or ("desc" if default_desc else "asc")) == "desc"
     return "DESC NULLS LAST" if is_desc else "ASC NULLS FIRST"
+
+
+_ORDER_DIR_AMMESSE = frozenset({"asc", "desc"})
+
+
+def order_dir_ammessa(order_dir: str | None) -> bool:
+    """`True` se `order_dir` e' ASSENTE o e' una direzione riconosciuta.
+
+    Assente = None, stringa vuota o soli spazi: prende il default di chi
+    ordina. Riconosciuta = `asc`/`desc`, maiuscole e spazi ai lati ammessi.
+
+    ⭐ **E' la sede UNICA della regola**, e ha due lettori che devono dire la
+    stessa cosa: `sql_order_direction` (che rifiuta con `ValueError`) e
+    `PayloadValidator.validate_order_by` (che rifiuta con il codice di
+    dominio del service). Due copie dell'insieme `{asc, desc}` divergerebbero
+    sulle maiuscole alla prima modifica, e allora il service lascerebbe
+    passare cio' che il repository rifiuta — o viceversa.
+    """
+    indicata = (order_dir or "").strip().lower()
+    return not indicata or indicata in _ORDER_DIR_AMMESSE
 
 
 def sql_tiebreak_direction(direction: str) -> str:
@@ -489,8 +543,22 @@ def sql_tiebreak_direction(direction: str) -> str:
     **Non si applica ai criteri GERARCHICI**, che non sono spareggi tecnici ma
     ordine logico e restano fissi: le righe di uno stesso reso vanno lette nel
     loro ordine naturale anche quando la lista e' ordinata al contrario.
+
+    ⛔ **Una clausola che non comincia con `ASC` o `DESC` e' `RuntimeError`**
+    (2026-09-26, stessa decisione di `sql_order_direction`): prima tutto cio'
+    che non cominciava per `DESC` diventava ASC. Qui l'argomento non viene
+    mai dall'utente — e' l'uscita del BB fratello o un letterale del codice —
+    quindi un valore estraneo e' un errore di programmazione, e va detto.
+    ⚠️ `RuntimeError` e non `ValueError`: `ErrorTranslator` traduce ogni
+    `ValueError` in un 400 `E_VALIDATION_INPUT` loggato senza stack, cioe'
+    «dato errato» a un client che non ha sbagliato niente. `RuntimeError`
+    diventa `E_GENERICO`, 500 col traceback. `ValueError` resta alla sola
+    direzione di `sql_order_direction`, che viene dall'utente.
     """
-    return "DESC" if direction.strip().upper().startswith("DESC") else "ASC"
+    verso = direction.strip().split(maxsplit=1)[0].upper() if direction.strip() else ""
+    if verso not in ("ASC", "DESC"):
+        raise RuntimeError(f"sql_tiebreak_direction: direzione non riconosciuta {direction!r}")
+    return verso
 
 
 def colonne_identita(*colonne: str) -> dict[str, str]:
@@ -523,6 +591,7 @@ def sql_order_clause(
     default_clause: str | None = None,
     default_desc: bool = False,
     colonne_desc: Collection[str] = (),
+    rifiuta_fuori_whitelist: bool = False,
 ) -> str:
     """Il corpo di un `ORDER BY` di lista: colonna, direzione e spareggio.
 
@@ -574,9 +643,34 @@ def sql_order_clause(
     `ORDER BY s.id ASC, s.id ASC` — la colonna e il suo stesso spareggio. Non
     sbaglia il risultato, ma e' una clausola che dice due volte la stessa cosa
     e nasconde alla lettura qual e' l'ordinamento vero.
+
+    ⛔ **`rifiuta_fuori_whitelist=True`: un valore INDICATO e sbagliato e'
+    `RuntimeError`, non il default** (estensione 2026-09-26, regola del 2 — il
+    blocco «whitelist + raise + direzione» era ricopiato in coda lavori e coda
+    stampa, e scritto a mano in listini). Per i repository il cui service ha
+    GIA' validato `order_by`/`order_dir`: li' un valore fuori lista e' un
+    errore di programmazione, e ripiegare sul default lo nasconderebbe dietro
+    una lista ordinata in un altro modo. Un `order_by` NON indicato (None o
+    vuoto) prende ancora il default. Default False: i consumatori storici
+    ripiegano sul default come prima. ⚠️ `RuntimeError` (500 col traceback),
+    non `ValueError` (400 senza stack): vedi `sql_tiebreak_direction`. Verificato
+    il 2026-09-26 che ogni consumatore del flag valida la colonna a monte con
+    lo stesso insieme della mappa: il 500 non puo' nascere da un input.
+
+    ⭐ **Dal 2026-09-26 il parametro riguarda la sola COLONNA.** La direzione
+    la rifiuta sempre `sql_order_direction`, su qualunque ramo e con qualunque
+    valore del flag: una direzione estranea non ha un «ripiego» legittimo.
+    La colonna invece si': un `order_by` fuori whitelist che prende il default
+    e' il contratto di molte liste i cui service non validano la colonna
+    (`parse_list_params` ha un suo `default_order`, che non e' detto stia
+    nella whitelist del repository), e renderlo errore ovunque cambierebbe
+    quel contratto. Il flag resta quindi
+    la scelta PER LISTA fra «ripiega» e «rifiuta» sulla colonna.
     """
+    if rifiuta_fuori_whitelist and order_by and order_by not in colonne:
+        raise RuntimeError(f"order_by non in whitelist: {order_by!r}")
     if (default is None) == (default_clause is None):
-        raise ValueError(
+        raise RuntimeError(
             "sql_order_clause: si passa `default` (una colonna) OPPURE "
             "`default_clause` (una clausola completa), mai entrambi ne' nessuno"
         )
@@ -677,7 +771,7 @@ def sql_lateral_primo_motivo(check_sql: str, alias: str) -> str:
            ORDER BY motivo.ord
            LIMIT 1
       ) {alias} ON TRUE
-"""
+"""  # noqa: S608 — check_sql/alias da costanti di modulo dei chiamanti, mai da input
 
 
 def conta_con_perimetro(
@@ -708,7 +802,7 @@ def conta_con_perimetro(
     where = " AND ".join(conditions)
     with connection.cursor() as cursor:
         cursor.execute(
-            f"SELECT COUNT(*)::int {from_sql} WHERE {where}",  # noqa: S608
+            f"SELECT COUNT(*)::int {from_sql} WHERE {where}",
             list(params),
         )
         return int(fetchone_scalar(cursor))

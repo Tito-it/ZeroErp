@@ -43,6 +43,7 @@ Indice test eseguiti:
 31) create/update/delete_riga_rifiutata_su_contratto_attivo — E_RIGA_DOC_NON_BOZZA (il codice del DB sulle stesse righe, BB richiedi_righe_in_bozza; frase a catalogo, verbo)
 32) create/update_utility_rifiutata_su_contratto_attivo — E_CONTRATTO_NON_MODIFICABILE (la utility non e' una riga)
 33) update_componente_contratto_attivo — E_RIGA_DOC_NON_BOZZA, etichetta dal `numero` dello scope
+33b) update_componente_campi_del_workflow_rifiutati — niente auto-approvazione L3 dal client
 """
 
 from datetime import date, timedelta
@@ -2059,6 +2060,63 @@ class ContrattiServiceComponentiTests(TestCase):
         repo.update_componente.assert_not_called()
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_componente_chiave_fuori_whitelist_400(self, repo_cls):
+        """Chiave fuori `COMPONENTE_UPDATE_ALLOWED` -> 400 che la nomina,
+        repository non chiamato. ⛔ Fino al 2026-09-26 il mixin la scartava
+        in silenzio e la PATCH «riusciva»."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        repo.load_componente_with_scope.return_value = {
+            "componente_id": 100,
+            "riga_contratto_id": 5,
+            "contratto_id": 1,
+            "stato_codice_interno": "DRAFT",
+            "numero": None,
+        }
+        repo_cls.return_value = repo
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().update_componente_riga(
+                1, 5, 100, {"prezzo_unitario": "10", "riga_contratto_id": 9},
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(ctx.exception.context["unknown_keys"], ["riga_contratto_id"])
+        repo.update_componente.assert_not_called()
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_componente_campi_del_workflow_rifiutati(self, repo_cls):
+        """⛔ L'operatore NON puo' approvarsi un prezzo L3. Fino al 2026-09-26
+        la PATCH validava contro la whitelist del REPOSITORY, che contiene
+        `stato_approvazione_prezzo`: `{"stato_approvazione_prezzo": "APPROVED"}`
+        su un componente PENDING passava anche il guard DB. Stesso rifiuto per
+        la pratica e per un'origine dichiarata dal client. ⚠️ Sono chiavi che
+        il repository AMMETTE: e' il caso che distingue il codice vecchio dal
+        nuovo, a differenza delle chiavi di struttura."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        repo.load_componente_with_scope.return_value = {
+            "componente_id": 100,
+            "riga_contratto_id": 5,
+            "contratto_id": 1,
+            "stato_codice_interno": "DRAFT",
+            "numero": None,
+        }
+        repo_cls.return_value = repo
+
+        for payload in (
+            {"stato_approvazione_prezzo": "APPROVED"},
+            {"pratica_approvazione_prezzo_id": 7},
+            {"prezzo_unitario": "1.00", "origine_prezzo": "CONTRATTO_LISTINO"},
+        ):
+            with self.subTest(payload=payload):
+                with self.assertRaises(ServiceError) as ctx:
+                    ContrattiService().update_componente_riga(1, 5, 100, payload)
+                self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        repo.update_componente.assert_not_called()
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_update_componente_anti_tampering_riga(self, repo_cls):
         """riga_id URL non matcha riga reale → E_VENDITE_NOT_FOUND."""
         from apps.vendite.services.contratti_service import ContrattiService
@@ -3144,7 +3202,7 @@ class ContrattiCatenaUpdateTests(TestCase):
 
     Il difetto del 2026-07-27 non è nato sulla create ma qui. La catena è:
 
-        _UPDATE_KEYS_TESTATA  →  _build_update_data_testata  →  _UPDATE_WRITE_COLS
+        _UPDATE_KEYS_TESTATA  →  _build_update_data_testata  →  TESTATA_UPDATE_COLUMNS
         (cosa si accetta)        (cosa si mappa)                (cosa si scrive)
 
     Basta che una colonna manchi in **uno solo** dei tre e l'UPDATE non la
@@ -3282,15 +3340,16 @@ class ContrattiCatenaUpdateTests(TestCase):
                 )
 
     # 3) Anello 1 ↔ 3: ciò che si accetta è esattamente ciò che si sa scrivere.
-    #    Una colonna nella whitelist ma non in _UPDATE_WRITE_COLS verrebbe
-    #    mappata e poi scartata dal repository — stesso silenzio, un anello più
-    #    in là.
+    #    Una colonna nella whitelist ma non in TESTATA_UPDATE_COLUMNS verrebbe
+    #    mappata e poi rifiutata dal repository (`RuntimeError` del BB, 500 dal
+    #    2026-09-26; fino ad allora era scartata in silenzio): l'errore c'e', ma
+    #    lo deve trovare questo test e non l'operatore.
     def test_whitelist_e_colonne_scrivibili_combaciano(self) -> None:
         from apps.vendite.db.contratti_repository import ContrattiRepository
         from apps.vendite.services.contratti_service import _UPDATE_KEYS_TESTATA
 
         accettate = set(_UPDATE_KEYS_TESTATA)
-        scrivibili = set(ContrattiRepository._UPDATE_WRITE_COLS)
+        scrivibili = set(ContrattiRepository.TESTATA_UPDATE_COLUMNS)
 
         self.assertEqual(
             sorted(accettate - scrivibili), [],

@@ -299,7 +299,7 @@ class RicercaFullSeedTests(unittest.TestCase):
     def test_bb_alias_invalido_esplode_anche_senza_termine(self):
         ricerca = RicercaFull("x.lista", ("numero",))
         for termine in (None, "abc"):
-            with self.subTest(termine=termine), self.assertRaises(ValueError):
+            with self.subTest(termine=termine), self.assertRaises(RuntimeError):
                 _condizione(termine, ricerca, ["numero"], alias="v; DROP")
 
     def test_dichiarazione_congelata_sulla_copia(self):
@@ -321,7 +321,7 @@ class RicercaFullSeedTests(unittest.TestCase):
             {"lista_codice": "x.lista", "colonne": "numero"},
         ):
             with self.subTest(**{k: repr(v) for k, v in kwargs.items()}):
-                with self.assertRaises(ValueError):
+                with self.assertRaises(RuntimeError):
                     RicercaFull(**kwargs)
 
     # --- La soglia non si dichiara nel codice --------------------------------

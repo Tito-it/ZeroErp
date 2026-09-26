@@ -15,10 +15,14 @@ from typing import Any
 from django.db import IntegrityError, transaction
 
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.payload_helpers import map_integrity_error
+from apps.core.services.payload_helpers import PayloadValidator, map_integrity_error
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.db.famiglie_repository import FamiglieDocumentoRepository
-from apps.vendite.db.registri_repository import RegistriRepository
+from apps.vendite.db.registri_repository import (
+    _CAMPI_CREATE,
+    _CAMPI_UPDATE,
+    RegistriRepository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +184,7 @@ class RegistriService:
         #    scrittura: serve a chiedere se la famiglia presidia la data del
         #    documento (§11.10 BE-F2), che prima era un letterale cablato.
         self.famiglie = FamiglieDocumentoRepository()
+        self._v = PayloadValidator(validation_code=E_VENDITE_VALIDATION)
 
     # =================================================================
     # Lettura
@@ -258,11 +263,29 @@ class RegistriService:
     def _famiglia_ammette_regole_fiscali(self, codice_interno: str) -> bool:
         return bool(self.famiglie.ammette_regole_fiscali(codice_interno))
 
+    # Scopo: il contratto delle chiavi di ogni verbo — le colonne che il
+    #        repository scrive. L'emittente non c'e': la view lo toglie dal
+    #        corpo e lo passa a parte, dopo averlo verificato nello scope.
+    # ⛔ Una chiave in piu' e' un 400 parlante, dal 2026-09-26. Fino a quel
+    #    giorno il repository la SCARTAVA IN SILENZIO (`if c in dati`): un
+    #    `serie_default` o un `reset_policy` spediti in MODIFICA — i campi che
+    #    la view dichiara non modificabili — rispondevano 200 senza aver
+    #    scritto niente, cioe' «salvato» su un campo che non si salva.
+    def _verifica_chiavi(
+        self, payload: dict[str, Any], *, ammesse: tuple[str, ...], verbo: str,
+    ) -> None:
+        self._v.validate_allowed_keys(
+            payload,
+            allowed=frozenset(ammesse),
+            message=f"Campi non ammessi in {verbo} del registro.",
+        )
+
     def create_registro(
         self,
         emittente_soggetto_ruolo_id: int,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
+        self._verifica_chiavi(payload, ammesse=_CAMPI_CREATE, verbo="creazione")
         dati = self._normalizza(payload)
         if not dati.get("codice"):
             ErrorManager.raise_error(
@@ -292,6 +315,7 @@ class RegistriService:
         emittenti_sr_ids: list[int] | None,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
+        self._verifica_chiavi(payload, ammesse=_CAMPI_UPDATE, verbo="modifica")
         dati = self._normalizza(payload)
         try:
             with transaction.atomic():

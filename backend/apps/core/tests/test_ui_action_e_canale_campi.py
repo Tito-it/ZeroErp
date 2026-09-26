@@ -444,7 +444,7 @@ def _leggi_vista() -> dict[str, list[SitoDb]]:
                 "(brief-be-presidio-ui-action-e-canale-campi §4-bis)."
             )
         cur.execute(
-            f"SELECT codice, funzione, via, canale, chiave, nome_in_chiave, "  # noqa: S608
+            f"SELECT codice, funzione, via, canale, chiave, nome_in_chiave, "
             f"n_chiamate, n_con_canale FROM {_VISTA} WHERE codice IS NOT NULL"
         )
         righe = cur.fetchall()

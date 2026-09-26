@@ -77,21 +77,24 @@ export const useCodaRigheStore = defineStore(
     const statiRiga = ref([])
     const transizioniRiga = ref({})
 
-    // `ricercaFull` (la lista cerca?) e `ricercaMinCaratteri` (da quanti
-    // caratteri?) le dichiara il BB di stato.
-    const { items, totalRecords, loading, hasSearched, ricercaFull, ricercaMinCaratteri, fetchList } =
-      useListaEmptyStateFetch({
-        filters,
-        buildParams,
-        fetchPage: listCodaRighe,
-        alwaysFetch: true,
-        // Dopo il guard di versione: una risposta scartata perche' stantia non
-        // riscrive il catalogo sotto quella piu' recente.
-        onPayload: (payload) => {
-          statiRiga.value = payload.stati_riga ?? []
-          transizioniRiga.value = payload.transizioni_riga ?? {}
-        },
-      })
+    // `lista`: lo stato del BB, esposto INTERO nel `return` (`...lista`).
+    // ⛔ Non si elencano i suoi ref a mano: un ref nuovo del BB (com'e'
+    //    successo con `ricercaFull`, `ricercaMinCaratteri`,
+    //    `ricercaCambiaLaRichiesta`) arriverebbe solo agli store che lo
+    //    ricordano — e senza errore sugli altri.
+    const lista = useListaEmptyStateFetch({
+      filters,
+      buildParams,
+      fetchPage: listCodaRighe,
+      alwaysFetch: true,
+      // Dopo il guard di versione: una risposta scartata perche' stantia non
+      // riscrive il catalogo sotto quella piu' recente.
+      onPayload: (payload) => {
+        statiRiga.value = payload.stati_riga ?? []
+        transizioniRiga.value = payload.transizioni_riga ?? {}
+      },
+    })
+    const { fetchList } = lista
 
     // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
     // nascita, e come si riportano li' («Pulisci filtri»).
@@ -110,7 +113,8 @@ export const useCodaRigheStore = defineStore(
     }
 
     return {
-      items, totalRecords, loading, hasSearched, filters, fetchList, ricercaFull, ricercaMinCaratteri, apriCoda,
+      ...lista,
+      filters, apriCoda,
       statiRiga, transizioniRiga,
       chiaviFiltro, filtriDefault, azzeraFiltri,
     }

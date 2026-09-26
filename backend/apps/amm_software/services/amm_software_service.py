@@ -14,13 +14,14 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from django.contrib.auth.hashers import make_password
-from django.db import DatabaseError
+from django.db import DatabaseError, transaction
 
 from apps.core.api.payload_validators import optional_int
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.permissions_cache import invalidate_department, invalidate_user
+from apps.core.services.revoca_token import blocca_token_sessioni
 from apps.amm_software.constants import DEFAULT_SESSO
 from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
 
@@ -296,11 +297,21 @@ class AmmSoftwareService:
                 detail=operatore.get("disable_reason")
                 or "Deve esistere almeno un super admin attivo nel sistema.",
             )
-        _run_or_raise_super_admin_guard(
-            lambda: self._repo.disabilita_operatore(auth_user_id)
-        )
-        invalidate_user(auth_user_id)
-        _blacklist_user_tokens(auth_user_id)
+        # ⛔ Disattivazione e revoca delle sessioni in UNA transazione
+        #    (2026-09-26): la disattivazione prima committava da sola, e una
+        #    revoca fallita dopo lasciava l'operatore disattivato con le
+        #    sessioni vive — il contrario di cio' che questo commento
+        #    prometteva. Ora una revoca fallita PROPAGA e annulla anche la
+        #    disattivazione: l'amministratore riprova su uno stato intero.
+        # ⚠️ La cache dei permessi si invalida a COMMIT avvenuto: invalidata
+        #    prima, una richiesta concorrente la ricaricherebbe dallo stato
+        #    ancora attivo.
+        with transaction.atomic():
+            _run_or_raise_super_admin_guard(
+                lambda: self._repo.disabilita_operatore(auth_user_id)
+            )
+            blocca_token_sessioni(auth_user_id)
+            transaction.on_commit(lambda: invalidate_user(auth_user_id))
         return self._repo.get_operatore_detail(auth_user_id) or {}
 
     # Scopo: Riattiva operatore disabilitato, invalida cache.
@@ -624,17 +635,3 @@ class AmmSoftwareService:
         return result
 
 
-# Scopo: Invalida token JWT operatore via blacklist SimpleJWT (best-effort).
-def _blacklist_user_tokens(auth_user_id: int) -> None:
-    try:
-        from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
-        tokens = OutstandingToken.objects.filter(user_id=auth_user_id)
-        for token in tokens:
-            try:
-                from rest_framework_simplejwt.tokens import RefreshToken
-                rt = RefreshToken(token.token)
-                rt.blacklist()
-            except Exception:
-                pass
-    except ImportError:
-        pass
