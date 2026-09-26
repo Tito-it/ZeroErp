@@ -84,10 +84,7 @@ UOM_CONVERSIONI_ORDER_COLUMNS: dict[str, str] = {
 # (`sql_order_clause(colonne_desc=…)`, regola di Tid del 2026-09-02). Insiemi
 # confrontati col seed da `test_liste_configurabili_seed` (test 10): devono
 # coincidere con le colonne `date`/`datetime` ordinabili del catalogo.
-# ⚠️ Nessun insieme per gli articoli: la whitelist ammette `data_insert` e
-#    `data_update`, ma il catalogo `catalogo.articoli` non le ha fra le colonne
-#    ordinabili — dichiararle qui farebbe rosso il test 10. Punto aperto
-#    (whitelist piu' larga del seed), non una scelta.
+ARTICOLI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_insert", "data_update"})
 UOM_TIPI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_insert", "data_update"})
 UOM_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_insert", "data_update"})
 UOM_CONVERSIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"valido_dal", "valido_al"})
@@ -273,6 +270,7 @@ class CatalogoRepository:
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=ARTICOLI_ORDER_COLUMNS, default="a.descrizione", tiebreak="a.id",
+            colonne_desc=ARTICOLI_SORT_COLONNE_DATA,
         )
 
         conditions: list[str] = []

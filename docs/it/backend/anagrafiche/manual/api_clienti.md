@@ -105,7 +105,7 @@ una scelta che non aveva effetto.
 | --- | --- | --- |
 | `E_ANAG_VALIDAZIONE` | 400 | `soggetto_id`/`utility_id`/`ba_categoria_cliente_id` mancanti; utility con PDP in creazione manuale |
 | `E_ANAG_NOT_FOUND` | 404 | `istanza_utility_id`/`billing_account_id` pre-esistenti non trovati |
-| `E_BA_ADMIN_GLOBALE_VIETATO` | 403 | Admin globale che crea BA con emittenti fiscali presenti (operare come operatore di un emittente) |
+| `E_BA_ADMIN_GLOBALE_VIETATO` | 403 | Creazione BA senza un emittente fiscale di lavoro (super admin in «Tutti gli emittenti») con emittenti presenti: scegliere l'emittente in alto |
 | `E_ANAG_DUPLICATO` | 409 | Esiste già un cliente per l'istanza (`uq_clienti_istanza_utility`) |
 
 Risposta `200`: `{ id, istanza_utility_id, billing_account_id, soggetto_ruolo_id }`.

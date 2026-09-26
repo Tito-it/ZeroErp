@@ -6,8 +6,9 @@
 > **Tipo:** allineamento di testi, nessuna logica. Richiesta del team BE del
 > 2026-09-26.
 >
-> **Stato:** 🟡 lato DB scritto il 2026-09-26 (CSV + `20260926-12` + pgTAP),
-> **da applicare**; ricaduta BE (§4) aperta.
+> **Stato:** ✅ chiuso il 2026-09-26. Lato DB mergiato (PR #1706); ricaduta BE
+> (§4) fatta su `dev/backend-tid`: ripiego, guard applicativo e le due doc BE
+> sul testo nuovo. `genera_error_policies --check` pulito (nessun codice nuovo).
 
 ---
 
