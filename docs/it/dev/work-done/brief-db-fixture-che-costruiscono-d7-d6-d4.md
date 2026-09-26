@@ -15,7 +15,7 @@
 > (`work-done/brief-db-ba-riserva-emittente-operatore-d13.md`, verificato
 > contro CI il 14-09). 🔵 **Il pezzo nuovo di D6** (§3, §6.4) è l'unico
 > lavoro vivo e dal 19-09 sta in
-> [brief-db-registro-owner-e-sync-riservati-al-migratore.md](../work-in-progress/brief-db-registro-owner-e-sync-riservati-al-migratore.md),
+> [brief-db-registro-owner-e-sync-riservati-al-migratore.md](brief-db-registro-owner-e-sync-riservati-al-migratore.md),
 > con due fatti in più letti dal vivo che cambiano la forma (l'`EXECUTE`
 > esplicito dell'app sulla sync; `session_user`, non `current_user`).
 > 🔴 §3: due stesure dei pin erano sbagliate di sede, corrette dopo due apply
@@ -294,7 +294,7 @@ registro a 8, `vw_rls_perimetro_scoperto` con soli `DEBITO_DICHIARATO=8`
    (`fn_get_emittente_fiscale_pk`) e il `PARALLEL SAFE` andava tolto anche
    alla chiamante — il perché sta nel brief, §4.
 4. 🔵 **Il pezzo nuovo di D6** (§3) — dal 19-09 ha un brief suo:
-   [brief-db-registro-owner-e-sync-riservati-al-migratore.md](../work-in-progress/brief-db-registro-owner-e-sync-riservati-al-migratore.md).
+   [brief-db-registro-owner-e-sync-riservati-al-migratore.md](brief-db-registro-owner-e-sync-riservati-al-migratore.md).
    ⚠️ Le righe qui sotto sono la forma pensata il 12-09 e **due punti sono
    superati** da lì: `pg_has_role(current_user, …)` non funziona dentro una
    DEFINER (`current_user` è il proprietario — si usa `session_user`), e la

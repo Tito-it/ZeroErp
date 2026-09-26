@@ -1,14 +1,20 @@
 # Brief DB — Il registro degli owner e la sync riservati al migratore (D6, il pezzo che resta)
 
-> **Da leggere per primo: §2 — la forma, e le due trappole che la cambiano.**
+> **Da leggere per primo: §8 — il giro del 26-09 (cosa è scritto, come è
+> stato provato, l'esito dell'apply).** Poi §2 — la forma, e le due trappole che la cambiano.
 > Origine: [brief-db-fixture-che-costruiscono-d7-d6-d4.md](../work-done/brief-db-fixture-che-costruiscono-d7-d6-d4.md)
 > §3 e §6.4 (chiuso e archiviato il 2026-09-19), a sua volta figlio di
-> [migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md) §D6.
+> [migliorie-generali-da-test-valutazione.md](../work-in-progress/migliorie-generali-da-test-valutazione.md) §D6.
 > Stima scritta lì: **≈ mezza giornata**. ⚠️ D6-bis (la forma canonica del
 > `search_path` sulle 38 DEFINER) **non** è qui: resta in `migliorie-generali`.
 >
-> 🔵 **Stato 2026-09-19: brief scritto, nessun changeSet.** Decisioni aperte
-> per Tid in §6 (tre, con la raccomandazione scritta accanto).
+> ~~🔵 Stato 2026-09-19: brief scritto, nessun changeSet.~~
+> ✅ **CHIUSO il 2026-09-26.** D-1/D-2/D-3 decise da Tid come raccomandato
+> (§6). ChangeSet `20_code/dbops/20260926-11` e `90_end/20260926-12`, loop
+> `20260205-41` e provisioning ritoccati, due pgTAP nuovi, doc aggiornata.
+> SQL estratto provato su un cluster PostgreSQL 18 usa-e-getta (§8.2), poi
+> **applicato da Tid: pgTAP verdi, nessuna regressione** (§8.3). D6 chiusa in
+> `migliorie-generali`; D6-bis resta lì.
 
 ---
 
@@ -133,6 +139,13 @@ una deroga alla regola «errori via `fn_log_and_raise_error`» e va detta.
 
 ### 2.2 Il registro: SOLA LETTURA per l'app, nelle tre sedi
 
+> ⚠️ **Invecchiato fra il 19 e il 26-09.** Il 25-09 nella lista sono entrate
+> `config.credenziali*`, `config.nomi_tentati*`, `magazzino.causali` e
+> `config.tabelle_gestibili`: non è più «cosa di magazzino». Il 26-09 il
+> commento in testa alla lista è stato allargato alla forma generale («scrive
+> una porta del proprietario»), e il modello del forward è diventato
+> `90_end/20260925-62` (il più recente della stessa forma), non il `20260918-15`.
+
 La lista giusta **esiste già** dal 18-09: `v_tabelle_sola_lettura_app` nel
 loop `20260205-41` (nata per il ledger di magazzino, «l'applicazione legge,
 scrive solo la primitiva»). Il brief madre proponeva «una lista nuova»: non
@@ -187,6 +200,18 @@ non ha dato la sync a `postgres`: identico al 41, che in CI è passato così.
 
 ## 3. Il presidio — `db/pgtap/dbops/test-sec-functions-owner-riservato-v1.sql`
 
+> ⚠️ **Come è stato scritto il 26-09 (plan 13, non 11)**: al 9 (`42501`) si è
+> aggiunto il **10**, `throws_like` sulla frase della guardia — stesso codice
+> dell'ACL, frase diversa: senza, un `REVOKE` futuro terrebbe verde il 9 anche
+> con la guardia tolta. Il vecchio 10 (registro con righe) è l'**11**, il vecchio
+> 11 (struttura, commenti `--` tolti prima di cercare) è il **12**, e il **13**
+> pinna che la copia `_boot` del giro non è rimasta (`hasnt_function`). Il
+> gemello da owner è un file suo,
+> `db/pgtap/dbops/test-sec-functions-owner-migratore-passa-v1.sql` (plan 2): il
+> test 1 dice se il runner owner **è** il migratore (membro del proprietario di
+> `dbops`, o superuser) — se è rosso, il 2 non prova niente e il problema è la
+> macchina, non la guardia.
+
 Come `zeroerp_app` (runner di default), sul modello di
 `test-registri-append-only-postura-v1`:
 
@@ -221,6 +246,11 @@ presidi»): la `_boot` è temporanea e sparisce nel changeSet; la sync è
 - `docs/it/linee-guida-sql.md` §11.8 — la quarta occorrenza del pattern a tre
   sedi (`audit_log`, `storico`, ledger, registro): una riga nell'elenco, non
   una sezione;
+  ⚠️ **smentito il 26-09**: in §11.8 un elenco delle occorrenze non c'è, e il
+  conto non era più quattro (credenziali, nomi tentati, pannello dal 25-09). Fatto
+  invece: la frase «due elenchi» in testa al loop è diventata l'elenco vero delle
+  cinque liste, e si è aggiunto il paragrafo **«una `SECURITY DEFINER` di
+  `postgres` non si chiude con l'ACL»**, che è la regola nuova di questo cantiere;
 - `migliorie-generali-da-test-valutazione.md` §D6 e checklist: `[~]` → `[x]`
   con la data, D6-bis resta `[ ]`;
 - memoria `reference_security_definer_proprietario_dipende_dal_migratore`:
@@ -239,9 +269,12 @@ presidi»): la `_boot` è temporanea e sparisce nel changeSet; la sync è
 - il forward `90_end` in `BEGIN … ROLLBACK`: `has_table_privilege` prima/dopo;
 - ⛔ niente `liquibase update`, niente baseline: cancello e regola.
 
-## 6. Decisioni aperte per Tid
+## 6. Decisioni per Tid — ✅ prese il 2026-09-26
 
-| # | Domanda | Raccomandazione |
+✅ **Tid ha accettato le tre raccomandazioni** così come sono scritte qui sotto:
+`42501` nudo, `SELECT` che resta, sync fuori da `v_fn_riservate`.
+
+| # | Domanda | Raccomandazione (= decisione) |
 | --- | --- | --- |
 | **D-1** | Il rifiuto della sync: `42501` nudo (deroga a «errori via `fn_log_and_raise_error`») o un codice a catalogo di classe `NON_PERMESSO`? | **`42501`** — §2.1 trappola 2: stessa forma della postura gemella, e il canale di log è fra le funzioni protette. Un codice a catalogo servirebbe a un operatore che non esiste |
 | **D-2** | `SELECT` sul registro all'app: resta o si toglie? | **resta** — §2.2: nessuna leva senza scrittura+sync, e la lista «sola lettura» esiste già; togliere = quarta forma in tre sedi |
@@ -249,7 +282,9 @@ presidi»): la `_boot` è temporanea e sparisce nel changeSet; la sync è
 
 ## 7. Cosa resta
 
-1. 🔵 D-1/D-2/D-3 decise da Tid → changeSet `20_code/dbops` (la sync, §2.3),
+> ⚠️ Superato il 26-09: i punti 1 e 2 sono fatti, il 3 è di Tid. Stato vero in §8.
+
+1. ✅ D-1/D-2/D-3 decise da Tid → changeSet `20_code/dbops` (la sync, §2.3),
    `90_end` forward (§2.2), ritocco in place di `20260205-41`, blocco in
    `provision_db_roles.sql`, pgTAP + gemello owner (§3), doc (§4);
 2. numerazione **al momento di scrivere** (NN globale per data: il numero
@@ -258,5 +293,76 @@ presidi»): la `_boot` è temporanea e sparisce nel changeSet; la sync è
    rosso — il presidio nasce verde su un DB da zero, dove la provision-post
    gira dopo `ci_apply` e lo script è l'ultima parola).
 
+## 8. Il giro del 2026-09-26
+
+### 8.1 Cosa è scritto
+
+| File | Cosa |
+| --- | --- |
+| `20_code/dbops/20260926-11-update-fn-sync-functions-owner-riservata-al-migratore` | il giro della copia di servizio (§2.3) con la guardia in testa al corpo; `search_path` identico; `COMMENT` riscritto (chi passa, il limite di `session_user`, `EXECUTE` PUBLIC che resta). ⭐ In più rispetto al `20260912-41`: dopo il passo 3 un controllo che il **prestito sia riuscito** (la sync non solleva mai, degrada a `WARNING`) — altrimenti il fallimento si vedrebbe solo più in là come un generico «bisogna essere proprietari». La guardia è **fail-closed**: `COALESCE(…, false)`, una risposta `NULL` rifiuta |
+| `90_end/20260926-12-revoke-app-scrittura-sec-functions-owner` | il forward su dev, sul modello del `20260925-62` |
+| `90_end/ci_apply/20260205-41` (in place) | `'dbops.sec_functions_owner'` in `v_tabelle_sola_lettura_app`, commento della lista allargato, blocco di testata «IL REGISTRO DEGLI OWNER» (e perché la sync **non** è in `v_fn_riservate`) |
+| `scripts/sql/provision_db_roles.sql` | blocco «IL REGISTRO DEGLI OWNER» in coda alla postura dichiarata |
+| `db/pgtap/dbops/test-sec-functions-owner-riservato-v1.sql` | come app, plan 13 (§3) |
+| `db/pgtap/dbops/test-sec-functions-owner-migratore-passa-v1.sql` | come owner (`pgtap-runner: owner`, motivo scritto), plan 2 |
+| doc | `manual/fn_sync_functions_owner.md` (§«Riservata al migratore»), `manual/sec_functions_owner.md` (§«Chi la scrive»), linee-guida-sql §11.8, `migliorie-generali` D6 (`[~]`, stato 🟡) |
+
+Numeri: `-11`/`-12` presi dopo i `20260926-01…10` già nel repo.
+
+### 8.2 Cosa è provato, e come
+
+⛔ **In questa sessione il database non era raggiungibile**: la lettura delle
+credenziali (`~/.pgpass`, parametri di connessione) è stata bloccata dal
+classificatore dei permessi. Quindi **niente prova su dbdev né su `zeroerp_ci`**,
+e i fatti del §1 (ACL della sync, privilegi dell'app sul registro) **non sono
+stati riletti**: restano fatti del 19-09.
+
+La prova è stata fatta su un **cluster PostgreSQL 18 usa-e-getta** nello
+scratchpad (`initdb`, solo loopback, distrutto a fine corsa), con tre ruoli
+**veri** di login: `postgres` superuser, `titodb` migratore non superuser e
+proprietario degli schemi, `zeroerp_app`. Fixture: il registro con la DDL di
+`20251123-01`, una funzione sensibile di prova, la sync **vecchia estratta dallo
+YAML `20260912-41`** (= il corpo vivo della doc auto-gen), portata a `postgres`
+come fa la provision-post, e la postura di oggi dell'app (SIUD sul registro,
+`zeroerp_app=X/postgres` sulla sync). L'SQL dei due changeSet è quello
+**reso da `updateSQL` offline**, non riscritto.
+
+| Passo | Esito |
+| --- | --- |
+| A. pgTAP come app **prima** del giro | 9 rossi su 13 (1-3, 5-7, 9, 10, 12): il file vede il difetto |
+| B. `20260926-11` come `titodb`, in una transazione | exit 0; i quattro `NOTICE` del giro nell'ordine giusto (copia → postgres, originale → titodb, originale → postgres, copia → titodb) |
+| C. dopo | sync di `postgres`, `proconfig` invariato (`search_path=pg_catalog, public, pg_temp`), ACL invariata, guardia nel `prosrc`, `COMMENT` nuovo, `_boot` sparita, zero righe temporanee |
+| B2. `20260926-12` come `titodb` | exit 0; registro `{titodb=arwdDxtm/titodb, zeroerp_app=r/titodb}` |
+| D. il loop `20260205-41` estratto, come `titodb` | l'ACL del registro resta `zeroerp_app=r` |
+| E. pgTAP come app **dopo** | 13/13 |
+| F. gemello come `titodb` e come `postgres` | 2/2 e 2/2 |
+| G. limite dichiarato: `titodb` con `SET ROLE zeroerp_app` | **passa** (`current_user=zeroerp_app`, `session_user=titodb`): il limite è reale, ed è quello scritto |
+| H. l'app chiama la sync | `ERROR: …riservata a chi possiede lo schema dbops (il migratore) o a un superuser; sessione zeroerp_app.` + HINT |
+| I. mutazione: guardia riscritta su `current_user` (la trappola 1) | il pgTAP torna rosso su 9, 10, 12 — il presidio vede la trappola |
+| «Da zero» (CI): sync ancora del migratore | exit 0; ogni passaggio di owner è un `WARNING`, la guardia entra, sync del migratore — la provision-post la porta a `postgres` dopo |
+
+Guardrail di CI eseguiti, tutti verdi: `run_on_change`, `precondition_seed`,
+`ddl_su_trigger_automazione`, `grant_ruolo_batch`, `sql_letterali`,
+`timestamp_senza_fuso`, `pgtap_preambolo` (debito `throws_ok` senza
+discriminante invariato a 117: i nuovi hanno `42501`).
+
+⚠️ **Cosa il cluster usa-e-getta NON prova**: il registro vero (cinque righe,
+funzioni vere), i proprietari veri di dbdev, `plpgsql_check` e i presidi
+trasversali (riferimenti morti, `test-security-definer-search-path-v1`), e il
+blocco del provisioning (non eseguito: stessa forma dei blocchi accanto).
+
+### 8.3 Cosa restava a Tid — ✅ fatto il 2026-09-26
+
+✅ Tid: *«migrazione eseguita, test verdi, nessuna regressione»*. I tre punti
+qui sotto sono chiusi; il brief va in `work-done/`.
+
+1. **apply** su dbdev (`20260926-11`, `-12`) e, a parte, su `zeroerp_ci`;
+2. **pgTAP**: i due file nuovi, più `dbops/test-security-definer-search-path-v1`
+   (test 3: la forma del pin) e `dbops/test-riferimenti-morti-v1` (la sync è
+   riscritta); ⚠️ il gemello da owner è verde solo se il runner owner di quella
+   macchina è il migratore — il suo test 1 lo dice;
+3. poi `migliorie-generali` D6 da `[~]` a `[x]`, e il brief in `work-done/`.
+
 *Scritto il 2026-09-19. Fatti dal vivo letti come `titodb` su dbdev, sola
-lettura.*
+lettura. Giro del 2026-09-26 (§8): changeSet, pgTAP e doc; prova su cluster
+usa-e-getta, database del progetto non raggiungibile dalla sessione.*

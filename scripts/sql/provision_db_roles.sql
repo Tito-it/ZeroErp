@@ -244,6 +244,21 @@ FROM (VALUES ('magazzino.causali'), ('config.tabelle_gestibili')) AS t(nome)
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 
+-- ⭐ IL REGISTRO DEGLI OWNER (dal 2026-09-26): brief
+--   brief-db-registro-owner-e-sync-riservati-al-migratore, sezione 2.2.
+--   `dbops.sec_functions_owner` dichiara chi possiede le DEFINER di postgres, e
+--   la sync la applica: chi scrive il registro sceglie il proprietario. Lo scrive
+--   solo il migratore; l'app legge. La sync NON si revoca qui (D-3): e' di
+--   postgres, la difende la guardia nel suo corpo (20_code/dbops/20260926-11), e
+--   il `GRANT ... ON ALL FUNCTIONS` sopra resta innocuo. Stesso elenco di
+--   `v_tabelle_sola_lettura_app` nel loop 20260205-41 e del forward
+--   90_end/20260926-12; `db/pgtap/dbops/test-sec-functions-owner-riservato-v1.sql`
+--   lo dice se non lo fa.
+SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('dbops.sec_functions_owner')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
 -- ⭐ E LA PORTA SULLE FUNZIONI (dal 2026-09-24): brief
 --   brief-db-magazzino-verbi-con-permesso, sezione 2.3 (P-4). La primitiva e il
 --   ricalcolo del valore sono RISERVATE: l'app li raggiunge solo dai verbi
