@@ -3,23 +3,20 @@
 > **Tipo documento**: brief operativo **per il team DB** (`dev/db-tid`), con la
 > ricaduta sul backend al §7.
 >
-> **Data**: 2026-09-24 · **Stato**: 🟢 **P-1 APPLICATO il 2026-09-25** (§11,
-> `20260925-01…-25`). 🟢 **P-2 APPLICATO il 2026-09-25** (§12,
-> `20260925-40…-50`, commit `acc6385d5`): corsa pgTAP di Tid **senza
-> regressioni**. ⛔ **Il backend va allineato** (§7, §11.3, §12.4): la madre
-> dell'operatore ha firma e ritorno nuovi, e il check dell'invito ha la regola
-> rovesciata — finché non lo è, su dbdev la creazione dell'operatore dal
-> pannello è rotta. 🟢 **`-51` APPLICATO il 2026-09-25** su dbdev e scratch,
-> test verdi (§12.7: il riuso della credenziale non è più silenzioso; un
-> parametro nuovo **in coda**, con default, alla madre — la chiamata per nome
-> del backend resta valida, ma sull'email già in uso ora chiede la conferma).
-> **Il lavoro DB del P-2 è chiuso**: resta il backend (§12.6).
-> 🟢 **R-7, R-9, R-3 applicati su dbdev il 2026-09-25 (19:16, `-53…-62` e i
-> template) e backend scritto lo stesso giorno, non ancora committato**
-> (B-9…B-16: §13.4, §14, §15; registro in fondo).
+> **Data**: 2026-09-24 · **Stato** (allineato il 2026-09-26): 🟢 **P-1, P-2,
+> R-8, R-9, R-7, R-3 applicati e committati** — P-1 `20260925-01…-25`
+> (`f96d087d4`), P-2 `-40…-51` (`acc6385d5`, `64a1ad2f4`), R-8 `-52`
+> (`48291b801`), R-9/R-7 `-53…-62` e i template R-3 (`7f3208a58`); backend
+> B-9…B-16 committato (`e7dbbad73`).
+> 🟢 **§16** (i motivi del dettaglio operatore come codici): `20260927-01`,
+> `-02` **applicati il 2026-09-27**, test verdi. **Il lavoro DB del brief è
+> chiuso.** ⛔ Restano backend e frontend: B-17…B-19 e F-3 (§16.4) — finché
+> mancano, il drawer mostra codici al posto delle frasi e il rifiuto
+> dell'invito ripiega su un testo generico —, poi B-8 e F-1 (§12.8) e la guida
+> `architettura-multi-face-auth` §3.1 (§8). Elenco completo al §12.6.
 >
-> **Da leggere per primo**: §12 (il P-2: cosa c'è, cosa è cambiato rispetto al
-> disegno, porta e profili, cosa chiede al backend), poi §11 (il P-1) e §2.
+> **Da leggere per primo**: §16 (il lavoro aperto), poi §12.6 (cosa resta), §12
+> (il P-2), §11 (il P-1) e §2.
 >
 > **Due lavori, in quest'ordine**: **P-1** login, blocco e cambio password
 > (§2–§4); **P-2** email unica e riuso della credenziale (§5). Sono
@@ -1076,19 +1073,23 @@ il ripiego non va avanti al catalogo):
 - ❓ Aperta per Tid, fuori da questo brief: le FK del ponte django da
   `MARK_RAN` a `CONTINUE` (§11.5).
 - ✅ DB: le due note del backend su `E_UTENTE_BLOCCATO` (R-8) → §12.8: `-52`
-  applicato (Tid, 2026-09-25), nessuna regressione. ⏳ Commit di `-52`.
-- Backend/Frontend: B-8 e F-1 (§12.8).
-- DB, prossimo: **R-7** del piano BE/FE (la risposta del login non dice se lo
-  username esiste) → §13: ✅ decisioni di Tid (§13.5), `-55…-62` scritti e
-  provati (§13.6), ⏳ apply **insieme** alla PR del backend (B-9…B-12). Ordine
-  deciso da Tid: R-9, poi R-7, poi R-3 (richieste del piano BE/FE).
-- DB: **R-3** → §15: template scritti e provati, ⏳ apply con la PR del backend
-  (B-15, B-16).
-- DB: **R-9** → §14: `-53`, `-54` scritti e provati, ⏳ apply (Tid); poi B-13,
-  B-14, F-2.
-- Backend: §7 e §12.4, B-6 compreso (lotto L-3; R-3 con L-4).
-- Guida `architettura-multi-face-auth` §3.1 (del backend, §8), con la veste che
-  nasce spenta e porta/profili sganciati.
+  applicato (Tid, 2026-09-25), nessuna regressione; committato (`48291b801`).
+- ✅ DB: **R-9** (§14, `-53`, `-54`), **R-7** (§13, `-55…-62`) e **R-3** (§15,
+  template) applicati su dbdev il 2026-09-25 e committati (`7f3208a58`).
+- ✅ Backend: B-9…B-16 e F-2 committati (`e7dbbad73`).
+- ⏳ **DB: §16** — i motivi del dettaglio operatore diventano codici macchina
+  con la chiave i18n. ✅ Decisioni di Tid (2026-09-27): `motivo` ritirato, nomi
+  dei campi invariati con `_reason_key` accanto. `20260927-01`, `-02`
+  ✅ applicati (Tid, 2026-09-27), test verdi (§16.3).
+- ⏳ Backend/Frontend: **B-17…B-19** e **F-3** (§16.4) — ora urgenti: il DB
+  non emette più `motivo` né frasi.
+- ⏳ Backend/Frontend: **B-8** e **F-1** (§12.8). Verificato il 2026-09-26: il
+  ripiego in `error_messages_fallback.py` ha ancora il testo vecchio, e
+  `LoginView.vue` tiene `E_UTENTE_BLOCCATO` in `ERROR_CODE_MAP` («frase
+  chiusa»): i minuti del `-52` non arrivano all'operatore.
+- ⏳ Guida `architettura-multi-face-auth` §3.1 (del backend, §8), con la veste che
+  nasce spenta e porta/profili sganciati: verificato il 2026-09-26, non ancora
+  scritta.
 
 ## 13. R-7 — La risposta del login non dice se il nome esiste (disegno, 2026-09-25)
 
@@ -1232,7 +1233,7 @@ ritirate: `test-login-nome-inesistente-v1` 16/16, `test-credenziale-login-v1` 22
 `test-credenziali-porta-v1` 10/13 — ⚠️ i tre rossi (3, 4, 13) provano il `42501`
 come app, e da owner sono rossi per costruzione (come nel §11.4). `plpgsql_check`
 nessun messaggio sulle tre funzioni; una firma per nome; cancelli statici verdi.
-**Non applicato.**
+✅ **Applicato su dbdev il 2026-09-25** (19:16), committato (`7f3208a58`).
 
 ⛔ **Si applica INSIEME alla PR del backend** (B-9, B-10): le due firme cambiano,
 e applicato da solo il `-60`/`-61` rompe il login del backend su dbdev.
@@ -1272,7 +1273,7 @@ estratto, transazioni ritirate: `test-fn-check-operatore-invitabile` 12/12,
 14, `test-credenziale-login-v1` 22) verdi senza modifiche. **Controprova** senza
 i changeSet: caso 12 rosso, casi 5-7 muoiono su `veste_attiva` inesistente.
 `plpgsql_check` nessun messaggio; cancelli statici verdi. Manual delle due
-funzioni aggiornati. **Non applicato.**
+funzioni aggiornati. ✅ **Applicato su dbdev il 2026-09-25** (19:16), committato (`7f3208a58`).
 
 **Cosa chiede al backend e al frontend** (dopo l'apply):
 
@@ -1310,7 +1311,7 @@ sono intatte (verificato: la riserializzazione di ogni riga intatta è identica)
 **Come è stato provato (2026-09-25).** Scratch, righe inserite come le scrive il
 CSV, transazione ritirata: le variabili usate in oggetto, html e testo dei sei
 template d'invito sono tutte fra le `variabili_disponibili`;
-`test-fn-resolve-email-template` 11/11. **Non applicato.**
+`test-fn-resolve-email-template` 11/11. ✅ **Applicato su dbdev il 2026-09-25** (19:16), committato (`7f3208a58`).
 
 ⛔ **Si applica insieme alla PR del backend.** Il motore lascia **letterale** un
 segnaposto senza valore: finché il backend non passa `username`, l'invito
@@ -1377,9 +1378,99 @@ codice macchina e la chiave i18n*. Le conseguenze:
   codice, non un tooltip vuoto); le chiavi nuove in `it.json` e `en.json`;
 - `OperatoreDetailRow` (`amm_software/types.py`): i campi nuovi.
 
-❓ **Da decidere (Tid):** se `motivo` testuale resta per compatibilità o si
-ritira nello stesso giro. Non siamo in produzione: la proposta è ritirarlo, una
-sede sola.
+✅ **Decise da Tid il 2026-09-27:** (1) `motivo` testuale **ritirato** nello
+stesso giro, una sede sola; (2) i nomi dei campi del dettaglio **restano**
+(`invite_reason`, `disable_reason`, `demote_reason` portano ora il codice) e
+accanto nasce `<verbo>_reason_key`: si segue la famiglia già in servizio sulla
+superficie, non se ne conia un'altra (api.md §Capability di riga).
+
+### 16.3 Esecuzione (2026-09-27)
+
+| Fase | ChangeSet | Cosa |
+| --- | --- | --- |
+| `20_code/script` | `20260927-01` | `fn_check_operatore_invitabile`: ritorna `{invitabile, reason, reason_key, email}`; **`motivo` ritirato**. Rami e ordine invariati (il primo motivo vince). Firma invariata: `CREATE OR REPLACE` |
+| | `20260927-02` | `fn_get_operatore_detail`: `*_reason` porta il codice; tre colonne nuove **in coda** `invite_reason_key`, `disable_reason_key`, `demote_reason_key`. `RETURNS TABLE` cambiato ⇒ `DROP` + `CREATE`; privilegi dai default, come il `-54` |
+
+**I codici e le chiavi.** Senza prefisso `E_`: sono motivi, non codici a
+catalogo (linee-guida-sql §12.5.1). Nessun codice d'errore nuovo.
+
+| Campo | `reason` | `reason_key` |
+| --- | --- | --- |
+| invito | `UTENTE_NON_TROVATO` | `amministrazione.operatori.invito_reason.utente_non_trovato` |
+| | `SENZA_VESTE_OPERATORE` | `amministrazione.operatori.invito_reason.senza_veste_operatore` |
+| | `VESTE_GIA_ATTIVA` | `amministrazione.operatori.invito_reason.veste_gia_attiva` |
+| | `PIU_VESTI_SPENTE` | `amministrazione.operatori.invito_reason.piu_vesti_spente` |
+| | `VESTE_FUORI_FINESTRA` | `amministrazione.operatori.invito_reason.veste_fuori_finestra` |
+| | `SENZA_EMAIL` | `amministrazione.operatori.invito_reason.senza_email` |
+| disabilita | `ULTIMO_SUPER_ADMIN` | `amministrazione.operatori.disabilita_reason.ultimo_super_admin` |
+| rimuovi super admin | `ULTIMO_SUPER_ADMIN` | `amministrazione.operatori.rimuovi_super_admin_reason.ultimo_super_admin` |
+
+Tre scelte da sapere:
+
+- **Id `NULL`/≤ 0 e id inesistente danno lo stesso codice**
+  (`UTENTE_NON_TROVATO`). Prima erano due frasi, ma per chi guarda è lo stesso
+  caso: un id che non individua nessuno.
+- **Disable e demote hanno lo stesso codice ma chiavi diverse**: la condizione
+  è una, la frase dice **quale** azione non si può fare (linee-guida-sql §12.5.4).
+- **Lo spazio `amministrazione.operatori.*`**, non `amministrazione.operatore.*`:
+  nei locales `amministrazione.operatore` è già una foglia («Operatore») e non
+  può avere figli.
+
+⚠️ **Il presidio i18n ne vedrà sei su otto.** `scripts/check_i18n_keys.py`
+trova le sei chiavi della check (scritte `'reason_key', '<chiave>'` sulla stessa
+riga), **non** le due del dettaglio, che stanno dentro un `CASE`. L'elenco buono
+è la tabella qui sopra, o il `COMMENT` delle due funzioni, non il rosso del
+presidio.
+
+**pgTAP.**
+
+- `script/test-fn-check-operatore-invitabile` (plan 12 → **13**): i casi 1-5,
+  9, 10, 12 pinnano `reason|reason_key` invece di frasi o `ILIKE`; il 6 anche i
+  due `NULL` dell'invitabile; **nuovo 13**: la chiave `motivo` non esiste più,
+  né nel rifiuto né nell'invitabile.
+- `script/test-fn-get-operatore-detail` (plan 7): i casi 2, 3, 4, 7 pinnano
+  codice e chiave; l'1 anche i `NULL` di disable e demote quando sono ammessi.
+
+**Come è stato provato (2026-09-27).** Scratch `zeroerp_ci`, da owner, SQL
+estratto da `-01` e `-02` dentro una transazione ritirata:
+`test-fn-check-operatore-invitabile` 13/13, `test-fn-get-operatore-detail` 7/7.
+I tre pgTAP che chiamano le due funzioni restano verdi e identici con e senza
+i changeSet: `test-emittente-denominazione-da-soggetto-v1` 14,
+`test-credenziale-login-v1` 22, `test-crea-operatore-riusa-credenziale-v1` 20.
+**Controprova** senza i changeSet: nella check 9 rossi (tutti i casi che
+pinnano un codice, più il 13), e il dettaglio non gira («la colonna
+`disable_reason_key` non esiste»). `plpgsql_check`: nessun messaggio sulle due
+funzioni. Cancelli statici verdi (`run_on_change`, `precondition_seed`,
+`ddl_su_trigger_automazione`, `grant_ruolo_batch`, `sql_letterali`,
+`timestamp_senza_fuso`, `pgtap_preambolo`). Definizioni sullo scratch
+confrontate prima e dopo: invariate. Manual delle due funzioni aggiornati.
+✅ **Applicato il 2026-09-27** da Tid (scratch `zeroerp_ci`: `EXECUTED` alle
+00:17, letto da `databasechangelog`; dbdev: esito riferito da Tid), pgTAP verdi.
+
+⛔ **Applicato prima della PR del backend e del frontend** (B-17…B-19, F-3):
+il `-01` ha tolto `motivo`. Finché non arrivano, il rifiuto dell'invito
+ripiega su «Operatore non invitabile.», e il drawer mostra un codice
+(`VESTE_GIA_ATTIVA`…) al posto della frase, finché i locales non hanno le
+chiavi.
+
+**Presidi trasversali da guardare nella corsa di Tid**: `test-riferimenti-morti-v1`
+(compila ogni funzione); il guardrail Django dei codici d'errore
+(`test_error_codes_db_policy_guardrail`), che non deve vedere niente di nuovo
+perché nessun motivo ha il prefisso `E_`.
+
+### 16.4 Cosa chiede al backend e al frontend
+
+| # | Dove | Cosa |
+| --- | --- | --- |
+| B-17 | `InvitoOperatoreService.invia_invito` | il rifiuto `E_INVITO` non usa più `check["motivo"]` come messaggio, perché quella chiave non esiste più. Il messaggio viene dal catalogo, e il `reason` (e la `reason_key`) viaggiano nel contesto dell'errore. Il ripiego di `_check_invitabile` (`{"invitabile": False, "motivo": …}`) prende la forma nuova. Test: `test_invito_operatore.py` (caso con `motivo="Veste OPERATORE gia' attiva"`) |
+| B-18 | `amm_software/types.py` `OperatoreDetailRow` | i campi `invite_reason_key`, `disable_reason_key`, `demote_reason_key: str \| None`. Aggiornare la docstring, che dice «`invite_reason` è una stringa libera it-IT»: ora è un codice |
+| B-19 | `AmmSoftwareService.disabilita_operatore` | il `detail` del rifiuto `E_PROFILO_ULTIMO_SUPER_ADMIN` non ricopia `disable_reason`, che adesso è un codice e non una spiegazione. Test: `test_amm_software_service.py` (mock con la frase) |
+| F-3 | `OperatoreDrawer.vue` | **ritirare** il ramo `veste_attiva` di `inviteReason`: è la seconda copia della regola, giusta oggi solo per l'ordine dei motivi. Rendere i tre motivi dalla chiave con `labelOrCode` (chiave mancante ⇒ si vede il codice). Le **otto chiavi** della tabella del §16.3 in `it.json` e `en.json`; `amministrazione.accesso_gia_attivo` si ritira se non ha altri lettori |
+
+⚠️ **Da verificare a video** (linee-guida-sql §12.5.5): oggi il drawer non
+legge `disable_reason` né `demote_reason`, quindi il motivo di quei due pulsanti
+spenti non arriva all'operatore. F-3 lo porta a video. Controllare che il tooltip
+compaia davvero, perché nessun presidio lo vede.
 
 ## Registro
 
@@ -1414,6 +1505,10 @@ sede sola.
 | 2026-09-25 | DB | R-3 (§15): `INVITO_OPERATORE` con lo username; tre template `_CROSS` per il flusso con un clic (il motore non ha rami: un template per flusso). Non applicato; con la PR del backend (B-15, B-16) |
 | 2026-09-25 | BE | **B-9…B-16 scritti, non committati**, dopo l'apply delle 19:16 (che aveva rotto il login su dbdev: firme a due e tre argomenti tolte). B-9/B-10: il login chiama check e registrazione **sempre**, con `nome_tentato.digest_nome_tentato` (HMAC-SHA256, chiave da `SECRET_KEY` con sale proprio via `salted_hmac`, nessuna variabile d'ambiente nuova). ⭐ **Trovato strada facendo**: lo username si normalizzava in due modi — il serializer toglie gli spazi, il lookup no — e con « tid» blocco dell'admin, freno e attesa **non si controllavano** mentre `authenticate("tid")` faceva entrare. Ora il nome si legge dal campo del serializer (una normalizzazione sola, §13.3). B-11: nei log `user_id=` o un prefisso dell'impronta, mai il nome. B-12: `ModelBackend` verifica comunque una password (`check_password_with_timing_attack_mitigation`); le chiamate al DB sono le stesse nei due casi. B-13: `veste_attiva` nel tipo e nel drawer (F-2). B-14: nessun codice (la check lo dice gia'). B-15/B-16: `username` nell'invito operatore, `template_cross` per porta, `is_cross` tolto dalle variabili. Prove: `test_login_credenziale_db` (parita' del nome inesistente, spazi che non aggirano il freno, `veste_attiva` nel ciclo operatore), `test_template_invito_db` (ogni segnaposto dei sei template riceve un valore) |
 | 2026-09-25 | BE | §16: i motivi del dettaglio operatore (`invite_reason`, `disable_reason`, `demote_reason`) viaggiano come frasi italiane; il drawer ne traduce uno solo deducendolo da `veste_attiva` (seconda copia della regola, giusta oggi solo per l'ordine dei motivi). Richiesta al DB: codici + chiavi i18n |
+| 2026-09-26 | DB | Brief allineato ai commit: R-7, R-9, R-3 applicati e committati (`7f3208a58`), backend B-9…B-16 committato (`e7dbbad73`). Restano §16 (DB), B-8/F-1 e la guida multi-face (§12.6) |
+| 2026-09-27 | Tid | §16: `motivo` ritirato; nomi dei campi invariati, `_reason_key` accanto |
+| 2026-09-27 | DB | §16 scritto e provato (§16.3): `20260927-01` (check: `reason` + `reason_key`, `motivo` ritirato), `-02` (dettaglio: tre `_reason_key`, `DROP` + `CREATE`); due pgTAP adeguati (check plan 13). Manual aggiornati. Non applicato; con B-17…B-19 e F-3 (§16.4) |
+| 2026-09-27 | Tid | `20260927-01`, `-02` applicati; pgTAP verdi. Lavoro DB del brief chiuso. Resta a BE/FE: B-17…B-19, F-3 (§16.4), B-8, F-1 (§12.8), guida multi-face (§8) |
 
 ---
 {% include-markdown "signature-core.md" %}

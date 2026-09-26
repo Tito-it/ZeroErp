@@ -31,25 +31,33 @@ BEGIN
     --   rev 20260925-43: la veste nasce spenta, la accende
     --   l'attivazione; il reinvito riapre una veste spenta).
     --
-    -- Condizioni:
-    --   1. auth_user valido ed esistente
-    --   2. almeno una veste OPERATORE
-    --   3. nessuna veste OPERATORE gia' attiva (D-8)
+    -- Condizioni (in ordine: il primo motivo vince):
+    --   1. auth_user valido ed esistente     UTENTE_NON_TROVATO
+    --   2. almeno una veste OPERATORE        SENZA_VESTE_OPERATORE
+    --   3. nessuna veste OPERATORE gia'
+    --      attiva (D-8)                      VESTE_GIA_ATTIVA
     --   3-bis. UNA sola veste OPERATORE: con piu' vesti spente
-    --      non si sa quale riaccendere (rev 20260925-53, R-9)
-    --   4. la veste nella sua finestra temporale
-    --   5. auth_user ha un indirizzo email
+    --      non si sa quale riaccendere
+    --      (rev 20260925-53, R-9)            PIU_VESTI_SPENTE
+    --   4. la veste nella sua finestra       VESTE_FUORI_FINESTRA
+    --   5. auth_user ha un indirizzo email   SENZA_EMAIL
     --   ⛔ NON contano piu': last_login (D-8) e is_active
     --      (derivato dalle vesti: false per costruzione).
     --
     -- Ritorna:
-    --   JSONB: {invitabile: bool, motivo: text, email: text}
+    --   JSONB: {invitabile: bool, reason: text, reason_key: text,
+    --           email: text}
+    --   reason/reason_key NULL se invitabile.
+    --   ⛔ Rev 20260927-01 (§16): il motivo e' un CODICE con la
+    --   sua chiave i18n; la frase `motivo` e' ritirata — il
+    --   testo vive nei locales, non nel payload.
     -- =========================================================
 
     IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
         RETURN jsonb_build_object(
             'invitabile', false,
-            'motivo', 'auth_user_id non valido',
+            'reason', 'UTENTE_NON_TROVATO',
+            'reason_key', 'amministrazione.operatori.invito_reason.utente_non_trovato',
             'email', NULL
         );
     END IF;
@@ -74,7 +82,8 @@ BEGIN
     IF v_trovato IS NULL THEN
         RETURN jsonb_build_object(
             'invitabile', false,
-            'motivo', 'Utente non trovato',
+            'reason', 'UTENTE_NON_TROVATO',
+            'reason_key', 'amministrazione.operatori.invito_reason.utente_non_trovato',
             'email', NULL
         );
     END IF;
@@ -82,7 +91,8 @@ BEGIN
     IF v_n_vesti = 0 THEN
         RETURN jsonb_build_object(
             'invitabile', false,
-            'motivo', 'Nessuna identita OPERATORE',
+            'reason', 'SENZA_VESTE_OPERATORE',
+            'reason_key', 'amministrazione.operatori.invito_reason.senza_veste_operatore',
             'email', v_email
         );
     END IF;
@@ -92,7 +102,8 @@ BEGIN
     IF v_veste_attiva THEN
         RETURN jsonb_build_object(
             'invitabile', false,
-            'motivo', 'Veste OPERATORE gia'' attiva',
+            'reason', 'VESTE_GIA_ATTIVA',
+            'reason_key', 'amministrazione.operatori.invito_reason.veste_gia_attiva',
             'email', v_email
         );
     END IF;
@@ -104,7 +115,8 @@ BEGIN
     IF v_n_vesti > 1 THEN
         RETURN jsonb_build_object(
             'invitabile', false,
-            'motivo', 'Piu'' vesti OPERATORE spente: serve un intervento manuale',
+            'reason', 'PIU_VESTI_SPENTE',
+            'reason_key', 'amministrazione.operatori.invito_reason.piu_vesti_spente',
             'email', v_email
         );
     END IF;
@@ -112,7 +124,8 @@ BEGIN
     IF NOT v_in_finestra THEN
         RETURN jsonb_build_object(
             'invitabile', false,
-            'motivo', 'Identita fuori finestra temporale',
+            'reason', 'VESTE_FUORI_FINESTRA',
+            'reason_key', 'amministrazione.operatori.invito_reason.veste_fuori_finestra',
             'email', v_email
         );
     END IF;
@@ -120,21 +133,23 @@ BEGIN
     IF v_email IS NULL OR trim(v_email) = '' THEN
         RETURN jsonb_build_object(
             'invitabile', false,
-            'motivo', 'Nessun indirizzo email configurato',
+            'reason', 'SENZA_EMAIL',
+            'reason_key', 'amministrazione.operatori.invito_reason.senza_email',
             'email', NULL
         );
     END IF;
 
     RETURN jsonb_build_object(
         'invitabile', true,
-        'motivo', NULL,
+        'reason', NULL,
+        'reason_key', NULL,
         'email', v_email
     );
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_operatore_invitabile(p_auth_user_id integer)
-IS 'Dice se un operatore puo'' ricevere l''invito che ACCENDE la sua veste OPERATORE. ⭐ Rev 20260925-43 (brief-db-blocco-login-per-credenziale §12; R-1 del piano BE/FE, D-8): regola unica dell''invito — la veste nasce spenta (fn_crea_operatore_v2) e la accende l''attivazione; il reinvito riapre una veste spenta (D-3). Invitabile se: credenziale esistente, almeno una veste OPERATORE, NESSUNA veste OPERATORE gia'' attiva (veste attiva -> rifiuto), UNA SOLA veste OPERATORE (rev 20260925-53, R-9: con piu'' vesti spente non si sa quale riaccendere, e l''invito del backend lo rifiuta), veste nella sua finestra, email presente. Non contano piu'' last_login (D-8) ne'' is_active (derivato dalle vesti, false per costruzione con la sola veste spenta). Ritorna jsonb {invitabile, motivo, email}; motivo lo legge fn_get_operatore_detail come invite_reason.';
+IS 'Dice se un operatore puo'' ricevere l''invito che ACCENDE la sua veste OPERATORE. ⭐ Rev 20260925-43 (brief-db-blocco-login-per-credenziale §12; R-1 del piano BE/FE, D-8): regola unica dell''invito — la veste nasce spenta (fn_crea_operatore_v2) e la accende l''attivazione; il reinvito riapre una veste spenta (D-3). Invitabile se: credenziale esistente, almeno una veste OPERATORE, NESSUNA veste OPERATORE gia'' attiva (veste attiva -> rifiuto), UNA SOLA veste OPERATORE (rev 20260925-53, R-9: con piu'' vesti spente non si sa quale riaccendere, e l''invito del backend lo rifiuta), veste nella sua finestra, email presente. Non contano piu'' last_login (D-8) ne'' is_active (derivato dalle vesti, false per costruzione con la sola veste spenta). Ritorna jsonb {invitabile, reason, reason_key, email}. ⭐ Rev 20260927-01 (§16): il motivo e'' un codice macchina con la sua chiave i18n, nell''ordine delle condizioni (il primo vince); la frase `motivo` e'' ritirata. Codici -> chiavi: UTENTE_NON_TROVATO -> amministrazione.operatori.invito_reason.utente_non_trovato; SENZA_VESTE_OPERATORE -> amministrazione.operatori.invito_reason.senza_veste_operatore; VESTE_GIA_ATTIVA -> amministrazione.operatori.invito_reason.veste_gia_attiva; PIU_VESTI_SPENTE -> amministrazione.operatori.invito_reason.piu_vesti_spente; VESTE_FUORI_FINESTRA -> amministrazione.operatori.invito_reason.veste_fuori_finestra; SENZA_EMAIL -> amministrazione.operatori.invito_reason.senza_email. reason e reason_key li inoltra fn_get_operatore_detail come invite_reason e invite_reason_key.';
 ```
 
 ---

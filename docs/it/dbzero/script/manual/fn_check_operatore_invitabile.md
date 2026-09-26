@@ -3,8 +3,8 @@
 ### Scopo
 
 Dice se un operatore puo' ricevere l'**invito che accende la sua veste
-OPERATORE**. Ritorna un JSONB con esito, motivo e indirizzo email, e non
-solleva mai.
+OPERATORE**. Ritorna un JSONB con esito, motivo (codice macchina e chiave
+i18n) e indirizzo email, e non solleva mai.
 
 ⭐ **La regola unica dell'invito** (dal 2026-09-25, `20260925-43`;
 brief-db-blocco-login-per-credenziale §12, D-8 dell'analisi accessi): la veste
@@ -18,21 +18,29 @@ vero, `last_login` vuoto — e con la veste che nasce spenta un operatore appena
 creato non sarebbe mai stato invitabile.
 
 La chiamano il backend prima di preparare l'invito, e
-`script.fn_get_operatore_detail` per la capability `can_invite` (il `motivo`
-diventa `invite_reason`).
+`script.fn_get_operatore_detail` per la capability `can_invite` (`reason` e
+`reason_key` diventano `invite_reason` e `invite_reason_key`).
 
 ## Condizioni di invitabilita'
 
 Tutte devono essere soddisfatte, in quest'ordine (il primo motivo vince):
 
-| # | Condizione | Motivo se non soddisfatta |
-|---|-----------|---------------------------|
-| 1 | `auth_user` esiste | `Utente non trovato` |
-| 2 | almeno una veste OPERATORE | `Nessuna identita OPERATORE` |
-| 3 | **nessuna** veste OPERATORE attiva | `Veste OPERATORE gia' attiva` |
-| 3-bis | **una sola** veste OPERATORE | `Piu' vesti OPERATORE spente: serve un intervento manuale` |
-| 4 | la veste nella sua finestra (`valido_dal`/`valido_al`) | `Identita fuori finestra temporale` |
-| 5 | `auth_user.email` valorizzata | `Nessun indirizzo email configurato` |
+| # | Condizione | `reason` se non soddisfatta | `reason_key` |
+|---|-----------|-----------------------------|--------------|
+| 1 | `auth_user` esiste (id non `NULL`, > 0) | `UTENTE_NON_TROVATO` | `amministrazione.operatori.invito_reason.utente_non_trovato` |
+| 2 | almeno una veste OPERATORE | `SENZA_VESTE_OPERATORE` | `amministrazione.operatori.invito_reason.senza_veste_operatore` |
+| 3 | **nessuna** veste OPERATORE attiva | `VESTE_GIA_ATTIVA` | `amministrazione.operatori.invito_reason.veste_gia_attiva` |
+| 3-bis | **una sola** veste OPERATORE | `PIU_VESTI_SPENTE` | `amministrazione.operatori.invito_reason.piu_vesti_spente` |
+| 4 | la veste nella sua finestra (`valido_dal`/`valido_al`) | `VESTE_FUORI_FINESTRA` | `amministrazione.operatori.invito_reason.veste_fuori_finestra` |
+| 5 | `auth_user.email` valorizzata | `SENZA_EMAIL` | `amministrazione.operatori.invito_reason.senza_email` |
+
+⭐ **Il motivo è un codice, non una frase** (dal 2026-09-27, `20260927-01`;
+brief-db-blocco-login-per-credenziale §16). Il testo vive nei `locales` del
+frontend, sotto la `reason_key`: è la regola del trasporto delle capability
+([linee-guida-sql §12](/linee-guida-sql)). Fino a quel giorno la funzione
+restituiva `motivo`, una frase italiana che arrivava tale e quale al drawer e al
+messaggio d'errore dell'invito; quella chiave non c'è più. I codici non hanno il
+prefisso `E_`: sono motivi, non codici a catalogo.
 
 ⛔ **Non contano piu'**:
 
@@ -52,14 +60,15 @@ rifiutava: il pulsante c'era e l'azione falliva.
 ## Caratteristiche
 
 - **STABLE**, plpgsql (nomina `django.auth_user`: niente `%TYPE` su Django)
-- **Non solleva**: `p_auth_user_id` NULL o <= 0 → `{invitabile: false}`
+- **Non solleva**: `p_auth_user_id` NULL o <= 0 → `{invitabile: false, reason: UTENTE_NON_TROVATO}`
 
 ## Risultato
 
 | Chiave | Tipo | Descrizione |
 |--------|------|-------------|
 | `invitabile` | boolean | `true` se tutte le condizioni sono soddisfatte |
-| `motivo` | text | Motivo del rifiuto (NULL se invitabile) |
+| `reason` | text | Codice del primo motivo di rifiuto (NULL se invitabile) |
+| `reason_key` | text | Chiave i18n del motivo (NULL se invitabile) |
 | `email` | text | Indirizzo email della credenziale |
 
 ## Esempio
@@ -67,11 +76,13 @@ rifiutava: il pulsante c'era e l'azione falliva.
 ```sql
 -- Operatore appena creato: veste spenta
 SELECT script.fn_check_operatore_invitabile(42);
--- {"invitabile": true, "motivo": null, "email": "mario.rossi@azienda.it"}
+-- {"invitabile": true, "reason": null, "reason_key": null, "email": "mario.rossi@azienda.it"}
 
 -- Operatore con la veste gia' accesa
 SELECT script.fn_check_operatore_invitabile(10);
--- {"invitabile": false, "motivo": "Veste OPERATORE gia' attiva", "email": "luca@azienda.it"}
+-- {"invitabile": false, "reason": "VESTE_GIA_ATTIVA",
+--  "reason_key": "amministrazione.operatori.invito_reason.veste_gia_attiva",
+--  "email": "luca@azienda.it"}
 ```
 
 Presidio: `db/pgtap/script/test-fn-check-operatore-invitabile.sql`.

@@ -30,17 +30,23 @@
 --
 -- Indice test (1..7):
 --   1. Multi super-admin -> can_disable=true sull'auth_user SA target
---   2. Single super-admin -> can_disable=false + disable_reason valorizzata
+--   2. Single super-admin -> can_disable=false + ULTIMO_SUPER_ADMIN e la
+--      chiave del disabilita
 --   3. Demote bloccato (single SA) -> can_demote_super_admin=false
---                                       + demote_reason valorizzata
---   4. Invite su veste gia' ATTIVA -> can_invite=false + invite_reason
---                                contiene 'attiva' (rev 2026-09-25: la regola
+--      + ULTIMO_SUPER_ADMIN e la chiave del demote (diversa da quella del 2)
+--   4. Invite su veste gia' ATTIVA -> can_invite=false + VESTE_GIA_ATTIVA
+--                                e la sua chiave (rev 2026-09-25: la regola
 --                                unica dell'invito, D-8 — last_login non
 --                                decide piu'; 20260925-43)
 --   5. veste_attiva = true per la veste accesa (rev 20260925-54, R-9)
 --   6. ⭐ veste attiva + una copia spenta: UNA riga, e mostra l'attiva
 --   7. ⭐ due vesti spente: UNA riga, veste_attiva=false, e l'invito non e'
 --      offerto (motivo di fn_check_operatore_invitabile, rev -53)
+--
+-- ⭐ Rev 20260927-02 (brief-db-blocco-login-per-credenziale §16): i motivi
+--   sono CODICI con la chiave i18n (*_reason + *_reason_key), non frasi. I
+--   casi pinnano la coppia; prima pinnavano parole delle frasi (ILIKE).
+--   Casi 1 e 4 anche i NULL: ammessa => motivo e chiave vuoti.
 --
 -- Niente SAVEPOINT (azzera il counter pgTAP).
 -- ------------------------------------------------------------
@@ -116,10 +122,11 @@ SELECT t.identita_id AS id_id, t.auth_user_id AS au_id, pab.id AS bind_id
    AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso;
 
 SELECT is(
-    (SELECT can_disable
+    (SELECT can_disable || '|' || (disable_reason IS NULL AND disable_reason_key IS NULL
+                                   AND demote_reason IS NULL AND demote_reason_key IS NULL)
        FROM script.fn_get_operatore_detail((SELECT au_id FROM _t_c1))),
-    true,
-    '1. Multi super-admin: can_disable=true (esiste un altro SA, no lockout)'
+    'true|true',
+    '1. Multi super-admin: can_disable=true, motivi e chiavi di disable/demote NULL'
 );
 
 -- =========================================================
@@ -129,10 +136,10 @@ SELECT is(
 SELECT pg_temp.disable_other_sa((SELECT bind_id FROM _t_c1));
 
 SELECT is(
-    (SELECT (NOT can_disable) AND disable_reason ILIKE '%lockout%'
+    (SELECT can_disable || '|' || disable_reason || '|' || disable_reason_key
        FROM script.fn_get_operatore_detail((SELECT au_id FROM _t_c1))),
-    true,
-    '2. Single super-admin: can_disable=false + disable_reason cita lockout'
+    'false|ULTIMO_SUPER_ADMIN|amministrazione.operatori.disabilita_reason.ultimo_super_admin',
+    '2. Single super-admin: can_disable=false, ULTIMO_SUPER_ADMIN + chiave del disabilita'
 );
 
 -- =========================================================
@@ -141,11 +148,10 @@ SELECT is(
 --    demote_reason valorizzata (e diversa da disable_reason).
 -- =========================================================
 SELECT is(
-    (SELECT (can_demote_super_admin = false)
-            AND demote_reason ILIKE '%binding%'
+    (SELECT can_demote_super_admin || '|' || demote_reason || '|' || demote_reason_key
        FROM script.fn_get_operatore_detail((SELECT au_id FROM _t_c1))),
-    true,
-    '3. Demote bloccato: can_demote_super_admin=false + demote_reason cita "binding"'
+    'false|ULTIMO_SUPER_ADMIN|amministrazione.operatori.rimuovi_super_admin_reason.ultimo_super_admin',
+    '3. Demote bloccato: can_demote_super_admin=false, ULTIMO_SUPER_ADMIN + chiave del demote'
 );
 
 -- =========================================================
@@ -175,10 +181,10 @@ UPDATE django.auth_user
  WHERE id = (SELECT au_id FROM _t_c4);
 
 SELECT is(
-    (SELECT (NOT can_invite) AND invite_reason ILIKE '%gia%attiva%'
+    (SELECT can_invite || '|' || invite_reason || '|' || invite_reason_key
        FROM script.fn_get_operatore_detail((SELECT au_id FROM _t_c4))),
-    true,
-    '4. Invite su veste gia'' attiva: can_invite=false + invite_reason cita "attiva"'
+    'false|VESTE_GIA_ATTIVA|amministrazione.operatori.invito_reason.veste_gia_attiva',
+    '4. Invite su veste gia'' attiva: can_invite=false, VESTE_GIA_ATTIVA + chiave'
 );
 
 -- =========================================================
@@ -224,10 +230,11 @@ SELECT idg.soggetto_ruolo_id, idg.auth_user_id, idg.ruolo_applicativo, false, id
 
 SELECT is(
     (SELECT count(*) || '|' || bool_and(NOT veste_attiva)
-                     || '|' || bool_and(NOT can_invite AND invite_reason ILIKE '%piu%vesti%')
+                     || '|' || bool_and(NOT can_invite)
+                     || '|' || string_agg(invite_reason || '|' || invite_reason_key, ',')
        FROM script.fn_get_operatore_detail((SELECT au_id FROM _t_c7))),
-    '1|true|true',
-    '7. due vesti spente: UNA riga, veste_attiva=false, invito non offerto'
+    '1|true|true|PIU_VESTI_SPENTE|amministrazione.operatori.invito_reason.piu_vesti_spente',
+    '7. due vesti spente: UNA riga, veste_attiva=false, invito non offerto (PIU_VESTI_SPENTE)'
 );
 
 SELECT * FROM finish();

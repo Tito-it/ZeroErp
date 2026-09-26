@@ -17,13 +17,13 @@
 --   prendeva «la prima identita' OPERATORE attiva non super admin» del
 --   database, e su un database senza operatori (la CI) non trovava niente.
 --
--- Elenco test (plan 12):
+-- Elenco test (plan 13):
 --   Chiamate che non arrivano a nessuna credenziale
 --    1) auth_user_id NULL -> invitabile=false
 --    2) auth_user_id <= 0 -> invitabile=false
---    3) auth_user_id inesistente -> 'Utente non trovato'
+--    3) auth_user_id inesistente -> UTENTE_NON_TROVATO
 --   La regola
---    4) credenziale senza veste OPERATORE -> 'Nessuna identita OPERATORE'
+--    4) credenziale senza veste OPERATORE -> SENZA_VESTE_OPERATORE
 --    5) ⛔ veste OPERATORE gia' ATTIVA -> invitabile=false (D-8)
 --    6) ⭐ veste OPERATORE SPENTA -> invitabile=true, con l'email
 --    7) ... e is_active e' false (derivato dalle vesti): non conta
@@ -37,6 +37,13 @@
 --   12) due vesti OPERATORE spente sulla stessa credenziale -> invitabile=false:
 --       l'invito ne riaccende UNA e non si sa quale (il verbo del backend lo
 --       rifiuta gia'; la capability deve dire lo stesso)
+--   Il contratto (rev 20260927-01, brief-db-blocco-login-per-credenziale §16)
+--   13) ⛔ la frase `motivo` e' ritirata: la chiave non esiste piu', ne' nel
+--       rifiuto ne' nell'invitabile
+--
+-- ⭐ Rev 20260927-01 (§16): il motivo e' un CODICE con la sua chiave i18n, e
+--   i casi pinnano la coppia `reason|reason_key` — non piu' frasi o ILIKE su
+--   frasi. Un test che pinnasse il testo tornerebbe a chiedere il testo.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -50,7 +57,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   Brief: brief-db-pgtap-runner-rls-baseline §19.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(12);
+SELECT plan(13);
 
 -- ============================================================
 -- Fixture: un operatore VERO (madre + invito accettato), non super admin —
@@ -70,29 +77,37 @@ SELECT anagrafiche.fn_crea_auth_user(
 -- ============================================================
 -- 1-3) Chiamate che non arrivano a nessuna credenziale
 -- ============================================================
-SELECT is((script.fn_check_operatore_invitabile(NULL))->>'invitabile', 'false',
-          '1) auth_user_id NULL -> invitabile=false');
+SELECT is((SELECT r->>'invitabile' || '|' || (r->>'reason')
+             FROM (SELECT script.fn_check_operatore_invitabile(NULL) AS r) x),
+          'false|UTENTE_NON_TROVATO',
+          '1) auth_user_id NULL -> invitabile=false, UTENTE_NON_TROVATO');
 
-SELECT is((script.fn_check_operatore_invitabile(-1))->>'invitabile', 'false',
-          '2) auth_user_id <= 0 -> invitabile=false');
+SELECT is((SELECT r->>'invitabile' || '|' || (r->>'reason')
+             FROM (SELECT script.fn_check_operatore_invitabile(-1) AS r) x),
+          'false|UTENTE_NON_TROVATO',
+          '2) auth_user_id <= 0 -> invitabile=false, UTENTE_NON_TROVATO');
 
-SELECT is((script.fn_check_operatore_invitabile(2147483000))->>'motivo', 'Utente non trovato',
-          '3) auth_user_id inesistente -> Utente non trovato');
+SELECT is((SELECT (r->>'reason') || '|' || (r->>'reason_key')
+             FROM (SELECT script.fn_check_operatore_invitabile(2147483000) AS r) x),
+          'UTENTE_NON_TROVATO|amministrazione.operatori.invito_reason.utente_non_trovato',
+          '3) auth_user_id inesistente -> UTENTE_NON_TROVATO con la sua chiave');
 
 -- ============================================================
 -- 4) Credenziale senza nessuna veste OPERATORE
 -- ============================================================
-SELECT is((script.fn_check_operatore_invitabile((SELECT user_id FROM tmp_nuda)))->>'motivo',
-          'Nessuna identita OPERATORE',
-          '4) credenziale senza veste OPERATORE -> Nessuna identita OPERATORE');
+SELECT is((SELECT (r->>'reason') || '|' || (r->>'reason_key')
+             FROM (SELECT script.fn_check_operatore_invitabile((SELECT user_id FROM tmp_nuda)) AS r) x),
+          'SENZA_VESTE_OPERATORE|amministrazione.operatori.invito_reason.senza_veste_operatore',
+          '4) credenziale senza veste OPERATORE -> SENZA_VESTE_OPERATORE');
 
 -- ============================================================
 -- 5) ⛔ Veste gia' ATTIVA (il builder la accende): rifiuto (D-8)
 -- ============================================================
-SELECT ok(
-    (SELECT (NOT (r->>'invitabile')::boolean) AND r->>'motivo' ILIKE '%gia%attiva%'
+SELECT is(
+    (SELECT r->>'invitabile' || '|' || (r->>'reason') || '|' || (r->>'reason_key')
        FROM (SELECT script.fn_check_operatore_invitabile((SELECT user_id FROM tmp_inv)) AS r) x),
-    '5) veste OPERATORE gia'' attiva -> invitabile=false (D-8)');
+    'false|VESTE_GIA_ATTIVA|amministrazione.operatori.invito_reason.veste_gia_attiva',
+    '5) veste OPERATORE gia'' attiva -> invitabile=false, VESTE_GIA_ATTIVA (D-8)');
 
 -- ============================================================
 -- 6-8) ⭐ Veste SPENTA: invitabile — e is_active, last_login non contano
@@ -107,9 +122,10 @@ UPDATE django.auth_user
 
 SELECT is(
     (SELECT r->>'invitabile' || '|' || (r->>'email')
+            || '|' || ((r->>'reason') IS NULL AND (r->>'reason_key') IS NULL)::text
        FROM (SELECT script.fn_check_operatore_invitabile((SELECT user_id FROM tmp_inv)) AS r) x),
-    'true|' || (SELECT email FROM django.auth_user WHERE id = (SELECT user_id FROM tmp_inv)),
-    '6) veste OPERATORE spenta -> invitabile=true, con l''email della credenziale');
+    'true|' || (SELECT email FROM django.auth_user WHERE id = (SELECT user_id FROM tmp_inv)) || '|true',
+    '6) veste OPERATORE spenta -> invitabile=true, con l''email, reason e reason_key NULL');
 
 SELECT is(
     (SELECT is_active FROM django.auth_user WHERE id = (SELECT user_id FROM tmp_inv)),
@@ -128,10 +144,11 @@ UPDATE anagrafiche.identita_digitali
    SET valido_dal = CURRENT_DATE + 10
  WHERE id = (SELECT identita_id FROM tmp_inv);
 
-SELECT ok(
-    (SELECT (NOT (r->>'invitabile')::boolean) AND r->>'motivo' ILIKE '%finestra%'
+SELECT is(
+    (SELECT r->>'invitabile' || '|' || (r->>'reason') || '|' || (r->>'reason_key')
        FROM (SELECT script.fn_check_operatore_invitabile((SELECT user_id FROM tmp_inv)) AS r) x),
-    '9) veste spenta fuori finestra -> invitabile=false');
+    'false|VESTE_FUORI_FINESTRA|amministrazione.operatori.invito_reason.veste_fuori_finestra',
+    '9) veste spenta fuori finestra -> invitabile=false, VESTE_FUORI_FINESTRA');
 
 UPDATE anagrafiche.identita_digitali
    SET valido_dal = CURRENT_DATE
@@ -144,10 +161,11 @@ UPDATE django.auth_user
    SET email = ''
  WHERE id = (SELECT user_id FROM tmp_inv);
 
-SELECT ok(
-    (SELECT (NOT (r->>'invitabile')::boolean) AND r->>'motivo' ILIKE '%email%'
+SELECT is(
+    (SELECT r->>'invitabile' || '|' || (r->>'reason') || '|' || (r->>'reason_key')
        FROM (SELECT script.fn_check_operatore_invitabile((SELECT user_id FROM tmp_inv)) AS r) x),
-    '10) veste spenta ma email vuota -> invitabile=false');
+    'false|SENZA_EMAIL|amministrazione.operatori.invito_reason.senza_email',
+    '10) veste spenta ma email vuota -> invitabile=false, SENZA_EMAIL');
 
 -- ============================================================
 -- 11) Il cablaggio: la madre lascia un operatore INVITABILE
@@ -187,10 +205,25 @@ SELECT idg.soggetto_ruolo_id, idg.auth_user_id, idg.ruolo_applicativo, false, id
   FROM anagrafiche.identita_digitali idg
  WHERE idg.id = (SELECT identita_id FROM tmp_inv);
 
-SELECT ok(
-    (SELECT (NOT (r->>'invitabile')::boolean) AND r->>'motivo' ILIKE '%piu%vesti OPERATORE spente%'
+SELECT is(
+    (SELECT r->>'invitabile' || '|' || (r->>'reason') || '|' || (r->>'reason_key')
        FROM (SELECT script.fn_check_operatore_invitabile((SELECT user_id FROM tmp_inv)) AS r) x),
-    '12) due vesti OPERATORE spente -> invitabile=false, motivo proprio');
+    'false|PIU_VESTI_SPENTE|amministrazione.operatori.invito_reason.piu_vesti_spente',
+    '12) due vesti OPERATORE spente -> invitabile=false, PIU_VESTI_SPENTE');
+
+-- ============================================================
+-- 13) ⛔ `motivo` ritirato (rev 20260927-01): la chiave non c'e' piu' ne' nel
+--     rifiuto (tmp_inv, caso 12) ne' nell'invitabile (tmp_madre, caso 11).
+--     Una sede sola per il motivo: una frase rimasta accanto al codice
+--     sarebbe la seconda.
+-- ============================================================
+SELECT is(
+    (SELECT bool_or(r ? 'motivo')
+       FROM (SELECT script.fn_check_operatore_invitabile((SELECT user_id FROM tmp_inv))   AS r
+             UNION ALL
+             SELECT script.fn_check_operatore_invitabile((SELECT user_id FROM tmp_madre)) AS r) x),
+    false,
+    '13) la chiave `motivo` non esiste piu'' (rifiuto e invitabile)');
 
 SELECT * FROM finish();
 ROLLBACK;
