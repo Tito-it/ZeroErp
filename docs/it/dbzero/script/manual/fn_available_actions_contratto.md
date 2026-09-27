@@ -56,7 +56,6 @@ script.fn_available_actions_contratto(
             "target_state": "ATTIVO",
             "label_key": "contratti.azione_attiva",
             "severity": "info",
-            "icon": "pi pi-play",
             "requires_confirm": false,
             "requires_date": false,      // true solo per cessa → arricchita con default_date e min_date
             "outlined": false            // true per annulla (peso visivo ridotto)
@@ -120,8 +119,8 @@ Campi bloccati in **ATTIVO** (allineati a `_CONTRATTO_PATCH_ALLOWED_BY_STATE`):
    `NOT FOUND` → `RETURN NULL`.
 2. **Transizioni manuali** — `jsonb_agg` su `config.transizioni_stati_contratti`
    filtrata per `stato_da_id = v_stato_id AND attivo IS TRUE AND manuale IS NOT FALSE`.
-   I metadati UI (`label_key`, `severity`, `icon`, `requires_confirm`, `requires_date`,
-   `outlined`) vengono letti da `t.meta`. Ordine: `sa.ordine`.
+   I metadati UI (`label_key`, `severity`, `requires_confirm`, `requires_date`,
+   `outlined`) vengono letti da `t.meta`; l'icona la sceglie il frontend dal `key`. Ordine: `sa.ordine`.
    Guard defense-in-depth: `AND t.meta ? 'action_key' AND t.meta ? 'label_key'`.
 3. **Arricchimento `requires_date`** — via `jsonb_array_elements`: ogni azione
    con `requires_date=true` riceve `default_date = CURRENT_DATE` e

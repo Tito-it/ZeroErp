@@ -77,7 +77,8 @@ in più nel seed.
 ### ⚠️ Il `meta` è un contratto col frontend, e oggi è spento
 
 Sulle matrici gemelle di `vendite` e `config` il `meta` regge i **pulsanti** di
-cambio stato (`action_key`, `label_key`, icona, severità), e un `CHECK` impone
+cambio stato (`action_key`, `label_key`, severità; l'icona la sceglie il frontend
+dall'`action_key`), e un `CHECK` impone
 che se `manuale` è vero ci siano le due chiavi.
 
 ⛔ Qui tutte le righe sono **`{"manuale": false}`**, di proposito:

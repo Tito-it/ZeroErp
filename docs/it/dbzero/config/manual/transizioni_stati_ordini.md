@@ -92,18 +92,18 @@ Il campo `meta jsonb NOT NULL DEFAULT '{}'` porta i metadati letti da
 | `action_key` | `text` | Chiave semantica dell'azione (es. `conferma`, `annulla`) |
 | `label_key` | `text` | Chiave i18n per il label del bottone Vue (`$t(label_key)`) |
 | `severity` | `text` | Severity PrimeVue: `info` / `success` / `danger` |
-| `icon` | `text` | Classe PrimeIcons (es. `pi pi-check`, `pi pi-times`) |
+| _(icona)_ | — | Non è un dato del DB: il frontend la sceglie dall'`action_key` (mappa verbo → icona in `core/`) |
 | `requires_confirm` | `boolean` | `true` → dialog di conferma prima di eseguire |
 | `outlined` | `boolean` | `true` → bottone PrimeVue variante outlined (usato su `annulla`) |
 | `manuale` | `boolean` | `false` = transizione automatica (job/processo); esclusa dalla lista UI. Default: `true` |
 
 **Valori seed correnti (rev 2026-06-05):**
 
-| id | Transizione | action_key | severity | icon | requires_confirm | outlined | attivo |
-|----|-------------|-----------|----------|------|:---:|:---:|:---:|
-| 1 | DRAFT → CONFERMATO | `conferma` | `info` | `pi pi-check` | `true` | `false` | `true` |
-| 2 | DRAFT → ANNULLATO | `annulla` | `danger` | `pi pi-times` | `true` | `true` | `true` |
-| 3 | CONFERMATO → ANNULLATO | `annulla` | `danger` | `pi pi-times` | `true` | `true` | `false` |
+| id | Transizione | action_key | severity | requires_confirm | outlined | attivo |
+|----|-------------|-----------|----------|:---:|:---:|:---:|
+| 1 | DRAFT → CONFERMATO | `conferma` | `info` | `true` | `false` | `true` |
+| 2 | DRAFT → ANNULLATO | `annulla` | `danger` | `true` | `true` | `true` |
+| 3 | CONFERMATO → ANNULLATO | `annulla` | `danger` | `true` | `true` | `false` |
 
 > Differenza dagli ordini rispetto a contratti: nessuna azione con `requires_date`
 > (la cessazione programmata non esiste nel workflow ordine).

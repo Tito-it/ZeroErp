@@ -34,7 +34,7 @@ stesso doppio uso (enforcement + UI).
 |---|---|
 | `stato_da_id` / `stato_a_id` | FK a `config.stati_doc_ddt` (coppia della transizione) |
 | `attivo` | se `false`, la riga **documenta il grafo** ma la transizione è bloccata/non esposta |
-| `meta` (jsonb) | payload UI: `action_key`, `label_key`, `severity`, `icon`, `requires_confirm`, `outlined`, `manuale` |
+| `meta` (jsonb) | payload UI: `action_key`, `label_key`, `severity`, `requires_confirm`, `outlined`, `manuale` |
 
 ### Vincoli
 

@@ -68,7 +68,7 @@ transizioni manuali ed e' imposto dal CHECK `ck_transizioni_stati_prev_meta_ui`.
 | `action_key` | `text` | Sì (manuale) | Chiave semantica dell'azione letta dal FE (es. `emetti`, `annulla`) |
 | `label_key` | `text` | Sì (manuale) | Chiave i18n per il label del bottone Vue (`$t(label_key)`) |
 | `severity` | `text` | No | Severity PrimeVue: `info` / `success` / `danger` |
-| `icon` | `text` | No | Classe PrimeIcons (es. `pi pi-send`) |
+| _(icona)_ | — | — | Non è un dato del DB: il frontend la sceglie dall'`action_key` (mappa verbo → icona in `core/`) |
 | `requires_confirm` | `boolean` | No | `true` → il drawer mostra dialog di conferma prima di eseguire |
 | `manuale` | `boolean` | No | `false` = transizione automatica (job/trigger), esclusa dalla lista UI. Default: `true` |
 

@@ -42,7 +42,7 @@ DRAFT → EMESSO → SPEDITO → CONSEGNATO → RESO   (+ ANNULLATO; RESO anche 
 
 * **Enforcement**: il trigger `vendite.trgfn_ddt_guard_transizione` (fase `_a10_`, `BEFORE UPDATE OF stato_doc_ddt_id`) valida la coppia `(vecchio, nuovo)` contro la matrice attiva (`E_STATO_DDT_TRANSIZIONE_NON_VALIDA`).
 * **Gate emissione**: alla transizione a **EMESSO**, `vendite.trgfn_ddt_guard_transizione_approvazione` blocca, se la causale vende, quando esistono componenti BoM CASO A attivi con il prezzo in attesa di approvazione o rifiutato (`E_DOC_PREZZO_PENDENTE` / `E_DOC_PREZZO_RIFIUTATO`, dal 2026-09-24 attraverso [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati); prima guardava il solo `PENDING` con `E_COMPONENTE_PREZZO_PENDENTE`) o con prezzo NULL (`E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE`).
-* **Azioni UI data-driven**: il `meta.ui` di ogni transizione (label/icona/severity) è esposto da `script.fn_available_actions_ddt` → il FE non hardcoda i pulsanti.
+* **Azioni UI data-driven**: il `meta.ui` di ogni transizione (label/severity) è esposto da `script.fn_available_actions_ddt` → il FE non hardcoda i pulsanti; l'icona la sceglie dal `key` dell'azione.
 * **Numerazione a EMESSO**: il `numero` si assegna alla transizione a EMESSO (no buchi da bozze scartate) via [`vendite.trgfn_ddt_gen_numero_emesso`](/dbzero/vendite/manual/trgfn_ddt_gen_numero_emesso); immutabile dopo l'assegnazione (`vendite.trgfn_v_ddt_protect_num`).
   ⚠️ **rev 2026-08-31**: contatore **e** forma vengono dal **motore dei registri**, non da `config.sistema_codici` — che dal 31 agosto 2026 non ha più una riga `ddt`.
 * No hard delete: annullo/storno, mai DELETE fisica.

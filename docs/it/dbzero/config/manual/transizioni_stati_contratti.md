@@ -29,7 +29,7 @@ stessa struttura, stesso meccanismo di lettura nella capability function.
 > **Nota architetturale** — La **regola di business** (quali transizioni sono ammesse)
 > continua a risiedere nel trigger
 > `vendite.trgfn_contratti_guard_transizione_stato`. Questa tabella serve
-> esclusivamente come fonte dei metadati UI (label, icona, severity, ecc.): la separazione
+> esclusivamente come fonte dei metadati UI (label, severity, ecc.; l'icona la sceglie il frontend dall'`action_key`): la separazione
 > tra "cosa è ammesso" (trigger) e "come si presenta al FE" (tabella) è intenzionale e
 > allineata al pattern dei due domini fratelli.
 
@@ -65,7 +65,7 @@ Il campo `meta jsonb NOT NULL DEFAULT '{}'` porta i metadati letti da
 | `action_key` | `text` | Chiave semantica dell'azione (es. `attiva`, `annulla`, `cessa`) |
 | `label_key` | `text` | Chiave i18n per il label del bottone Vue (`$t(label_key)`) |
 | `severity` | `text` | Severity PrimeVue: `info` / `success` / `danger` |
-| `icon` | `text` | Classe PrimeIcons (es. `pi pi-play`, `pi pi-times`, `pi pi-stop`) |
+| _(icona)_ | — | Non è un dato del DB: il frontend la sceglie dall'`action_key` (mappa verbo → icona in `core/`) |
 | `requires_confirm` | `boolean` | `true` → dialog di conferma prima di eseguire |
 | `requires_date` | `boolean` | `true` → la UI deve raccogliere una data (ex: cessazione). La funzione arricchisce l'azione con `default_date` e `min_date` contestuali |
 | `outlined` | `boolean` | `true` → bottone PrimeVue variante outlined (usato su `annulla` per ridurne il peso visivo) |
