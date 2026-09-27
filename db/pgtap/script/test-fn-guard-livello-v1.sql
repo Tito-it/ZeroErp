@@ -54,8 +54,14 @@ EXCEPTION WHEN OTHERS THEN
 END $$ LANGUAGE plpgsql;
 
 -- Un oggetto di fixture con un override d'area che NON coincide con app_label.
+-- ⭐ E l'oggetto dei test 4-10, che riceve un override per oggetto: dal
+--   2026-09-28 un override esiste solo per un oggetto a catalogo (FK composita,
+--   brief-db-be-fe-catalogo-oggetti-permessi D-4), quindi entra anche lui. Area
+--   magazzino: nei test 4-10 l'operatore non ha livelli d'area.
 INSERT INTO config.area_model_overrides (app_label, model_name, area_id)
-SELECT 'pgtap_app', 'pgtap_oggetto', af.id FROM config.aree_funzionali af WHERE af.schema_db = 'magazzino';
+SELECT 'pgtap_app', m.model_name, af.id
+  FROM config.aree_funzionali af, (VALUES ('pgtap_oggetto'), ('pgtap_modello')) m(model_name)
+ WHERE af.schema_db = 'magazzino';
 
 -- ============================================================
 -- 1-3 L'area di un oggetto

@@ -37,6 +37,13 @@ La tabella **`config.user_override_oggetti`** consente di sovrascrivere il livel
 
 Il vincolo UNIQUE su `(auth_user_id, app_label, model_name)` garantisce un solo override per utente/model.
 
+⛔ **Solo oggetti a catalogo e non riservati.** La FK composita
+`fk_user_override_oggetti_catalogo` punta `(app_label, model_name, riservato)`
+di [config.area_model_overrides](/dbzero/config/tabelle/area_model_overrides);
+qui `riservato` è una colonna **generata**, sempre `false`, che non si scrive.
+Un override su un oggetto fuori catalogo, o riservato, è rifiutato dal database
+qualunque sia il percorso di scrittura.
+
 ---
 
 ### ⚠️ Priorità nella catena

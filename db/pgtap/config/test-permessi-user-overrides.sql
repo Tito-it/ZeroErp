@@ -230,11 +230,14 @@ SELECT throws_ok(
 );
 
 -- CHECK valido_dal <= valido_al (usa model_name diverso per evitare UQ)
+-- ⚠️ Un oggetto A CATALOGO ('preventivo'; fino al 2026-09-28 'lotto', che non c'e'):
+--   con 'lotto' il test passava solo perche' il guard BEFORE ROW delle date scatta
+--   prima della FK composita del catalogo (D-4) — verde per l'ordine dei controlli.
 SELECT throws_like(
     format(
         $$INSERT INTO config.user_override_oggetti
               (auth_user_id, app_label, model_name, livello, valido_dal, valido_al)
-          VALUES (%s, 'vendite', 'lotto',
+          VALUES (%s, 'vendite', 'preventivo',
                   'LETTURA'::config.livello_accesso,
                   '2026-03-01'::date, '2026-02-01'::date)$$,
         (SELECT user_id FROM tmp_refs_uo)

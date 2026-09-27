@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA LISTA CAP MOSTRA LA PROVINCIA — due comuni omonimi si distinguono
+#   Brief: brief-db-liste-datatable-grezze.md §9.2 (Tid, 2026-09-27)
+#
+#   Un CAP e' di un comune, e il nome del comune non lo identifica: comuni
+#   omonimi in province diverse uscivano dalla lista come righe identiche.
+#   La vista porta ora, in coda, `provincia_id` e la sigla della provincia.
+#
+#   ⭐ LEFT JOIN sulla provincia: `config.comuni.provincia_id` e' nullable, e
+#   un comune senza provincia non deve far sparire i suoi CAP dalla lista.
+#   Stessa forma di `vw_comuni_lista`: `province.sigla` e' `character(n)` ed
+#   esce con TRIM.
+#
+#   Corpo dalla doc auto-gen (docs/it/dbzero/config/views/), colonne nuove
+#   solo in coda (CREATE OR REPLACE non ammette altro). `security_invoker=on`
+#   ri-specificata: CREATE OR REPLACE la azzererebbe.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260927-42-update-vw-codici-postali-lista-provincia-mctit.yaml
+
+  - changeSet:
+      id: 20260927-42-update-vw-codici-postali-lista-provincia
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.vw_codici_postali_lista espone provincia_id e provincia_sigla
+        (LEFT JOIN config.province, sigla con TRIM), per distinguere comuni
+        omonimi nella lista CAP. Brief: brief-db-liste-datatable-grezze.md §9.2.
+      preConditions:
+        - onFail: HALT
+        - viewExists:
+            schemaName: config
+            viewName: vw_codici_postali_lista
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW config.vw_codici_postali_lista
+              WITH (security_invoker = on) AS
+              SELECT cp.id,
+                     cp.codice,
+                     cp.comune_id,
+                     c.descrizione AS comune_descrizione,
+                     c.provincia_id,
+                     TRIM(p.sigla) AS provincia_sigla
+                FROM config.codici_postali cp
+                JOIN config.comuni c ON c.id = cp.comune_id
+                LEFT JOIN config.province p ON p.id = c.provincia_id;
+
+              COMMENT ON VIEW config.vw_codici_postali_lista IS
+                'Vista di lista dei codici postali (ui.lista_definizione config.codici_postali). '
+                'Porta la sigla della provincia del comune (TRIM: character(n) nella tabella; NULL '
+                'se il comune non ha provincia), che distingue comuni omonimi. Brief: '
+                'brief-db-liste-datatable-grezze §8 punto 6 e §9.2 (2026-09-27).';
+
+              GRANT SELECT ON config.vw_codici_postali_lista TO zeroerp_app;
+      rollback:
+        - sql:
+            sql: |
+              DROP VIEW IF EXISTS config.vw_codici_postali_lista;
+              CREATE VIEW config.vw_codici_postali_lista
+              WITH (security_invoker = on) AS
+              SELECT cp.id,
+                     cp.codice,
+                     cp.comune_id,
+                     c.descrizione AS comune_descrizione
+                FROM config.codici_postali cp
+                JOIN config.comuni c ON c.id = cp.comune_id;
+              GRANT SELECT ON config.vw_codici_postali_lista TO zeroerp_app;

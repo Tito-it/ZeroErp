@@ -320,10 +320,13 @@ DELETE FROM config.user_override_aree
 -- ============================================================
 
 -- 7) OPERATIVO senza override → BLOCCATO (fallback area = BLOCCATO)
+--    Oggetto ('vendite', 'fattura'): a catalogo. Fino al 2026-09-28 era 'fatture',
+--    che il catalogo non ha: la FK composita della D-4 (brief-db-be-fe-catalogo-
+--    oggetti-permessi) rifiuta un override per oggetto fuori catalogo.
 SELECT is(
     script.fn_resolve_livello_oggetto(
         (SELECT user_id FROM tmp_ctx),
-        'vendite', 'fatture',
+        'vendite', 'fattura',
         (SELECT area_schema_db FROM tmp_ctx)
     ),
     'BLOCCATO'::config.livello_accesso,
@@ -333,14 +336,14 @@ SELECT is(
 -- 8) Override oggetto LETTURA → LETTURA
 INSERT INTO config.user_override_oggetti
     (auth_user_id, app_label, model_name, livello, meta)
-SELECT user_id, 'vendite', 'fatture', 'LETTURA'::config.livello_accesso,
+SELECT user_id, 'vendite', 'fattura', 'LETTURA'::config.livello_accesso,
        '{"test_scope":"pgtap_funzioni_risoluzione"}'::jsonb
 FROM tmp_ctx;
 
 SELECT is(
     script.fn_resolve_livello_oggetto(
         (SELECT user_id FROM tmp_ctx),
-        'vendite', 'fatture',
+        'vendite', 'fattura',
         (SELECT area_schema_db FROM tmp_ctx)
     ),
     'LETTURA'::config.livello_accesso,
@@ -360,7 +363,7 @@ FROM tmp_ctx;
 SELECT is(
     script.fn_resolve_livello_oggetto(
         (SELECT user_id FROM tmp_ctx),
-        'vendite', 'fatture',
+        'vendite', 'fattura',
         (SELECT area_schema_db FROM tmp_ctx)
     ),
     'TUTTO'::config.livello_accesso,

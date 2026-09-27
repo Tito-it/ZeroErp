@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL CATALOGO DEGLI OGGETTI DICHIARA I RISERVATI
+#   Brief: brief-db-be-fe-catalogo-oggetti-permessi.md §3.1 punto 4 (D-4, Tid
+#   2026-09-27)
+#
+#   `config.area_model_overrides` e' il catalogo degli oggetti che il pannello
+#   dei permessi lascia personalizzare per operatore, e per ciascuno l'area a cui
+#   appartiene (script.fn_area_di_oggetto). La regola «un override per oggetto
+#   esiste solo per un oggetto a catalogo, e non riservato» viveva solo nel
+#   backend (`put_override_oggetti` + la blacklist `_MODEL_OVERRIDE_RISERVATI`):
+#   una scrittura che non passa dal service la aggirava. D-4: la regola scende
+#   nel DB.
+#
+#   Qui la meta' dal lato del catalogo:
+#   - `riservato`: l'oggetto e' a catalogo (ha la sua area) ma non si
+#     personalizza — le tabelle del kernel dei permessi, dove un override
+#     aprirebbe un lockout ricorsivo. Sostituisce la blacklist Python: le righe
+#     riservate stanno nel CSV del catalogo (20260928-03), leggibili e
+#     confrontabili;
+#   - UNIQUE (app_label, model_name, riservato): la chiave che la FK composita
+#     di user_override_oggetti punta (20260928-02). E' implicata dalla UNIQUE a
+#     due colonne che c'e' gia', e serve solo come bersaglio della FK: la FK
+#     dalla figlia porta `riservato = false`, quindi un override su un oggetto
+#     riservato non trova la riga.
+#
+#   ⭐ Un oggetto a catalogo che DIVENTA riservato mentre ha override si ferma
+#   sulla FK (NO ACTION): gli override si tolgono prima, a mano. E' voluto: un
+#   override che resta su un oggetto riservato e' la bugia che la D-4 chiude.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260928-01-alter-area-model-overrides-riservato-mctit.yaml
+
+  - changeSet:
+      id: 20260928-01-alter-area-model-overrides-riservato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.area_model_overrides: colonna riservato (boolean NOT NULL DEFAULT false) e
+        UNIQUE (app_label, model_name, riservato), bersaglio della FK composita da
+        config.user_override_oggetti. Brief: brief-db-be-fe-catalogo-oggetti-permessi.md
+        §3.1 punto 4 (D-4).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: area_model_overrides
+        - not:
+            - columnExists:
+                schemaName: config
+                tableName: area_model_overrides
+                columnName: riservato
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.area_model_overrides
+                ADD COLUMN riservato boolean NOT NULL DEFAULT false;
+
+              ALTER TABLE config.area_model_overrides
+                ADD CONSTRAINT uq_area_model_overrides_app_model_riservato
+                UNIQUE (app_label, model_name, riservato);
+
+              COMMENT ON COLUMN config.area_model_overrides.riservato IS
+                'true = l''oggetto e'' a catalogo (ha la sua area, per fn_area_di_oggetto) ma NON si '
+                'personalizza per operatore: le tabelle del kernel dei permessi, dove un override '
+                'aprirebbe un lockout ricorsivo. La FK composita fk_user_override_oggetti_catalogo '
+                'ammette override solo sulle righe con riservato = false. Brief: '
+                'brief-db-be-fe-catalogo-oggetti-permessi §3.1 punto 4 (D-4, 2026-09-28).';
+
+              COMMENT ON TABLE config.area_model_overrides IS
+                'Catalogo degli oggetti (app_label, model_name) che il pannello dei permessi conosce. '
+                'Per ognuno: l''area a cui appartiene (script.fn_area_di_oggetto; un oggetto non a '
+                'catalogo vale come area = app_label) e se si puo'' personalizzare per operatore '
+                '(riservato = false). Un override in config.user_override_oggetti esiste solo per '
+                'un oggetto a catalogo e non riservato (FK composita). Seed: CSV '
+                '80_data/sql/config/area_model_overrides.csv. Brief: '
+                'brief-db-be-fe-catalogo-oggetti-permessi (2026-09-28).';
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE config.area_model_overrides
+                DROP CONSTRAINT IF EXISTS uq_area_model_overrides_app_model_riservato;
+              ALTER TABLE config.area_model_overrides DROP COLUMN IF EXISTS riservato;

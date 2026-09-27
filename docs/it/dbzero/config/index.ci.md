@@ -2,7 +2,7 @@
 
 ## 📚 Tabelle (manuale)
 - [ambiti](manual/ambiti.md) — (rev 2026-08-21)
-- [area_model_overrides](manual/area_model_overrides.md) — * Gestire le **eccezioni** al mapping automatico area = schema. * Consentire che un model appartenga a un'area diversa senza spostarlo fisicamente di schema.
+- [area_model_overrides](manual/area_model_overrides.md)
 - [aree_funzionali](manual/aree_funzionali.md) — * Definire il **perimetro funzionale** su cui si applicano i livelli di accesso (TUTTO / LETTURA / BLOCCATO). * Fornire il **mapping area → schema DB** per la risoluzione automatica dei permessi in Django. * Gestire l'**ordine di visualizzazione** nell'interfaccia di configurazione profili reparto.
 - [aspetti_beni](manual/aspetti_beni.md) — (rev 2026-08-21)
 - [assets_ownership](manual/assets_ownership.md) — * Definire un **catalogo univoco e governato** delle modalità di proprietà degli asset. * Assicurare coerenza tra domini diversi (magazzino, installazioni, contratti, fatturazione, manutenzione). * Abilitare logiche avanzate, tra cui:

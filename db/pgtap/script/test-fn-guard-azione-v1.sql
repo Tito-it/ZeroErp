@@ -77,6 +77,12 @@ SELECT is(
 -- ============================================================
 -- 7-9 Il gate di contesto di fn_resolve_livello_oggetto
 -- ============================================================
+-- L'oggetto di fixture entra a catalogo: dal 2026-09-28 un override per oggetto
+-- esiste solo per un oggetto a catalogo (FK composita,
+-- brief-db-be-fe-catalogo-oggetti-permessi D-4).
+INSERT INTO config.area_model_overrides (app_label, model_name, area_id)
+SELECT 'pgtap_app', 'pgtap_modello', af.id FROM config.aree_funzionali af WHERE af.schema_db = 'vendite';
+
 INSERT INTO config.user_override_oggetti (auth_user_id, app_label, model_name, livello, motivo)
 SELECT auth_user_id, 'pgtap_app', 'pgtap_modello', 'LETTURA', 'Fixture pgTAP' FROM _mondo;
 
