@@ -11,7 +11,7 @@
 >
 > **Decisione:** di Tid, 2026-09-26 — *«correggere le DataTable grezze»*,
 > partendo da quelle che sono liste vere per il criterio in tre domande
-> ([piano PrimeVue 5](piano-migrazione-primevue-5.md), §«Gruppo B», «Il
+> ([piano PrimeVue 5](../work-in-progress/piano-migrazione-primevue-5.md), §«Gruppo B», «Il
 > criterio, in tre domande»). §3.1 e §3.2 decisi da Tid il 2026-09-27.
 >
 > **Stato (2026-09-27):** lato DB scritto (§6). §3.1 risolto senza seed (si
@@ -48,11 +48,19 @@
 >   `80_data`: la vista ha già `provincia_sigla` quando il CSV carica la
 >   colonna 1010, che il trigger valida contro la vista;
 > - ✅ corsa pgTAP di Tid dopo l'apply del §9: verde (2026-09-28);
-> - ⏳ **resta solo il BE (§9.3)**, che chiude `--verifica-ordinamento` e
->   quindi il brief. Al 2026-09-28 nessun commit BE lo contiene (l'ultimo,
->   `48dbee288`, è del brief icone). ⛔ Il test Django del seed legge il CSV ed
->   è rosso finché la whitelist non segue (§9.4, presidi): il §9.3 va in
->   `Tito-dev` insieme al giro DB.
+> - ✅ **§9.3 lato BE chiuso il 2026-09-28** (`dev/backend-tid`, sopra il
+>   merge del giro DB `a5538fb04`): `sigla_stato` in `_STATI_ORDER_COLS`;
+>   `numero`/`stato_descrizione` e `codice`/`stato_descrizione` nelle due
+>   costanti delle revisioni (gemelle, insieme); la lista CAP legge
+>   `provincia_id`/`provincia_sigla` dalla vista e ordina per la sigla, e il
+>   dettaglio `get_codice_postale` legge **la stessa vista** (non più un JOIN
+>   suo). `gen_seed_lista.py --verifica-ordinamento` **ok** sulle quattro liste
+>   (`config.stati`, `config.codici_postali`, `vendite.preventivo_revisioni`,
+>   `vendite.offerta_revisioni`), presidi Django verdi (§9.5).
+>
+> ✅ **BRIEF CHIUSO il 2026-09-28** su DB, BE e FE. Le decisioni del §5 non
+> sono di questo brief: vivono nel registro delle `DataTable` grezze del
+> [piano PrimeVue 5](../work-in-progress/piano-migrazione-primevue-5.md).
 
 ---
 
@@ -528,3 +536,14 @@ un comune **costruito** senza provincia tiene la riga del suo CAP con
   (stessa PR o subito dopo, prima che giri la CI), non «a seed applicati».
   `test_lista_proiezione_campo_sorgente.py` invece non è toccato: esercita le
   liste **senza** vista, e la 95 ne ha una.
+
+### 9.5 Lato BE — cosa è stato scritto (2026-09-28)
+
+| Dove | Cosa |
+| --- | --- |
+| `anagrafiche/db/geo_repository.py` | `sigla_stato` in `_STATI_ORDER_COLS`; `provincia_sigla` in `_CODICI_POSTALI_ORDER_COLS`; `list_codici_postali` proietta `provincia_id`, `provincia_sigla`; `get_codice_postale` legge `config.vw_codici_postali_lista` — una sede della forma della riga CAP, non due |
+| `vendite/db/preventivi_repository.py` | `PREVENTIVO_REVISIONI_ORDER_COLUMNS`: `numero` → `v.numero`, `stato_descrizione` → `v.stato_descrizione` |
+| `vendite/db/offerte_repository.py` | `OFFERTA_REVISIONI_ORDER_COLUMNS`: `codice` → `v.codice`, `stato_descrizione` → `v.stato_descrizione`. ⛔ `_ORDER_COLS_OFFERTE` della lista principale non è toccata (§4.1 riga 8) |
+
+Nessun cambio FE: la colonna 1010 la rende `ListaConfigurabile` dal seed, con
+la chiave `indirizzi.col_provincia` già tradotta.

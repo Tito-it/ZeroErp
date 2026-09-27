@@ -14,7 +14,7 @@ import { useNotify } from '../../core/composables/useNotify'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { provideTechnicalMode } from '../../core/composables/useTechnicalMode'
 import { useAuthStore } from '../../stores/auth'
-import { MANAGE_ICONS, READONLY_DOMAINS, STATI_PRATICA_TERMINALI, STATO_FLUSSO } from '../../core/constants'
+import { MANAGE_ICONS, READONLY_DOMAINS, READONLY_MODELS, STATI_PRATICA_TERMINALI, STATO_FLUSSO } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { usePraticheStore } from '../stores/pratiche'
 import PraticheSearchTable from '../components/PraticheSearchTable.vue'
@@ -131,7 +131,9 @@ async function applyFlussoDeepLink() {
 applyTipoDeepLink({ refetch: false }) // primo mount: fetcha la SearchTable
 const { execute } = useApiHandler()
 const notify = useNotify()
-useReadonlyMode(READONLY_DOMAINS.PRATICHE)
+// Permessi: area `pratiche` + oggetto `pratica` (brief-db-be-fe-catalogo-
+// oggetti-permessi §3.3); la lista gestisce il BLOCCATO col suo pannello.
+useReadonlyMode(READONLY_DOMAINS.PRATICHE, READONLY_MODELS.PRATICA)
 
 // Modalita' tecnica (diagnostica super-admin, B5): toggle opt-in che riespone
 // il plumbing del motore (codici/sequenza/stati/rami) nelle viste runtime

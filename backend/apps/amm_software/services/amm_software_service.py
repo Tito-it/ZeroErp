@@ -20,6 +20,7 @@ from apps.core.api.payload_validators import optional_int
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.parameter_service import ParameterService
+from apps.core.services.payload_helpers import translate_db_errors
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.permissions_cache import invalidate_department, invalidate_user
 from apps.core.services.revoca_token import blocca_token_sessioni
@@ -429,8 +430,13 @@ class AmmSoftwareService:
     #        Valida che ogni app_label+model_name esista nel catalogo
     #        area_model_overrides E sia override-abile (capability `can_override`
     #        — Fase 8). I model riservati al kernel permessi sono rifiutati
-    #        anche se registrati in catalogo (defense-in-depth: il FE filtra
-    #        gia' le opzioni, ma una request crafted bypassa il dropdown).
+    #        anche se registrati in catalogo.
+    # ⭐ Il controllo qui serve al MESSAGGIO (nomina l'oggetto e il perche');
+    #    il rifiuto vero e' del DB, la FK composita
+    #    `fk_user_override_oggetti_catalogo` (D-4, `20260928-02`), che vale
+    #    anche per una scrittura che non passa da qui. Se il catalogo cambia fra
+    #    la lettura e la scrittura, la FK risponde col suo 23503: tradotto nello
+    #    stesso `E_AMM_VALIDAZIONE`, non un 500.
     def put_override_oggetti(self, auth_user_id: int, items: list) -> list:
         if items:
             catalog = self._repo.list_model_overrides()
@@ -444,15 +450,26 @@ class AmmSoftwareService:
                 key = (item.get("app_label"), item.get("model_name"))
                 ErrorManager.require(
                     key[0] and key[1] and key in registered,
-                    code="E_AMM_VALIDAZIONE",
+                    code=E_AMM_VALIDAZIONE,
                     message=f"Model {key[0]}.{key[1]} non registrato nel catalogo override.",
                 )
                 ErrorManager.require(
                     key in overridable,
-                    code="E_AMM_VALIDAZIONE",
+                    code=E_AMM_VALIDAZIONE,
                     message=f"Model {key[0]}.{key[1]} riservato: override non ammesso.",
                 )
-        self._repo.put_override_oggetti(auth_user_id, items)
+        with translate_db_errors(
+            context={"op": "amm_software.put_override_oggetti"},
+            fallback_code=E_AMM_VALIDAZIONE,
+            fallback_message="Override oggetti non salvati.",
+            fk_constraints={
+                "fk_user_override_oggetti_catalogo": (
+                    E_AMM_VALIDAZIONE,
+                    "Oggetto non a catalogo o riservato: override non ammesso.",
+                ),
+            },
+        ):
+            self._repo.put_override_oggetti(auth_user_id, items)
         invalidate_user(auth_user_id)
         return self._repo.get_override_oggetti(auth_user_id)
 

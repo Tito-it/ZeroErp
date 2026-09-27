@@ -6,6 +6,10 @@
 #        fornitore. Vive in `apps/anagrafiche` per coerenza con il CRUD
 #        dei rispettivi domini, ma delega al service `InvitoPortaleService`
 #        dell'app portale (single source of truth).
+# ⭐ Gli accessi portale/shop sono una PARTE della scheda cliente o fornitore
+#    (il tab «Accessi» del suo drawer): ogni view chiede l'oggetto, non la sola
+#    area (brief-db-be-fe-catalogo-oggetti-permessi §1, dal 2026-09-28).
+#    Prima un `BLOCCATO` sul cliente nascondeva il tab e lasciava aperta l'API.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ class ClientiInvitaPortaleView(DomainAPIView):
     """POST admin: invita al portale il cliente (billing_account) indicato."""
 
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "cliente")
 
     @extend_schema(
         summary="Invita un cliente al portale",
@@ -88,6 +93,7 @@ class ClientiInvitaShopView(DomainAPIView):
     """
 
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "cliente")
 
     @extend_schema(
         summary="Invita un cliente come shop customer",
@@ -136,6 +142,7 @@ class FornitoriInvitaPortaleView(DomainAPIView):
     """POST admin: invita al portale il fornitore indicato."""
 
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "fornitore")
 
     @extend_schema(
         summary="Invita un fornitore al portale",
@@ -179,6 +186,7 @@ class ClientiStatoAccessiView(DomainAPIView):
     """GET admin: stato vesti non-operatore (portale + shop) del cliente."""
 
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "cliente")
 
     @extend_schema(
         summary="Stato accessi portale + shop del cliente",
@@ -196,6 +204,7 @@ class FornitoriStatoAccessiView(DomainAPIView):
     """GET admin: stato veste FORNITORE_PORTALE del fornitore."""
 
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "fornitore")
 
     @extend_schema(
         summary="Stato accesso portale del fornitore",
@@ -213,6 +222,7 @@ class ClientiDisattivaPortaleView(DomainAPIView):
     """POST admin: disattiva la veste CLIENTE_PORTALE del cliente (soft revoke)."""
 
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "cliente")
 
     @extend_schema(
         request=None,
@@ -239,6 +249,7 @@ class ClientiDisattivaShopView(DomainAPIView):
     """POST admin: disattiva la veste SHOP_CUSTOMER del cliente (soft revoke)."""
 
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "cliente")
 
     @extend_schema(
         request=None,
@@ -265,6 +276,7 @@ class FornitoriDisattivaPortaleView(DomainAPIView):
     """POST admin: disattiva la veste FORNITORE_PORTALE del fornitore."""
 
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "fornitore")
 
     @extend_schema(
         request=None,

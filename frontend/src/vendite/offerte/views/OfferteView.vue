@@ -16,8 +16,8 @@ const drawer = useDrawerState()
 const store = useOfferteStore()
 const router = useRouter()
 
-// Permessi: livello area `vendite` + livello oggetto `offerta_commerciale`
-// (in attesa che il BE catalogizzi il model in `config.area_model_overrides`).
+// Permessi: livello area `vendite` + livello oggetto `offerta_commerciale`,
+// a catalogo dal 2026-09-28 e chiesto dal BE su tutte le rotte `vendite/offerte/…`.
 useReadonlyMode(READONLY_DOMAINS.VENDITE, READONLY_MODELS.OFFERTA_COMMERCIALE)
 
 // ⭐ Solo `onDrawerChanged` dal BB: `onDrawerSaved` qui NON e' quello standard

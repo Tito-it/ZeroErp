@@ -148,6 +148,7 @@ class ApiResiList(DomainAPIView):
     """GET/POST /api/v1/vendite/resi/ — lista paginata + create reso da DDT."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
     is_search_endpoint = True
     lista_codice = "vendite.resi"
 
@@ -208,6 +209,7 @@ class ApiResiExport(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
     is_search_endpoint = True
     lista_codice = "vendite.resi"
 
@@ -271,6 +273,7 @@ class ApiResiDaAccreditare(DomainAPIView):
     opzione DL-26). Il consumo arriva con la slice NC."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
     is_search_endpoint = True
     lista_codice = "vendite.resi_da_accreditare"
 
@@ -331,6 +334,7 @@ class ApiResiDaAccreditareExport(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
     is_search_endpoint = True
     lista_codice = "vendite.resi_da_accreditare"
 
@@ -403,6 +407,7 @@ class ApiResiDaRiconsegnare(DomainAPIView):
     stato_riconsegna derivato). Si auto-svuota a copertura completa."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
     is_search_endpoint = True
     lista_codice = "vendite.resi_da_riconsegnare"
 
@@ -460,6 +465,7 @@ class ApiResiDaRiconsegnareExport(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
     is_search_endpoint = True
     lista_codice = "vendite.resi_da_riconsegnare"
 
@@ -527,6 +533,7 @@ class ApiResoDetail(DomainAPIView):
     """GET/PATCH/DELETE /api/v1/vendite/resi/<reso_id>/."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
 
     @extend_schema(
         responses={200: _RESO_RESPONSE},
@@ -560,6 +567,7 @@ class ApiResoConferma(DomainAPIView):
     ordine, flip DDT se reso totale). Body vuoto."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
 
     @extend_schema(
         request=None,
@@ -578,6 +586,7 @@ class ApiResoAnnulla(DomainAPIView):
     CONFERMATO) via fn madre `fn_annulla_reso` (storno effetti). Body vuoto."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
 
     @extend_schema(
         request=None,
@@ -600,6 +609,7 @@ class ApiResoGeneraDdtRiconsegna(DomainAPIView):
     validazione nel service (_parse_righe_riconsegna)."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
 
     @extend_schema(
         request=_RESO_GENERA_DDT_RICONSEGNA_REQUEST,
@@ -628,6 +638,7 @@ class ApiResoChiudiRiconsegna(DomainAPIView):
     `righe` degeneri = 400, NON "rendi definitivo tutto"."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
 
     @extend_schema(
         request=_RESO_CHIUDI_RICONSEGNA_REQUEST,
@@ -654,6 +665,7 @@ class ApiResoRiapriRiconsegna(DomainAPIView):
     del reso; lo scalo parte dalle rinunce piu' RECENTI (LIFO, lato DB)."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
 
     @extend_schema(
         request=_RESO_RIAPRI_RICONSEGNA_REQUEST,
@@ -764,6 +776,7 @@ class ApiResoRighe(DomainAPIView):
     """GET/POST /api/v1/vendite/resi/<reso_id>/righe/."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
 
     @extend_schema(
         responses={200: _RESO_LISTA_RESPONSE},
@@ -790,6 +803,7 @@ class ApiResoRigaDetail(DomainAPIView):
     """PATCH/DELETE /api/v1/vendite/resi/<reso_id>/righe/<riga_id>/."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
 
     @extend_schema(
         request=_RESO_RIGA_UPDATE_REQUEST,

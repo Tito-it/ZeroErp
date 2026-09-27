@@ -117,9 +117,13 @@ _ORDER_COLS_OFFERTE_DATA: frozenset[str] = frozenset({
 # ⚠️ `data_emissione` e' NULL sulle bozze: il vuoto si ordina come il valore
 #    minimo (`sql_order_direction`, decisione Tid 2026-07-19) — in coda nel
 #    verso naturale DESC, in testa se l'operatore inverte.
+# ⚠️ `codice` (colonna «numero») e `stato_descrizione` dal 2026-09-28
+#    (§9.1 dello stesso brief), gemelle di quelle dei preventivi.
 OFFERTA_REVISIONI_ORDER_COLUMNS: dict[str, str] = {
     "revisione_numero": "v.revisione_numero",
+    "codice": "v.codice",
     "data_emissione": "v.data_emissione",
+    "stato_descrizione": "v.stato_descrizione",
 }
 
 # Colonne DATA della whitelist qui sopra (ripiego DESC senza `order_dir`),

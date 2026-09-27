@@ -321,13 +321,19 @@ class PermissionResolver:
     @classmethod
     def list_model_overrides_grouped(cls) -> dict[str, list[dict[str, str]]]:
         """Scopo: Restituisce tutti i model configurabili raggruppati per schema_db.
-        Usato da permessi-effettivi per mostrare il livello oggetto per area."""
+        Usato da permessi-effettivi per mostrare il livello oggetto per area.
+
+        ⚠️ Solo i NON riservati (`area_model_overrides.riservato`, dal
+        2026-09-28): i dieci oggetti del kernel stanno a catalogo per essere
+        dichiarati, non per essere personalizzati — senza il filtro la pagina
+        li mostrerebbe come oggetti della loro area."""
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT af.schema_db, amo.app_label, amo.model_name
                   FROM config.area_model_overrides amo
                   JOIN config.aree_funzionali af ON af.id = amo.area_id
+                 WHERE NOT amo.riservato
                  ORDER BY af.schema_db, amo.model_name
                 """
             )

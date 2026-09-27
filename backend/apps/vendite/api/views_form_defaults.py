@@ -53,6 +53,7 @@ class ApiContrattoFormDefaults(DomainAPIView):
     #        utility/istanza, default_data, default_valido_dal). Sostituisce le
     #        derivazioni cablate in ContrattoDrawer.onBaSelected.
     area_funzionale = "vendite"
+    model_permission = ("vendite", "contratto")
 
     @extend_schema(
         parameters=[
@@ -122,6 +123,7 @@ class ApiOrdineFormDefaults(DomainAPIView):
     #        EF utente → gestore globale; con BA aggiunge utility BA-derived. La
     #        utility di default globale (DEFAULT_UTILITY) la risolve il FE.
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ordine")
 
     @extend_schema(
         parameters=[
@@ -157,6 +159,7 @@ class ApiDdtFormDefaults(DomainAPIView):
     #        documento di trasporto: nessun termine/modalita di pagamento in
     #        testata.
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ddt")
 
     @extend_schema(
         parameters=[

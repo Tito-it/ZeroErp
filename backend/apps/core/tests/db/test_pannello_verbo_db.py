@@ -30,9 +30,9 @@
      D-P2: le tabelle con RLS restano nelle tendine, non nel pannello.
 6. test_lettura_sulle_causali_legge_e_non_scrive
      i DUE punti di applicazione (catena del backend, D-P7, e verbo) sullo
-     stesso operatore costruito: LETTURA sull'oggetto `magazzino.causali`.
+     stesso operatore costruito: LETTURA sull'AREA `magazzino` della riga.
 7. test_tutto_sulle_causali_scrive
-     lo stesso operatore con TUTTO sull'oggetto: la catena e il verbo passano.
+     lo stesso operatore con TUTTO sull'area: la catena e il verbo passano.
 """
 
 from __future__ import annotations
@@ -166,9 +166,15 @@ class PannelloDuePuntiDiApplicazioneDbTests(TestCase):
 
     ⚠️ L'operatore e' COSTRUITO (`dbops.fn_pgtap_crea_emittente_operatore`:
     identita' OPERATORE, non super admin, nessun livello) e il livello glielo
-    da' un override sull'oggetto, come nel pgTAP di `fn_guard_livello`. Non il
-    superuser del contesto degli altri test: quello passerebbe per bypass, e
-    non proverebbe niente."""
+    da' un override sull'AREA `magazzino`, come il test 12 del pgTAP di
+    `fn_pannello_scrivi`. Non il superuser del contesto degli altri test:
+    quello passerebbe per bypass, e non proverebbe niente.
+
+    ⛔ Fino al 2026-09-28 il livello lo dava un override sull'oggetto
+    `('magazzino', 'causali')`. Per la D-2 (brief-db-be-fe-catalogo-oggetti-
+    permessi) le chiavi del pannello NON sono oggetti personalizzabili: valgono
+    come la loro area, e dal `20260928-02` la FK
+    `fk_user_override_oggetti_catalogo` rifiuta quell'override (23503)."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -188,18 +194,17 @@ class PannelloDuePuntiDiApplicazioneDbTests(TestCase):
         transaction.set_rollback(True)
         self._atomic.__exit__(None, None, None)
 
-    def _livello_sulle_causali(self, livello: str) -> None:
+    # Scopo: Da' all'operatore costruito `livello` sull'area della riga
+    #        (`fn_area_di_oggetto('magazzino', 'causali')` = `magazzino`).
+    def _livello_sull_area_magazzino(self, livello: str) -> None:
         with connection.cursor() as cur:
             cur.execute(
-                "DELETE FROM config.user_override_oggetti"
-                " WHERE auth_user_id = %s AND app_label = 'magazzino' AND model_name = 'causali'",
-                [self.uid],
-            )
-            cur.execute(
-                "INSERT INTO config.user_override_oggetti (auth_user_id, app_label, model_name, livello, motivo)"
-                " VALUES (%s, 'magazzino', 'causali', %s, 'Fixture test pannello')",
+                "INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)"
+                " SELECT %s, af.id, %s, 'Fixture test pannello'"
+                "   FROM config.aree_funzionali af WHERE af.schema_db = 'magazzino'",
                 [self.uid, livello],
             )
+            self.assertEqual(cur.rowcount, 1, "area `magazzino` assente dal catalogo aree")
 
     def _catena(self, metodo: str):
         view = ConfigTableRecordsView()
@@ -214,7 +219,7 @@ class PannelloDuePuntiDiApplicazioneDbTests(TestCase):
 
     # 6.
     def test_lettura_sulle_causali_legge_e_non_scrive(self) -> None:
-        self._livello_sulle_causali("LETTURA")
+        self._livello_sull_area_magazzino("LETTURA")
         self.assertTrue(self._catena("GET").consentito)
         esito = self._catena("POST")
         self.assertFalse(esito.consentito)
@@ -227,6 +232,6 @@ class PannelloDuePuntiDiApplicazioneDbTests(TestCase):
 
     # 7.
     def test_tutto_sulle_causali_scrive(self) -> None:
-        self._livello_sulle_causali("TUTTO")
+        self._livello_sull_area_magazzino("TUTTO")
         self.assertTrue(self._catena("POST").consentito)
         self.assertIsInstance(self._crea()["id"], int)

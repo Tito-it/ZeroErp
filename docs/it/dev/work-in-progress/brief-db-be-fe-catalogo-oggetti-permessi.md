@@ -14,10 +14,13 @@
 > `billing_account` fuori, 10 riservati, FK composita attiva. Verificati a DB:
 > 23 righe di catalogo, 10 `riservato = t`, nessun `billing_account`,
 > `fk_user_override_oggetti_catalogo` presente, riga di policy a `false`.
-> ⏳ **Tocca al BE**: le quattro ricadute del §3.1-bis («Al BE») — ⛔ la prima
-> è un test Django che **ora** è rosso contro il DB (`test_pannello_verbo_db`).
-> Restano fuori catalogo `ordine`, `ddt`, `contratto`, `reso`, finché il BE non
-> li applica (poi: una riga nel CSV). 🟡 Caso A in corso lato BE/FE (§3.2, §3.3).
+> ✅ **BE e FE chiusi il 2026-09-28** (`dev/backend-tid`, §3.4): le quattro
+> ricadute del §3.1-bis, il caso B su `ordine`, `ddt`, `contratto`, `reso`
+> (tutte le rotte), il §3.3 FE, e il presidio della D-3 sul CSV con le
+> quattro porte.
+> ⏳ **Resta al team DB una cosa sola** (§3.5): le quattro righe di catalogo
+> di `ordine`, `ddt`, `contratto`, `reso`. BE e FE le applicano già: finché
+> manca la riga vale l'area, come prima.
 >
 > **In una riga:** il pannello permessi offre override su oggetti che nessuno
 > applica, e su altri oggetti, che vengono applicati, non lo offre.
@@ -172,7 +175,7 @@ colonna generata è ammessa.
 **Doc:** guida `architettura-permessi-e-autorizzazioni` (§2.1, §4.3, §9.3),
 `manual/area_model_overrides.md` riscritta, `manual/user_override_oggetti.md`.
 
-#### ⛔ Al BE — nello stesso rilascio (dev/backend-tid) — ⏳ aperte al 2026-09-28
+#### ⛔ Al BE — nello stesso rilascio (dev/backend-tid) — ✅ chiuse il 2026-09-28 (§3.4)
 
 1. **Rosso in CI se non segue**:
    `backend/apps/core/tests/db/test_pannello_verbo_db.py`,
@@ -246,6 +249,81 @@ revisioni che l'avevano già); l'offerta è nel presidio con il suo perimetro.
 
 - `useReadonlyMode(area, model)` sulle viste di `billing_account`, `listino`,
   `pratica`, `preventivo`: oggi chiedono la sola area, o ereditano dal padre.
+
+✅ **Chiuso il 2026-09-28** (§3.4). `billing_account` non serve più: per la
+D-5 è una parte del cliente, e la scheda cliente chiede già `cliente`.
+
+### 3.4 BE e FE — cosa è stato scritto (2026-09-28)
+
+**Le quattro ricadute del §3.1-bis:**
+
+| # | Dove | Cosa |
+| --- | --- | --- |
+| 1 | `core/tests/db/test_pannello_verbo_db.py` | il livello all'operatore costruito si dà sull'**area** `magazzino` (`config.user_override_aree`), come il test 12 del pgTAP; non più un override su `('magazzino', 'causali')`, che la FK rifiuta |
+| 2 | `core/services/permissions_resolver.py` | `list_model_overrides_grouped` legge `WHERE NOT amo.riservato`: i permessi effettivi non mostrano i dieci oggetti del kernel |
+| 3 | `amm_software/db/amm_software_repository.py`, `services/amm_software_service.py` | `can_override` = `NOT riservato` dalla colonna; ⛔ `_MODEL_OVERRIDE_RISERVATI` **ritirata** (regola del 2). Il controllo del service resta per il messaggio; la scrittura passa da `translate_db_errors` con `fk_user_override_oggetti_catalogo` → `E_AMM_VALIDAZIONE` (400, non 500) |
+| 4 | `core/tests/test_catalogo_oggetti_rotte.py` | il presidio della D-3, riscritto (sotto) |
+
+Prova sul DB vero: `amm_software/tests/db/test_override_oggetti_catalogo_db.py`
+(5 test, oggetti e operatore **costruiti**): il lookup legge `riservato` dalla
+colonna riga per riga; i permessi effettivi senza riservati; un override a
+catalogo si scrive; un oggetto fuori catalogo e uno riservato, fatti passare
+dal controllo del service, li ferma la FK come `E_AMM_VALIDAZIONE`.
+**Mutazione**: tolto il `translate_db_errors`, i test 4 e 5 vanno in ERRORE
+con l'`IntegrityError` nudo.
+
+**Caso B, `ordine` / `ddt` / `contratto` / `reso`, tutte le rotte.**
+`model_permission` sulle view scritte a mano (lista, export, dettaglio, stati,
+push, righe, componenti, form-defaults, code dei resi, generazione DDT) e sulle
+factory (documenti, passaggi, riepilogo IVA, indirizzi e **situazione merce**,
+che ora lo prende come parametro obbligatorio). Rotte del perimetro al
+2026-09-28 (*fatto datato*): ordini 29, DDT 27, contratti 26, resi 17 — tutte
+in regola. Le approvazioni prezzo sulle righe di contratto restano azioni di
+processo (`post_permission`), come per preventivi e offerte.
+
+**Un caso A che l'inventario del §2 non aveva.** Le rotte accessi portale/shop
+della scheda (`clienti/<id>/invita-portale|invita-shop|stato-accessi|disattiva-*`,
+e le tre dei fornitori) chiedevano la sola area: un `BLOCCATO` sul cliente
+nascondeva il tab «Accessi» e lasciava aperta l'API. Ora chiedono `cliente` /
+`fornitore`. L'ha trovato il presidio esteso a tutti gli oggetti del catalogo.
+
+**FE §3.3.** `READONLY_MODELS` + `LISTINO`, `PRATICA`, `PREVENTIVO`;
+`useReadonlyMode(area, model)` su `ListiniView`, `PreventiviView`,
+`PraticheHome`, `PraticheDashboard`. Le liste gestivano già il `BLOCCATO`
+d'oggetto (`AccessoBloccatoPanel`).
+
+**Il presidio della D-3** (`test_catalogo_oggetti_rotte.py`, senza DB): legge
+il catalogo dal CSV (righe `riservato = f`) e `READONLY_MODELS` dal FE, e
+fallisce se
+- una rotta del perimetro di un oggetto non lo chiede (un perimetro per
+  **ogni** oggetto a catalogo, non più solo il caso A);
+- un `model_permission` del BE non è a catalogo;
+- un oggetto a catalogo non ha perimetro;
+- `READONLY_MODELS` e catalogo non coincidono, nei due versi.
+
+Gli oggetti del §3.5 stanno in un registro `_IN_ATTESA_DI_CATALOGO`, e un
+test pretende che la riga esca dal registro il giorno in cui entra nel CSV.
+Fuori perimetro, con la ragione: `valida-cf-piva` e `genera-cf` (calcoli senza
+dati). **Mutazioni**: tolto `LISTINO` dal FE → rosso il verso FE; un
+`model_permission` fuori catalogo → rossi il perimetro e il verso BE.
+
+### 3.5 ⏳ Al team DB — le quattro righe del caso B (2026-09-28)
+
+In `80_data/sql/config/area_model_overrides.csv`, area `vendite` (id 2),
+`riservato = f`:
+
+```csv
+vendite,contratto,2,f
+vendite,ddt,2,f
+vendite,ordine,2,f
+vendite,reso,2,f
+```
+
+⛔ Il pgTAP `test-catalogo-oggetti-override-v1`, **test 12**, pretende oggi
+il contrario («ordine, ddt, contratto, reso non ancora a catalogo»): va
+rovesciato insieme alle righe — i quattro a catalogo, `riservato = f`. ⛔ **Al BE, nello stesso giro**: le quattro righe escono da
+`_IN_ATTESA_DI_CATALOGO` in `test_catalogo_oggetti_rotte.py`, o il test 6 va
+rosso — è il suo scopo. Poi il brief si chiude.
 
 ---
 

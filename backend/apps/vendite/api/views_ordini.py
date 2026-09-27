@@ -138,6 +138,7 @@ class ApiOrdiniList(DomainAPIView):
     """GET/POST /api/v1/vendite/ordini/ — lista paginata + create BOZZA."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ordine")
     is_search_endpoint = True
     lista_codice = "vendite.ordini"
 
@@ -199,6 +200,7 @@ class ApiOrdiniExportView(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ordine")
     is_search_endpoint = True
     lista_codice = "vendite.ordini"
 
@@ -260,6 +262,7 @@ class ApiOrdineDetail(DomainAPIView):
     """GET/PATCH/DELETE /api/v1/vendite/ordini/<ordine_id>/."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ordine")
 
     @extend_schema(
         responses={200: _ORDINE_RESPONSE},
@@ -295,6 +298,7 @@ class ApiOrdinePerPratica(DomainAPIView):
     che aprono l'OrdiniDrawer su quell'ordine. Ritorna `{"ordine_id": <id|null>}`."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ordine")
 
     @extend_schema(
         parameters=[
@@ -325,6 +329,7 @@ class ApiOrdineConferma(DomainAPIView):
     """POST /api/v1/vendite/ordini/<ordine_id>/conferma/ (DRAFT->CONFERMATO)."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ordine")
 
     @extend_schema(
         request=None,
@@ -339,6 +344,7 @@ class ApiOrdinePush(DomainAPIView):
     """POST /api/v1/vendite/ordini/<ordine_id>/push/ — push singolo a commessa."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ordine")
 
     @extend_schema(
         request=None,
@@ -355,6 +361,7 @@ class ApiOrdineCambiaStato(DomainAPIView):
     dell'azione). L'ammissibilita' e' validata dal trigger guard DB."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ordine")
 
     @extend_schema(
         request=CAMBIA_STATO_REQUEST,
@@ -379,6 +386,7 @@ _indirizzi_views = build_indirizzi_documento_views(
         ordine_id, payload),
     delete_call=lambda ordine_id, indirizzo_id: ordini_service.delete_indirizzo(
         ordine_id, indirizzo_id),
+    model_permission=("vendite", "ordine"),
 )
 ApiOrdineIndirizzi = _indirizzi_views.lista
 ApiOrdineIndirizzoDetail = _indirizzi_views.detail
@@ -403,6 +411,7 @@ ApiOrdineRiepilogoIva = build_riepilogo_iva_view(
 
     Area `vendite` livello LETTURA sufficiente.
     """,
+    model_permission=("vendite", "ordine"),
 )
 
 
@@ -410,6 +419,7 @@ class ApiOrdineRighe(DomainAPIView):
     """GET/POST /api/v1/vendite/ordini/<ordine_id>/righe/."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ordine")
 
     @extend_schema(
         responses={200: _ORDINE_LISTA_RESPONSE},
@@ -437,6 +447,7 @@ class ApiOrdineRigaDetail(DomainAPIView):
     """PATCH/DELETE /api/v1/vendite/ordini/<ordine_id>/righe/<riga_id>/."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ordine")
 
     @extend_schema(
         request=_ORDINE_RIGA_UPDATE_REQUEST,
@@ -466,6 +477,7 @@ class ApiOrdineRigaPreviewComponenti(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ordine")
 
     @extend_schema(
         request=PREVIEW_COMPONENTI_REQUEST,
@@ -494,6 +506,7 @@ class ApiOrdineRigaComponentiList(DomainAPIView):
     """GET /api/v1/vendite/ordini/<ordine_id>/righe/<riga_id>/componenti/."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ordine")
 
     @extend_schema(
         parameters=COMPONENTI_LIST_PARAMETERS,
@@ -512,6 +525,7 @@ class ApiOrdineRigaComponenteDetail(DomainAPIView):
     """PATCH/DELETE /.../righe/<riga_id>/componenti/<componente_id>/."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ordine")
 
     @extend_schema(request=COMPONENTE_PATCH_REQUEST, responses={200: dict})
     # Scopo: Aggiorna un componente BoM (prezzo/attivo/meta, solo DRAFT).
@@ -548,6 +562,7 @@ class ApiOrdineGeneraDdt(DomainAPIView):
     residuo."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ordine")
 
     @extend_schema(
         request=_ORDINE_GENERA_DDT_REQUEST,
