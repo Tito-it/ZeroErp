@@ -14,6 +14,9 @@
 > [brief-db-credenziale-per-email.md](../work-in-progress/brief-db-credenziale-per-email.md).
 > La domanda sulle FK del ponte django (§11.5) è in `PROJECT_CONTEXT` § «Aperto —
 > Media priorità».
+> 🟢 Dopo lo scorporo il team DB ha fatto il lato DB del §17
+> (`20260927-40`, `-41`, applicati il 2026-09-27): l'esecuzione (§17.4) è nel
+> brief nuovo. Restano al backend e al frontend B-20 e F-4, là.
 >
 > **Due lavori, in quest'ordine**: **P-1** login, blocco e cambio password
 > (§2–§4); **P-2** email unica e riuso della credenziale (§5). Sono
@@ -1093,6 +1096,8 @@ il ripiego non va avanti al catalogo):
   `test_login_credenziale_db` (non più sospeso) prova i due tempi sul DB vero.
   ➜ Il dialog di conferma **aspetta il DB**: scorporato con il §17 in
   [brief-db-credenziale-per-email.md](../work-in-progress/brief-db-credenziale-per-email.md).
+- ✅ DB: il §17 fatto dopo lo scorporo (`20260927-40`, `-41`, applicati il
+  2026-09-27): esecuzione e decisione «nessun guard a DB» nel brief nuovo.
 
 ## 13. R-7 — La risposta del login non dice se il nome esiste (disegno, 2026-09-25)
 
@@ -1534,6 +1539,9 @@ difetto: il test è corretto, con la ragione scritta.
 | 2026-09-27 | BE | B-6, parte che non dipende dal DB: `riusa_auth_user_id` dalla view alla madre; test del consenso sbloccato e verde. Trovato: i dati del dialog stanno nel contesto dell'errore, che non arriva al client (§17). Tid sceglie la lettura a DB + dialog; richiesta al team DB al §17.2 |
 | 2026-09-27 | FE | **F-3**: `OperatoreDrawer` rende i tre motivi col BB `bloccoMotivo` (prefissi `invite`/`disable`/`demote`), ritirato il ramo `veste_attiva`; i toggle «super admin» e «accesso attivo» spenti col motivo sotto quando `can_demote_super_admin`/`can_disable` sono falsi. Otto chiavi in `it.json`/`en.json`, ritirata `amministrazione.accesso_gia_attivo`. **F-1**: `E_UTENTE_BLOCCATO` in `MESSAGGIO_DB_CON_DATO`. `check_i18n_keys`, eslint e `npm run guards` verdi. ⚠️ Trovato: B-6 (consenso al riuso) mai fatto, §12.6 |
 | 2026-09-27 | BE | **Chiuso.** Il §17 (dati del dialog del consenso: B-6 a metà, B-20, F-4) e il controllo a video di F-3 scorporati in `brief-db-credenziale-per-email.md`; la domanda sulle FK del ponte django (§11.5) registrata in `PROJECT_CONTEXT`. Brief spostato in `work-done/` |
+| 2026-09-27 | Tid → DB | §17: nessun guard a DB sulla lettura della credenziale (il cancello è l'`AdminAPIView`). Scritti e provati `20260927-40` (`script.fn_get_credenziale_per_email`) e `-41` (la madre la legge, regola del 2), pgTAP `test-fn-get-credenziale-per-email-v1` (9), descrizione di `E_CREDENZIALE_DA_CONFERMARE`, manual (§17.4). Non applicati |
+| 2026-09-27 | Tid | `20260927-40`, `-41` applicati; pgTAP verdi, nessuna regressione. Lavoro DB del §17 chiuso. Resta a BE/FE: B-20, F-4 (§17.3) |
+| 2026-09-27 | BE | Merge con `Tito-dev`: le due righe qui sopra erano state scritte sul brief ancora in `work-in-progress/`. Il §17.4 (esecuzione DB) e la decisione «nessun guard a DB» sono spostati nel brief nuovo `brief-db-credenziale-per-email.md`; qui resta il rimando |
 
 ---
 {% include-markdown "signature-core.md" %}
