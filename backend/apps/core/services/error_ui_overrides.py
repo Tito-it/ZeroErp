@@ -186,6 +186,16 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # tipo_contatto_id). Sostituisce il vecchio "silent skip" che
     # faceva perdere dati senza preavviso.
     "E_CONTATTO_INCOMPLETO": "highlight_form_fields",  # classe DATO_ERRATO
+    # Il consenso al riuso della credenziale (`20260925-51`, brief
+    # brief-db-credenziale-per-email §3, Tid 2026-09-27): e' un rifiuto
+    # CONFERMABILE come la capienza superata. La madre ferma la creazione
+    # dell'operatore se l'email e' gia' di una credenziale e nessuno l'ha
+    # confermata, e la ACCETTA quando il secondo tentativo DICHIARA l'id della
+    # credenziale vista (`riusa_auth_user_id`). Col default della classe
+    # (banner) l'admin resterebbe fermo su un caso che il modello ammette: il
+    # pannello riconosce il comportamento (`useForzaturaConfermata`) e apre il
+    # dialog con username e vesti. La classe resta CONFLITTO_STATO (409).
+    "E_CREDENZIALE_DA_CONFERMARE": "confirm_and_retry",  # classe CONFLITTO_STATO
     # ⚠️ La guard e' `attivo IS NOT TRUE`, che copre DUE casi: conto
     # disattivato e conto inesistente (SELECT INTO -> NULL). Il 400 con
     # il campo evidenziato e' corretto in entrambi; un 404 sarebbe

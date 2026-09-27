@@ -82,3 +82,26 @@ class OperatoreDetailRow(OperatoreRow):
     invite_reason_key: str | None
     disable_reason_key: str | None
     demote_reason_key: str | None
+
+
+class VesteCredenzialeRow(TypedDict):
+    """Una veste della credenziale, come la costruisce il DB."""
+    ruolo_applicativo: str
+    attivo: bool
+    # La denominazione del soggetto della veste (ragione_sociale_completa).
+    soggetto: str | None
+
+
+class CredenzialePerEmailRow(TypedDict):
+    """La credenziale che porta un'email (`script.fn_get_credenziale_per_email`).
+
+    Serve al dialog di conferma del riuso (B-20 del brief
+    brief-db-credenziale-per-email): l'admin vede username e vesti, e conferma
+    dichiarando ``auth_user_id``. La stessa lettura la usa la madre per il
+    rifiuto ``E_CREDENZIALE_DA_CONFERMARE``: dialog e rifiuto mostrano la
+    stessa cosa.
+    """
+    auth_user_id: int
+    username: str
+    # In ordine di id; lista vuota se la credenziale non ha vesti.
+    vesti: list[VesteCredenzialeRow]

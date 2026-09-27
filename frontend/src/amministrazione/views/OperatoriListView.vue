@@ -34,8 +34,9 @@ import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue
 import Badge from 'primevue/badge'
 import FiltriLista from '../../core/components/FiltriLista.vue'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
+import { etichettaRuoloApplicativo } from '../../core/utils/i18nLabel'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const store = useOperatoriStore()
 const unitaOrg = useLookup(listUnitaOrganizzative, { immediate: true })
 const drawer = useDrawerState()
@@ -114,13 +115,10 @@ function activeBadgeSeverity(active) {
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
 function onRowClick(data) { drawer.editRow(data, 'auth_user_id') }
 
-// i18n label per ruolo applicativo: chiave auth.ruolo_applicativo.<VALORE>
-// con fallback sul valore grezzo.
+// Scopo: Il badge del ruolo applicativo (BB `etichettaRuoloApplicativo`);
+//        senza ruolo il trattino.
 function ruoloAppLabel(ruoloApp) {
-  if (!ruoloApp) return '—'
-  const key = `auth.ruolo_applicativo.${ruoloApp}`
-  const translated = t(key)
-  return translated === key ? ruoloApp : translated
+  return etichettaRuoloApplicativo(t, te, ruoloApp) || '—'
 }
 
 // Scopo: azioni di riga operatore (apertura drawer permessi), nascoste in readonly.

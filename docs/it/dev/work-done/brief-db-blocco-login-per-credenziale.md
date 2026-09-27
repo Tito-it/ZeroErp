@@ -11,7 +11,7 @@
 > guida `architettura-multi-face-auth` §3.1 (`e7dbbad73`, `854ca3c2b`).
 > ➜ **Scorporato** l'unico lavoro aperto, il §17 (i dati del dialog del
 > consenso al riuso: B-6 a metà, B-20, F-4, più il controllo a video di F-3), in
-> [brief-db-credenziale-per-email.md](../work-in-progress/brief-db-credenziale-per-email.md).
+> [brief-db-credenziale-per-email.md](brief-db-credenziale-per-email.md).
 > La domanda sulle FK del ponte django (§11.5) è in `PROJECT_CONTEXT` § «Aperto —
 > Media priorità».
 > 🟢 Dopo lo scorporo il team DB ha fatto il lato DB del §17
@@ -1095,7 +1095,7 @@ il ripiego non va avanti al catalogo):
   ✅ 2026-09-27: `p_riusa_auth_user_id` va da view a madre, e
   `test_login_credenziale_db` (non più sospeso) prova i due tempi sul DB vero.
   ➜ Il dialog di conferma **aspetta il DB**: scorporato con il §17 in
-  [brief-db-credenziale-per-email.md](../work-in-progress/brief-db-credenziale-per-email.md).
+  [brief-db-credenziale-per-email.md](brief-db-credenziale-per-email.md).
 - ✅ DB: il §17 fatto dopo lo scorporo (`20260927-40`, `-41`, applicati il
   2026-09-27): esecuzione e decisione «nessun guard a DB» nel brief nuovo.
 
@@ -1483,7 +1483,7 @@ compaia davvero, perché nessun presidio lo vede.
 ## 17. Il dialog del consenso non ha i suoi dati (backend, 2026-09-27)
 
 ➜ **Scorporato il 2026-09-27** in
-[brief-db-credenziale-per-email.md](../work-in-progress/brief-db-credenziale-per-email.md):
+[brief-db-credenziale-per-email.md](brief-db-credenziale-per-email.md):
 il problema (il contesto dell'errore non arriva al client), la richiesta al team
 DB (una lettura della credenziale per email, che la madre riusa), B-20, F-4 e il
 controllo a video di F-3. Quella è la sede, qui non si aggiorna più.

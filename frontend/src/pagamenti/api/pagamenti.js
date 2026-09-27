@@ -138,6 +138,16 @@ export function cambiaStatoRiga(rigaId, nuovoStato, motivoSospeso = null) {
   return api.post(`${BASE}/righe/${rigaId}/stato/`, payload, idem())
 }
 
+// Scopo: Il SECONDO TEMPO della capienza, cioe' cio' che si aggiunge al
+//        payload quando l'operatore conferma: `forzata` + il suo motivo (vuoto =
+//        null). Una sede per la forma che `abbinaRiga`, `registraRigaTardiva` e
+//        `aggiornaRiga`/`creaRiga` ricevono; la passano a
+//        `useForzaturaConfermata().conferma(...)`, che non conosce le parole
+//        dei pagamenti.
+export function forzaturaConMotivo(motivo) {
+  return { forzata: true, motivo_forzatura: motivo }
+}
+
 // ⭐ IL VERBO CHE PORTA L'INCASSO ALLA RATA. Fattura obbligatoria, cliente e
 // rata facoltativi, e la forzatura a DUE TEMPI: il primo tentativo si manda
 // SENZA `forzata`; se la rata non ha capienza il backend rifiuta con la ragione

@@ -4246,7 +4246,14 @@
       "filtro_registro_tutti": "All registers",
       "filtro_entita_tutte": "All entities",
       "filtro_filo": "Thread (tx_id or correlation_id)",
-      "ritirate_nascoste": "{n} withdrawn signals hidden"
+      "ritirate_nascoste": "{n} withdrawn signals hidden",
+      "storia_info_nascoste": "{n} routine events hidden.",
+      "storia_non_caricata": "History is not available right now.",
+      "storia_solo_info": "No issues: all {n} recorded events are routine.",
+      "storia_solo_problemi": "Issues only",
+      "storia_solo_ritirate": "No active events: all {n} recorded signals belong to retried attempts.",
+      "storia_tutto": "Everything",
+      "storia_vuota": "No events recorded."
     },
     "revisioni": {
       "col_rev": "Rev",

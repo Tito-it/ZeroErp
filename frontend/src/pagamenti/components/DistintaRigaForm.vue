@@ -77,7 +77,7 @@ import { LIVELLO, spazioSaldo, useSaldi } from '../composables/useSaldi'
 import { DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import { displayDate, toDateString, parseIsoDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
-import { aggiornaRiga, creaRiga } from '../api/pagamenti'
+import { aggiornaRiga, creaRiga, forzaturaConMotivo } from '../api/pagamenti'
 import { useEtichettePagamenti } from '../etichette'
 import RataSelect from './RataSelect.vue'
 import RatePickerDialog from './RatePickerDialog.vue'
@@ -408,7 +408,7 @@ async function onSalva() {
 
 // Scopo: secondo tentativo — con la forzatura e il suo motivo.
 async function onConferma() {
-  const esito = await conferma(motivoForzatura.value.trim() || null)
+  const esito = await conferma(forzaturaConMotivo(motivoForzatura.value.trim() || null))
   if (esito !== null) emit('salvata')
 }
 </script>

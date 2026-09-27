@@ -4246,7 +4246,14 @@
       "filtro_registro_tutti": "Tutti i registri",
       "filtro_entita_tutte": "Tutte le entità",
       "filtro_filo": "Filo (tx_id o correlation_id)",
-      "ritirate_nascoste": "{n} segnalazioni ritirate nascoste"
+      "ritirate_nascoste": "{n} segnalazioni ritirate nascoste",
+      "storia_info_nascoste": "Nascosti {n} eventi di routine.",
+      "storia_non_caricata": "Storia non disponibile in questo momento.",
+      "storia_solo_info": "Nessun problema: tutti i {n} eventi registrati sono di routine.",
+      "storia_solo_problemi": "Solo problemi",
+      "storia_solo_ritirate": "Nessun evento attivo: le {n} segnalazioni registrate appartengono a tentativi poi rifatti.",
+      "storia_tutto": "Tutto",
+      "storia_vuota": "Nessun evento registrato."
     },
     "revisioni": {
       "col_rev": "Rev",

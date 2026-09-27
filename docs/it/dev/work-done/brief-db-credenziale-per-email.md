@@ -3,13 +3,14 @@
 > **Tipo documento**: brief operativo **per il team DB** (`dev/db-tid`), con la
 > ricaduta sul backend e sul frontend al §3.
 >
-> **Data**: 2026-09-27 · **Stato**: 🟢 **lato DB fatto e applicato il
-> 2026-09-27** (`20260927-40`, `-41`, §2.1), test verdi, nessuna regressione.
-> ⏳ **Tocca al backend e al frontend: B-20, F-4** e il controllo a video di F-3
-> (§3).
+> **Data**: 2026-09-27 · **Stato**: ✅ **CHIUSO il 2026-09-27.** Lato DB
+> `20260927-40`, `-41` applicati (§2.1); B-20 e F-4 scritti (§3.1), test verdi.
+> ➜ Il controllo a video di F-4 (e di F-3, ereditato dal brief di origine) è il
+> [collaudo in-app](../work-in-progress/collaudo-in-app-consenso-riuso-credenziale.md),
+> da eseguire: quando è verde va in `work-done/` accanto a questo brief.
 >
 > **Origine**: §17 di
-> [brief-db-blocco-login-per-credenziale.md](../work-done/brief-db-blocco-login-per-credenziale.md),
+> [brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md),
 > scorporato il 2026-09-27 alla chiusura di quel brief, perché era l'unico lavoro
 > aperto. Il resto del cantiere (P-1, P-2, R-3, R-7, R-8, R-9, §16) è applicato e
 > committato. Il contesto del consenso sta in quel brief, §12.7 (la domanda e la
@@ -143,6 +144,49 @@ e rimanda con `riusa_auth_user_id`.
 | F-4 | `OperatoreDrawer` | sul 409 `E_CREDENZIALE_DA_CONFERMARE` (senza toast: `azioniGestite`) legge la credenziale e apre un `AppDialog` con username e vesti; se l'operatore conferma, ripete la creazione con `riusa_auth_user_id` = l'id letto. Se nel frattempo la credenziale è cambiata, la madre rifiuta di nuovo e il dialog si ripropone: per questo si dichiara un id e non un sì. `E_CREDENZIALE_ALTRA_PERSONA` non apre il dialog: si corregge l'email |
 | F-3 | `OperatoreDrawer` | ⏳ ereditato dal brief di origine (§16.4): **controllare a video** che il motivo dei pulsanti spenti (invito, disattivazione, retrocessione da super admin) compaia davvero, perché nessun presidio lo vede. Il codice è committato (`854ca3c2b`). Si fa insieme a F-4, sullo stesso drawer |
 
+### 3.1 Esecuzione BE/FE (2026-09-27)
+
+- **B-20**: `GET /api/v1/amm-software/operatori/credenziale-per-email/?email=`
+  (`CredenzialePerEmailView`, `AdminAPIView`) → `data.credenziale` =
+  `{auth_user_id, username, vesti}` o `null`. Repository
+  `get_credenziale_per_email` (una `SELECT` sulla funzione; `vesti` decodificato
+  con il BB `jsonb_out`), tipi `CredenzialePerEmailRow`/`VesteCredenzialeRow`.
+  L'email vuota o assente la gestisce il DB (zero righe): nessuna seconda
+  copia della regola nella view.
+- ⭐ **`ui_action` di `E_CREDENZIALE_DA_CONFERMARE` = `confirm_and_retry`**
+  (`error_ui_overrides.py`, con la ragione): è un rifiuto confermabile come la
+  capienza dei pagamenti. Col default della classe (banner) il pannello avrebbe
+  mostrato un errore su una domanda.
+- **Il BB `useForzaturaConfermata` generalizzato** (regola del 2, ok Tid):
+  `conferma(dichiarazione)` ripete con la dichiarazione del dominio, invece di
+  comporre lei `{forzata, motivo_forzatura}`; se il DB chiede di nuovo, la
+  domanda si ripropone. I due consumatori dei pagamenti passano
+  `forzaturaConMotivo(motivo)` (helper nuovo in `pagamenti/api/pagamenti.js`),
+  comportamento invariato. Spec nuova del BB (6 casi). Nel catalogo BB FE tolta
+  una copia della riga, finita per errore fra i BB spostati nei pagamenti.
+- **F-4**: `OperatoreDrawer` crea con `esegui()`; sulla domanda legge la
+  credenziale (B-20) e apre un `AppDialog` con la frase del DB, username e vesti
+  (ruolo, soggetto, attiva/spenta). «Usa questo accesso» ripete con
+  `riusa_auth_user_id` = l'id letto; se il DB chiede di nuovo, il dialog si
+  riapre coi dati nuovi; se la credenziale non c'è più, avvisa e chiude la
+  domanda. `E_CREDENZIALE_ALTRA_PERSONA` resta un errore normale. Nove chiavi
+  `amministrazione.riuso_*` in `it.json`/`en.json`.
+- **Prove**:
+  - `test_login_credenziale_db` (DB vero, `ZEROERP_TEST_DB_E2E=1`): il consenso
+    in due tempi ora passa dall'endpoint vero e conferma **con l'id letto**; dopo
+    la creazione il dialog vede la veste `OPERATORE` spenta. ⚠️ Ha trovato un
+    difetto che il mock non vedeva: `vesti` arrivava come stringa (fuori
+    dall'ORM il `jsonb` non si decodifica), corretto con `jsonb_out`;
+  - 3 test della view (`test_operatori_views`); spec FE del BB; vitest 414/414,
+    eslint, `npm run guards`, `check_i18n_keys`, build verdi.
+- Manuale `api_amm_software.md`: §1.2 riallineata al P-2 (madre `_v2`, niente
+  password, veste spenta, consenso in due tempi) e §1.2-bis nuova.
+
+➜ **Da vedere a video** (nessun presidio lo vede): il copione è il
+[collaudo in-app](../work-in-progress/collaudo-in-app-consenso-riuso-credenziale.md)
+(dialog, conferma, rinuncia, rifiuto sull'email di un'altra persona, e la
+non-regressione della forzatura dei pagamenti).
+
 ✅ Già fatto (2026-09-27), e non dipende da questo brief:
 `riusa_auth_user_id` passa dalla view al repository (`p_riusa_auth_user_id`);
 assente vale `NULL`, cioè la prima chiamata chiede sempre la conferma. Test:
@@ -158,6 +202,8 @@ rifiutata).
 | 2026-09-27 | Tid → DB | Nessun guard a DB sulla lettura della credenziale (il cancello è l'`AdminAPIView`). Scritti e provati `20260927-40` (`script.fn_get_credenziale_per_email`) e `-41` (la madre la legge, regola del 2), pgTAP `test-fn-get-credenziale-per-email-v1` (9), descrizione di `E_CREDENZIALE_DA_CONFERMARE`, manual (§2.1). Scritto sul brief di origine, ancora in `work-in-progress/` sul ramo DB |
 | 2026-09-27 | Tid | `20260927-40`, `-41` applicati; pgTAP verdi, nessuna regressione. Lavoro DB chiuso. Resta a BE/FE: B-20, F-4 (§3) |
 | 2026-09-27 | BE | Merge con `Tito-dev`: il §17.4 del brief di origine portato qui come §2.1 (riferimenti rinumerati) |
+| 2026-09-27 | BE/FE | **B-20** e **F-4** (§3.1): endpoint di lettura, `confirm_and_retry` sul codice, BB `useForzaturaConfermata` generalizzato (ok Tid), dialog nel drawer. Resta il controllo a video |
+| 2026-09-27 | BE | **Chiuso** (Tid). Il controllo a video passa al `collaudo-in-app-consenso-riuso-credenziale.md`, in `work-in-progress/` finché non è eseguito. Brief spostato in `work-done/` |
 
 ---
 {% include-markdown "signature-core.md" %}
