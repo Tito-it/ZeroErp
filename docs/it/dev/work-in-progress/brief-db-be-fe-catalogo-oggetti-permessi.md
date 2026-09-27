@@ -18,9 +18,11 @@
 > ricadute del §3.1-bis, il caso B su `ordine`, `ddt`, `contratto`, `reso`
 > (tutte le rotte), il §3.3 FE, e il presidio della D-3 sul CSV con le
 > quattro porte.
-> ⏳ **Resta al team DB una cosa sola** (§3.5): le quattro righe di catalogo
-> di `ordine`, `ddt`, `contratto`, `reso`. BE e FE le applicano già: finché
-> manca la riga vale l'area, come prima.
+> ✅ **§3.5 applicato da Tid il 2026-09-28 alle 00:53, pgTAP verdi** (§3.6):
+> le quattro righe di catalogo di `ordine`, `ddt`, `contratto`, `reso` e il
+> test 12 rovesciato. **Il lato DB è chiuso.**
+> ⏳ **Per chiudere il brief manca una cosa sola, al BE** (§3.6): svuotare
+> `_IN_ATTESA_DI_CATALOGO`, che col CSV nuovo va rosso finché non segue.
 >
 > **In una riga:** il pannello permessi offre override su oggetti che nessuno
 > applica, e su altri oggetti, che vengono applicati, non lo offre.
@@ -307,7 +309,7 @@ Fuori perimetro, con la ragione: `valida-cf-piva` e `genera-cf` (calcoli senza
 dati). **Mutazioni**: tolto `LISTINO` dal FE → rosso il verso FE; un
 `model_permission` fuori catalogo → rossi il perimetro e il verso BE.
 
-### 3.5 ⏳ Al team DB — le quattro righe del caso B (2026-09-28)
+### 3.5 ✅ Al team DB — le quattro righe del caso B (2026-09-28) — consegnate, §3.6
 
 In `80_data/sql/config/area_model_overrides.csv`, area `vendite` (id 2),
 `riservato = f`:
@@ -324,6 +326,38 @@ il contrario («ordine, ddt, contratto, reso non ancora a catalogo»): va
 rovesciato insieme alle righe — i quattro a catalogo, `riservato = f`. ⛔ **Al BE, nello stesso giro**: le quattro righe escono da
 `_IN_ATTESA_DI_CATALOGO` in `test_catalogo_oggetti_rotte.py`, o il test 6 va
 rosso — è il suo scopo. Poi il brief si chiude.
+
+### 3.6 DB — cosa è stato scritto per il §3.5 (2026-09-28) ✅ applicato, pgTAP verdi
+
+> ✅ **Applicato su dbdev da Tid il 2026-09-28 alle 00:53**: il mirror
+> `20260928-03` è ripartito (`RERAN`). Letto dopo l'apply: 27 righe di
+> catalogo (17 personalizzabili, 10 riservate), e `contratto`, `ddt`,
+> `ordine`, `reso` a catalogo con `riservato = false`. **pgTAP verdi** (corsa
+> di Tid). Resta solo la richiesta al BE in fondo a questa sezione.
+
+| File | Cosa |
+| --- | --- |
+| `80_data/sql/config/area_model_overrides.csv` | le quattro righe del §3.5, `vendite` (area 2), `riservato = f`, in ordine alfabetico. Nessun changeSet nuovo: il mirror `20260928-03` è `runOnChange` + `ANY` e riparte da solo al migrate. Catalogo: 27 righe, 17 personalizzabili e 10 riservate |
+| `db/pgtap/config/test-catalogo-oggetti-override-v1.sql` | test 12 rovesciato: i quattro sono a catalogo, `riservato = false`, con una nota `rev 2026-09-28` sul perché fino a ieri pretendeva il contrario. `plan(12)` invariato |
+
+Doc: niente da toccare. `manual/area_model_overrides.md` e la guida
+`architettura-permessi-e-autorizzazioni` non elencano le righe del catalogo,
+rimandano al CSV.
+
+**Prove (dbdev, 2026-09-28, transazione annullata, vincoli differiti resi
+`IMMEDIATE`).** L'upsert delle quattro righe sulla chiave naturale, come lo fa
+il mirror, passa (FK verso `aree_funzionali` e trigger «area attiva»).
+`fn_area_di_oggetto` le risolve su `vendite`. La query del test 12 va da
+«nessuna» a `contratto=false,ddt=false,ordine=false,reso=false`. Censiti i pgTAP
+e i test Django che toccano catalogo e override: nessuno usa i quattro oggetti
+come esempio di «fuori catalogo» né conta le righe del catalogo, salvo il
+registro BE qui sotto.
+
+⛔ **Al BE, nello stesso rilascio**: togliere le quattro voci da
+`_IN_ATTESA_DI_CATALOGO` in `backend/apps/core/tests/test_catalogo_oggetti_rotte.py`.
+Con il CSV nuovo, `test_il_registro_in_attesa_non_ha_righe_gia_a_catalogo` va
+rosso finché restano, ed è il suo scopo. Svuotato il registro, può ritirarsi
+anche il registro stesso, se non serve più.
 
 ---
 

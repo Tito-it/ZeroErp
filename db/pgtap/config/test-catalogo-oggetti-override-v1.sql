@@ -28,8 +28,8 @@
 --    9) anagrafiche.billing_account non e' a catalogo (D-5)
 --   10) offerta_commerciale e uom_tipi a catalogo, personalizzabili (caso B)
 --   11) i dieci oggetti del kernel dei permessi a catalogo, riservati (D-4)
---   12) nessun oggetto del caso B che il BE non applica ancora (ordine, ddt,
---       contratto, reso): un BLOCCATO lascerebbe aperta l'API (§1, terzo caso)
+--   12) ordine, ddt, contratto, reso a catalogo, personalizzabili (caso B,
+--       rev 2026-09-28: BE e FE li applicano su tutte le rotte, brief §3.5)
 --
 -- ⚠️ Gira come l'APPLICAZIONE: override e catalogo si scrivono come li scrive il
 --   pannello dei permessi. Operatore COSTRUITO (fn_pgtap_crea_emittente_operatore).
@@ -149,12 +149,18 @@ SELECT is(
     NULL,
     '11) i dieci oggetti del kernel dei permessi sono a catalogo e riservati (D-4)');
 
+-- ⚠️ rev 2026-09-28. Fino a oggi il test pretendeva il contrario: i quattro
+--   restavano fuori finche' il BE chiedeva l'AREA sulle loro rotte principali
+--   (un BLOCCATO avrebbe nascosto i pulsanti lasciando aperta l'API, §1 terzo
+--   caso). Dal 2026-09-28 BE e FE li applicano su tutte le rotte (brief §3.4),
+--   quindi entrano a catalogo, personalizzabili. Il presidio che le quattro
+--   porte coincidano e' quello Django della D-3 (test_catalogo_oggetti_rotte).
 SELECT is(
-    (SELECT string_agg(model_name, ',' ORDER BY model_name)
+    (SELECT string_agg(format('%s=%s', model_name, riservato::text), ',' ORDER BY model_name)
        FROM config.area_model_overrides
       WHERE app_label = 'vendite' AND model_name IN ('ordine', 'ddt', 'contratto', 'reso')),
-    NULL,
-    '12) ordine, ddt, contratto, reso non ancora a catalogo: il BE non li applica sulle rotte principali');
+    'contratto=false,ddt=false,ordine=false,reso=false',
+    '12) ordine, ddt, contratto, reso a catalogo, personalizzabili (caso B)');
 
 SELECT * FROM finish();
 ROLLBACK;
