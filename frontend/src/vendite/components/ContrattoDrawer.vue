@@ -840,6 +840,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
             <EntityPdfButton
               :sorgente-code="SORGENTE_CODES.CONTRATTO"
               :entity-id="props.contrattoId"
+              :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
               :pdf="capabilities.pdf"
               i18n-prefix="vendite.contratti.pdf"
               :dialog-title="detail.numero

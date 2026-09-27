@@ -5,7 +5,9 @@
 # Scopo: La ricerca libera delle liste dei template documenti e degli asset
 #        sul DATABASE VERO: il repository cerca col BB
 #        `add_ricerca_full_condition`, e le colonne le accende il catalogo
-#        (`documenti.template_documenti`, `documenti.template_asset`).
+#        (`documenti.template_documenti`, `documenti.template_asset`, e dal
+#        2026-09-27 `documenti.template_versioni` e
+#        `documenti.documenti_sorgente`).
 # Note: ⚠️ Opt-in `ZEROERP_TEST_DB_E2E=1` (acceso in CI). Il mondo si
 #       COSTRUISCE (regola zero, .codex/AGENTS.md): azienda e operatore da
 #       `fn_pgtap_crea_emittente_operatore`, poi il CONTESTO, poi un template e
@@ -20,6 +22,10 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
    la riga (`verifica_ricerca_colonna_per_colonna`); un termine inesistente
    no; il `codice_interno` non trova niente; un termine di un carattere
    filtra (tabelle di configurazione, da un carattere).
+2) RicercaListeDocumentiDbTests.test_versioni_e_documenti_sorgente_trovano_ogni_colonna_accesa
+   Le due liste nate il 2026-09-27 (88 e 84): una versione di un template e
+   un documento generato di una sorgente, costruiti; ogni colonna accesa a
+   catalogo trova la riga, un termine inesistente no.
 """
 from __future__ import annotations
 
@@ -121,6 +127,87 @@ class RicercaListeDocumentiDbTests(unittest.TestCase):
                 #    ignorato e uscirebbe almeno la riga costruita.
                 self.assertEqual(cerca_template("§"), [])
                 self.assertEqual(cerca_asset("§"), [])
+                raise _Annulla
+        except _Annulla:
+            pass
+
+    # 2. Versioni di un template e documenti generati di una sorgente (liste
+    #    88 e 84, 2026-09-27): ogni colonna accesa a catalogo trova la riga.
+    def test_versioni_e_documenti_sorgente_trovano_ogni_colonna_accesa(self):
+        from apps.documenti.db.documenti_repository import DocumentiRepository
+
+        sorgente_uid = "00000000-0000-0000-0000-00000000c0de"
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                for passo in _FIXTURE:
+                    cur.execute(passo)
+                cur.execute("SELECT emittente_fiscale_id FROM _mondo")
+                emittente = cur.fetchone()[0]
+                cur.execute(
+                    """
+                    INSERT INTO documenti.template_documenti
+                           (tipo_documento_output_id, sorgente_tipo_id, emittente_fiscale_id,
+                            codice, codice_interno, descrizione, context_builder_code)
+                    VALUES ((SELECT id FROM documenti.tipi_documento_output ORDER BY id LIMIT 1),
+                            (SELECT id FROM config.sorgenti ORDER BY id LIMIT 1),
+                            %s, 'RICVERTPL', 'RICVERINT', 'Template versioni', 'ricerca')
+                    RETURNING id, tipo_documento_output_id, sorgente_tipo_id
+                    """,
+                    [emittente],
+                )
+                template, tipo_output, sorgente_tipo = cur.fetchone()
+                cur.execute(
+                    """
+                    INSERT INTO documenti.template_documenti_versioni
+                           (template_documento_id, versione, titolo, html_template,
+                            render_engine_id)
+                    VALUES (%s, 1, 'Versione rictitver', '<p></p>',
+                            (SELECT id FROM documenti.render_engine_documento ORDER BY id LIMIT 1))
+                    RETURNING id
+                    """,
+                    [template],
+                )
+                versione = cur.fetchone()[0]
+                cur.execute(
+                    """
+                    INSERT INTO documenti.documenti_generati
+                           (tipo_documento_output_id, template_documento_id,
+                            template_versione_id, sorgente_tipo_id, sorgente_uid,
+                            progressivo_sorgente, titolo, nome_file, context_json,
+                            context_hash, template_hash, pdf_hash, emittente_fiscale_id)
+                    VALUES (%s, %s, %s, %s, %s, 1, 'Documento rictitdoc',
+                            'ricfiledoc.pdf', '{}'::jsonb, repeat('a', 64),
+                            repeat('b', 64), repeat('c', 64), %s)
+                    RETURNING id
+                    """,
+                    [tipo_output, template, versione, sorgente_tipo, sorgente_uid, emittente],
+                )
+                documento = cur.fetchone()[0]
+
+                # Scopo: le righe della lista versioni per il termine `t`.
+                def cerca_versioni(t):
+                    return DocumentiRepository().list_versioni(
+                        template, attivo=None, stato=None, search=t, limit=200, offset=0,
+                    )[0]
+
+                # Scopo: le righe della lista documenti della sorgente per `t`.
+                def cerca_documenti(t):
+                    return DocumentiRepository().list_documenti_per_sorgente(
+                        sorgente_tipo_id=sorgente_tipo, sorgente_uid=sorgente_uid,
+                        sorgente_riga=None, emittente_ids_scope=None,
+                        search=t, limit=200, offset=0,
+                    )[0]
+
+                verifica_ricerca_colonna_per_colonna(
+                    self, cur, "documenti.template_versioni", versione,
+                    {"titolo": "rictitver"},
+                    cerca_versioni,
+                )
+                verifica_ricerca_colonna_per_colonna(
+                    self, cur, "documenti.documenti_sorgente", documento,
+                    {"titolo": "rictitdoc", "nome_file": "ricfiledoc"},
+                    cerca_documenti,
+                )
                 raise _Annulla
         except _Annulla:
             pass

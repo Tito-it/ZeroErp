@@ -1924,6 +1924,19 @@ def get_fattura_dettaglio(
         # `fatture_rettifiche` no — leggerlo prima esporrebbe il numero di un
         # documento fuori perimetro.
         "rettifiche": repository.get_fattura_rettifiche(fattura_id),
+        # ⭐ L'ERRORE VIVO del documento — la riga ERROR piu' recente e non
+        #    ritirata del suo giornale, o `None` — per il banner in testa al
+        #    drawer. Sta nel DETTAGLIO e non nella Storia (2026-09-27): da
+        #    quando la Storia e' la lista a catalogo `vendite.giornale`, la sua
+        #    pagina e' ordinata dal preset o dall'operatore, e il banner che
+        #    prendeva «il primo ERROR della pagina» avrebbe taciuto appena
+        #    l'errore fosse scivolato fuori. ⛔ Non e' una capability (non dice
+        #    cosa si PUO' fare, dice com'e' il documento): per questo non sta
+        #    sotto `capabilities` (api.md §Capability) ma accanto agli altri
+        #    satelliti, dopo il cancello della testata.
+        "errore_vivo": repository.get_giornale_errore_vivo(
+            entity_type="FATTURA", entity_id=fattura_id,
+        ),
         "contatori": {
             "note": PartitionedNoteService(repo=NOTE_REPO_FATTURA).count_per_target(
                 target_id=fattura_id,
@@ -1939,6 +1952,56 @@ def get_fattura_dettaglio(
 _FN_FONDI_DA_DECIDERE = "vendite.vendite_service.fn_fondi_fattura_da_decidere"
 
 
+# Scopo: i controlli COMUNI ai tre lettori del giornale — paginazione e
+#        ordinamento — prima di toccare il database.
+# ⭐ ESTRATTO il 2026-09-27 (regola del 2): da quel giorno i tre lettori sono la
+#    STESSA lista a catalogo (`vendite.giornale`, brief-db-liste-datatable-
+#    grezze §3.1) con lo stesso contratto `limit`/`offset`/`order_by`/
+#    `order_dir`, e tre copie degli stessi due controlli divergono al primo
+#    ritocco — la Storia di un documento che accetta un ordinamento che il
+#    trasversale rifiuta, sulla stessa colonna della stessa lista.
+# ⛔ Un `order_by` fuori whitelist e' un 400: `_giornale_order_clause`
+#    ripiegherebbe sul default senza dirlo — una lista ordinata diversamente da
+#    come e' stata chiesta non solleva niente.
+def _valida_lettura_giornale(
+    *,
+    limit: int,
+    offset: int,
+    order_by: str | None,
+    order_dir: str | None,
+    function_name: str,
+) -> None:
+    ErrorManager.require(
+        int(limit) > 0 and int(offset) >= 0,
+        code="E_VENDITE_VALIDATION",
+        message="Parametri di paginazione non validi.",
+        detail=f"limit={limit}, offset={offset}",
+        function_name=function_name,
+    )
+    _valida_ordinamento(order_by, order_dir, whitelist=GIORNALE_SORT_COLUMNS, function_name=function_name)
+
+
+# Scopo: l'envelope paginato standard dei tre lettori del giornale, piu' il
+#        conteggio delle segnalazioni RITIRATE che il filtro sta nascondendo.
+# ⚠️ `ritirate_nascoste` e' gia' deciso dal chiamante (zero quando le ritirate
+#    sono incluse: li' non c'e' niente di nascosto da dichiarare). E il totale e'
+#    quello che l'elenco MOSTRA, non quello che esiste: e' su di lui che pagina
+#    il client — mai sotto zero, perche' sul lotto e' una sottrazione e un
+#    `count` negativo romperebbe il paginatore senza nessun errore.
+def _envelope_giornale(
+    righe: list[dict[str, object]],
+    *,
+    total_count: int,
+    limit: int,
+    offset: int,
+    ritirate_nascoste: int,
+) -> dict[str, object]:
+    page = int(offset) // int(limit) + 1
+    envelope = paginated_envelope(righe, max(0, int(total_count)), page, int(limit))
+    envelope["ritirate_count"] = ritirate_nascoste
+    return envelope
+
+
 # Scopo: IL GIORNALE DI UNA FATTURA — «cosa e' successo a questo documento, in
 #        ordine di tempo». Sola lettura, elenco paginato dalla vista cucita
 #        `script.vw_giornale_entita` (Passo A del filone osservabilita').
@@ -1946,6 +2009,11 @@ _FN_FONDI_DA_DECIDERE = "vendite.vendite_service.fn_fondi_fattura_da_decidere"
 # ⭐ PRIMO CONSUMATORE DELLA VISTA, e quindi anche il suo collaudo: fino al
 #    2026-08-24 non l'aveva interrogata nessuno, e il suo perimetro era
 #    verificato dal pgTAP e non dall'uso.
+# ⭐ Dal 2026-09-27 e' la lista a catalogo `vendite.giornale` (la stessa del
+#    trasversale, decisione di Tid) filtrata sulla fattura: contratto di lista
+#    standard (`limit`/`offset`/`order_by`/`order_dir`), ordine di partenza del
+#    preset (`quando desc`). Il banner d'errore del drawer non legge piu' da
+#    qui: ha la sua fonte nel dettaglio (`errore_vivo`).
 #
 # 🔴 IL CANCELLO E' LA TESTATA, e non e' una precauzione ridondante. La vista e'
 #    `security_invoker`, quindi su una fattura fuori scope la RLS la farebbe
@@ -1960,11 +2028,11 @@ _FN_FONDI_DA_DECIDERE = "vendite.vendite_service.fn_fondi_fattura_da_decidere"
 def get_fattura_giornale(
     *,
     fattura_id: int,
-    page: int = 1,
-    page_size: int = 50,
+    limit: int = 25,
+    offset: int = 0,
+    order_by: str | None = None,
+    order_dir: str | None = None,
     includi_ritirate: bool = False,
-    sort_by: str = "gravita",
-    sort_dir: str = "desc",
     auth_user_id: int | None = None,
 ) -> dict[str, object]:
     ErrorManager.require(
@@ -1976,7 +2044,10 @@ def get_fattura_giornale(
         function_name=_FN_FATTURA_GIORNALE,
         log_to_db=True,
     )
-    offset = _validate_pagination(page, page_size, _FN_FATTURA_GIORNALE)
+    _valida_lettura_giornale(
+        limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
+        function_name=_FN_FATTURA_GIORNALE,
+    )
     repository = VenditeRepository()
 
     # 1. IL CANCELLO — vedi sopra. Inesistente e fuori scope danno la stessa
@@ -2003,10 +2074,6 @@ def get_fattura_giornale(
     # ⚠️ `ritirate_count` non e' un accessorio: senza, «nessun evento» e «tre
     #    eventi, tutti superati» si leggono uguali — ed e' proprio il caso in cui
     #    la differenza conta.
-    # ⭐ L'ordinamento di default e' per GRAVITA' (Tid, 2026-08-24): davanti a un
-    #    documento la prima domanda e' «c'e' qualcosa che non va?». La colonna
-    #    non riconosciuta ricade sul default nel repository — un ordinamento
-    #    sbagliato non e' un errore da 400, e' una preferenza che non si applica.
     # ⚠️ Il quarto valore (`info_vive`) qui non si usa: sul documento singolo il
     #    pannello mostra TUTTE le gravita', quindi non c'e' nessuna INFO
     #    nascosta da dichiarare. Il corpo e' condiviso col giornale del lotto,
@@ -2014,32 +2081,30 @@ def get_fattura_giornale(
     righe, vive, ritirate, _info_vive = repository.list_giornale_entita(
         entity_type="FATTURA",
         entity_id=fattura_id,
-        limit=page_size,
+        limit=limit,
         offset=offset,
         escludi_ritirate=not includi_ritirate,
-        sort_by=sort_by,
-        sort_dir=sort_dir,
+        sort_by=order_by,
+        sort_dir=order_dir,
     )
-    total_count = vive + ritirate if includi_ritirate else vive
-    total_pages = (total_count + page_size - 1) // page_size if page_size else 0
-    return {
-        "fattura_id": fattura_id,
-        "count": total_count,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-        # Quante righe il filtro lascia fuori. ⚠️ Zero quando le ritirate sono
-        # incluse: li' non c'e' niente di nascosto da dichiarare.
-        "ritirate_count": 0 if includi_ritirate else ritirate,
-        "results": righe,
-    }
+    envelope = _envelope_giornale(
+        righe,
+        total_count=vive + ritirate if includi_ritirate else vive,
+        limit=limit,
+        offset=offset,
+        ritirate_nascoste=0 if includi_ritirate else ritirate,
+    )
+    envelope["fattura_id"] = fattura_id
+    return envelope
 
 
 _FN_LOTTO_GIORNALE = "vendite.vendite_service.get_lotto_giornale"
 
 
-# Scopo: LA STORIA DI UN LOTTO — il lotto piu' le sue fatture, righe non-INFO.
-#        Secondo (e ultimo) consumatore di `script.vw_giornale_entita`.
+# Scopo: LA STORIA DI UN LOTTO — il lotto piu' le sue fatture, di default senza
+#        le righe INFO. Secondo consumatore di `script.vw_giornale_entita`, e
+#        dal 2026-09-27 la stessa lista a catalogo (`vendite.giornale`) della
+#        Storia della fattura e del trasversale.
 #
 # ⭐ «Che cos'e' un caso» e' una decisione di Tid del 2026-08-24, e non era una
 #    scelta di schermata: un pannello limitato all'entita' LOTTO sarebbe onesto
@@ -2053,16 +2118,18 @@ _FN_LOTTO_GIORNALE = "vendite.vendite_service.get_lotto_giornale"
 #    una timeline che mostra una sequenza mai avvenuta e non sembra rotta.
 #
 # ⚠️ Le INFO si nascondono ma si CONTANO: un elenco filtrato e un elenco completo
-#    si leggono uguali. Stessa regola gia' applicata alle ritirate.
+#    si leggono uguali. Stessa regola gia' applicata alle ritirate. Il filtro
+#    «solo problemi» e' del LOTTO e solo suo: sul documento singolo le righe
+#    sono poche e si mostrano tutte.
 def get_lotto_giornale(
     *,
     lotto_id: int,
-    page: int = 1,
-    page_size: int = 50,
+    limit: int = 25,
+    offset: int = 0,
+    order_by: str | None = None,
+    order_dir: str | None = None,
     includi_info: bool = False,
     includi_ritirate: bool = False,
-    sort_by: str = "gravita",
-    sort_dir: str = "desc",
     auth_user_id: int | None = None,
 ) -> dict[str, object]:
     ErrorManager.require(
@@ -2074,7 +2141,10 @@ def get_lotto_giornale(
         function_name=_FN_LOTTO_GIORNALE,
         log_to_db=True,
     )
-    offset = _validate_pagination(page, page_size, _FN_LOTTO_GIORNALE)
+    _valida_lettura_giornale(
+        limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
+        function_name=_FN_LOTTO_GIORNALE,
+    )
     repository = VenditeRepository()
 
     # 1. IL CANCELLO. ⛔ Non e' ridondante con la RLS: la vista del giornale non
@@ -2097,12 +2167,12 @@ def get_lotto_giornale(
     # 2. Solo ORA il giornale: il lotto e' gia' stato autorizzato.
     righe, vive, ritirate, info_vive = repository.list_giornale_lotto(
         lotto_id=lotto_id,
-        limit=page_size,
+        limit=limit,
         offset=offset,
         escludi_ritirate=not includi_ritirate,
         escludi_info=not includi_info,
-        sort_by=sort_by,
-        sort_dir=sort_dir,
+        sort_by=order_by,
+        sort_dir=order_dir,
     )
 
     # ⚠️ Il totale e' quello che l'elenco MOSTRA, non quello che esiste: e' su
@@ -2112,21 +2182,19 @@ def get_lotto_giornale(
         total_count += ritirate
     if not includi_info:
         total_count -= info_vive
-    total_count = max(0, total_count)
-    total_pages = (total_count + page_size - 1) // page_size if page_size else 0
-    return {
-        "lotto_id": lotto_id,
-        "count": total_count,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-        "ritirate_count": 0 if includi_ritirate else ritirate,
-        # ⭐ Quante righe di routine il filtro tiene fuori. Senza, «un lotto con
-        #    tre problemi» e «un lotto con tre problemi e 173 passi andati bene»
-        #    si leggono identici.
-        "info_count": 0 if includi_info else info_vive,
-        "results": righe,
-    }
+    envelope = _envelope_giornale(
+        righe,
+        total_count=total_count,
+        limit=limit,
+        offset=offset,
+        ritirate_nascoste=0 if includi_ritirate else ritirate,
+    )
+    envelope["lotto_id"] = lotto_id
+    # ⭐ Quante righe di routine il filtro tiene fuori. Senza, «un lotto con
+    #    tre problemi» e «un lotto con tre problemi e 173 passi andati bene»
+    #    si leggono identici.
+    envelope["info_count"] = 0 if includi_info else info_vive
+    return envelope
 
 
 _FN_GIORNALE = "vendite.vendite_service.get_giornale_trasversale"
@@ -2183,17 +2251,10 @@ def get_giornale_trasversale(
             context={"field": "registro"},
             function_name=_FN_GIORNALE,
         )
-    ErrorManager.require(
-        int(limit) > 0 and int(offset) >= 0,
-        code="E_VENDITE_VALIDATION",
-        message="Parametri di paginazione non validi.",
-        detail=f"limit={limit}, offset={offset}",
+    _valida_lettura_giornale(
+        limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
         function_name=_FN_GIORNALE,
     )
-    # ⛔ Un `order_by` fuori whitelist e' un 400: `_giornale_order_clause`
-    #    ripiegherebbe sull'ordine per GRAVITA' senza dirlo — una lista
-    #    ordinata diversamente da come e' stata chiesta non solleva niente.
-    _valida_ordinamento(order_by, order_dir, whitelist=GIORNALE_SORT_COLUMNS, function_name=_FN_GIORNALE)
     righe, vive, ritirate, _info_vive = repository.list_giornale_trasversale(
         gravita=gravita_richiesta,
         registri=registri_richiesti,
@@ -2204,20 +2265,21 @@ def get_giornale_trasversale(
         solo_vive=solo_vive,
         limit=limit,
         offset=offset,
-        # ⭐ Il default e' il TEMPO, dal piu' recente (non la gravita' come sulla
-        #    Storia di un'entita'): qui la gravita' e' gia' un FILTRO, e la
-        #    domanda che resta e' «cosa e' successo per ultimo».
-        sort_by=order_by or "quando",
-        sort_dir=order_dir or "desc",
+        # ⭐ Il default (assente = `None`) lo decide il repository: il TEMPO,
+        #    dal piu' recente (`GIORNALE_ORDINE_DEFAULT`), come le due Storie.
+        sort_by=order_by,
+        sort_dir=order_dir,
     )
     # ⚠️ Il totale e' quello che l'elenco MOSTRA: le vive, piu' le ritirate se
     #    le si e' chieste. `info_vive` qui non entra: le INFO non sono mai
     #    nascoste da un filtro implicito (o si chiedono con `gravita`, o no).
-    total_count = vive + (0 if solo_vive else ritirate)
-    page = int(offset) // int(limit) + 1
-    envelope = paginated_envelope(righe, total_count, page, int(limit))
-    envelope["ritirate_count"] = ritirate if solo_vive else 0
-    return envelope
+    return _envelope_giornale(
+        righe,
+        total_count=vive + (0 if solo_vive else ritirate),
+        limit=limit,
+        offset=offset,
+        ritirate_nascoste=ritirate if solo_vive else 0,
+    )
 
 
 # Scopo: Restituisce l'elenco paginato dei fondi fattura «da decidere»

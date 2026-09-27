@@ -43,8 +43,20 @@
 //     searchTableOptions: { defaultSortField: 'codice' },
 //     onNew: () => apriDrawer(null),
 //   })
+//
+// Uso col PADRE COMPOSTO (documento + emittente; lo store dichiara
+// `parentField: 'praticaId'` ed `emittenteParam: 'emittente_fiscale_id'`):
+//   useDrawerTabLista(store, {
+//     parentId: {
+//       praticaId: () => props.praticaId,
+//       emittenteId: () => props.emittenteFiscaleId,
+//     },
+//   })
+//   ⛔ Finche' una parte manca la lista NON legge e lo store e' in
+//      `attesaPadre` (`DrawerTabLista` la rende come caricamento). Il perche'
+//      della semantica sta su `useListaStoreCore`.
 
-import { watch } from 'vue'
+import { isRef, watch } from 'vue'
 import { useListaConfigurabilePage } from './useListaConfigurabilePage'
 
 export function useDrawerTabLista(
@@ -52,6 +64,12 @@ export function useDrawerTabLista(
   {
     // Getter del padre: una funzione, non un valore. Il BB ci mette sopra un
     // `watch`, e un numero letto una volta al setup non cambierebbe mai.
+    // ⭐ PADRE COMPOSTO (2026-09-27): un OGGETTO di getter, uno per parte, col
+    //    nome della proprieta' dello store come chiave —
+    //    `{ praticaId: () => props.praticaId, emittenteId: () => props.emittenteFiscaleId }`
+    //    o `{ soggettoId: …, titoloId: … }`. Dove va ogni parte (path o query)
+    //    lo sa lo store (`useListaStoreCore`, `parentField`/`emittenteParam`),
+    //    non questo BB. Con l'oggetto `parentField` non serve.
     parentId,
     // Nome della proprieta' dello store che porta l'id del padre
     // (`emittenteId`, `articoloId`, ...). ⚠️ E' una proprieta' dello store,
@@ -79,29 +97,77 @@ export function useDrawerTabLista(
   //    l'operatore crede di aver riallineato tutto.
   function reloadAll() {
     lista.reload()
-    if (typeof fetchExtra === 'function') fetchExtra()
+    if (typeof fetchExtra === 'function') Promise.resolve(fetchExtra()).catch(() => {})
   }
 
+  // Le parti del padre come `[nome, getter]`: una sola per la forma semplice
+  // (`parentId` + `parentField`), una per chiave per il padre composto.
+  const parti = partiDelPadre(parentId, parentField)
+  // ⛔ Una chiave del padre che lo store non ha (`emittenteID`, `documentoId`
+  //    su uno store che dichiara `entitaId`) aggiungerebbe una proprieta' nuova
+  //    in silenzio: lo store non sarebbe mai completo, e la lista resterebbe
+  //    in caricamento per sempre. Si fa rumore in DEV, come `useSearchTable`.
+  if (import.meta.env.DEV) {
+    for (const [nome] of parti) {
+      if (nome && !(nome in store)) {
+        console.warn(
+          `[useDrawerTabLista] lo store "${store.$id}" non ha la parte del padre "${nome}": ` +
+          'la lista non leggera\' mai. Controlla le chiavi di `parentId` / `parentField`.',
+        )
+      }
+    }
+  }
+
+  // Scopo: NUOVO PADRE = SI RIPARTE DA CAPO, e in un punto solo: righe
+  //        svuotate (invalidando la fetch in volo), filtri, ricerca — nello
+  //        store E nella casella — e ordinamento di partenza (`store.reset()`),
+  //        poi le parti note scritte nello store.
+  // ⛔ Una regola sola per i due rami (padre a meta', padre completo): fino al
+  //    2026-09-27 il ramo a meta' azzerava tutto e quello completo solo pagina
+  //    e ricerca, quindi l'esito dipendeva da QUANDO arrivava l'emittente — e
+  //    le righe del padre precedente restavano a video fino alla risposta, con
+  //    i comandi di riga che puntavano al padre nuovo.
+  // ⚠️ Resta il passo della pagina (`limit`): e' allineato alla
+  //    `pagina_dimensione` della lista una volta sola (`onConfigLoaded`), e
+  //    `reset()` lo riporterebbe al default dello store.
+  function ripartiDaCapo(valori) {
+    const limit = store.filters?.limit
+    store.reset()
+    if (limit != null) store.filters.limit = limit
+    lista.searchText.value = ''
+    parti.forEach(([nome], i) => { if (nome && valori[i]) store[nome] = valori[i] })
+  }
+
+  // ⭐ WATCH MULTI-SORGENTE: Vue confronta OGNI parte per valore, e la
+  //    callback parte solo quando una cambia davvero. E' cio' che permette un
+  //    padre composto senza chiave-stringa: un getter che restituisse un
+  //    oggetto `{a, b}` avrebbe identita' nuova a ogni rilettura, e la fetch
+  //    ripartirebbe a ogni ridisegno senza che niente lo segnali.
   watch(
-    () => (typeof parentId === 'function' ? parentId() : parentId?.value ?? parentId),
-    (id) => {
-      if (!id) {
+    parti.map(([, leggi]) => leggi),
+    (valori) => {
+      const presenti = valori.filter(Boolean).length
+      if (presenti === 0) {
         store.reset()
         return
       }
-      if (parentField) store[parentField] = id
-      // I tre azzeramenti, e sono tre perche' la ricerca vive in due posti:
-      // nello store (quello che parte al backend) e nel campo di testo del
-      // caller. Azzerarne uno solo lascia la casella piena sopra risultati
-      // non filtrati, o viceversa.
-      store.filters.offset = 0
-      store.filters.search = ''
-      lista.searchText.value = ''
+      ripartiDaCapo(valori)
+      // ⛔ PADRE A META' = NIENTE LETTURA. Tipicamente il documento e' aperto e
+      //    il suo emittente arriva col dettaglio, un attimo dopo. Le parti note
+      //    sono scritte: e' cosi' che lo store sa di essere IN ATTESA
+      //    (`attesaPadre`) e lo dice, invece di mostrare una lista vuota che
+      //    sembra una risposta. La lettura la fa l'arrivo dell'ultima parte,
+      //    da questo stesso watch.
+      if (presenti < valori.length) return
       // Parallelo: la lista e l'extra non dipendono l'una dall'altra.
+      // ⚠️ Il rifiuto dell'extra si assorbe qui: `fetchList` non rifiuta mai
+      //    (l'errore diventa `erroreCaricamento`), e un extra che rifiuta in
+      //    un `Promise.all` senza `catch` sarebbe una unhandled rejection. A
+      //    dire l'errore e' l'extra stesso (toast o stato suo).
       const attese = [store.fetchList()]
       if (typeof fetchExtra === 'function') {
         const p = fetchExtra()
-        if (p) attese.push(p)
+        if (p) attese.push(Promise.resolve(p).catch(() => {}))
       }
       Promise.all(attese)
     },
@@ -109,4 +175,22 @@ export function useDrawerTabLista(
   )
 
   return { ...lista, reloadAll }
+}
+
+// Scopo: normalizza il padre in `[[nome, getter], …]`.
+//   - oggetto semplice (non ref, non funzione) → padre composto, una parte per
+//     chiave;
+//   - funzione / ref / valore → una parte sola, col nome `parentField` (che
+//     puo' mancare: allora non si scrive niente nello store, si legge e basta).
+function partiDelPadre(parentId, parentField) {
+  if (parentId && typeof parentId === 'object' && !isRef(parentId)) {
+    return Object.entries(parentId).map(([nome, g]) => [nome, comeGetter(g)])
+  }
+  return [[parentField ?? null, comeGetter(parentId)]]
+}
+
+function comeGetter(sorgente) {
+  if (typeof sorgente === 'function') return sorgente
+  if (isRef(sorgente)) return () => sorgente.value
+  return () => sorgente
 }

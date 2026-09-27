@@ -27,7 +27,7 @@ from django.db import IntegrityError
 class TestToponomasticaRepository(TestCase):
     """Test IndirizziRepository — metodi toponomastica."""
 
-    @patch("apps.anagrafiche.db.geo_repository.connection")
+    @patch("apps.core.db._helpers.connection")
     def test_list_toponomastica(self, mock_conn):
         """Lista toponomastica con risultati e paginazione."""
         cols = ["id", "descrizione", "attivo", "total_count"]
@@ -53,7 +53,7 @@ class TestToponomasticaRepository(TestCase):
         self.assertEqual(total, 3)
         self.assertEqual(results[0]["descrizione"], "Via")
 
-    @patch("apps.anagrafiche.db.geo_repository.connection")
+    @patch("apps.core.db._helpers.connection")
     def test_list_toponomastica_empty(self, mock_conn):
         """Lista vuota."""
         mock_cursor = MagicMock()

@@ -71,6 +71,9 @@ def _riga(override: dict[int, object] | None = None):
         #    i tre conteggi non si vedrebbe con valori uguali.
         4,                              # 25 n_presi_in_carico
         3,                              # 26 n_esiti_completati
+        # ⚠️ Diverso da `emittente_soggetto_ruolo_id` (72): sono due id del
+        #    progetto che NON coincidono, e uno scambio si deve vedere.
+        9,                              # 27 emittente_fiscale_id
     ]
     for i, v in (override or {}).items():
         riga[i] = v
@@ -108,6 +111,8 @@ class MapLottoRowTests(SimpleTestCase):
         # I due conteggi degli esiti (2026-09-12): presi in carico e completati.
         self.assertEqual(r["n_presi_in_carico"], 4)
         self.assertEqual(r["n_esiti_completati"], 3)
+        # La PK dell'emittente (2026-09-27), accanto al soggetto-ruolo.
+        self.assertEqual(r["emittente_fiscale_id"], 9)
 
     # 1. ⛔ IL DIFETTO STORICO, scritto in negativo: `riaperto` deve dipendere
     #    SOLO dalla sua colonna. Le due righe qui sotto sono i due casi veri

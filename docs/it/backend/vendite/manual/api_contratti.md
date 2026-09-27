@@ -729,7 +729,7 @@ attiva) via helper condiviso
 
 | Metodo | Path | Effetto |
 | --- | --- | --- |
-| `GET` | `/api/v1/vendite/contratti/<id>/documenti/` | Lista documenti generati dal contratto (paginata, scope emittente) |
+| `GET` | `/api/v1/vendite/contratti/<id>/documenti/` | Lista documenti generati dal contratto (paginata, scope emittente) — contratto di lista in [api_documenti_per_sorgente](../../documenti/manual/api_documenti_per_sorgente.md) §3.4 |
 | `POST` | `/api/v1/vendite/contratti/<id>/documenti/anteprima/` | Render PDF temporaneo, non persistito |
 | `POST` | `/api/v1/vendite/contratti/<id>/documenti/genera/` | Persiste PDF + record DB + evento `GENERATO` (per contratti già ATTIVI: ristampe successive all'attivazione) |
 | `GET` | `/api/v1/vendite/contratti/<id>/documenti/<documento_id>/file/` | Download PDF principale + evento `SCARICATO` |

@@ -34,7 +34,15 @@ export function useSearchTable(store, options = {}) {
     debounceMs = SEARCH_DEBOUNCE_MS,
     extraFilters = null, // funzione che ritorna filtri aggiuntivi da applicare
     defaultSortField = null, // campo sort iniziale (es. 'descrizione')
-    defaultSortOrder = 'asc' // direzione sort iniziale
+    defaultSortOrder = 'asc', // direzione sort iniziale
+    // ⭐ Lista INCORPORATA (pannello della home, sezione di una pagina che
+    //    non e' la lista): non e' la lista di rotta, quindi non segue la
+    //    ricerca universale (`?search=`, `ctx.searchTerm`) e non intercetta
+    //    F5. Senza, un pannello sotto KeepAlive si trova la casella riempita
+    //    dall'ultima ricerca fatta altrove, e ogni F5 in qualunque pagina lo
+    //    ricarica (il listener si toglie solo allo smontaggio, che sotto
+    //    KeepAlive non arriva).
+    incorporata = false,
   } = options
 
   const route = useRoute()
@@ -68,13 +76,13 @@ export function useSearchTable(store, options = {}) {
   }
 
   // Risolve termine ricerca iniziale: route query > context > vuoto
-  const resolvedSearch = route.query.search || ctx.searchTerm || ''
+  const resolvedSearch = incorporata ? '' : (route.query.search || ctx.searchTerm || '')
   const searchText = ref(resolvedSearch)
   // Ultimo `?search` di deep-link gia' consumato: serve a onActivated per
   // ri-applicare SOLO un deep-link NUOVO, non a re-imporre quello vecchio a
   // ogni riattivazione (altrimenti svuotare/modificare la ricerca in pagina
   // verrebbe annullato al rientro nel tab, finche' l'URL conserva ?search).
-  let lastConsumedSearch = route.query.search || null
+  let lastConsumedSearch = incorporata ? null : (route.query.search || null)
   if (resolvedSearch) {
     store.filters.search = resolvedSearch
     clearDateDefaultsForExternalSearch()
@@ -85,6 +93,7 @@ export function useSearchTable(store, options = {}) {
   // Watch reattivo su ctx.searchTerm — gestisce nuove ricerche da SearchDrawer
   // e navigazione tra pagine con contesto attivo. Aggiorna immediatamente (no debounce).
   watch(() => ctx.searchTerm, (newTerm) => {
+    if (incorporata) return
     const term = newTerm || ''
     if (term !== searchText.value) {
       clearTimeout(searchTimeout)
@@ -153,7 +162,7 @@ export function useSearchTable(store, options = {}) {
   applyResponsiveDefaultRows()
 
   onMounted(() => {
-    window.addEventListener('keydown', onKeydown)
+    if (!incorporata) window.addEventListener('keydown', onKeydown)
     compactRowsQuery?.addEventListener('change', onRowsMediaChange)
   })
 
@@ -193,7 +202,7 @@ export function useSearchTable(store, options = {}) {
     )
   }
   onActivated(() => {
-    const qs = route.query.search
+    const qs = incorporata ? null : route.query.search
     // Applica solo un deep-link NUOVO (query cambiata da quando l'abbiamo
     // consumata l'ultima volta), non a ogni riattivazione: preserva le
     // modifiche/lo svuotamento fatti dall'utente sulla ricerca in pagina.

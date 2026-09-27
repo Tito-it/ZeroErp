@@ -41,7 +41,46 @@
 //    che il BB non sapeva ancora esprimere — e che ora sono tre opzioni:
 //    `ricercaCorta`, `orderDirDefault`, `paramNames`. Nessuna e' un'invenzione:
 //    ognuna e' una divergenza che esisteva gia' in almeno due copie.
-import { ref } from 'vue'
+//
+// ⭐ IL PADRE COMPOSTO (2026-09-27, regola del 2, ok Tid). Il padre di una lista
+//    non e' sempre UN id. Puo' essere piu' id nel PATH (i titoli IVA:
+//    `/soggetti/{s}/titoli-iva/{t}/…` → `parentField: ['soggettoId',
+//    'titoloId']`), e puo' portare con se' l'EMITTENTE del documento — quando
+//    la lista a catalogo e' `perimetro_emittente = t` e `multi_emittente = f`,
+//    e il backend dichiara `lista_emittente_param` (`emittente_fiscale_id`, o
+//    `emittente_soggetto_ruolo_id` per il giornale) → `emittenteParam`.
+//    ⛔ Nello stesso giro di lavoro questa forma era nata SEI volte in DUE modi
+//    diversi: una chiave-stringa `id|emittente` con la sua `sciogli` (quattro
+//    store: titoli IVA, flussi della pratica, revisioni, Storia di fattura e
+//    lotto) e un `ref` dell'emittente letto dalla `fetchPage` (documenti
+//    generati, versioni di un template). E le due copie avevano gia'
+//    semantiche OPPOSTE: la chiave non leggeva finche' mancava l'emittente, il
+//    `ref` leggeva lo stesso e partiva senza. Ora e' una forma sola, qui.
+// ⛔ LA SEMANTICA E' UNA: SENZA TUTTE LE PARTI DEL PADRE, LA LISTA NON LEGGE.
+//    Deciso sul modello, non sui casi: l'emittente di un documento e' NOT NULL
+//    — un documento ce l'ha sempre — quindi un emittente assente vuol dire
+//    solo «il dettaglio non e' ancora arrivato». Partire senza sarebbe una
+//    richiesta che il cancello di perimetro rifiuta (422) a chi vede piu'
+//    emittenti; e per l'operatore mono-emittente, che il 422 non lo vedrebbe,
+//    sarebbe comunque una lettura fatta PRIMA di sapere di quale documento —
+//    niente da guadagnare aspettando il dettaglio che arriva un attimo dopo.
+// ⚠️ E L'ATTESA NON E' MUTA: `attesaPadre` e' vero quando una parte c'e' e
+//    un'altra manca (documento aperto, emittente non ancora qui), e
+//    `DrawerTabLista` la rende come caricamento. Senza, la lista in attesa
+//    mostrerebbe la frase del vuoto — «nessuna revisione» — cioe'
+//    un'affermazione su righe che nessuno ha letto: la stessa confusione fra
+//    «vuota» e «non letta» che `erroreCaricamento` risolve per il fallimento.
+//    E se l'attesa non finisce (un chiamante che l'emittente non lo passa) si
+//    vede: la lista resta in caricamento, non dice il falso.
+// ⭐ PARTI SEPARATE, NON UNA CHIAVE-STRINGA. Il `watch` di `useDrawerTabLista`
+//    e' multi-sorgente — confronta ogni parte per valore, e un primitivo
+//    cambia solo quando cambia davvero — quindi la ragione della chiave (un
+//    oggetto nuovo a ogni lettura rifarebbe la fetch a ogni render) si
+//    scioglie senza separatori da comporre e sciogliere in due sedi.
+// ⚠️ L'emittente NON e' un filtro: non sta in `filterDefaults` (dove «Pulisci
+//    filtri» lo toglierebbe e il segno dei filtri lo conterebbe) e non sta in
+//    `paramsFiltro`. E' contesto come il padre: si scrive, non si filtra.
+import { computed, ref } from 'vue'
 import { useContrattoFiltriLista } from './useContrattoFiltriLista'
 import { clonaFiltri } from '../utils/clonaFiltri'
 import { useListaEmptyStateFetch } from './useListaEmptyStateFetch'
@@ -50,10 +89,19 @@ import { paramsOrdinamento, paramsRicerca } from '../utils/listParams'
 
 // Params:
 //   - fetchPage: (params) => Promise<response axios>. Con `parentField`, la
-//       firma diventa (parentId, params) — e' l'endpoint annidato.
+//       firma diventa (parentId, params) — e' l'endpoint annidato; con piu'
+//       parti, (parte1, parte2, …, params), nell'ordine di `parentField`.
 //   - parentField: nome della proprieta' che porta l'id del PADRE (`soggettoId`,
-//       `fatturaId`). ⚠️ E' contesto, non un filtro: al cambio padre i filtri si
-//       azzerano, questa si riscrive.
+//       `fatturaId`), o un ARRAY di nomi quando il path ne ha piu' d'uno
+//       (`['soggettoId', 'titoloId']`). ⚠️ E' contesto, non un filtro: al
+//       cambio padre i filtri si azzerano, questa si riscrive.
+//   - emittenteParam: il nome del parametro di QUERY con cui l'endpoint riceve
+//       l'emittente del documento (`lista_emittente_param` della view:
+//       `'emittente_fiscale_id'`, `'emittente_soggetto_ruolo_id'`). Lo store
+//       espone allora `emittenteId`, una parte del padre come le altre: senza
+//       non si legge. ⚠️ Il nome resta `emittenteId` qualunque sia il
+//       parametro: che sia la PK o il soggetto-ruolo lo dice `emittenteParam`
+//       (`feedback_emittente_pk_vs_soggetto_ruolo`), non il nome della ref.
 //   - filterDefaults: filtri di dominio con il loro default (no
 //       search/limit/offset/order_*, che ci sono sempre).
 //   - gateKeys: sottoinsieme di filterDefaults che conta come «ricerca attiva»
@@ -104,6 +152,7 @@ import { paramsOrdinamento, paramsRicerca } from '../utils/listParams'
 export function useListaStoreCore({
   fetchPage,
   parentField = null,
+  emittenteParam = null,
   filterDefaults = {},
   // ⭐ I VALORI CHE NON RESTRINGONO, quando non sono `null` (2026-09-23).
   //    Il segno dei filtri attivi conta un filtro se ha un valore; per quasi
@@ -124,8 +173,35 @@ export function useListaStoreCore({
   limit = PAGINATION.DEFAULT_ROWS,
   onPayload = null,
 } = {}) {
-  // L'id del padre, quando la lista ne ha uno. `null` = nessun padre scelto.
-  const parentId = ref(null)
+  // Le parti del padre nel PATH, una ref per nome. `null` = non ancora scelta.
+  const nomiPath = parentField == null ? [] : [].concat(parentField)
+  const partiPath = nomiPath.map(() => ref(null))
+  // L'emittente del documento, quando l'endpoint lo riceve in query.
+  const emittenteId = ref(null)
+  // Tutte le parti che la lettura aspetta: il path e, se c'e', l'emittente.
+  const parti = emittenteParam ? [...partiPath, emittenteId] : partiPath
+  // ⚠️ «Vuoto» e' il falsy, come e' sempre stato per il padre singolo: un id
+  //    non vale mai 0, e `''` arriva da una prop non ancora popolata.
+  const padreCompleto = () => parti.every((p) => !!p.value)
+  // Il padre e' a meta': qualcosa c'e', qualcosa manca — la lista ASPETTA
+  // (vedi la testata). Con tutto vuoto non aspetta niente: non c'e' un padre.
+  // ⚠️ A dire «qualcosa e' aperto» e' il PATH, non l'emittente: un drawer
+  //    chiuso passa il documento `null` mentre il dettaglio precedente porta
+  //    ancora il suo emittente, e quella non e' un'attesa — e' nessun padre.
+  const partiGuida = partiPath.length ? partiPath : parti
+  const attesaPadre = computed(
+    () => partiGuida.some((p) => !!p.value) && !padreCompleto(),
+  )
+
+  // Scopo: i parametri di query che portano l'emittente — `{}` se la lista non
+  //        ne ha uno. Esposta perche' lo stesso cancello vale per OGNI metodo
+  //        della view (anche la creazione, `templateVersioni.create`): una
+  //        seconda sede del nome del parametro divergerebbe da questa.
+  function paramsEmittente() {
+    return emittenteParam && emittenteId.value
+      ? { [emittenteParam]: emittenteId.value }
+      : {}
+  }
 
   // ⛔ IL TERZO CASO. Una lista vuota e una lista NON LETTA si assomigliano —
   //    `items` e' `[]` in entrambi i casi, e `hasSearched` resta falso — ma
@@ -230,14 +306,19 @@ export function useListaStoreCore({
     // ⚠️ La paginazione e' l'UNICA cosa che la lista aggiunge ai filtri:
     //    l'export non la manda, il suo limite lo impone il backend.
     buildParams: (f) => ({ ...paramsFiltro(f), limit: f.limit, offset: f.offset }),
-    fetchPage: (params) => (
-      parentField ? fetchPage(parentId.value, params) : fetchPage(params)
+    // Le parti del path in testa, nell'ordine di `parentField`; l'emittente in
+    // query accanto ai parametri della lista.
+    fetchPage: (params) => fetchPage(
+      ...partiPath.map((p) => p.value),
+      { ...params, ...paramsEmittente() },
     ),
     onPayload,
   })
 
   // ⛔ Senza padre non si chiama: l'id sta nel PATH dell'endpoint, e una fetch
-  //    con `undefined` non tornerebbe una lista vuota — tornerebbe 404.
+  //    con `undefined` non tornerebbe una lista vuota — tornerebbe 404. E senza
+  //    emittente, quando l'endpoint lo chiede, nemmeno: e' la semantica unica
+  //    del padre composto (vedi la testata), non un caso a parte.
   // ⚠️ L'esito di `fetchListBase` e' `false` anche quando la risposta viene
   //    SCARTATA perche' stantia, e li' NON c'e' nessun errore da dichiarare:
   //    una fetch piu' recente e' in volo e sara' lei a scrivere lo stato. Per
@@ -248,7 +329,7 @@ export function useListaStoreCore({
   //    (`useDrawerTabLista`), cioe' una unhandled rejection che non dice a
   //    nessuno niente in piu' di quello che l'avviso dice gia'.
   async function fetchList(opzioni) {
-    if (parentField && !parentId.value) return false
+    if (!padreCompleto()) return false
     try {
       const esito = await fetchListBase(opzioni)
       erroreCaricamento.value = false
@@ -268,7 +349,7 @@ export function useListaStoreCore({
   //    padre, mostrando righe filtrate come se fossero tutte.
   function reset() {
     svuota()
-    parentId.value = null
+    for (const p of parti) p.value = null
     erroreCaricamento.value = false
     filters.value = filtriDiPartenza()
   }
@@ -283,13 +364,19 @@ export function useListaStoreCore({
     erroreCaricamento,
     fetchList, svuota, reset,
     paramsFiltro,
+    // Il padre composto: la lista aspetta una parte che manca? E l'emittente
+    // in query, per i verbi della stessa view che non sono la lista.
+    attesaPadre, paramsEmittente,
     // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
     // nascita, e come si riportano li'.
     chiaviFiltro, filtriDefault, filtriNeutri, azzeraFiltri,
   }
   // ⭐ Il padre si espone COL SUO NOME (`soggettoId`, `fatturaId`), non come
   //    `parentId`: e' il nome che il caller scrive in `parentField` di
-  //    `useDrawerTabLista`, ed e' quello che si legge nei componenti.
-  if (parentField) esposto[parentField] = parentId
+  //    `useDrawerTabLista` (o come chiave del suo padre composto), ed e'
+  //    quello che si legge nei componenti. Ogni parte del path col suo nome;
+  //    l'emittente come `emittenteId`.
+  nomiPath.forEach((nome, i) => { esposto[nome] = partiPath[i] })
+  if (emittenteParam) esposto.emittenteId = emittenteId
   return esposto
 }

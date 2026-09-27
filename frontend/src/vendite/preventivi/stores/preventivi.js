@@ -11,7 +11,7 @@ import { defaultFiltroDataDaString } from '../../../core/utils/date'
 import { defineStore } from 'pinia'
 import {
   listPreventivi, getPreventivo, createPreventivo, updatePreventivo, deletePreventivo,
-  cambiaStatoPreventivo, emettiPreventivo, creaRevisione, listRevisioni,
+  cambiaStatoPreventivo, emettiPreventivo, creaRevisione,
   listRighe, createRiga, updateRiga, deleteRiga, getRiepilogoIva,
   pushCommessa, getSmistamento, generaPratica, generaOrdineFromPreventivo,
 } from '../api/preventiviApi'
@@ -123,13 +123,6 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     return res.data.data
   }
 
-  // Scopo: Lista catena revisioni del preventivo (stesso `numero`, ordinate
-  // per `rev` ASC). Mirror del pattern offerte.
-  async function loadRevisioni(id) {
-    const res = await listRevisioni(id)
-    return res.data?.data ?? []
-  }
-
   // --- Righe ---
 
   // Scopo: Carica righe del preventivo.
@@ -212,7 +205,7 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     // `erroreCaricamento` li leggono i BB di pagina con un guard `in store`).
     ...lista,
     fetchDetail, create, update, elimina,
-    cambiaStato, emetti, nuovaRevisione, loadRevisioni,
+    cambiaStato, emetti, nuovaRevisione,
     loadRighe, addRiga, aggiornaRiga, eliminaRiga, loadRiepilogoIva,
     inviaACommessa, generaOrdine, loadSmistamento,
     creaPratica,

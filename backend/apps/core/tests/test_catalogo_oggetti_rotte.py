@@ -61,6 +61,12 @@ _PERIMETRI: tuple[Perimetro, ...] = (
         r"^api/v1/vendite/lotti/<int:lotto_id>/fatture/",
     )),
     Perimetro(("vendite", "preventivo"), (r"^api/v1/vendite/preventivi/",)),
+    # ⭐ Caso B (2026-09-27, Tid «correggi»): l'offerta non e' ancora a catalogo
+    #    (richiesta al DB, brief catalogo-oggetti §3.1), ma il FE la chiede gia'
+    #    (`READONLY_MODELS`). Il BE la chiede su TUTTE le sue rotte da subito:
+    #    senza override vale l'area, come prima, e il giorno in cui entra a
+    #    catalogo l'API e i pulsanti dicono la stessa cosa (il «terzo caso»).
+    Perimetro(("vendite", "offerta_commerciale"), (r"^api/v1/vendite/offerte/",)),
     Perimetro(("vendite", "listino"), (
         r"^api/v1/vendite/listini/",
         # D-6: un lookup della stessa area chiede l'oggetto che legge.

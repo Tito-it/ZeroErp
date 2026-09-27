@@ -46,6 +46,7 @@ service `get_fattura_dettaglio` (`apps.vendite.services.vendite_service`).
       "tipo_doc_fiscale_codice": "FATTURA", "tipo_doc_fiscale_descrizione": "Fattura",
       "stato_codice_interno": "DEFINITIVA", "stato_descrizione": "Definitiva",
       "emittente_denominazione": "…", "emittente_piva": "…", "emittente_sede": "…",
+      "emittente_fiscale_pk": 3,
       "ragione_sociale_completa": "Rossi Mario SRL",
       "id_fiscale_univoco_cf_piva": "…", "cliente_indirizzo": "…", "ba_codice": "BA-000123",
       "utility_codice": "GAS", "pagamento_modalita_codice": "BON",
@@ -72,6 +73,7 @@ service `get_fattura_dettaglio` (`apps.vendite.services.vendite_service`).
     "scadenze": [
       { "numero_rata": 1, "data_scadenza": "2026-08-31", "importo": "1220.00" }
     ],
+    "errore_vivo": null,
     "contatori": { "note": 3 }
   },
   "meta": { "request_id": "…" }
@@ -164,6 +166,29 @@ Nessuna modifica applicativa è stata necessaria: il percorso operatore legge gl
   riceve il codice errore come secondo argomento del trigger: stesso rifiuto,
   stesso messaggio, stesso bypass.
 
+### `errore_vivo` — il banner d'errore, con una fonte sua *(dal 2026-09-27)*
+
+La riga ERROR **più recente e non ritirata** del giornale del documento (la
+stessa forma di una riga della Storia: `cosa`, `etichetta_key`, `quando`, …), o
+`null`. Alimenta il banner in testa al `FatturaDrawer`: chi apre una fattura in
+errore la apre per quello.
+
+⭐ **Perché sta qui e non nella Storia.** Fino al 2026-09-27 il banner prendeva
+«il primo ERROR della pagina della Storia», che era ordinata per gravità. Da
+quel giorno la Storia è la lista a catalogo `vendite.giornale`, ordinata dal
+preset (`quando desc`) o dall'operatore: il banner avrebbe taciuto appena
+l'errore fosse scivolato fuori dalla pagina — un documento in errore che a
+video sembra sano, senza nessun errore.
+
+- Lettore: `VenditeRepository.get_giornale_errore_vivo` — lo **stesso corpo**
+  `_list_giornale` della Storia (una pagina da una riga, `gravita = 'ERROR'`
+  esatto, ritirate escluse), quindi stessa decodifica e stessa regola sulle
+  ritirate. ⚠️ La gravità `NULL` resta fuori: è il segnale di un vincolo
+  allargato, non un errore del documento.
+- ⛔ **Non è una capability** (non dice cosa si può *fare*, dice com'è il
+  documento): per questo non sta sotto `capabilities` ma accanto agli altri
+  satelliti, **dopo** il cancello della testata — la vista è `security_invoker`.
+
 ### `contatori` — i badge senza un secondo round-trip
 
 `contatori` alimenta i badge della barra azioni del drawer. Oggi una sola voce,
@@ -248,6 +273,12 @@ Due punti di merito:
 > **nessun fallback** per decisione (piano BE/FE §9 — dati di test, si
 > rigenerano). ⚠️ `billing_account_id`/`ba_codice` nello snapshot cliente sono
 > il BA **padre** (D-P), non il conto del consumatore nelle gerarchie.
+>
+> ⭐ Eccezione voluta (2026-09-27): `emittente_fiscale_pk` è la PK
+> dell'emittente **viva**, dalla colonna `emittente_soggetto_ruolo_id` (NOT
+> NULL) via `emittenti_fiscali`, non dallo snapshot: serve al cancello di
+> perimetro delle liste del drawer (i documenti generati), e in bozza lo
+> snapshot può mancare. `emittente_fiscale_id` resta quello dello snapshot.
 
 ---
 

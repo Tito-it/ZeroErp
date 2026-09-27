@@ -2,24 +2,35 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Doc: JavaScript
-// Scopo: Store Pinia per il ciclo vita versioni di un singolo template
-//        documentale (Tranche L). 5 azioni POST/PATCH/DELETE/clona/
-//        pubblica + `fetchList` / `fetchDetail`. Differente dal CRUD
-//        admin standard perche':
-//         - le versioni vivono SOTTO un template parent (URL nidificato);
-//         - non c'e' paginazione (ciclo BOZZA->PUBBLICATA->OBSOLETA per
-//           design ha cardinalita' contenuta);
-//         - 3 comandi di transizione di stato dedicati (clona, pubblica,
-//           delete BOZZA).
+// Scopo: Store Pinia delle versioni di un singolo template documentale
+//        (Tranche L): la LISTA configurabile `documenti.template_versioni`
+//        (88) + il ciclo di vita — `fetchDetail`, create/update/delete,
+//        clona, pubblica.
 //
+// ⭐ DAL 2026-09-27 LA LISTA STA SUL CORE (`useListaStoreCore`: filtri, fetch
+//    paginata, `fetchSospesa`, reset, «vuota» contro «non letta»). Era una
+//    `fetchList(templateId)` scritta a mano, senza paginazione, perche' «il
+//    ciclo BOZZA→PUBBLICATA→OBSOLETA ha per design cardinalita' contenuta»:
+//    una previsione sui DATI, e le previsioni sui dati non decidono la forma
+//    di una lista. Il padre (il template) sta nel PATH: `parentField`.
+// ⭐ `useListaStoreCore` DIRETTO dentro `defineStore` e non `createListaStore`:
+//    lo store ha i verbi del ciclo di vita (forma ammessa, catalogo BB).
+// ⭐ IL PADRE E' COMPOSTO: il template (nel path) e il suo EMITTENTE (in query,
+//    `emittente_fiscale_id`, il `lista_emittente_param` della view) — il padre
+//    composto del core (`emittenteParam`, 2026-09-27). Finche' manca
+//    l'emittente la lista non legge ed e' in `attesaPadre`. ⛔ Fino a quel
+//    giorno era un `ref` dello store letto dalla `fetchPage`, e la lista
+//    partiva anche senza. La creazione passa l'emittente con
+//    `paramsEmittente()`: il cancello vale per ogni metodo della view, e il
+//    nome del parametro ha una sede sola.
 //        `userScoped: true` per coerenza con le memorie del progetto:
 //        i dati versione corrente del template aperto contengono html/
 //        css/markdown — non devono leakare al cambio utente.
 // ------------------------------------------------------------
 
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import { useFetchVersion } from '../../core/composables/useFetchVersion'
+import { useListaStoreCore } from '../../core/composables/useListaStoreCore'
+import { storePerIstanza } from '../../core/stores/storePerIstanza'
 import {
   clonaTemplateVersione,
   createTemplateVersione,
@@ -34,48 +45,25 @@ import { useTabEvents } from '../../core/composables/useTabEvents'
 const STORE_NAME = 'config-template-versioni'
 const EMIT_KEY = 'template_versioni'
 
-export const useTemplateVersioniStore = defineStore(STORE_NAME, () => {
+// Uno store per sezione (`storePerIstanza`): due template aperti insieme non
+// si scrivono addosso le versioni.
+export const useTemplateVersioniStore = storePerIstanza(STORE_NAME, (id) => defineStore(id, () => {
   const { emitDataChanged } = useTabEvents()
 
-  const fv = useFetchVersion()
-  const items = ref([])
-  const loading = ref(false)
-  const currentTemplateId = ref(null)
-
-  // Scopo: Carica le versioni del template parent. Sostituisce i dati
-  //        precedenti in modo idempotente: piu' chiamate consecutive su
-  //        template diversi non fanno merge. La memoria
-  //        feedback_componente_riusabile_watch suggerisce di richiamare
-  //        questa fn quando cambia `template_id`.
-  // ⚠️ Guardia anti-race (2026-08-10). Non passa dal BB `useListaEmptyStateFetch`
-  // (prende `templateId` come argomento e ha un envelope suo, senza `count`), ma
-  // il rischio e' lo stesso: cambiando template due fetch possono accavallarsi e
-  // vincerebbe l'ultima ARRIVATA — cioe' le versioni del template sbagliato.
-  // `invalidate()` sul ramo senza template: azzera e impedisce a una risposta
-  // gia' in volo di ripopolare la lista che si sta svuotando.
-  async function fetchList(templateId, params = {}) {
-    if (!templateId) {
-      fv.invalidate()
-      items.value = []
-      currentTemplateId.value = null
-      // Lo spinner va spento qui: la fetch appena invalidata non lo fara'
-      // piu' (il suo `finally` e' gated su `isCurrent`).
-      loading.value = false
-      return
-    }
-    const tag = fv.tag()
-    loading.value = true
-    try {
-      const res = await listTemplateVersioni(templateId, params)
-      if (!fv.isCurrent(tag)) return
-      // L'endpoint versioni NON usa paginated_envelope: ritorna
-      // direttamente {results: [...]}.
-      items.value = res.data.data.results || []
-      currentTemplateId.value = templateId
-    } finally {
-      if (fv.isCurrent(tag)) loading.value = false
-    }
-  }
+  const lista = useListaStoreCore({
+    fetchPage: listTemplateVersioni,
+    parentField: 'templateId',
+    // L'emittente del template, in query sulla lista E sulla creazione.
+    // ⚠️ Non e' un filtro: le righe le fissa il template nel path.
+    emittenteParam: 'emittente_fiscale_id',
+    // Parte piena: sono le versioni di QUESTO template.
+    startsEmpty: false,
+    // La versione piu' recente in cima: e' il preset a catalogo
+    // (`versione desc`) e il default del backend.
+    orderBy: 'versione',
+    orderDir: 'desc',
+    orderDirDefault: 'desc',
+  })
 
   // Scopo: Dettaglio versione singola (incluso payload html/css/markdown).
   async function fetchDetail(templateId, versioneId) {
@@ -85,7 +73,7 @@ export const useTemplateVersioniStore = defineStore(STORE_NAME, () => {
 
   // Scopo: Crea nuova versione BOZZA.
   async function create(templateId, payload) {
-    const res = await createTemplateVersione(templateId, payload)
+    const res = await createTemplateVersione(templateId, payload, lista.paramsEmittente())
     emitDataChanged(EMIT_KEY, res.data.data.id)
     return res.data.data
   }
@@ -119,7 +107,7 @@ export const useTemplateVersioniStore = defineStore(STORE_NAME, () => {
   }
 
   return {
-    items, loading, currentTemplateId,
-    fetchList, fetchDetail, create, update, destroy, clona, pubblica,
+    ...lista,
+    fetchDetail, create, update, destroy, clona, pubblica,
   }
-}, { userScoped: true })
+}, { userScoped: true }))

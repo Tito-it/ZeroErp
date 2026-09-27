@@ -15,6 +15,19 @@ export function labelOrCode(t, te, key, fallback, params) {
   return params === undefined ? t(key) : t(key, params)
 }
 
+// Scopo: L'etichetta di un RUOLO APPLICATIVO (la veste: OPERATORE,
+//        CLIENTE_PORTALE, ...), dalla chiave `auth.ruolo_applicativo.<CODICE>`;
+//        chiave mancante ⇒ il codice (fail-visible, `labelOrCode`); codice
+//        assente ⇒ '' (il segnaposto a video lo sceglie il chiamante).
+//        Estratto 2026-09-27 (regola del 2, ok Tid): la regola era scritta tre
+//        volte — lista operatori, profilo del portale, dialog del riuso — e le
+//        copie gia' divergevano (il profilo non ripiegava sul codice e avrebbe
+//        mostrato il path della chiave).
+export function etichettaRuoloApplicativo(t, te, codice) {
+  if (!codice) return ''
+  return labelOrCode(t, te, `auth.ruolo_applicativo.${codice}`, codice)
+}
+
 // Scopo: ⭐ L'INTESTAZIONE DI UNA COLONNA DI LISTA, tradotta. Il catalogo
 //        `ui.lista_colonna` porta DUE cose: l'`etichetta` (italiana, scritta
 //        nel seed) e la `etichetta_i18n_key`, che è la vera fonte multilingua.

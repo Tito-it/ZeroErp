@@ -127,6 +127,7 @@ _ANNULLA_REQUEST = inline_serializer(
 
 class ApiOfferteList(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
     is_search_endpoint = True
     lista_codice = "vendite.offerte"
 
@@ -214,6 +215,7 @@ class ApiOfferteExportView(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
     is_search_endpoint = True
     lista_codice = "vendite.offerte"
 
@@ -298,6 +300,7 @@ class ApiOfferteExportView(DomainAPIView):
 
 class ApiOffertaDetail(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -351,6 +354,7 @@ class ApiOffertaDetail(DomainAPIView):
 
 class ApiOffertaRegistraEsito(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         request=_ESITO_REQUEST,
@@ -375,6 +379,7 @@ class ApiOffertaRegistraEsito(DomainAPIView):
 
 class ApiOffertaAnnulla(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         request=_ANNULLA_REQUEST,
@@ -400,6 +405,7 @@ class ApiOffertaAnnulla(DomainAPIView):
 
 class ApiOffertaCreaRevisione(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         request=None,
@@ -430,6 +436,7 @@ class ApiOffertaGeneraOrdine(DomainAPIView):
     """`POST /api/v1/vendite/offerte/<id>/genera-ordine/` (conversione §7.4)."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         request=None,
@@ -468,6 +475,7 @@ _PUSH_CONTRATTO_REQUEST = inline_serializer(
 
 class ApiOffertaPushContratto(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         request=_PUSH_CONTRATTO_REQUEST,
@@ -518,6 +526,7 @@ class ApiOffertaPushContratto(DomainAPIView):
 
 class ApiOffertaContrattoSovrapposto(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -537,19 +546,56 @@ class ApiOffertaContrattoSovrapposto(DomainAPIView):
 
 class ApiOffertaRevisioni(DomainAPIView):
     area_funzionale = "vendite"
+    # Come la gemella `ApiPreventivoRevisioniList`: l'override d'OGGETTO
+    # dell'operatore conta anche qui (senza, si risale solo all'area). Stesso
+    # nome di modello delle note dell'offerta (`note_views`).
+    model_permission = ("vendite", "offerta_commerciale")
+    lista_codice = "vendite.offerta_revisioni"
+    # ⭐ Il tab vive DENTRO il drawer di un'offerta, che ha gia' il suo
+    #    emittente: la lista a catalogo e' `perimetro_emittente = t` e
+    #    `multi_emittente = f`, quindi senza questa riga chi vede piu'
+    #    emittenti (il super admin su «Tutti») riceverebbe
+    #    E_UI_LISTA_EMITTENTE_DA_SCEGLIERE a drawer gia' aperto. PK
+    #    (`emittenti_fiscali.id`), come `v.emittente_fiscale_id`.
+    lista_emittente_param = "emittente_fiscale_id"
 
     @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="emittente_fiscale_id", type=int, required=False,
+                description=(
+                    "Emittente del documento (PK). Lo legge SOLO il cancello di "
+                    "perimetro, per chi vede più emittenti: non filtra le righe "
+                    "(la catena è di un emittente solo) e non allarga niente — "
+                    "la visibilità resta allo scope e alla RLS."
+                ),
+            ),
+            OpenApiParameter(name="limit", type=int, required=False),
+            OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False,
+                             description="revisione_numero (default) | data_emissione"),
+            OpenApiParameter(name="order_dir", type=str, required=False,
+                             description="asc | desc (assente: asc; desc sulle date)"),
+        ],
         responses={200: inline_serializer(
             name="VenditeOffertaRevisioniListResp",
-            fields={"data": serializers.ListField()},
+            fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Lista catena revisioni che condividono il root (rev.1) con
-    #        l'offerta passata. Output ordinato per `revisione_numero`.
-    #        Lettura libera in ogni stato.
+    # Scopo: Lista PAGINATA della catena revisioni che condividono la radice
+    #        (rev.1) con l'offerta passata, default `revisione_numero` ASC.
+    #        Mirror di `ApiPreventivoRevisioniList`. Lettura libera in ogni stato.
     def get(self, request: Request, offerta_id: int) -> JsonResponse:
-        del request
-        return success_response(OfferteService().list_revisioni(offerta_id))
+        qp = request.query_params
+        p = parse_list_params(qp, default_order="revisione_numero")
+        results, total = OfferteService().list_revisioni(
+            offerta_id,
+            limit=p["limit"],
+            offset=p["offset"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+        )
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
 
 # =================================================================
@@ -559,6 +605,7 @@ class ApiOffertaRevisioni(DomainAPIView):
 
 class ApiOffertaEccezioni(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -592,6 +639,7 @@ class ApiOffertaEccezioni(DomainAPIView):
 
 class ApiOffertaEccezioneDetail(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         request=_ECCEZIONE_PATCH_REQUEST,
@@ -645,6 +693,7 @@ class ApiOffertaEccezionePreviewComponenti(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         request=PREVIEW_COMPONENTI_REQUEST,
@@ -677,6 +726,7 @@ class ApiOffertaEccezioneComponentiList(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         parameters=COMPONENTI_LIST_PARAMETERS,
@@ -703,6 +753,7 @@ class ApiOffertaEccezioneComponenteDetail(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         request=COMPONENTE_PATCH_REQUEST,
@@ -746,6 +797,7 @@ class ApiOffertaEccezioneComponenteDetail(DomainAPIView):
 
 class ApiOffertaUtility(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -774,6 +826,7 @@ class ApiOffertaUtility(DomainAPIView):
 
 class ApiOffertaUtilityDetail(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         request=_UTILITY_PATCH_REQUEST,
@@ -804,6 +857,7 @@ _indirizzi_views = build_indirizzi_documento_views(
         offerta_id, payload),
     delete_call=lambda offerta_id, indirizzo_id: offerte_service.delete_indirizzo(
         offerta_id, indirizzo_id),
+    model_permission=("vendite", "offerta_commerciale"),
 )
 ApiOffertaIndirizzi = _indirizzi_views.lista
 ApiOffertaIndirizzoDetail = _indirizzi_views.detail

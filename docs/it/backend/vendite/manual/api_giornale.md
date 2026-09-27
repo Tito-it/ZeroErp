@@ -64,9 +64,11 @@ Envelope paginato standard + **`ritirate_count`**:
   — il codice del lotto o il **numero parlante** del documento da
   `vendite.fn_numero_documento_fattura` (la sede unica, «numero - serie»; l'id fra parentesi
   finché la bozza non ha un numero), risolto **nel backend** con una query
-  sulla pagina (`_aggiungi_entita_display`). ⭐ Non un JOIN dentro
-  `_list_giornale`: là starebbe prima di `LIMIT`, su tutto il perimetro, e
-  peserebbe anche sui lettori per entità. `TASK_RUN` e gli altri tipi restano
+  sulla pagina (`_aggiungi_entita_display`). ⭐ Non un JOIN dentro la query di
+  `_list_giornale`: là starebbe prima di `LIMIT`, su tutto il perimetro.
+  Dal 2026-09-27 lo chiama il corpo comune, cioè anche le due Storie per
+  entità — che sono la stessa lista a catalogo (`vendite.giornale`) e mostrano
+  la stessa colonna «Riferimento». `TASK_RUN` e gli altri tipi restano
   `null`: il display è un'offerta.
 - `cosa` è il **codice** dell'evento solo su `EVENT_LOG` (con `etichetta_key`
   da `config.eventi_dominio`, che il frontend rende con `labelOrCode`);

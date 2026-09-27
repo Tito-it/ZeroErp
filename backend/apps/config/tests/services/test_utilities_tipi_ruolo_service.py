@@ -209,5 +209,5 @@ class TestListUsage(TestCase):
         self.assertEqual(total, 1)
         self.assertEqual(results[0]["emittente_codice"], "EF-001")
         mock_repo_cls.return_value.list_emittenti_usage.assert_called_once_with(
-            1, limit=25, offset=0,
+            1, search=None, order_by=None, order_dir=None, limit=25, offset=0,
         )

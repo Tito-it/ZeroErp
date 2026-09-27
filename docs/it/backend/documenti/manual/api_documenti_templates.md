@@ -121,9 +121,20 @@ documentati nelle API delle sorgenti funzionali che li espongono
 
 - Metodo: `GET`
 - Path: `/api/v1/documenti/templates/<int:template_id>/versioni/`
+- Lista a catalogo `documenti.template_versioni` (dal 2026-09-27: paginata).
 - Query param (opzionali):
-  - `attivo` (bool) — default `true`
+  - `attivo` (bool strict) — assente = nessun filtro (attive e non)
   - `stato` (string) — whitelist: `BOZZA`, `PUBBLICATA`, `OBSOLETA` (case-insensitive)
+  - `search` (string) — ricerca libera sulle colonne accese a catalogo (`titolo`)
+  - `limit` / `offset` (int) — paginazione (default 25, massimo 200)
+  - `order_by` (string) — whitelist `TEMPLATE_VERSIONI_ORDER_COLUMNS`:
+    `versione`, `titolo`, `stato`, `valido_dal`, `valido_al` (NULL = senza
+    scadenza, in fondo in ASC), `attivo`, `data_update`; senza = `versione DESC`
+  - `order_dir` (string) — `asc` / `desc`; assente = DESC sulle date
+  - `emittente_fiscale_id` (int, PK) — `lista_emittente_param`: scioglie il
+    cancello di perimetro per chi vede più emittenti (il super admin su
+    «Tutti»). Vale anche sul **POST** di creazione versione (§7), che sta sulla
+    stessa rotta: il FE lo manda con `paramsEmittente()`. Non filtra.
 
 #### Output
 
@@ -132,6 +143,10 @@ documentati nelle API delle sorgenti funzionali che li espongono
 ```json
 {
   "data": {
+    "count": 1,
+    "page": 1,
+    "page_size": 25,
+    "total_pages": 1,
     "results": [
       {
         "id": 11,
@@ -158,8 +173,9 @@ documentati nelle API delle sorgenti funzionali che li espongono
 }
 ```
 
-- `400`: `stato` non in whitelist — codice `E_DOCUMENTI_VALIDATION`
+- `400`: `stato` non in whitelist — codice `E_DOCUMENTI_VALIDATION`; `order_dir` non valido
 - `404`: template inesistente o fuori scope — codice `E_DOCUMENTI_NOT_FOUND`
+- `422`: `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE` — più emittenti nello scope e nessun `emittente_fiscale_id` in query
 
 > **Campi render engine** — `render_engine_codice_interno` e' la chiave
 > **immutabile** (`documenti.render_engine_documento.codice_interno`, es.

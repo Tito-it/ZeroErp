@@ -355,7 +355,7 @@ documentale avviene nel passaggio `DRAFT → CONFERMATO` via `POST /<id>/emetti/
 | `POST /<id>/emetti/` | **Emissione**: conferma + genera PDF + allegati, atomica (vedi sezione Emetti) |
 | `POST /<id>/documenti/genera/` | Genera e persiste un PDF (`documenti_generati` + evento `GENERATO`). Body opzionale: `template_documento_id`, `tipo_documento_output_id` |
 | `POST /<id>/documenti/anteprima/` | Anteprima PDF temporanea (no persist, no evento). Risposta binaria `application/pdf` inline |
-| `GET /<id>/documenti/` | Lista paginata documenti generati per l'ordine (scope emittente, `page`/`page_size`) |
+| `GET /<id>/documenti/` | Lista a catalogo `documenti.documenti_sorgente` dei documenti generati per l'ordine (`limit`/`offset`/`order_by`/`order_dir`/`search`, `emittente_fiscale_id` per il cancello di perimetro — contratto in [api_documenti_per_sorgente](../../documenti/manual/api_documenti_per_sorgente.md) §3.4) |
 | `GET /<id>/documenti/<documento_id>/file/` | Download PDF principale + evento `SCARICATO` |
 | `GET/POST /<id>/documenti/<documento_id>/allegati/` | Lista file (principale + allegati) / append allegati (multipart) |
 | `GET /<id>/documenti/<documento_id>/file/<file_id>/` | Download di uno specifico file (principale o allegato) + evento `SCARICATO` |

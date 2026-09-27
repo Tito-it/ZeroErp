@@ -18,6 +18,7 @@ from django.db import connection
 from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
+    fetch_paged_with_total,
     sql_order_clause,
     call_jsonb_fn,
     fetchone_scalar,
@@ -82,6 +83,28 @@ _ORDER_COLS_PREVENTIVI: dict[str, str] = {
     "pratica_numero": "v.pratica_numero",
     "fase": "v.fase",
 }
+
+# Scopo: whitelist ORDER BY del tab «Revisioni» del drawer preventivo (lista
+#        `vendite.preventivo_revisioni`, alias `v` su `vw_preventivi_lista`).
+# ⛔ COSTANTE NUOVA E SEPARATA da `_ORDER_COLS_PREVENTIVI`, di proposito: la
+#    lista principale NON ordina per `rev` (decisione §7.3 qui sopra) e questa
+#    invece parte proprio da li'. Allargare quella per servire questa avrebbe
+#    offerto alla lista principale una freccia che il suo catalogo non ha — e
+#    `test_liste_configurabili_seed` (test 2) l'avrebbe detta irraggiungibile.
+# ⚠️ Le chiavi sono i `campo_sorgente` del catalogo (lista 89): le colonne
+#    gemelle della lista offerte hanno gli STESSI codici ma campo_sorgente
+#    diversi (`rev`/`revisione_numero`, `data`/`data_emissione`), ed e' questo
+#    che il FE manda come `order_by`.
+PREVENTIVO_REVISIONI_ORDER_COLUMNS: dict[str, str] = {
+    "rev": "v.rev",
+    "data": "v.data",
+    "totale_documento": "v.totale_documento",
+}
+
+# Colonne DATA della whitelist qui sopra: senza `order_dir` ordinano DESC
+# (`sql_order_clause(colonne_desc=…)`, regola di Tid del 2026-09-02),
+# confrontate col seed da `test_liste_configurabili_seed` (test 10).
+PREVENTIVO_REVISIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data"})
 
 # Risoluzione "rev attiva" del legame ROOT preventivo↔pratica/flusso
 # (pratiche_sorgenti, sorgente PREVENTIVO, ruolo ROOT). Il link memorizza l'uid
@@ -759,29 +782,51 @@ class PreventiviRepository(
             assert result is not None
             return result
 
-    # Scopo: Lista catena revisioni che condividono lo stesso `numero` del
-    #        preventivo passato. Diverso dal modello offerte (catenate via
-    #        `revisione_padre_id`): qui le revisioni hanno tutte stesso
-    #        `numero` e si distinguono per la colonna `rev` (intero, 0 = prima).
-    #        Output ordinato per `rev` ASC. Legge dalla vista canonica
-    #        `vw_preventivi_lista` per avere `is_attiva` + i campi
-    #        denormalizzati gia' pronti per il FE (rev, data,
-    #        stato_codice_interno, stato_descrizione, totale_documento — i soli
-    #        consumati dal tab Revisioni) — la vista del filtro lista riusata.
-    def list_revisioni(self, preventivo_id: int) -> list[dict[str, Any]]:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT v.*
-                  FROM vendite.vw_preventivi_lista v
-                 WHERE v.numero = (
-                     SELECT numero FROM vendite.preventivi WHERE id = %s
-                 )
-                 ORDER BY v.rev ASC, v.id ASC
-                """,
-                [preventivo_id],
-            )
-            return rows_to_list(cursor)
+    # Scopo: Lista PAGINATA della catena revisioni che condividono lo stesso
+    #        `numero` del preventivo passato (lista `vendite.preventivo_revisioni`).
+    #        Diverso dal modello offerte (catenate via `revisione_padre_id`, con
+    #        la radice scritta sulla riga): qui le revisioni hanno tutte stesso
+    #        `numero` (UNIQUE (numero, rev)) e si distinguono per `rev` (0 =
+    #        prima). Legge la vista canonica `vw_preventivi_lista`: `is_attiva`,
+    #        `stato_descrizione`, `totale_documento` gia' pronti.
+    # ⛔ Fino al 2026-09-27 restituiva la catena INTERA senza LIMIT, e il tab la
+    #    mostrava in una DataTable grezza: nessun paginatore, nessun ordinamento,
+    #    nessuna scelta colonne (brief-db-liste-datatable-grezze §4 riga 7).
+    # ⚠️ Nessun filtro emittente, ed e' voluto: l'`emittente_fiscale_id` che il
+    #    tab manda lo legge SOLO il cancello di perimetro (la view lo dichiara
+    #    `lista_emittente_param`). Le righe sono di UN documento, quindi di un
+    #    emittente solo per costruzione; filtrarle ancora trasformerebbe un id
+    #    sbagliato in una lista VUOTA, cioe' in un «nessuna revisione» falso e
+    #    senza errore. La visibilita' resta alla RLS (vista `security_invoker`).
+    def list_revisioni(
+        self, preventivo_id: int, *,
+        limit: int = 25, offset: int = 0,
+        order_by: str | None = "rev", order_dir: str | None = "asc",
+    ) -> tuple[list[dict[str, Any]], int]:
+        safe_limit = max(1, min(int(limit), 200))
+        safe_offset = max(0, int(offset))
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=PREVENTIVO_REVISIONI_ORDER_COLUMNS, default="v.rev", tiebreak="v.id",
+            colonne_desc=PREVENTIVO_REVISIONI_SORT_COLONNE_DATA,
+        )
+        params: list[Any] = [preventivo_id]
+        from_where = (
+            "FROM vendite.vw_preventivi_lista v "
+            "WHERE v.numero = (SELECT numero FROM vendite.preventivi WHERE id = %s)"
+        )
+        return fetch_paged_with_total(
+            f"""
+            SELECT v.*, COUNT(*) OVER () AS total_count
+            {from_where}
+            ORDER BY {ordinamento}
+            LIMIT %s OFFSET %s
+            """,  # ORDER BY da sql_order_clause su whitelist, WHERE da condizioni letterali, valori come parametri
+            params + [safe_limit, safe_offset],
+            fallback_count_sql=f"SELECT COUNT(*) {from_where}",  # stesso FROM/WHERE della pagina
+            fallback_params=params,
+            offset=safe_offset,
+        )
 
     # ══════════════════════════════════════════════════════════
     #  SCRITTURE — Righe

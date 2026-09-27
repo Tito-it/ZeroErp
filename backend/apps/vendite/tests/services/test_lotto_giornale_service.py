@@ -22,7 +22,7 @@ Indice test eseguiti:
 7) LottoGiornaleServiceTests.test_info_incluse_su_richiesta
 8) LottoGiornaleServiceTests.test_ritirate_e_info_si_sommano_nel_totale
 9) LottoGiornaleServiceTests.test_totale_non_va_sotto_zero
-10) LottoGiornaleServiceTests.test_ordinamento_di_default_e_la_gravita
+10) LottoGiornaleServiceTests.test_ordinamento_di_default_lo_decide_il_repository
 11) LottoGiornaleServiceTests.test_giornale_vuoto_non_e_un_errore
 12) LottoGiornaleServiceTests.test_riga_dichiara_di_chi_e
 """
@@ -165,14 +165,17 @@ class LottoGiornaleServiceTests(TestCase):
         out = get_lotto_giornale(lotto_id=6260)
         self.assertEqual(out["count"], 0)
 
-    # Scopo: davanti a un lotto la prima domanda e' «c'e' qualcosa che non va?».
+    # Scopo: il default dell'ordine ha UNA sede (`GIORNALE_ORDINE_DEFAULT`, il
+    #        preset di `vendite.giornale`, dal 2026-09-27): il service passa
+    #        l'assenza, non ne scrive un secondo — fino a quel giorno qui era
+    #        la gravita', e la stessa lista partiva in due modi.
     @patch("apps.vendite.services.vendite_service.VenditeRepository")
-    def test_ordinamento_di_default_e_la_gravita(self, repo_cls):
+    def test_ordinamento_di_default_lo_decide_il_repository(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_lotto.return_value = _LOTTO
         repo.list_giornale_lotto.return_value = (_RIGHE, 2, 0, 0)
         get_lotto_giornale(lotto_id=6260)
-        self.assertEqual(repo.list_giornale_lotto.call_args.kwargs["sort_by"], "gravita")
+        self.assertIsNone(repo.list_giornale_lotto.call_args.kwargs["sort_by"])
 
     # Scopo: un lotto senza storia e' una risposta, non un errore.
     @patch("apps.vendite.services.vendite_service.VenditeRepository")

@@ -27,9 +27,9 @@ const SRC = fileURLToPath(new URL('../src', import.meta.url))
 const ESCLUSI = ['core/components/ListaConfigurabile.vue']
 
 // Scopo: sorgente senza commenti. Serve a distinguere chi MONTA il componente
-//        da chi lo NOMINA — `GeoSearchTable` lo cita in un commento proprio per
-//        dire che non lo usa, e monta `<DataTable>`, dove `event.data` e'
-//        corretto. Senza questo passaggio il guard segnalerebbe codice giusto,
+//        da chi lo NOMINA — `GeoSearchTable` (ritirato il 2026-09-27) lo citava
+//        in un commento proprio per dire che non lo usava, e montava
+//        `<DataTable>`, dove `event.data` e' corretto. Senza questo passaggio il guard segnalerebbe codice giusto,
 //        cioe' diventerebbe rumore da ignorare.
 function senzaCommenti(testo) {
   return testo

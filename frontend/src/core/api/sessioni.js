@@ -7,9 +7,12 @@
 // ------------------------------------------------------------
 import api from '../api'
 
-// Scopo: le sessioni aperte dell'operatore.
-export function listSessioni() {
-  return api.get('/core/me/sessioni/')
+// Scopo: le ALTRE sessioni aperte dell'operatore (esclusa la corrente), come
+//        lista paginata (`core.sessioni_attive`): `params` porta ricerca,
+//        ordinamento e pagina. La risposta ha anche `totale_attive`, le
+//        sessioni a prescindere dalla ricerca.
+export function listSessioni(params = {}) {
+  return api.get('/core/me/sessioni/', { params })
 }
 
 // Scopo: revoca una sessione, per `jti` del suo refresh token.

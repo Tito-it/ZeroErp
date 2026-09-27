@@ -31,6 +31,7 @@ from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
     call_jsonb_fn,
+    fetch_paged_with_total,
     row_to_dict,
     rows_to_list,
     sql_order_clause,
@@ -104,6 +105,26 @@ _ORDER_COLS_OFFERTE_DATA: frozenset[str] = frozenset({
     "data_rifiuto", "data_annullamento", "data_insert",
 })
 
+
+# Scopo: whitelist ORDER BY del tab «Revisioni» del drawer offerta (lista
+#        `vendite.offerta_revisioni`, alias `v` su `vw_offerte_commerciali_lista`).
+# ⛔ COSTANTE SEPARATA da `_ORDER_COLS_OFFERTE`, e `revisione_numero` NON va
+#    aggiunto la': nella lista principale e' volutamente assente (§7.3). Qui
+#    invece e' l'ordine naturale della catena.
+# ⚠️ Chiavi = `campo_sorgente` della lista 90. Le colonne sono GEMELLE di
+#    quelle dei preventivi (stessi codici `rev`/`data`), ma il campo sorgente
+#    e' dell'offerta: `revisione_numero`, `data_emissione`.
+# ⚠️ `data_emissione` e' NULL sulle bozze: il vuoto si ordina come il valore
+#    minimo (`sql_order_direction`, decisione Tid 2026-07-19) — in coda nel
+#    verso naturale DESC, in testa se l'operatore inverte.
+OFFERTA_REVISIONI_ORDER_COLUMNS: dict[str, str] = {
+    "revisione_numero": "v.revisione_numero",
+    "data_emissione": "v.data_emissione",
+}
+
+# Colonne DATA della whitelist qui sopra (ripiego DESC senza `order_dir`),
+# confrontate col seed da `test_liste_configurabili_seed` (test 10).
+OFFERTA_REVISIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_emissione"})
 
 # === Costante LISTA (vista canonica DEF-8, 2026-06-03) ===
 # La lista paginata legge dalla vista canonica self-contained
@@ -1089,47 +1110,52 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             )
             return row_to_dict(cursor)
 
-    # Scopo: Lista catena revisioni che condividono il medesimo "root"
-    #        (rev.1) dell'offerta passata. Risale via `revisione_padre_id`
-    #        fino alla radice, poi ridiscende a tutti i discendenti.
-    #        Output ordinato per `revisione_numero` ASC.
-    #
-    #        Caso "lineare" (n revisioni in serie): ritorna [rev.1, ..., rev.N].
-    #        Caso "fork" (es. due figli da rev.1, scenario teorico, non
-    #        previsto dalla state machine ma supportato dalla query):
-    #        ritorna tutti i nodi della componente connessa.
-    def list_revisioni(self, offerta_id: int) -> list[dict[str, Any]]:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                WITH RECURSIVE
-                ancestors AS (
-                    SELECT id, revisione_padre_id
-                      FROM vendite.offerte_commerciali
-                     WHERE id = %s
-                    UNION ALL
-                    SELECT o.id, o.revisione_padre_id
-                      FROM vendite.offerte_commerciali o
-                      JOIN ancestors a ON a.revisione_padre_id = o.id
-                ),
-                root_id AS (
-                    SELECT id FROM ancestors WHERE revisione_padre_id IS NULL
-                    LIMIT 1
-                ),
-                family AS (
-                    SELECT o.id
-                      FROM vendite.offerte_commerciali o, root_id
-                     WHERE o.id = root_id.id
-                    UNION ALL
-                    SELECT o.id
-                      FROM vendite.offerte_commerciali o
-                      JOIN family f ON o.revisione_padre_id = f.id
-                )
-                SELECT {_SELECT_COLS_OFFERTA}
-                  {_FROM_JOINS_OFFERTA}
-                 WHERE o.id IN (SELECT id FROM family)
-                 ORDER BY o.revisione_numero ASC, o.id ASC
-                """,  # noqa: S608
-                [offerta_id],
-            )
-            return rows_to_list(cursor)
+    # Scopo: Lista PAGINATA della catena revisioni dell'offerta passata (lista
+    #        `vendite.offerta_revisioni`): tutte le righe con la sua stessa
+    #        `revisione_radice_id` (l'id della rev.1), default
+    #        `revisione_numero` ASC. Legge la vista canonica
+    #        `vw_offerte_commerciali_lista`: `is_attiva` e `stato_descrizione`
+    #        ci sono gia'.
+    # ⭐ La catena e' un fatto della RIGA, fissato alla nascita (decisione di
+    #    Tid del 2026-09-27, brief-db-liste-datatable-grezze §3.2): la radice la
+    #    deriva il trigger BEFORE INSERT dal padre ed e' immutabile
+    #    (E_OFFERTA_REVISIONE_CATENA_IMMUTABILE). Si legge per UGUAGLIANZA, come
+    #    `numero` sui preventivi.
+    # ⛔ Fino al 2026-09-27 qui c'era una CTE RICORSIVA (risalita alla radice via
+    #    `revisione_padre_id`, poi ridiscesa ai discendenti), rifatta a ogni
+    #    apertura del tab e senza LIMIT: non paginabile se non contando la
+    #    ricorsione due volte. Ritirata col seed della colonna.
+    # ⚠️ Nessun filtro emittente, come sui preventivi: l'`emittente_fiscale_id`
+    #    del tab lo legge solo il cancello di perimetro (`lista_emittente_param`
+    #    della view). Una catena e' di un emittente solo per costruzione, e un
+    #    filtro in piu' renderebbe un id sbagliato una lista vuota senza errore.
+    def list_revisioni(
+        self, offerta_id: int, *,
+        limit: int = 25, offset: int = 0,
+        order_by: str | None = "revisione_numero", order_dir: str | None = "asc",
+    ) -> tuple[list[dict[str, Any]], int]:
+        safe_limit = max(1, min(int(limit), 200))
+        safe_offset = max(0, int(offset))
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=OFFERTA_REVISIONI_ORDER_COLUMNS, default="v.revisione_numero",
+            tiebreak="v.id",
+            colonne_desc=OFFERTA_REVISIONI_SORT_COLONNE_DATA,
+        )
+        params: list[Any] = [offerta_id]
+        from_where = (
+            f"{_FROM_LISTA_OFFERTE} WHERE v.revisione_radice_id = ("  # noqa: S608 — frammento letterale del modulo, l'id come parametro
+            "SELECT revisione_radice_id FROM vendite.offerte_commerciali WHERE id = %s)"
+        )
+        return fetch_paged_with_total(
+            f"""
+            SELECT v.*, COUNT(*) OVER () AS total_count
+            {from_where}
+            ORDER BY {ordinamento}
+            LIMIT %s OFFSET %s
+            """,  # ORDER BY da sql_order_clause su whitelist, WHERE da condizioni letterali, valori come parametri
+            params + [safe_limit, safe_offset],
+            fallback_count_sql=f"SELECT COUNT(*) {from_where}",  # stesso FROM/WHERE della pagina
+            fallback_params=params,
+            offset=safe_offset,
+        )

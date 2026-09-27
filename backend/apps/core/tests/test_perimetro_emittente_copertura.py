@@ -111,7 +111,20 @@ _ESENZIONI: dict[str, str] = {
     "storico.audit_log": "AdminAPIView — diario delle modifiche ai dati, senza perimetro emittente (perimetro_emittente = false)",
     "config.email_template": "AdminAPIView — configurazione tecnica",
     "config.tipi_ruolo_tipi_indirizzo": "AdminAPIView — matrice di configurazione",
-    "config.utilities_tipi_ruolo": "AdminAPIView — matrice di configurazione",
+    # ⭐ §8 punto 7 (Tid, 2026-09-27): la matrice utility × tipi ruolo e'
+    #    CATALOGO GLOBALE — la riga dice quali ruoli una utility ammette, e vale
+    #    identica per ogni azienda (la tabella non ha `emittente_fiscale_id`).
+    #    Dal 27-09 il seed lo DICE (`perimetro_emittente = false`), e la
+    #    ragione qui dice la stessa cosa. ⚠️ La vista era gia' `AdminAPIView`
+    #    senza `lista_codice`: niente da togliere lato view — il cancello non
+    #    c'era, e su una lista globale non deve esserci (come
+    #    `famiglie_documento`).
+    "config.utilities_tipi_ruolo": "AdminAPIView — matrice di configurazione, catalogo globale (perimetro_emittente = false)",
+    # ⭐ Il tab «Utilizzo» della stessa matrice (2026-09-27, lista 86): ogni
+    #    riga E' un emittente fiscale, e codice e ragione sociale lo dicono per
+    #    riga — `multi_emittente = true` a catalogo. Il perimetro c'e' (la
+    #    lista resta `perimetro_emittente = true`), ed e' certificato.
+    "config.utilities_tipi_ruolo_usage": "AdminAPIView — tab della matrice; `multi_emittente` certificata: codice e ragione sociale dell'emittente per riga",
     # ⭐ E questa non e' «amministrazione» per abitudine: una famiglia di
     #    documento e' GLOBALE, e dal 2026-09-02 lo DICHIARA —
     #    `ui.lista_definizione.perimetro_emittente = false` (§12.1). Non c'e'
@@ -139,6 +152,18 @@ _ESENZIONI: dict[str, str] = {
     #    non esiste come dimensione. E' `DomainAPIView`, non amministrazione:
     #    la ragione e' il modello, non la sede.
     "magazzino.lotti": "figli dell'articolo — nessun `emittente_fiscale_id` in tabella (perimetro_emittente = false)",
+    # ⭐ Le sei liste geografiche (2026-09-27, brief-db-liste-datatable-grezze
+    #    riga 9): stati, regioni, province, comuni, CAP e tipi di strada sono
+    #    il territorio, uguale per ogni azienda servita — nessuna delle sei
+    #    tabelle ha `emittente_fiscale_id`, e il seed le dichiara
+    #    `perimetro_emittente = false`. Le view sono `DomainAPIView` (area
+    #    anagrafiche): la ragione e' il modello, non la sede.
+    "config.stati": "catalogo globale — territorio, nessun `emittente_fiscale_id` in tabella (perimetro_emittente = false)",
+    "config.regioni": "catalogo globale — territorio, nessun `emittente_fiscale_id` in tabella (perimetro_emittente = false)",
+    "config.province": "catalogo globale — territorio, nessun `emittente_fiscale_id` in tabella (perimetro_emittente = false)",
+    "config.comuni": "catalogo globale — territorio, nessun `emittente_fiscale_id` in tabella (perimetro_emittente = false)",
+    "config.codici_postali": "catalogo globale — territorio, nessun `emittente_fiscale_id` in tabella (perimetro_emittente = false)",
+    "config.toponomastica": "catalogo globale — tipi di strada, nessun `emittente_fiscale_id` in tabella (perimetro_emittente = false)",
     "ui.lista_definizione": "catalogo delle liste — nessun `emittente_fiscale_id` in tabella",
     "ui.lista_colonna": "catalogo delle colonne — nessun `emittente_fiscale_id` in tabella",
     "ui.lista_colonna_permesso": "grant per colonna/profilo — nessun `emittente_fiscale_id` in tabella",
@@ -155,6 +180,14 @@ _ESENZIONI: dict[str, str] = {
     # ⛔ Se un giorno la 873 venisse spenta, `multi_emittente` a DB tornerebbe
     #    una vanteria e questa esenzione andrebbe TOLTA, non aggiornata.
     "ui.lista_preset": "`multi_emittente` certificata (colonna 873 `emittente_fiscale`)",
+    # ⭐ Le SESSIONI dell'utente collegato (2026-09-27): la riga e' un login
+    #    della persona, non un dato di un'azienda — `dbops.sessioni_utente` non
+    #    ha `emittente_fiscale_id`. `DomainAPIView` con `skip_area_check`: la
+    #    ragione e' il modello, non la sede.
+    "core.sessioni_attive": "sessioni dell'utente collegato — nessun `emittente_fiscale_id` in tabella (perimetro_emittente = false)",
+    # ⭐ I reparti (2026-09-27) sono `config.unita_organizzative`: struttura
+    #    dell'organizzazione, non di un emittente.
+    "amm.reparti": "AdminAPIView — catalogo globale dei reparti (perimetro_emittente = false)",
 }
 
 

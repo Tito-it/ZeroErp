@@ -404,6 +404,10 @@ class LottoListRow(TypedDict):
     area_geografica_id: int | None
     area_geografica_descrizione: str | None
     emittente_soggetto_ruolo_id: int | None
+    # La PK dell'emittente (2026-09-27): il lasciapassare del cancello di
+    # perimetro per le liste aperte dal drawer del lotto, che lo chiedono come
+    # `emittente_fiscale_id`. ⚠️ Non e' `emittente_soggetto_ruolo_id`.
+    emittente_fiscale_id: int | None
     data_insert: str | None
     user_insert: str
     # Ragione sociale dell'emittente (P-4, Fase E). ⚠️ La ragione sociale e non

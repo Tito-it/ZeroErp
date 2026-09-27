@@ -67,6 +67,7 @@ Non usa il DB, quindi gira ovunque ci sia il repo:
 from __future__ import annotations
 
 import argparse
+import ast
 import csv
 import io
 import json
@@ -138,7 +139,16 @@ TIPO_DA_FORMATO = {
 #   (file, costante)              costante di modulo, dict oppure set
 #   (file, costante, "class X")   costante dentro una classe
 #   (file, "_CODA_META", chiave)  mappa annidata: <chiave>["order_cols"]
+#   (file, costante)              anche `NOME = colonne_identita("a", ...)`
 WHITELIST_BE: dict[str, tuple] = {
+    # Le sei geografiche (2026-09-27, brief-db-liste-datatable-grezze riga 9):
+    # whitelist `colonne_identita` di `geo_repository`.
+    "config.stati": ("apps/anagrafiche/db/geo_repository.py", "_STATI_ORDER_COLS"),
+    "config.regioni": ("apps/anagrafiche/db/geo_repository.py", "_REGIONI_ORDER_COLS"),
+    "config.province": ("apps/anagrafiche/db/geo_repository.py", "_PROVINCE_ORDER_COLS"),
+    "config.comuni": ("apps/anagrafiche/db/geo_repository.py", "_COMUNI_ORDER_COLS"),
+    "config.codici_postali": ("apps/anagrafiche/db/geo_repository.py", "_CODICI_POSTALI_ORDER_COLS"),
+    "config.toponomastica": ("apps/anagrafiche/db/geo_repository.py", "_TOPONOMASTICA_ORDER_COLS"),
     "anagrafiche.clienti": ("apps/anagrafiche/db/clienti_repository.py", "_CLIENTI_ORDER_COLS"),
     "anagrafiche.soggetti": ("apps/anagrafiche/db/soggetti_repository.py", "_SOGGETTI_ORDER_COLS"),
     "anagrafiche.fornitori": ("apps/anagrafiche/db/fornitori_repository.py", "_FORNITORI_ORDER_COLS"),
@@ -192,6 +202,10 @@ WHITELIST_BE: dict[str, tuple] = {
     "vendite.contratti": ("apps/vendite/db/contratti_repository.py", "_ORDER_COLS_CONTRATTI"),
     "vendite.preventivi": ("apps/vendite/db/preventivi_repository.py", "_ORDER_COLS_PREVENTIVI"),
     "vendite.offerte": ("apps/vendite/db/offerte_repository.py", "_ORDER_COLS_OFFERTE"),
+    "vendite.preventivo_revisioni": ("apps/vendite/db/preventivi_repository.py",
+                                     "PREVENTIVO_REVISIONI_ORDER_COLUMNS"),
+    "vendite.offerta_revisioni": ("apps/vendite/db/offerte_repository.py",
+                                  "OFFERTA_REVISIONI_ORDER_COLUMNS"),
     "vendite.ordini": ("apps/vendite/db/ordini_repository.py", "_ORDER_COLS_ORDINI"),
     "vendite.ddt": ("apps/vendite/db/ddt_repository.py", "_ORDER_COLS_DDT"),
     "vendite.resi": ("apps/vendite/db/resi_repository.py", "_ORDER_COLS_RESI"),
@@ -214,6 +228,11 @@ WHITELIST_BE: dict[str, tuple] = {
                                      "TEMPLATES_ORDER_COLUMNS"),
     "documenti.template_asset": ("apps/documenti/db/documenti_repository.py",
                                  "ASSET_ORDER_COLUMNS"),
+    # brief-db-liste-datatable-grezze righe 2 e 6 (2026-09-27).
+    "documenti.documenti_sorgente": ("apps/documenti/db/documenti_repository.py",
+                                     "DOCUMENTI_SORGENTE_ORDER_COLUMNS"),
+    "documenti.template_versioni": ("apps/documenti/db/documenti_repository.py",
+                                    "TEMPLATE_VERSIONI_ORDER_COLUMNS"),
     "vendite.promo_articoli": ("apps/vendite/db/promo_articoli_repository.py", "_ORDER_COLS"),
     # Quinto lotto (2026-08-01). Stesso criterio del quarto: mappate prima di
     # generare. `ALLOWED_ORDER_COLUMNS` e' un `frozenset({...})` — forma che il
@@ -337,6 +356,16 @@ WHITELIST_BE: dict[str, tuple] = {
                                  "ENTI_INCASSO_SORT_COLUMNS"),
     "vendite.dash_competenza_commesse": ("apps/vendite/db/vendite_repository.py",
                                          "DASH_COMPETENZA_COMMESSE_SORT_COLUMNS", "class VenditeRepository"),
+    # Sessioni attive e reparti (2026-09-27, brief-db-liste-datatable-grezze
+    # righe 1 e 5): costanti di MODULO nei due repository.
+    "core.sessioni_attive": ("apps/core/db/session_audit_repository.py",
+                             "SESSIONI_ATTIVE_ORDER_COLUMNS"),
+    "amm.reparti": ("apps/amm_software/db/amm_software_repository.py", "REPARTI_ORDER_COLUMNS"),
+    # Flussi di una pratica e utilizzo della matrice utility/ruoli (2026-09-27,
+    # brief-db-liste-datatable-grezze righe 3 e 4): costanti di MODULO.
+    "pratiche.flussi": ("apps/pratiche/db/pratiche_repository.py", "FLUSSI_ORDER_COLS"),
+    "config.utilities_tipi_ruolo_usage": ("apps/config/db/utilities_tipi_ruolo_repository.py",
+                                          "USAGE_ORDER_COLS"),
 }
 
 # Colonne che devono ordinare SEMPRE, quando la lista ce l'ha (regola di
@@ -1008,6 +1037,32 @@ def whitelist_backend(percorso: str, costante: str, dentro: str | None = None) -
         base = testo.index(dentro) if dentro else 0
         if dentro and dentro not in testo:
             raise ValueError(f"ancora `{dentro}` non trovata in {percorso}")
+        # ⭐ `NOME = colonne_identita("a", "b", ...)` (2026-09-27): la whitelist
+        #    in cui il nome E' la colonna (BB di `_helpers`), anche su piu'
+        #    righe. Fino a quel giorno il lettore cercava solo `{`: la forma non
+        #    lo aveva, e `anagrafiche.indirizzi` usciva «whitelist illeggibile»
+        #    — con le sei geografiche (riga 9 di brief-db-liste-datatable-
+        #    grezze) sarebbero state sette liste mai verificate.
+        #    Gli argomenti sono stringhe letterali: sono loro le chiavi.
+        m_id = re.compile(rf"^[ \t]*{re.escape(costante)}\s*(?::[^=\n]*)?=\s*"
+                          r"colonne_identita\(", re.M).search(testo, base)
+        if m_id:
+            aperta = m_id.end() - 1
+            profondita = 0
+            for chiusa in range(aperta, len(testo)):
+                profondita += (testo[chiusa] == "(") - (testo[chiusa] == ")")
+                if profondita == 0:
+                    break
+            # ⚠️ Gli argomenti li legge il parser di Python, non una regex: una
+            #    regex sulle sole virgolette doppie perdeva le chiavi fra apici
+            #    (falso «KO») e prendeva quelle scritte in un commento in coda
+            #    (falso verde, il peggiore per uno strumento di consegna).
+            chiamata = ast.parse("f" + testo[aperta:chiusa + 1], mode="eval").body
+            chiavi = {a.value for a in chiamata.args
+                      if isinstance(a, ast.Constant) and isinstance(a.value, str)}
+            if not chiavi:
+                raise ValueError(f"`{costante} = colonne_identita()` senza colonne in {percorso}")
+            return chiavi
         # `NOME = {...}`, `NOME: tipo = {...}`, ma anche `NOME = frozenset({...})`
         # / `set({...})`: la forma con wrapper e' usata dove la whitelist e' un
         # insieme immutabile (amm_software). Senza questo ramo il lettore non

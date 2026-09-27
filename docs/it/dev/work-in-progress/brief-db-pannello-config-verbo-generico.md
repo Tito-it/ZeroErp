@@ -346,8 +346,10 @@ estratto dai tre YAML e il CSV caricato da `\copy`:
 2. La risposta del salvataggio porta solo `id` e i campi del form (passo 4).
 3. `GET /core/config/tables/` elenca 63 righe.
 
-⚠️ **Al frontend:** `config.aree_funzionali` esce dal registro
-`config-tables.js`, oppure esce con il ritiro del registro (D-P5).
+✅ **Al frontend:** `config.aree_funzionali` è uscita dal registro
+`config-tables.js` il 2026-09-27 (con la sua etichetta
+`config_panel.tabelle.config.aree_funzionali`, rimasta orfana): il presidio
+`test_config_panel_registro_db` test 1 è tornato verde.
 
 ---
 

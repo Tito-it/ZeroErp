@@ -19,9 +19,11 @@
 // ------------------------------------------------------------
 import { createListaStore } from '../../core/stores/createListaStore'
 import { listContratti } from '../api/contratti'
+import { storePerIstanza } from '../../core/stores/storePerIstanza'
 
-export const useContrattiClienteStore = createListaStore(
-  'vendite-contratti-cliente',
+// ⭐ Uno store per ISTANZA del drawer (`storePerIstanza`, 2026-09-27): due
+//    drawer dello stesso tipo vivi insieme non si scrivono addosso la lista.
+export const useContrattiClienteStore = storePerIstanza('vendite-contratti-cliente', (id) => createListaStore(id,
   {
     fetchPage: (billingAccountId, params) =>
       listContratti({ ...params, billing_account_id: billingAccountId }),
@@ -33,4 +35,4 @@ export const useContrattiClienteStore = createListaStore(
     orderBy: 'valido_dal',
     orderDir: 'desc',
   },
-)
+))

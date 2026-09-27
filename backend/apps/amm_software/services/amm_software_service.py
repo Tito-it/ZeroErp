@@ -25,6 +25,7 @@ from apps.core.services.permissions_cache import invalidate_department, invalida
 from apps.core.services.revoca_token import blocca_token_sessioni
 from apps.amm_software.constants import DEFAULT_SESSO
 from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
+from apps.amm_software.types import CredenzialePerEmailRow
 
 E_AMM_VALIDAZIONE = "E_AMM_VALIDAZIONE"
 E_AMM_NOT_FOUND = "E_AMM_OPERATORE_NOT_FOUND"
@@ -405,6 +406,13 @@ class AmmSoftwareService:
         # ritorna jsonb ma non lo proiettiamo: single source of truth = fn_get).
         return self._repo.get_user_emittenti_scope(auth_user_id) or {}
 
+    # Scopo: La credenziale di un'email (username e vesti) per il dialog di
+    #        conferma del riuso: il pannello la mostra sul 409
+    #        E_CREDENZIALE_DA_CONFERMARE e, confermato, rimanda la creazione
+    #        con il suo `auth_user_id`. None = l'email non ha credenziale.
+    def get_credenziale_per_email(self, email: str | None) -> CredenzialePerEmailRow | None:
+        return self._repo.get_credenziale_per_email(email)
+
     # Scopo: Lista operatori con filtri.
     def list_operatori(self, **params) -> tuple[list, int]:
         return self._repo.list_operatori(**params)
@@ -476,9 +484,9 @@ class AmmSoftwareService:
             "change_scope_reason": row.get("change_scope_reason"),
         }
 
-    # Scopo: Lista reparti.
-    def list_reparti(self) -> list:
-        return self._repo.list_reparti()
+    # Scopo: Lista paginata dei reparti (`amm.reparti`): (righe, totale).
+    def list_reparti(self, **params) -> tuple[list, int]:
+        return self._repo.list_reparti(**params)
 
     # Scopo: Profilo reparto.
     def get_profilo_reparto(self, uo_id: int) -> dict:

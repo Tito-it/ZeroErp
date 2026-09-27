@@ -196,15 +196,24 @@ class UtilitiesTipiRuoloService:
 
     # Scopo: Restituisce conteggio + lista paginata degli emittenti che
     #        hanno gia' un override per la stessa coppia (utility, EF) della
-    #        riga matrice indicata. Solo letture.
+    #        riga matrice indicata (lista `config.utilities_tipi_ruolo_usage`).
+    #        Solo letture. Ricerca e ordinamento li risolve il repository sulla
+    #        sua whitelist; la direzione estranea la rifiuta il BB SQL (400).
     def list_usage(
         self,
         record_id: int,
         *,
+        search: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
         limit: int = 25,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         # Valida l'esistenza della riga matrice prima di leggere usage.
         self.get_matrice(record_id)
-        return self._repo.list_emittenti_usage(record_id, limit=limit, offset=offset)
+        return self._repo.list_emittenti_usage(
+            record_id,
+            search=search, order_by=order_by, order_dir=order_dir,
+            limit=limit, offset=offset,
+        )
 

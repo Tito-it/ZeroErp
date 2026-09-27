@@ -20,6 +20,12 @@ export function createOperatore(payload) {
   return api.post(`${BASE}/operatori/`, payload)
 }
 
+// La credenziale che porta un'email, con username e vesti: i dati del dialog
+// di conferma del riuso (B-20). `data.credenziale` null = nessuna credenziale.
+export function getCredenzialePerEmail(email) {
+  return api.get(`${BASE}/operatori/credenziale-per-email/`, { params: { email } })
+}
+
 export function updateOperatore(authUserId, payload) {
   return api.patch(`${BASE}/operatori/${authUserId}/`, payload)
 }
@@ -187,8 +193,10 @@ export function exportErrorLogs(params = {}) {
 
 // --- Reparti e profili ---
 
-export function listReparti() {
-  return api.get(`${BASE}/reparti/`)
+// Scopo: la lista paginata dei reparti (`amm.reparti`): `params` porta ricerca,
+//        ordinamento e pagina.
+export function listReparti(params = {}) {
+  return api.get(`${BASE}/reparti/`, { params })
 }
 
 export function getProfiloReparto(uoId) {

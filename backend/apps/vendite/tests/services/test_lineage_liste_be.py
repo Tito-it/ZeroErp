@@ -167,7 +167,7 @@ class LineageListeFrontieraDecodeTests(TestCase):
 #    Senza, una lista montata in un drawer sfuggiva al presidio — il drawer dei
 #    contratti del cliente non era mai stato guardato.
 _RE_LISTA_CONFIGURABILE = re.compile(
-    r"<(?:ListaConfigurabile|DrawerTabLista)\b.{0,400}?(?<![:@\w-])codice=\"([^\"]+)\"", re.S
+    r"<(?:ListaConfigurabile|DrawerTabLista|ListaPaginaSemplice)\b.{0,400}?(?<![:@\w-])codice=\"([^\"]+)\"", re.S
 )
 
 # Import di un componente `.vue` con percorso relativo: (nome, percorso).

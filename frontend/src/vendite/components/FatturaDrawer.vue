@@ -67,11 +67,13 @@ import {
   STATUS_ICONS,
 } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
-import { displayDate, displayTimestamp } from '../../core/utils/date'
+import { displayDate } from '../../core/utils/date'
 import { formatCurrency, formatIvaLabel, formatNumber } from '../../core/utils/format'
-import { gravitaGiornaleSeverity, statoDocFiscaleSeverity } from '../../core/utils/severity'
+import { statoDocFiscaleSeverity } from '../../core/utils/severity'
 import { downloadBlob } from '../../core/utils/download'
-import { getFatturaDettaglio, getFatturaGiornale } from '../api/fatture'
+import { getFatturaDettaglio } from '../api/fatture'
+import GiornaleEntitaTab from '../_shared/giornale/GiornaleEntitaTab.vue'
+import { useFatturaGiornaleStore } from '../stores/giornaleEntita'
 import { gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 
 const props = defineProps({
@@ -127,37 +129,24 @@ const scadenze = computed(() => dettaglio.value?.scadenze ?? [])
 // lo stesso perimetro della lista note, quindi i due valori non divergono.
 const noteCount = ref(0)
 
-// ⭐ LA STORIA DEL DOCUMENTO (Passo A del filone osservabilità). Fetch SUA,
-// separata dal dettaglio: è un pannello di consultazione e non deve rallentare
-// l'apertura del documento — se fallisce, il documento si vede lo stesso.
-const giornale = ref([])
-const giornaleTotale = ref(0)
-const giornaleCaricato = ref(false)
-// Quante righe il filtro nasconde: le segnalazioni RITIRATE, cioè quelle di
-// un tentativo poi rifatto. ⛔ Il numero non è un di più — senza, «nessun
-// evento» e «tre eventi, tutti superati» si leggono uguali.
-const giornaleRitirate = ref(0)
-// Quante righe stanno in una pagina. ⚠️ Non c'è paginatore: su un documento gli
-// eventi sono pochi (misurato: 3 sul caso più mosso). Se un giorno saranno di
-// più, la riga «mostrati N di M» qui sotto lo dice invece di tacerlo.
-const GIORNALE_PAGE_SIZE = 50
-// ⭐ L'ORDINE DI DEFAULT È LA GRAVITÀ (Tid, 2026-08-24, dopo la validazione
-// in-app): davanti a un documento la prima domanda è «c'è qualcosa che non
-// va?», non «cosa è successo per primo». La cronologia resta a un clic.
-// ⚠️ `sortOrder` è la convenzione PrimeVue: -1 = DESC, 1 = ASC.
-const giornaleSortField = ref('gravita')
-const giornaleSortOrder = ref(-1)
+// ⭐ LA STORIA DEL DOCUMENTO (Passo A del filone osservabilità). Dal 2026-09-27
+// è la lista a catalogo `vendite.giornale` filtrata sulla fattura, resa dal
+// tab condiviso col `LottoDrawer` (`GiornaleEntitaTab`): qui resta solo lo
+// store, da cui la scheda legge il suo conteggio. ⚠️ Il tab si monta con il
+// documento (i pannelli di `Tabs` non sono lazy): la storia si chiede
+// all'apertura, e il conteggio nell'etichetta c'è prima di entrarci.
+const giornaleStore = useFatturaGiornaleStore()
 
 // ⭐ L'ERRORE IN EVIDENZA. Un documento che non si è potuto numerare deve dirlo
 // in testa, non in fondo alla terza schermata: chi apre la fattura la apre
 // PROPRIO perché qualcosa non è andato.
-// ⚠️ Si prende il PIÙ RECENTE, e la lista arriva già ordinata dal più nuovo:
-// su un documento ripreso più volte gli errori si ripetono uguali, e mostrarli
-// tutti direbbe che è successo N volte invece di una.
-// ⭐ E non c'è più niente da dedurre: dal changeSet `20260824-14` la vista porta
-// `disabilitato`, e le ritirate sono già state tolte dal SERVER — quindi qui
-// dentro un ERROR è vivo per costruzione, non per inferenza sull'ordine.
-const erroreVivo = computed(() => giornale.value.find((r) => r.gravita === 'ERROR') ?? null)
+// ⭐ FONTE SUA, NEL DETTAGLIO (`errore_vivo`, 2026-09-27): la riga ERROR più
+// recente e non ritirata, scelta dal BACKEND. ⛔ Fino a quel giorno era «il
+// primo ERROR della pagina della Storia», che era ordinata per gravità; da
+// quando la Storia è la lista a catalogo, l'ordine lo decide il preset
+// (`quando desc`) o l'operatore, e il banner avrebbe taciuto appena l'errore
+// fosse scivolato a pagina 2 — un documento in errore che a video sembra sano.
+const erroreVivo = computed(() => dettaglio.value?.errore_vivo ?? null)
 
 // Scopo: il link del banner — porta sulla scheda dove l'errore è raccontato per
 //        intero, invece di lasciare l'operatore a cercarlo.
@@ -242,57 +231,6 @@ async function loadDettaglio() {
   }
 }
 
-// Scopo: riordina la storia RICHIEDENDOLA AL SERVER.
-// ⛔ Il `lazy` della tabella non è un dettaglio di resa: senza, PrimeVue
-//    ordinerebbe l'array già caricato — cioè la sola pagina — e con più righe
-//    del tetto «il più grave» diventerebbe «il più grave fra i primi 50». È il
-//    difetto silenzioso di sempre: a video un elenco ordinato male e uno
-//    ordinato bene si somigliano.
-function onGiornaleSort(event) {
-  giornaleSortField.value = event.sortField || 'gravita'
-  giornaleSortOrder.value = event.sortOrder ?? -1
-  loadGiornale()
-}
-
-// Scopo: carica la storia del documento. ⚠️ Silenziosa e best-effort: un
-//        giornale che non arriva non deve impedire di leggere la fattura, e il
-//        pannello lo dice da sé restando sullo stato «non caricato» invece di
-//        affermare «non è successo niente».
-// ⛔ `giornaleCaricato` non è un dettaglio: senza, un elenco vuoto perché la
-//    fetch è fallita e uno vuoto perché non è successo nulla si leggono uguali.
-async function loadGiornale() {
-  if (!props.fatturaId) return
-  const my = fv.tag()
-  try {
-    const res = await execute(
-      () =>
-        getFatturaGiornale(props.fatturaId, {
-          pageSize: GIORNALE_PAGE_SIZE,
-          sortBy: giornaleSortField.value,
-          sortDir: giornaleSortOrder.value === 1 ? 'asc' : 'desc',
-        }),
-      { silent: true },
-    )
-    if (!fv.isCurrent(my) || res == null) return
-    // ⚠️ `execute` restituisce il payload GIA' SCARTATO dall'envelope
-    // (`response.data.data`), non la response axios: qui si legge `res.results`,
-    // non `res.data.data.results`. ⛔ Difetto pagato il 2026-08-24: con
-    // l'unwrap di troppo l'elenco restava vuoto E `giornaleCaricato` andava
-    // comunque a `true` — cioe' il pannello affermava «nessun evento
-    // registrato» su una fattura che ne aveva tre. Il vuoto positivo che
-    // questo flag esiste per impedire, prodotto dal flag stesso.
-    // 📌 `loadDettaglio` qui sopra legge `res.data?.data` perche' passa da
-    // `loadDetailOrClose`, che la response axios la restituisce intera: i due
-    // non si copiano a vicenda.
-    giornale.value = res.results ?? []
-    giornaleTotale.value = Number(res.count ?? 0)
-    giornaleRitirate.value = Number(res.ritirate_count ?? 0)
-    giornaleCaricato.value = true
-  } catch {
-    // Volutamente muto: vedi sopra.
-  }
-}
-
 watch(
   () => [props.visible, props.fatturaId],
   async ([visible]) => {
@@ -309,15 +247,12 @@ watch(
     }
     dettaglio.value = null
     noteCount.value = 0
-    giornale.value = []
-    giornaleTotale.value = 0
-    giornaleCaricato.value = false
-    giornaleRitirate.value = 0
     tabAttiva.value = 'documento'
+    // ⚠️ La storia NON si chiede qui: la chiede il tab quando si monta, cioè
+    // dopo il dettaglio (sta dentro `v-if="fattura"`) — se la fattura non è
+    // accessibile il drawer si è già chiuso, e nessuna lettura parte su un id
+    // negato.
     await loadDettaglio()
-    // Dopo il dettaglio, non insieme: se la fattura non è accessibile il
-    // drawer si è già chiuso, e questa non deve partire su un id negato.
-    if (dettaglio.value) await loadGiornale()
   },
   { immediate: true },
 )
@@ -589,7 +524,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
                    senza doverci entrare. -->
               <Tab value="storia">
                 {{ t('vendite.fatture.tab_storia') }}
-                <template v-if="giornaleTotale"> ({{ giornaleTotale }})</template>
+                <template v-if="giornaleStore.totalRecords"> ({{ giornaleStore.totalRecords }})</template>
               </Tab>
             </TabList>
             <TabPanels>
@@ -742,98 +677,19 @@ const suVisibile = gestoreVisibile(emit, onClose)
               <TabPanel value="storia">
 
           <!-- ⭐ LA STORIA DEL DOCUMENTO — «cosa è successo a questa fattura».
-               Sorgente: `script.vw_giornale_entita`, la vista che cuce i
-               registri di evento; per la fattura oggi risponde `fatture_log`.
+               La lista a catalogo `vendite.giornale` sulla sola fattura
+               (sorgente `script.vw_giornale_entita`; per la fattura oggi
+               risponde `fatture_log`), nel tab condiviso col `LottoDrawer`.
                ⛔ Non è il pannello «Collegamenti»: quello dice con quali ALTRI
                documenti la fattura è legata, questo cosa le è successo.
-               ⚠️ NON interattivo di proposito: sta dentro `app-drawer-content`,
-               che diventa `.app-readonly` quando l'area è in LETTURA — un
-               pannello con controlli qui dentro sarebbe visibile e non
-               cliccabile (memoria `feedback_app_escape_pannelli_processo`).
-               Finché è sola lettura non serve `app-escape`. -->
-          <div class="app-drawer-section"><h4>{{ t('vendite.fatture.sez_giornale') }}</h4></div>
-          <DataTable
-            v-if="giornale.length"
-            :value="giornale"
-            data-key="riga_key"
-            class="app-datatable app-datatable--inner"
-            size="small"
-            lazy
-            :sort-field="giornaleSortField"
-            :sort-order="giornaleSortOrder"
-            @sort="onGiornaleSort"
-          >
-            <Column
-              field="quando"
-              sortable
-              :header="t('vendite.fatture.col_giornale_quando')"
-              style="width: 150px;"
-            >
-              <template #body="{ data }">{{ displayTimestamp(data.quando) }}</template>
-            </Column>
-            <Column
-              field="gravita"
-              sortable
-              :header="t('vendite.fatture.col_giornale_gravita')"
-              style="width: 110px;"
-            >
-              <template #body="{ data }">
-                <!-- ⚠️ `gravita` può essere NULL, e la vista lo dichiara come il
-                     segnale che «un vincolo si è allargato e la mappa è rimasta
-                     indietro»: si mostra il buco, non lo si nasconde. -->
-                <Tag
-                  :value="data.gravita ?? '—'"
-                  :severity="gravitaGiornaleSeverity(data.gravita)"
-                />
-              </template>
-            </Column>
-            <Column field="cosa" :header="t('vendite.fatture.col_giornale_cosa')">
-              <!-- ⭐ Il FATTO, tradotto quando il catalogo lo dichiara — stessa
-                   decodifica della scheda Storia del lotto, stesso ripiego
-                   fail-visible sul codice grezzo. -->
-              <template #body="{ data }">
-                <span class="app-giornale-cosa">
-                  {{ labelOrCode(t, te, data.etichetta_key, data.cosa) }}
-                </span>
-              </template>
-            </Column>
-            <Column :header="t('vendite.fatture.col_giornale_chi')" style="width: 130px;">
-              <template #body="{ data }">{{ data.user_insert ?? '—' }}</template>
-            </Column>
-          </DataTable>
-
-          <!-- ⛔ I due vuoti NON sono lo stesso vuoto: «non è successo niente»
-               è un'informazione, «non sono riuscito a chiederlo» no. -->
-          <!-- ⛔ TRE vuoti diversi, e vanno detti diversi: «non è successo
-               niente», «è successo tutto ed è stato superato», «non sono
-               riuscito a chiederlo». Il secondo su un elenco filtrato è il
-               caso in cui la distinzione conta di più. -->
-          <div v-else class="app-empty-state">
-            <i :class="giornaleCaricato ? STATUS_ICONS.TUTTO_OK : STATUS_ICONS.VUOTO" />
-            <p v-if="!giornaleCaricato">{{ t('vendite.fatture.giornale_non_caricato') }}</p>
-            <p v-else-if="giornaleRitirate > 0">
-              {{ t('vendite.fatture.giornale_solo_ritirate', { n: giornaleRitirate }) }}
-            </p>
-            <p v-else>{{ t('vendite.fatture.giornale_vuoto') }}</p>
-          </div>
-
-          <!-- Il conto di ciò che il filtro toglie. Compare solo quando c'è
-               qualcosa da dichiarare E qualcosa da mostrare: sull'elenco vuoto
-               lo dice già il messaggio qui sopra, e ripeterlo sarebbe rumore. -->
-          <p
-            v-if="giornaleRitirate > 0 && giornale.length"
-            class="app-drawer-header-muted"
-          >
-            {{ t('vendite.fatture.giornale_ritirate', { n: giornaleRitirate }) }}
-          </p>
-
-          <!-- Il conto, quando la pagina non basta: un elenco troncato che non
-               lo dice si legge come completo. -->
-          <p v-if="giornaleTotale > giornale.length" class="app-drawer-header-muted">
-            {{ t('vendite.fatture.giornale_parziale', {
-              n: giornale.length, tot: giornaleTotale,
-            }) }}
-          </p>
+               ⭐ L'emittente del documento scioglie il cancello di perimetro
+               della lista: chi vede più emittenti non deve sceglierne uno per
+               leggere la storia di un documento che lo dichiara. -->
+          <GiornaleEntitaTab
+            :store="giornaleStore"
+            :entita-id="fatturaId"
+            :emittente-soggetto-ruolo-id="fattura.emittente_soggetto_ruolo_id"
+          />
               </TabPanel>
             </TabPanels>
           </Tabs>
@@ -852,6 +708,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
       v-model:visible="pdfDialog"
       :sorgente-code="SORGENTE_CODES.FATTURA"
       :sorgente-id="fatturaId"
+      :emittente-fiscale-id="fattura?.emittente_fiscale_pk ?? null"
       :title="t('vendite.fatture.documenti_titolo', { numero: numeroDisplay })"
     />
 

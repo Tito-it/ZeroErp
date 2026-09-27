@@ -388,19 +388,11 @@ export function eliminaFatturaDaLotto(lottoId, fatturaId) {
 // ⚠️ 404 unificato inesistente/fuori scope, deciso dalla TESTATA: la vista da
 //    sola risponderebbe zero righe, cioè «nessuna storia» invece di «non lo
 //    vedi».
-// ⭐ Ordinamento e filtri sono del SERVER: la lista è paginata, quindi filtrare
-//    o riordinare qui lavorerebbe sulla sola pagina caricata.
-export function getLottoGiornale(
-  lottoId,
-  { page = 1, pageSize = 50, sortBy = 'gravita', sortDir = 'desc', info = false } = {},
-) {
-  return api.get(`${BASE}/${lottoId}/giornale/`, {
-    params: {
-      page, page_size: pageSize, sort_by: sortBy, sort_dir: sortDir,
-      // ⚠️ Solo quando serve: il default del server è «nascoste», e mandare
-      // `info=false` esplicito funzionerebbe uguale ma legherebbe il client a
-      // un default che è del backend.
-      ...(info ? { info: true } : {}),
-    },
-  })
+// ⭐ Dal 2026-09-27 è la lista a catalogo `vendite.giornale` (la stessa della
+//    Storia della fattura e del trasversale): contratto di lista standard dallo
+//    store (`giornaleEntita`), più il filtro che è solo del lotto — `info`,
+//    «anche le righe di routine» — e l'emittente del lotto
+//    (`emittente_soggetto_ruolo_id`) che scioglie il cancello di perimetro.
+export function listLottoGiornale(lottoId, params = {}) {
+  return api.get(`${BASE}/${lottoId}/giornale/`, { params })
 }

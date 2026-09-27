@@ -11,13 +11,17 @@
 // ------------------------------------------------------------
 
 import api from '../../core/api'
+import { SORGENTE_CODES } from '../constants'
 
 // Scopo: Costruisce un client API per documenti generati di una specifica
 //        sorgente. `basePathFn(sorgenteId)` ritorna il path radice della
 //        sub-resource (es. `/vendite/preventivi/<id>/documenti`).
 function buildSorgenteClient(basePathFn) {
   return {
-    // Scopo: Lista paginata documenti generati per la sorgente.
+    // Scopo: Lista paginata documenti generati per la sorgente (lista
+    //        `documenti.documenti_sorgente`): contratto di lista standard —
+    //        `limit`/`offset`, `order_by`/`order_dir`, `search`, envelope
+    //        `paginated_envelope` (`results`/`count`).
     list(sorgenteId, params = {}) {
       return api.get(`${basePathFn(sorgenteId)}/`, { params })
     },
@@ -132,3 +136,19 @@ export const ddtDocumenti = buildSorgenteClient(
 export const fattureDocumenti = buildSorgenteClient(
   (fatturaId) => `/vendite/fatture/${fatturaId}/documenti`,
 )
+
+// Scopo: codice sorgente -> client API. Sede UNICA della mappa: la leggono lo
+//        store delle azioni (`documentiPerSorgente`) e gli store-lista
+//        (`documentiSorgenteLista`, uno per sorgente). Quando un nuovo dominio
+//        sorgente entra nel motore documentale, basta aggiungere l'entry qui.
+// ⚠️ Stava nello store delle azioni finche' ne aveva uno solo; il 2026-09-27
+//    la lista e' uscita in uno store suo e i consumatori sono diventati due —
+//    una seconda copia della mappa divergerebbe alla prima sorgente nuova.
+export const SORGENTE_CLIENT_MAP = Object.freeze({
+  [SORGENTE_CODES.PREVENTIVO]: preventivoDocumenti,
+  [SORGENTE_CODES.CONTRATTO]: contrattoDocumenti,
+  [SORGENTE_CODES.OFFERTA_COMMERCIALE]: offertaDocumenti,
+  [SORGENTE_CODES.ORDINE_VENDITA]: ordineDocumenti,
+  [SORGENTE_CODES.DDT]: ddtDocumenti,
+  [SORGENTE_CODES.FATTURA]: fattureDocumenti,
+})

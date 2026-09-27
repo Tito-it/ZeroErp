@@ -41,6 +41,13 @@
 // 20. lo stesso termine con uno spazio in coda non cambia la richiesta
 // 21. lista non ancora caricata e `ricercaCorta: 'svuota'`: decide la fetch
 // 22. dopo una richiesta fallita lo stesso termine riprova
+//  — il padre composto (2026-09-27) —
+// 23. piu' parti nel path: la fetch le riceve nell'ordine di `parentField`
+// 24. con `emittenteParam` senza emittente non legge, ed e' in attesa
+// 25. l'emittente viaggia in query col nome del backend, non nel path
+// 26. `paramsEmittente` porta l'emittente agli altri verbi della view
+// 27. l'emittente da solo non e' un'attesa: senza documento non c'e' padre
+// 28. `reset()` azzera TUTTE le parti del padre
 // ------------------------------------------------------------
 
 import { describe, it, expect, vi } from 'vitest'
@@ -293,5 +300,91 @@ describe('useListaStoreCore — il tasto che non cambia la richiesta', () => {
     expect(s.erroreCaricamento.value).toBe(true)
     // La lista a video e' ancora quella di prima, ma la richiesta non e' nota.
     expect(s.ricercaCambiaLaRichiesta('a')).toBe(true)
+  })
+})
+
+// ⭐ IL PADRE COMPOSTO (2026-09-27, regola del 2): piu' id nel path e/o
+//    l'emittente del documento in query. La semantica e' UNA: senza tutte le
+//    parti la lista non legge — e lo dice (`attesaPadre`).
+describe('useListaStoreCore — il padre composto', () => {
+  it('piu\' parti nel path: la fetch le riceve nell\'ordine di `parentField`', async () => {
+    const fetchPage = spiaFetch()
+    const s = useListaStoreCore({
+      fetchPage, startsEmpty: false, parentField: ['soggettoId', 'titoloId'],
+    })
+    s.soggettoId.value = 'uuid-1'
+    // ⛔ Una parte sola non basta: l'altra finirebbe `undefined` nel path.
+    expect(await s.fetchList()).toBe(false)
+    expect(fetchPage).not.toHaveBeenCalled()
+    s.titoloId.value = 7
+    await s.fetchList()
+    const [soggettoId, titoloId, params] = fetchPage.mock.calls[0]
+    expect([soggettoId, titoloId]).toEqual(['uuid-1', 7])
+    expect(params).toMatchObject({ limit: PAGINATION.DEFAULT_ROWS, offset: 0 })
+  })
+
+  it('con `emittenteParam` senza emittente non legge, ed e\' in attesa', async () => {
+    const fetchPage = spiaFetch()
+    const s = useListaStoreCore({
+      fetchPage, startsEmpty: false, parentField: 'documentoId',
+      emittenteParam: 'emittente_fiscale_id',
+    })
+    expect(s.attesaPadre.value).toBe(false)
+    s.documentoId.value = 12
+    expect(s.attesaPadre.value).toBe(true)
+    expect(await s.fetchList()).toBe(false)
+    expect(fetchPage).not.toHaveBeenCalled()
+  })
+
+  it('l\'emittente viaggia in query col nome del backend, non nel path', async () => {
+    const fetchPage = spiaFetch()
+    const s = useListaStoreCore({
+      fetchPage, startsEmpty: false, parentField: 'entitaId',
+      emittenteParam: 'emittente_soggetto_ruolo_id',
+    })
+    s.entitaId.value = 7
+    s.emittenteId.value = 3
+    expect(s.attesaPadre.value).toBe(false)
+    await s.fetchList()
+    expect(fetchPage.mock.calls[0]).toHaveLength(2)
+    const [entitaId, params] = fetchPage.mock.calls[0]
+    expect(entitaId).toBe(7)
+    expect(params).toMatchObject({ emittente_soggetto_ruolo_id: 3, offset: 0 })
+    // ⚠️ Non e' un filtro: `paramsFiltro` (e quindi il segno dei filtri e
+    //    l'export) non lo vede.
+    expect(s.paramsFiltro()).not.toHaveProperty('emittente_soggetto_ruolo_id')
+    expect(s.chiaviFiltro).not.toContain('emittenteId')
+  })
+
+  it('`paramsEmittente` porta l\'emittente agli altri verbi della view', () => {
+    const s = useListaStoreCore({
+      fetchPage: fetchMai, parentField: 'templateId', emittenteParam: 'emittente_fiscale_id',
+    })
+    expect(s.paramsEmittente()).toEqual({})
+    s.emittenteId.value = 5
+    expect(s.paramsEmittente()).toEqual({ emittente_fiscale_id: 5 })
+    // Senza `emittenteParam` non c'e' niente da portare.
+    expect(useListaStoreCore({ fetchPage: fetchMai }).paramsEmittente()).toEqual({})
+  })
+
+  it('l\'emittente da solo non e\' un\'attesa: senza documento non c\'e\' padre', () => {
+    const s = useListaStoreCore({
+      fetchPage: fetchMai, parentField: 'documentoId', emittenteParam: 'emittente_fiscale_id',
+    })
+    s.emittenteId.value = 3
+    expect(s.attesaPadre.value).toBe(false)
+  })
+
+  it('`reset()` azzera TUTTE le parti del padre', () => {
+    const s = useListaStoreCore({
+      fetchPage: fetchMai, parentField: ['soggettoId', 'titoloId'],
+      emittenteParam: 'emittente_fiscale_id',
+    })
+    s.soggettoId.value = 'uuid-1'
+    s.titoloId.value = 7
+    s.emittenteId.value = 3
+    s.reset()
+    expect([s.soggettoId.value, s.titoloId.value, s.emittenteId.value]).toEqual([null, null, null])
+    expect(s.attesaPadre.value).toBe(false)
   })
 })

@@ -178,8 +178,12 @@ def parse_list_params(
     max_limit: int = 200,
 ) -> dict:
     search = qp_str(qp.get("search"))
-    limit = min(qp_int(qp.get("limit"), default_limit), max_limit)
-    offset = qp_int(qp.get("offset"), 0)
+    # ⚠️ Il limite sta fra 1 e `max_limit`, l'offset non e' negativo: i
+    #    repository li riportano gia' nei limiti, ma l'envelope si calcola da
+    #    QUESTI valori — con `limit=0` usciva `page_size: 0` accanto a una
+    #    pagina di righe, cioe' un paginatore che non torna.
+    limit = max(1, min(qp_int(qp.get("limit"), default_limit), max_limit))
+    offset = max(0, qp_int(qp.get("offset"), 0))
     order_by = qp.get("order_by") or default_order
     # ⛔ Assente = `None`, NON "asc" (2026-09-26). Il ripiego su "asc"
     #    annullava il default dei repository (`default_desc`, `colonne_desc`),
@@ -188,7 +192,7 @@ def parse_list_params(
     #    rileggeva la direzione grezza dalla query string. La direzione si
     #    VALIDA a valle (`order_dir_ammessa`, nel service o nel BB SQL).
     order_dir = qp_str(qp.get("order_dir"))
-    page = (offset // limit) + 1 if limit > 0 else 1
+    page = (offset // limit) + 1
     return {
         "search": search,
         "limit": limit,

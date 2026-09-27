@@ -24,20 +24,24 @@
 // ------------------------------------------------------------
 
 import { createListaStore } from '../../core/stores/createListaStore'
+import { storePerIstanza } from '../../core/stores/storePerIstanza'
 import { listRighe } from '../api/magazzino'
 import { FAMIGLIE } from '../vocabolari'
 
 const STORES = Object.fromEntries(
   Object.values(FAMIGLIE).map((f) => [
     f.codice,
-    createListaStore(`magazzino-${f.codice}-righe`, {
+    // ⭐ Uno store per ISTANZA del drawer (`storePerIstanza`, 2026-09-27),
+    //    non per famiglia: due documenti vivi insieme non si scrivono addosso
+    //    le righe.
+    storePerIstanza(`magazzino-${f.codice}-righe`, (id) => createListaStore(id, {
       fetchPage: (docId, params) => listRighe(f.codice, docId, params),
       parentField: 'documentoId',
       // Il documento e' gia' scelto quando il drawer si apre: non e' una lista
       // che parte vuota in attesa di una ricerca.
       startsEmpty: false,
       orderDir: null,
-    }),
+    })),
   ]),
 )
 

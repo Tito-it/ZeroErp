@@ -21,6 +21,7 @@ from django.db import connection
 from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
+    fetch_paged_with_total,
     rows_to_list,
     sql_order_clause,
 )
@@ -50,6 +51,43 @@ TEMPLATES_ORDER_COLUMNS: dict[str, str] = {
     "data_insert": "t.data_insert",
     "data_update": "t.data_update",
 }
+
+
+# Whitelist ORDER BY dei documenti generati di una sorgente (lista 84,
+# `documenti.documenti_sorgente`). ⛔ Chiavata sul `campo_sorgente` FISICO del
+# catalogo, che e' cio' che il frontend manda come `order_by`. «Originale»
+# (`has_file_principale`) e le azioni NON ordinano a catalogo: fuori whitelist.
+DOCUMENTI_SORGENTE_ORDER_COLUMNS: dict[str, str] = {
+    "progressivo_sorgente": "d.progressivo_sorgente",
+    "generato_at": "d.generato_at",
+    "titolo": "d.titolo",
+    "nome_file": "d.nome_file",
+    "stato": "d.stato",
+}
+
+# Colonne DATA della whitelist qui sopra: senza `order_dir` ordinano DESC
+# (`sql_order_clause(colonne_desc=…)`, regola di Tid del 2026-09-02). Insieme
+# confrontato col seed da `test_liste_configurabili_seed` (test 10).
+DOCUMENTI_SORGENTE_SORT_COLONNE_DATA: frozenset[str] = frozenset({"generato_at"})
+
+# Whitelist ORDER BY delle versioni di un template (lista 88,
+# `documenti.template_versioni`). `valido_al` vuota = senza scadenza: con
+# `COALESCE(…, 'infinity')` sta IN CIMA al DESC, come in ogni lista con
+# validita' del progetto (una versione aperta e' la piu' «lunga»).
+TEMPLATE_VERSIONI_ORDER_COLUMNS: dict[str, str] = {
+    "versione": "v.versione",
+    "titolo": "v.titolo",
+    "stato": "v.stato",
+    "valido_dal": "v.valido_dal",
+    "valido_al": "COALESCE(v.valido_al, 'infinity'::date)",
+    "attivo": "v.attivo",
+    "data_update": "v.data_update",
+}
+
+# Colonne DATA della whitelist delle versioni (vedi sopra).
+TEMPLATE_VERSIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset(
+    {"valido_dal", "valido_al", "data_update"}
+)
 
 
 # Whitelist colonne ammesse in INSERT (testata template).
@@ -327,6 +365,12 @@ _ASSET_PROJECTION_DETAIL = (
 _RICERCA_TEMPLATE_DOCUMENTI = RicercaFull("documenti.template_documenti", ("codice", "descrizione"))
 _RICERCA_TEMPLATE_ASSET = RicercaFull("documenti.template_asset", ("codice", "descrizione", "file_name"))
 
+# Cosa si PUO' cercare nei documenti generati di una sorgente (lista 84) e nelle
+# versioni di un template (lista 88). Colonne semplici della tabella nel `FROM`,
+# proiettate con lo stesso nome: forma a tupla, alias passato al BB.
+_RICERCA_DOCUMENTI_SORGENTE = RicercaFull("documenti.documenti_sorgente", ("titolo", "nome_file"))
+_RICERCA_TEMPLATE_VERSIONI = RicercaFull("documenti.template_versioni", ("titolo",))
+
 _ASSET_FROM = """
     FROM documenti.template_asset a
     JOIN documenti.tipi_asset_documento tad ON tad.id = a.asset_tipo_id
@@ -526,16 +570,37 @@ class DocumentiRepository:
             results = rows_to_list(cursor)
         return results[0] if results else None
 
-    # Scopo: Lista versioni di un template, ordinata per versione DESC.
-    #        Niente paginazione: il numero di versioni per template e'
-    #        contenuto per design (ciclo BOZZA->PUBBLICATA->OBSOLETA).
+    # Scopo: Lista paginata delle versioni di un template (lista
+    #        configurabile `documenti.template_versioni`, 88): proiezione
+    #        leggera, senza html/css/markdown. Filtri opzionali `attivo` e
+    #        `stato`, ricerca sul titolo, ordinamento dalla whitelist
+    #        `TEMPLATE_VERSIONI_ORDER_COLUMNS`; di partenza `versione DESC`
+    #        (la piu' recente in cima, come il preset a catalogo).
+    # ⭐ Fino al 2026-09-27 non era paginata («il ciclo BOZZA→PUBBLICATA→
+    #    OBSOLETA ha cardinalita' contenuta»): e' una previsione sui DATI, e le
+    #    previsioni sui dati non decidono la forma di una lista. Pagina e
+    #    totale escono da UNA query (`fetch_paged_with_total`).
     def list_versioni(
         self,
         template_documento_id: int,
         *,
         attivo: bool | None,
         stato: str | None,
-    ) -> list[dict[str, Any]]:
+        search: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int = 25,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        safe_limit = max(1, min(int(limit), 200))
+        safe_offset = max(0, int(offset))
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=TEMPLATE_VERSIONI_ORDER_COLUMNS,
+            default="v.versione", default_desc=True, tiebreak="v.id",
+            colonne_desc=TEMPLATE_VERSIONI_SORT_COLONNE_DATA,
+        )
+
         conditions = ["v.template_documento_id = %s"]
         params: list[Any] = [int(template_documento_id)]
         if attivo is not None:
@@ -544,17 +609,24 @@ class DocumentiRepository:
         if stato is not None:
             conditions.append("v.stato = %s")
             params.append(stato)
-        where_clause = " AND ".join(conditions)
+        add_ricerca_full_condition(
+            conditions, params, search, _RICERCA_TEMPLATE_VERSIONI, alias="v",
+        )
+        from_where = f"{_VERSIONI_FROM} WHERE {' AND '.join(conditions)}"
 
-        sql = f"""
-            SELECT {_VERSIONI_PROJECTION}
-            {_VERSIONI_FROM}
-            WHERE {where_clause}
-            ORDER BY v.versione DESC, v.id DESC
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return rows_to_list(cursor)
+        return fetch_paged_with_total(
+            f"""
+            SELECT {_VERSIONI_PROJECTION},
+                   COUNT(*) OVER () AS total_count
+            {from_where}
+            ORDER BY {ordinamento}
+            LIMIT %s OFFSET %s
+            """,  # ORDER BY da sql_order_clause su whitelist TEMPLATE_VERSIONI_ORDER_COLUMNS, WHERE da condizioni letterali + add_ricerca_full_condition (espressioni dichiarate nel repo), valori come parametri
+            params + [safe_limit, safe_offset],
+            fallback_count_sql=f"SELECT COUNT(*) {from_where}",  # stesso FROM/WHERE della pagina
+            fallback_params=params,
+            offset=safe_offset,
+        )
 
     # Scopo: Dettaglio versione singola (incluso payload HTML/CSS/markdown).
     #        Filtro implicito su template_documento_id per defense-in-depth:
@@ -1106,12 +1178,18 @@ class DocumentiRepository:
             return None
         return {"id": int(row[0]), "codice": str(row[1]), "attivo": bool(row[2])}
 
-    # Scopo: Lista paginata documenti generati per una sorgente specifica.
+    # Scopo: Lista paginata documenti generati per una sorgente specifica
+    #        (lista configurabile `documenti.documenti_sorgente`, 84).
     #        Filtra su (sorgente_tipo_id, sorgente_uid) e opzionalmente
     #        `sorgente_riga`. Scope emittente whitelist via `ANY(%s)`.
-    #        ORDER BY `generato_at DESC, id DESC` (timeline naturale per
-    #        l'utente: piu' recenti in alto). Tiebreaker `id DESC` per
-    #        paginazione deterministica.
+    #        Ordinamento dalla whitelist `DOCUMENTI_SORGENTE_ORDER_COLUMNS`;
+    #        di partenza `generato_at DESC, id DESC` (timeline naturale per
+    #        l'utente: piu' recenti in alto), tiebreaker `id` nello stesso
+    #        verso per una paginazione deterministica.
+    # ⭐ Dal 2026-09-27 pagina e totale escono da UNA query (`COUNT(*) OVER ()`
+    #    via `fetch_paged_with_total`): prima erano due, con due copie dello
+    #    stesso WHERE. Il ripiego del conteggio scatta solo sulla pagina oltre
+    #    l'ultima, con lo stesso FROM/WHERE della pagina.
     def list_documenti_per_sorgente(
         self,
         *,
@@ -1121,9 +1199,21 @@ class DocumentiRepository:
         emittente_ids_scope: list[int] | None,
         limit: int,
         offset: int,
+        search: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
+        # ⚠️ Il default e' la colonna DATA e ripiega DESC anche lui: una
+        #    lista che si apre senza ordinamento deve mostrare l'ultimo
+        #    documento emesso, come faceva la query scritta a mano.
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=DOCUMENTI_SORGENTE_ORDER_COLUMNS,
+            default="d.generato_at", default_desc=True, tiebreak="d.id",
+            colonne_desc=DOCUMENTI_SORGENTE_SORT_COLONNE_DATA,
+        )
 
         conditions = [
             "d.sorgente_tipo_id = %s",
@@ -1138,14 +1228,17 @@ class DocumentiRepository:
         if emittente_ids_scope is not None:
             conditions.append("d.emittente_fiscale_id = ANY(%s)")
             params.append(list(emittente_ids_scope))
-        where_clause = " AND ".join(conditions)
+        # Un punto solo: la stessa condizione serve pagina e ripiego del conto.
+        add_ricerca_full_condition(
+            conditions, params, search, _RICERCA_DOCUMENTI_SORGENTE, alias="d",
+        )
+        from_where = (
+            "FROM documenti.documenti_generati d "
+            f"WHERE {' AND '.join(conditions)}"
+        )
 
-        count_sql = f"""
-            SELECT COUNT(*)
-              FROM documenti.documenti_generati d
-             WHERE {where_clause}
-        """  # noqa: S608 — colonne fisse, valori parametrici
-        data_sql = f"""
+        return fetch_paged_with_total(
+            f"""
             SELECT
                 d.id,
                 d.uid::text AS uid,
@@ -1169,29 +1262,24 @@ class DocumentiRepository:
                 -- alla UI di disabilitare l'azione CON LA RAGIONE invece di
                 -- lasciarla fallire (brief ristampa-fedele §5.2.2), e di
                 -- proporre al suo posto la ristampa fedele, che per quei
-                -- documenti e' l'unico percorso possibile.
+                -- documenti e' l'unico percorso possibile. E' anche la colonna
+                -- «Originale» della lista (campo_sorgente `has_file_principale`).
                 EXISTS (
                     SELECT 1
                       FROM documenti.documenti_generati_file f
                      WHERE f.documento_generato_id = d.id
                        AND f.is_principale = true
-                ) AS has_file_principale
-              FROM documenti.documenti_generati d
-             WHERE {where_clause}
-             ORDER BY d.generato_at DESC, d.id DESC
-             LIMIT %s OFFSET %s
-        """  # noqa: S608
-
-        with connection.cursor() as cursor:
-            cursor.execute(count_sql, params)
-            row = cursor.fetchone()
-            assert row is not None
-            total = int(row[0])
-
-            cursor.execute(data_sql, params + [safe_limit, safe_offset])
-            results = rows_to_list(cursor)
-
-        return results, total
+                ) AS has_file_principale,
+                COUNT(*) OVER () AS total_count
+            {from_where}
+            ORDER BY {ordinamento}
+            LIMIT %s OFFSET %s
+            """,  # noqa: S608 — ORDER BY da sql_order_clause su whitelist DOCUMENTI_SORGENTE_ORDER_COLUMNS, WHERE da condizioni letterali + add_ricerca_full_condition (espressioni dichiarate nel repo), valori come parametri
+            params + [safe_limit, safe_offset],
+            fallback_count_sql=f"SELECT COUNT(*) {from_where}",  # stesso FROM/WHERE della pagina
+            fallback_params=params,
+            offset=safe_offset,
+        )
 
     # Scopo: Dettaglio documento generato per id, con scope emittente.
     #        Ritorna None se inesistente o fuori scope (il service traduce

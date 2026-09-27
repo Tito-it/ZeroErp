@@ -591,7 +591,12 @@ const suVisibile = gestoreVisibile(emit, chiudi)
 
           <!-- Tab Flussi -->
           <TabPanel value="flussi">
-            <PraticaFlussiTab :pratica-id="props.praticaId" />
+            <!-- L'emittente della pratica scioglie il cancello di perimetro
+                 della lista `pratiche.flussi` (non `multi_emittente`). -->
+            <PraticaFlussiTab
+              :pratica-id="props.praticaId"
+              :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
+            />
           </TabPanel>
 
           <!-- Tab Note -->

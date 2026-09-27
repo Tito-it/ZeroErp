@@ -86,7 +86,10 @@ class GiornaleTrasversaleApiTests(JwtMockedApiTest):
             gravita=["ERROR", "WARN"], registri=["EVENT_LOG", "TASK_RUN"],
             entity_type="LOTTO", data_da=date(2026, 9, 1), data_a=date(2026, 9, 19),
             filo=_FILO, solo_vive=False, limit=10, offset=20,
-            sort_by="quando", sort_dir="desc",
+            # Verso assente = `None`: il DESC lo decide il repository
+            # (`sql_order_direction(default_desc=True)`), sede unica del
+            # default per i tre lettori del giornale (2026-09-27).
+            sort_by="quando", sort_dir=None,
         )
         self.assertEqual(resp.json()["data"]["page"], 3)
 
@@ -102,7 +105,7 @@ class GiornaleTrasversaleApiTests(JwtMockedApiTest):
         # Senza il filtro `registro` il catalogo non si interroga: e' il costo
         # dichiarato della lettura dal catalogo (una SELECT solo quando serve).
         repo_cls.return_value.registri_giornale_ammessi.assert_not_called()
-        self.assertEqual((chiamata["sort_by"], chiamata["sort_dir"]), ("quando", "desc"))
+        self.assertEqual((chiamata["sort_by"], chiamata["sort_dir"]), ("quando", None))
 
     # 4-5. Vocabolari: un valore ignoto e' un 400, mai «zero righe».
     @_AUTH

@@ -37,7 +37,6 @@ import {
   getOfferta,
   listEccezioni,
   listOfferte,
-  listRevisioniOfferta,
   pushOffertaAContratto,
   registraEsitoOfferta,
   updateEccezione,
@@ -160,12 +159,6 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
     return res.data.data
   }
 
-  // Catena revisioni (lettura libera).
-  async function loadRevisioni(id) {
-    const res = await listRevisioniOfferta(id)
-    return res.data.data
-  }
-
   // ACCETTATA -> ordine DRAFT (conversione §7.4). Ritorna
   // { ordine_id, numero, righe_create, documento_origine }. Emette per il
   // nuovo ordine (apre/refresh tab ordini). Provenienza senza UNIQUE → più
@@ -234,7 +227,7 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
     // testata (utility 1:1 atomica via payload.utility inline)
     fetchDetail, create, update, elimina,
     // transizioni
-    emetti, registraEsito, annulla, creaRevisione, loadRevisioni, pushAContratto,
+    emetti, registraEsito, annulla, creaRevisione, pushAContratto,
     generaOrdine,
     loadContrattoSovrapposto,
     // eccezioni

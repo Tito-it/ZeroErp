@@ -878,13 +878,22 @@ class OfferteService:
         self._get_offerta_or_raise(offerta_id, op="get_contratto_sovrapposto", getter=self._repo.get_stato_codice)
         return self._repo.get_contratto_sovrapposto(offerta_id)
 
-    # Scopo: Ritorna la catena di revisioni che condivide il root (rev.1)
-    #        con l'offerta passata. Lettura libera in ogni stato.
-    def list_revisioni(self, offerta_id: int) -> list[dict[str, Any]]:
+    # Scopo: Ritorna una PAGINA della catena di revisioni che condivide la
+    #        radice (rev.1) con l'offerta passata, col totale per
+    #        `paginated_envelope`. Lettura libera in ogni stato.
+    def list_revisioni(
+        self, offerta_id: int, *,
+        limit: int = 25, offset: int = 0,
+        order_by: str | None = None, order_dir: str | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        # 404 esplicito se l'offerta non esiste.
+        # 404 esplicito se l'offerta non esiste (o e' fuori perimetro): una
+        # lista vuota direbbe «nessuna revisione» di un documento che non c'e'.
         self._get_offerta_or_raise(offerta_id, op="list_revisioni", getter=self._repo.get_stato_codice)
-        return self._repo.list_revisioni(offerta_id)
+        return self._repo.list_revisioni(
+            offerta_id,
+            limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
+        )
 
     # Scopo: BOZZA -> ANNULLATA (ritiro interno prima dell'emissione).
     #        Motivazione obbligatoria. Pattern simmetrico al contratto

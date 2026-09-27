@@ -14,14 +14,6 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
-// ⚠️ DataTable/Column «a mano» e NON `<ListaConfigurabile>`, che e' quello che
-// usano le altre tre schede: la storia non ha (e non deve avere) una
-// definizione a catalogo — non e' una lista che l'operatore personalizza, e'
-// un giornale. ⛔ Senza questi due import il pannello non darebbe nessun
-// errore: Vue renderebbe due elementi sconosciuti e la scheda resterebbe
-// vuota.
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'
@@ -71,7 +63,6 @@ import { DRAWER_WIDTH, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { extractApiError } from '../../core/utils/apiError'
 import {
-  gravitaGiornaleSeverity,
   statoEsecuzioneLottoSeverity,
   statoLottoSeverity,
   statoTaskRunSeverity,
@@ -89,7 +80,6 @@ import {
   exportLottoTaskRuns,
   exportLottoSegnalazioni,
   eliminaFatturaDaLotto,
-  getLottoGiornale,
 } from '../api/lotti'
 // ⭐ Il gesto «apri il documento / apri la commessa» del kebab dei documenti
 // presi in carico passa dal RESOLVER GLOBALE dei bersagli, non da drawer
@@ -107,6 +97,8 @@ import { motivoUscitaBloccata } from '../uscitaDalGiro'
 import FiltriLista from '../../core/components/FiltriLista.vue'
 import { useContrattoFiltriLocali } from '../../core/composables/useContrattoFiltriLocali'
 import { gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import GiornaleEntitaTab from '../_shared/giornale/GiornaleEntitaTab.vue'
+import { useLottoGiornaleStore } from '../stores/giornaleEntita'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -480,29 +472,23 @@ const fraseBanner = computed(() => {
 const tabAttiva = ref(LOTTO_SCHEDE.DOCUMENTI)
 
 // ------------------------------------------------------ la STORIA del lotto
-// ⭐ La quarta scheda (Passo A, seconda meta'). Non e' un altro elenco di
-//    problemi: le altre tre dicono COSA C'E' ORA — i documenti, i tentativi, le
+// ⭐ La quinta scheda (Passo A, seconda meta'). Non e' un altro elenco di
+//    problemi: le altre dicono COSA C'E' ORA — i documenti, i tentativi, le
 //    segnalazioni aperte — questa dice COSA E' SUCCESSO, in che ordine,
 //    comprese le cose andate bene e i tentativi poi superati.
+// ⭐ Dal 2026-09-27 e' la lista a catalogo `vendite.giornale` (la stessa del
+//    giornale trasversale e della Storia della fattura), resa dal tab
+//    condiviso `GiornaleEntitaTab`: colonne dal catalogo, paginatore,
+//    personalizzazione — e il filtro «solo problemi», che e' solo del lotto,
+//    dichiarato dal suo store. Qui resta lo store, da cui la scheda legge il
+//    conteggio. Il tab si monta col lotto (i pannelli di `Tabs` non sono
+//    lazy), quindi la storia si chiede all'apertura e riparte dal suo default
+//    a ogni lotto — il tab si azzera da se' al cambio di entita'.
 // ⛔ Non era scrivibile prima del 2026-08-24 19:33. Qui i registri sono TRE, e
 //    con l'orario di TRANSAZIONE le righe di una stessa transazione uscivano
 //    tutte con lo stesso istante: una timeline che mostra una sequenza mai
 //    avvenuta, e che guardandola non sembra rotta (R-1, risolto dal team DB).
-const GIORNALE_PAGE_SIZE = 50
-const giornale = ref([])
-const giornaleTotale = ref(0)
-const giornaleInfo = ref(0)
-const giornaleRitirate = ref(0)
-// ⛔ Senza questo flag, un elenco vuoto perche' la fetch e' fallita e uno vuoto
-//    perche' non e' successo niente si leggono uguali — e il secondo e'
-//    un'informazione, il primo no.
-const giornaleCaricato = ref(false)
-const giornaleSortField = ref('gravita')
-const giornaleSortOrder = ref(-1)
-// ⭐ Le righe di routine si nascondono ma si CONTANO. Sul 6260 sono 173 su 286:
-//    mostrarle tutte seppellisce le 113 che dicono qualcosa, nasconderle senza
-//    dirlo fa credere che il lotto abbia avuto solo problemi.
-const giornaleInfoVisibili = ref(false)
+const giornaleStore = useLottoGiornaleStore()
 
 // Scopo: il contratto dei filtri delle sotto-liste del lotto — chi sono, che
 //        default hanno, il segno che mostrano e «Pulisci filtri».
@@ -517,33 +503,9 @@ const {
   // ⛔ `'TUTTI'` NON RESTRINGE, e va detto: `AMPIEZZE_TASK.TUTTI` e' `null`,
   //    cioe' nessun filtro di stato sui task. Senza, il segno contava 1 proprio
   //    sull'ampiezza piu' larga — lo stesso verso sbagliato del «mostra tutto»
-  //    del giornale qui sotto.
+  //    della Storia (oggi dichiarato come `filtriNeutri` del suo store).
   ampiezza: { rif: ampiezzaTask, default: 'RILEVANTI', neutro: 'TUTTI' },
 })
-
-// ⛔ IL FILTRO VERO E' L'OPPOSTO DELLA VARIABILE DEL WIDGET, e fino al
-//    2026-09-23 il segno lo leggeva al contrario. «Mostra tutto» ALLARGA la
-//    storia: acceso, non sta restringendo niente — eppure contando
-//    `giornaleInfoVisibili` usciva «1 filtro attivo» proprio li', e il segno
-//    spariva quando la lista era ristretta. Il filtro e' «solo problemi».
-const soloProblemiGiornale = computed({
-  get: () => (giornaleInfoVisibili.value ? null : true),
-  set: (v) => { giornaleInfoVisibili.value = v == null },
-})
-const {
-  segno: segnoGiornaleInfo,
-  azzeraFiltri: azzeraGiornaleInfo,
-} = useContrattoFiltriLocali({
-  solo_problemi: { rif: soloProblemiGiornale, default: true },
-})
-
-// ⚠️ Niente `severity` sulle due voci: non sono livelli di gravita' e il BB del
-// colore direbbe una cosa falsa — «Tutto» non e' piu' grave di «Solo problemi»,
-// e' piu' largo. Stessa ragione del filtro ampiezza dei task.
-const opzioniGiornaleInfo = computed(() => [
-  { value: false, label: t('vendite.lotti.giornale_solo_problemi') },
-  { value: true, label: t('vendite.lotti.giornale_tutto') },
-])
 
 // Livello dell'elenco segnalazioni. Parte dalle CRITICHE perché sono quelle che
 // fermano il lotto — chi apre la scheda ci arriva per quelle.
@@ -634,55 +596,6 @@ async function caricaSegnalazioni() {
   livelloCaricato.value = livelloSegnalazioni.value
 }
 
-// Scopo: carica la storia del lotto — il lotto PIU' le sue fatture.
-// ⚠️ Silenziosa e best-effort, come sulla fattura: un giornale che non arriva
-//    non deve impedire di leggere il lotto, e il pannello lo dice da se'
-//    restando su «non caricato» invece di affermare «non e' successo niente».
-async function caricaGiornale() {
-  if (!props.lottoId) return
-  try {
-    const res = await getLottoGiornale(props.lottoId, {
-      pageSize: GIORNALE_PAGE_SIZE,
-      sortBy: giornaleSortField.value,
-      sortDir: giornaleSortOrder.value === 1 ? 'asc' : 'desc',
-      info: giornaleInfoVisibili.value,
-    })
-    // ⚠️ Qui si passa DIRETTAMENTE dall'api, non da `useApiHandler.execute`:
-    //    quindi la response axios arriva intera e si scarta l'envelope a mano
-    //    (`res.data.data`). ⛔ Sul drawer fattura e' il contrario, e i due non
-    //    si copiano a vicenda: la' `execute` restituisce il payload gia'
-    //    scartato, e un unwrap di troppo produsse un elenco vuoto con il flag
-    //    «caricato» a true — il pannello che afferma «nessun evento» su un
-    //    documento che ne aveva tre.
-    const d = res.data?.data ?? {}
-    giornale.value = d.results ?? []
-    giornaleTotale.value = Number(d.count ?? 0)
-    giornaleInfo.value = Number(d.info_count ?? 0)
-    giornaleRitirate.value = Number(d.ritirate_count ?? 0)
-    giornaleCaricato.value = true
-  } catch {
-    // Volutamente muto: vedi sopra.
-  }
-}
-
-// Scopo: riordina la storia RICHIEDENDOLA AL SERVER.
-// ⛔ Il `lazy` della tabella non e' un dettaglio di resa: senza, PrimeVue
-//    ordinerebbe l'array gia' caricato — cioe' la sola pagina — e «il piu'
-//    grave» diventerebbe «il piu' grave fra i primi 50».
-function onGiornaleSort(event) {
-  giornaleSortField.value = event.sortField || 'gravita'
-  giornaleSortOrder.value = event.sortOrder ?? -1
-  caricaGiornale()
-}
-
-// Mostrare/nascondere le righe di routine e' una nuova DOMANDA al server, non
-// un filtro in memoria: l'elenco e' paginato, e filtrare qui filtrerebbe la
-// sola pagina caricata.
-watch(giornaleInfoVisibili, () => {
-  if (!props.visible || !props.lottoId) return
-  caricaGiornale()
-})
-
 async function loadTabs() {
   tabLoading.value = true
   try {
@@ -692,7 +605,13 @@ async function loadTabs() {
       listaGruppi.carica(),
       listaTask.carica(),
       caricaSegnalazioni(),
-      caricaGiornale(),
+      // ⭐ La Storia si rilegge con le altre schede: `reloadAll` gira dopo ogni
+      //    azione sul lotto (avanza, rilancia, uscita dal giro), e ciascuna
+      //    scrive nel giornale. Senza, la scheda e il suo contatore restano a
+      //    prima dell'azione. Pagina e filtri restano: e' un riallineamento,
+      //    non un padre nuovo. ⚠️ Solo se gia' letta: la prima lettura (e
+      //    quella di un lotto nuovo) la fa il tab, e qui sarebbe un doppione.
+      giornaleStore.hasSearched ? giornaleStore.fetchList() : null,
     ])
     segnalazioni.value = sRes.data?.data ?? null
   } catch (err) {
@@ -781,16 +700,8 @@ watch(
     // Stessa ragione del livello: il drawer riapre sempre dallo stesso punto.
     azzeraAmpiezzaTask()
     esclusiTask.value = 0
-    // Stessa ragione: la storia riparte dal suo default (i piu' gravi, senza
-    // le righe di routine) invece che da dove l'operatore l'aveva lasciata.
-    giornale.value = []
-    giornaleTotale.value = 0
-    giornaleInfo.value = 0
-    giornaleRitirate.value = 0
-    giornaleCaricato.value = false
-    azzeraGiornaleInfo()
-    giornaleSortField.value = 'gravita'
-    giornaleSortOrder.value = -1
+    // ⚠️ La storia NO: riparte dal suo default da se' — il BB del tab
+    // (`useDrawerTabLista`) riparte da capo a ogni cambio di lotto.
     await reloadAll()
   },
   { immediate: true },
@@ -1396,7 +1307,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
                  Il conteggio nell'etichetta dice se vale la pena entrare. -->
             <Tab :value="LOTTO_SCHEDE.STORIA">
               {{ t('vendite.lotti.tab_storia') }}
-              <template v-if="giornaleTotale"> ({{ giornaleTotale }})</template>
+              <template v-if="giornaleStore.totalRecords"> ({{ giornaleStore.totalRecords }})</template>
             </Tab>
           </TabList>
           <TabPanels>
@@ -1803,164 +1714,22 @@ const suVisibile = gestoreVisibile(emit, onClose)
               <div v-else class="app-empty-state"><i :class="STATUS_ICONS.TUTTO_OK" /><p>{{ t('vendite.lotti.nessuna_segnalazione') }}</p></div>
             </TabPanel>
             <TabPanel :value="LOTTO_SCHEDE.STORIA">
-
               <!-- ⭐ LA STORIA DEL LOTTO — «cosa è successo, in che ordine».
-                   Sorgente `script.vw_giornale_entita`: sul lotto rispondono
-                   TRE registri (`EVENT_LOG`, `LOTTO_LOG`, `TASK_RUN`) più
-                   `FATTURA_LOG` per i documenti che contiene.
+                   La lista a catalogo `vendite.giornale` sul lotto PIÙ le sue
+                   fatture (sorgente `script.vw_giornale_entita`: sul lotto
+                   rispondono `EVENT_LOG`, `LOTTO_LOG`, `TASK_RUN`, più
+                   `FATTURA_LOG` per i documenti che contiene).
                    ⭐ Le righe della FATTURA ci sono di proposito: il lotto
                    ripete «Esito fatture lotto · WARN» e il motivo sta sul
-                   documento, perché la sua entità è la fattura. Un pannello
-                   limitato al lotto sarebbe onesto e nel giorno in cui serve
-                   non conterrebbe la risposta.
+                   documento, perché la sua entità è la fattura — ed è per
+                   questo che le colonne Entità/Riferimento servono.
                    ⛔ Non è la scheda «Segnalazioni»: quella elenca i problemi
-                   APERTI da risolvere, qui c'è anche ciò che è andato bene.
-                   ⚠️ Sola lettura tranne il filtro: sta dentro
-                   `app-drawer-content`, che diventa `.app-readonly` quando
-                   l'area è in LETTURA — il toggle va quindi in `app-escape`, o
-                   sarebbe visibile e non cliccabile (memoria
-                   `feedback_app_escape_pannelli_processo`). -->
-              <div class="app-page-toolbar">
-                <!-- ⚠️ `app-escape` sta sul WIDGET e non piu' sul contenitore:
-                     `FiltriLista` ha piu' nodi radice (barra desktop, barra
-                     compatta, drawer), quindi una `class` sul tag non verrebbe
-                     ereditata da nessuno di essi — Vue non inoltra gli attrs
-                     quando le radici sono piu' d'una. La regola e' comunque
-                     discendente (`.app-readonly .app-escape`), quindi
-                     sull'elemento interno vale identica. -->
-                <FiltriLista :segno="segnoGiornaleInfo" @pulisci="azzeraGiornaleInfo">
-                  <!-- ⚠️ Nuova DOMANDA al server, non un filtro in memoria:
-                       l'elenco è paginato. -->
-                  <SelectButton
-                    class="app-escape app-filtro-largo"
-                    v-model="giornaleInfoVisibili"
-                    :options="opzioniGiornaleInfo"
-                    option-label="label"
-                    option-value="value"
-                    :allow-empty="false"
-                  />
-                </FiltriLista>
-              </div>
-
-              <DataTable
-                v-if="giornale.length"
-                :value="giornale"
-                data-key="riga_key"
-                class="app-datatable app-datatable--inner"
-                size="small"
-                lazy
-                :sort-field="giornaleSortField"
-                :sort-order="giornaleSortOrder"
-                @sort="onGiornaleSort"
-              >
-                <Column
-                  field="quando"
-                  sortable
-                  :header="t('vendite.lotti.col_giornale_quando')"
-                  style="width: 150px;"
-                >
-                  <template #body="{ data }">{{ displayTimestamp(data.quando) }}</template>
-                </Column>
-                <Column
-                  field="gravita"
-                  sortable
-                  :header="t('vendite.lotti.col_giornale_gravita')"
-                  style="width: 110px;"
-                >
-                  <template #body="{ data }">
-                    <!-- ⚠️ `gravita` può essere NULL, e la vista lo dichiara
-                         come il segnale che «un vincolo si è allargato e la
-                         mappa è rimasta indietro»: si mostra il buco. È anche
-                         il motivo per cui il filtro «non-INFO» la LASCIA
-                         passare. -->
-                    <Tag
-                      :value="data.gravita ?? '—'"
-                      :severity="gravitaGiornaleSeverity(data.gravita)"
-                    />
-                  </template>
-                </Column>
-                <!-- ⭐ DI CHI è la riga: è l'informazione che rende utile questo
-                     pannello — «il lotto dice che è andata male, la fattura
-                     dice perché». Senza, le due frasi sono indistinguibili. -->
-                <Column :header="t('vendite.lotti.col_giornale_entita')" style="width: 140px;">
-                  <template #body="{ data }">
-                    <Tag
-                      v-if="data.entity_type === 'FATTURA'"
-                      :value="t('vendite.lotti.giornale_entita_fattura', { id: data.entity_id })"
-                      severity="info"
-                    />
-                    <Tag
-                      v-else
-                      :value="t('vendite.lotti.giornale_entita_lotto')"
-                      severity="secondary"
-                    />
-                  </template>
-                </Column>
-                <Column field="registro" :header="t('vendite.lotti.col_giornale_registro')" style="width: 120px;">
-                  <template #body="{ data }">
-                    <span class="app-drawer-header-muted">{{ data.registro }}</span>
-                  </template>
-                </Column>
-                <Column field="cosa" :header="t('vendite.lotti.col_giornale_cosa')">
-                  <!-- ⭐ Il FATTO, tradotto quando il catalogo lo dichiara.
-                       `etichetta_key` arriva da `config.eventi_dominio` per le
-                       sole righe del diario; sugli altri tre registri e' NULL e
-                       `cosa` e' gia' una frase. Ripiego fail-visible sul codice
-                       grezzo: chiave mancante -> `LOTTO_RIAPERTO`, mai il path
-                       della chiave. -->
-                  <template #body="{ data }">
-                    <span class="app-giornale-cosa">
-                      {{ labelOrCode(t, te, data.etichetta_key, data.cosa) }}
-                    </span>
-                  </template>
-                </Column>
-                <Column :header="t('vendite.lotti.col_giornale_chi')" style="width: 120px;">
-                  <template #body="{ data }">{{ data.user_insert ?? '—' }}</template>
-                </Column>
-              </DataTable>
-
-              <!-- ⛔ QUATTRO vuoti diversi, e vanno detti diversi: «non sono
-                   riuscito a chiederlo», «è successo tutto ed è routine», «è
-                   successo tutto ed è stato superato», «non è successo
-                   niente». I due di mezzo, su un elenco filtrato, sono il caso
-                   in cui la distinzione conta di più — e sono anche i due che
-                   un pannello frettoloso confonde con l'ultimo. -->
-              <div v-else class="app-empty-state">
-                <i :class="giornaleCaricato ? STATUS_ICONS.TUTTO_OK : STATUS_ICONS.VUOTO" />
-                <p v-if="!giornaleCaricato">{{ t('vendite.lotti.giornale_non_caricato') }}</p>
-                <p v-else-if="giornaleInfo > 0">
-                  {{ t('vendite.lotti.giornale_solo_info', { n: giornaleInfo }) }}
-                </p>
-                <p v-else-if="giornaleRitirate > 0">
-                  {{ t('vendite.lotti.giornale_solo_ritirate', { n: giornaleRitirate }) }}
-                </p>
-                <p v-else>{{ t('vendite.lotti.giornale_vuoto') }}</p>
-              </div>
-
-              <!-- Il conto di ciò che il filtro toglie. ⛔ È metà del mestiere
-                   di nascondere: un elenco filtrato e uno completo si leggono
-                   uguali, e «tre problemi» vs «tre problemi e 173 passi andati
-                   bene» sono due schermate diverse. -->
-              <p
-                v-if="giornaleInfo > 0 && giornale.length"
-                class="app-drawer-header-muted"
-              >
-                {{ t('vendite.lotti.giornale_info_nascoste', { n: giornaleInfo }) }}
-              </p>
-              <p
-                v-if="giornaleRitirate > 0 && giornale.length"
-                class="app-drawer-header-muted"
-              >
-                {{ t('vendite.lotti.giornale_ritirate', { n: giornaleRitirate }) }}
-              </p>
-
-              <!-- Il conto, quando la pagina non basta: un elenco troncato che
-                   non lo dice si legge come completo. -->
-              <p v-if="giornaleTotale > giornale.length" class="app-drawer-header-muted">
-                {{ t('vendite.lotti.giornale_parziale', {
-                  n: giornale.length, tot: giornaleTotale,
-                }) }}
-              </p>
+                   APERTI da risolvere, qui c'è anche ciò che è andato bene. -->
+              <GiornaleEntitaTab
+                :store="giornaleStore"
+                :entita-id="lottoId"
+                :emittente-soggetto-ruolo-id="lotto.emittente_soggetto_ruolo_id"
+              />
             </TabPanel>
           </TabPanels>
         </Tabs>
@@ -1988,11 +1757,16 @@ const suVisibile = gestoreVisibile(emit, onClose)
     @export="azioniSegnalazioni.onExportConfirm"
   />
 
-  <!-- Archivio documenti generati della fattura selezionata (sorgente FATTURA). -->
+  <!-- Archivio documenti generati della fattura selezionata (sorgente FATTURA).
+       L'emittente e' quello del LOTTO: una fattura del lotto e' dell'emittente
+       del lotto. La PK (`emittente_fiscale_id`), non il soggetto-ruolo: e' il
+       lasciapassare del cancello di perimetro, senza il quale il super admin
+       su «Tutti» vedrebbe il pannello di scelta dentro il dialog. -->
     <PdfDocumentiSorgenteDialog
       v-model:visible="pdfDialogVisible"
       :sorgente-code="SORGENTE_CODES.FATTURA"
       :sorgente-id="pdfFatturaId"
+      :emittente-fiscale-id="lotto?.emittente_fiscale_id ?? null"
       :title="t('vendite.lotti.documenti_fattura_titolo')"
     />
 

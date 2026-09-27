@@ -54,7 +54,7 @@ import FatturaLookup from '../../vendite/components/FatturaLookup.vue'
 import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfermata'
 import { displayDate } from '../../core/utils/date'
 import { MANAGE_ICONS } from '../../core/constants'
-import { abbinaRiga, registraRigaTardiva } from '../api/pagamenti'
+import { abbinaRiga, forzaturaConMotivo, registraRigaTardiva } from '../api/pagamenti'
 import { formatCurrency } from '../../core/utils/format'
 import { MODO_ABBINA } from '../composables/useAzioniRigaContabile'
 import RataSelect from './RataSelect.vue'
@@ -161,7 +161,7 @@ async function onAbbina() {
 
 // Scopo: secondo tentativo — con la forzatura e il suo motivo.
 async function onConferma() {
-  const esito = await conferma(motivoForzatura.value.trim() || null)
+  const esito = await conferma(forzaturaConMotivo(motivoForzatura.value.trim() || null))
   if (esito !== null) chiudiConEsito()
 }
 

@@ -124,7 +124,15 @@ export function useListaConfigurabilePage(
     // scaffolding non ha modo di PRETENDERLO — chi domani passera' uno store
     // fatto a mano non deve schiantare su una pagina che, senza sospensione,
     // funziona lo stesso: il cancello si vede, e il backend rifiuta comunque.
+    const eraSospesa = store.fetchSospesa === true
     if ('fetchSospesa' in store) store.fetchSospesa = perimetroBloccato.value
+    // ⛔ E ABBASSARE LA BANDIERA NON BASTA: la fetch chiesta mentre era su e'
+    //    uscita senza chiamare (`useListaEmptyStateFetch`), e nessuno la rifa'.
+    //    Il caso e' il tab-lista in un drawer: si monta prima del dettaglio, la
+    //    prima config arriva senza emittente (cancello su), la fetch del padre
+    //    completo cade nel vuoto, e la config riletta con l'emittente sblocca
+    //    una lista che resta vuota — con la frase «nessuna riga» sotto.
+    const sbloccata = eraSospesa && !perimetroBloccato.value
     // ⭐ La casella di ricerca si mostra solo se la lista cerca davvero
     //    (`ricerca_full`, brief-be-ricerca-full-liste-residue §7-bis): la
     //    legge `FiltriLista` dallo store. Prima della guardia `configAligned`,
@@ -161,7 +169,7 @@ export function useListaConfigurabilePage(
     store.ricercaMinCaratteri = soglia
     // Su una lista che non cerca il termine e' appena stato tolto dalla
     // casella, e la fetch la rifa' il `watch` di `useSearchTable`.
-    let ricarica = cambiaLaRicerca && store.ricercaFull !== false
+    let ricarica = (cambiaLaRicerca && store.ricercaFull !== false) || (sbloccata && !store.loading)
     if (!configAligned.value) {
       configAligned.value = true
       const newLimit = config?.pagina_dimensione

@@ -85,8 +85,11 @@ export function generaOrdineFromPreventivo(id, righeIds = null) {
   return api.post(`${BASE}/${id}/genera-ordine/`, body)
 }
 
-export function listRevisioni(id) {
-  return api.get(`${BASE}/${id}/revisioni/`)
+// Catena revisioni del preventivo, PAGINATA (lista a catalogo
+// `vendite.preventivo_revisioni`): `params` porta pagina, ordinamento e
+// `emittente_fiscale_id` del documento (lo legge il cancello di perimetro).
+export function listRevisioni(id, params = {}) {
+  return api.get(`${BASE}/${id}/revisioni/`, { params })
 }
 
 // --- Righe ---

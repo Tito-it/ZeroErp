@@ -22,7 +22,7 @@
 #        (prima transizione di stato, poi genera_documento con savepoint
 #        annidato: se il render fallisce lo stato rollbacka), envelope
 #        success_response, Content-Disposition inline (anteprima) vs
-#        attachment (download), paginazione lista cap 200, defense-in-depth
+#        attachment (download), lista col contratto standard (cap 200), defense-in-depth
 #        `resolve_contesto` su ogni endpoint nested (tampering URL -> 404).
 # ------------------------------------------------------------
 
@@ -41,7 +41,13 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import corpo_oggetto, optional_int, qp_int
+from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.payload_validators import (
+    corpo_oggetto,
+    optional_int,
+    paginated_envelope,
+    parse_list_params,
+)
 from apps.core.api.success_responses import success_response
 from apps.documenti.api.contesto_helpers import resolve_contesto_documentale
 from apps.documenti.api.multipart_helpers import extract_allegati
@@ -256,10 +262,42 @@ def build_documenti_sorgente_views(
     DocumentoAnteprima.__doc__ = f"`POST .../documenti/anteprima/` — {schema_prefix}."
 
     class DocumentiList(DomainAPIView):
+        is_search_endpoint = True
+        # ⭐ Il codice e' SCRITTO QUI, nella classe della factory, e non passato
+        #    come parametro: gli otto domini sorgente servono tutti la STESSA
+        #    lista (`documenti.documenti_sorgente`, 84) — stesse colonne, stessa
+        #    whitelist, stessa query — e un parametro permetterebbe a un dominio
+        #    di dichiararne un'altra. Scritto come letterale nel corpo della
+        #    classe, e' anche cio' che `test_perimetro_emittente_copertura` sa
+        #    leggere (`ast` visita le classi annidate nella funzione): niente
+        #    sottoclassi per dominio, niente eccezione dichiarata al presidio.
+        lista_codice = "documenti.documenti_sorgente"
+        # ⭐ La lista si apre DENTRO il contesto di un documento (drawer o
+        #    dialog della sorgente), che dice gia' da quale emittente viene: la
+        #    lista a catalogo non e' certificata multi-emittente (`multi_emittente
+        #    = f`) e senza questa riga il cancello chiederebbe al super admin su
+        #    «Tutti» di scegliere l'emittente del documento che ha davanti.
+        # ⚠️ Il parametro NON filtra: le righe le fissa la sorgente nel path, e
+        #    per modello i documenti di una sorgente sono di un emittente solo.
+        #    Farne un filtro trasformerebbe un id della famiglia sbagliata in
+        #    una lista vuota, cioe' in «questo documento non ha PDF».
+        lista_emittente_param = "emittente_fiscale_id"
+
         @extend_schema(
             parameters=[
-                OpenApiParameter(name="page", type=int, required=False),
-                OpenApiParameter(name="page_size", type=int, required=False),
+                param_ricerca_full(),
+                OpenApiParameter(
+                    name="emittente_fiscale_id", type=int, required=False,
+                    description=(
+                        "L'emittente del documento sorgente, gia' fissato dal "
+                        "contesto che apre la lista: scioglie il cancello di "
+                        "perimetro, non filtra."
+                    ),
+                ),
+                OpenApiParameter(name="limit", type=int, required=False),
+                OpenApiParameter(name="offset", type=int, required=False),
+                OpenApiParameter(name="order_by", type=str, required=False),
+                OpenApiParameter(name="order_dir", type=str, required=False),
             ],
             responses={200: inline_serializer(
                 name=f"{schema_prefix}DocumentiListResponse",
@@ -267,25 +305,29 @@ def build_documenti_sorgente_views(
             )},
         )
         # Scopo: Lista paginata documenti generati per la sorgente (render
-        #        history), ordinata per `generato_at DESC` lato service.
+        #        history), col contratto di lista standard: `limit`/`offset`,
+        #        `order_by`/`order_dir` sulla whitelist del repository, `search`
+        #        dal catalogo, envelope `paginated_envelope` (`count`).
+        # ⛔ Fino al 2026-09-27 parlava `page`/`page_size` con default 50 e
+        #    rispondeva `total_count`: il frontend non mandava `page_size`, e
+        #    la lista si fermava ai primi 50 documenti SENZA dirlo (nessun
+        #    paginatore a video). Ora e' `parse_list_params` come ogni lista.
         def get(self, request: Request, sorgente_id: int) -> JsonResponse:
             entity, sorgente_tipo_id = _resolve_contesto(sorgente_id)
-            qp = request.query_params
-            page = max(1, qp_int(qp.get("page"), 1))
-            page_size = max(1, min(qp_int(qp.get("page_size"), 50), 200))
-            offset = (page - 1) * page_size
+            p = parse_list_params(request.query_params, default_order="generato_at")
             result = doc_service().list_documenti_per_sorgente(
                 request.user,
                 sorgente_tipo_id=sorgente_tipo_id,
                 sorgente_uid=str(entity["uid"]),
-                limit=page_size,
-                offset=offset,
+                search=p["search"],
+                order_by=p["order_by"],
+                order_dir=p["order_dir"],
+                limit=p["limit"],
+                offset=p["offset"],
             )
-            return success_response({
-                **result,
-                "page": page,
-                "page_size": page_size,
-            })
+            return success_response(paginated_envelope(
+                result["results"], result["total_count"], p["page"], p["limit"],
+            ))
 
     DocumentiList.__doc__ = f"`GET .../documenti/` — {schema_prefix}."
 

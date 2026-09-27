@@ -628,6 +628,7 @@ const drawerActions = computed(() => {
             <EntityPdfButton
               :sorgente-code="SORGENTE_CODES.ORDINE_VENDITA"
               :entity-id="effectiveOrdineId"
+              :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
               :pdf="capabilities.pdf"
               i18n-prefix="vendite.ordini.pdf"
               :dialog-title="detail.numero

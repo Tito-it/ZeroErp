@@ -85,6 +85,7 @@ class ApiOffertaFormDefaults(DomainAPIView):
     #        condividono il modello "testata + eccezioni" senza
     #        termini/iva sul testata.
     area_funzionale = "vendite"
+    model_permission = ("vendite", "offerta_commerciale")
 
     @extend_schema(
         parameters=[

@@ -18,9 +18,11 @@
 // ------------------------------------------------------------
 import { createListaStore } from '../../core/stores/createListaStore'
 import { listConversioniUom } from '../api/catalogo'
+import { storePerIstanza } from '../../core/stores/storePerIstanza'
 
-export const useUomConversioniStore = createListaStore(
-  'catalogo-uom-conversioni',
+// ⭐ Uno store per ISTANZA del drawer (`storePerIstanza`, 2026-09-27): due
+//    drawer dello stesso tipo vivi insieme non si scrivono addosso la lista.
+export const useUomConversioniStore = storePerIstanza('catalogo-uom-conversioni', (id) => createListaStore(id,
   {
     fetchPage: (uomId, params) => listConversioniUom({ ...params, uom_id: uomId }),
     parentField: 'uomId',
@@ -30,4 +32,4 @@ export const useUomConversioniStore = createListaStore(
     orderBy: 'valido_al',
     orderDir: 'desc',
   },
-)
+))

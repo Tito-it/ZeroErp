@@ -510,6 +510,9 @@ class DocumentGenerationService:
         sorgente_riga: int | None = None,
         limit: int = 50,
         offset: int = 0,
+        search: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(sorgente_tipo_id, field="sorgente_tipo_id")
         self._v.guard_non_empty_string(sorgente_uid, field="sorgente_uid")
@@ -525,6 +528,9 @@ class DocumentGenerationService:
             emittente_ids_scope=scope,
             limit=limit,
             offset=offset,
+            search=search,
+            order_by=order_by,
+            order_dir=order_dir,
         )
         return {"results": rows, "total_count": total}
 

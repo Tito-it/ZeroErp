@@ -216,11 +216,36 @@ class ApiTemplateVersioniList(DomainAPIView):
 
     area_funzionale = "documenti"
     post_permission = "documenti_template_manage"
+    is_search_endpoint = True
+    lista_codice = "documenti.template_versioni"
+    # ⭐ Le versioni si aprono DENTRO il drawer del template, che e' di UN
+    #    emittente (`template_documenti.emittente_fiscale_id` NOT NULL): la
+    #    lista a catalogo non e' certificata multi-emittente (`multi_emittente
+    #    = f`), e senza questa riga il cancello chiederebbe al super admin su
+    #    «Tutti» di scegliere l'emittente del template che ha gia' aperto.
+    # ⚠️ Il cancello vale per OGNI metodo della view, anche il POST che crea
+    #    una versione: il frontend manda il parametro in query su entrambi.
+    # ⚠️ Non filtra: le righe le fissa il template nel path (e il service ne
+    #    verifica la visibilita' con lo scope, 404 fuori perimetro).
+    lista_emittente_param = "emittente_fiscale_id"
 
     @extend_schema(
         parameters=[
+            param_ricerca_full(),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="stato", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(
+                name="emittente_fiscale_id", type=int, location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "L'emittente del template, gia' fissato dal drawer che apre "
+                    "la lista: scioglie il cancello di perimetro, non filtra."
+                ),
+            ),
+            OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
         ],
         responses={
             200: inline_serializer(
@@ -232,16 +257,31 @@ class ApiTemplateVersioniList(DomainAPIView):
             )
         },
     )
-    # Scopo: Ritorna lista versioni del template (proiezione leggera, no html).
+    # Scopo: Lista paginata delle versioni del template (proiezione leggera,
+    #        no html), col contratto di lista standard: `limit`/`offset`,
+    #        `order_by`/`order_dir` sulla whitelist del repository, `search`
+    #        dal catalogo, envelope `paginated_envelope`.
     def get(self, request: Request, template_id: int) -> JsonResponse:
         stato = request.query_params.get("stato")
+        # ⚠️ `default_order=""` e non "versione": senza `order_by` deve
+        #    decidere il repository (`versione DESC`, la piu' recente in cima,
+        #    come il preset). Una chiave qui arriverebbe senza verso e
+        #    ripiegherebbe ASC — la lista aperta dalla versione 1.
+        p = parse_list_params(request.query_params, default_order="")
         result = TemplateService().list_versioni(
             request.user,
             int(template_id),
             attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
             stato=stato.strip().upper() if stato else None,
+            search=p["search"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            limit=p["limit"],
+            offset=p["offset"],
         )
-        return success_response(result)
+        return success_response(paginated_envelope(
+            result["results"], result["total_count"], p["page"], p["limit"],
+        ))
 
     @extend_schema(
         request=inline_serializer(

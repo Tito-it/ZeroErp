@@ -397,6 +397,13 @@ _ESERCIZI: dict[str, Esercizio] = {
             "apps.amm_software.db.amm_software_repository", "AmmSoftwareRepository"
         ).list_operatori(limit=1, offset=0, **_ordine(ob, od)),
     ),
+    # I reparti (2026-09-27): la SELECT sta in una CTE per ordinare i conteggi.
+    "amm.reparti": Esercizio(
+        dove="amm_software/db/amm_software_repository.py::list_reparti",
+        chiama=lambda ob, od: _r(
+            "apps.amm_software.db.amm_software_repository", "AmmSoftwareRepository"
+        ).list_reparti(limit=1, offset=0, **_ordine(ob, od)),
+    ),
     "anagrafiche.categorie_clienti_listini": Esercizio(
         dove="anagrafiche/db/categorie_clienti_listini_repository.py::list_matrice",
         chiama=lambda ob, od: _r(
@@ -484,6 +491,32 @@ _ESERCIZI: dict[str, Esercizio] = {
             **_ordine(ob, od, "codice"),
         ),
     ),
+    # I documenti generati di una sorgente e le versioni di un template
+    # (2026-09-27, liste 84 e 88): sorgente e template finti, nessuna riga —
+    # le colonne le dichiara il cursore. «Originale» e' `has_file_principale`
+    # (EXISTS sui file del documento).
+    "documenti.documenti_sorgente": Esercizio(
+        dove="documenti/db/documenti_repository.py::list_documenti_per_sorgente",
+        chiama=lambda ob, od: _r(
+            "apps.documenti.db.documenti_repository", "DocumentiRepository"
+        ).list_documenti_per_sorgente(
+            sorgente_tipo_id=_ID_FINTO,
+            sorgente_uid="00000000-0000-0000-0000-000000000000",
+            sorgente_riga=None,
+            emittente_ids_scope=None,
+            limit=1,
+            offset=0,
+            **_ordine(ob, od),
+        ),
+    ),
+    "documenti.template_versioni": Esercizio(
+        dove="documenti/db/documenti_repository.py::list_versioni",
+        chiama=lambda ob, od: _r(
+            "apps.documenti.db.documenti_repository", "DocumentiRepository"
+        ).list_versioni(
+            _ID_FINTO, attivo=None, stato=None, limit=1, offset=0, **_ordine(ob, od),
+        ),
+    ),
     # ---------- pratiche ----------
     "pratiche.pratiche": Esercizio(
         dove="pratiche/db/pratiche_repository.py::list_pratiche",
@@ -548,6 +581,32 @@ _ESERCIZI: dict[str, Esercizio] = {
         chiama=lambda ob, od: _r(
             "apps.core.db.processi_repository", "ProcessiRepository"
         ).list_processi(limit=1, offset=0, **_ordine(ob, od)),
+    ),
+    # Le sessioni attive (2026-09-27): utente 0, nessuna riga — le colonne le
+    # dichiara il cursore. `escludi_jti=None` = nessuna sessione da togliere.
+    "core.sessioni_attive": Esercizio(
+        dove="core/db/session_audit_repository.py::list_sessioni_attive_paginata",
+        chiama=lambda ob, od: _r(
+            "apps.core.db.session_audit_repository", "SessionAuditRepository"
+        ).list_sessioni_attive_paginata(0, escludi_jti=None, limit=1, offset=0, **_ordine(ob, od)),
+    ),
+    # I flussi di una pratica (2026-09-27, lista 85): pratica 0, nessuna riga —
+    # le colonne le dichiara il cursore. Stessa proiezione del dettaglio flusso
+    # (`_FLUSSO_SELECT`), l'esito esce come `esito_descrizione`.
+    "pratiche.flussi": Esercizio(
+        dove="pratiche/db/pratiche_repository.py::list_flussi_pagina",
+        chiama=lambda ob, od: _r(
+            "apps.pratiche.db.pratiche_repository", "PraticheRepository"
+        ).list_flussi_pagina(_ID_FINTO, limit=1, offset=0, **_ordine(ob, od)),
+    ),
+    # L'utilizzo di una riga della matrice utility/ruoli (2026-09-27, lista
+    # 86): riga di matrice finta, nessun emittente — basta il cursore.
+    "config.utilities_tipi_ruolo_usage": Esercizio(
+        dove="config/db/utilities_tipi_ruolo_repository.py::list_emittenti_usage",
+        chiama=lambda ob, od: _r(
+            "apps.config.db.utilities_tipi_ruolo_repository",
+            "UtilitiesTipiRuoloRepository",
+        ).list_emittenti_usage(_ID_FINTO, limit=1, offset=0, **_ordine(ob, od)),
     ),
     # La consultazione di `dbops.error_log` (pezzo E dell'osservabilita',
     # 2026-09-19): il catalogo dei messaggi arriva per JOIN nella stessa SELECT.
@@ -621,6 +680,21 @@ _ESERCIZI: dict[str, Esercizio] = {
         chiama=lambda ob, od: _r(
             "apps.vendite.db.registri_repository", "RegistriRepository"
         ).list_registri(None, limit=1, offset=0, **_ordine(ob, od)),
+    ),
+    # I due tab «Revisioni» (2026-09-27, liste 89 e 90): documento finto,
+    # nessuna riga — la radice/il numero escono NULL e le colonne le dichiara
+    # il cursore (`v.*` delle due viste di lista).
+    "vendite.preventivo_revisioni": Esercizio(
+        dove="vendite/db/preventivi_repository.py::list_revisioni",
+        chiama=lambda ob, od: _r(
+            "apps.vendite.db.preventivi_repository", "PreventiviRepository"
+        ).list_revisioni(_ID_FINTO, limit=1, offset=0, **_ordine(ob, od)),
+    ),
+    "vendite.offerta_revisioni": Esercizio(
+        dove="vendite/db/offerte_repository.py::list_revisioni",
+        chiama=lambda ob, od: _r(
+            "apps.vendite.db.offerte_repository", "OfferteRepository"
+        ).list_revisioni(_ID_FINTO, limit=1, offset=0, **_ordine(ob, od)),
     ),
     "vendite.commesse_attivita": Esercizio(
         dove="vendite/db/commesse_repository.py::list_commessa_attivita",

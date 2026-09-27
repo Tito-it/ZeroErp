@@ -792,6 +792,8 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_OFFERTA_NON_TROVATA": "Offerta non trovata: impossibile generare il contratto.",
     "E_OFFERTA_ORDINE_GIA_GENERATO": "Questa offerta ha già generato un ordine.",
     "E_OFFERTA_PUSH_STATO_NON_AMMESSO": "Push a contratto non ammesso: l'offerta deve essere ACCETTATA.",
+    "E_OFFERTA_REVISIONE_CATENA_IMMUTABILE": "La catena delle revisioni di un'offerta non si cambia: ogni revisione resta legata all'offerta da cui e' nata.",
+    "E_OFFERTA_REVISIONE_PADRE_NON_TROVATO": "L'offerta da cui dovrebbe nascere la revisione non esiste o non e' visibile: la revisione non si puo' creare.",
     "E_OFFERTA_REVISIONE_STATO_NON_AMMESSO": "Revisione non ammessa nello stato corrente dell'offerta.",
     "E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA": "L'offerta non può uscire dal superamento: esiste ancora una revisione viva su questo documento. Va prima annullata quella.",
     "E_OFFERTA_TRANSIZIONE_NON_AMMESSA": "Transizione di stato non ammessa per l'offerta.",

@@ -62,6 +62,7 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
         "area_geografica_id": 2,
         "area_geografica_descrizione": "Nord",
         "emittente_soggetto_ruolo_id": 7,
+        "emittente_fiscale_id": 3,
         "emittente_ragione_sociale": "Emittente S.p.A.",
         "data_insert": "2026-02-18T10:00:00+01:00",
         "user_insert": "zeroerp",

@@ -255,13 +255,22 @@ async function onOpenFlussoById(flussoId) {
   }
 }
 
+// L'emittente della pratica selezionata, in query sulla creazione di un flusso
+// (vedi `createFlusso`): e' della riga di lista, che lo porta (`_PRATICA_SELECT`).
+function emittenteDellaPratica() {
+  const id = selectedItem.value?.emittente_fiscale_id
+  return id ? { emittente_fiscale_id: id } : {}
+}
+
 // Crea uno step della roadmap (template-bound) e lo apre. Il guard prerequisiti
 // DB (esito-aware, BEFORE INSERT) rifiuta con errore parlante se non abilitato.
 async function onCreateFlusso(templateFlussoId) {
   percorsoBusy.value = true
   try {
     const res = await execute(
-      () => createFlusso(store.selectedPraticaId, { template_flusso_id: templateFlussoId }),
+      () => createFlusso(
+        store.selectedPraticaId, { template_flusso_id: templateFlussoId }, emittenteDellaPratica(),
+      ),
       { successMessage: t('pratiche.flusso_creato') }
     )
     if (res !== null) {
@@ -317,7 +326,9 @@ async function ensureFlussoInCorso(payload) {
   let flussoId = payload.flussoId
   if (!flussoId) {
     const created = await execute(
-      () => createFlusso(store.selectedPraticaId, { template_flusso_id: payload.templateFlussoId }),
+      () => createFlusso(
+        store.selectedPraticaId, { template_flusso_id: payload.templateFlussoId }, emittenteDellaPratica(),
+      ),
       { successMessage: t('pratiche.flusso_creato') }
     )
     if (created === null) return null

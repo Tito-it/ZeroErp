@@ -243,6 +243,7 @@ onMounted(() => store.fetchList())
       v-model:visible="pdfDialogVisible"
       sorgente-code="OFFERTA_COMMERCIALE"
       :sorgente-id="pdfDialogOfferta?.id ?? null"
+      :emittente-fiscale-id="pdfDialogOfferta?.emittente_fiscale_id ?? null"
       :title="pdfDialogOfferta
         ? t('vendite.offerte.pdf.dialog_title', { codice: pdfDialogOfferta.codice })
         : ''"

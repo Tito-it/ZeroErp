@@ -12,6 +12,7 @@ from . import email_views, invito_views, views
 urlpatterns = [
     # Operatori
     path("operatori/", views.OperatoriListView.as_view(), name="amm-operatori-list"),
+    path("operatori/credenziale-per-email/", views.CredenzialePerEmailView.as_view(), name="amm-operatori-credenziale-per-email"),
     path("operatori/<int:auth_user_id>/", views.OperatoriDetailView.as_view(), name="amm-operatori-detail"),
     path("operatori/<int:auth_user_id>/disabilita/", views.OperatoriDisabilitaView.as_view(), name="amm-operatori-disabilita"),
     path("operatori/<int:auth_user_id>/riattiva/", views.OperatoriRiattivaView.as_view(), name="amm-operatori-riattiva"),

@@ -151,11 +151,14 @@ def _montaggi_lista() -> tuple[tuple[str, str, str, str], ...]:
     trovati: list[tuple[str, str, str, str]] = []
     for percorso in src.rglob("*.vue"):
         senza_commenti = _senza_commenti(percorso.read_text(encoding="utf-8"))
-        # ⛔ DUE componenti, non uno. Una lista si monta con
-        #    `<ListaConfigurabile>` **oppure** con `<DrawerTabLista>`: cercare
+        # ⛔ Non un componente solo. Una lista si monta con
+        #    `<ListaConfigurabile>`, con `<DrawerTabLista>` o con
+        #    `<ListaPaginaSemplice>`: cercare
         #    solo il primo rende il censimento cieco sulle liste nate per ultime
         #    (successo con `vendite.registri_numerazione`, 2026-09-01).
-        for tag in ("ListaConfigurabile", "DrawerTabLista"):
+        # ⭐ E dal 2026-09-27 `<ListaPaginaSemplice>`, la pagina-lista chiusa
+        #    (le sei geografiche): stesso `codice="X"`, stessi slot di cella.
+        for tag in ("ListaConfigurabile", "DrawerTabLista", "ListaPaginaSemplice"):
             for m in re.finditer(rf"<{tag}\b", senza_commenti):
                 apertura = _tag_apertura(senza_commenti, m.start())
                 # `(?<![:@\w-])codice=` esclude i binding DINAMICI
@@ -352,6 +355,14 @@ _LISTE: tuple[tuple[str, object], ...] = (
     ("vendite.promo_articoli", _da_costante("apps.vendite.db.promo_articoli_repository", "_ORDER_COLS")),
     ("documenti.template_documenti", _da_costante("apps.documenti.db.documenti_repository", "TEMPLATES_ORDER_COLUMNS")),
     ("documenti.template_asset", _da_costante("apps.documenti.db.documenti_repository", "ASSET_ORDER_COLUMNS")),
+    # I documenti generati di una sorgente e le versioni di un template
+    # (2026-09-27, brief-db-liste-datatable-grezze righe 2 e 6): fino a quel
+    # giorno `DataTable` grezze — i documenti troncati a 50 senza dirlo, le
+    # versioni senza pagine.
+    ("documenti.documenti_sorgente",
+     _da_costante("apps.documenti.db.documenti_repository", "DOCUMENTI_SORGENTE_ORDER_COLUMNS")),
+    ("documenti.template_versioni",
+     _da_costante("apps.documenti.db.documenti_repository", "TEMPLATE_VERSIONI_ORDER_COLUMNS")),
     # Quinto lotto, 2026-08-01.
     ("catalogo.articoli", _da_costante("apps.catalogo.db.catalogo_repository", "ARTICOLI_ORDER_COLUMNS")),
     ("vendite.listini", _da_costante("apps.vendite.db.listini_repository", "LISTINI_ORDER_COLUMNS")),
@@ -440,6 +451,15 @@ _LISTE: tuple[tuple[str, object], ...] = (
     ("vendite.offerte", _da_costante("apps.vendite.db.offerte_repository", "_ORDER_COLS_OFFERTE")),
     ("vendite.ordini", _da_costante("apps.vendite.db.ordini_repository", "_ORDER_COLS_ORDINI")),
     ("vendite.preventivi", _da_costante("apps.vendite.db.preventivi_repository", "_ORDER_COLS_PREVENTIVI")),
+    # I due tab «Revisioni» (2026-09-27, brief-db-liste-datatable-grezze §4
+    # righe 7 e 8): colonne GEMELLE, whitelist SEPARATE da quelle delle liste
+    # principali (che `rev`/`revisione_numero` non li ordinano, §7.3).
+    # ⚠️ Montate da `RevisioniTab` con `:codice` dinamico: il test 6 non le
+    #    vede nel frontend, e' questa riga a registrarle.
+    ("vendite.preventivo_revisioni",
+     _da_costante("apps.vendite.db.preventivi_repository", "PREVENTIVO_REVISIONI_ORDER_COLUMNS")),
+    ("vendite.offerta_revisioni",
+     _da_costante("apps.vendite.db.offerte_repository", "OFFERTA_REVISIONI_ORDER_COLUMNS")),
     ("vendite.resi", _da_costante("apps.vendite.db.resi_repository", "_ORDER_COLS_RESI")),
     ("vendite.resi_da_accreditare", _whitelist_coda_resi("vendite.vw_resi_da_accreditare")),
     ("vendite.resi_da_riconsegnare", _whitelist_coda_resi("vendite.vw_resi_da_riconsegnare")),
@@ -589,6 +609,29 @@ _LISTE: tuple[tuple[str, object], ...] = (
     # se' (`_giornale_order_clause`), che e' uno dei dodici casi dichiarati fuori
     # dal BB — il test 10 non lo vede, e non finge.
     ("vendite.giornale", _da_costante("apps.vendite.db.vendite_repository", "GIORNALE_SORT_COLUMNS")),
+    # Flussi di una pratica e utilizzo di una riga della matrice utility/ruoli
+    # (2026-09-27, brief-db-liste-datatable-grezze righe 3 e 4): fino a quel
+    # giorno `DataTable` grezze nei due drawer — i flussi senza pagine, l'uso
+    # troncato a 100 righe.
+    ("pratiche.flussi", _da_costante("apps.pratiche.db.pratiche_repository", "FLUSSI_ORDER_COLS")),
+    ("config.utilities_tipi_ruolo_usage",
+     _da_costante("apps.config.db.utilities_tipi_ruolo_repository", "USAGE_ORDER_COLS")),
+    # Sessioni attive e reparti (2026-09-27, brief-db-liste-datatable-grezze
+    # righe 1 e 5): fino a quel giorno `DataTable` grezze, senza pagine.
+    ("core.sessioni_attive",
+     _da_costante("apps.core.db.session_audit_repository", "SESSIONI_ATTIVE_ORDER_COLUMNS")),
+    ("amm.reparti",
+     _da_costante("apps.amm_software.db.amm_software_repository", "REPARTI_ORDER_COLUMNS")),
+    # Le sei liste geografiche (2026-09-27, brief-db-liste-datatable-grezze
+    # riga 9): fino a quel giorno `GeoSearchTable` con le colonne scritte nel
+    # `.vue`. Whitelist `colonne_identita` del repository (il nome E' la colonna
+    # della tabella o della vista `config.vw_*_lista`).
+    ("config.stati", _da_costante("apps.anagrafiche.db.geo_repository", "_STATI_ORDER_COLS")),
+    ("config.regioni", _da_costante("apps.anagrafiche.db.geo_repository", "_REGIONI_ORDER_COLS")),
+    ("config.province", _da_costante("apps.anagrafiche.db.geo_repository", "_PROVINCE_ORDER_COLS")),
+    ("config.comuni", _da_costante("apps.anagrafiche.db.geo_repository", "_COMUNI_ORDER_COLS")),
+    ("config.codici_postali", _da_costante("apps.anagrafiche.db.geo_repository", "_CODICI_POSTALI_ORDER_COLS")),
+    ("config.toponomastica", _da_costante("apps.anagrafiche.db.geo_repository", "_TOPONOMASTICA_ORDER_COLS")),
 )
 
 

@@ -52,6 +52,9 @@ const props = defineProps({
   pdf: { type: [Object, null], default: null },
   // Prefix i18n per le label/tooltip del bottone (es. 'vendite.contratti.pdf').
   i18nPrefix: { type: String, required: true },
+  // L'emittente del documento (PK, `detail.emittente_fiscale_id`): girato
+  // alla lista dei documenti generati per il cancello di perimetro.
+  emittenteFiscaleId: { type: [Number, null], default: null },
   // Titolo del dialog "Scarica PDF" — gia' t-formattato dal caller
   // (i diversi domini usano parametri differenti: {numero} vs {codice}).
   // Vuoto/null = default del dialog.
@@ -132,6 +135,7 @@ function onScaricaClick() {
       v-model:visible="dialogVisible"
       :sorgente-code="sorgenteCode"
       :sorgente-id="entityId"
+      :emittente-fiscale-id="emittenteFiscaleId"
       :allow-allegati="allowAllegati"
       :title="dialogTitle"
     />

@@ -81,8 +81,13 @@ export function getPraticaDiFlusso(flussoId) {
   return api.get(`${BASE}/flussi/${flussoId}/pratica/`)
 }
 
-export function createFlusso(praticaId, payload) {
-  return api.post(`${BASE}/${praticaId}/flussi/`, payload)
+// ⚠️ `params` porta l'emittente della pratica in QUERY: la rotta e' quella
+//    della lista `pratiche.flussi` (`lista_codice` + `lista_emittente_param`),
+//    e il cancello di perimetro vale per OGNI metodo e legge solo la query.
+//    Senza, chi vede piu' emittenti (il super admin su «Tutti») prende un 422
+//    alla creazione. Stessa forma di `createRegistro`.
+export function createFlusso(praticaId, payload, params = {}) {
+  return api.post(`${BASE}/${praticaId}/flussi/`, payload, { params })
 }
 
 // --- Azioni flusso ---

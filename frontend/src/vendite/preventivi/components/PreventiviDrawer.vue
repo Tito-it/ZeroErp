@@ -12,11 +12,9 @@ import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
 import { useFetchVersion } from '../../../core/composables/useFetchVersion'
-import { useRevisioniTab } from '../../../core/composables/useRevisioniTab'
 import { statoPreventiveSeverity } from '../../../core/utils/severity'
 import { STATO_PREVENTIVO } from '../../constants'
 import { addDaysToToday, displayDate, toDateString } from '../../../core/utils/date'
-import { formatCurrency } from '../../../core/utils/format'
 import { paramBool, paramInt } from '../../../core/utils/parameterCast'
 import { useParameterDefaults } from '../../../core/composables/useParameterDefaults'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
@@ -36,6 +34,8 @@ import { mapAvailableActionsToDrawerActions } from '../../../core/composables/us
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
 import { useDrawerFormPreserve } from '../../../core/composables/useDrawerFormPreserve'
 import PreventiviForm from './PreventiviForm.vue'
+import RevisioniTab from '../../_shared/revisioni/RevisioniTab.vue'
+import { usePreventivoRevisioniStore } from '../stores/preventivoRevisioni'
 import PreventiviRigheTable from './PreventiviRigheTable.vue'
 import PreventiviSmistamentoDialog from './dialogs/PreventiviSmistamentoDialog.vue'
 import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
@@ -55,8 +55,6 @@ import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'
 import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 
 const { t, te } = useI18n()
 const store = usePreventiviStore()
@@ -338,18 +336,18 @@ watch(() => form.value.validita_dal, (nuovaDal) => {
 // parallelo al detail; assente in CREATE (nessun preventivo ancora salvato).
 const contestoPricing = ref(null)
 
-// Tab "Testata | Revisioni" — state + load con guard di race incapsulati nel
-// building block `useRevisioniTab` (regola del 2, estratto da
-// PreventiviDrawer + OffertaDrawer). `activeTab`, `revisioni`,
-// `loadRevisioni`, `reset` arrivano da li'.
-const revisioniTab = useRevisioniTab({
-  load: (id) => store.loadRevisioni(id),
-})
-const { activeTab, revisioni } = revisioniTab
+// Tab "Testata | Revisioni". Il tab attivo torna a "Testata" a ogni apertura
+// (vedi il watch su `visible`). La catena delle revisioni e' la lista a
+// catalogo `vendite.preventivo_revisioni`, montata da `RevisioniTab` (BB
+// condiviso con OffertaDrawer, che dal 2026-09-27 ritira `useRevisioniTab`):
+// store SUO, padre = preventivo + emittente, ricarica al cambio preventivo e
+// reset a drawer chiuso (`documentoId` null) — lo fa `useDrawerTabLista`.
+const activeTab = ref('testata')
+const revisioniStore = usePreventivoRevisioniStore()
 
 // Guard di race anti-stale per `getContestoPricing` (fetch fire-and-forget
-// in `loadDetail`). Stesso pattern di `revisioniTab`: una risposta arrivata
-// dopo cambio entita' o chiusura drawer viene scartata.
+// in `loadDetail`): una risposta arrivata dopo cambio entita' o chiusura
+// drawer viene scartata.
 const contestoFv = useFetchVersion()
 
 function resetForm() {
@@ -386,9 +384,12 @@ async function loadDetail(id = null) {
       contestoPricing.value = null
       console.warn('contesto pricing fetch failed', err?.response?.data || err)
     })
-  // Carica la catena revisioni (tab Revisioni). Guard di versione interno a
-  // `revisioniTab` (useFetchVersion). Mirror OffertaDrawer.
-  revisioniTab.loadRevisioni(targetId)
+  // La catena revisioni NON si carica qui: la carica `RevisioniTab` quando
+  // cambia il preventivo. Ricaricare il dettaglio dopo un'azione di stato
+  // (emetti, accetta, nuova revisione...) cambia pero' lo stato delle righe
+  // della catena: la si rilegge — solo se il tab e' gia' agganciato a
+  // QUESTO preventivo (il perche' sta su `rileggiSeAgganciato`).
+  revisioniStore.rileggiSeAgganciato(targetId)
   // Sospende il watch di ricalcolo finche' non scarica entrambi i campi data:
   // assegnando form.value il watch fires su validita_dal e sovrascriverebbe
   // validita_al persistita.
@@ -486,15 +487,20 @@ watch(() => props.visible, async (v) => {
     // in volo (revisioni + contesto pricing): una risposta stantia che
     // arrivasse dopo la chiusura non deve popolare lo stato del prossimo
     // preventivo aperto.
-    revisioniTab.reset()
+    activeTab.value = 'testata'
     contestoFv.invalidate()
+    // ⚠️ Le revisioni a mano, e non da `RevisioniTab`: il Drawer smonta il
+    //    contenuto nello stesso giro in cui si chiude, e il `documentoId` null
+    //    non arriva mai al tab. Senza, il contatore «Revisioni (N)» della
+    //    prossima apertura parte dal documento precedente.
+    revisioniStore.reset()
     return
   }
   // Reset tab attivo sempre, EDIT o CREATE: senza questo, riaprendo il drawer
   // su un altro preventivo il tab restava quello dell'apertura precedente
   // (es. chiudo su "Revisioni", riapro su un nuovo preventivo → si vedeva
   // "Revisioni" invece di "Testata"). Mirror OffertaDrawer.
-  revisioniTab.reset()
+  activeTab.value = 'testata'
   contestoFv.invalidate()
   // Reset stato "edit-evolved" a OGNI apertura: questo drawer e' montato una
   // sola volta come attivita' dinamica nella dashboard pratiche e riusato tra
@@ -960,6 +966,7 @@ const drawerActions = computed(() => {
             <EntityPdfButton
               :sorgente-code="SORGENTE_CODES.PREVENTIVO"
               :entity-id="effectivePreventivoId"
+              :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
               :pdf="capabilities.pdf"
               i18n-prefix="vendite.preventivi.pdf"
               :dialog-title="detail.numero
@@ -1013,7 +1020,7 @@ const drawerActions = computed(() => {
           <Tab value="testata">{{ t('vendite.preventivi.tab_testata') }}</Tab>
           <Tab value="revisioni" :disabled="!isEdit">
             {{ t('vendite.preventivi.tab_revisioni') }}
-            <span v-if="isEdit && revisioni.length">({{ revisioni.length }})</span>
+            <span v-if="isEdit && revisioniStore.totalRecords">({{ revisioniStore.totalRecords }})</span>
           </Tab>
         </TabList>
 
@@ -1067,44 +1074,18 @@ const drawerActions = computed(() => {
 
           <!-- ====================== TAB REVISIONI ====================== -->
           <TabPanel value="revisioni">
-            <p class="app-text-muted mt-1">
-              {{ t('vendite.preventivi.revisioni_intro') }}
-            </p>
-            <div v-if="!revisioni.length" class="app-empty-state">
-              <i :class="MANAGE_ICONS.VERSIONI" style="font-size: 2rem;" />
-              <div>{{ t('vendite.preventivi.revisioni_empty') }}</div>
-            </div>
-            <DataTable
-              v-else
-              :value="revisioni"
-              striped-rows
-              class="app-datatable app-datatable--inner"
-              data-key="id"
-            >
-              <Column field="rev"
-                :header="t('vendite.preventivi.col_rev')"
-                style="width: 70px;" />
-              <Column field="data"
-                :header="t('vendite.preventivi.col_data')"
-                style="width: 130px;">
-                <template #body="{ data }">{{ displayDate(data.data) }}</template>
-              </Column>
-              <Column field="stato_codice_interno"
-                :header="t('vendite.preventivi.col_stato')"
-                style="width: 140px;">
-                <template #body="{ data }">
-                  <Tag
-                    :value="data.stato_descrizione"
-                    :severity="statoPreventiveSeverity(data.stato_codice_interno)"
-                  />
-                </template>
-              </Column>
-              <Column field="totale_documento"
-                :header="t('vendite.preventivi.col_totale')"
-                style="width: 130px;">
-                <template #body="{ data }">{{ formatCurrency(data.totale_documento) }}</template>
-              </Column>
-            </DataTable>
+            <!-- Lista a catalogo `vendite.preventivo_revisioni` (colonne
+                 gemelle di quelle dell'offerta). Montata solo in EDIT: in
+                 CREATE il tab e' spento e non c'e' una catena da leggere. -->
+            <RevisioniTab
+              v-if="isEdit"
+              codice="vendite.preventivo_revisioni"
+              :store="revisioniStore"
+              :documento-id="visible ? effectivePreventivoId : null"
+              :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
+              :severity="statoPreventiveSeverity"
+              :intro="t('vendite.preventivi.revisioni_intro')"
+              :vuoto="t('vendite.preventivi.revisioni_empty')" />
           </TabPanel>
         </TabPanels>
       </Tabs>
