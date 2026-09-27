@@ -36,6 +36,7 @@ import {
   runLottoPipeline,
 } from '../api/lotti'
 import { MANAGE_ICONS } from '../../core/constants'
+import { aspettoAzione } from '../../core/aspettoAzioni'
 
 // Permesso di processo per verbo. La numerazione ha un gate fiscale SEPARATO
 // (I-7); annullamento e ritorno in lavorazione condividono `reset_lotto_draft`
@@ -71,24 +72,11 @@ export const LOTTO_AZIONE_PIPELINE_UI = {
 // sopra e dimenticata nell'`if` sarebbe passata dal percorso sbagliato.
 const VERBI_PIPELINE = Object.keys(LOTTO_AZIONE_PIPELINE_UI)
 
-// Icona/severity dei verbi di stato per il kebab della lista. Nel drawer
-// arrivano dal `meta` di catalogo insieme al resto del blob; la riga di lista il
-// blob non ce l'ha, quindi qui si rispecchiano i valori seedati il 2026-08-04 —
-// se cambiano a catalogo vanno cambiati anche qui. Sono presentazione, non
-// regole: nessun verdetto passa da questi due oggetti.
-const LOTTO_AZIONE_ICONA = {
-  numera: 'pi pi-verified',
-  ristampa: 'pi pi-print',
-  annulla: MANAGE_ICONS.ANNULLA,
-  riporta_a_draft: 'pi pi-undo',
-}
-
-const LOTTO_AZIONE_SEVERITY = {
-  numera: 'success',
-  ristampa: 'secondary',
-  annulla: 'danger',
-  riporta_a_draft: 'warn',
-}
+// ⭐ Icona e colore dei verbi di stato NON stanno qui: li dà il verbo, dalla
+// stessa mappa della barra del drawer (`core/aspettoAzioni.js`,
+// brief-db-icone-azioni-per-significato). Le copie a mano dei valori del DB
+// (`LOTTO_AZIONE_ICONA`, `LOTTO_AZIONE_SEVERITY`) sono ritirate il 2026-09-27:
+// la riga di lista il blob non ce l'ha, e la copia doveva inseguire il seed.
 
 // Scopo: un lotto si può numerare? ⚠️ È lo stato del DOCUMENTO, non del lavoro:
 //   `stato_lotto` (bozza/in esecuzione/completato) è un altro asse.
@@ -430,7 +418,7 @@ function verdettoRunner(res) {
   }
 
   // Scopo: le voci per RowActionsMenu di una riga di lista. Label e icone
-  //   restano quelle del catalogo DB (le stesse del drawer): il kebab della
+  //   sono quelle del drawer (etichetta dal catalogo DB, icona e colore dal verbo): il kebab della
   //   lista e la barra del drawer non possono chiamare la stessa cosa in due
   //   modi diversi.
   function azioniRiga(row, { readonly = false } = {}) {
@@ -443,8 +431,8 @@ function verdettoRunner(res) {
       return {
         key,
         label: t(labelKey),
-        icon: ui?.icon ?? LOTTO_AZIONE_ICONA[key],
-        severity: ui ? ui.severity : LOTTO_AZIONE_SEVERITY[key],
+        icon: ui ? ui.icon : aspettoAzione(key).icona,
+        severity: ui ? ui.severity : aspettoAzione(key).severity,
         ...(LOTTO_AZIONE_PERMESSO[key] ? { action: LOTTO_AZIONE_PERMESSO[key] } : {}),
         command: () => eseguiVerificato(row.id, key),
       }

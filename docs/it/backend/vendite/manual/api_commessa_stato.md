@@ -68,9 +68,9 @@ View: `ApiCommessaStato` (`apps.vendite.api.views`) — `def get` + `def post` s
     "capabilities": {
       "available_actions": [
         {"key": "chiudi", "target_state": "CHIUSA", "label_key": "vendite.commesse.azione_chiudi",
-         "severity": "success", "icon": "pi pi-lock", "requires_confirm": true, "outlined": false},
+         "severity": "success", "requires_confirm": true, "outlined": false},
         {"key": "annulla", "target_state": "ANNULLATA", "label_key": "vendite.commesse.azione_annulla",
-         "severity": "danger", "icon": "pi pi-times", "requires_confirm": true, "outlined": true}
+         "severity": "danger", "requires_confirm": true, "outlined": true}
       ],
       "can_change_state": true,
       "can_edit_righe": true,
@@ -118,7 +118,7 @@ espone, non più i soli 3 contatori. In dettaglio:
   - `available_actions`: array delle **azioni di stato utente** ammesse dallo stato
     corrente (transizioni `meta.manuale=true` della matrice), ognuna con `key`
     (`chiudi`/`riapri`/`annulla`), `target_state` (codice stato destinazione),
-    `label_key` (i18n), `severity`, `icon`, `requires_confirm`, `outlined` — pensate per
+    `label_key` (i18n), `severity`, `requires_confirm`, `outlined` — pensate per
     renderizzare i pulsanti FE senza logica cablata. Array vuoto negli stati terminali;
   - `can_change_state` (bool), `can_edit_righe` (= `modificabile`),
     `is_emittibile` (= `emittibile`), `stato_codice`.

@@ -271,3 +271,121 @@ condizione.
   `vendite/manual/api_ordini.md:127`, `api_commessa_stato.md:71,73,121`,
   `api_preventivi.md:142`, `api_offerte.md:342,348`,
   `magazzino/manual/api_magazzino.md:111`.
+
+## 8. Consegna BE/FE — 2026-09-27
+
+Chiude §5 e §7.3. Da portare a `Tito-dev` **insieme** alla consegna DB (§7.3).
+
+* **Mappa `verbo → icona`**: `frontend/src/core/aspettoAzioni.js`
+  (`ASPETTO_AZIONE`, `aspettoAzione(key)`; dal §9 porta anche il colore). Tutte le icone sono costanti
+  `MANAGE_ICONS`. Se il verbo non è in mappa, l'icona è `RIPIEGO` =
+  `CAMBIO_STATO`. La leggono `useDrawerActions`, `useLottoAzioni` (ritirato
+  `LOTTO_AZIONE_ICONA`) e la conferma di `DocumentoInternoDrawer`.
+  `aspettoAzioni.spec.js` fissa i 20 verbi di §6.1/§6.2 e le decisioni di §3.
+  Dal presidio `icone.spec.js` è tolta l'eccezione.
+* **Costanti nuove**: `SPEDISCI`, `CONSEGNA`, `RENDI_PRONTA`, `NUOVA_REVISIONE`,
+  `INVIA_A_COMMESSA`.
+
+  | `key` | Costante | Glifo | Prima (DB) |
+  | --- | --- | --- | --- |
+  | `annulla` | `ANNULLA` | `pi-times-circle` | uguale (`pi-times` nel documento interno) |
+  | `conferma` | `CONFIRM` | `pi-check` | uguale |
+  | `accetta` / `rifiuta` | `APPROVE` / `REJECT` | `pi-check` / `pi-times` | `pi-ban` era `DISATTIVA` |
+  | `emetti` | `SEND` | `pi-send` | D-1 (il DDT aveva `pi-check`) |
+  | `spedisci` | `SPEDISCI` | `pi-truck` | `pi-send`: sarebbe coinciso con `emetti` nel DDT |
+  | `consegna` | `CONSEGNA` | `pi-flag-fill` | `pi-check-circle` era `PUBLISH`/`OK` |
+  | `reso` | `CORREZIONE` | `pi-replay` | uguale |
+  | `attiva` / `cessa` | `PLAY` / `CLOSE_DATE` | `pi-play` / `pi-calendar-times` | `pi-stop` era `STATUS_ICONS.NO` |
+  | `rendi_pronta` | `RENDI_PRONTA` | `pi-thumbs-up` | `pi-check-circle` |
+  | `chiudi` | `CLOSE` | `pi-lock` | uguale |
+  | `riapri`, `riporta_a_draft` | `RIPORTA_A_BOZZA` | `pi-backward` | D-1 (`pi-undo` era `UNDO`) |
+  | `numera` / `ristampa` | `NUMERA` / `STAMPA` | `pi-hashtag` / `pi-print` | T4 (`pi-verified`) |
+  | `crea_revisione` | `NUOVA_REVISIONE` | `pi-history` (= `VERSIONI`) | `pi-clone` era `MULTIPLI` |
+  | `push_commessa` | `INVIA_A_COMMESSA` | composta: `pi-briefcase` + `pi-arrow-circle-right` | `pi-arrow-right`; supera D7 (`SEND`), vedi sotto |
+  | `push_contratto`, `genera_ordine` | `GENERA_DOCUMENTO` | `pi-file-export` | `pi-arrow-right`, `pi-shopping-cart` (= `VENDITE`) |
+
+* ✅ **Confermati da Tid il 2026-09-27** i glifi di `SPEDISCI` (`pi-truck`),
+  `CONSEGNA` (`pi-flag-fill`), `RENDI_PRONTA` (`pi-thumbs-up`) e
+  `NUOVA_REVISIONE` (`pi-history`).
+* ✅ **Push a commessa, deciso da Tid il 2026-09-27.** `emetti` (D-1) e
+  `push_commessa` (D7) avevano entrambi `SEND`, e nel preventivo stanno nello
+  stesso drawer. Il push ora ha un segno suo: `INVIA_A_COMMESSA`, un'icona
+  composta in `main.css` (la valigetta della commessa con la freccia verso
+  valle). È diversa da `COMMESSA` nuda, che resta «apri la commessa». La portano
+  il verbo `push_commessa`, `AZIONE_PUSH_COMMESSA` (pulsante negato di DDT e
+  ordine), lo smistamento del preventivo e le attività di pratica
+  `INVIO_COMMESSA` e smistamento. `SEND` resta a `emetti` e all'invio dei
+  messaggi. Aggiunti i due codepoint alla baseline di
+  `check-primeicons-codepoints`.
+* **BE**: `test_documento_interno_db.py` non si aspetta più `icon`. È verde con
+  `ZEROERP_TEST_DB_E2E=1` sul dbdev. Tolto `icon` anche dalle fixture di
+  contratti e preventivi.
+* **Pagine API** di §7.3: tolto `icon` dall'output descritto.
+
+## 9. Anche il colore esce dal DB — §6.4 riaperta, 2026-09-28
+
+> **Chi scrive:** sessione backend/frontend (`dev/backend-tid`).
+> **A chi:** team DB (§9.3). Il frontend è già consegnato (§9.2).
+
+### 9.1 Decisione di Tid, 2026-09-27
+
+Il §6.4 aveva lasciato `severity` a DB. Tid lo riapre: **il colore del
+pulsante segue la stessa regola dell'icona**. Il verbo lo decide, uguale in
+tutti i domini, e il frontend lo ricava dal `key`.
+
+Il motivo è sul modello. `severity` è presentazione quanto l'icona (lo diceva
+già il §6.4). E leggendo il contratto (CSV di `80_data` e corpi delle
+funzioni, 2026-09-27) lo stesso verbo porta colori diversi, cioè lo stesso
+difetto del §2.1:
+
+| `key` | Oggi a DB | Decisione |
+| --- | --- | --- |
+| `conferma` | `info` negli ordini; `success` nei resi e nel documento interno | ✅ Tid: **`info`** |
+| `riapri` / `riporta_a_draft` | `info` in commessa, `secondary` nel documento interno, `warn` nel lotto | ✅ Tid: **`warn`**, tutti e due |
+| `push_commessa` | `info` nel preventivo; `success` in ordine e DDT | ✅ Tid: **`success`**, anche il colore del pulsante negato `AZIONE_PUSH_COMMESSA` |
+
+Per gli altri verbi il frontend conserva il colore che il DB già usava,
+perché è uno solo.
+
+**Restano a DB** `label_key`, che cambia per documento, e `outlined`, che
+cambia per **stato** (l'annulla di una bozza è solo bordato) e non per verbo.
+
+### 9.2 Consegna frontend — 2026-09-28
+
+* `core/iconeAzioni.js` diventa **`core/aspettoAzioni.js`**:
+  `ASPETTO_AZIONE = { verbo: { icona, severity } }` e `aspettoAzione(key)`.
+  Per un verbo sconosciuto vale `RIPIEGO` = `CAMBIO_STATO` + `secondary`.
+* La leggono `useDrawerActions`, il kebab dei lotti e la conferma del
+  documento interno (`danger`). Legge la mappa anche `AZIONE_PUSH_COMMESSA`,
+  che prima teneva a mano icona e colore.
+* **Ritirata `LOTTO_AZIONE_SEVERITY`**, l'ultima copia a mano del seed nel
+  frontend.
+* Il frontend **ignora già** il `severity` che il DB manda: un test lo fissa
+  (`useDrawerActions.spec.js` 1b). ⭐ Quindi, a differenza dell'icona,
+  **l'ordine di rilascio è libero**: il pulsante non cambia aspetto né prima
+  né dopo il changeSet DB.
+
+### 9.3 Richiesta al team DB
+
+Stesso perimetro del §4 e del §6.3, con `severity` al posto di `icon`:
+
+1. Togliere `severity` dall'output delle nove `fn_available_actions_*`. Oggi
+   è scritta come letterale per `ristampa`, `crea_revisione`,
+   `push_commessa`, `push_contratto`, `genera_ordine` e nei `VALUES` del
+   documento interno.
+2. Togliere `severity` da `meta` nelle otto matrici, **dal CSV**
+   (linee-guida-sql §11.2).
+3. Riscrivere i `COMMENT` che la nominano (le sei matrici del §6.3 e
+   `fn_available_actions_documento_interno`).
+4. pgTAP: `test-capability-annulla-aspetto-e-stato-leggibile-v1.sql` asserisce
+   `severity = danger` sull'annulla (riga 155 e il test 1). Va riscritto come
+   per `icon` (§7.1): asserire l'**assenza**, e tenere `outlined`, che resta un
+   dato. Da censire gli altri pgTAP che leggono `severity` dalle azioni.
+   ⚠️ `test-riporta-lotto-a-draft-v1.sql:303` legge la `severity` di un
+   **evento**, non di un'azione: non c'entra.
+5. Doc `dbzero` delle funzioni e delle matrici.
+
+**Ricaduta BE, dopo il DB** (la fa la sessione BE):
+`magazzino/tests/db/test_documento_interno_db.py:420` elenca `severity` fra le
+chiavi dell'output, e fallirà. Le fixture di contratti e preventivi portano un
+campo stantio. Le pagine API di §7.3 descrivono `severity` nell'output.

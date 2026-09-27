@@ -49,6 +49,7 @@ import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDrawerActions'
+import { aspettoAzione } from '../../core/aspettoAzioni'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
@@ -194,10 +195,10 @@ function onCambiaStato(action) {
     }),
     // ⚠️ `danger` da solo porterebbe la coppia «Elimina» + cestino: qui il
     //    gesto e' un annullamento, non una cancellazione, e label e icona
-    //    vengono dal DATO della capability.
+    //    vengono dal verbo della capability (lo stesso aspetto del pulsante).
     acceptLabel: t(action.label_key),
-    acceptIcon: action.icon,
-    danger: action.severity === 'danger',
+    acceptIcon: aspettoAzione(action.key).icona,
+    danger: aspettoAzione(action.key).severity === 'danger',
     onAccept: esegui,
   })
 }

@@ -442,10 +442,17 @@ export const MANAGE_ICONS = {
   BACK: 'pi pi-arrow-left',
   PLAY: 'pi pi-play',
   PUBLISH: 'pi pi-check-circle',
-  // Invio/push verso valle (push a commessa). Centralizzata: usata
-  // dall'azione "Invia a commessa" del drawer ordini; stessa semantica del
-  // pulsante push di PreventiviIntegrazione (oggi ancora `pi pi-send` inline).
+  // Inviare: il verbo `emetti` dei documenti (D-1 di Tid, 2026-09-27) e
+  // l'invio di un messaggio (assistente AI).
+  // ⛔ Non il push a commessa: quello e' `INVIA_A_COMMESSA` (Tid 2026-09-27),
+  //    perche' nel preventivo `emetti` e il push stanno nello stesso drawer.
   SEND: 'pi pi-send',
+  // Mandare righe a valle verso la commessa: il push (preventivo, ordine,
+  // DDT), lo smistamento del preventivo e le attivita' di pratica che li
+  // aprono. Icona composta: valigetta della commessa + freccia verso valle
+  // (main.css). ⛔ Non `COMMESSA` nuda, che e' «apri la commessa»: il posto,
+  // non il gesto.
+  INVIA_A_COMMESSA: 'app-nav-icon app-nav-icon-invia-commessa',
   CLONE: 'pi pi-copy',
   CLOSE: 'pi pi-lock',
   CLOSE_DATE: 'pi pi-calendar-times',
@@ -645,10 +652,27 @@ export const MANAGE_ICONS = {
   GENERA_DOCUMENTO: 'pi pi-file-export',
   // Il verbo «numera» dei lotti: rende definitivi i documenti assegnando il
   // numero. ⭐ Stesso cancelletto di `NUMERAZIONE` (T4, Tid 2026-09-27): il
-  // numero e' cio' che il gesto da'. ⚠️ Il catalogo DB (`meta` delle azioni
-  // lotto) manda ancora `pi-verified`, letto da `useLottoAzioni`: divergenza
-  // aperta, brief-db-icone-azioni-per-significato §2.
+  // numero e' cio' che il gesto da'. Dal 2026-09-27 il DB non manda piu'
+  // glifi: il segno del verbo lo da' `core/aspettoAzioni.js`.
   NUMERA: 'pi pi-hashtag',
+  //
+  // ─── Verbi di stato dei documenti (core/aspettoAzioni.js) ─────────────────
+  // Nati il 2026-09-27 col brief-db-icone-azioni-per-significato: i verbi che
+  // non avevano gia' una costante col loro significato.
+  // Affidare la merce al trasporto (DDT). ⚠️ Ripete `NAV_ICONS.VETTORE`: chi
+  // spedisce la consegna al vettore. ⛔ Non `SEND`, che e' `emetti` (D-1 di
+  // Tid) e sta nello stesso drawer.
+  SPEDISCI: 'pi pi-truck',
+  // La merce e' arrivata al destinatario (DDT). ⛔ Non `pi-check-circle`, che
+  // e' `PUBLISH` e lo stato `OK`.
+  CONSEGNA: 'pi pi-flag-fill',
+  // La commessa e' pronta per la fatturazione. ⛔ Non `PUBLISH` ne'
+  // `FATTURA_GENERA`: non pubblica e non genera niente, dichiara «si puo'».
+  RENDI_PRONTA: 'pi pi-thumbs-up',
+  // Nuova revisione di un'offerta/preventivo. ⭐ Stesso segno di `VERSIONI` di
+  // proposito: la revisione e' una versione in piu'. ⛔ Non `pi-clone`
+  // (`STATUS_ICONS.MULTIPLI`) ne' `CLONE` (duplica un record).
+  NUOVA_REVISIONE: 'pi pi-history',
   // Allegare file a un documento / evento «allegato aggiunto» / file caricato
   // in attesa.
   ALLEGATI: 'pi pi-paperclip',

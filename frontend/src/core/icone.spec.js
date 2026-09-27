@@ -15,6 +15,7 @@
 // Indice test:
 //  1. nessuna icona PrimeIcons scritta a mano fuori da constants/navigation
 //  2. ogni glifo delle costanti di icona esiste in PrimeIcons
+//  3. ogni icona composta delle costanti ha le sue regole in main.css
 // ------------------------------------------------------------
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -26,13 +27,7 @@ const CASE = ['./constants.js', './navigation.js']
 
 // Eccezioni dichiarate, ciascuna col suo motivo. ⛔ Non e' un parcheggio: una
 // riga qui e' un debito con un brief aperto.
-const ECCEZIONI = {
-  // Copia a mano delle icone che il DB manda nelle azioni del lotto
-  // (`config.stati_doc_fiscale_transizioni.meta.icon`): finche' il DB manda
-  // glifi e non significati, cambiarle qui separerebbe il kebab della lista
-  // dalla barra del drawer. Si chiude col brief DB sulle icone delle azioni.
-  '../vendite/composables/useLottoAzioni.js': 3,
-}
+const ECCEZIONI = {}
 
 // Un letterale di icona: `pi pi-x` in stringa o attributo, o `'pi-x'` nudo.
 const LETTERALE = /(?:['"`]\s*|class="|icon=")pi pi-[a-z]|'pi-[a-z][a-z-]*'/g
@@ -56,6 +51,9 @@ const primeiconsCss = readFileSync(
   new URL('../../node_modules/primeicons/primeicons.css', import.meta.url),
   'utf8',
 )
+const mainCss = readFileSync(new URL('../assets/main.css', import.meta.url), 'utf8')
+
+const GRUPPI = { MANAGE_ICONS, STATUS_ICONS, RECAPITO_ICONS, NAV_ICONS, TIPO_RUOLO_ICONS }
 
 describe('icone per significato', () => {
   it('nessuna icona PrimeIcons scritta a mano fuori da constants/navigation', () => {
@@ -71,13 +69,30 @@ describe('icone per significato', () => {
   })
 
   it('ogni glifo delle costanti di icona esiste in PrimeIcons', () => {
-    const gruppi = { MANAGE_ICONS, STATUS_ICONS, RECAPITO_ICONS, NAV_ICONS, TIPO_RUOLO_ICONS }
     const mancanti = []
-    for (const [gruppo, mappa] of Object.entries(gruppi)) {
+    for (const [gruppo, mappa] of Object.entries(GRUPPI)) {
       for (const [chiave, valore] of Object.entries(mappa)) {
         for (const glifo of String(valore).match(/pi-[a-z][a-z-]*/g) ?? []) {
           if (glifo === 'pi-spin') continue
           if (!primeiconsCss.includes(`.${glifo}:before`)) mancanti.push(`${gruppo}.${chiave}: ${glifo}`)
+        }
+      }
+    }
+    expect(mancanti).toEqual([])
+  })
+
+  // Un'icona composta (`app-nav-icon-<nome>`) e' una classe di main.css: un
+  // nome sbagliato non da' errore, a video resta un riquadro vuoto.
+  it('ogni icona composta delle costanti ha le sue regole in main.css', () => {
+    const mancanti = []
+    for (const [gruppo, mappa] of Object.entries(GRUPPI)) {
+      for (const [chiave, valore] of Object.entries(mappa)) {
+        for (const classe of String(valore).match(/app-nav-icon-[a-z][a-z-]*/g) ?? []) {
+          for (const pseudo of ['::before', '::after']) {
+            if (!new RegExp(`\\.${classe}${pseudo}[\\s,{]`).test(mainCss)) {
+              mancanti.push(`${gruppo}.${chiave}: .${classe}${pseudo}`)
+            }
+          }
         }
       }
     }

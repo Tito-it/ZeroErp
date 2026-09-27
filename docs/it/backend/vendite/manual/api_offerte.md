@@ -339,13 +339,13 @@ non ancora compilato).
         {
           "key": "emetti", "target_state": "EMESSA",
           "label_key": "vendite.offerte.azione_emetti",
-          "severity": "success", "icon": "pi pi-send",
+          "severity": "success",
           "requires_confirm": true, "requires_motivazione": false
         },
         {
           "key": "annulla", "target_state": "ANNULLATA",
           "label_key": "vendite.offerte.azione_annulla",
-          "severity": "danger", "icon": "pi pi-ban",
+          "severity": "danger",
           "requires_confirm": true, "requires_motivazione": true
         }
       ],

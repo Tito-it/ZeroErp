@@ -3257,7 +3257,12 @@ ed etichetta** (l'icona ha sempre label o tooltip accanto). Quindi:
 - **`::before` = base documento** (`pi-file` `\e958`) → il **marcatore di
   famiglia/area**: "questo è un documento vendite" (mai un glifo generico che
   potrebbe significare altro).
-- **`::after` = overlay del TIPO** → il **differenziatore**, un badge d'angolo:
+- **`::after` = overlay del TIPO** → il **differenziatore**, grande, dentro
+  l'angolo in basso a destra del foglio, che è **aperto** come quello di
+  `pi-file-edit` (Tid 2026-09-27; lo si ottiene ritagliando `pi-file` con
+  `clip-path`, perché il font non ha un foglio aperto senza simbolo proprio).
+  ⭐ Misure di base e simbolo in **una regola sola** per tutta la famiglia, in
+  `main.css`: ogni documento dichiara solo il `content` del suo `::after`.
 
 | Entità | Overlay | Glifo |
 | --- | --- | --- |
@@ -3287,9 +3292,11 @@ ed etichetta** (l'icona ha sempre label o tooltip accanto). Quindi:
   carrello **intero** (`pi-shopping-cart` pieno) → l'ordine usa il carrello come
   **badge** su documento, non collide. Mai `pi-replay`/`pi-refresh` per i Resi
   (si leggono come "ricarica").
-- Nuova entità vendite: aggiungere `.app-nav-icon-<entita>` (base `\e958` +
-  overlay-tipo) in `main.css` e la chiave in `NAV_ICONS`, mai una PrimeIcon
-  singola generica.
+- Nuova entità vendite: aggiungere `.app-nav-icon-<entita>` ai due selettori
+  della regola di famiglia in `main.css`, più il suo `::after` con il solo
+  `content` dell'overlay-tipo, e la chiave in `NAV_ICONS`. Mai una PrimeIcon
+  singola generica. `icone.spec.js` fallisce se una classe composta delle
+  costanti non ha le sue regole in `main.css`.
 
 ### Regole CSS per i componenti
 
