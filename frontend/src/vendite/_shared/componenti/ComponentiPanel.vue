@@ -42,6 +42,7 @@ import { useNotify } from '../../../core/composables/useNotify'
 import { useRigaComponenti } from '../../../core/composables/useRigaComponenti'
 import { extractApiError } from '../../../core/utils/apiError'
 import { coerceJsonbToArray } from '../../../core/utils/meta'
+import { MANAGE_ICONS, STATUS_ICONS } from '../../../core/constants'
 import {
   pricingOrigineLabelKey,
   pricingOrigineSeverity,
@@ -352,7 +353,7 @@ async function onSalvaPrezzo(comp) {
 <template>
   <div>
     <div v-if="loading && componenti.length === 0" class="componenti-panel-loading">
-      <i class="pi pi-spin pi-spinner" /> {{ t('common.loading') }}
+      <i :class="STATUS_ICONS.CARICAMENTO" /> {{ t('common.loading') }}
     </div>
     <div v-else-if="componenti.length === 0" class="componenti-panel-empty">
       {{ t(localizedKey('vuoto')) }}
@@ -407,7 +408,7 @@ async function onSalvaPrezzo(comp) {
                 class="componenti-panel-input" />
               <Button
                 v-if="isDirty(data)"
-                icon="pi pi-check"
+                :icon="MANAGE_ICONS.CONFIRM"
                 text rounded size="small"
                 severity="success"
                 :disabled="!isPrezzoEditatoValido(data) || loading"
@@ -463,7 +464,7 @@ async function onSalvaPrezzo(comp) {
       {{ t(localizedKey('section_hint')) }}
     </small>
     <small v-if="!effectiveReadonly && !canOverride && componenti.length > 0" class="componenti-panel-hint componenti-panel-hint-lock">
-      <i class="pi pi-lock" /> {{ t(localizedKey('l1_richiede_autorizzazione')) }}
+      <i :class="STATUS_ICONS.BLOCCATO" /> {{ t(localizedKey('l1_richiede_autorizzazione')) }}
     </small>
   </div>
 </template>

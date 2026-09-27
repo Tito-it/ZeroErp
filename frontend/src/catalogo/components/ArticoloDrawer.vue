@@ -14,7 +14,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { listArticoloUom, listArticoloComponenti, makeArticoloNotesApi, getArticoloFormDefaults } from '../api/catalogo'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { toDateString } from '../../core/utils/date'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
@@ -349,7 +349,7 @@ const drawerActions = computed(() => {
       key: 'disattiva',
       kind: 'state',
       label: t('catalogo.disattiva_articolo'),
-      icon: 'pi pi-ban',
+      icon: MANAGE_ICONS.DISATTIVA,
       severity: 'danger',
       outlined: true,
       visible: detail.value.attivo === true,
@@ -360,7 +360,7 @@ const drawerActions = computed(() => {
       key: 'riattiva',
       kind: 'state',
       label: t('catalogo.riattiva_articolo'),
-      icon: 'pi pi-check',
+      icon: MANAGE_ICONS.RIATTIVA,
       severity: 'success',
       visible: detail.value.attivo === false,
       hideWhenReadonly: true,
@@ -536,7 +536,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
             </div>
             <div v-else class="app-riepilogo-empty">{{ t('catalogo.nessuna_uom') }}</div>
             <Button v-if="!isReadonly"
-              :label="t('catalogo.gestisci_uom')" icon="pi pi-box"
+              :label="t('catalogo.gestisci_uom')" :icon="MANAGE_ICONS.UOM"
               text size="small" class="app-action-btn app-escape mt-025"
               @click="uomDrawerVisible = true" />
           </div>
@@ -555,7 +555,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
             </div>
             <div v-else class="app-riepilogo-empty">{{ t('catalogo.nessun_componente') }}</div>
             <Button v-if="!isReadonly"
-              :label="t('catalogo.gestisci_bom')" icon="pi pi-sitemap"
+              :label="t('catalogo.gestisci_bom')" :icon="MANAGE_ICONS.BOM"
               text size="small" class="app-action-btn app-escape mt-025"
               @click="bomDrawerVisible = true" />
           </div>
@@ -582,7 +582,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
             </div>
             <div v-else class="app-riepilogo-empty">{{ t('catalogo.nessuna_nota') }}</div>
             <Button v-if="!isReadonly"
-              :label="t('catalogo.gestisci_note')" icon="pi pi-file-edit"
+              :label="t('catalogo.gestisci_note')" :icon="MANAGE_ICONS.NOTE"
               text size="small" class="app-action-btn app-escape mt-025"
               @click="noteDrawerVisible = true" />
           </div>
@@ -590,7 +590,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
       </template>
 
       <div v-else class="app-loading">
-        <i class="pi pi-spin pi-spinner" style="font-size: 1.5rem;"></i>
+        <i :class="STATUS_ICONS.CARICAMENTO" style="font-size: 1.5rem;"></i>
       </div>
 
       <FormFooter v-if="contentReady" :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />

@@ -61,7 +61,7 @@ import { NAV_ICONS } from './navigation'
 //              della navigazione invece di scriverlo qui: il pulsante deve
 //              portare lo stesso segno della voce di menu che apre la stessa
 //              entita', o chi ha cliccato non la riconosce quando ci arriva.
-//              ⛔ Prima era UNA sola per tutti — `pi pi-external-link`, cioe'
+//              ⛔ Prima era UNA sola per tutti — il `MANAGE_ICONS.VAI_A` di oggi, cioe'
 //              «un collegamento» — che dice come ci si va e non DOVE si va
 //              (rilievo di Tid, 2026-09-08). In un kebab con due voci era il
 //              segno identico su due destinazioni diverse.
@@ -157,7 +157,7 @@ const DESTINAZIONI = Object.freeze({
     richiedeAdmin: true,
     etichettaKey: 'config.tipi_entita.definizione_workflow',
     // La voce «Definizioni workflow» del menu amm-software porta questo segno.
-    icona: NAV_ICONS.SITEMAP,
+    icona: NAV_ICONS.DEFINIZIONI_WORKFLOW,
   },
   // ⛔ UN SOLO TIPO DEL CATALOGO NON E' QUI, e non e' una svista: `TASK_RUN`.
   //    Nessuna schermata mostra un giro per id — sta a catalogo perche' serve

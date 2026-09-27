@@ -25,6 +25,7 @@ import ProgressBar from 'primevue/progressbar'
 import { isTappaApribile } from '../../../core/drawerEntita'
 import { lineageDocumentoLabel } from './lineageLabels'
 import { faseDocumentoSeverity } from '../../../core/utils/severity'
+import { MANAGE_ICONS } from '../../../core/constants'
 
 const props = defineProps({
   // Payload passaggi (null finche' non caricato).
@@ -68,14 +69,14 @@ const sezioni = computed(() => [
     key: 'origine',
     titolo: t('vendite.lineage.origine'),
     vuoto: t('vendite.lineage.nessuna_origine'),
-    icona: 'pi-arrow-left',
+    icona: MANAGE_ICONS.DOC_ORIGINE,
     rows: (props.data?.indietro ?? []).map((p) => passaggioToRow(p, 'from')),
   },
   {
     key: 'destinazioni',
     titolo: t('vendite.lineage.destinazioni'),
     vuoto: t('vendite.lineage.nessun_transito'),
-    icona: 'pi-arrow-right',
+    icona: MANAGE_ICONS.DOC_DESTINAZIONE,
     rows: (props.data?.avanti ?? []).map((p) => passaggioToRow(p, 'to')),
   },
 ])
@@ -166,7 +167,7 @@ const isApribile = isTappaApribile
           class="lineage-step"
           :class="{ 'lineage-step-inverso': row.ramoInverso }"
           :style="{ paddingLeft: `${(row.livello - 1) * 1.25}rem` }">
-          <i :class="row.ramoInverso ? 'pi pi-replay' : `pi ${sezione.icona}`" class="lineage-step-icon" />
+          <i :class="row.ramoInverso ? MANAGE_ICONS.CORREZIONE : sezione.icona" class="lineage-step-icon" />
           <Tag :value="tipoLabel(row.tipoCodice, row.naturaCodice)" severity="secondary" />
           <Button
             v-if="isApribile(row)"

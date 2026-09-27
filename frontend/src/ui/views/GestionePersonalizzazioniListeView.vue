@@ -29,7 +29,8 @@ import TabPanels from 'primevue/tabpanels'
 import StatusPage from '../../core/components/StatusPage.vue'
 import { useAuthStore } from '../../stores/auth'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
-import { READONLY_DOMAINS } from '../../core/constants'
+import { READONLY_DOMAINS, STATUS_ICONS } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import ListaCorrenteSelect from '../components/ListaCorrenteSelect.vue'
 import ListaPresetPanel from '../components/ListaPresetPanel.vue'
 import ListaColonnaPermessoPanel from '../components/ListaColonnaPermessoPanel.vue'
@@ -74,11 +75,11 @@ const activeTab = computed({
   <div class="app-page">
     <StatusPage
       v-if="!canAccess"
-      icon="pi pi-lock"
+      :icon="STATUS_ICONS.VIETATO"
       :title="t('errors.forbidden_title')"
       :message="t('errors.forbidden_message')"
       :action-label="t('errors.back_home')"
-      action-icon="pi pi-home"
+      :action-icon="NAV_ICONS.HOME"
       @action="router.push('/')"
     />
 

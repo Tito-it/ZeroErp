@@ -41,6 +41,7 @@ import { useListaConfigurabilePage } from '../../core/composables/useListaConfig
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { useEtichettePagamenti } from '../etichette'
 import { useRateFuoriCapienzaStore } from '../stores/rateFuoriCapienza'
+import { STATUS_ICONS } from '../../core/constants'
 import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const emit = defineEmits(['row-click'])
@@ -160,7 +161,7 @@ onMounted(() => store.fetchList())
 
         <template #empty>
           <div class="app-empty-state">
-            <i class="pi pi-check-circle" />
+            <i :class="STATUS_ICONS.TUTTO_OK" />
             <p>{{ t('pagamenti.rate_fuori_capienza.nessuna_rata') }}</p>
           </div>
         </template>

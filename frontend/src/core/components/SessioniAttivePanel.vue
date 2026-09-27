@@ -8,6 +8,7 @@ import Column from 'primevue/column'
 import Button from 'primevue/button'
 import Badge from 'primevue/badge'
 import { useApiHandler } from '../composables/useApiHandler'
+import { MANAGE_ICONS } from '../constants'
 import { listSessioni, revocaSessione as apiRevocaSessione, revocaTutteSessioni as apiRevocaTutte } from '../api/sessioni'
 
 const { t } = useI18n()
@@ -140,14 +141,14 @@ onActivated(fetchSessioni)
   <div v-if="sessioni.length > 0" class="sessioni-panel">
     <div class="sessioni-header">
       <h3 class="sessioni-title">
-        <i class="pi pi-shield"></i>
+        <i :class="MANAGE_ICONS.SESSIONI"></i>
         <span>{{ t('sessions.other_active_title') }}</span>
         <Badge :value="sessioni.length" severity="warn" />
       </h3>
       <div class="sessioni-actions">
         <Button
           :label="t('sessions.revoke_all')"
-          icon="pi pi-times"
+          :icon="MANAGE_ICONS.REVOCA"
           severity="danger"
           text
           size="small"
@@ -156,7 +157,7 @@ onActivated(fetchSessioni)
           @click="confermaRevocaTutte"
         />
         <Button
-          :icon="expanded ? 'pi pi-chevron-up' : 'pi pi-chevron-down'"
+          :icon="expanded ? MANAGE_ICONS.COLLAPSE : MANAGE_ICONS.EXPAND"
           text
           rounded
           size="small"
@@ -186,7 +187,7 @@ onActivated(fetchSessioni)
         <template #body="{ data }">
           <Button
             :label="t('sessions.revoke')"
-            icon="pi pi-times"
+            :icon="MANAGE_ICONS.REVOCA"
             severity="danger"
             size="small"
             text

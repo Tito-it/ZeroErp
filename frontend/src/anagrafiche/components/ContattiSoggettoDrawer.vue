@@ -15,7 +15,7 @@ import {
   listRuoloContatti, createRuoloContatto,
   updateRuoloContatto, deleteRuoloContatto
 } from '../api/anagrafiche'
-import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, RECAPITO_ICONS, STATUS_ICONS } from '../../core/constants'
 import ContattoForm from './ContattoForm.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
@@ -113,13 +113,13 @@ const suVisibile = gestoreVisibile(emit, chiudi)
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <!-- Loading -->
       <div v-if="listLoading" class="app-loading">
-        <i class="pi pi-spin pi-spinner" />
+        <i :class="STATUS_ICONS.CARICAMENTO" />
       </div>
 
       <!-- Lista contatti esistenti -->
       <template v-if="!listLoading">
         <div v-if="contattiList.length === 0 && !formMode" class="app-empty-state">
-          <i class="pi pi-users" />
+          <i :class="MANAGE_ICONS.CONTATTI" />
           <p>{{ t('anagrafiche.contatto.nessun_contatto') }}</p>
         </div>
 
@@ -136,10 +136,10 @@ const suVisibile = gestoreVisibile(emit, chiudi)
                 <strong>{{ c.nominativo }}</strong>
               </div>
               <div class="contatto-card-detail">
-                <span v-if="c.email"><i class="pi pi-envelope" /> {{ c.email }}</span>
-                <span v-if="c.telefono"><i class="pi pi-phone" /> {{ c.telefono }}</span>
-                <span v-if="c.cellulare"><i class="pi pi-mobile" /> {{ c.cellulare }}</span>
-                <span v-if="c.pec"><i class="pi pi-at" /> {{ c.pec }}</span>
+                <span v-if="c.email"><i :class="RECAPITO_ICONS.EMAIL" /> {{ c.email }}</span>
+                <span v-if="c.telefono"><i :class="RECAPITO_ICONS.TELEFONO" /> {{ c.telefono }}</span>
+                <span v-if="c.cellulare"><i :class="RECAPITO_ICONS.CELLULARE" /> {{ c.cellulare }}</span>
+                <span v-if="c.pec"><i :class="RECAPITO_ICONS.PEC" /> {{ c.pec }}</span>
               </div>
             </div>
             <div v-if="!formMode && !isReadonly && c.fonte !== 'soggetto'" class="contatto-card-actions">

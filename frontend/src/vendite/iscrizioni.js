@@ -26,6 +26,7 @@ import { contribuisci, PUNTI_ESTENSIONE } from '../core/estensioni'
 import { iscriviAttivitaUi } from '../pratiche/uiActivityRegistry'
 import { iscriviDialogCompletamento } from '../pratiche/flussoCompletionRegistry'
 import { iscriviCompletamentoDominio } from '../pratiche/flussoDomainCompletionRegistry'
+import { NAV_ICONS } from '../core/navigation'
 
 // ===== Drawer di dettaglio per tipo di entita' =====
 
@@ -149,7 +150,7 @@ iscriviAttivitaUi('APRI_PREVENTIVO', {
   // Il preventivo ammette il prospect (BA opzionale) → nessun gating cliente.
   requiresActiveClient: false,
   label: 'pratiche.flusso_apri_preventivo',
-  icon: 'pi pi-file-edit',
+  icon: NAV_ICONS.PREVENTIVI,
   // Toast i18n al primo aggancio documento↔pratica.
   linkedMessage: 'pratiche.preventivo_collegato',
 })
@@ -176,7 +177,7 @@ iscriviAttivitaUi('SMISTAMENTO', {
   // preventivo orfano): l'host blocca con errore parlante.
   requiresExisting: true,
   label: 'pratiche.flusso_smistamento',
-  icon: 'pi pi-send',
+  icon: MANAGE_ICONS.SEND,
 })
 
 // Step a valle merce: aprono l'OrdiniDrawer sull'ordine COLLEGATO della pratica
@@ -191,7 +192,7 @@ iscriviAttivitaUi('CONFERMA_ORDINE', {
   buildProps: ordineDrawerProps,
   requiresExisting: true,
   label: 'pratiche.flusso_conferma_ordine',
-  icon: 'pi pi-check-square',
+  icon: NAV_ICONS.ORDINI,
 })
 
 iscriviAttivitaUi('INVIO_COMMESSA', {
@@ -200,7 +201,7 @@ iscriviAttivitaUi('INVIO_COMMESSA', {
   buildProps: ordineDrawerProps,
   requiresExisting: true,
   label: 'pratiche.flusso_invio_commessa',
-  icon: 'pi pi-send',
+  icon: MANAGE_ICONS.SEND,
 })
 
 // APRI_OFFERTA / APRI_CONTRATTO: da aggiungere quando nasceranno i loro

@@ -32,7 +32,7 @@ import Popover from 'primevue/popover'
 import Tag from 'primevue/tag'
 import { displayTimestamp } from '../utils/date'
 import BersaglioAzioni from './BersaglioAzioni.vue'
-import { MANAGE_ICONS } from '../constants'
+import { STATUS_ICONS } from '../constants'
 
 const props = defineProps({
   // Il messaggio dell'errore. Assente/vuoto = niente icona: la riga non ha
@@ -105,7 +105,7 @@ const severita = computed(() => SEVERITY_PER_LIVELLO[props.livello] || 'danger')
 // L'icona segue il livello: triangolo per critico e avviso (c'e' qualcosa che
 // non va), «i» per l'attenzione (c'e' qualcosa da sapere).
 const icona = computed(
-  () => (props.livello === 'I' ? 'pi pi-info-circle' : MANAGE_ICONS.ERRORE),
+  () => (props.livello === 'I' ? STATUS_ICONS.INFO : STATUS_ICONS.ERRORE),
 )
 
 function toggle(event) {

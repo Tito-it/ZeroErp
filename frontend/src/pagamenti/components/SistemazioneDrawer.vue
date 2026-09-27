@@ -519,7 +519,7 @@ function buildRowActions(atto) {
               <Button
                 size="small"
                 :label="t('pagamenti.sistemazioni.registra_azione')"
-                icon="pi pi-check"
+                :icon="MANAGE_ICONS.REGISTRA"
                 :loading="loading"
                 :disabled="!canSave"
                 @click="onRegistra"

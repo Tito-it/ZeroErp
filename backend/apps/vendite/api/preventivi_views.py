@@ -106,6 +106,7 @@ _PREVENTIVO_RIGA_UPDATE_REQUEST = schema_da_contratto(
 
 class ApiPreventiviList(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "preventivo")
     is_search_endpoint = True
     lista_codice = "vendite.preventivi"
 
@@ -200,6 +201,7 @@ class ApiPreventiviExportView(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "preventivo")
     is_search_endpoint = True
     lista_codice = "vendite.preventivi"
 
@@ -278,6 +280,7 @@ class ApiPreventiviExportView(DomainAPIView):
 
 class ApiPreventivoDetail(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "preventivo")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -433,6 +436,7 @@ class ApiPreventivoStatoDaPratica(DomainAPIView):
 
 class ApiPreventivoRevisione(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "preventivo")
 
     @extend_schema(
         request=None,
@@ -454,6 +458,7 @@ class ApiPreventivoGeneraOrdine(DomainAPIView):
     smistamento selettivo; assente = tutte le righe merce residue."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "preventivo")
 
     @extend_schema(
         request=_RIGHE_IDS_REQUEST,
@@ -482,6 +487,7 @@ class ApiPreventivoRigheSmistabiliOrdine(DomainAPIView):
     di smistamento riga-per-riga preventivo→ordine."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "preventivo")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -532,6 +538,7 @@ class ApiPreventivoRootPerFlusso(DomainAPIView):
     crearne uno nuovo. Ritorna `{"preventivo_id": <id|null>}`. Lettura libera."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "preventivo")
 
     @extend_schema(
         parameters=[
@@ -565,6 +572,7 @@ class ApiPreventivoRootPerPratica(DomainAPIView):
     agganciato a monte. Ritorna `{"preventivo_id": <id|null>}`. Lettura libera."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "preventivo")
 
     @extend_schema(
         parameters=[
@@ -593,6 +601,7 @@ class ApiPreventivoRootPerPratica(DomainAPIView):
 
 class ApiPreventivoRevisioniList(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "preventivo")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -613,6 +622,7 @@ class ApiPreventivoRevisioniList(DomainAPIView):
 
 class ApiPreventivoRigheList(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "preventivo")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -652,6 +662,7 @@ class ApiPreventivoRigheList(DomainAPIView):
 
 class ApiPreventivoRigaDetail(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "preventivo")
 
     @extend_schema(
         request=_PREVENTIVO_RIGA_UPDATE_REQUEST,
@@ -719,6 +730,7 @@ class ApiPreventivoRigaPreviewComponenti(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "preventivo")
 
     @extend_schema(
         request=PREVIEW_COMPONENTI_REQUEST,
@@ -755,6 +767,7 @@ class ApiPreventivoRigaComponentiList(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "preventivo")
     is_search_endpoint = True
 
     @extend_schema(
@@ -787,6 +800,7 @@ class ApiPreventivoRigaComponenteDetail(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "preventivo")
 
     @extend_schema(
         request=COMPONENTE_PATCH_REQUEST,
@@ -866,6 +880,7 @@ class ApiPreventivoRigaSuggerisciPrezzo(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "preventivo")
 
     @extend_schema(
         request=inline_serializer(
@@ -929,6 +944,7 @@ ApiPreventivoRiepilogoIva = build_riepilogo_iva_view(
 
     Area `vendite` livello LETTURA sufficiente.
     """,
+    model_permission=("vendite", "preventivo"),
 )
 
 
@@ -949,6 +965,7 @@ class ApiPreventivoContestoPricing(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "preventivo")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -992,6 +1009,7 @@ _indirizzi_views = build_indirizzi_documento_views(
         preventivo_id, payload),
     delete_call=lambda preventivo_id, indirizzo_id: preventivi_service.delete_indirizzo(
         preventivo_id, indirizzo_id),
+    model_permission=("vendite", "preventivo"),
 )
 ApiPreventivoIndirizzi = _indirizzi_views.lista
 ApiPreventivoIndirizzoDetail = _indirizzi_views.detail
@@ -1036,6 +1054,7 @@ class ApiPreventivoSmistamento(DomainAPIView):
     `/stato-fatturazione/` (viste DB rinominate natura-aware, 2026-06-12)."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "preventivo")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -1060,6 +1079,7 @@ class ApiPreventivoCompletaSmistamento(DomainAPIView):
     Pannello. Guard: smistamento completo su entrambi i rami. Idempotente."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "preventivo")
 
     @extend_schema(
         request=None,

@@ -14,7 +14,7 @@ import InputText from 'primevue/inputtext'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
-import { DRAWER_WIDTH, LIVELLO_ACCESSO } from '../../core/constants'
+import { DRAWER_WIDTH, LIVELLO_ACCESSO, MANAGE_ICONS } from '../../core/constants'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
@@ -152,7 +152,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
         :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('ui.admin.permesso')"
-        icon="pi pi-shield"
+        :icon="MANAGE_ICONS.PERMISSIONS"
       />
     </template>
 

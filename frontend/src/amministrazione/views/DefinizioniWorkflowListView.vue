@@ -154,7 +154,7 @@ function buildRowActions(data) {
     {
       key: 'pubblica',
       label: t('amministrazione.definizioni_workflow.azione_pubblica'),
-      icon: 'pi pi-check',
+      icon: MANAGE_ICONS.PUBLISH,
       severity: 'primary',
       visible: data.stato === STATO_DEFINIZIONE.BOZZA,
       command: () => onPubblica(data),

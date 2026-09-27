@@ -16,7 +16,7 @@
 > **Stato:** ⏳ analisi — decise da Tid il 2026-09-24 **tutte e dieci**
 > (§5); **D-1 riletta** lo stesso giorno (blocco vero solo dall'admin, freno
 > automatico sulla coppia credenziale + provenienza). Brief DB scritto:
-> [brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md).
+> [brief-db-blocco-login-per-credenziale.md](../work-done/brief-db-blocco-login-per-credenziale.md).
 >
 > **Come leggere «Verificato»:** ✅ = riletto sul codice o sulla doc
 > auto-generata da chi scrive (2026-09-24); 🔎 = dall'inventario per lotti, con
@@ -44,7 +44,7 @@ Due oggetti, e ciascuno ha le sue regole:
    credenziale e non della veste, ma le password sbagliate **frenano la coppia
    credenziale + provenienza** e, oltre un tetto, **rallentano** la credenziale
    senza chiuderla; il **blocco vero** è un atto autorizzato (verbo dell'admin).
-   Dettaglio: [brief DB](brief-db-blocco-login-per-credenziale.md) §2;
+   Dettaglio: [brief DB](../work-done/brief-db-blocco-login-per-credenziale.md) §2;
 2. **accessi, attivazioni e disattivazioni seguono la stessa logica per ogni
    veste**. Cambia la porta, non il ciclo di vita.
 
@@ -176,7 +176,7 @@ diverso da quello di invitare un cliente: è un diritto, non un ciclo di vita.
 
 | # | Domanda | Proposta |
 | --- | --- | --- |
-| D-1 | **Sede del blocco della credenziale**: una tabella 1:1 con `auth_user` in uno schema nostro (le colonne su `django.auth_user` sarebbero dentro una tabella di Django) | ✅ **DECISA (Tid, 2026-09-24): come proposto** — tabella nostra, forma a scelta del team DB; `tentativi_falliti`/`bloccato_fino_a` via da `identita_digitali` nello stesso giro. ⚠️ **Riletta lo stesso giorno** (Tid): *«chiunque abbia l'autorizzazione dovrebbe essere così»* — il blocco vero lo decide un utente autorizzato; le password sbagliate frenano la coppia credenziale + provenienza e, oltre un tetto, portano a un'attesa crescente (solo DB e backend, niente frontend per ora). Forma nel [brief DB](brief-db-blocco-login-per-credenziale.md) §2; le decisioni di dettaglio (D-B1…D-B5) sono lì, §9, tutte prese il 2026-09-24 |
+| D-1 | **Sede del blocco della credenziale**: una tabella 1:1 con `auth_user` in uno schema nostro (le colonne su `django.auth_user` sarebbero dentro una tabella di Django) | ✅ **DECISA (Tid, 2026-09-24): come proposto** — tabella nostra, forma a scelta del team DB; `tentativi_falliti`/`bloccato_fino_a` via da `identita_digitali` nello stesso giro. ⚠️ **Riletta lo stesso giorno** (Tid): *«chiunque abbia l'autorizzazione dovrebbe essere così»* — il blocco vero lo decide un utente autorizzato; le password sbagliate frenano la coppia credenziale + provenienza e, oltre un tetto, portano a un'attesa crescente (solo DB e backend, niente frontend per ora). Forma nel [brief DB](../work-done/brief-db-blocco-login-per-credenziale.md) §2; le decisioni di dettaglio (D-B1…D-B5) sono lì, §9, tutte prese il 2026-09-24 |
 | D-2 | Il **reset password riuscito sblocca** la credenziale? | ✅ **DECISA (Tid, 2026-09-24): sì, per i tentativi** — chi dimostra di possedere l'email ha già superato la prova che il freno protegge. ⛔ Dopo la rilettura di D-1: il reset **non** toglie il blocco dell'admin (D-B3 del brief) — dimostra il possesso dell'email, non annulla una decisione |
 | D-3 | **Riattivazione**: sempre con un nuovo invito (token), come portale e shop, oppure diretta dall'admin per tutte le vesti? | ✅ **DECISA (Tid, 2026-09-24): nuovo invito, per tutte le vesti** (*«ho un dubbio, però credo che sia meglio nuovo invito»*). ⭐ Ciò che scioglie il dubbio: col flusso deciso sulla credenziale, chi ha già una password riattiva con **un clic** (token CROSS, nessuna password nuova) — il costo è un giro di email, e in cambio nessuna veste torna attiva senza che la persona lo sappia. ⇒ la riattivazione diretta di `amm_software` si ritira; la risorsa umana (il rapporto di lavoro) e l'accesso restano due cose: riattivare la persona in HR non riapre la porta |
 | D-4 | La **revoca dell'admin** blocca la riattivazione self-service dello shop (A-6)? | ✅ **DECISA (Tid, 2026-09-24): sì** — la veste ricorda di essere stata **revocata dall'amministratore**; da revocata l'attivazione self-service dello shop è rifiutata e si torna solo con un nuovo invito (D-3). «Mai attivata» resta attivabile dal pulsante come oggi |
@@ -195,7 +195,7 @@ diverso da quello di invitare un cliente: è un diritto, non un ciclo di vita.
 2. **Prova di M-6** con un caso costruito (credenziale con veste operatore +
    cliente portale → disabilita → riattiva), prima di correggere.
 3. **Brief DB** — ✅ scritto il 2026-09-24:
-   [brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md).
+   [brief-db-blocco-login-per-credenziale.md](../work-done/brief-db-blocco-login-per-credenziale.md).
    Sede della credenziale (D-1 riletta, D-7), `fn_check_blocco_login` /
    `fn_registra_tentativo_login` per credenziale e provenienza, azzeramento al
    reset (D-2), verbi di blocco dell'admin, `totp_obbligatorio` che esce

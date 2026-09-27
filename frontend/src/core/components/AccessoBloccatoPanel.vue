@@ -4,13 +4,14 @@
 // Variante A del pattern permessi v2: nessun controllo visibile, solo messaggio
 // esplicito. L'utente capisce subito che non puo' operare qui.
 import { useI18n } from 'vue-i18n'
+import { STATUS_ICONS } from '../constants'
 
 const { t } = useI18n()
 </script>
 
 <template>
   <div class="app-blocked-panel">
-    <i class="pi pi-lock app-blocked-panel__icon" />
+    <i class="app-blocked-panel__icon" :class="STATUS_ICONS.VIETATO" />
     <h3 class="app-blocked-panel__title">
       {{ t('common.accesso_negato_elenco') }}
     </h3>

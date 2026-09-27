@@ -15,6 +15,7 @@ import Select from 'primevue/select'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { formatNumber } from '../../../core/utils/format'
+import { MANAGE_ICONS } from '../../../core/constants'
 import { getRigheDdtPerReso } from '../api/resiApi'
 import { useResiStore } from '../stores/resi'
 
@@ -163,8 +164,8 @@ async function handleSave() {
 
     <div class="app-form-footer">
       <Button :label="t('common.cancel')" text severity="secondary"
-        icon="pi pi-arrow-left" @click="emit('cancel')" />
-      <Button :label="t('common.save')" icon="pi pi-check"
+        :icon="MANAGE_ICONS.BACK" @click="emit('cancel')" />
+      <Button :label="t('common.save')" :icon="MANAGE_ICONS.CONFIRM"
         :loading="loading" :disabled="!canSave" @click="handleSave" />
     </div>
   </div>

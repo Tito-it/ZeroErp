@@ -20,7 +20,7 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
 import { useLimitiPricing } from '../composables/useLimitiPricing'
 import { FONTE_QUANTITA_ATTESA, PRICING_ACTIONS, TIPO_ECCEZIONE } from '../constants'
-import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES, STATUS_ICONS } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { formatCurrency, formatNumber } from '../../core/utils/format'
 import { statoContrattoSeverity } from '../../core/utils/severity'
@@ -930,7 +930,7 @@ function buildRigaActions(data) {
       {
         key: 'escludi',
         label: t('vendite.contratti.azione_escludi'),
-        icon: 'pi pi-ban',
+        icon: MANAGE_ICONS.ESCLUDI,
         severity: 'warn',
         visible: !isReadonly.value && canVariarePrezzi.value,
         command: () => onEscludi(data),
@@ -942,7 +942,7 @@ function buildRigaActions(data) {
       {
         key: 'ripristina-listino',
         label: t('vendite.contratti.azione_ripristina_listino'),
-        icon: 'pi pi-replay',
+        icon: MANAGE_ICONS.RIPRISTINA_LISTINO,
         severity: 'secondary',
         visible: !isReadonly.value,
         command: () => onRipristina(data, TIPO_ECCEZIONE.OVERRIDE),
@@ -954,7 +954,7 @@ function buildRigaActions(data) {
       {
         key: 'ripristina-articolo',
         label: t('vendite.contratti.azione_ripristina_articolo'),
-        icon: 'pi pi-replay',
+        icon: MANAGE_ICONS.RIPRISTINA_LISTINO,
         severity: 'secondary',
         visible: !isReadonly.value,
         command: () => onRipristina(data, TIPO_ECCEZIONE.ESCLUSIONE),
@@ -1122,7 +1122,7 @@ function origineSeverity(origine) {
         <Column style="width: 2.5rem;" :exportable="false">
           <template #body="{ data }">
             <Button v-if="hasBundleComponenti(data)"
-              :icon="isExpanded(data) ? 'pi pi-chevron-down' : 'pi pi-chevron-right'"
+              :icon="isExpanded(data) ? MANAGE_ICONS.ROW_COLLAPSE : MANAGE_ICONS.ROW_EXPAND"
               text rounded size="small"
               v-tooltip.top="t('vendite.contratti.componenti_bundle_tooltip')"
               @click.stop="toggleExpansion(data)" />
@@ -1260,7 +1260,7 @@ function origineSeverity(origine) {
               :placeholder="t('vendite.contratti.select_fonte_quantita')"
               />
             <small v-if="fonteCorrente?.severity === 'warn'" class="contratti-fonte-uso-atipico">
-              <i class="pi pi-info-circle" /> {{ t('vendite.contratti.fonte_quantita_uso_atipico') }}
+              <i :class="STATUS_ICONS.INFO" /> {{ t('vendite.contratti.fonte_quantita_uso_atipico') }}
             </small>
           </div>
           <div class="form-field">

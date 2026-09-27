@@ -25,6 +25,7 @@ import AppDialog from './AppDialog.vue'
 import SelectButton from 'primevue/selectbutton'
 import Message from 'primevue/message'
 import { isFileSystemAccessSupported } from '../composables/useFileDownload'
+import { MANAGE_ICONS } from '../constants'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -33,8 +34,8 @@ const props = defineProps({
   formati: {
     type: Array,
     default: () => [
-      { code: 'csv', labelKey: 'lista_config.export_csv', icon: 'pi pi-file' },
-      { code: 'xlsx', labelKey: 'lista_config.export_xlsx', icon: 'pi pi-file-excel' },
+      { code: 'csv', labelKey: 'lista_config.export_csv', icon: MANAGE_ICONS.FORMATO_CSV },
+      { code: 'xlsx', labelKey: 'lista_config.export_xlsx', icon: MANAGE_ICONS.FORMATO_XLSX },
     ],
   },
   // Stato loading guidato dal parent (durante la chiamata API).

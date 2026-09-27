@@ -39,6 +39,7 @@ _get_flusso_verificato = pratiche_service.verifica_flusso_pratica
 
 class ApiPraticheList(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
     is_search_endpoint = True
     lista_codice = "pratiche.pratiche"
 
@@ -163,6 +164,7 @@ class ApiPraticheList(DomainAPIView):
 
 class ApiPraticaDetail(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
     @extend_schema(
         responses={200: inline_serializer(
             name="PraticaDetailResponse",
@@ -282,6 +284,7 @@ class ApiPraticaAssegnazione(DomainAPIView):
 
 class ApiPraticaGiornale(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
     @extend_schema(
         parameters=[
             OpenApiParameter(name="limit", type=int, required=False, description="Righe per pagina (default 100, max 200)."),
@@ -316,6 +319,7 @@ class ApiPraticaGiornale(DomainAPIView):
 
 class ApiPraticaPercorso(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -335,6 +339,7 @@ class ApiPraticaPercorso(DomainAPIView):
 
 class ApiPraticaFlussiList(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
     @extend_schema(
         responses={200: inline_serializer(
             name="PraticaFlussiListResponse",
@@ -395,6 +400,7 @@ class ApiPraticaFlussiList(DomainAPIView):
 
 class ApiPraticaFlussoDetail(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
     @extend_schema(
         responses={200: inline_serializer(
             name="FlussoDetailResponse",
@@ -423,6 +429,7 @@ class ApiFlussoPratica(DomainAPIView):
     """
 
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -542,6 +549,7 @@ class ApiPraticaFlussoStato(DomainAPIView):
 
 class ApiPraticaFlussoPrerequisiti(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
     @extend_schema(
         responses={200: inline_serializer(
             name="FlussoPrerequisitiResponse",
@@ -567,6 +575,7 @@ class ApiPraticaFlussoPrerequisiti(DomainAPIView):
 
 class ApiPraticaFlussoCanali(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
     @extend_schema(
         responses={200: inline_serializer(
             name="FlussoCanaliResponse",
@@ -597,6 +606,7 @@ class ApiPraticaFlussoCanali(DomainAPIView):
 
 class ApiPraticaFlussoRegoleGenerazione(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
     @extend_schema(
         responses={200: inline_serializer(
             name="FlussoRegoleGenerazioneResponse",
@@ -652,6 +662,7 @@ class ApiPraticaFlussoGenera(DomainAPIView):
 
 class ApiPraticaFlussoPraticheGenerate(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
     @extend_schema(
         responses={200: inline_serializer(
             name="FlussoPraticheGenerateResponse",
@@ -822,6 +833,7 @@ class ApiPraticaFlussoRiattiva(DomainAPIView):
 
 class ApiPraticaSospensioni(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
     @extend_schema(
         responses={200: inline_serializer(
             name="PraticaSospensioniResponse",
@@ -842,6 +854,7 @@ class ApiPraticaSospensioni(DomainAPIView):
 
 class ApiPraticaCalcoliTempo(DomainAPIView):
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
     @extend_schema(
         responses={200: inline_serializer(
             name="PraticaCalcoliTempoResponse",
@@ -868,6 +881,7 @@ class ApiPraticaCalcoliTempo(DomainAPIView):
 class ApiPraticaNoteList(DomainAPIView):
     """GET lista note pratica, POST crea nota."""
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -905,6 +919,7 @@ class ApiPraticaNoteList(DomainAPIView):
 class ApiPraticaNotaDetail(DomainAPIView):
     """PATCH aggiorna nota, DELETE elimina nota."""
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
 
     @extend_schema(
         request=inline_serializer(name="PraticaNotaUpdateReq", fields={
@@ -944,6 +959,7 @@ class ApiPraticaNotaDetail(DomainAPIView):
 class ApiPraticaAllegatiList(DomainAPIView):
     """GET lista allegati pratica, POST crea record allegato."""
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -987,6 +1003,7 @@ class ApiPraticaAllegatiList(DomainAPIView):
 class ApiPraticaAllegatoDetail(DomainAPIView):
     """DELETE elimina allegato (allegati immutabili — no PATCH)."""
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -1008,6 +1025,7 @@ class ApiPraticaAllegatoDetail(DomainAPIView):
 class ApiCodaLavoro(DomainAPIView):
     """GET coda lavoro dell'operatore corrente su tre livelli."""
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
 
     @extend_schema(
         parameters=[
@@ -1052,6 +1070,7 @@ class ApiCodaLavoro(DomainAPIView):
 class ApiPrendiInCarico(DomainAPIView):
     """POST prendi in carico un flusso DA_ESEGUIRE."""
     area_funzionale = "pratiche"
+    model_permission = ("pratiche", "pratica")
 
     @extend_schema(
         request=inline_serializer(

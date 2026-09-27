@@ -12,6 +12,7 @@ import { useLookupDisplayModel } from '../composables/useLookupDisplayModel'
 import { useAutocompleteRefineHint } from '../composables/useAutocompleteRefineHint'
 import { lookupBillingAccount } from '../apiCore'
 import AutoComplete from 'primevue/autocomplete'
+import { MANAGE_ICONS } from '../constants'
 
 const { t } = useI18n()
 
@@ -117,7 +118,7 @@ watch(() => props.utilityId, (newUtility, oldUtility) => {
           </span>
           <span v-if="option.parent_codice" class="app-lookup-badge app-lookup-badge--parent"
             :title="t('billing_account.figlio_di', { parent: option.parent_codice })">
-            <i class="pi pi-sitemap"></i>
+            <i :class="MANAGE_ICONS.GERARCHIA"></i>
             {{ option.parent_codice }}
           </span>
         </div>
@@ -127,7 +128,7 @@ watch(() => props.utilityId, (newUtility, oldUtility) => {
         <div class="app-lookup-option__meta">
           <span v-if="option.id_fiscale">{{ option.id_fiscale }}</span>
           <span v-if="option.pdp">
-            <i class="pi pi-bolt"></i>
+            <i :class="MANAGE_ICONS.UTILITY"></i>
             {{ t('billing_account.pdp_label') }}: {{ option.pdp }}
           </span>
         </div>

@@ -13,7 +13,7 @@ import Tag from 'primevue/tag'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import PraticaDrawer from '../../../pratiche/components/PraticaDrawer.vue'
-import { DRAWER_WIDTH } from '../../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../../core/constants'
 import { statoCommessaSeverity } from '../../../core/utils/severity'
 import DocumentoDrawerHost from '../../../core/components/DocumentoDrawerHost.vue'
 import { useDocumentoDrawer } from '../../../core/composables/useDocumentoDrawer'
@@ -67,7 +67,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     :dismissable="true">
     <template #header>
-      <DrawerTitle :title="t('vendite.lineage.commessa_titolo')" icon="pi pi-sitemap" />
+      <DrawerTitle :title="t('vendite.lineage.commessa_titolo')" :icon="MANAGE_ICONS.COMMESSA" />
     </template>
 
     <div class="app-drawer-content">

@@ -12,7 +12,8 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
-import { READONLY_DOMAINS } from '../../core/constants'
+import { READONLY_DOMAINS, STATUS_ICONS } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import Tab from 'primevue/tab'
 import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
@@ -35,11 +36,11 @@ const isDocumentiBlocked = computed(() =>
   <div class="app-page">
     <StatusPage
       v-if="isDocumentiBlocked"
-      icon="pi pi-lock"
+      :icon="STATUS_ICONS.VIETATO"
       :title="t('errors.forbidden_title')"
       :message="t('errors.forbidden_message')"
       :action-label="t('errors.back_home')"
-      action-icon="pi pi-home"
+      :action-icon="NAV_ICONS.HOME"
       @action="router.push('/')"
     />
     <Tabs v-else value="modelli" lazy>

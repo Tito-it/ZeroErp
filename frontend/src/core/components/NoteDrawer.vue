@@ -268,7 +268,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
       <DrawerTitle
         :action="t('common.edit')"
         :title="title || t('note.titolo_default')"
-        icon="pi pi-file-edit"
+        :icon="MANAGE_ICONS.NOTE"
         :modificato="modificato"
       />
     </template>
@@ -291,7 +291,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
       >
         <template #empty>
           <div class="app-empty-state">
-            <i class="pi pi-file-edit" />
+            <i :class="MANAGE_ICONS.NOTE" />
             <p>{{ t('note.empty') }}</p>
           </div>
         </template>

@@ -70,6 +70,7 @@ _views = build_documenti_sorgente_views(
     emetti_response_key="preventivo",
     # Cambia stato del preventivo: usa lo stesso permesso del cambio stato.
     emetti_post_permission="cambia_stato_preventivi",
+    model_permission=("vendite", "preventivo"),
 )
 
 ApiPreventivoEmetti = _views.emetti

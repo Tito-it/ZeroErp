@@ -9,7 +9,7 @@ import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import OperatorePermessiTab from './OperatorePermessiTab.vue'
 import Drawer from 'primevue/drawer'
@@ -70,7 +70,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
         :modificato="modificato"
         :action="t('common.edit')"
         :title="drawerTitle"
-        icon="pi pi-shield"
+        :icon="MANAGE_ICONS.PERMISSIONS"
       />
     </template>
 

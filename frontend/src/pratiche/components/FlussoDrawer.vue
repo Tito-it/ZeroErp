@@ -17,6 +17,7 @@ import { getUiActivity } from '../uiActivityRegistry'
 import { getCompletionDialog } from '../flussoCompletionRegistry'
 import { getDomainCompletion } from '../flussoDomainCompletionRegistry'
 import { DRAWER_WIDTH, STATO_FLUSSO, MANAGE_ICONS } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { statoFlussoSeverity, esitoFlussoSeverity } from '../../core/utils/severity'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
@@ -224,7 +225,7 @@ const drawerActions = computed(() => {
       label: modalita.value === 'AUTOMATICO'
         ? t('pratiche.flusso_avvia_e_completa')
         : t('pratiche.flusso_avvia'),
-      icon: modalita.value === 'AUTOMATICO' ? 'pi pi-check' : 'pi pi-play',
+      icon: modalita.value === 'AUTOMATICO' ? MANAGE_ICONS.ESEGUI : MANAGE_ICONS.PLAY,
       severity: 'info',
       visible: !effectiveReadonly.value
         && stato.value === STATO_FLUSSO.DA_ESEGUIRE
@@ -397,7 +398,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
         :action="t('pratiche.flusso_esecuzione')"
         :modificato="modificato"
         :title="flusso?.template_flusso_descrizione || t('pratiche.flusso_generico')"
-        icon="pi pi-briefcase"
+        :icon="NAV_ICONS.PRATICHE"
       />
     </template>
 

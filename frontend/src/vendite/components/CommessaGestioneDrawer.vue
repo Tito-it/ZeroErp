@@ -78,7 +78,7 @@ import {
   variazionePrezzoAttivita,
 } from '../api/commesse'
 import { lookupArticoli } from '../../catalogo/api/catalogo'
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -640,7 +640,7 @@ function buildRowNavActions(row) {
     {
       key: 'registro',
       label: t('vendite.commesse.azione_registro'),
-      icon: 'pi pi-history',
+      icon: MANAGE_ICONS.GIORNALE,
       command: () => apriRegistroRiga(row.id),
     },
     // Documento di ORIGINE: stesso BB del Backlog fatturazione, stessa
@@ -698,7 +698,7 @@ function buildRowActions(row) {
     {
       key: 'riallinea',
       label: t('vendite.commesse.azione_riallinea'),
-      icon: 'pi pi-sync',
+      icon: MANAGE_ICONS.RIALLINEA,
       visible: prezzoOk && !row.prezzo_bloccato,
       command: () => riallinea(row, false),
     },
@@ -707,7 +707,7 @@ function buildRowActions(row) {
       // si sblocca (con motivo). Specchio del guard BE E-BE-1.
       key: 'variazione',
       label: t('vendite.commesse.azione_variazione'),
-      icon: 'pi pi-pencil',
+      icon: MANAGE_ICONS.EDIT,
       visible: prezzoOk && !row.prezzo_bloccato,
       command: () => {
         variazioneRiga.value = row
@@ -717,12 +717,12 @@ function buildRowActions(row) {
       },
     },
     {
-      // Icona-azione (chiave) distinta dai lucchetti-STATO della colonna prezzo
-      // (pi-lock chiuso = bloccato): il bottone inline icon-only non deve
+      // Icona-azione (chiave, `SBLOCCA`) distinta dalla spia-STATO della colonna
+      // prezzo (`STATUS_ICONS.BLOCCATO`): il bottone inline icon-only non deve
       // leggersi come uno stato «aperto».
       key: 'sblocca',
       label: t('vendite.commesse.azione_sblocca'),
-      icon: 'pi pi-key',
+      icon: MANAGE_ICONS.SBLOCCA,
       visible: prezzoOk && row.prezzo_bloccato === true,
       command: () => sblocca(row),
     },
@@ -737,7 +737,7 @@ function buildRowActions(row) {
       // di distanza e di tutt'altra portata.
       key: 'annulla-riga',
       label: t('vendite.commesse.azione_annulla_riga'),
-      icon: 'pi pi-ban',
+      icon: MANAGE_ICONS.ANNULLA,
       severity: 'danger',
       // ⚠️ `sourceless` NON basta piu' a dire «manuale»: dal cantiere note di
       // credito anche una RETTIFICA nasce senza sorgente (`fn_accredita_riga_
@@ -861,7 +861,7 @@ const drawerActions = computed(() => [
     key: 'aggiungi-onere',
     kind: 'primary',
     label: t('vendite.commesse.onere_azione'),
-    icon: 'pi pi-plus-circle',
+    icon: MANAGE_ICONS.ADD,
     tooltip: t('vendite.commesse.onere_tooltip'),
     action: 'carica_voce_manuale',
     hideWhenReadonly: true,
@@ -882,7 +882,7 @@ const suVisibile = gestoreVisibile(emit, onChiudi)
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :title="t('vendite.commesse.gestione_titolo')" icon="pi pi-briefcase" />
+      <DrawerTitle :title="t('vendite.commesse.gestione_titolo')" :icon="MANAGE_ICONS.COMMESSA" />
     <!-- Il REGISTRO della riga: sola lettura, quindi FUORI dai dialog di azione e
          senza `app-escape`. Si apre dal kebab, anche a commessa in readonly. -->
     <CommessaRegistroDialog
@@ -962,7 +962,7 @@ const suVisibile = gestoreVisibile(emit, onChiudi)
             </div>
           </div>
           <div v-if="!isReadonly" class="app-commessa-testata-azioni">
-            <Button :label="t('vendite.commesse.testata_salva')" icon="pi pi-check" size="small"
+            <Button :label="t('vendite.commesse.testata_salva')" :icon="MANAGE_ICONS.CONFIRM" size="small"
               :loading="testataSaving" :disabled="!testataDirty || loading"
               @click="salvaTestata" />
           </div>
@@ -1030,14 +1030,14 @@ const suVisibile = gestoreVisibile(emit, onChiudi)
           <div v-if="canApprova && (stato?.total_non_approvate ?? 0) > 0" style="display: flex; gap: 0.5rem;">
             <Button
               :label="t('vendite.commesse.approva_selezionate', { n: selectedIds.length })"
-              icon="pi pi-check"
+              :icon="MANAGE_ICONS.APPROVE"
               size="small"
               :disabled="loading || selectedIds.length === 0"
               @click="approva(selectedIds)"
             />
             <Button
               :label="t('vendite.commesse.approva_tutte')"
-              icon="pi pi-check-circle"
+              :icon="MANAGE_ICONS.APPROVE"
               size="small"
               outlined
               :disabled="loading || (stato?.total_non_approvate ?? 0) === 0"
@@ -1093,12 +1093,12 @@ const suVisibile = gestoreVisibile(emit, onChiudi)
               {{ data.prezzo_snapshot != null ? formatCurrency(Number(data.prezzo_snapshot)) : '—' }}
               <i
                 v-if="data.prezzo_bloccato"
-                class="pi pi-lock"
+                :class="STATUS_ICONS.BLOCCATO"
                 v-tooltip.bottom="t('vendite.commesse.prezzo_bloccato')"
               />
               <i
                 v-if="data.prezzo_da_riallineare"
-                :class="[MANAGE_ICONS.ERRORE, 'app-dash-ritardo']"
+                :class="[STATUS_ICONS.ERRORE, 'app-dash-ritardo']"
                 v-tooltip.bottom="t('vendite.commesse.prezzo_da_riallineare')"
               />
             </span>

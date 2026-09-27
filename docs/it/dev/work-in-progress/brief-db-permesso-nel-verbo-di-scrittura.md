@@ -16,7 +16,7 @@
 > | 1. BB del permesso | ✅ **fatto**: `script.fn_guard_azione` (`20260924-38`) e `script.fn_guard_livello` (D-2, D-5; `20260925-32`, con `fn_area_di_oggetto` `-31`), applicati su dbdev e verdi |
 > | 2a. Porta del Lotto 2 (D-4) | ✅ **chiusa, committata, backend allineato e committato** (`0aefe15cd`, PR #1686); brief in `work-done/`. `20260924-38` → `-42` (commit `f2e724b47`, PR #1681); **D-V1 decisa il 2026-09-25 (strada A)**: la porta `POSTED` e le righe in `CONFIRM` si aprono solo con la GUC **e** dentro un verbo, col BB nuovo `script.fn_is_proprietario_tabella` (`20260925-37…-39`, commit `1d92ae6a2`, PR #1684). P-6 (`presidi.csv`) letto su dbdev: arrivato. §6 del brief operativo fatto dal backend il 2026-09-25 (fixture con `registra_magazzino`, test DB e smoke verdi) |
 > | 2b. Verbo generico del pannello (D-3) | 🟡 **Quasi chiuso**: brief operativo [brief-db-pannello-config-verbo-generico.md](brief-db-pannello-config-verbo-generico.md). **DB**: `20260925-29…-34` applicati e committati (`7f3208a58`). La **D-P6** (19 righe fuori dal pannello, fra cui `config.profili_accesso`) è **applicata il 2026-09-27**, con pgTAP verdi. Il 2026-09-27 sono stati applicati, con pgTAP verdi: `aree_funzionali` fuori dal pannello (D-P8), le colonne scrivibili in una sede sola e il `CHECK (NOT pannello OR lookup)` (`20260927-20…-22`). Lato DB resta solo la D-P9. **Backend**: §6 fatto nella forma D-P7 e committato (`e7dbbad73`). ⏳ **Frontend**: la D-P5 (ritiro di `config-tables.js`) è sbloccata. Aperto il «Salva» senza modifiche. ❓ **D-P9**: la gestione di `config.aree_funzionali` in `amm_software`, sola lettura (proposta) o modifica di etichetta e ordine |
-> | 3. Domini esistenti | aperto per costruzione, senza data: questo passo non ha una fine, e il brief resta la sede del modello. ⭐ **Secondo caso già fatto** fuori dal cantiere magazzino: [brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md) — i verbi di blocco/sblocco della credenziale chiedono `script.fn_guard_super_admin` (`20260925-06`), e l'app ha perso `INSERT`/`UPDATE`/`DELETE` su `config.credenziali` e `config.credenziali_provenienze` (`20260925-24`). DB committato in `e3d188dc0` |
+> | 3. Domini esistenti | aperto per costruzione, senza data: questo passo non ha una fine, e il brief resta la sede del modello. ⭐ **Secondo caso già fatto** fuori dal cantiere magazzino: [brief-db-blocco-login-per-credenziale.md](../work-done/brief-db-blocco-login-per-credenziale.md) — i verbi di blocco/sblocco della credenziale chiedono `script.fn_guard_super_admin` (`20260925-06`), e l'app ha perso `INSERT`/`UPDATE`/`DELETE` su `config.credenziali` e `config.credenziali_provenienze` (`20260925-24`). DB committato in `e3d188dc0` |
 >
 > **In una riga:** oggi il DB **calcola** i permessi ma non li **applica**:
 > qualunque scrittura che il backend autorizza per errore, il DB la esegue. La
@@ -109,7 +109,7 @@ la **funzione** che la esegue.
   verbi della gestione accessi (`amm_software`, solo SUPER_ADMIN). Stessa forma
   delle altre: l'utente come parametro, la regola in una funzione che esiste già
   (`script.fn_is_super_admin`). Il perché in
-  [brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md)
+  [brief-db-blocco-login-per-credenziale.md](../work-done/brief-db-blocco-login-per-credenziale.md)
   §3.3 (D-B1).
 
   Il verbo passa l'utente letto da `app.current_user_id` con l'espressione delle

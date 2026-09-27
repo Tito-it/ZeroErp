@@ -399,7 +399,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
               text size="small" class="mt-1" @click="clearSoggetto" />
           </div>
           <div v-else>
-            <Button :label="`${t('resolver.open')} *`" icon="pi pi-search"
+            <Button :label="`${t('resolver.open')} *`" :icon="MANAGE_ICONS.RICERCA"
               outlined @click="resolverVisible = true" />
           </div>
         </template>
@@ -535,7 +535,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
         <div v-if="canInvite">
           <Button
             :label="hasBeenInvited ? t('amministrazione.reinvia_invito') : t('amministrazione.invita_operatore')"
-            icon="pi pi-envelope"
+            :icon="MANAGE_ICONS.INVITA"
             :loading="invitaLoading"
             outlined size="small"
             @click="onInvita" />

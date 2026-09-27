@@ -4,7 +4,7 @@
 > nota sui codici errore (§10).
 > **Aperto:** 2026-09-25.
 > **Origine:** trovato strada facendo in
-> [brief-db-blocco-login-per-credenziale.md](../work-in-progress/brief-db-blocco-login-per-credenziale.md)
+> [brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md)
 > §11.5: un pgTAP modificava un parametro storicizzato e, sullo scratch, moriva
 > con `E_SNAPSHOT_CLOSE_ERROR`.
 >
@@ -271,7 +271,7 @@ Marcato `pgtap-runner: owner`: fa DDL (prima forma ammessa in `scripts/testpgtap
 
 ## 7. Ricadute su altri brief
 
-* [brief-db-blocco-login-per-credenziale.md](../work-in-progress/brief-db-blocco-login-per-credenziale.md)
+* [brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md)
   §11.5 rimanda qui.
 * `80_data/changelog/20260925-20-upsert-parameters-login` fa nascere i parametri
   di login con `storicizza = false`, e nell'intestazione cita questo difetto come
@@ -363,7 +363,7 @@ gira come `zeroerp_app`, in `BEGIN … ROLLBACK`.
 
 > **Per**: team backend (`dev/backend-tid`). **Quando**: dopo l'apply dei
 > changeSet del 2026-09-25 (questo brief e
-> [brief-db-blocco-login-per-credenziale.md](../work-in-progress/brief-db-blocco-login-per-credenziale.md)).
+> [brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md)).
 
 Il catalogo dei codici errore ha **8 codici nuovi** che i due file del backend
 non portano ancora. Dopo l'apply su dbdev, `test_error_policies_divergenza_db`

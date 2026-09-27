@@ -10,6 +10,7 @@ import { useRouter } from 'vue-router'
 import { useTabsStore } from '../../stores/tabs'
 import { READONLY_KEY, BLOCKED_KEY } from '../composables/useReadonlyMode'
 import { resolveTabDisplayLabel } from '../navigation'
+import { MANAGE_ICONS } from '../constants'
 
 const { t, te } = useI18n()
 const router = useRouter()
@@ -52,14 +53,14 @@ function handleSwap() {
           @click="handleSwap"
           v-tooltip.top="t('tabs.split_swap')"
         >
-          <i class="pi pi-arrows-h"></i>
+          <i :class="MANAGE_ICONS.SCAMBIA"></i>
         </button>
         <button
           class="split-panel-btn"
           @click="tabs.closeSplit()"
           v-tooltip.top="t('tabs.split_close')"
         >
-          <i class="pi pi-times"></i>
+          <i :class="MANAGE_ICONS.CANCEL"></i>
         </button>
       </div>
     </div>

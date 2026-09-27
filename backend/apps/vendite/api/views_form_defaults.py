@@ -188,6 +188,7 @@ class ApiPreventivoFormDefaults(DomainAPIView):
     #        iva_id derivati dal cliente del BA + emittente come fallback valuta).
     #        Sostituisce le combo "lascia vuoto e l'utente sceglie" dei drawer FE.
     area_funzionale = "vendite"
+    model_permission = ("vendite", "preventivo")
 
     @extend_schema(
         parameters=[
@@ -217,6 +218,7 @@ class ApiListinoVersioneNewDefaults(DomainAPIView):
     #        existing_drafts). Sostituisce il calcolo `addDaysToToday(leadGg)`
     #        + lettura store nel VersioneFormDrawer.
     area_funzionale = "vendite"
+    model_permission = ("vendite", "listino")
 
     @extend_schema(responses=_ba_aware_response_schema("VenditeListinoVersioneNewDefaultsResponse"))
     # Scopo: GET form-defaults nuova versione.
@@ -236,6 +238,7 @@ class ApiListinoVersioneCloneDefaults(DomainAPIView):
     #        is_retroactive_default). Sostituisce derivazioni cablate in
     #        CloneVersioneDrawer.
     area_funzionale = "vendite"
+    model_permission = ("vendite", "listino")
 
     @extend_schema(responses=_ba_aware_response_schema("VenditeListinoVersioneCloneDefaultsResponse"))
     # Scopo: GET form-defaults clone versione.
@@ -256,6 +259,7 @@ class ApiListinoVersioneCloseDefaults(DomainAPIView):
     #        l'inferenza `props.versione.valido_al ?? oggi+leadGg` di
     #        ChiudiVersioneDialog.
     area_funzionale = "vendite"
+    model_permission = ("vendite", "listino")
 
     @extend_schema(responses=_ba_aware_response_schema("VenditeListinoVersioneCloseDefaultsResponse"))
     # Scopo: GET form-defaults chiusura versione.

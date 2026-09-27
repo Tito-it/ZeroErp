@@ -26,7 +26,7 @@ import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useReadonlyMode, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
-import { MANAGE_ICONS, READONLY_DOMAINS, STATO_DEFINIZIONE } from '../../core/constants'
+import { MANAGE_ICONS, READONLY_DOMAINS, STATO_DEFINIZIONE, STATUS_ICONS } from '../../core/constants'
 import { updateStep, deleteStep, forkDefinizione } from '../api/definizioniWorkflow'
 import { useDefinizioneEditorStore } from '../stores/definizioneEditor'
 import DefinizioneStepForm from '../components/DefinizioneStepForm.vue'
@@ -345,14 +345,14 @@ watch(defId, loadDettaglio)
         <Column field="descrizione" :header="t('amministrazione.definizioni_workflow.ed_col_descrizione')" style="min-width: 200px;" />
         <Column :header="t('amministrazione.definizioni_workflow.ed_col_obbligatorio')" style="width: 70px;">
           <template #body="{ data }">
-            <i v-if="data.obbligatorio" class="pi pi-check editor-bool-yes" />
+            <i v-if="data.obbligatorio" class="editor-bool-yes" :class="STATUS_ICONS.SI" />
           </template>
         </Column>
         <Column field="direzione" :header="t('amministrazione.definizioni_workflow.ed_col_direzione')" style="width: 110px;" />
         <Column field="modalita_esito" :header="t('amministrazione.definizioni_workflow.ed_col_modalita_esito')" style="width: 130px;" />
         <Column :header="t('amministrazione.definizioni_workflow.ed_col_attivo')" style="width: 70px;">
           <template #body="{ data }">
-            <i v-if="data.attivo" class="pi pi-check editor-bool-yes" />
+            <i v-if="data.attivo" class="editor-bool-yes" :class="STATUS_ICONS.SI" />
           </template>
         </Column>
         <Column v-if="!editorReadonly" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">

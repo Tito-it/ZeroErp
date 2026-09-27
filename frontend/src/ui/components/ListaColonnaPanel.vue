@@ -73,7 +73,7 @@ const pageActions = computed(() => [
     kind: 'primary',
     label: t('common.new'),
     tooltip: t('ui.admin.colonna_nuova'),
-    icon: 'pi pi-plus',
+    icon: MANAGE_ICONS.ADD,
     disabled: !listaSelezionata.value,
     command: drawer.openCreate,
   },
@@ -84,7 +84,7 @@ function buildRowActions(data) {
     {
       key: 'edit',
       label: t('common.edit'),
-      icon: 'pi pi-pencil',
+      icon: MANAGE_ICONS.EDIT,
       allowWhenInactive: true,
       command: () => drawer.editRow(data, 'id'),
     },

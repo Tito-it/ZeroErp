@@ -45,7 +45,7 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { extractApiError } from '../../core/utils/apiError'
 import { formatCurrency } from '../../core/utils/format'
 import { labelOrCode } from '../../core/utils/i18nLabel'
@@ -318,7 +318,7 @@ onMounted(load)
 
       <template #empty>
         <div class="app-empty-state">
-          <i class="pi pi-check-circle" />
+          <i :class="STATUS_ICONS.TUTTO_OK" />
           <p>{{ t('vendite.fondi_fattura_da_decidere.nessuna_riga') }}</p>
         </div>
       </template>

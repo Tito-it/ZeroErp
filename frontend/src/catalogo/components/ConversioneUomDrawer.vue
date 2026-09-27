@@ -9,7 +9,7 @@ import { useConversioniUomStore } from '../stores/conversioniUom'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useLookupCodici } from '../../core/composables/useLookupCodici'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
+import { DRAWER_WIDTH, DATE_FORMAT, STATUS_ICONS } from '../../core/constants'
 import { parseIsoDate, toDateString } from '../../core/utils/date'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
@@ -228,7 +228,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
       </template>
 
       <div v-else class="app-loading">
-        <i class="pi pi-spin pi-spinner" style="font-size: 1.5rem;"></i>
+        <i :class="STATUS_ICONS.CARICAMENTO" style="font-size: 1.5rem;"></i>
       </div>
 
       <FormFooter v-if="contentReady" :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />

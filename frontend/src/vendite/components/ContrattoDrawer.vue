@@ -22,7 +22,7 @@ import { useDrawerContentReady } from '../../core/composables/useDrawerContentRe
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useEntityCapabilities } from '../../core/composables/useEntityCapabilities'
-import { DRAWER_WIDTH, MANAGE_ICONS, TIPO_RUOLO } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, TIPO_RUOLO, STATUS_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { addDaysToToday, toDateString, parseIsoDate, displayDate } from '../../core/utils/date'
 import { paramInt, paramString } from '../../core/utils/parameterCast'
@@ -1089,7 +1089,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
           :disabled="isEdit && (isLocked('listino_id') || righeCount > 0)" />
         <small v-if="isEdit && righeCount > 0 && !isLocked('listino_id')"
           style="color: var(--p-yellow-700, #b45309);">
-          <i :class="MANAGE_ICONS.ERRORE" />
+          <i :class="STATUS_ICONS.ERRORE" />
           {{ t('vendite.contratti.hint_listino_lock_righe', { n: righeCount }) }}
         </small>
         <small v-else class="app-text-muted">

@@ -12,9 +12,8 @@ import { lookupTipiRuoloRicerca, ricercaSoggetti } from '../api/ricerca'
 import { useApiHandler } from '../composables/useApiHandler'
 import { usePagination } from '../composables/usePagination'
 import { useContextStore } from '../../stores/context'
-import { DRAWER_WIDTH, RICERCA, TIPO_RUOLO } from '../constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, RICERCA, STATUS_ICONS, TIPO_RUOLO } from '../constants'
 import { termineCorto } from '../utils/listParams'
-import { NAV_ICONS } from '../navigation'
 import DrawerTitle from './DrawerTitle.vue'
 import SearchDetailTable from './details/SearchDetailTable.vue'
 import { useAuthStore } from '../../stores/auth'
@@ -237,7 +236,7 @@ watch(() => props.visible, (newVal) => {
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :title="t('search.title')" :icon="NAV_ICONS.SEARCH" />
+      <DrawerTitle :title="t('search.title')" :icon="MANAGE_ICONS.RICERCA" />
     </template>
     <div v-if="contentReady" class="app-drawer-content search-drawer-content">
       <!-- Filtri ricerca -->
@@ -252,7 +251,7 @@ watch(() => props.visible, (newVal) => {
             @change="onFilterChange"
           />
           <div class="search-input-wrapper">
-            <i class="pi pi-search search-input-icon" />
+            <i class="search-input-icon" :class="MANAGE_ICONS.RICERCA" />
             <InputText
               v-model="searchTerm"
               :placeholder="t('search.placeholder')"
@@ -261,7 +260,7 @@ watch(() => props.visible, (newVal) => {
             />
             <Button
               v-if="searchTerm"
-              icon="pi pi-times"
+              :icon="MANAGE_ICONS.SVUOTA"
               text
               rounded
               size="small"
@@ -277,7 +276,7 @@ watch(() => props.visible, (newVal) => {
            saperlo, perche' due omonimi di emittenti diversi sono voci
            indistinguibili. -->
       <div v-if="auth.perimetroMultiEmittente" class="search-perimetro">
-        <i class="pi pi-info-circle" />
+        <i :class="STATUS_ICONS.INFO" />
         <span>{{ t('common.perimetro_emittente.etichetta_ricerca') }}</span>
       </div>
 

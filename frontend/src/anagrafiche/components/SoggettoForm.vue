@@ -13,7 +13,7 @@ import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
-import { DATE_FORMAT } from '../../core/constants'
+import { DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import ComuneAutocomplete from './ComuneAutocomplete.vue'
 
 const { t } = useI18n()
@@ -249,7 +249,7 @@ async function onValidaPIVA() {
             @input="normalizeUpperNoSpaces(form, 'codice_fiscale')" />
           <Button
             v-if="isPF && !cfDisabled"
-            icon="pi pi-bolt"
+            :icon="MANAGE_ICONS.GENERA"
             :loading="cfLoading"
             :disabled="!canGeneraCF"
             @click="onGeneraCF"

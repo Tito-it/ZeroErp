@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { computed } from 'vue'
 import StatusPage from '../components/StatusPage.vue'
+import { STATUS_ICONS } from '../constants'
 
 const { t, tm, te } = useI18n()
 const route = useRoute()
@@ -41,7 +42,7 @@ const displayFeatures = computed(() => {
 
 <template>
   <StatusPage
-    icon="pi pi-wrench"
+    :icon="STATUS_ICONS.IN_COSTRUZIONE"
     :title="displayTitle"
     :message="t('placeholder.wip_message')"
     :features="displayFeatures"

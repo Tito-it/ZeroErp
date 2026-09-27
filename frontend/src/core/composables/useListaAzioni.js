@@ -94,7 +94,8 @@ export function useListaAzioni(
         kind: 'utility',
         label: tutteEspanse.value ? t('common.comprimi_tutte') : t('common.espandi_tutte'),
         // Toggle: l'icona dice lo stato corrente (§Pattern toggle dinamico).
-        icon: tutteEspanse.value ? MANAGE_ICONS.COLLAPSE : MANAGE_ICONS.EXPAND,
+        // Stessa coppia del toggler di riga: il segno vale uguale su lista e riga.
+        icon: tutteEspanse.value ? MANAGE_ICONS.ROW_COLLAPSE : MANAGE_ICONS.ROW_EXPAND,
         visible: haEspansione.value,
         disabled: !haRighe.value,
         command: () => {

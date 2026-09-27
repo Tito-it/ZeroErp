@@ -270,7 +270,7 @@ const suVisibile = gestoreVisibile(emit, close)
     <template #header>
       <DrawerTitle
         :modificato="modificato"
-        :icon="isEdit ? 'pi pi-pencil' : 'pi pi-plus'"
+        :icon="isEdit ? MANAGE_ICONS.EDIT : MANAGE_ICONS.ADD"
         :title="drawerTitle"
       />
     </template>
@@ -316,7 +316,7 @@ const suVisibile = gestoreVisibile(emit, close)
                 text size="small" class="mt-1" @click="clearSoggetto" />
             </div>
             <div v-else>
-              <Button :label="t('resolver.open')" icon="pi pi-search"
+              <Button :label="t('resolver.open')" :icon="MANAGE_ICONS.RICERCA"
                 outlined @click="resolverVisible = true" />
             </div>
           </template>

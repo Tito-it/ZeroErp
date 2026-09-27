@@ -53,6 +53,7 @@ import AppDialog from '../../core/components/AppDialog.vue'
 import FatturaLookup from '../../vendite/components/FatturaLookup.vue'
 import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfermata'
 import { displayDate } from '../../core/utils/date'
+import { MANAGE_ICONS } from '../../core/constants'
 import { abbinaRiga, registraRigaTardiva } from '../api/pagamenti'
 import { formatCurrency } from '../../core/utils/format'
 import { MODO_ABBINA } from '../composables/useAzioniRigaContabile'
@@ -249,14 +250,14 @@ function chiudiConEsito() {
           text
           size="small"
           :label="t('common.cancel')"
-          icon="pi pi-arrow-left"
+          :icon="MANAGE_ICONS.BACK"
           @click="annulla"
         />
         <Button
           size="small"
           severity="warn"
           :label="t('pagamenti.abbina.forza')"
-          icon="pi pi-check"
+          :icon="MANAGE_ICONS.CONFIRM"
           :loading="loading"
           @click="onConferma"
         />

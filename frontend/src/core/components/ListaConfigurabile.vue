@@ -90,7 +90,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Message from 'primevue/message'
 import Button from 'primevue/button'
-import { PAGINATION } from '../constants'
+import { MANAGE_ICONS, PAGINATION } from '../constants'
 import { etichettaColonna } from '../utils/i18nLabel'
 import { useListaConfig } from '../composables/useListaConfig'
 import {
@@ -763,7 +763,7 @@ defineExpose({
             severity="info"
             size="small"
             :label="t('lista_config.preset_aggiornato_vedi_novita')"
-            icon="pi pi-eye"
+            :icon="MANAGE_ICONS.NOVITA"
             :disabled="configLoading"
             @click="onSeePresetUpdate"
           />

@@ -118,7 +118,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :action="t('common.edit')" :title="t('amministrazione.profilo_reparto', { nome: uoNome })" :icon="NAV_ICONS.SITEMAP" :modificato="modificato" />
+      <DrawerTitle :action="t('common.edit')" :title="t('amministrazione.profilo_reparto', { nome: uoNome })" :icon="NAV_ICONS.PROFILI_REPARTO" :modificato="modificato" />
     </template>
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">

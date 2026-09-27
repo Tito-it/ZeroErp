@@ -2986,7 +2986,7 @@ SOLLEVA.** Il compilatore lo traduce in `_ctx.<nome>` = `undefined`, la build
 è verde, e `undefined.QUALCOSA` esplode nel render della prima riga che entra
 in quel ramo — Vue svuota il sottoalbero e a video resta una lista bianca,
 senza un errore per l'operatore. Successo il 2026-09-17 su `LottiLista.vue`:
-`MANAGE_ICONS.ERRORE` senza import, dal 09/09; la scheda «Lotti del mese» si
+`MANAGE_ICONS.ERRORE` (oggi `STATUS_ICONS.ERRORE`) senza import, dal 09/09; la scheda «Lotti del mese» si
 rendeva e la scheda «Recuperi» no, perché solo lì c'era un lotto con
 `ha_errori_gravi`, e l'etichetta accanto contava correttamente le righe che la
 tabella non mostrava. Presidio: `vue/no-undef-properties` in `eslint.config.js`
@@ -3021,23 +3021,60 @@ I pulsanti strutturali (Nuovo, Salva, Annulla) sono centralizzati tramite **comp
 | `NewButton` | Pulsante "Nuovo" specializzato legacy/non-toolbar |
 | `FormFooter` | Footer Salva/Annulla nei drawer — Ctrl+S, readonly-aware |
 
-### Centralizzazione icone azioni riga (`constants.js`)
+### Icone: un nome di significato, in un punto solo
 
-Le icone dei pulsanti nelle colonne DataTable sono centralizzate nella costante `MANAGE_ICONS`
-in `src/core/constants.js`. Ogni lista che ha pulsanti per aprire sub-drawer (contatti, indirizzi,
-conti bancari, UoM, BoM, note, conversioni) o azioni trasversali standard (es. elimina) deve usare
-`:icon="MANAGE_ICONS.XXX"`, mai stringhe hardcoded. Il colore resta responsabilita' della classe
-CSS standard (`app-manage-btn`, `app-delete-btn`, ecc.) applicata dal pulsante o da `RowActionsMenu`
-in base alla `severity`.
+⛔ **Nessuna icona PrimeIcons si scrive a mano** (`'pi pi-...'`, `icon="pi pi-..."`,
+`class="pi pi-..."`) fuori da `src/core/constants.js` e `src/core/navigation.js`
+(censimento icone per significato, approvato da Tid il 2026-09-27). Il presidio è
+[`src/core/icone.spec.js`](../../../../frontend/src/core/icone.spec.js). Fa due
+controlli:
+
+- fallisce se un letterale compare altrove;
+- fallisce se una costante punta a un glifo che PrimeIcons non ha. Una classe
+  inesistente non dà errore: l'icona semplicemente non c'è.
+
+**Il nome dice il significato, non il disegno**: `STAMPA`, `SOSPENDI`, `RIPROVA`,
+non `PRINT`, `PAUSE`, `REPLAY`. Due regole ne discendono:
+
+- **due gesti diversi non portano lo stesso segno**. Esempi: `FILTRI` e `RICERCA`;
+  `CORREZIONE` e `RIATTIVA`; `BLOCCATO` (fermo) e `VIETATO`/`CLOSE` (lucchetto);
+- **lo stesso significato porta un segno solo**. Tutti i «sblocca» sono `SBLOCCA`,
+  tutti gli «aggiungi» sono `ADD`.
+
+Una voce che **porta** a una cosa con un'icona sua ripete l'icona della cosa
+(`FATTURE`, `SOGGETTO`, `NAV_ICONS.PRATICHE`). Il generico `VAI_A` è solo un
+ripiego.
+
+| Gruppo | File | Che cosa |
+| --- | --- | --- |
+| `MANAGE_ICONS` | `constants.js` | **gesti** (azioni di riga, pulsanti, barre) e concetti di dominio senza voce di menu |
+| `STATUS_ICONS` | `constants.js` | **stati ed esiti**, spie che non si cliccano: `VUOTO`, `TUTTO_OK`, `ERRORE`, `ATTESA`, `INFO`, `SI`/`NO`, `BLOCCATO`, `CARICAMENTO`, `VIETATO`, `NON_TROVATO`… |
+| `RECAPITO_ICONS` | `constants.js` | icone di **campo** di una scheda (email, telefono, PEC, BIC) |
+| `NAV_ICONS` | `navigation.js` | le **porte** dell'app (voci di menu, domini), con il nome della voce |
+| `TIPO_RUOLO_ICONS` | `navigation.js` | il tipo di ruolo del soggetto; le chiavi sono i codici che arrivano dal BE |
 
 ```html
 <!-- Pattern standard -->
 <Button :icon="MANAGE_ICONS.CONTATTI" text rounded size="small" class="app-manage-btn"
   v-tooltip.bottom="t('contatto.gestisci_contatti')" @click.stop="emit('contatti', data)" />
+<!-- Classe statica + icona: la classe resta statica, l'icona va in :class -->
+<i class="percorso-handler" :class="STATUS_ICONS.AUTOMATICO" />
 ```
 
-Per aggiungere una nuova icona gestione: inserire la chiave in `MANAGE_ICONS` e usarla nel componente.
-Per cambiare il colore di tutte le icone gestione: modificare `.app-manage-btn` in `main.css`.
+**Icona nuova**:
+
+1. Si cerca il **significato** fra le chiavi e i loro commenti, non il disegno.
+2. Se il significato manca, si aggiunge una chiave nel gruppo giusto. Il commento
+   dice che cosa significa e da quale chiave vicina si distingue (`⛔ Non ...`).
+3. Il glifo non dev'essere già usato da un'altra chiave con un significato diverso.
+
+⚠️ **Le icone che arrivano dal DB** (`meta.icon` delle azioni disponibili dei
+documenti) oggi sono glifi, non significati. Sono l'unica eccezione dichiarata nel
+test, in attesa del brief DB.
+
+Il colore resta responsabilita' della classe CSS standard (`app-manage-btn`,
+`app-delete-btn`, ecc.). Per cambiare il colore di tutte le icone gestione si
+modifica `.app-manage-btn` in `main.css`.
 
 #### Pattern toggle dinamico: `EXPAND` / `COLLAPSE`
 
@@ -3045,6 +3082,15 @@ Per accordion, expansion row di DataTable, tree e qualsiasi azione che apre/chiu
 contenuto, usare la coppia dinamica `MANAGE_ICONS.EXPAND` (`pi pi-chevron-down`,
 stato collassato — invita ad aprire) e `MANAGE_ICONS.COLLAPSE` (`pi pi-chevron-up`,
 stato espanso — invita a chiudere). Standard PrimeVue/Material allineato.
+
+**Eccezione — expansion row di DataTable** (2026-09-27): il toggler di riga
+PrimeVue usa `chevron-right` (chiusa) / `chevron-down` (aperta). Il toggle
+«espandi tutte» della lista usa la **stessa** coppia, `MANAGE_ICONS.ROW_EXPAND` /
+`MANAGE_ICONS.ROW_COLLAPSE`, così riga e lista portano lo stesso segno. Stessa
+coppia per i gruppi annidati della sidebar e per i toggler di riga scritti a mano
+nei drawer (`isExpanded(data) ? ROW_COLLAPSE : ROW_EXPAND`). ⛔ Mai il glifo
+`pi pi-chevron-*` cablato per un toggle di espansione.
+`EXPAND`/`COLLAPSE` restano per accordion, pannelli e tree.
 
 ⛔ **Su una `<ListaConfigurabile>` il toggle «espandi tutte» NON si scrive in
 pagina** (2026-09-18): è l'azione standard di `useListaAzioni`, accanto a

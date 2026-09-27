@@ -132,7 +132,7 @@ function buildRowActions(row) {
     {
       key: 'ristampa',
       label: t('documenti.lista.action_ristampa_fedele'),
-      icon: 'pi pi-history',
+      icon: MANAGE_ICONS.STAMPA,
       tooltip: t('documenti.lista.ristampa_fedele_hint'),
       command: () => onRistampaFedele(row.id),
     },
@@ -141,7 +141,7 @@ function buildRowActions(row) {
     actions.push({
       key: 'allegati',
       label: t('documenti.lista.action_aggiungi_allegati'),
-      icon: 'pi pi-paperclip',
+      icon: MANAGE_ICONS.ALLEGATI,
       command: () => openAllegati(row.id),
     })
   }

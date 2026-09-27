@@ -45,7 +45,7 @@ import Button from 'primevue/button'
 import Menu from 'primevue/menu'
 import { useDashMesiNav } from '../../core/composables/useDashMesiNav'
 import { extractApiError } from '../../core/utils/apiError'
-import { MANAGE_ICONS, READONLY_DOMAINS } from '../../core/constants'
+import { MANAGE_ICONS, READONLY_DOMAINS, STATUS_ICONS } from '../../core/constants'
 import { menuItemClass } from '../../core/utils/rowActions'
 import { labelOrCode } from '../../core/utils/i18nLabel'
 import { exportLotti, listLotti, listLottiMensile } from '../api/lotti'
@@ -668,9 +668,8 @@ async function confermaNumeraPerimetro(dataDocumento) {
 //    di Menu disabilitata mostra comunque il suo testo, mentre un Button
 //    disabilitato non riceve nemmeno gli eventi del mouse (vedi il wrapper del
 //    tooltip nel template).
-// Icona dei due verbi dell'atto fiscale: una sola, usata dai pulsanti e dalle
-// voci del kebab.
-const VERBO_NUMERA_ICONA = 'pi pi-lock'
+// Icona dei due verbi dell'atto fiscale: una sola, `MANAGE_ICONS.NUMERA`, usata
+// dai pulsanti e dalle voci del kebab.
 
 const verbiMenuRef = ref(null)
 function toggleVerbiMenu(event) {
@@ -712,7 +711,7 @@ const verbiNumerazione = computed(() => {
 
 const verbiMenuItems = computed(() => verbiNumerazione.value.map((v) => ({
   label: v.label,
-  icon: VERBO_NUMERA_ICONA,
+  icon: MANAGE_ICONS.NUMERA,
   // Classe via helper centralizzato: la palette delle voci kebab vive in
   // `rowActions.js`, non in una stringa scritta qui.
   class: menuItemClass(undefined, 'app-menu-item-action'),
@@ -773,7 +772,7 @@ const azioniPagina = computed(() =>
             class="app-dash-mese-lotti"
             v-tooltip.right="t('vendite.lotti.mese_lotti', { n: mesi[idx].n_lotti })"
           >
-            <i class="pi pi-server" /> {{ mesi[idx].n_lotti }}
+            <i :class="MANAGE_ICONS.LOTTO" /> {{ mesi[idx].n_lotti }}
           </span>
         </template>
       </DashMesiSidebar>
@@ -788,7 +787,7 @@ const azioniPagina = computed(() =>
         >
           <template #badge>
             <span v-if="mesi[meseIdx].n_lotti > 0" class="app-dash-mese-lotti">
-              <i class="pi pi-server" /> {{ mesi[meseIdx].n_lotti }}
+              <i :class="MANAGE_ICONS.LOTTO" /> {{ mesi[meseIdx].n_lotti }}
             </span>
           </template>
         </DashMeseStepper>
@@ -879,7 +878,7 @@ const azioniPagina = computed(() =>
               >
                 <Button
                   :label="v.label"
-                  :icon="VERBO_NUMERA_ICONA"
+                  :icon="MANAGE_ICONS.NUMERA"
                   size="small"
                   severity="warn"
                   :outlined="v.key === 'numera-mese'"
@@ -977,7 +976,7 @@ const azioniPagina = computed(() =>
                 :selezione="selezioneLotti.perLista.value"
                 :in-giro="lottiInGiro.inGiro"
                 empty-key="vendite.lotti.nessun_recupero_lista"
-                empty-icon="pi pi-history"
+                :empty-icon="STATUS_ICONS.VUOTO"
                 @page="listaRecuperi.onPage"
                 @sort="listaRecuperi.onSort"
                 @row-click="apriLotto"

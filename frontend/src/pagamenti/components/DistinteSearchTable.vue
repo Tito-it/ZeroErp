@@ -37,6 +37,7 @@ import { statoDistintaSeverity } from '../../core/utils/severity'
 import { useEtichettePagamenti } from '../etichette'
 import { formatCurrency } from '../../core/utils/format'
 import { useDistinteStore } from '../stores/distinte'
+import { STATUS_ICONS } from '../../core/constants'
 import FiltroPeriodo from '../../core/components/FiltroPeriodo.vue'
 import FiltriLista from '../../core/components/FiltriLista.vue'
 
@@ -218,7 +219,7 @@ onMounted(() => store.fetchList())
 
         <template #empty>
           <div class="app-empty-state">
-            <i class="pi pi-credit-card" />
+            <i :class="STATUS_ICONS.VUOTO" />
             <p>{{ t('pagamenti.distinte.nessuna_distinta') }}</p>
           </div>
         </template>

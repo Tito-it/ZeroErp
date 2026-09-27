@@ -17,7 +17,7 @@ import {
   listRuoloIndirizzi, createRuoloIndirizzo, deleteRuoloIndirizzo
 } from '../api/anagrafiche'
 import { lookupMatriceIndirizzi, lookupMatriceIndirizziRuolo } from '../../core/apiCore'
-import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { sortByFonte } from '../../core/utils/string'
 import IndirizzoSoggettoForm from './IndirizzoSoggettoForm.vue'
@@ -356,7 +356,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <!-- Loading -->
       <div v-if="listLoading" class="app-loading">
-        <i class="pi pi-spin pi-spinner" />
+        <i :class="STATUS_ICONS.CARICAMENTO" />
       </div>
 
       <!-- Lista indirizzi esistenti (sempre visibile) -->
@@ -365,7 +365,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
              sul documento in modalita' selezione). -->
         <slot name="pre-list" />
         <div v-if="indirizziList.length === 0 && !formMode" class="app-empty-state">
-          <i class="pi pi-map-marker" />
+          <i :class="MANAGE_ICONS.INDIRIZZI" />
           <p>{{ t('anagrafiche.indirizzo_soggetto.nessun_indirizzo') }}</p>
         </div>
 
@@ -391,7 +391,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
             <!-- Azioni soggetto: solo Cambia (replace) -->
             <Button
               v-if="!formMode && !isReadonly && !isRuolo"
-              icon="pi pi-pencil"
+              :icon="MANAGE_ICONS.EDIT"
               text
               rounded
               size="small"
@@ -412,7 +412,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
                dalla card per non ereditare l'opacita' dei box soggetto. -->
           <Button
             v-if="selectable && !formMode && !isReadonly"
-            icon="pi pi-check"
+            :icon="MANAGE_ICONS.SELEZIONA"
             :label="t('anagrafiche.indirizzo_soggetto.usa')"
             outlined
             size="small"
@@ -425,7 +425,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
 
         <!-- Warning tipi mancanti -->
         <div v-if="tipiMancanti.length > 0 && !formMode" class="indirizzi-warning">
-          <i :class="MANAGE_ICONS.ERRORE" />
+          <i :class="STATUS_ICONS.ERRORE" />
           {{ t('anagrafiche.indirizzo_soggetto.tipi_mancanti', { tipi: tipiMancanti.map(t => t.descrizione).join(', ') }) }}
         </div>
 

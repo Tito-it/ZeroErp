@@ -20,7 +20,8 @@ import { useDrawerContentReady } from '../../core/composables/useDrawerContentRe
 import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { useEmailAccountsStore } from '../stores/emailAccounts'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
@@ -197,7 +198,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
         :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('amministrazione.email_account_title')"
-        icon="pi pi-at"
+        :icon="NAV_ICONS.ACCOUNT_EMAIL"
       />
     </template>
 
@@ -275,7 +276,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
           <span v-tooltip.top="!canTest && testReasonKey ? t(testReasonKey) : null">
             <Button
               :label="t('amministrazione.email_test_connection')"
-              icon="pi pi-wifi"
+              :icon="MANAGE_ICONS.TEST_CONNESSIONE"
               :loading="testLoading"
               :disabled="!canTest"
               outlined

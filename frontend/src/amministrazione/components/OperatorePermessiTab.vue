@@ -573,7 +573,7 @@ defineExpose({ modificato, chiudiConConferma })
     <div v-if="!isReadonly">
       <Button
         :label="t('common.save')"
-        icon="pi pi-check"
+        :icon="MANAGE_ICONS.CONFIRM"
         size="small"
         :disabled="!canSaveEmittenti"
         @click="saveEmittenti"

@@ -14,7 +14,7 @@ import { useEmittentiFiscaliStore } from '../stores/emittentiFiscali'
 import { useNotify } from '../../core/composables/useNotify'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { ROUNDING_DECIMALI_RANGE } from '../constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -340,7 +340,7 @@ watch(() => props.emittenteId, async (id) => {
                non azioni di riga). Devono essere sempre visibili su ogni device. -->
           <template v-if="isEditing(data)">
             <Button
-              icon="pi pi-check"
+              :icon="MANAGE_ICONS.CONFIRM"
               text rounded size="small"
               severity="success"
               :disabled="!isRowValid(data)"
@@ -348,7 +348,7 @@ watch(() => props.emittenteId, async (id) => {
               @click="saveRow(data)"
             />
             <Button
-              icon="pi pi-times"
+              :icon="MANAGE_ICONS.CANCEL"
               text rounded size="small"
               severity="secondary"
               v-tooltip.bottom="t('amministrazione.emittenti_fiscali.ut_action_annulla')"
@@ -362,13 +362,13 @@ watch(() => props.emittenteId, async (id) => {
 
       <template #empty>
         <div class="app-empty-state">
-          <i class="pi pi-info-circle ut-empty-icon" />
+          <i class="ut-empty-icon" :class="STATUS_ICONS.VUOTO" />
           <div class="ut-empty-msg">{{ t('amministrazione.emittenti_fiscali.ut_empty_matrix') }}</div>
           <div class="ut-empty-hint">{{ t('amministrazione.emittenti_fiscali.ut_empty_matrix_hint') }}</div>
           <Button
             v-if="!isReadonly"
             :label="t('amministrazione.emittenti_fiscali.ut_empty_matrix_cta')"
-            icon="pi pi-external-link"
+            :icon="MANAGE_ICONS.VAI_A"
             text
             size="small"
             @click="goToMatriceUtilitiesRuoli"

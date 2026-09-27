@@ -30,7 +30,7 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { bloccoAttivo, motivoBloccoRiga } from '../../core/utils/bloccoMotivo'
 import { useRegistriNumerazioneStore } from '../stores/registriNumerazione'
 import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
@@ -244,7 +244,7 @@ function motivoForma(data) {
         <i
           v-if="data.forma_blocco_reason"
           v-tooltip.top="motivoForma(data)"
-          class="pi pi-lock app-forma-bloccata"
+          class="app-forma-bloccata" :class="STATUS_ICONS.BLOCCATO"
         />
       </template>
       <template #cell-attivo="{ data }">

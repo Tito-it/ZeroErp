@@ -254,7 +254,6 @@
     "acquisti": "Acquisti",
     "magazzino": "Magazzino",
     "pagamenti": "Pagamenti",
-    "contabilita": "Contabilità",
     "amm-software": "Amm. Software",
     "strumenti": "Strumenti",
     "collapse": "Comprimi",
@@ -878,7 +877,8 @@
     "minutes_ago": "{n} min fa",
     "hours_ago": "{n} ore fa",
     "yesterday": "Ieri",
-    "days_ago": "{n} giorni fa"
+    "days_ago": "{n} giorni fa",
+    "col_data_inizio": "Inizio sessione"
   },
   "confirm": {
     "delete_title": "Conferma eliminazione",
@@ -1055,7 +1055,8 @@
       "col_tipo_ruolo_descrizione": "Tipo Ruolo",
       "col_attivo": "Stato",
       "saved": "Riga matrice aggiornata.",
-      "created": "Riga matrice creata."
+      "created": "Riga matrice creata.",
+      "usage_col_override_attivo": "Override attivo"
     },
     "categorie_clienti": {
       "search_placeholder": "Cerca per codice o descrizione...",
@@ -1648,7 +1649,8 @@
       "dettaglio_titolo": "Errore {codice}",
       "dettaglio_context": "Contesto (appunti tecnici)",
       "dettaglio_context_vuoto": "Nessun contesto registrato"
-    }
+    },
+    "col_codice_reparto": "Codice"
   },
   "indirizzi": {
     "tab_indirizzi": "Indirizzi",
@@ -1709,7 +1711,8 @@
     "toponomastica": "Toponomastica",
     "comune": "Comune",
     "cap": "CAP",
-    "indirizzo": "Indirizzo"
+    "indirizzo": "Indirizzo",
+    "col_provincia_nome": "Nome provincia"
   },
   "catalogo": {
     "search_placeholder": "Cerca per codice o descrizione articolo...",
@@ -4244,6 +4247,14 @@
       "filtro_entita_tutte": "Tutte le entità",
       "filtro_filo": "Filo (tx_id o correlation_id)",
       "ritirate_nascoste": "{n} segnalazioni ritirate nascoste"
+    },
+    "revisioni": {
+      "col_rev": "Rev",
+      "col_numero": "Numero",
+      "col_data": "Data",
+      "col_stato": "Stato",
+      "col_attiva": "Attiva",
+      "col_totale": "Totale"
     }
   },
   "pagamenti": {

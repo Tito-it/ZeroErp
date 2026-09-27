@@ -57,7 +57,7 @@
 //     ...mapAvailableActionsToDrawerActions({ availableActions, t, onAction }),
 //     { key: 'manage-righe', kind: 'manage', label: t(...), icon: MANAGE_ICONS.RIGHE,
 //       badge: righeCount.value, command: () => righeVisible = true },
-//     { key: 'pdf', kind: 'secondary', label: t(...), icon: 'pi pi-file-pdf',
+//     { key: 'pdf', kind: 'secondary', label: t(...), icon: MANAGE_ICONS.PDF,
 //       command: onScaricaPdf },
 //   ])
 //
@@ -74,7 +74,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Menu from 'primevue/menu'
-import { MANAGE_ICONS } from '../constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../constants'
 import { useActionBar } from '../composables/useActionBar'
 import { labelOrCode } from '../utils/i18nLabel'
 
@@ -254,7 +254,7 @@ const infoText = computed(() =>
          Nota discreta, non un banner: convive con le azioni manage/secondary
          che restano disponibili anche negli stati chiusi (note, PDF). -->
     <span v-if="infoText" class="app-drawer-actions-info">
-      <i class="pi pi-info-circle" aria-hidden="true" />
+      <i :class="STATUS_ICONS.INFO" aria-hidden="true" />
       <span>{{ infoText }}</span>
     </span>
   </div>

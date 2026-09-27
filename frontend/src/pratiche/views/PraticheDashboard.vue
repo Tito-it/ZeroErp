@@ -15,6 +15,7 @@ import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { provideTechnicalMode } from '../../core/composables/useTechnicalMode'
 import { useAuthStore } from '../../stores/auth'
 import { MANAGE_ICONS, READONLY_DOMAINS, STATI_PRATICA_TERMINALI, STATO_FLUSSO } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { usePraticheStore } from '../stores/pratiche'
 import PraticheSearchTable from '../components/PraticheSearchTable.vue'
 import PraticaPercorso from '../components/PraticaPercorso.vue'
@@ -459,11 +460,11 @@ onUnmounted(() => {
       >
         <div class="dashboard-flussi-context">
           <span class="flussi-context-label">
-            <i class="pi pi-folder-open" />
+            <i :class="NAV_ICONS.PRATICHE" />
             {{ t('pratiche.visualizzazione_pratica', { codice: selectedPraticaCodice }) }}
             <Button
               :label="t('pratiche.apri_scheda')"
-              icon="pi pi-external-link"
+              :icon="MANAGE_ICONS.VAI_A"
               text
               size="small"
               class="app-escape"
@@ -475,7 +476,7 @@ onUnmounted(() => {
           <Button
             v-if="auth.isSuperAdmin"
             :label="t('pratiche.modalita_tecnica')"
-            :icon="modalitaTecnica ? 'pi pi-eye-slash' : 'pi pi-wrench'"
+            :icon="modalitaTecnica ? MANAGE_ICONS.NASCONDI_TECNICO : MANAGE_ICONS.MODALITA_TECNICA"
             text
             size="small"
             class="tecnico-toggle"

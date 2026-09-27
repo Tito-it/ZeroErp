@@ -586,7 +586,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
           <Column style="width: 2.5rem;" :exportable="false">
             <template #body="{ data }">
               <Button v-if="hasBundleComponenti(data)"
-                :icon="isExpanded(data) ? 'pi pi-chevron-down' : 'pi pi-chevron-right'"
+                :icon="isExpanded(data) ? MANAGE_ICONS.ROW_COLLAPSE : MANAGE_ICONS.ROW_EXPAND"
                 text rounded size="small"
                 @click.stop="toggleExpansion(data)" />
             </template>

@@ -172,6 +172,7 @@ _RESOLVER_TEST_REQUEST = inline_serializer(
 
 class ApiListiniList(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "listino")
     is_search_endpoint = True
     lista_codice = "vendite.listini"
 
@@ -233,6 +234,7 @@ class ApiListiniList(DomainAPIView):
 
 class ApiListinoDetail(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "listino")
 
     @extend_schema(
         responses={
@@ -276,6 +278,7 @@ class ApiListinoDetail(DomainAPIView):
 
 class ApiListinoVersioniList(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "listino")
 
     @extend_schema(
         responses={
@@ -306,6 +309,7 @@ class ApiListinoVersioniList(DomainAPIView):
 
 class ApiListinoVersioneDetail(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "listino")
 
     @extend_schema(
         responses={
@@ -349,6 +353,7 @@ class ApiListinoVersioneDetail(DomainAPIView):
 
 class ApiListinoVersioneStato(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "listino")
 
     @extend_schema(
         request=_VERSIONE_STATO_REQUEST,
@@ -369,6 +374,7 @@ class ApiListinoVersioneStato(DomainAPIView):
 
 class ApiListinoVersioneClona(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "listino")
 
     @extend_schema(
         request=_VERSIONE_CLONA_REQUEST,
@@ -390,6 +396,7 @@ class ApiListinoVersioneClona(DomainAPIView):
 
 class ApiListinoVersioneRigheList(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "listino")
     is_search_endpoint = True
     lista_codice = "vendite.listini_righe"
 
@@ -445,6 +452,7 @@ class ApiListinoVersioneRigheList(DomainAPIView):
 
 class ApiListinoVersioneRigaDetail(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "listino")
 
     @extend_schema(
         request=_RIGA_PATCH_REQUEST,
@@ -475,6 +483,7 @@ class ApiListinoVersioneRigaDetail(DomainAPIView):
 
 class ApiListinoVersioneRigaRettificaControllata(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "listino")
 
     @extend_schema(
         request=_RETTIFICA_CONTROLLATA_REQUEST,
@@ -495,6 +504,7 @@ class ApiListinoVersioneRigaRettificaControllata(DomainAPIView):
 
 class ApiListiniAlertScadenze(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "listino")
 
     @extend_schema(
         parameters=[
@@ -515,6 +525,7 @@ class ApiListiniAlertScadenze(DomainAPIView):
 
 class ApiListinoVersioneApplicaVariazione(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "listino")
 
     @extend_schema(
         request=_VARIAZIONE_PCT_REQUEST,
@@ -536,6 +547,7 @@ class ApiListinoVersioneApplicaVariazione(DomainAPIView):
 
 class ApiListiniTipologiePerUtility(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "listino")
 
     @extend_schema(
         parameters=[
@@ -595,6 +607,7 @@ class ApiListinoVersioneBundleDetail(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "listino")
 
     @extend_schema(
         responses={200: inline_serializer(

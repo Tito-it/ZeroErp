@@ -89,7 +89,7 @@ const {
       kind: 'utility',
       label: t('vendite.listini.variazione_short'),
       tooltip: t('vendite.listini.variazione_pct_titolo'),
-      icon: 'pi pi-percentage',
+      icon: MANAGE_ICONS.VARIAZIONE_PREZZO,
       showLabel: true,
       visible: isBozza.value,
       command: () => { showVariazioneDialog.value = true },

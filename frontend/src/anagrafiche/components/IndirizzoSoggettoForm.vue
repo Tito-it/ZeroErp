@@ -10,6 +10,7 @@ import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
 import Message from 'primevue/message'
+import { STATUS_ICONS } from '../../core/constants'
 import ComuneAutocomplete from './ComuneAutocomplete.vue'
 import StradarioAutocomplete from './StradarioAutocomplete.vue'
 import StradarioGeneraleAutocomplete from './StradarioGeneraleAutocomplete.vue'
@@ -81,8 +82,8 @@ const viaNoResultsGenerale = computed(() =>
         @click="!tipo.esistente && $emit('switchTipo', tipo.codice)"
         :title="tipo.esistente ? t('anagrafiche.indirizzo_soggetto.tipo_gia_creato') : (tipo.obbligatorio ? t('anagrafiche.indirizzo_soggetto.obbligatorio') : '')"
       >
-        <i v-if="tipo.compilato && !tipo.esistente" class="pi pi-check" style="font-size: 0.7rem;" />
-        <i v-else-if="tipo.esistente" class="pi pi-lock" style="font-size: 0.65rem;" />
+        <i v-if="tipo.compilato && !tipo.esistente" :class="STATUS_ICONS.SI" style="font-size: 0.7rem;" />
+        <i v-else-if="tipo.esistente" :class="STATUS_ICONS.BLOCCATO" style="font-size: 0.65rem;" />
         <span>{{ tipo.descrizione }}</span>
         <span v-if="tipo.obbligatorio && !tipo.esistente" class="indirizzo-tipo-req">*</span>
       </div>

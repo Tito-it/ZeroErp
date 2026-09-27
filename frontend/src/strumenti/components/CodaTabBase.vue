@@ -52,7 +52,7 @@ import { useRefreshPeriodico } from '../../core/composables/useRefreshPeriodico'
 import { rigaCodaViva } from '../../core/composables/useQueueCountsPolling'
 import { extractApiError } from '../../core/utils/apiError'
 import { displayTimestamp } from '../../core/utils/date'
-import { ICONA_ARCHIVIA } from '../composables/useCodaArchiviazione'
+import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { useCodaFiltri } from '../composables/useCodaFiltri'
 import CodaFiltriToolbar from './CodaFiltriToolbar.vue'
 import CodaWorkerStato from './CodaWorkerStato.vue'
@@ -69,7 +69,7 @@ const props = defineProps({
   // Risolutore del colore del Tag di stato.
   statoSeverity: { type: Function, required: true },
   emptyKey: { type: String, required: true },
-  emptyIcon: { type: String, default: 'pi pi-inbox' },
+  emptyIcon: { type: String, default: STATUS_ICONS.VUOTO },
   // Loading AGGIUNTIVO del caller (un'azione di riga in corso), sommato a
   // quello della lista.
   extraLoading: { type: Boolean, default: false },
@@ -155,7 +155,7 @@ const azioniSelezione = computed(() => {
       : t('strumenti.code.azione_archivia_hint'),
     // Stessa icona della voce di riga, dalla stessa costante: la stessa azione
     // con due icone diverse e' il genere di divergenza che nessun test vede.
-    icon: ICONA_ARCHIVIA,
+    icon: MANAGE_ICONS.ARCHIVIA,
     disabled: n === 0,
     command: () => props.onArchiviaSelezione(props.selezione.selezione.value),
   }]
@@ -303,7 +303,7 @@ defineExpose({ load })
         <span class="app-cella-con-spinner">
           <i
             v-if="rigaCodaViva(data.stato)"
-            class="pi pi-spin pi-spinner app-spinner-in-corso"
+            class="app-spinner-in-corso" :class="STATUS_ICONS.CARICAMENTO"
             v-tooltip.right="t('strumenti.code.riga_viva_hint')"
             :aria-label="t('strumenti.code.riga_viva_hint')"
           />

@@ -21,7 +21,7 @@ import ToggleSwitch from 'primevue/toggleswitch'
 import Badge from 'primevue/badge'
 import Tag from 'primevue/tag'
 import FormFooter from '../FormFooter.vue'
-import { DRAWER_WIDTH } from '../../constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../constants'
 import { useConfirmAction } from '../../composables/useConfirmAction'
 import { useDrawerContentReady } from '../../composables/useDrawerContentReady'
 import { useDrawerFormPreserve, gestoreVisibile } from '../../composables/useDrawerFormPreserve'
@@ -188,7 +188,7 @@ const suVisibile = gestoreVisibile(emit, onCancel)
         <span class="dash-config-row-label">{{ labelDi(widget) }}</span>
         <div class="dash-config-row-actions">
           <Button
-            icon="pi pi-chevron-up"
+            :icon="MANAGE_ICONS.SPOSTA_SU"
             text
             rounded
             :disabled="idx === 0"
@@ -196,7 +196,7 @@ const suVisibile = gestoreVisibile(emit, onCancel)
             @click="move(widget.codice, 'up')"
           />
           <Button
-            icon="pi pi-chevron-down"
+            :icon="MANAGE_ICONS.SPOSTA_GIU"
             text
             rounded
             :disabled="idx === localWidget.length - 1"
@@ -211,7 +211,7 @@ const suVisibile = gestoreVisibile(emit, onCancel)
       <div class="dash-config-footer">
         <Button
           :label="t('home.personalizza_reset')"
-          icon="pi pi-refresh"
+          :icon="MANAGE_ICONS.RIPRISTINA_DEFAULT"
           severity="secondary"
           text
           :disabled="loading"

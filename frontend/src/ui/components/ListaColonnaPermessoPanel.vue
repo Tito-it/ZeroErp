@@ -72,7 +72,7 @@ const pageActions = computed(() => [
     kind: 'primary',
     label: t('common.new'),
     tooltip: t('ui.admin.permesso_nuovo'),
-    icon: 'pi pi-plus',
+    icon: MANAGE_ICONS.ADD,
     hideWhenReadonly: true,
     disabled: !listaSelezionata.value,
     command: drawer.openCreate,

@@ -16,7 +16,7 @@ import FormFooter from '../../core/components/FormFooter.vue'
 import PortaleAccessoPanel from './PortaleAccessoPanel.vue'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 
 const { t } = useI18n()
 const injectedReadonly = useInjectReadonly()
@@ -55,7 +55,7 @@ const onClose = useDrawerClose(emit)
       <DrawerTitle
         :action="t('portale.accessi_web.drawer_action')"
         :title="t('portale.accessi_web.title')"
-        icon="pi pi-globe"
+        :icon="MANAGE_ICONS.ACCESSI_WEB"
       />
     </template>
 

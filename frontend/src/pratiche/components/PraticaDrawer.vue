@@ -13,7 +13,8 @@ import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReado
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { displayDate, toDateString } from '../../core/utils/date'
 import { statoPraticaSeverity, prioritaPraticaSeverity } from '../../core/utils/severity'
-import { DRAWER_WIDTH, STATO_PRATICA, STATI_PRATICA_TERMINALI } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, STATO_PRATICA, STATI_PRATICA_TERMINALI } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
@@ -42,7 +43,6 @@ import TabPanel from 'primevue/tabpanel'
 import TabPanels from 'primevue/tabpanels'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
-import { MANAGE_ICONS } from '../../core/constants'
 
 const { t } = useI18n()
 const store = usePraticheStore()
@@ -301,7 +301,7 @@ const drawerActions = computed(() => {
       key: 'apri',
       kind: 'state',
       label: t('pratiche.azione_apri'),
-      icon: 'pi pi-lock-open',
+      icon: MANAGE_ICONS.APRI,
       severity: 'info',
       visible: s === STATO_PRATICA.BOZZA,
       hideWhenReadonly: true,
@@ -311,7 +311,7 @@ const drawerActions = computed(() => {
       key: 'sospendi',
       kind: 'state',
       label: t('pratiche.azione_sospendi'),
-      icon: 'pi pi-pause',
+      icon: MANAGE_ICONS.SOSPENDI,
       severity: 'warn',
       visible: s === STATO_PRATICA.APERTA,
       hideWhenReadonly: true,
@@ -321,7 +321,7 @@ const drawerActions = computed(() => {
       key: 'riattiva',
       kind: 'state',
       label: t('pratiche.azione_riattiva'),
-      icon: 'pi pi-play',
+      icon: MANAGE_ICONS.PLAY,
       severity: 'success',
       visible: s === STATO_PRATICA.SOSPESA,
       hideWhenReadonly: true,
@@ -406,7 +406,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
         :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('pratiche.pratica')"
-        icon="pi pi-folder"
+        :icon="NAV_ICONS.PRATICHE"
       />
     </template>
 
@@ -427,7 +427,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
             <small class="app-text-muted">{{ t('pratiche.soggetto_opzionale') }}</small>
           </div>
           <div>
-            <Button :label="t('pratiche.nuovo_soggetto')" icon="pi pi-user-plus"
+            <Button :label="t('pratiche.nuovo_soggetto')" :icon="MANAGE_ICONS.ADD"
               text size="small" @click="resolverVisible = true" />
           </div>
 
@@ -456,7 +456,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
           <div v-else-if="istanzaDerivata" class="form-field">
             <label>{{ t('pratiche.field_istanza') }}</label>
             <div class="app-field-hint">
-              <i class="pi pi-link" style="margin-right: 0.4rem;"></i>
+              <i :class="MANAGE_ICONS.DERIVATO" style="margin-right: 0.4rem;"></i>
               {{ t('pratiche.istanza_derivata', { codice: contestoSelezionato.istanza_unica_codice }) }}
             </div>
           </div>

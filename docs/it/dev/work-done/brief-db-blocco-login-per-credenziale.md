@@ -3,25 +3,20 @@
 > **Tipo documento**: brief operativo **per il team DB** (`dev/db-tid`), con la
 > ricaduta sul backend al §7.
 >
-> **Data**: 2026-09-24 · **Stato** (allineato il 2026-09-26): 🟢 **P-1, P-2,
-> R-8, R-9, R-7, R-3 applicati e committati** — P-1 `20260925-01…-25`
+> **Data**: 2026-09-24 · **Stato**: ✅ **CHIUSO il 2026-09-27.** P-1, P-2,
+> R-8, R-9, R-7, R-3 e §16 applicati e committati — P-1 `20260925-01…-25`
 > (`f96d087d4`), P-2 `-40…-51` (`acc6385d5`, `64a1ad2f4`), R-8 `-52`
-> (`48291b801`), R-9/R-7 `-53…-62` e i template R-3 (`7f3208a58`); backend
-> B-9…B-16 committato (`e7dbbad73`).
-> 🟢 **§16** (i motivi del dettaglio operatore come codici): `20260927-01`,
-> `-02` **applicati il 2026-09-27**, test verdi. **Il lavoro DB del brief è
-> chiuso.** 🟢 Backend e frontend del 2026-09-27 scritti (non committati):
-> B-17…B-19 e F-3 (§16.4), B-8 e F-1 (§12.8), la guida
-> `architettura-multi-face-auth` §3.1 (§8). ⛔ Resta **B-6** (§12.4), il
-> consenso al riuso della credenziale: il backend passa già
-> `p_riusa_auth_user_id`, ma il dialog non si può scrivere perché i dati da
-> confermare non arrivano al client. 🟢 **§17 lato DB applicato il
-> 2026-09-27** (`20260927-40`, `-41`, §17.4), test verdi, nessuna
-> regressione. ⏳ Restano al backend e al frontend **B-20** e **F-4** (§17.3).
-> Elenco completo al §12.6.
->
-> **Da leggere per primo**: §17.3 (il lavoro aperto, BE/FE), poi §12.6 (cosa resta), §12
-> (il P-2), §11 (il P-1) e §2.
+> (`48291b801`), R-9/R-7 `-53…-62` e i template R-3 (`7f3208a58`), §16
+> `20260927-01`, `-02` (`e3d188dc0`); backend e frontend B-8…B-19, F-1…F-3 e la
+> guida `architettura-multi-face-auth` §3.1 (`e7dbbad73`, `854ca3c2b`).
+> ➜ **Scorporato** l'unico lavoro aperto, il §17 (i dati del dialog del
+> consenso al riuso: B-6 a metà, B-20, F-4, più il controllo a video di F-3), in
+> [brief-db-credenziale-per-email.md](../work-in-progress/brief-db-credenziale-per-email.md).
+> La domanda sulle FK del ponte django (§11.5) è in `PROJECT_CONTEXT` § «Aperto —
+> Media priorità».
+> 🟢 Dopo lo scorporo il team DB ha fatto il lato DB del §17
+> (`20260927-40`, `-41`, applicati il 2026-09-27): l'esecuzione (§17.4) è nel
+> brief nuovo. Restano al backend e al frontend B-20 e F-4, là.
 >
 > **Due lavori, in quest'ordine**: **P-1** login, blocco e cambio password
 > (§2–§4); **P-2** email unica e riuso della credenziale (§5). Sono
@@ -29,9 +24,9 @@
 > di cui il P-1 tiene lo stato: si fanno nello stesso cantiere.
 >
 > **Origine**: difetto M-4 di
-> [analisi-be-difetti-emersi-verifica-doc-api-core.md](analisi-be-difetti-emersi-verifica-doc-api-core.md),
+> [analisi-be-difetti-emersi-verifica-doc-api-core.md](../work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md),
 > diventato il cantiere
-> [analisi-accessi-credenziale-e-vesti.md](analisi-accessi-credenziale-e-vesti.md).
+> [analisi-accessi-credenziale-e-vesti.md](../work-in-progress/analisi-accessi-credenziale-e-vesti.md).
 > Decisioni di Tid del 2026-09-24:
 >
 > - **D-1**, *riletta il 2026-09-24 dopo l'analisi critica* — il blocco
@@ -175,7 +170,7 @@ Per entrambe:
   su colonne di Django;
 - ⛔ **porta chiusa all'app** fin dalla nascita, come vuole il modello «una
   scrittura = un verbo» per i domini nuovi
-  ([brief-db-permesso-nel-verbo-di-scrittura.md](brief-db-permesso-nel-verbo-di-scrittura.md),
+  ([brief-db-permesso-nel-verbo-di-scrittura.md](../work-in-progress/brief-db-permesso-nel-verbo-di-scrittura.md),
   D-1): `zeroerp_app` non ha `INSERT`/`UPDATE`/`DELETE` né `SELECT` diretti.
   Legge e scrive **solo** attraverso le funzioni del §3, `SECURITY DEFINER` del
   proprietario. ⚠️ *Corretto in esecuzione (§11.2): il `SELECT` all'app
@@ -332,7 +327,7 @@ chi legge il backend.
 | `fn_sblocca_credenziale(p_auth_user_id)` | stessa prima riga; azzera i tre campi |
 
 - Chi agisce si legge da `app.current_user_id`, come nei verbi di magazzino
-  ([brief-db-magazzino-verbi-con-permesso.md](../work-done/brief-db-magazzino-verbi-con-permesso.md) §2.1).
+  ([brief-db-magazzino-verbi-con-permesso.md](brief-db-magazzino-verbi-con-permesso.md) §2.1).
 - ⭐ **Perché SUPER_ADMIN e non un'azione di processo** (D-B1): la gestione
   degli accessi oggi è `amm_software`, che **non è un'area** del catalogo: è
   un'app del backend, le sue view sono `AdminAPIView` e lasciano entrare solo
@@ -719,7 +714,7 @@ freno: meglio un test marcato che una porta aperta.
   è `parameter_id`: sullo scratch l'UPDATE di un parametro con `storicizza = t`
   (per esempio `SYSTEM_FUSO_ORARIO`, id 54) muore con `E_SNAPSHOT_CLOSE_ERROR`.
   Su dbdev lo stesso UPDATE passa. ➜ Analizzato in
-  [brief-db-storico-colonna-fk-dei-trigger.md](../work-done/brief-db-storico-colonna-fk-dei-trigger.md):
+  [brief-db-storico-colonna-fk-dei-trigger.md](brief-db-storico-colonna-fk-dei-trigger.md):
   il difetto tocca cinque tabelle, quattro anche su dbdev, ed è dbdev a essere
   fuori modello per `parameters`.
   ✅ *Presa in carico da un'altra sessione (Tid, 2026-09-25).*
@@ -1076,18 +1071,20 @@ il ripiego non va avanti al catalogo):
   ✅ B-7 verde (§12.5), baseline allineata; `-51` committato (`64a1ad2f4`);
   scratch riallineato sul ponte django (§11.5), tutti i test verdi.
 - ❓ Aperta per Tid, fuori da questo brief: le FK del ponte django da
-  `MARK_RAN` a `CONTINUE` (§11.5).
+  `MARK_RAN` a `CONTINUE` (§11.5). ➜ Registrata in `PROJECT_CONTEXT` §
+  «Aperto — Media priorità» alla chiusura (2026-09-27).
 - ✅ DB: le due note del backend su `E_UTENTE_BLOCCATO` (R-8) → §12.8: `-52`
   applicato (Tid, 2026-09-25), nessuna regressione; committato (`48291b801`).
 - ✅ DB: **R-9** (§14, `-53`, `-54`), **R-7** (§13, `-55…-62`) e **R-3** (§15,
   template) applicati su dbdev il 2026-09-25 e committati (`7f3208a58`).
 - ✅ Backend: B-9…B-16 e F-2 committati (`e7dbbad73`).
-- ⏳ **DB: §16** — i motivi del dettaglio operatore diventano codici macchina
+- ✅ **DB: §16** — i motivi del dettaglio operatore diventano codici macchina
   con la chiave i18n. ✅ Decisioni di Tid (2026-09-27): `motivo` ritirato, nomi
   dei campi invariati con `_reason_key` accanto. `20260927-01`, `-02`
   ✅ applicati (Tid, 2026-09-27), test verdi (§16.3).
 - ✅ Backend/Frontend: **B-17…B-19** e **F-3** (§16.4), 2026-09-27 (dettaglio
-  nel Registro). ⏳ Resta il controllo a video di F-3 (§16.4, ultima nota).
+  nel Registro). ➜ Il controllo a video di F-3 (§16.4, ultima nota) è passato
+  al brief scorporato del §17.
 - ✅ Backend/Frontend: **B-8** e **F-1** (§12.8), 2026-09-27: ripiego senza
   `%s`, `E_UTENTE_BLOCCATO` fra i rifiuti che mostrano il `message` del DB;
   `test_login_credenziale_db` pinna i minuti nell'envelope vero.
@@ -1097,13 +1094,10 @@ il ripiego non va avanti al catalogo):
 - 🟡 Backend/Frontend: **B-6** (§12.4) — il consenso al riuso (`-51`).
   ✅ 2026-09-27: `p_riusa_auth_user_id` va da view a madre, e
   `test_login_credenziale_db` (non più sospeso) prova i due tempi sul DB vero.
-  ⏳ Il dialog di conferma **aspetta il DB**: §17.
-- ✅ DB: **§17** — `20260927-40` (`script.fn_get_credenziale_per_email`),
-  `-41` (la madre la legge), pgTAP `test-fn-get-credenziale-per-email-v1`,
-  descrizione di `E_CREDENZIALE_DA_CONFERMARE`, manual. ✅ Applicati (Tid,
-  2026-09-27), test verdi, nessuna regressione (§17.4). **Il lavoro DB del
-  brief è di nuovo chiuso.**
-- ⏳ Backend/Frontend: **B-20** e **F-4** (§17.3) — il dialog di conferma.
+  ➜ Il dialog di conferma **aspetta il DB**: scorporato con il §17 in
+  [brief-db-credenziale-per-email.md](../work-in-progress/brief-db-credenziale-per-email.md).
+- ✅ DB: il §17 fatto dopo lo scorporo (`20260927-40`, `-41`, applicati il
+  2026-09-27): esecuzione e decisione «nessun guard a DB» nel brief nuovo.
 
 ## 13. R-7 — La risposta del login non dice se il nome esiste (disegno, 2026-09-25)
 
@@ -1488,132 +1482,21 @@ compaia davvero, perché nessun presidio lo vede.
 
 ## 17. Il dialog del consenso non ha i suoi dati (backend, 2026-09-27)
 
-### 17.1 Il problema, sul modello
+➜ **Scorporato il 2026-09-27** in
+[brief-db-credenziale-per-email.md](../work-in-progress/brief-db-credenziale-per-email.md):
+il problema (il contesto dell'errore non arriva al client), la richiesta al team
+DB (una lettura della credenziale per email, che la madre riusa), B-20, F-4 e il
+controllo a video di F-3. Quella è la sede, qui non si aggiorna più.
 
-Il `-51` (§12.7) mette `auth_user_id`, `username` e `vesti` della credenziale
-trovata nel **contesto** di `E_CREDENZIALE_DA_CONFERMARE`, «per il dialog»
-(manual della madre, descrizione in `codici_errore.csv`). Ma il contesto
-**non è un canale verso il client**: `script.fn_log_and_raise_error` lo scrive
-in `dbops.error_log`, e l'eccezione porta solo messaggio, `DETAIL`, `HINT` e i
-tre canali strutturati — codice (`CONSTRAINT`), campo (`COLUMN`), bersaglio
-(`DATATYPE`). Verificato sul corpo della funzione (doc auto-gen, `RAISE … USING`).
+✅ Già fatto qui (2026-09-27): `riusa_auth_user_id` passa dalla view al
+repository (`p_riusa_auth_user_id`), e `test_login_credenziale_db` prova i due
+tempi sul DB vero.
 
-Quindi al backend arrivano l'email e lo username (nel messaggio), ma **non l'id
-da dichiarare** né le vesti da mostrare: il dialog di B-6 così com'è scritto non
-si può fare. E non esiste una lettura a DB «la credenziale di questa email, con
-le sue vesti»: la sola sede della lista delle vesti è la `jsonb_agg` dentro la
-madre.
-
-Le strade scartate (decisione di Tid, 2026-09-27): un canale generico di dati
-nell'eccezione (tocca `fn_log_and_raise_error` e i cinque punti di traduzione:
-cantiere a sé); la rilettura in Python di id e vesti (seconda copia della
-lettura delle vesti, e un campo nuovo nell'envelope).
-
-### 17.2 Cosa si chiede al team DB
-
-- Una funzione di **lettura** `script.fn_get_credenziale_per_email(p_email text)`
-  (nome a scelta del team DB) → `TABLE(auth_user_id integer, username text,
-  vesti jsonb)`: zero righe se l'email non ha credenziale; la credenziale la
-  trova `script.fn_get_auth_user_id_for_email` (quindi senza distinguere
-  maiuscole e minuscole, e con `E_CREDENZIALE_EMAIL_AMBIGUA` dove serve);
-  `vesti` nella forma che la madre già costruisce (`ruolo_applicativo`,
-  `attivo`, `soggetto`, in ordine di id).
-- ⭐ **Regola del 2**: la madre, nel passo 2-bis, legge username e vesti **da
-  questa funzione** al posto della sua `jsonb_agg`. Dialog e rifiuto leggono
-  così la stessa cosa, e non possono divergere.
-- **Chi può chiamarla.** Dice se un'email ha un accesso e con quali vesti: è
-  un'informazione da amministratore. Lato backend il solo chiamante sarà un
-  endpoint `AdminAPIView` (SUPER_ADMIN); la domanda era se metterle anche a DB
-  il guard `script.fn_guard_super_admin`, come ai verbi di blocco e sblocco
-  (D-B1). ✅ *Decisa da Tid il 2026-09-27: **nessun guard a DB**, il cancello è
-  l'`AdminAPIView` (motivi al §17.4).*
-- Manual della madre e descrizione di `E_CREDENZIALE_DA_CONFERMARE`: togliere
-  «il contesto porta … per il dialog», che promette un trasporto che non c'è;
-  il contesto resta, ma per il log.
-- pgTAP: la funzione sui tre casi (email nuova → zero righe; credenziale senza
-  vesti → `vesti = []`; credenziale con vesti), e la madre invariata
-  (`test-crea-operatore-riusa-credenziale-v1`).
-
-### 17.3 Cosa farà il backend e il frontend, dopo il changeSet
-
-| # | Dove | Cosa |
-| --- | --- | --- |
-| B-20 | `amm_software` | lettura nel repository e `GET …/operatori/credenziale-per-email/?email=` (`AdminAPIView`) |
-| F-4 | `OperatoreDrawer` | sul 409 `E_CREDENZIALE_DA_CONFERMARE` (senza toast: `azioniGestite`) legge la credenziale e apre un `AppDialog` con username e vesti; confermato, ripete la creazione con `riusa_auth_user_id` = l'id letto. Se nel frattempo la credenziale è cambiata la madre rifiuta di nuovo, e il dialog si ripropone: è la ragione per cui si dichiara un id e non un sì. `E_CREDENZIALE_ALTRA_PERSONA` non apre il dialog: si corregge l'email |
-
-✅ Già fatto (2026-09-27), e non dipende dal §17: `riusa_auth_user_id` da
-view a repository (`p_riusa_auth_user_id`), assente = `NULL`, cioè la prima
-chiamata chiede sempre la conferma. Test: `test_amm_software_service` (il
-trasporto) e `test_login_credenziale_db` (i due tempi sul DB vero, compresa la
-dichiarazione di un'altra credenziale rifiutata).
-
-⚠️ **Trovato strada facendo**, nello stesso test mai eseguito finché era
+⚠️ **Trovato strada facendo**, nello stesso test, che non girava finché era
 sospeso: su una credenziale **senza altre vesti attive**, dopo la creazione
 `is_active` è spento (è l'OR delle vesti) e il login risponde **401**, non il
 403 `E_VESTE_NON_ATTIVA` che il test si aspettava. È il modello, non un
 difetto: il test è corretto, con la ragione scritta.
-
-### 17.4 Esecuzione (2026-09-27)
-
-**Decisione di Tid (2026-09-27), sulla domanda del §17.2: nessun guard di
-permesso a DB.** Il cancello resta la porta del backend (`AdminAPIView`, solo
-SUPER_ADMIN). Un `fn_guard_super_admin` nella funzione:
-
-- romperebbe la madre, che la chiama nel ramo del rifiuto. La madre è
-  `INVOKER` e non ha un guard SUPER_ADMIN suo, quindi chi non è SUPER_ADMIN
-  leggerebbe `E_PERMESSO_NEGATO` invece di `E_CREDENZIALE_DA_CONFERMARE`: un
-  permesso nato dentro un ramo d'errore;
-- non chiuderebbe niente: l'app legge già `django.auth_user` (contratto del
-  `-40` del 25-09, `provision_db_roles.sql`) e `anagrafiche.identita_digitali`
-  (la madre `INVOKER` la legge come app). Il modello del verbo chiude le
-  scritture, non le letture; D-B1 riguardava due verbi di scrittura.
-
-| Fase | ChangeSet | Cosa |
-| --- | --- | --- |
-| `20_code/script` | `20260927-40` | ⭐ `script.fn_get_credenziale_per_email(p_email)` → `TABLE(auth_user_id, username, vesti)`: zero righe se l'email non ha credenziale; una riga anche senza vesti (`vesti = []`); la credenziale la trova `fn_get_auth_user_id_for_email`; `vesti` nella forma della madre (`ruolo_applicativo`, `attivo`, `soggetto`, in ordine di id). `plpgsql`, tipi espliciti (nomina `django.*`), `STABLE`, `INVOKER` |
-| `20_code/anagrafiche` | `20260927-41` | la madre, passo 2-bis: username e vesti dalla funzione nuova, al posto della sua aggregazione (regola del 2). Firma invariata: `CREATE OR REPLACE`. Corpo di partenza `-51`, verificato uguale al vivo (corpo e `COMMENT`) |
-| `80_data` (CSV esistente) | — | `codici_errore.csv`, descrizione di `E_CREDENZIALE_DA_CONFERMARE`: il contesto porta i dati «per il log (al client non arriva)», e il dialog li legge dalla funzione. Messaggio (`messaggi_errore.csv`) invariato |
-| pgTAP | `script/test-fn-get-credenziale-per-email-v1` | 9 casi: firma; email di nessuno, `NULL`, vuota, di soli spazi → zero righe; credenziale senza vesti, cercata in maiuscolo con spazi → una riga, `vesti = []`; credenziale di un operatore → la veste letta dalle tabelle; il rifiuto della madre nomina lo username della funzione; presidio sul testo: la madre chiama la funzione e non ha un `jsonb_agg` suo |
-| manual | — | `script/manual/fn_get_credenziale_per_email` (nuovo), `fn_crea_operatore_v2` (regola 4, passo 2-bis, esempio, chiamanti, Storia), `fn_get_auth_user_id_for_email` (consumatore nuovo) |
-
-⚠️ **Email nuova con consenso dichiarato** (`v_trovata` `NULL`,
-`p_riusa_auth_user_id` valorizzato): la funzione dà zero righe, `SELECT INTO`
-azzera username e vesti, e il `COALESCE` rimette `vesti = []`. È lo stesso
-contesto di prima.
-
-⚠️ **Non cambiato, da sapere**: le vesti si leggono con `JOIN` interni su
-`soggetti_ruoli` e `soggetti`, sotto la RLS di chi chiama, come faceva la madre.
-Una veste il cui soggetto non è visibile al chiamante non compare. Per un
-SUPER_ADMIN non è un caso reale; lo si scrive per chi un giorno delegasse la
-porta.
-
-**Come è stato provato (2026-09-27).** Su **dbdev**, da owner, in una
-transazione ritirata con l'SQL **estratto** dai due changeSet: sullo scratch
-`zeroerp_ci` l'utente dell'env non ha i diritti di owner su `script` («permesso
-negato per lo schema script»). Dopo la prova, verificato che su dbdev non è
-rimasto niente (la funzione non esiste, la madre è quella del `-51`).
-
-| Prova | Esito |
-| --- | --- |
-| `plpgsql_check` sulle due funzioni | 0 errori; sulla madre resta l'avviso preesistente `v_ru_id` mai letto |
-| `test-fn-get-credenziale-per-email-v1` | 9/9 |
-| **Controprova**: la funzione senza il `-41` (madre del `-51`) | rosso **solo** il 9: il presidio vede l'aggregazione propria della madre |
-| `test-crea-operatore-riusa-credenziale-v1` con la madre nuova | 20/20, senza modifiche |
-| cancelli statici (runOnChange, letterali, preCondition, trigger, grant batch, timestamp, preambolo pgTAP) | verdi |
-
-⚠️ La prova gira da owner, non da `zeroerp_app`. La corsa col runner, che usa
-l'app, resta di Tid ([il runner](/guide/pgtap-come-si-scrive-un-test)).
-Presidi trasversali: `test-riferimenti-morti-v1` è coperto dal `plpgsql_check`
-qui sopra; `test-rubinetto-primo-motivo-v1` non è toccato, perché nessuna
-chiamata a `fn_raise_primo_motivo_se_presente`.
-
-✅ **Applicati da Tid il 2026-09-27** (`-40` e `-41` insieme): pgTAP verdi,
-nessuna regressione.
-
-⏳ **Ora tocca a B-20 e F-4** (§17.3): il backend chiama
-`SELECT * FROM script.fn_get_credenziale_per_email(%s)` dall'endpoint
-`AdminAPIView`; sul 409 `E_CREDENZIALE_DA_CONFERMARE` il drawer apre il dialog
-e rimanda con `riusa_auth_user_id`.
 
 ## Registro
 
@@ -1655,8 +1538,10 @@ e rimanda con `riusa_auth_user_id`.
 | 2026-09-27 | BE | **B-17**: il rifiuto `E_INVITO_OPERATORE` prende il messaggio del catalogo (`ErrorPolicyRegistry`), `reason`/`reason_key` nel contesto; ripiego di `_check_invitabile` nella forma nuova. **B-18**: `invite_/disable_/demote_reason_key` in `OperatoreDetailRow`, docstring riscritta. **B-19**: il `detail` del rifiuto ultimo super admin non ricopia più il codice (va nel contesto). **B-8**: ripiego di `E_UTENTE_BLOCCATO` = frase del `-52` senza `%s`. Test: `test_invito_operatore`, `test_amm_software_service`, `test_login_credenziale_db` (+ i minuti nel `message` dell'envelope) verdi. Guida multi-face §3.1 e api.md (sesta famiglia di capability) |
 | 2026-09-27 | BE | B-6, parte che non dipende dal DB: `riusa_auth_user_id` dalla view alla madre; test del consenso sbloccato e verde. Trovato: i dati del dialog stanno nel contesto dell'errore, che non arriva al client (§17). Tid sceglie la lettura a DB + dialog; richiesta al team DB al §17.2 |
 | 2026-09-27 | FE | **F-3**: `OperatoreDrawer` rende i tre motivi col BB `bloccoMotivo` (prefissi `invite`/`disable`/`demote`), ritirato il ramo `veste_attiva`; i toggle «super admin» e «accesso attivo» spenti col motivo sotto quando `can_demote_super_admin`/`can_disable` sono falsi. Otto chiavi in `it.json`/`en.json`, ritirata `amministrazione.accesso_gia_attivo`. **F-1**: `E_UTENTE_BLOCCATO` in `MESSAGGIO_DB_CON_DATO`. `check_i18n_keys`, eslint e `npm run guards` verdi. ⚠️ Trovato: B-6 (consenso al riuso) mai fatto, §12.6 |
+| 2026-09-27 | BE | **Chiuso.** Il §17 (dati del dialog del consenso: B-6 a metà, B-20, F-4) e il controllo a video di F-3 scorporati in `brief-db-credenziale-per-email.md`; la domanda sulle FK del ponte django (§11.5) registrata in `PROJECT_CONTEXT`. Brief spostato in `work-done/` |
 | 2026-09-27 | Tid → DB | §17: nessun guard a DB sulla lettura della credenziale (il cancello è l'`AdminAPIView`). Scritti e provati `20260927-40` (`script.fn_get_credenziale_per_email`) e `-41` (la madre la legge, regola del 2), pgTAP `test-fn-get-credenziale-per-email-v1` (9), descrizione di `E_CREDENZIALE_DA_CONFERMARE`, manual (§17.4). Non applicati |
 | 2026-09-27 | Tid | `20260927-40`, `-41` applicati; pgTAP verdi, nessuna regressione. Lavoro DB del §17 chiuso. Resta a BE/FE: B-20, F-4 (§17.3) |
+| 2026-09-27 | BE | Merge con `Tito-dev`: le due righe qui sopra erano state scritte sul brief ancora in `work-in-progress/`. Il §17.4 (esecuzione DB) e la decisione «nessun guard a DB» sono spostati nel brief nuovo `brief-db-credenziale-per-email.md`; qui resta il rimando |
 
 ---
 {% include-markdown "signature-core.md" %}

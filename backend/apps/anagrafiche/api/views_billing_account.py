@@ -154,6 +154,7 @@ class BillingAccountUtilitiesView(DomainAPIView):
     """
 
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "cliente")
 
     @extend_schema(
         parameters=[

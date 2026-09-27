@@ -18,7 +18,7 @@ import {
   listRuoloContiBancari, createRuoloContoBancario,
   updateRuoloContoBancario, deleteRuoloContoBancario
 } from '../api/anagrafiche'
-import { DRAWER_WIDTH, MANAGE_ICONS, READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, READONLY_DOMAINS, READONLY_MODELS, RECAPITO_ICONS, STATUS_ICONS } from '../../core/constants'
 import ContoBancarioForm from './ContoBancarioForm.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
@@ -160,7 +160,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
     <div v-else class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <!-- Loading -->
       <div v-if="listLoading" class="app-loading">
-        <i class="pi pi-spin pi-spinner" />
+        <i :class="STATUS_ICONS.CARICAMENTO" />
       </div>
 
       <!-- Toolbar standard sub-drawer: reload + nuovo (allineato a
@@ -174,7 +174,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
       <!-- Lista conti esistenti -->
       <template v-if="!listLoading">
         <div v-if="contiList.length === 0 && !formMode" class="app-empty-state">
-          <i class="pi pi-wallet" />
+          <i :class="MANAGE_ICONS.CONTI_BANCARI" />
           <p>{{ t('anagrafiche.conti_bancari.nessun_conto') }}</p>
         </div>
 
@@ -190,12 +190,12 @@ const suVisibile = gestoreVisibile(emit, chiudi)
                 <Tag v-if="c.verificato && !c.bloccato" :value="t('anagrafiche.conti_bancari.verificato')" severity="info" />
               </div>
               <div class="app-mono conto-card-iban">
-                <i v-if="c.predefinito" class="pi pi-check-circle conto-predefinito" v-tooltip.top="t('anagrafiche.conti_bancari.predefinito')" />
+                <i v-if="c.predefinito" class="conto-predefinito" :class="MANAGE_ICONS.PREDEFINITO" v-tooltip.top="t('anagrafiche.conti_bancari.predefinito')" />
                 {{ c.iban }}
               </div>
               <div class="conto-card-detail">
-                <span v-if="c.bic_swift"><i class="pi pi-code" /> {{ c.bic_swift }}</span>
-                <span v-if="c.filiale_nome"><i class="pi pi-building" /> {{ c.filiale_nome }}</span>
+                <span v-if="c.bic_swift"><i :class="RECAPITO_ICONS.BIC" /> {{ c.bic_swift }}</span>
+                <span v-if="c.filiale_nome"><i :class="RECAPITO_ICONS.FILIALE" /> {{ c.filiale_nome }}</span>
               </div>
             </div>
             <div v-if="!formMode && !isReadonly && c.fonte !== 'soggetto'" class="conto-card-actions">

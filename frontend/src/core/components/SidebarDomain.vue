@@ -9,6 +9,7 @@ import { useTabsStore } from '../../stores/tabs'
 import { useNotify } from '../composables/useNotify'
 import { useNavigationFavorites } from '../composables/useNavigationFavorites'
 import { NAV_ICONS, resolveNavigationLabel } from '../navigation'
+import { MANAGE_ICONS } from '../constants'
 import SidebarItem from './SidebarItem.vue'
 
 const { t } = useI18n()
@@ -126,14 +127,14 @@ function handleToggleFavorite(item) {
         </span>
         <i
           v-if="!isCollapsed && hasChildren(item)"
-          class="pi group-chevron"
-          :class="isGroupOpen(item) ? 'pi-chevron-down' : 'pi-chevron-right'"
+          class="group-chevron"
+          :class="isGroupOpen(item) ? MANAGE_ICONS.ROW_COLLAPSE : MANAGE_ICONS.ROW_EXPAND"
         ></i>
         <!-- Stella preferito -->
         <i
           v-else-if="!isCollapsed"
-          class="pi favorite-star"
-          :class="nav.isFavoriteOfDomain(nav.currentDomain, item.to) ? 'pi-star-fill' : 'pi-star'"
+          class="favorite-star"
+          :class="nav.isFavoriteOfDomain(nav.currentDomain, item.to) ? [MANAGE_ICONS.PREFERITO_ATTIVO, 'favorite-star-attiva'] : MANAGE_ICONS.PREFERITI"
           @click.stop="handleToggleFavorite(item)"
           v-tooltip.right="nav.isFavoriteOfDomain(nav.currentDomain, item.to) ? t('nav.remove_favorite') : t('nav.set_favorite')"
         ></i>
@@ -153,8 +154,8 @@ function handleToggleFavorite(item) {
             {{ itemLabel(child) }}
           </span>
           <i
-            class="pi favorite-star"
-            :class="nav.isFavoriteOfDomain(nav.currentDomain, child.to) ? 'pi-star-fill' : 'pi-star'"
+            class="favorite-star"
+            :class="nav.isFavoriteOfDomain(nav.currentDomain, child.to) ? [MANAGE_ICONS.PREFERITO_ATTIVO, 'favorite-star-attiva'] : MANAGE_ICONS.PREFERITI"
             @click.stop="handleToggleFavorite(child)"
             v-tooltip.right="nav.isFavoriteOfDomain(nav.currentDomain, child.to) ? t('nav.remove_favorite') : t('nav.set_favorite')"
           ></i>
@@ -205,7 +206,9 @@ function handleToggleFavorite(item) {
   color: var(--p-yellow-400);
 }
 
-.favorite-star.pi-star-fill {
+/* Classe di stato, non il glifo: se `PREFERITO_ATTIVO` cambia disegno la
+   stella accesa resta accesa. */
+.favorite-star.favorite-star-attiva {
   opacity: 1;
   color: var(--p-yellow-400);
 }

@@ -10,7 +10,7 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
 import { useAuthStore } from '../../stores/auth'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, STATUS_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
@@ -243,7 +243,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
       </template>
 
       <div v-else class="app-loading">
-        <i class="pi pi-spin pi-spinner"></i>
+        <i :class="STATUS_ICONS.CARICAMENTO"></i>
       </div>
 
       <FormFooter v-if="contentReady" :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />

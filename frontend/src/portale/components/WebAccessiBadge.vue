@@ -16,6 +16,7 @@ import { useI18n } from 'vue-i18n'
 import { getStatoAccessiCliente, getStatoAccessiFornitore } from '../api/portaleAdminApi'
 import WebAccessiDrawer from './WebAccessiDrawer.vue'
 import Button from 'primevue/button'
+import { MANAGE_ICONS } from '../../core/constants'
 
 // Il punto passa tutte le prop dell'anteprima: qui se ne leggono tre.
 defineOptions({ inheritAttrs: false })
@@ -58,7 +59,7 @@ watch(() => [props.entitaTipoWeb, props.entitaIdWeb], caricaConteggio, { immedia
 <template>
   <template v-if="attivo">
     <Button
-      outlined icon="pi pi-globe"
+      outlined :icon="MANAGE_ICONS.ACCESSI_WEB"
       :label="`${conteggio} ${t('portale.accessi_web.badge_label')}`"
       :loading="loading"
       class="app-badge-anteprima"

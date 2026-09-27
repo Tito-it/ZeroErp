@@ -74,7 +74,7 @@ import NaturaDocTag from '../../core/components/NaturaDocTag.vue'
 import SaldoPanel from './SaldoPanel.vue'
 import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfermata'
 import { LIVELLO, spazioSaldo, useSaldi } from '../composables/useSaldi'
-import { DATE_FORMAT } from '../../core/constants'
+import { DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import { displayDate, toDateString, parseIsoDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { aggiornaRiga, creaRiga } from '../api/pagamenti'
@@ -435,7 +435,7 @@ async function onConferma() {
                  tutti scritti sul posto. -->
             <Button
               v-tooltip.top="t('pagamenti.rate.cerca')"
-              icon="pi pi-search"
+              :icon="MANAGE_ICONS.RICERCA"
               text
               rounded
               size="small"
@@ -581,14 +581,14 @@ async function onConferma() {
           text
           size="small"
           :label="t('common.cancel')"
-          icon="pi pi-arrow-left"
+          :icon="MANAGE_ICONS.BACK"
           @click="annulla"
         />
         <Button
           size="small"
           severity="warn"
           :label="t('pagamenti.abbina.forza')"
-          icon="pi pi-check"
+          :icon="MANAGE_ICONS.CONFIRM"
           :loading="loading"
           @click="onConferma"
         />
@@ -598,13 +598,13 @@ async function onConferma() {
           text
           size="small"
           :label="t('common.cancel')"
-          icon="pi pi-arrow-left"
+          :icon="MANAGE_ICONS.BACK"
           @click="emit('annulla')"
         />
         <Button
           size="small"
           :label="t('common.save')"
-          icon="pi pi-check"
+          :icon="MANAGE_ICONS.CONFIRM"
           :loading="loading"
           :disabled="!canSave"
           @click="onSalva"
