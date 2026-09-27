@@ -26,7 +26,7 @@ guard `vendite.trgfn_ddt_guard_transizione` (stessa matrice `config.transizioni_
 
 | Chiave | Contenuto |
 |---|---|
-| `available_actions` | transizioni manuali disponibili per lo stato corrente (da `meta.ui`: `key`/`label_key`/`severity`/`requires_confirm`/`outlined`) → il FE non hardcoda i pulsanti; l'icona la sceglie dal `key` |
+| `available_actions` | transizioni manuali disponibili per lo stato corrente (da `meta.ui`: `key`/`label_key`/`requires_confirm`/`outlined`) → il FE non hardcoda i pulsanti; icona e colore li sceglie dal `key` |
 | `can_change_state` | esiste almeno una transizione disponibile |
 | `can_edit_testata` / `can_edit_righe` | `true` solo in `DRAFT` |
 | `can_push_commessa` (+ `_reason`/`_reason_key`) | **una** lettura di `fn_ddt_push_diagnosi(p_ddt_id)`, aggregata: il flag è «esiste una riga con `motivo NULL`» — vero per **costruzione**, perché il lister che alimenta il push è quella stessa query; se `false`, prima la precedenza sul `segment` (`ALLOCATA` → `DDT_GIA_INVIATO`, `EMESSA` → `DDT_GIA_FATTURATO`), poi il motivo a rank minimo mappato per stringa (rami propri: `DDT_FATTURA_DA_ORDINE`, `DDT_SOLO_TRASPORTO`, `DDT_MERCE_IN_VIAGGIO`; il resto in `DDT_NON_PUSHABILE`). Nessuna logica di eleggibilità qui, e nessuna seconda lettura |

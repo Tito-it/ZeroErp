@@ -31,6 +31,15 @@ AS $function$
 --   testata, convenzione no-leak).
 -- Brief: brief-db-magazzino-lotto-2-bis-be-fe R-1.
 DECLARE
+    -- ⚠️ Tipi espliciti, non %TYPE, e non e' una svista: la funzione serve
+    --    DUE famiglie. p_famiglia e' un selettore (INVENTARIO | RETTIFICA,
+    --    validato dal guard qui sotto) senza colonna-vocabolario;
+    --    p_documento_id e v_stato sono l'id e lo stato di magazzino.inventari
+    --    O di magazzino.rettifiche; v_destinazioni e' il text[] di
+    --    magazzino.fn_documento_interno_transizioni (%TYPE[] non esiste).
+    --    Gli involucri _inventario / _rettifica sono ancorati alla loro
+    --    tabella. Il resto e' calcolato (azioni e motivi jsonb, flag, chiave
+    --    i18n composta).
     v_stato          text;
     v_destinazioni   text[];
     v_actions        jsonb;
@@ -72,17 +81,16 @@ BEGIN
     -- Le destinazioni ammesse: la stessa matrice del guard.
     v_destinazioni := magazzino.fn_documento_interno_transizioni(v_stato);
 
-    -- Una voce per destinazione RICHIEDIBILE. L'elenco (chiave, etichetta,
-    -- severita') e' il vestito dell'azione e sta qui; QUALI
+    -- Una voce per destinazione RICHIEDIBILE. L'elenco (chiave,
+    -- etichetta) e' il vestito dell'azione e sta qui; QUALI
     -- compaiano lo decide la matrice, non questa tabella di valori.
-    -- L'icona NON sta qui: il frontend la sceglie dal key (D-1 di
-    -- brief-db-icone-azioni-per-significato).
+    -- Icona e colore NON stanno qui: il frontend li sceglie dal key
+    -- (D-1 e §9 di brief-db-icone-azioni-per-significato).
     SELECT COALESCE(jsonb_agg(
                jsonb_build_object(
                    'key',              a.key,
                    'target_state',     a.target_state,
                    'label_key',        a.label_key,
-                   'severity',         a.severity,
                    'requires_confirm', a.requires_confirm,
                    -- Nessuna delle tre ha precondizioni oltre allo stato:
                    -- il guard le ammette tutte da qui, quindi sono accese e
@@ -96,14 +104,14 @@ BEGIN
       INTO v_actions
       FROM (VALUES
               ('CONFIRM', 'conferma', 'magazzino.documenti_interni.azione.conferma',
-               'success', false, 1),
+               false, 1),
               ('DRAFT',    'riapri',   'magazzino.documenti_interni.azione.riapri',
-               'secondary', false, 2),
+               false, 2),
               -- ⚠️ Solo l'annullamento chiede conferma: e' l'uscita che non
               --    si torna indietro (CANCEL e' terminale).
               ('CANCEL',   'annulla',  'magazzino.documenti_interni.azione.annulla',
-               'danger', true, 3)
-           ) AS a(target_state, key, label_key, severity, requires_confirm, ordine)
+               true, 3)
+           ) AS a(target_state, key, label_key, requires_confirm, ordine)
      WHERE a.target_state = ANY (v_destinazioni);
 
     -- can_change_state conta ANCHE le azioni disabilitate (§12.2 punto 2):
@@ -141,7 +149,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_documento_interno(p_famiglia text, p_documento_id bigint)
-IS 'Capability di un documento interno di magazzino (p_famiglia = INVENTARIO | RETTIFICA) per il detail API. Chiavi: stato_codice, available_actions[] (key conferma/riapri/annulla, target_state, label_key, severity, requires_confirm, enabled, reason, reason_key, manuale), can_change_state, can_edit_testata, can_edit_righe, can_delete (tutti = stato DRAFT, lo stesso predicato dei guard), can_registra + _reason + _reason_key, stato_info_key. ⭐ Non contiene nessuna regola propria: le azioni vengono dalla matrice magazzino.fn_documento_interno_transizioni (quella che il guard fa rispettare) e la terna di registra dal primo motivo di script.fn_check_documento_interno_registrabile (quella che le madri del posting sollevano) — linee-guida-sql §12.1/§12.2. ⚠️ POSTED e'' nella matrice ma non e'' un''azione richiedibile (la porta la apre solo l''operazione con la GUC): esce dalle azioni ed e'' la terna can_registra. INVOKER: documento fuori perimetro o inesistente -> NULL, il 404 lo da'' il BE sulla testata. Chiavi i18n emesse: magazzino.documenti_interni.azione.{conferma,riapri,annulla}, ....registra_reason.{non_confermato,gia_registrato,annullato,senza_righe,righe_non_postabili}, ....stato_info.{posted,cancel}. Brief: brief-db-magazzino-lotto-2-bis-be-fe R-1. rev 2026-09-27 (20260927-18): le azioni non portano piu'' la chiave icon. Il DB manda il SIGNIFICATO (key), il frontend sceglie il segno dal key con una mappa verbo -> icona in core/ (decisione D-1 di Tid, opzione A): un segno scritto qui era l''unico dell''app che non passava dalle costanti del frontend, e lo stesso verbo ne portava due. Brief: brief-db-icone-azioni-per-significato (D-1).';
+IS 'Capability di un documento interno di magazzino (p_famiglia = INVENTARIO | RETTIFICA) per il detail API. Chiavi: stato_codice, available_actions[] (key conferma/riapri/annulla, target_state, label_key, requires_confirm, enabled, reason, reason_key, manuale), can_change_state, can_edit_testata, can_edit_righe, can_delete (tutti = stato DRAFT, lo stesso predicato dei guard), can_registra + _reason + _reason_key, stato_info_key. ⭐ Non contiene nessuna regola propria: le azioni vengono dalla matrice magazzino.fn_documento_interno_transizioni (quella che il guard fa rispettare) e la terna di registra dal primo motivo di script.fn_check_documento_interno_registrabile (quella che le madri del posting sollevano) — linee-guida-sql §12.1/§12.2. ⚠️ POSTED e'' nella matrice ma non e'' un''azione richiedibile (la porta la apre solo l''operazione con la GUC): esce dalle azioni ed e'' la terna can_registra. INVOKER: documento fuori perimetro o inesistente -> NULL, il 404 lo da'' il BE sulla testata. Chiavi i18n emesse: magazzino.documenti_interni.azione.{conferma,riapri,annulla}, ....registra_reason.{non_confermato,gia_registrato,annullato,senza_righe,righe_non_postabili}, ....stato_info.{posted,cancel}. Brief: brief-db-magazzino-lotto-2-bis-be-fe R-1. rev 2026-09-27 (20260927-18): le azioni non portano piu'' la chiave icon. Il DB manda il SIGNIFICATO (key), il frontend sceglie il segno dal key con una mappa verbo -> icona in core/ (decisione D-1 di Tid, opzione A): un segno scritto qui era l''unico dell''app che non passava dalle costanti del frontend, e lo stesso verbo ne portava due. Brief: brief-db-icone-azioni-per-significato (D-1). rev 2026-09-28 (20260928-15): le azioni non portano piu'' la chiave severity. Come l''icona, il colore del pulsante lo decide il VERBO, uguale in tutti i domini, e il frontend lo ricava dal key (mappa verbo -> aspetto in core/, decisione di Tid): lo stesso verbo portava colori diversi fra i domini. label_key e outlined restano dati. Brief: brief-db-icone-azioni-per-significato (§9).';
 ```
 
 ---

@@ -68,13 +68,23 @@
 -- L'aspetto dell'«annulla» che resta un dato (severity, outlined) resta
 -- misurato come prima.
 --
+-- ⚠️ rev 2026-09-28 — NEMMENO IL COLORE E' PIU' UN DATO DEL DB.
+-- Decisione di Tid (brief-db-icone-azioni-per-significato §9.1): il colore
+-- del pulsante (`severity`) segue la regola dell'icona, lo decide il VERBO,
+-- uguale in tutti i domini, e il frontend lo ricava dal `key`. Lo stesso
+-- verbo portava colori diversi fra i domini (conferma, riapri, push_commessa).
+-- Il test 1 non pretende piu' `severity = danger` (pinnava il contratto
+-- vecchio) e resta sulla sola `outlined`; i test 4, 9 e 10 asseriscono
+-- l'assenza di `severity` accanto a quella di `icon`, con lo stesso perimetro.
+-- ⭐ `outlined` resta un DATO: cambia per STATO (l'annulla di una bozza e'
+-- solo bordato), non per verbo, e il test 3 continua a misurarlo.
+--
 -- Indice test (1..10):
---   1) Il DATO: ogni riga `annulla` delle 8 matrici ha severity=danger e
---      outlined=true
+--   1) Il DATO: ogni riga `annulla` delle 8 matrici ha outlined=true
 --   2) Il PERCORSO: tutte le azioni emesse portano la CHIAVE `outlined`
 --      (era assente su preventivo e offerta: il difetto vero)
 --   3) Il PERCORSO: ogni «annulla» emesso ha outlined = true
---   4) Il PERCORSO: nessuna azione emessa porta la chiave `icon`
+--   4) Il PERCORSO: nessuna azione emessa porta la chiave `icon` o `severity`
 --   5) Ogni azione che cambia stato porta la CHIAVE
 --      `target_state_descrizione`
 --   6) ...e il suo valore e' la descrizione vera della tabella di stato,
@@ -82,13 +92,13 @@
 --   7) Le azioni che NON cambiano stato (ristampa, push, crea_revisione)
 --      hanno descrizione NULL: non hanno una destinazione da nominare
 --   8) Anti-vacuita': la popolazione misurata non e' vuota
---   9) Il DATO: nessuna riga delle 8 matrici ha `icon` nel meta
---  10) Il TESTO: nessuna script.fn_available_actions_* nomina `'icon'` o un
---      glifo `pi pi-...` nel corpo
+--   9) Il DATO: nessuna riga delle 8 matrici ha `icon` o `severity` nel meta
+--  10) Il TESTO: nessuna script.fn_available_actions_* nomina `'icon'`,
+--      `'severity'` o un glifo `pi pi-...` nel corpo
 --
--- ⚠️ SE IL TEST 4, IL 9 O IL 10 DIVENTA ROSSO un glifo e' tornato nel DB:
--- il segno lo sceglie il frontend dal `key`, e un'icona mandata dal DB sarebbe
--- di nuovo la seconda sede che il brief ha chiuso.
+-- ⚠️ SE IL TEST 4, IL 9 O IL 10 DIVENTA ROSSO un glifo o un colore e'
+-- tornato nel DB: l'aspetto lo sceglie il frontend dal `key`, e un segno
+-- mandato dal DB sarebbe di nuovo la seconda sede che il brief ha chiuso.
 --
 -- ⚠️ SE IL TEST 3 DIVENTA ROSSO l'aspetto del pulsante distruttivo
 -- e' tornato a divergere fra domini. La sede della scelta e' UNA — il
@@ -149,12 +159,12 @@ UNION ALL
 SELECT 'lotto',      t.meta FROM config.stati_doc_fiscale_transizioni t
  WHERE t.meta->>'action_key' = 'annulla';
 
+-- rev 2026-09-28: solo outlined. Il colore non e' piu' nel meta (test 9).
 SELECT is(
     (SELECT count(*)::int FROM _seed_annulla
-      WHERE (meta->>'outlined') IS DISTINCT FROM 'true'
-         OR (meta->>'severity') IS DISTINCT FROM 'danger'),
+      WHERE (meta->>'outlined') IS DISTINCT FROM 'true'),
     0,
-    format('1) seed: le %s righe «annulla» degli 8 domini sono danger + outlined',
+    format('1) seed: le %s righe «annulla» degli 8 domini sono outlined',
            (SELECT count(*) FROM _seed_annulla)));
 
 -- ------------------------------------------------------------
@@ -300,13 +310,14 @@ END;
 --    della chiave, non il valore: un `icon` a null sarebbe ancora la
 --    seconda sede, e `a->>'icon' IS NULL` non lo distinguerebbe.
 --    Su TUTTE le azioni emesse, non solo «annulla».
+--    rev 2026-09-28: anche `severity`, con la stessa regola (brief §9).
 -- ============================================================
 SELECT CASE WHEN (SELECT count(*) FROM _cap_azioni) = 0
   THEN fail('4) nessuna azione emessa da nessuno degli 8 domini: vedi test 8')
   ELSE is(
-    (SELECT count(*)::int FROM _cap_azioni WHERE a ? 'icon'),
+    (SELECT count(*)::int FROM _cap_azioni WHERE a ?| ARRAY['icon', 'severity']),
     0,
-    format('4) percorso: nessuna delle %s azioni emesse porta la chiave icon',
+    format('4) percorso: nessuna delle %s azioni emesse porta la chiave icon o severity',
            (SELECT count(*) FROM _cap_azioni)))
 END;
 
@@ -382,8 +393,8 @@ SELECT cmp_ok(
 
 -- ============================================================
 -- 9) Il dato, su TUTTE le righe delle 8 matrici (anche le spente e le
---    automatiche): nessuna porta `icon` nel meta. E' il seed che il CSV
---    scrive, quindi in CI la popolazione c'e' sempre.
+--    automatiche): nessuna porta `icon` ne' `severity` nel meta. E' il seed
+--    che il CSV scrive, quindi in CI la popolazione c'e' sempre.
 -- ============================================================
 SELECT is(
     (SELECT count(*)::int FROM (
@@ -395,9 +406,9 @@ SELECT is(
         UNION ALL SELECT meta FROM config.transizioni_stati_contratti
         UNION ALL SELECT meta FROM vendite.transizioni_stati_commessa
         UNION ALL SELECT meta FROM config.stati_doc_fiscale_transizioni
-     ) m WHERE m.meta ? 'icon'),
+     ) m WHERE m.meta ?| ARRAY['icon', 'severity']),
     0,
-    '9) seed: nessuna riga delle 8 matrici di transizione ha icon nel meta');
+    '9) seed: nessuna riga delle 8 matrici di transizione ha icon o severity nel meta');
 
 -- ============================================================
 -- 10) Il testo delle funzioni. Non dipende dai dati: copre le azioni
@@ -411,9 +422,9 @@ SELECT is(
        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'script'
         AND p.proname LIKE 'fn\_available\_actions\_%'
-        AND p.prosrc ~ '''icon''|pi pi-'),
+        AND p.prosrc ~ '''icon''|''severity''|pi pi-'),
     NULL,
-    format('10) testo: nessuna delle %s script.fn_available_actions_* emette icon o un glifo pi pi-*',
+    format('10) testo: nessuna delle %s script.fn_available_actions_* emette icon, severity o un glifo pi pi-*',
            (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
              WHERE n.nspname = 'script' AND p.proname LIKE 'fn\_available\_actions\_%')));
 

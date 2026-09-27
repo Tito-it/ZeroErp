@@ -12,7 +12,7 @@ applicative** (il push è *verso* la commessa, non un'azione della commessa).
 
 * `available_actions`: transizioni **utente** ammesse dallo stato corrente, lette da
   `vendite.transizioni_stati_commessa` in modo **data-driven** dal `meta`
-  (`action_key`, `label_key`, `severity`, `requires_confirm`, `outlined`). L'icona la sceglie
+  (`action_key`, `label_key`, `requires_confirm`, `outlined`). Icona e colore li sceglie
   il frontend dal `key`.
 * Filtri: `stato_da_id = stato corrente`, `attivo`, `meta.manuale = true`, presenza di
   `action_key` + `label_key` (simmetrico al CHECK `ck_transizioni_stati_comm_meta_ui`).
@@ -34,7 +34,7 @@ applicative** (il push è *verso* la commessa, non un'azione della commessa).
 
 ### Output (jsonb)
 
-* `available_actions` — array di `{ key, target_state, label_key, severity, requires_confirm, outlined }`
+* `available_actions` — array di `{ key, target_state, label_key, requires_confirm, outlined }`
 * `can_change_state` — bool
 * `can_edit_righe` — bool
 * `is_emittibile` — bool

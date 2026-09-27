@@ -29,7 +29,7 @@ stessa struttura, stesso meccanismo di lettura nella capability function.
 > **Nota architetturale** — La **regola di business** (quali transizioni sono ammesse)
 > continua a risiedere nel trigger
 > `vendite.trgfn_contratti_guard_transizione_stato`. Questa tabella serve
-> esclusivamente come fonte dei metadati UI (label, severity, ecc.; l'icona la sceglie il frontend dall'`action_key`): la separazione
+> esclusivamente come fonte dei metadati UI (label, conferma, data, ecc.; icona e colore li sceglie il frontend dall'`action_key`): la separazione
 > tra "cosa è ammesso" (trigger) e "come si presenta al FE" (tabella) è intenzionale e
 > allineata al pattern dei due domini fratelli.
 
@@ -64,8 +64,7 @@ Il campo `meta jsonb NOT NULL DEFAULT '{}'` porta i metadati letti da
 |--------|------|-------------|
 | `action_key` | `text` | Chiave semantica dell'azione (es. `attiva`, `annulla`, `cessa`) |
 | `label_key` | `text` | Chiave i18n per il label del bottone Vue (`$t(label_key)`) |
-| `severity` | `text` | Severity PrimeVue: `info` / `success` / `danger` |
-| _(icona)_ | — | Non è un dato del DB: il frontend la sceglie dall'`action_key` (mappa verbo → icona in `core/`) |
+| _(icona e colore)_ | — | Non sono dati del DB: il frontend li sceglie dall'`action_key` (mappa verbo → aspetto in `core/`, icona e `severity`). Il colore è uscito dal `meta` il 2026-09-28 |
 | `requires_confirm` | `boolean` | `true` → dialog di conferma prima di eseguire |
 | `requires_date` | `boolean` | `true` → la UI deve raccogliere una data (ex: cessazione). La funzione arricchisce l'azione con `default_date` e `min_date` contestuali |
 | `outlined` | `boolean` | `true` → bottone PrimeVue variante outlined (usato su `annulla` per ridurne il peso visivo) |
@@ -73,11 +72,11 @@ Il campo `meta jsonb NOT NULL DEFAULT '{}'` porta i metadati letti da
 
 **Valori seed correnti (rev 2026-05-28)**:
 
-| id | Transizione | severity | requires_date | outlined |
-|----|-------------|----------|:---:|:---:|
-| 1 | DRAFT → ATTIVO | `info` | `false` | `false` |
-| 2 | DRAFT → ANNULLATO | `danger` | `false` | `true` |
-| 3 | ATTIVO → CESSATO | `danger` | `true` | `false` |
+| id | Transizione | requires_date | outlined |
+|----|-------------|:---:|:---:|
+| 1 | DRAFT → ATTIVO | `false` | `false` |
+| 2 | DRAFT → ANNULLATO | `false` | `true` |
+| 3 | ATTIVO → CESSATO | `true` | `false` |
 
 ---
 
@@ -128,8 +127,7 @@ La regola del trigger per `ATTIVO → CESSATO`:
 -- Transizioni UI disponibili per un contratto nel suo stato corrente
 SELECT sdc_a.codice AS stato_destinazione,
        t.meta->>'action_key' AS azione,
-       t.meta->>'label_key'  AS label_i18n,
-       t.meta->>'severity'   AS severity
+       t.meta->>'label_key'  AS label_i18n
   FROM config.transizioni_stati_contratti t
   JOIN config.stati_doc_contratti sdc_a ON sdc_a.id = t.stato_a_id
  WHERE t.stato_da_id = (
