@@ -68,7 +68,6 @@ script.fn_available_actions_offerta(
             "target_state": "EMESSA",          // null per azioni speciali (crea_revisione, push_contratto, genera_ordine)
             "label_key": "offerte.azione_emetti",
             "severity": "success",
-            "icon": "pi pi-send",
             "requires_confirm": true,
             "requires_motivazione": false       // true per annulla e rifiuta
         }
@@ -145,8 +144,8 @@ Risultato per stato:
    `NOT FOUND` → `RETURN NULL`.
 2. **Transizioni manuali** — `jsonb_agg` su `config.stati_doc_offerte_transizioni`
    filtrata per `stato_da_id = v_stato_id AND attivo IS TRUE AND manuale IS NOT FALSE`.
-   I metadati UI (`label_key`, `severity`, `icon`, `requires_confirm`,
-   `requires_motivazione`) vengono letti da `t.meta`. Ordine: `sa.ordine`.
+   I metadati UI (`label_key`, `severity`, `requires_confirm`,
+   `requires_motivazione`) vengono letti da `t.meta`; l'icona la sceglie il frontend dal `key`. Ordine: `sa.ordine`.
    Filtro defense-in-depth: `AND t.meta ?? 'action_key' AND t.meta ?? 'label_key'`.
 3. **Presenza documenti** — due `EXISTS` calcolati una volta:
    - `v_has_contratto` = `EXISTS` contratto con `offerta_id = p_offerta_id`.

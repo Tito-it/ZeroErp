@@ -33,7 +33,7 @@ pulsanti, senza sapere niente delle regole che ci stanno dietro.
 | Chiave | Che cosa dice |
 | --- | --- |
 | `stato_codice` | lo stato corrente |
-| `available_actions[]` | una voce per **transizione richiedibile**: `key` (`conferma` · `riapri` · `annulla`), `target_state`, `label_key`, `icon`, `severity`, `requires_confirm`, `enabled`, `reason`, `reason_key`, `manuale` |
+| `available_actions[]` | una voce per **transizione richiedibile**: `key` (`conferma` · `riapri` · `annulla`), `target_state`, `label_key`, `severity`, `requires_confirm`, `enabled`, `reason`, `reason_key`, `manuale` |
 | `can_change_state` | c'è almeno un'azione — **anche spenta**: la barra deve comparire proprio per mostrare il pulsante grigio col suo motivo (§12.2 punto 2) |
 | `can_edit_testata`, `can_edit_righe`, `can_delete` | lo stato è `DRAFT` — lo **stesso** predicato dei guard che rifiuterebbero |
 | `can_registra`, `can_registra_reason`, `can_registra_reason_key` | la terna del verbo irreversibile |

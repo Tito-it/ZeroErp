@@ -366,8 +366,8 @@ La funzione combina due fonti:
   un ordine — vedi §8.bis)
 
 Per ogni azione la funzione restituisce i metadati per l'interfaccia (chiave di
-dispatch, stato target, etichetta i18n, icona, se serve conferma, se serve una
-motivazione) e una serie di flag di capability:
+dispatch, stato target, etichetta i18n, se serve conferma, se serve una
+motivazione; l'icona la sceglie l'interfaccia dalla chiave dell'azione) e una serie di flag di capability:
 
 | Flag                                                                      | Vero quando                                                                                                   |
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |

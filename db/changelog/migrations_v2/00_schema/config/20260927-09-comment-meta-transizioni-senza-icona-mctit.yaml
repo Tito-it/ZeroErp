@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# COMMENT della colonna `meta` di sei matrici di transizione: `icon` esce
+# dall'elenco dei metadati UI.
+#
+# Dal 2026-09-27 (D-1 di Tid, opzione A) il DB non manda piu' il glifo: le
+# fn_available_actions_* non emettono `icon` (20260927-10 -> -18) e il seed lo
+# toglie dai CSV. Il COMMENT che lo elencava direbbe il falso.
+# Testo: VIVO (col_description, 2026-09-27) senza `icon` + una frase.
+# ⚠️ Una tabella di `vendite` sta in un file di `config`: sono sei COMMENT dello
+#    stesso fatto, e dividerli in due file non aggiunge niente.
+# `config.stati_doc_fiscale_transizioni` e `config.transizioni_stati_preventivi`
+# non nominano `icon` nel COMMENT: non si toccano.
+# Solo COMMENT: nessuna struttura, nessun dato.
+# Brief: brief-db-icone-azioni-per-significato.md §6.3
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260927-09-comment-meta-transizioni-senza-icona-mctit.yaml
+
+  - changeSet:
+      id: 20260927-09-comment-meta-transizioni-senza-icona
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT della colonna meta di sei matrici di transizione: icon esce dai
+        metadati UI, il segno lo sceglie il frontend dall'action_key. Solo
+        COMMENT. Brief: brief-db-icone-azioni-per-significato (D-1).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN config.stati_doc_offerte_transizioni.meta
+              IS 'Metadati UI (action_key, label_key, severity, requires_confirm, manuale). manuale=false per transizioni automatiche (es. EMESSA->SUPERATA via trigger revisione). L''icona dell''azione NON sta nel meta: il frontend la sceglie dall''action_key (mappa verbo -> icona in core/). Brief: brief-db-icone-azioni-per-significato (D-1).';
+
+              COMMENT ON COLUMN config.transizioni_stati_contratti.meta
+              IS 'Metadati UI (action_key, label_key, severity, requires_confirm, requires_date, outlined, manuale). requires_date=true: la UI deve raccogliere una data (es. cessa -> CESSATO). manuale=false per transizioni automatiche (job notturno pgAgent). L''icona dell''azione NON sta nel meta: il frontend la sceglie dall''action_key (mappa verbo -> icona in core/). Brief: brief-db-icone-azioni-per-significato (D-1).';
+
+              COMMENT ON COLUMN config.transizioni_stati_ordini.meta
+              IS 'Metadati UI (action_key, label_key, severity, requires_confirm, outlined, manuale). manuale=false per transizioni automatiche/di processo (escluse da available_actions). Per le manuali action_key+label_key sono obbligatori (vedi ck_transizioni_stati_ord_meta_ui). L''icona dell''azione NON sta nel meta: il frontend la sceglie dall''action_key (mappa verbo -> icona in core/). Brief: brief-db-icone-azioni-per-significato (D-1).';
+
+              COMMENT ON COLUMN config.transizioni_stati_ddt.meta
+              IS 'Metadati UI (action_key, label_key, severity, requires_confirm, outlined, manuale). manuale=false per transizioni automatiche/di processo (escluse dai pulsanti). Per le manuali action_key+label_key sono obbligatori (vedi ck_transizioni_stati_ddt_meta_ui). L''icona dell''azione NON sta nel meta: il frontend la sceglie dall''action_key (mappa verbo -> icona in core/). Brief: brief-db-icone-azioni-per-significato (D-1).';
+
+              COMMENT ON COLUMN config.transizioni_stati_reso.meta
+              IS 'Metadati UI (action_key, label_key, severity, requires_confirm, outlined, manuale). manuale=false per transizioni automatiche (escluse dai pulsanti); per le manuali action_key+label_key obbligatori (ck_..._meta_ui). L''icona dell''azione NON sta nel meta: il frontend la sceglie dall''action_key (mappa verbo -> icona in core/). Brief: brief-db-icone-azioni-per-significato (D-1).';
+
+              COMMENT ON COLUMN vendite.transizioni_stati_commessa.meta
+              IS 'Metadati UI (action_key, label_key, severity, requires_confirm, outlined, manuale). manuale=false per transizioni automatiche/di processo (escluse da una futura available_actions). Per le manuali action_key+label_key sono obbligatori (vedi ck_transizioni_stati_comm_meta_ui). L''icona dell''azione NON sta nel meta: il frontend la sceglie dall''action_key (mappa verbo -> icona in core/). Brief: brief-db-icone-azioni-per-significato (D-1).';
+
+      rollback:
+        - empty: {}

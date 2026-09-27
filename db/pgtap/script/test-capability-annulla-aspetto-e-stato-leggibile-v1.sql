@@ -52,13 +52,29 @@
 -- Il documento rappresentante di uno stato si sceglie in modo DETERMINISTICO
 -- (`ORDER BY stato, id`): un `LIMIT` senza ordine scommette.
 --
--- Indice test (1..8):
---   1) Il DATO: ogni riga `annulla` delle 8 matrici ha outlined=true e
---      l'icona del lotto (pi pi-times-circle), che e' lo standard scelto
+-- ⚠️ rev 2026-09-27 — L'ICONA NON E' PIU' UN DATO DEL DB.
+-- Decisione D-1 di Tid (brief-db-icone-azioni-per-significato, opzione A):
+-- il DB manda il SIGNIFICATO dell'azione (`key`), il frontend sceglie il segno
+-- dal `key` con una mappa verbo -> icona in core/. Fino a oggi i test 1 e 4
+-- pretendevano `icon = pi pi-times-circle` su ogni «annulla»: pinnavano il
+-- contratto vecchio. Adesso asseriscono il rovescio — l'`icon` NON c'e' —
+-- e due test nuovi (9, 10) lo presidiano dove il campione non arriva:
+--   * 9 guarda TUTTE le righe delle 8 matrici, non solo «annulla»;
+--   * 10 guarda il CORPO di ogni script.fn_available_actions_*: le azioni
+--     applicative (push, crea_revisione, genera_ordine, ristampa) e il
+--     documento interno di magazzino avevano il glifo scritto nel codice, e
+--     compaiono nel campione solo se un documento le esercita. Il testo della
+--     funzione non dipende dai dati.
+-- L'aspetto dell'«annulla» che resta un dato (severity, outlined) resta
+-- misurato come prima.
+--
+-- Indice test (1..10):
+--   1) Il DATO: ogni riga `annulla` delle 8 matrici ha severity=danger e
+--      outlined=true
 --   2) Il PERCORSO: tutte le azioni emesse portano la CHIAVE `outlined`
 --      (era assente su preventivo e offerta: il difetto vero)
 --   3) Il PERCORSO: ogni «annulla» emesso ha outlined = true
---   4) Il PERCORSO: ogni «annulla» emesso ha icon = pi pi-times-circle
+--   4) Il PERCORSO: nessuna azione emessa porta la chiave `icon`
 --   5) Ogni azione che cambia stato porta la CHIAVE
 --      `target_state_descrizione`
 --   6) ...e il suo valore e' la descrizione vera della tabella di stato,
@@ -66,8 +82,15 @@
 --   7) Le azioni che NON cambiano stato (ristampa, push, crea_revisione)
 --      hanno descrizione NULL: non hanno una destinazione da nominare
 --   8) Anti-vacuita': la popolazione misurata non e' vuota
+--   9) Il DATO: nessuna riga delle 8 matrici ha `icon` nel meta
+--  10) Il TESTO: nessuna script.fn_available_actions_* nomina `'icon'` o un
+--      glifo `pi pi-...` nel corpo
 --
--- ⚠️ SE IL TEST 3 O IL 4 DIVENTA ROSSO l'aspetto del pulsante distruttivo
+-- ⚠️ SE IL TEST 4, IL 9 O IL 10 DIVENTA ROSSO un glifo e' tornato nel DB:
+-- il segno lo sceglie il frontend dal `key`, e un'icona mandata dal DB sarebbe
+-- di nuovo la seconda sede che il brief ha chiuso.
+--
+-- ⚠️ SE IL TEST 3 DIVENTA ROSSO l'aspetto del pulsante distruttivo
 -- e' tornato a divergere fra domini. La sede della scelta e' UNA — il
 -- `meta` delle transizioni — e questa e' la misura che impedisce che
 -- l'ottavo pulsante diverso nasca di nuovo senza che nessuno se ne accorga
@@ -92,7 +115,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(8);
+SELECT plan(10);
 
 -- ============================================================
 -- 1) Il dato. Le 8 matrici, lette con la loro chiave nativa
@@ -129,10 +152,9 @@ SELECT 'lotto',      t.meta FROM config.stati_doc_fiscale_transizioni t
 SELECT is(
     (SELECT count(*)::int FROM _seed_annulla
       WHERE (meta->>'outlined') IS DISTINCT FROM 'true'
-         OR (meta->>'icon')     IS DISTINCT FROM 'pi pi-times-circle'
          OR (meta->>'severity') IS DISTINCT FROM 'danger'),
     0,
-    format('1) seed: le %s righe «annulla» degli 8 domini sono danger + outlined + pi pi-times-circle',
+    format('1) seed: le %s righe «annulla» degli 8 domini sono danger + outlined',
            (SELECT count(*) FROM _seed_annulla)));
 
 -- ------------------------------------------------------------
@@ -274,17 +296,18 @@ SELECT CASE WHEN (SELECT count(*) FROM _cap_azioni WHERE a->>'key' = 'annulla') 
 END;
 
 -- ============================================================
--- 4) L'icona. Il lotto e' il riferimento: X dentro un cerchio.
+-- 4) L'icona non arriva dal DB (rev 2026-09-27). Si misura la PRESENZA
+--    della chiave, non il valore: un `icon` a null sarebbe ancora la
+--    seconda sede, e `a->>'icon' IS NULL` non lo distinguerebbe.
+--    Su TUTTE le azioni emesse, non solo «annulla».
 -- ============================================================
-SELECT CASE WHEN (SELECT count(*) FROM _cap_azioni WHERE a->>'key' = 'annulla') = 0
-  THEN pass('4) SKIP: nessun documento con azione «annulla» disponibile (nulla da misurare)')
+SELECT CASE WHEN (SELECT count(*) FROM _cap_azioni) = 0
+  THEN fail('4) nessuna azione emessa da nessuno degli 8 domini: vedi test 8')
   ELSE is(
-    (SELECT count(*)::int FROM _cap_azioni
-      WHERE a->>'key' = 'annulla'
-        AND (a->>'icon') IS DISTINCT FROM 'pi pi-times-circle'),
+    (SELECT count(*)::int FROM _cap_azioni WHERE a ? 'icon'),
     0,
-    format('4) percorso: icon = pi pi-times-circle su tutti i %s «annulla» emessi',
-           (SELECT count(*) FROM _cap_azioni WHERE a->>'key' = 'annulla')))
+    format('4) percorso: nessuna delle %s azioni emesse porta la chiave icon',
+           (SELECT count(*) FROM _cap_azioni)))
 END;
 
 -- ============================================================
@@ -356,6 +379,43 @@ SELECT cmp_ok(
                               WHERE c.dominio IN (SELECT DISTINCT dominio FROM _cap_azioni)
                               GROUP BY c.dominio) d),
                     'NESSUNO')));
+
+-- ============================================================
+-- 9) Il dato, su TUTTE le righe delle 8 matrici (anche le spente e le
+--    automatiche): nessuna porta `icon` nel meta. E' il seed che il CSV
+--    scrive, quindi in CI la popolazione c'e' sempre.
+-- ============================================================
+SELECT is(
+    (SELECT count(*)::int FROM (
+        SELECT meta FROM config.transizioni_stati_preventivi
+        UNION ALL SELECT meta FROM config.stati_doc_offerte_transizioni
+        UNION ALL SELECT meta FROM config.transizioni_stati_ordini
+        UNION ALL SELECT meta FROM config.transizioni_stati_ddt
+        UNION ALL SELECT meta FROM config.transizioni_stati_reso
+        UNION ALL SELECT meta FROM config.transizioni_stati_contratti
+        UNION ALL SELECT meta FROM vendite.transizioni_stati_commessa
+        UNION ALL SELECT meta FROM config.stati_doc_fiscale_transizioni
+     ) m WHERE m.meta ? 'icon'),
+    0,
+    '9) seed: nessuna riga delle 8 matrici di transizione ha icon nel meta');
+
+-- ============================================================
+-- 10) Il testo delle funzioni. Non dipende dai dati: copre le azioni
+--     applicative e il documento interno, che il campione puo' non
+--     esercitare. Il perimetro e' la FAMIGLIA per prefisso, cosi' una
+--     fn_available_actions_* nuova entra da sola; il messaggio dice quante
+--     ne ha lette, perche' un perimetro vuoto sarebbe un verde muto.
+-- ============================================================
+SELECT is(
+    (SELECT string_agg(p.proname, ', ' ORDER BY p.proname)
+       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'script'
+        AND p.proname LIKE 'fn\_available\_actions\_%'
+        AND p.prosrc ~ '''icon''|pi pi-'),
+    NULL,
+    format('10) testo: nessuna delle %s script.fn_available_actions_* emette icon o un glifo pi pi-*',
+           (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+             WHERE n.nspname = 'script' AND p.proname LIKE 'fn\_available\_actions\_%')));
 
 SELECT * FROM finish();
 ROLLBACK;

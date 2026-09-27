@@ -47,7 +47,6 @@ script.fn_available_actions_preventivo(
             "target_state": "EMESSO",              // codice_interno stato destinazione
             "label_key": "preventivi.azione_emetti", // chiave i18n per il label bottone
             "severity": "info",                    // severity PrimeVue
-            "icon": "pi pi-send",                  // classe PrimeIcons
             "requires_confirm": false              // se true → dialog conferma
         }
     ],
@@ -135,13 +134,13 @@ fatturazione, push commessa).
    per ottenere `stato_id` e `codice_interno`. `NOT FOUND` → `RETURN NULL`.
 2. **Transizioni manuali** — `jsonb_agg` su `config.transizioni_stati_preventivi`
    filtrata per `stato_da_id = v_stato_id AND attivo IS TRUE AND manuale IS NOT FALSE`.
-   I metadati UI (`label_key`, `severity`, `icon`, `requires_confirm`) vengono
-   letti direttamente da `t.meta`. Ordine: `sa.ordine` (ordine stati config).
+   I metadati UI (`label_key`, `severity`, `requires_confirm`) vengono
+   letti direttamente da `t.meta`; l'icona la sceglie il frontend dal `key`. Ordine: `sa.ordine` (ordine stati config).
 3. **Azioni speciali hardcoded** — aggiunte in coda a `v_actions` (pattern
    `fn_available_actions_offerta`, rev 28-05-2026):
-   - `crea_revisione` se `v_stato_cod = 'EMESSO'`: `target_state null`, `icon pi pi-clone`.
-   - `push_commessa` se `v_can_push` (ACCETTATO + residuo servizi): `icon pi pi-arrow-right`.
-   - `genera_ordine` se `v_can_ordine` (ACCETTATO + residuo merce): `icon pi pi-shopping-cart`.
+   - `crea_revisione` se `v_stato_cod = 'EMESSO'`: `target_state null`.
+   - `push_commessa` se `v_can_push` (ACCETTATO + residuo servizi).
+   - `genera_ordine` se `v_can_ordine` (ACCETTATO + residuo merce).
    Il FE distingue queste azioni dal `key` e usa routing speciale nel drawer.
 4. **Capability derivate**:
    - `can_edit_testata / can_edit_righe = (stato = 'DRAFT')`

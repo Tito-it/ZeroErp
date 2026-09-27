@@ -86,7 +86,7 @@ manuali (imposto dal CHECK `ck_transizioni_stati_comm_meta_ui`).
 | `action_key` | `text` | Sì (manuale) | Chiave semantica dell'azione letta dal FE |
 | `label_key` | `text` | Sì (manuale) | Chiave i18n per il label del bottone |
 | `severity` | `text` | No | Severity PrimeVue: `info` / `success` / `danger` |
-| `icon` | `text` | No | Classe PrimeIcons |
+| _(icona)_ | — | — | Non è un dato del DB: il frontend la sceglie dall'`action_key` (mappa verbo → icona in `core/`) |
 | `requires_confirm` | `boolean` | No | `true` → dialog di conferma prima di eseguire |
 | `manuale` | `boolean` | No | `false` = transizione automatica/di processo, esclusa dalla lista UI. Default: `true` |
 

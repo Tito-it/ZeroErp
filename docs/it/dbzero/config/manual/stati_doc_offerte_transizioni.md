@@ -95,7 +95,7 @@ per costruire i bottoni azione nella UI.
 | `action_key` | `text` | Chiave semantica dell'azione (es. `emetti`, `annulla`, `accetta`, `rifiuta`) |
 | `label_key` | `text` | Chiave i18n per il label del bottone Vue (`$t(label_key)`) |
 | `severity` | `text` | Severity PrimeVue: `info` / `success` / `danger` |
-| `icon` | `text` | Classe PrimeIcons (es. `pi pi-send`, `pi pi-times`) |
+| _(icona)_ | — | Non è un dato del DB: il frontend la sceglie dall'`action_key` (mappa verbo → icona in `core/`) |
 | `requires_confirm` | `boolean` | `true` → mostra dialog di conferma prima di eseguire |
 | `manuale` | `boolean` | `false` = transizione automatica (trigger); esclusa dalla lista UI |
 
