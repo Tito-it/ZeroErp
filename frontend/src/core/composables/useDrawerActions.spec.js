@@ -24,7 +24,8 @@
 //       di CHIAVI, non di traduzioni — che vivono nei locales e cambiano.
 //
 // Indice test:
-//   1) una voce del DB diventa un pulsante `kind: 'state'`
+//   1) una voce del DB diventa un pulsante `kind: 'state'` (icona e colore dal verbo)
+//   1b) la `severity` che il DB manda ancora NON conta: vale quella del verbo
 //   2) `enabled: false` -> pulsante DISABILITATO, mai nascosto
 //   3) il motivo diventa il tooltip, dalla `reason_key`
 //   4) chiave i18n mancante -> si vede il CODICE, mai il path della chiave
@@ -44,6 +45,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { ref } from 'vue'
 import { mapAvailableActionsToDrawerActions, testoMotivi } from './useDrawerActions'
+import { MANAGE_ICONS } from '../constants'
 
 // `t` rende la chiave stessa: le asserzioni parlano di chiavi, non di frasi.
 const t = (k) => k
@@ -56,7 +58,6 @@ function voceDb(extra = {}) {
     key: 'annulla',
     target_state: 'CANCEL',
     label_key: 'magazzino.documenti_interni.azione.annulla',
-    icon: 'pi pi-times',
     severity: 'danger',
     requires_confirm: true,
     enabled: true,
@@ -75,10 +76,20 @@ describe('mapAvailableActionsToDrawerActions', () => {
     expect(a.kind).toBe('state')
     expect(a.key).toBe('annulla')
     expect(a.label).toBe('magazzino.documenti_interni.azione.annulla')
-    expect(a.icon).toBe('pi pi-times')
+    // Icona e colore li da' il verbo (dal 2026-09-27), non il DB.
+    expect(a.icon).toBe(MANAGE_ICONS.ANNULLA)
     expect(a.severity).toBe('danger')
     expect(a.disabled).toBe(false)
     expect(a.tooltip).toBeUndefined()
+  })
+
+  it('1b) la severity del DB non conta: vale quella del verbo', () => {
+    // ⭐ Il DB la manda ancora finche' il brief non la toglie: il pulsante non
+    //    deve cambiare colore ne' prima ne' dopo.
+    const [a] = mapAvailableActionsToDrawerActions({
+      availableActions: [voceDb({ key: 'conferma', severity: 'success' })], t, te: teCon(),
+    })
+    expect(a.severity).toBe('info')
   })
 
   it('2) `enabled: false` disabilita il pulsante, non lo nasconde', () => {

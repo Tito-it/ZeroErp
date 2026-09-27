@@ -3,7 +3,7 @@
 // (BE) e con i seed DB (`config.stati_doc_preventivi`,
 // `config.azioni_processo`).
 
-import { MANAGE_ICONS } from '../core/constants'
+import { aspettoAzione } from '../core/aspettoAzioni'
 
 // Stati di workflow approvazione prezzo applicabili al campo
 // `vendite.preventivi_righe.stato_approvazione_prezzo` (ENUM nativo
@@ -106,10 +106,11 @@ export const PRICING_ACTIONS = Object.freeze({
 // Azione «Invia a commessa» quando il blob la NEGA (`can_push_commessa` false
 // + motivo): la forma del pulsante, uguale per DDT e ordine — cambia solo la
 // `label_key` del dominio. Si passa a `useEntityCapabilities().azioneNegata`.
+// ⭐ Icona e colore dalla mappa del verbo: negato o no, e' lo stesso pulsante.
 export const AZIONE_PUSH_COMMESSA = Object.freeze({
   key: 'push_commessa',
-  severity: 'success',
-  icon: MANAGE_ICONS.SEND,
+  severity: aspettoAzione('push_commessa').severity,
+  icon: aspettoAzione('push_commessa').icona,
 })
 
 // Codici stato preventivo (`config.stati_doc_preventivi.codice_interno`).

@@ -417,7 +417,7 @@ class DocumentoInternoDbTests(unittest.TestCase):
                 "stato_info_key",
             })
             self.assertEqual(set(caps["available_actions"][0]), {
-                "key", "target_state", "label_key", "icon", "severity",
+                "key", "target_state", "label_key", "severity",
                 "requires_confirm", "enabled", "reason", "reason_key", "manuale",
             })
             self.assertEqual(caps["stato_codice"], "DRAFT")

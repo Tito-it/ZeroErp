@@ -1787,7 +1787,7 @@ class TestPreventiviService(unittest.TestCase):
             "stato_codice": "ACCETTATO",
             "available_actions": [{"key": "annulla", "target_state": "ANNULLATO",
                                     "label_key": "preventivi.azione_annulla",
-                                    "severity": "danger", "icon": "pi pi-times",
+                                    "severity": "danger",
                                     "requires_confirm": True}],
             "can_edit_testata": False,
             "can_edit_righe": False,

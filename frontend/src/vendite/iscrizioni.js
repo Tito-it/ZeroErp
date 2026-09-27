@@ -177,7 +177,7 @@ iscriviAttivitaUi('SMISTAMENTO', {
   // preventivo orfano): l'host blocca con errore parlante.
   requiresExisting: true,
   label: 'pratiche.flusso_smistamento',
-  icon: MANAGE_ICONS.SEND,
+  icon: MANAGE_ICONS.INVIA_A_COMMESSA,
 })
 
 // Step a valle merce: aprono l'OrdiniDrawer sull'ordine COLLEGATO della pratica
@@ -201,7 +201,7 @@ iscriviAttivitaUi('INVIO_COMMESSA', {
   buildProps: ordineDrawerProps,
   requiresExisting: true,
   label: 'pratiche.flusso_invio_commessa',
-  icon: MANAGE_ICONS.SEND,
+  icon: MANAGE_ICONS.INVIA_A_COMMESSA,
 })
 
 // APRI_OFFERTA / APRI_CONTRATTO: da aggiungere quando nasceranno i loro

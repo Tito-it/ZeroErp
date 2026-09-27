@@ -163,7 +163,7 @@ class ContrattiServiceTests(TestCase):
             "available_actions": [{
                 "key": "cessa", "target_state": "CESSATO",
                 "label_key": "contratti.azione_cessa",
-                "severity": "danger", "icon": "pi pi-stop",
+                "severity": "danger",
                 "requires_confirm": True, "requires_date": True,
                 "default_date": "2026-04-30", "min_date": "2026-04-25",
             }],

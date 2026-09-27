@@ -870,7 +870,7 @@ const drawerActions = computed(() => {
       key: 'smistamento',
       kind: 'manage',
       label: t('vendite.preventivi.section_smistamento'),
-      icon: MANAGE_ICONS.SEND,
+      icon: MANAGE_ICONS.INVIA_A_COMMESSA,
       command: () => { smistamentoDialogVisible.value = true },
     })
   }

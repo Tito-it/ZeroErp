@@ -11,6 +11,7 @@
 
 import { unref } from 'vue'
 import { labelOrCode } from '../utils/i18nLabel'
+import { aspettoAzione } from '../aspettoAzioni'
 
 // Scopo: i motivi per cui un'azione e' spenta, in testo leggibile — una riga
 //   per motivo (join '\n' -> tooltip o avviso multi-riga). Sede UNICA del
@@ -75,6 +76,8 @@ export function mapAvailableActionsToDrawerActions({
   const list = unref(availableActions) || []
 
   return list.map(action => {
+    // Icona e colore li da' il verbo (dal 2026-09-27 il DB non li decide).
+    const aspetto = aspettoAzione(action.key)
     // Precondizioni data-driven (rev DB 2026-07-16 `requires_righe` +
     // Rev 2 2026-07-19 brief guard-righe): `enabled:false` +
     // `reason`/`reason_key` -> pulsante DISABILITATO con tooltip che spiega
@@ -87,8 +90,8 @@ export function mapAvailableActionsToDrawerActions({
       key: action.key || `state-${action.target_state}`,
       kind: 'state',
       label: t(action.label_key),
-      icon: action.icon,
-      severity: action.severity,
+      icon: aspetto.icona,
+      severity: aspetto.severity,
       // `outlined` pass-through dal BE (default false). Usato per le azioni
       // "secondarie pericolose" tipo Annulla DRAFT (rosso outlined invece di
       // rosso pieno), allineato al pattern Annulla offerte/contratti.
