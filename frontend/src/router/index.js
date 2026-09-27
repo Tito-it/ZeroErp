@@ -3,7 +3,7 @@ import { useAuthStore } from '../stores/auth'
 import { useNavigationStore } from '../stores/navigation'
 import { useTabsStore } from '../stores/tabs'
 import { DOMAINS, findMenuItem, isMenuItemAllowed, resolveTabLabel, resolveTabIcon } from '../core/navigation'
-import { FE_NAMESPACE, resolveRuoloFeConfig } from '../core/constants'
+import { FE_NAMESPACE, STATUS_ICONS, resolveRuoloFeConfig } from '../core/constants'
 import i18n from '../core/i18n'
 import { chiudiTuttiIDrawer } from '../core/composables/useDrawerChiusuraGlobale'
 import { CODE } from '../pagamenti/vocabolari'
@@ -605,7 +605,7 @@ const router = createRouter({
           path: 'forbidden',
           name: 'forbidden',
           component: () => import('../core/views/ErrorView.vue'),
-          meta: { domain: 'home', errorKey: 'forbidden', errorIcon: 'pi pi-lock' }
+          meta: { domain: 'home', errorKey: 'forbidden', errorIcon: STATUS_ICONS.VIETATO }
         },
 
         // --- Catch-all 404 ---
@@ -613,7 +613,7 @@ const router = createRouter({
           path: ':pathMatch(.*)*',
           name: 'not-found',
           component: () => import('../core/views/ErrorView.vue'),
-          meta: { domain: 'home', errorKey: 'not_found', errorIcon: 'pi pi-map' }
+          meta: { domain: 'home', errorKey: 'not_found', errorIcon: STATUS_ICONS.NON_TROVATO }
         }
       ]
     }

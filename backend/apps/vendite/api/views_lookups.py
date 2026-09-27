@@ -92,6 +92,7 @@ class ApiListiniSelezionabiliContrattoLookup(DomainAPIView):
     #        `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA` (UX a doppio passo).
     #        Forma payload uniforme `{id, codice, descrizione}` (no paginazione).
     area_funzionale = "vendite"
+    model_permission = ("vendite", "listino")
 
     @extend_schema(responses=_lookup_response_schema(
         "VenditeListiniSelezionabiliContrattoLookupResponse",

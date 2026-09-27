@@ -20,6 +20,7 @@ import Message from 'primevue/message'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
@@ -209,7 +210,7 @@ const suVisibile = gestoreVisibile(emit, onCancel)
     <template #header>
       <DrawerTitle
         :title="`${t('ui.admin.preset_composizione')} — ${presetCodice}`"
-        icon="pi pi-table"
+        :icon="NAV_ICONS.PERSONALIZZAZIONI_LISTE"
         :modificato="modificato"
       />
     </template>
@@ -239,7 +240,7 @@ const suVisibile = gestoreVisibile(emit, onCancel)
         />
         <Button
           :label="t('common.add')"
-          icon="pi pi-plus"
+          :icon="MANAGE_ICONS.ADD"
           class="app-action-btn"
           :disabled="isReadonlyEffective || !colonnaDaAggiungere"
           @click="aggiungiColonna"
@@ -258,7 +259,7 @@ const suVisibile = gestoreVisibile(emit, onCancel)
           <template #body="{ index }">
             <div class="ordine-actions">
               <Button
-                icon="pi pi-chevron-up"
+                :icon="MANAGE_ICONS.SPOSTA_SU"
                 text
                 rounded
                 size="small"
@@ -266,7 +267,7 @@ const suVisibile = gestoreVisibile(emit, onCancel)
                 @click="spostaSu(index)"
               />
               <Button
-                icon="pi pi-chevron-down"
+                :icon="MANAGE_ICONS.SPOSTA_GIU"
                 text
                 rounded
                 size="small"

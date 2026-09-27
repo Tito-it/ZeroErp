@@ -2,9 +2,10 @@
 // Scopo: componente riutilizzabile per pagine di stato — errori (404, 403),
 // placeholder WIP, o qualsiasi pagina informativa centrata con icona + testo.
 import Button from 'primevue/button'
+import { STATUS_ICONS } from '../constants'
 
 defineProps({
-  icon: { type: String, default: 'pi pi-info-circle' },
+  icon: { type: String, default: STATUS_ICONS.INFO },
   title: { type: String, required: true },
   message: { type: String, default: '' },
   features: { type: Array, default: () => [] },

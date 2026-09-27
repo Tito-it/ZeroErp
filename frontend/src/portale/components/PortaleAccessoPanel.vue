@@ -23,6 +23,7 @@ import { useNotify } from '../../core/composables/useNotify'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { isEmailValid } from '../../core/utils/validators'
 import { extractApiError } from '../../core/utils/apiError'
+import { MANAGE_ICONS } from '../../core/constants'
 import {
   disattivaPortaleCliente,
   disattivaPortaleFornitore,
@@ -218,7 +219,7 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
       <Button
         v-if="statoPortale.stato === 'NESSUNO' || statoPortale.stato === 'DISATTIVO'"
         :label="t('portale.btn_invia_invito')"
-        icon="pi pi-envelope"
+        :icon="MANAGE_ICONS.INVITA"
         :disabled="!canInvia"
         :loading="loading"
         @click="onInvia"
@@ -226,7 +227,7 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
       <Button
         v-else
         :label="t('portale.btn_reinvia_invito')"
-        icon="pi pi-refresh"
+        :icon="MANAGE_ICONS.INVITA"
         severity="warn"
         outlined
         :disabled="!canInvia"
@@ -237,7 +238,7 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
       <Button
         v-if="statoPortale.stato === 'ATTIVO' || statoPortale.stato === 'PENDING'"
         :label="t('portale.btn_disattiva')"
-        icon="pi pi-ban"
+        :icon="MANAGE_ICONS.DISATTIVA"
         severity="danger"
         outlined
         :disabled="readonly || loading"
@@ -281,7 +282,7 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
         <Button
           v-if="statoShop.stato === 'NESSUNO' || statoShop.stato === 'DISATTIVO'"
           :label="t('shop.btn_invia_invito')"
-          icon="pi pi-shopping-cart"
+          :icon="MANAGE_ICONS.INVITA"
           :disabled="!canInvia"
           :loading="loading"
           @click="onInviaShop"
@@ -289,7 +290,7 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
         <Button
           v-else
           :label="t('shop.btn_reinvia_invito')"
-          icon="pi pi-refresh"
+          :icon="MANAGE_ICONS.INVITA"
           severity="warn"
           outlined
           :disabled="!canInvia"
@@ -299,7 +300,7 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
         <Button
           v-if="statoShop.stato === 'ATTIVO' || statoShop.stato === 'PENDING'"
           :label="t('shop.btn_disattiva')"
-          icon="pi pi-ban"
+          :icon="MANAGE_ICONS.DISATTIVA"
           severity="danger"
           outlined
           :disabled="readonly || loading"

@@ -13,8 +13,7 @@ import { useListiniStore } from '../stores/listini'
 import { createVersione } from '../api/listini'
 import { getVersioneNewDefaults } from '../api/formDefaults'
 import { toDateString, addDaysToToday } from '../../core/utils/date'
-import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
-import { NAV_ICONS } from '../../core/navigation'
+import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import Drawer from 'primevue/drawer'
@@ -131,7 +130,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :modificato="modificato" :action="t('common.new')" :title="t('vendite.listini.nuova_versione')" :icon="NAV_ICONS.HISTORY" />
+      <DrawerTitle :modificato="modificato" :action="t('common.new')" :title="t('vendite.listini.nuova_versione')" :icon="MANAGE_ICONS.VERSIONI" />
     </template>
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">

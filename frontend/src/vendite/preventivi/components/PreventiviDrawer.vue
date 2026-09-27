@@ -26,7 +26,7 @@ import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
 import { createPreventivo, getContestoPricing } from '../api/preventiviApi'
 import { useDrawerAutosaveBozza } from '../../../core/composables/useDrawerAutosaveBozza'
 import { getBillingAccountLookupById, getIstanzaUtilityLookupById } from '../../../core/apiCore'
-import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES, STATUS_ICONS } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import FormFooter from '../../../core/components/FormFooter.vue'
@@ -905,7 +905,7 @@ const drawerActions = computed(() => {
       <template v-if="hasDetail">
         <DrawerEntityHeader>
           <Tag :value="`${detail.numero} rev.${detail.rev}`" severity="secondary" />
-          <Tag v-if="isSuperseded" :value="t('vendite.preventivi.tag_superseded')" severity="warn" icon="pi pi-history" />
+          <Tag v-if="isSuperseded" :value="t('vendite.preventivi.tag_superseded')" severity="warn" :icon="STATUS_ICONS.SUPERATO" />
           <span v-if="detail.data" class="app-drawer-header-muted font-bold">
             {{ displayDate(detail.data) }}
           </span>
@@ -916,7 +916,7 @@ const drawerActions = computed(() => {
                 listino: contestoPricing.listino_codice,
               })"
               severity="info"
-              icon="pi pi-file-edit"
+              :icon="MANAGE_ICONS.CONTRATTI"
               v-tooltip.bottom="t('vendite.preventivi.contesto_pricing_contratto_tooltip')"
             />
           </template>
@@ -927,7 +927,7 @@ const drawerActions = computed(() => {
                 categoria: contestoPricing.categoria_cliente_codice,
               })"
               severity="info"
-              icon="pi pi-tag"
+              :icon="NAV_ICONS.CATEGORIE_CLIENTI"
               v-tooltip.bottom="t('vendite.preventivi.contesto_pricing_categoria_tooltip')"
             />
           </template>
@@ -935,7 +935,7 @@ const drawerActions = computed(() => {
             <Tag
               :value="t('vendite.preventivi.contesto_pricing_none')"
               severity="warn"
-              :icon="MANAGE_ICONS.ERRORE"
+              :icon="STATUS_ICONS.ERRORE"
               v-tooltip.bottom="t('vendite.preventivi.contesto_pricing_none_tooltip')"
             />
           </template>
@@ -1071,7 +1071,7 @@ const drawerActions = computed(() => {
               {{ t('vendite.preventivi.revisioni_intro') }}
             </p>
             <div v-if="!revisioni.length" class="app-empty-state">
-              <i class="pi pi-history" style="font-size: 2rem;" />
+              <i :class="MANAGE_ICONS.VERSIONI" style="font-size: 2rem;" />
               <div>{{ t('vendite.preventivi.revisioni_empty') }}</div>
             </div>
             <DataTable

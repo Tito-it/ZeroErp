@@ -20,6 +20,7 @@ import i18n from './i18n'
 import { routerApp } from './routerApp'
 import { registraDrawerChiudibile } from './composables/useDrawerChiusuraGlobale'
 import { bersagliRisolti } from './bersagli'
+import { MANAGE_ICONS } from './constants'
 
 // ── L'ospite globale ─────────────────────────────────────────────────────────
 // Stessa tripletta di `useDocumentoDrawer` (visible, chiave registry, id): qui
@@ -101,7 +102,7 @@ export function azioniDaBersagli(bersagli, authStore) {
     //    collegamento: due voci nello stesso kebab devono distinguersi prima di
     //    essere lette. ⚠️ Il ripiego resta perche' un pulsante senza icona si
     //    disallinea dagli altri — non perche' una destinazione possa non averla.
-    icon: risolto.icona || 'pi pi-external-link',
+    icon: risolto.icona || MANAGE_ICONS.VAI_A,
     esegui: () => vaiAl(risolto),
   }))
 }

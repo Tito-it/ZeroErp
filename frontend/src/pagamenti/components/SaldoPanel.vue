@@ -28,6 +28,7 @@ import Message from 'primevue/message'
 import { CAMPI_SALDO, LIVELLO, useSaldi } from '../composables/useSaldi'
 import { formatCurrency } from '../../core/utils/format'
 
+import { STATUS_ICONS } from '../../core/constants'
 const props = defineProps({
   // `LIVELLO.DOCUMENTO` | `LIVELLO.RATA` | (un giorno) `LIVELLO.CLIENTE`.
   livello: {
@@ -142,7 +143,7 @@ watch(
     </Message>
 
     <div v-else-if="loading && !caricato" class="app-loading">
-      <i class="pi pi-spin pi-spinner" />
+      <i :class="STATUS_ICONS.CARICAMENTO" />
     </div>
 
     <template v-else-if="caricato && saldo">

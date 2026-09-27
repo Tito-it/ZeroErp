@@ -7,8 +7,9 @@
 > [permessi-e-autorizzazioni-v3.md](permessi-e-autorizzazioni-v3.md), 2026-09-26.
 > La sua tabella «Stato attivazione» era vecchia, e il confronto con il codice
 > ha trovato il difetto di questo brief.
-> **Stato:** ✅ **D-1 decisa da Tid il 2026-09-26**: *«vanno sistemati sia
-> quelli non applicati sia quelli non a catalogo»*. ⏳ D-2 → D-4 aperte (§4).
+> **Stato:** ✅ **D-1 → D-6 decise da Tid** (D-1 il 2026-09-26, le altre il
+> 2026-09-27, §4). ⏳ **Richiesta al team DB al §3.1.** 🟡 Caso A in corso lato
+> BE/FE (§3.2, §3.3): non dipende dal DB.
 >
 > **In una riga:** il pannello permessi offre override su oggetti che nessuno
 > applica, e su altri oggetti, che vengono applicati, non lo offre.
@@ -96,7 +97,12 @@ a catalogo e ricadono sull'area. Se sia giusto lo decide la D-2.
    nella forma che `linee-guida-sql §11.2` prescrive per `80_data`. Il seed di
    oggi (`20260410-11`, `INSERT … ON CONFLICT` in `runOnChange`) è da
    rileggere con la stessa regola.
-2. **D-4**: la regola «un override per oggetto esiste solo per un oggetto a
+2. **D-5**: togliere `('anagrafiche', 'billing_account')` dal catalogo, e con
+   lui gli override già scritti su quell'oggetto (in `config.user_override_oggetti`
+   e, se ci sono, sui profili): da quel giorno vale `cliente`.
+3. **D-3**: il seed del catalogo in un **CSV** leggibile dal test Django (oggi è
+   SQL dentro lo YAML `20260410-11`, più `20260418-01` per la promo).
+4. **D-4**: la regola «un override per oggetto esiste solo per un oggetto a
    catalogo, e non riservato» vive **solo** nel backend
    (`put_override_oggetti` + `_MODEL_OVERRIDE_RISERVATI`).
    `config.user_override_oggetti` non ha né FK né guard verso il catalogo.
@@ -112,6 +118,31 @@ a catalogo e ricadono sull'area. Se sia giusto lo decide la D-2.
    catalogo (§1, il terzo caso).
 3. **Il presidio** di D-3.
 
+✅ **Caso A lato BE, 2026-09-27 (non committato)**:
+
+- `model_permission` su **58 view** scritte a mano: `fattura` (passaggi, fatture
+  del lotto e loro export), `preventivo` (tutte le rotte senza azione di
+  processo), `listino` (le rotte `vendite/listini/…` e il lookup
+  `listini-selezionabili-contratto`, D-6), `pratica` (pratica, flussi,
+  allegati, note, `coda-lavoro`, `prendi-in-carico`); `billing-account/<id>/utilities/`
+  chiede `cliente` (D-5).
+- Le quattro factory che servono più documenti (`build_documenti_sorgente_views`,
+  `build_passaggi_view`, `build_riepilogo_iva_view`,
+  `build_indirizzi_documento_views`) prendono un parametro `model_permission`:
+  un solo punto di trasporto per documento, che il caso B riusa passando il
+  suo oggetto. Nella factory dei documenti area e oggetto si assegnano ora in un
+  solo ciclo (erano otto righe per l'area).
+- Restano sull'area, per scelta scritta nel presidio: `competenze-flussi`,
+  `formule-tempo`, `operatori` (non sono la pratica); le rotte `definizioni/`
+  sono `AdminAPIView`.
+- Presidio `core/tests/test_catalogo_oggetti_rotte.py` (dal percorso reale): ogni
+  rotta del perimetro di un oggetto chiede quell'oggetto, o un'azione di
+  processo su ogni metodo, o è un lookup cross-dominio / una rotta admin.
+  Provato che morde (tolto un `model_permission`: rosso sulla rotta giusta).
+  Diventa il presidio della D-3 quando il catalogo sarà CSV.
+- Test: vendite, pratiche, documenti, anagrafiche, ai_assistant, core.api verdi
+  (3594); ruff pulito.
+
 ### 3.3 FE (noi)
 
 - `useReadonlyMode(area, model)` sulle viste di `billing_account`, `listino`,
@@ -123,10 +154,13 @@ a catalogo e ricadono sull'area. Se sia giusto lo decide la D-2.
 
 | | Domanda | Proposta |
 | --- | --- | --- |
-| **D-1** | Si chiudono sia A sia B? | ✅ **DECISA (Tid, 2026-09-26): sì, tutti e due.** Nessuna voce esce dal catalogo: quelle non applicate si applicano |
-| **D-2** | Le 88 chiavi di `tabelle_gestibili` sono oggetti **personalizzabili** dal pannello operatore? | **No, restano chiavi d'area.** La chiave del pannello serve a dire **a quale area** appartiene una tabella di configurazione (`fn_area_di_oggetto`), e il permesso ricade sull'area. Metterle a catalogo darebbe 88 righe al pannello operatore, e una parte è riservata (`config.profili_accesso` è sia nel pannello sia in `_MODEL_OVERRIDE_RISERVATI`). La regola si scrive esplicita: «una chiave di oggetto non a catalogo vale come la sua area». Il pgTAP del pannello la dichiara |
-| **D-3** | Come si impedisce che il disallineamento torni? | Un test che confronta **catalogo e porte**. Il catalogo sta nel seed, le porte nel codice: un test Django legge il seed del catalogo e il resolver degli URL (come per l'inventario del §2), e fallisce se un `model_permission` non è a catalogo, **o** se una voce a catalogo non ha nessuna rotta. Lo stesso test legge `READONLY_MODELS`. ⚠️ Richiede che il seed sia un file leggibile (CSV), non SQL dentro uno YAML: si lega al §3.1 punto 1 |
-| **D-4** | La regola «override solo su oggetti a catalogo, non riservati» si porta a DB? | **Sì, per coerenza DB-first**: oggi una scrittura che non passa dal service la aggira. Forma a scelta del team DB (FK composita verso il catalogo + colonna `riservato` nel catalogo al posto della blacklist Python) |
+| **D-1** | Si chiudono sia A sia B? | ✅ **DECISA (Tid, 2026-09-26): sì, tutti e due.** Nessuna voce esce dal catalogo: quelle non applicate si applicano. ⚠️ Un'eccezione, decisa con la D-5 |
+| **D-2** | Le 88 chiavi di `tabelle_gestibili` sono oggetti **personalizzabili** dal pannello operatore? | ✅ **DECISA (Tid, 2026-09-27), come proposto.** **No, restano chiavi d'area.** La chiave del pannello serve a dire **a quale area** appartiene una tabella di configurazione (`fn_area_di_oggetto`), e il permesso ricade sull'area. Metterle a catalogo darebbe 88 righe al pannello operatore, e una parte è riservata (`config.profili_accesso` è sia nel pannello sia in `_MODEL_OVERRIDE_RISERVATI`). La regola si scrive esplicita: «una chiave di oggetto non a catalogo vale come la sua area». Il pgTAP del pannello la dichiara |
+| **D-3** | Come si impedisce che il disallineamento torni? | ✅ **DECISA (Tid, 2026-09-27), come proposto.** Un test che confronta **catalogo e porte**. Il catalogo sta nel seed, le porte nel codice: un test Django legge il seed del catalogo e il resolver degli URL (come per l'inventario del §2), e fallisce se un `model_permission` non è a catalogo, **o** se una voce a catalogo non ha nessuna rotta. Lo stesso test legge `READONLY_MODELS`. ⚠️ Richiede che il seed sia un file leggibile (CSV), non SQL dentro uno YAML: si lega al §3.1 punto 1 |
+| **D-4** | La regola «override solo su oggetti a catalogo, non riservati» si porta a DB? | ✅ **DECISA (Tid, 2026-09-27), come proposto.** **Sì, per coerenza DB-first**: oggi una scrittura che non passa dal service la aggira. Forma a scelta del team DB (FK composita verso il catalogo + colonna `riservato` nel catalogo al posto della blacklist Python) |
+
+| **D-5** | `anagrafiche.billing_account` è a catalogo, ma non ha rotte proprie: si crea e si modifica **dentro la scheda cliente** (`ClientiView.post` crea istanza + BA + cliente in una transazione; il PATCH porta i campi `ba_*`), che chiede il solo oggetto `cliente`. Un override sul BA quindi non ha effetto | ✅ **DECISA (Tid, 2026-09-27): il billing account è un pezzo del cliente, il permesso è sempre `cliente`.** La voce `billing_account` **esce dal catalogo** (eccezione dichiarata alla D-1: un oggetto senza schermate proprie non si può applicare, quindi un suo override mentirebbe per costruzione). Le rotte che leggono il BA nell'area anagrafiche chiedono `cliente`; i lookup cross-dominio (`skip_area_check`) restano liberi |
+| **D-6** | Lookup e widget **della stessa area** che leggono l'oggetto (es. `lookup/listini-selezionabili-contratto`, `listini/alert-scadenze`, `pratiche/coda-lavoro`) prendono il suo `model_permission`? | ✅ **DECISA (Tid, 2026-09-27): sì.** Un listino `BLOCCATO` non si vede da nessuna parte nella sua area, come il FE che nasconde. I lookup cross-dominio con `skip_area_check` restano liberi (catalogo BB backend, «lookup cross-dominio su sub-resource») |
 
 ---
 

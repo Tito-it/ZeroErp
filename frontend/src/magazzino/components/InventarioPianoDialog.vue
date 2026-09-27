@@ -34,6 +34,7 @@ import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { bloccoAttivo, motivoBloccoRiga } from '../../core/utils/bloccoMotivo'
+import { STATUS_ICONS } from '../../core/constants'
 import { esitoPianoSeverity } from '../../core/utils/severity'
 import { exportPiano } from '../api/magazzino'
 import { useEtichetteMagazzino } from '../etichette'
@@ -138,7 +139,7 @@ const haNonPostabili = computed(() => Number(props.riepilogo?.n_non_postabili ??
 
       <template #empty>
         <div v-if="!store.erroreCaricamento" class="app-empty-state">
-          <i class="pi pi-list" />
+          <i :class="STATUS_ICONS.VUOTO" />
           <p>{{ t('magazzino.piano.nessuna_riga') }}</p>
         </div>
       </template>

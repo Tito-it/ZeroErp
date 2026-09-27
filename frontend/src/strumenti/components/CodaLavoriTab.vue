@@ -37,6 +37,8 @@ import {
   requeueCodaLavoro,
   ripristinaCodaLavoro,
 } from '../../core/api/tracciamento'
+import { MANAGE_ICONS } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { useCodaArchiviazione } from '../composables/useCodaArchiviazione'
 import { useCodaFiltri } from '../composables/useCodaFiltri'
 import { useSelezioneCoda } from '../composables/useSelezioneCoda'
@@ -136,14 +138,14 @@ function buildRowActions(row) {
     {
       key: 'dettaglio',
       label: t('strumenti.code.azione_dettaglio'),
-      icon: 'pi pi-search',
+      icon: MANAGE_ICONS.INSPECT,
       visible: row.is_mio === true || canManage.value,
       command: () => apriDettaglio(row),
     },
     {
       key: 'annulla',
       label: t('strumenti.code.azione_annulla'),
-      icon: 'pi pi-ban',
+      icon: MANAGE_ICONS.ANNULLA,
       severity: 'danger',
       visible: azionabile && row.stato === 'PENDING',
       command: () => annullaJob(row),
@@ -151,7 +153,7 @@ function buildRowActions(row) {
     {
       key: 'requeue',
       label: t('strumenti.code.azione_requeue'),
-      icon: 'pi pi-replay',
+      icon: MANAGE_ICONS.RIPROVA,
       severity: 'warn',
       visible: azionabile && (row.stato === 'IN_CORSO' || row.stato === 'ERRORE'),
       command: () => requeueJob(row),
@@ -184,7 +186,7 @@ const loadingAzione = computed(() => azioneLoading.value || archiviazioneLoading
     :stato-map="STATO_CODA_LAVORI_MAP"
     :stato-severity="statoCodaLavoriSeverity"
     empty-key="strumenti.code.nessuna_riga"
-    empty-icon="pi pi-inbox"
+    :empty-icon="NAV_ICONS.CODE_LAVORO"
     :extra-loading="loadingAzione"
     :build-row-actions="buildRowActions"
     :on-row-click="onRowClick"

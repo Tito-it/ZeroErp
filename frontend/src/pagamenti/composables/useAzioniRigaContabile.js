@@ -60,9 +60,9 @@ export const MODO_ABBINA = Object.freeze({ ABBINA: 'abbina', REGISTRA: 'registra
 //    arrivato, non nostro» e conta nella quadratura; «elimina» toglie una riga
 //    digitata male. Il cestino e' di «Elimina», e basta.
 export const ICONA_TRANSIZIONE_RIGA = Object.freeze({
-  DA_ABBINARE: 'pi pi-link',
-  SOSPESA: 'pi pi-pause',
-  SCARTATA: 'pi pi-ban',
+  DA_ABBINARE: MANAGE_ICONS.ABBINA,
+  SOSPESA: MANAGE_ICONS.SOSPENDI,
+  SCARTATA: MANAGE_ICONS.DISATTIVA,
 })
 
 // ⭐ I VERBI delle transizioni, al posto di «Porta a <stato>» (FE-4): «Sospendi»,

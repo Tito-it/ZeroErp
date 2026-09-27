@@ -80,7 +80,7 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useNotify } from '../../core/composables/useNotify'
 import { spazioSaldo } from '../composables/useSaldi'
-import { DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
+import { DATE_FORMAT, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { formatCurrency } from '../../core/utils/format'
 import { rataEsaurita, useRigheDaRate } from '../composables/useRigheDaRate'
 import { useEtichettePagamenti } from '../etichette'
@@ -388,15 +388,15 @@ function onVisibleChange(v) {
       <template #empty>
         <div class="app-empty-state">
           <template v-if="store.erroreCaricamento">
-            <i class="pi pi-exclamation-triangle" />
+            <i :class="STATUS_ICONS.ERRORE" />
             <p>{{ t('pagamenti.rate.non_lette') }}</p>
           </template>
           <template v-else-if="haCriterio && store.hasSearched">
-            <i class="pi pi-inbox" />
+            <i :class="STATUS_ICONS.VUOTO" />
             <p>{{ t('pagamenti.rate.nessuna_rata') }}</p>
           </template>
           <template v-else>
-            <i class="pi pi-search" />
+            <i :class="MANAGE_ICONS.RICERCA" />
             <p>{{ t('pagamenti.rate.criterio_obbligatorio') }}</p>
           </template>
         </div>

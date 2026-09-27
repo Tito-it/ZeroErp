@@ -16,7 +16,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-import { MANAGE_ICONS } from '../constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../constants'
 
 const require = vi.fn()
 
@@ -33,7 +33,7 @@ beforeEach(() => require.mockClear())
 //    che si chiuderebbe insieme al Drawer sotto. ESC lo gestisce la radice
 //    della ConfirmDialog in App.vue (`pt.root`) — chiude solo la conferma.
 const CHROME_STANDARD = {
-  icon: MANAGE_ICONS.ERRORE,
+  icon: STATUS_ICONS.ERRORE,
   closeOnEscape: false,
   rejectClass: 'p-button-secondary',
   rejectLabel: 'common.cancel',

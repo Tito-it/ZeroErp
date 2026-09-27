@@ -9,6 +9,7 @@ import { computed, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUiStore } from '../../stores/ui'
 import { useNavigationStore } from '../../stores/navigation'
+import { MANAGE_ICONS } from '../constants'
 import SidebarHome from './SidebarHome.vue'
 import SidebarDomain from './SidebarDomain.vue'
 import LogoBrand from './LogoBrand.vue'
@@ -72,7 +73,7 @@ function onToggle() {
       <div class="sidebar-toggle" @click="onToggle"
         v-tooltip.right="isCollapsed ? t('nav.expand') : null"
       >
-        <i :class="isCollapsed ? 'pi pi-angle-double-right' : 'pi pi-angle-double-left'"></i>
+        <i :class="isCollapsed ? MANAGE_ICONS.SIDEBAR_ESPANDI : MANAGE_ICONS.SIDEBAR_COMPRIMI"></i>
         <span v-if="!isCollapsed">{{ t('nav.collapse') }}</span>
       </div>
     </div>

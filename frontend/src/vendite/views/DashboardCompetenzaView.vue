@@ -53,7 +53,7 @@ import { useActionPermission } from '../../core/composables/useActionPermission'
 import { useDebouncedAction } from '../../core/composables/useDebouncedAction'
 import { useJobPolling } from '../../core/composables/useJobPolling'
 import { useRigheInGiro } from '../../core/composables/useRigheInGiro'
-import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../../core/constants'
+import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS, STATUS_ICONS } from '../../core/constants'
 import { MODO_DATA_DOCUMENTO, STATO_EMISSIONE_ATTIVITA, STATO_ESECUZIONE_LOTTO } from '../constants'
 import { extractApiError } from '../../core/utils/apiError'
 import { displayDate } from '../../core/utils/date'
@@ -99,7 +99,7 @@ const { isAllowed: canNumerareFatture } = useActionPermission('numera_fatture_lo
 // Permesso del verbo che sblocca DAVVERO la commessa («Rendi pronta», dentro il
 // drawer di governo). Serve qui, non solo là: senza, «Sblocca commessa»
 // porterebbe in un drawer dove il verbo non compare — il gate FE lo NASCONDE a
-// chi non ha l'azione — e il lucchetto prometterebbe una via d'uscita che non
+// chi non ha l'azione — e la chiave (`SBLOCCA`) prometterebbe una via d'uscita che non
 // esiste. Misurato in app il 2026-08-16: peggio di non offrire niente, perche'
 // il vicolo cieco lo si scopre solo dopo averlo imboccato.
 const { isAllowed: canCambiareStatoCommessa } = useActionPermission('cambia_stato_commessa')
@@ -1820,7 +1820,7 @@ function buildGruppoRowActions(row) {
     {
       key: 'fattura_gruppo',
       label: t('vendite.dashboard_competenza.azione_fattura_gruppo'),
-      icon: 'pi pi-file-export',
+      icon: MANAGE_ICONS.FATTURA_GENERA,
       visible: canFatturare.value,
       // Precedenza dei motivi: prima ciò che riguarda QUESTA riga (in corso,
       // testata bloccata), poi la causa di contesto (il giro di mese).
@@ -1844,7 +1844,7 @@ function buildGruppoRowActions(row) {
     {
       key: 'sblocca_commessa',
       label: t('vendite.dashboard_competenza.azione_sblocca_commessa'),
-      icon: 'pi pi-unlock',
+      icon: MANAGE_ICONS.SBLOCCA,
       // ⚠️ Gate sul permesso del verbo di DESTINAZIONE, non su quello di
       // fatturazione: chi non puo' cambiare stato non troverebbe «Rendi
       // pronta» nel drawer. Meglio nessuna scorciatoia che una che non porta
@@ -1974,7 +1974,7 @@ function buildCommessaRowActions(row) {
     {
       key: 'approva',
       label: t('vendite.dashboard_competenza.azione_approva'),
-      icon: 'pi pi-check',
+      icon: MANAGE_ICONS.APPROVE,
       visible: stadioSelezionato.value === 'DA_APPROVARE' && canApprova.value,
       disabled: azioneLoading.value,
       command: () => onApprovaCommessa(row),
@@ -2044,23 +2044,23 @@ onActivated(() => {
             class="app-dash-mese-errori"
             v-tooltip.right="t('vendite.dashboard_competenza.mese_errori', { n: statiMesi[idx].errori })"
           >
-            <i :class="MANAGE_ICONS.ERRORE" /> {{ statiMesi[idx].errori }}
+            <i :class="STATUS_ICONS.ERRORE" /> {{ statiMesi[idx].errori }}
           </span>
           <span
             v-if="statiMesi[idx].aperti > 0"
             class="app-dash-mese-fermi"
             v-tooltip.right="t('vendite.dashboard_competenza.mese_aperti', { n: statiMesi[idx].aperti })"
           >
-            <i :class="MANAGE_ICONS.ATTESA" /> {{ statiMesi[idx].aperti }}
+            <i :class="STATUS_ICONS.ATTESA" /> {{ statiMesi[idx].aperti }}
           </span>
           <i
             v-if="statiMesi[idx].stato === 'ok'"
-            class="pi pi-check app-dash-mese-ok"
+            class="app-dash-mese-ok" :class="STATUS_ICONS.TUTTO_OK"
             v-tooltip.right="t('vendite.dashboard_competenza.mese_ok')"
           />
           <i
             v-else-if="statiMesi[idx].stato === 'vuoto'"
-            class="pi pi-minus app-dash-mese-vuoto"
+            class="app-dash-mese-vuoto" :class="STATUS_ICONS.NON_APPLICABILE"
             v-tooltip.right="t('vendite.dashboard_competenza.mese_vuoto')"
           />
         </template>
@@ -2077,13 +2077,13 @@ onActivated(() => {
         >
           <template #badge>
             <span v-if="statoMeseCorrente.errori > 0" class="app-dash-mese-errori">
-              <i :class="MANAGE_ICONS.ERRORE" /> {{ statoMeseCorrente.errori }}
+              <i :class="STATUS_ICONS.ERRORE" /> {{ statoMeseCorrente.errori }}
             </span>
             <span v-if="statoMeseCorrente.aperti > 0" class="app-dash-mese-fermi">
-              <i :class="MANAGE_ICONS.ATTESA" /> {{ statoMeseCorrente.aperti }}
+              <i :class="STATUS_ICONS.ATTESA" /> {{ statoMeseCorrente.aperti }}
             </span>
-            <i v-if="statoMeseCorrente.stato === 'ok'" class="pi pi-check app-dash-mese-ok" />
-            <i v-else-if="statoMeseCorrente.stato === 'vuoto'" class="pi pi-minus app-dash-mese-vuoto" />
+            <i v-if="statoMeseCorrente.stato === 'ok'" class="app-dash-mese-ok" :class="STATUS_ICONS.TUTTO_OK" />
+            <i v-else-if="statoMeseCorrente.stato === 'vuoto'" class="app-dash-mese-vuoto" :class="STATUS_ICONS.NON_APPLICABILE" />
           </template>
         </DashMeseStepper>
 
@@ -2158,7 +2158,7 @@ onActivated(() => {
               <i
                 v-if="cardHint(card.stadio)"
                 v-tooltip.bottom="cardHint(card.stadio)"
-                class="pi pi-info-circle app-dash-card-hint"
+                class="app-dash-card-hint" :class="STATUS_ICONS.INFO"
                 role="img"
                 tabindex="0"
                 :aria-label="cardHint(card.stadio)"
@@ -2192,7 +2192,7 @@ onActivated(() => {
               @click.stop
               @keydown.enter.stop
             >
-              <i :class="MANAGE_ICONS.ERRORE" />
+              <i :class="STATUS_ICONS.ERRORE" />
               {{ t('vendite.dashboard_competenza.n_fatture_errore') }}
             </span>
             <span class="app-dash-stat-euro">{{ formatCurrency(card.valoreDisplay) }}</span>
@@ -2202,7 +2202,7 @@ onActivated(() => {
             <Button
               v-if="card.stadio === 'DA_APPROVARE' && card.nAttivita > 0 && canApprova"
               :label="t('vendite.dashboard_competenza.approva_mese')"
-              icon="pi pi-check-circle"
+              :icon="MANAGE_ICONS.APPROVE"
               size="small"
               :disabled="azioneLoading"
               style="margin-top: 0.5rem;"
@@ -2223,7 +2223,7 @@ onActivated(() => {
             >
               <Button
                 :label="t('vendite.dashboard_competenza.fattura_mese')"
-                icon="pi pi-file-export"
+                :icon="MANAGE_ICONS.FATTURA_GENERA"
                 size="small"
                 :loading="giroMeseInCorso"
                 :disabled="azioneLoading || giroMeseInCorso || giriMirataInCorso"
@@ -2242,7 +2242,7 @@ onActivated(() => {
             <Button
               v-if="card.stadio === 'FATTURATA' && nDaNumerare > 0 && canNumerare"
               :label="t('vendite.dashboard_competenza.vai_ai_lotti', { n: nDaNumerare })"
-              icon="pi pi-external-link"
+              :icon="MANAGE_ICONS.LOTTO"
               size="small"
               severity="warn"
               outlined
@@ -2272,7 +2272,7 @@ onActivated(() => {
               class="app-dash-residui-hint"
               v-tooltip.bottom="t('vendite.dashboard_competenza.residui_tooltip')"
             >
-              <i class="pi pi-info-circle" />
+              <i :class="STATUS_ICONS.INFO" />
               <template v-if="card.nResidui > 0">
                 {{ t('vendite.dashboard_competenza.residui_di_cui', { n: card.nResidui }) }}
                 · {{ formatCurrency(card.valoreResidui) }}
@@ -2295,12 +2295,12 @@ onActivated(() => {
               class="app-dash-residui-hint"
               v-tooltip.bottom="t('vendite.dashboard_competenza.trattenuti_tooltip')"
             >
-              <i class="pi pi-lock" />
+              <i :class="MANAGE_ICONS.LOTTO" />
               {{ t('vendite.dashboard_competenza.trattenuti_di_cui', { n: card.nTrattenute }) }}
               · {{ formatCurrency(card.valoreTrattenuto) }}
             </span>
             <span v-if="card.nInRitardo > 0" class="app-dash-ritardo">
-              <i class="pi pi-clock" />
+              <i :class="STATUS_ICONS.IN_RITARDO" />
               {{ t('vendite.dashboard_competenza.in_ritardo', { n: card.nInRitardo }) }}
             </span>
             <!-- Breakdown per stato documento fiscale (blocco 3a). -->
@@ -2349,14 +2349,14 @@ onActivated(() => {
         <Tabs v-model:value="tabAttiva" lazy class="app-dash-tabs">
           <TabList>
             <Tab :value="TAB_AREA">
-              <i class="pi pi-list" />
+              <i :class="MANAGE_ICONS.LIST" />
               {{ stadioSelezionato
                   ? t('vendite.dashboard_competenza.tab_area', { stadio: stadioSelezionatoLabel })
                   : t('vendite.dashboard_competenza.tab_area_vuota') }}
             </Tab>
             <Tab :value="TAB_ERRORI">
               <i
-                :class="[MANAGE_ICONS.ERRORE, { 'app-dash-mese-errori': nErroriMese > 0 }]"
+                :class="[STATUS_ICONS.ERRORE, { 'app-dash-mese-errori': nErroriMese > 0 }]"
               />
               {{ t('vendite.dashboard_competenza.tab_errori', { n: nErroriMese }) }}
             </Tab>
@@ -2405,7 +2405,7 @@ onActivated(() => {
               </ListaConfigurabile>
             </div>
             <div v-else class="app-empty-state">
-              <i class="pi pi-check-circle" />
+              <i :class="STATUS_ICONS.TUTTO_OK" />
               <p>{{ t('vendite.dashboard_competenza.errori_nessuno') }}</p>
             </div>
             </TabPanel>
@@ -2504,7 +2504,7 @@ onActivated(() => {
                          a video. -->
                     <Button
                       :label="t('vendite.dashboard_competenza.fattura_selezionati', { n: selezioneGruppi.length })"
-                      icon="pi pi-file-export"
+                      :icon="MANAGE_ICONS.FATTURA_GENERA"
                       size="small"
                       :loading="azioneLoading"
                       :disabled="selezioneGruppi.length === 0 || azioneLoading || giroMeseInCorso"
@@ -2516,7 +2516,7 @@ onActivated(() => {
                          scorrono di pagina a ogni ricarica post-esito. Sta in
                          testata proprio perché non dipende da cosa si ha davanti. -->
                     <span v-if="giriMirataInCorso" class="app-dash-giri-in-corso">
-                      <i class="pi pi-spin pi-spinner" />
+                      <i :class="STATUS_ICONS.CARICAMENTO" />
                       {{ t('vendite.dashboard_competenza.giri_in_corso', nGiriMirata, { n: nGiriMirata }) }}
                     </span>
                   </div>
@@ -2623,11 +2623,11 @@ onActivated(() => {
                   <template #cell-riferimento="{ data }">
                     <strong>{{ data.riferimento }}</strong>
                     <!-- Segnalare, non nascondere (brief emittibilita' §3.1): la
-                         testata non ammette fatturazione — lucchetto col motivo,
+                         testata non ammette fatturazione — spia di blocco col motivo,
                          accanto al nome che l'operatore sta gia' leggendo. -->
                     <i
                       v-if="!isGruppoEmittibile(data)"
-                      class="pi pi-lock app-dash-gruppo-bloccato"
+                      class="app-dash-gruppo-bloccato" :class="STATUS_ICONS.BLOCCATO"
                       v-tooltip.bottom="tooltipBloccato(data)"
                     />
                     <!-- ⭐ TRATTENUTO DA UN LOTTO VIVO: si spegne col MOTIVO e
@@ -2652,7 +2652,7 @@ onActivated(() => {
                          al nome, dove l'occhio è già posato. -->
                     <i
                       v-if="gruppiInCorso.has(data.gruppo_key)"
-                      class="pi pi-spin pi-spinner app-spinner-in-corso"
+                      class="app-spinner-in-corso" :class="STATUS_ICONS.CARICAMENTO"
                       v-tooltip.bottom="t('vendite.dashboard_competenza.gruppo_in_corso_tooltip')"
                     />
                     <!-- ⭐ L'ULTIMO TENTATIVO È FALLITO. Accanto al nome, dove
@@ -2749,7 +2749,7 @@ onActivated(() => {
                       class="app-dash-registro-multi"
                       v-tooltip.bottom="t('vendite.dashboard_competenza.col_registro_multi_tooltip')"
                     >
-                      <i class="pi pi-clone" />
+                      <i :class="STATUS_ICONS.MULTIPLI" />
                       {{ t('vendite.dashboard_competenza.col_registro_multi', { n: data.registri_n }) }}
                     </span>
                     <span v-else>{{ data.registro_codice || '—' }}</span>
@@ -2769,7 +2769,7 @@ onActivated(() => {
                      assenza di lavoro, e dichiararlo sarebbe una bugia che invita a
                      chiudere il mese. -->
                 <div v-else-if="gruppiLoaded" class="app-empty-state">
-                  <i class="pi pi-check-circle" />
+                  <i :class="STATUS_ICONS.TUTTO_OK" />
                   <p>{{ t('vendite.dashboard_competenza.nessun_gruppo') }}</p>
                 </div>
               </template>
@@ -2799,7 +2799,7 @@ onActivated(() => {
                   >
                     <Button
                       :label="t('vendite.dashboard_competenza.riporta', { n: selezioneResidui.length })"
-                      icon="pi pi-replay"
+                      :icon="MANAGE_ICONS.RIPORTA"
                       size="small"
                       severity="warn"
                       :loading="riportoInCorso"
@@ -2881,11 +2881,11 @@ onActivated(() => {
                      positivo su una fetch mai riuscita direbbe «non c'e' niente
                      da recuperare» quando invece non lo sappiamo. -->
                 <div v-else-if="residuiLoaded" class="app-empty-state">
-                  <i class="pi pi-check-circle" />
+                  <i :class="STATUS_ICONS.TUTTO_OK" />
                   <p>{{ t('vendite.dashboard_competenza.residui_vuoto') }}</p>
                 </div>
                 <div v-else class="app-empty-state">
-                  <i class="pi pi-inbox" />
+                  <i :class="STATUS_ICONS.VUOTO" />
                   <p>{{ t('vendite.dashboard_competenza.residui_placeholder') }}</p>
                 </div>
               </template>
@@ -2934,7 +2934,7 @@ onActivated(() => {
                   </template>
                   <template #cell-n_in_ritardo="{ data }">
                     <span v-if="data.n_in_ritardo > 0" class="app-dash-ritardo">
-                      <i class="pi pi-clock" /> {{ data.n_in_ritardo }}
+                      <i :class="STATUS_ICONS.IN_RITARDO" /> {{ data.n_in_ritardo }}
                     </span>
                     <span v-else>—</span>
                   </template>
@@ -2946,12 +2946,12 @@ onActivated(() => {
                   </template>
                 </ListaConfigurabile>
                 <div v-else class="app-empty-state">
-                  <i class="pi pi-check-circle" />
+                  <i :class="STATUS_ICONS.TUTTO_OK" />
                   <p>{{ t('vendite.dashboard_competenza.nessuna_commessa') }}</p>
                 </div>
               </template>
               <div v-else class="app-empty-state">
-                <i class="pi pi-chart-pie" />
+                <i :class="STATUS_ICONS.VUOTO" />
                 <p>{{ t('vendite.dashboard_competenza.commesse_hint') }}</p>
               </div>
             </div>

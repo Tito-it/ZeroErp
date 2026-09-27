@@ -13,6 +13,7 @@ import { useLookupDisplayModel } from '../composables/useLookupDisplayModel'
 import { useAutocompleteRefineHint } from '../composables/useAutocompleteRefineHint'
 import { lookupSoggettiRuoli } from '../apiCore'
 import AutoComplete from 'primevue/autocomplete'
+import { MANAGE_ICONS } from '../constants'
 
 const { t } = useI18n()
 
@@ -101,7 +102,7 @@ function onClear() {
         <div class="app-lookup-option__meta">
           <span v-if="option.id_fiscale">{{ option.id_fiscale }}</span>
           <span v-if="option.n_istanze > 0">
-            <i class="pi pi-bolt"></i>
+            <i :class="MANAGE_ICONS.UTILITY"></i>
             {{ t('soggetto_ruolo_lookup.n_istanze', { n: option.n_istanze }) }}
           </span>
         </div>

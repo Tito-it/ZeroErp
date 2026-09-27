@@ -15,6 +15,7 @@ import { useLookupDisplayModel } from '../composables/useLookupDisplayModel'
 import { useAutocompleteRefineHint } from '../composables/useAutocompleteRefineHint'
 import { lookupIstanzeUtility } from '../apiCore'
 import AutoComplete from 'primevue/autocomplete'
+import { MANAGE_ICONS } from '../constants'
 
 const { t } = useI18n()
 
@@ -139,11 +140,11 @@ watch(() => props.utilityId, (newUtility, oldUtility) => {
         </div>
         <div class="app-lookup-option__meta">
           <span v-if="option.indirizzo_display">
-            <i class="pi pi-map-marker"></i>
+            <i :class="MANAGE_ICONS.INDIRIZZI"></i>
             {{ option.indirizzo_display }}
           </span>
           <span v-if="option.pdp_codice">
-            <i class="pi pi-bolt"></i>
+            <i :class="MANAGE_ICONS.UTILITY"></i>
             {{ t('istanza_utility.pdp_label') }}: {{ option.pdp_codice }}
           </span>
           <span v-if="option.billing_account_codice">

@@ -18,7 +18,7 @@ import Button from 'primevue/button'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useLookupCodici } from '../../core/composables/useLookupCodici'
-import { READONLY_DOMAINS } from '../../core/constants'
+import { MANAGE_ICONS, READONLY_DOMAINS, STATUS_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { useAuthStore } from '../../stores/auth'
 import { usePraticheStore } from '../stores/pratiche'
@@ -53,14 +53,14 @@ const { items: tipiItems, loading: tipiLoading } = useLookupCodici(
 )
 
 // Icona per categoria: mapping FE (decisione brief §2.5 — l'icona e'
-// presentazione, non dato), valori dalle costanti centralizzate NAV_ICONS
+// presentazione, non dato), valori dalle costanti centralizzate (NAV_ICONS, MANAGE_ICONS)
 // (mai literal 'pi pi-*': il retheming resta un cambio in un punto solo).
 const CATEGORIA_ICONS = {
-  COMMERCIALE: NAV_ICONS.VENDITE,
-  VENDITE: NAV_ICONS.TAGS,
+  COMMERCIALE: MANAGE_ICONS.COMMERCIALE,
+  VENDITE: NAV_ICONS.VENDITE,
 }
 function tileIcon(categoria) {
-  return CATEGORIA_ICONS[categoria] || NAV_ICONS.FOLDER_OPEN
+  return CATEGORIA_ICONS[categoria] || NAV_ICONS.GESTIONE_PRATICHE
 }
 
 // Raggruppamento per categoria (anti "muro di bottoni"): categorie con nome in
@@ -126,7 +126,7 @@ const { prendiInCarico: onPrendiInCarico } = usePrendiInCarico()
         </h1>
         <Button
           :label="t('pratiche.home_tutte_le_pratiche')"
-          :icon="NAV_ICONS.FOLDER_OPEN"
+          :icon="NAV_ICONS.GESTIONE_PRATICHE"
           text
           @click="goTutteLePratiche"
         />
@@ -141,7 +141,7 @@ const { prendiInCarico: onPrendiInCarico } = usePrendiInCarico()
       <div v-else class="home-cols">
         <section v-if="showComincia" class="home-col">
           <header class="home-col-head">
-            <i class="pi pi-plus-circle" />
+            <i :class="MANAGE_ICONS.ADD" />
             <div>
               <h2>{{ t('pratiche.home_comincia_titolo') }}</h2>
               <p>{{ t('pratiche.home_comincia_sottotitolo') }}</p>
@@ -149,7 +149,7 @@ const { prendiInCarico: onPrendiInCarico } = usePrendiInCarico()
           </header>
 
           <div v-if="tipiLoading" class="home-loading">
-            <i class="pi pi-spin pi-spinner" />
+            <i :class="STATUS_ICONS.CARICAMENTO" />
           </div>
           <div v-else-if="!gruppi.length" class="home-empty">
             {{ t('pratiche.home_nessun_tipo') }}
@@ -175,7 +175,7 @@ const { prendiInCarico: onPrendiInCarico } = usePrendiInCarico()
 
         <section v-if="showContinua" class="home-col">
           <header class="home-col-head">
-            <i class="pi pi-briefcase" />
+            <i :class="NAV_ICONS.PRATICHE" />
             <div>
               <h2>{{ t('pratiche.home_continua_titolo') }}</h2>
               <p>{{ t('pratiche.home_continua_sottotitolo') }}</p>

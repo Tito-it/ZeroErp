@@ -23,7 +23,8 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useListaAzioni } from '../../core/composables/useListaAzioni'
 import { useInjectBlocked, useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { useUiAdminStore } from '../stores/uiAdmin'
 import { useUiPresetAdminStore } from '../stores/uiPresetAdmin'
 import ListaPresetDrawer from './ListaPresetDrawer.vue'
@@ -77,7 +78,7 @@ const pageActions = computed(() => [
     kind: 'primary',
     label: t('common.new'),
     tooltip: t('ui.admin.preset_nuovo'),
-    icon: 'pi pi-plus',
+    icon: MANAGE_ICONS.ADD,
     hideWhenReadonly: true,
     disabled: !listaSelezionata.value,
     command: drawerTestata.openCreate,
@@ -89,7 +90,7 @@ function buildRowActions(data) {
     {
       key: 'colonne',
       label: t('ui.admin.preset_gestisci_colonne'),
-      icon: 'pi pi-table',
+      icon: NAV_ICONS.PERSONALIZZAZIONI_LISTE,
       command: () => openComposizione(data),
     },
     {
@@ -180,7 +181,7 @@ function severityForAmbito(ambito) {
           <Tag :value="t(`ui.admin.preset_ambito_${data.ambito}`)" :severity="severityForAmbito(data.ambito)" />
         </template>
         <template #cell-is_default="{ data }">
-          <i v-if="data.is_default" class="pi pi-check" />
+          <i v-if="data.is_default" :class="STATUS_ICONS.SI" />
         </template>
         <template #cell-attivo="{ data }">
           <AttivoTag :active="data.attivo" :active-label="t('common.yes')" :inactive-label="t('common.no')" />

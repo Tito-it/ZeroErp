@@ -229,7 +229,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :action="t('catalogo.gestisci_conversioni')" :title="uomCodice" :icon="NAV_ICONS.ARROWS_H"
+      <DrawerTitle :action="t('catalogo.gestisci_conversioni')" :title="uomCodice" :icon="NAV_ICONS.UNITA_MISURA"
         :modificato="modificatoTutto" />
     </template>
 
@@ -274,7 +274,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
           <template v-else>
             <span v-if="!isReadonly" class="app-mono fattore-cell" @click="startEditFattore(data)">
               {{ data.fattore }}
-              <i class="pi pi-pencil" style="font-size: 0.7rem; margin-left: 0.25rem; opacity: 0.5;" />
+              <i :class="MANAGE_ICONS.EDIT" style="font-size: 0.7rem; margin-left: 0.25rem; opacity: 0.5;" />
             </span>
             <span v-else class="app-mono">{{ data.fattore }}</span>
           </template>

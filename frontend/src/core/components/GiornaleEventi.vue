@@ -31,6 +31,7 @@
 //    non sparire. Un evento nuovo a DB deve **vedersi**, anche brutto.
 import Tag from 'primevue/tag'
 import { displayDate, displayTime } from '../utils/date'
+import { STATUS_ICONS } from '../constants'
 
 const props = defineProps({
   eventi: { type: Array, default: () => [] },
@@ -56,12 +57,12 @@ function codice(ev) {
 <template>
   <div>
     <div v-if="props.loading" class="app-giornale-stato">
-      <i class="pi pi-spin pi-spinner" />
+      <i :class="STATUS_ICONS.CARICAMENTO" />
     </div>
 
     <!-- Non caricato: si tace, non si afferma che non è successo niente. -->
     <div v-else-if="!props.caricato" class="app-giornale-stato">
-      <i class="pi pi-inbox" />
+      <i :class="STATUS_ICONS.VUOTO" />
       <p v-if="props.testoPlaceholder">{{ props.testoPlaceholder }}</p>
     </div>
 

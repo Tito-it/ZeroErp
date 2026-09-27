@@ -60,7 +60,7 @@ import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
-import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { statoDistintaSeverity, statoRigaContabileSeverity } from '../../core/utils/severity'
@@ -298,7 +298,7 @@ const azioniRighe = computed(() => [
     key: 'righe-da-rate',
     severity: 'primary',
     label: t('pagamenti.rate.righe_da_rate'),
-    icon: 'pi pi-list-check',
+    icon: MANAGE_ICONS.RIGHE_DA_RATE,
     hideWhenReadonly: true,
     visible: modificabile.value && formMode.value === null,
     command: () => { righeDaRateVisible.value = true },
@@ -468,7 +468,7 @@ watch(
            per mezzo secondo si legge come «questa distinta non ha niente», che
            e' un'affermazione — e per giunta falsa. -->
       <div v-if="loading" class="app-loading">
-        <i class="pi pi-spin pi-spinner" />
+        <i :class="STATUS_ICONS.CARICAMENTO" />
       </div>
 
       <template v-if="contentReady && distinta">
@@ -692,7 +692,7 @@ watch(
                una contraddizione. -->
           <template #empty>
             <div v-if="!storeRighe.erroreCaricamento" class="app-empty-state">
-              <i class="pi pi-list" />
+              <i :class="STATUS_ICONS.VUOTO" />
               <p>{{ t('pagamenti.distinte.nessuna_riga') }}</p>
             </div>
           </template>

@@ -5,7 +5,7 @@
 // Riusabile per operatori, clienti, fornitori, qualsiasi ruolo.
 import { ref, watch, computed, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { DRAWER_WIDTH, MANAGE_ICONS, RICERCA } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, RICERCA, STATUS_ICONS } from '../../core/constants'
 import { termineCorto } from '../../core/utils/listParams'
 import { listSoggetti, getConfigResolver, listSoggettoContatti } from '../api/anagrafiche'
 import SoggettoDrawer from './SoggettoDrawer.vue'
@@ -199,7 +199,7 @@ async function onSoggettoCreatoDaDrawer(data) {
       <DrawerTitle
         :action="t('resolver.action_search')"
         :title="t('anagrafiche.soggetti.soggetto')"
-        icon="pi pi-search"
+        :icon="MANAGE_ICONS.RICERCA"
       />
     </template>
 
@@ -213,7 +213,7 @@ async function onSoggettoCreatoDaDrawer(data) {
             autofocus
             @input="onSearchInput"
           />
-          <i v-if="searchLoading || configLoading" class="pi pi-spin pi-spinner resolver-search-icon" />
+          <i v-if="searchLoading || configLoading" class="resolver-search-icon" :class="STATUS_ICONS.CARICAMENTO" />
         </span>
 
         <!-- Risultati INLINE: nessun overlay, l'elenco resta aperto e selezionabile -->
@@ -239,11 +239,11 @@ async function onSoggettoCreatoDaDrawer(data) {
               <span v-if="option.partita_iva" class="ml-05">P.IVA: {{ option.partita_iva }}</span>
             </div>
             <div v-if="option._ruoloDuplicato" class="resolver-warning">
-              <i :class="MANAGE_ICONS.ERRORE" />
+              <i :class="STATUS_ICONS.ERRORE" />
               {{ t('resolver.already_role', { ruolo: option._ruoloDescrizione || tipoRuoloCodice }) }}
             </div>
             <div v-else-if="option._naturaBloccata" class="resolver-warning">
-              <i class="pi pi-ban" />
+              <i :class="STATUS_ICONS.ESCLUSO" />
               {{ t('resolver.natura_blocked') }}
             </div>
           </li>

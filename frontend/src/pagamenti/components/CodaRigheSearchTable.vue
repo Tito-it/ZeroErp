@@ -42,6 +42,7 @@ import { statoRigaContabileSeverity } from '../../core/utils/severity'
 import { MODO_ABBINA, useAzioniRigaContabile } from '../composables/useAzioniRigaContabile'
 import { useEtichettePagamenti } from '../etichette'
 import { useCodaRigheStore } from '../stores/codaRighe'
+import { STATUS_ICONS } from '../../core/constants'
 import { CODE, ROTTA_PER_CODA } from '../vocabolari'
 import AbbinaRigaDialog from './AbbinaRigaDialog.vue'
 import FiltroPeriodo from '../../core/components/FiltroPeriodo.vue'
@@ -236,7 +237,7 @@ onActivated(() => sincronizzaConLaRotta())
 
         <template #empty>
           <div class="app-empty-state">
-            <i class="pi pi-check-circle" />
+            <i :class="STATUS_ICONS.TUTTO_OK" />
             <p>{{ t('pagamenti.righe.coda_vuota') }}</p>
           </div>
         </template>

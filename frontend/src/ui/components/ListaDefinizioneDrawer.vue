@@ -19,7 +19,7 @@ import Checkbox from 'primevue/checkbox'
 import Message from 'primevue/message'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
@@ -149,7 +149,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
         :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('ui.admin.definizione')"
-        icon="pi pi-list"
+        :icon="MANAGE_ICONS.LIST"
       />
     </template>
 

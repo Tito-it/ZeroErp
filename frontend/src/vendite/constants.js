@@ -3,6 +3,8 @@
 // (BE) e con i seed DB (`config.stati_doc_preventivi`,
 // `config.azioni_processo`).
 
+import { MANAGE_ICONS } from '../core/constants'
+
 // Stati di workflow approvazione prezzo applicabili al campo
 // `vendite.preventivi_righe.stato_approvazione_prezzo` (ENUM nativo
 // `config.stato_approvazione_prezzo`).
@@ -107,7 +109,7 @@ export const PRICING_ACTIONS = Object.freeze({
 export const AZIONE_PUSH_COMMESSA = Object.freeze({
   key: 'push_commessa',
   severity: 'success',
-  icon: 'pi pi-arrow-right',
+  icon: MANAGE_ICONS.SEND,
 })
 
 // Codici stato preventivo (`config.stati_doc_preventivi.codice_interno`).

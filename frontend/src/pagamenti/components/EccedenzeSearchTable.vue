@@ -32,6 +32,7 @@ import { useEtichettePagamenti } from '../etichette'
 import { formatCurrency } from '../../core/utils/format'
 import { SEVERITY_CHI_E_IN_CREDITO } from '../vocabolari'
 import { useEccedenzeStore } from '../stores/eccedenze'
+import { STATUS_ICONS } from '../../core/constants'
 import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const emit = defineEmits(['row-click'])
@@ -152,7 +153,7 @@ onMounted(() => store.fetchList())
 
         <template #empty>
           <div class="app-empty-state">
-            <i class="pi pi-check-circle" />
+            <i :class="STATUS_ICONS.TUTTO_OK" />
             <p>{{ t('pagamenti.eccedenze.nessuna_eccedenza') }}</p>
           </div>
         </template>

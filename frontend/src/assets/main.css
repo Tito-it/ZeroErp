@@ -1740,28 +1740,9 @@ a {
   font-size: 0.55rem;
 }
 
-/* UoM operativa = box (pi-box \e9d9) + ingranaggio sovrapposto (pi-cog \e94a).
-   Distingue le unita' di misura operative dall'icona "articolo" base
-   (pi-box semplice usato come NAV_ICONS.CATALOGO). Semantica:
-   "quanta cosa, con conversione operativa". */
-.app-nav-icon-uom::before {
-  content: "\e9d9";
-  top: 0.04rem;
-  left: 0.14rem;
-  font-size: 0.92rem;
-}
-
-.app-nav-icon-uom::after {
-  content: "\e94a";
-  left: 0.72rem;
-  top: -0.05rem;
-  font-size: 0.7rem;
-}
-
 /* Promo articoli = percentuale (pi-percentage \e9be) + box sovrapposto in
-   alto a destra (pi-box \e9d9). Stessa logica di UoM ma con ruoli invertiti:
-   l'oggetto principale e' la promo (%) e il dettaglio e' l'articolo a cui si
-   applica. Semantica: "sconto sull'articolo". */
+   alto a destra (pi-box \e9d9): l'oggetto principale e' la promo (%) e il
+   dettaglio e' l'articolo a cui si applica. Semantica: "sconto sull'articolo". */
 .app-nav-icon-promo-articoli::before {
   content: "\e9be";
   top: 0.04rem;

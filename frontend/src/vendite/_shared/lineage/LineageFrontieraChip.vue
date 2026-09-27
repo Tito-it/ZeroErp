@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
 import { faseDocumentoSeverity } from '../../../core/utils/severity'
 import { lineageDocumentoLabel } from './lineageLabels'
+import { MANAGE_ICONS } from '../../../core/constants'
 
 defineProps({
   isTransitato: { type: Boolean, default: false },
@@ -43,7 +44,7 @@ function tipoLabel(codice, natura) {
        transitato», per un documento che in esecuzione c'e' eccome. Stessa
        fallback `non_numerato` delle tappe del pannello (2026-08-20/21). -->
   <span v-if="isTransitato && tipoCodice" class="lineage-cell-chip">
-    <i class="pi pi-arrow-right lineage-cell-arrow" />
+    <i :class="MANAGE_ICONS.DOC_DESTINAZIONE" class="lineage-cell-arrow" />
     <Tag :value="tipoLabel(tipoCodice, naturaCodice)" severity="secondary" />
     <span class="lineage-cell-codice">{{ codice || t('vendite.lineage.non_numerato') }}</span>
     <Tag

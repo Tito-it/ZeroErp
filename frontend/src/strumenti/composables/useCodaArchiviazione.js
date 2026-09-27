@@ -13,6 +13,7 @@
 //       il presidio pgTAP di simmetria esiste per impedire a database.
 // ------------------------------------------------------------
 import { useI18n } from 'vue-i18n'
+import { MANAGE_ICONS } from '../../core/constants'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { rigaCodaViva } from '../../core/composables/useQueueCountsPolling'
@@ -39,10 +40,9 @@ import { AZIONE_CODE_MANAGE } from './useCodaFiltri'
 // (anche parziale), con gli id che NON sono passati. Le schede ci riducono la
 // selezione a quelli: le riuscite escono dall'elenco, e un contatore che
 // continuasse a contarle mentirebbe.
-// ⭐ L'ICONA del verbo sta qui e non nei due chiamanti: la porta la voce di
-// riga E il pulsante di massa, e la stessa azione con due icone diverse e' il
-// genere di divergenza che nessun test vede.
-export const ICONA_ARCHIVIA = 'pi pi-inbox'
+// ⭐ L'ICONA del verbo e' `MANAGE_ICONS.ARCHIVIA`, non un letterale nei due
+// chiamanti: la porta la voce di riga E il pulsante di massa, e la stessa
+// azione con due icone diverse e' il genere di divergenza che nessun test vede.
 export function useCodaArchiviazione({
   archivia, ripristina, ricarica, etichettaRiga, onArchiviato = null,
 }) {
@@ -140,7 +140,7 @@ export function useCodaArchiviazione({
       {
         key: 'archivia',
         label: t('strumenti.code.azione_archivia'),
-        icon: ICONA_ARCHIVIA,
+        icon: MANAGE_ICONS.ARCHIVIA,
         action: AZIONE_CODE_MANAGE,
         visible: row.archiviato !== true,
         disabled: viva || isReadonly.value,
@@ -152,7 +152,7 @@ export function useCodaArchiviazione({
       {
         key: 'ripristina',
         label: t('strumenti.code.azione_ripristina'),
-        icon: 'pi pi-undo',
+        icon: MANAGE_ICONS.TOGLI,
         action: AZIONE_CODE_MANAGE,
         visible: row.archiviato === true,
         disabled: isReadonly.value,

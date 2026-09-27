@@ -39,6 +39,11 @@ from apps.core.api.success_responses import success_response
 #         - list_call:     closure (documento_id) -> {tipi_ammessi, indirizzi}
 #         - upsert_call:   closure (documento_id, payload) -> riga upsertata
 #         - delete_call:   closure (documento_id, indirizzo_id) -> esito
+#         - model_permission: oggetto del catalogo permessi del documento
+#                          (es. ("vendite", "preventivo")): la view e' una
+#                          parte dell'oggetto e ne chiede il livello
+#                          (brief-db-be-fe-catalogo-oggetti-permessi §3.2).
+#                          None = solo l'area.
 def build_indirizzi_documento_views(
     *,
     schema_prefix: str,
@@ -46,6 +51,7 @@ def build_indirizzi_documento_views(
     list_call: Callable[[int], dict[str, Any]],
     upsert_call: Callable[[int, dict[str, Any]], dict[str, Any]],
     delete_call: Callable[[int, int], dict[str, Any]],
+    model_permission: tuple[str, str] | None = None,
 ) -> SimpleNamespace:
     class _IndirizziView(DomainAPIView):
         area_funzionale = "vendite"
@@ -122,5 +128,9 @@ def build_indirizzi_documento_views(
     )
     _IndirizzoDetailView.__name__ = f"Api{schema_prefix}IndirizzoDetail"
     _IndirizzoDetailView.__qualname__ = _IndirizzoDetailView.__name__
+
+    if model_permission is not None:
+        _IndirizziView.model_permission = model_permission
+        _IndirizzoDetailView.model_permission = model_permission
 
     return SimpleNamespace(lista=_IndirizziView, detail=_IndirizzoDetailView)

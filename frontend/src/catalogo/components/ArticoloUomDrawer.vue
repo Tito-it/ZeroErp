@@ -16,7 +16,7 @@ import { useParameterDefaults } from '../../core/composables/useParameterDefault
 import { paramBool, paramNumber } from '../../core/utils/parameterCast'
 import { listArticoloUom, createArticoloUom, updateArticoloUom, deleteArticoloUom } from '../api/catalogo'
 import { toDateString } from '../../core/utils/date'
-import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
@@ -322,7 +322,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div v-if="listLoading" class="app-loading">
-        <i class="pi pi-spin pi-spinner" />
+        <i :class="STATUS_ICONS.CARICAMENTO" />
       </div>
 
       <template v-if="!listLoading && !formMode">
@@ -334,7 +334,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
         </div>
 
         <div v-if="uomList.length === 0" class="app-empty-state">
-          <i class="pi pi-box" />
+          <i :class="MANAGE_ICONS.UOM" />
           <p>{{ t('catalogo.nessuna_uom') }}</p>
         </div>
 

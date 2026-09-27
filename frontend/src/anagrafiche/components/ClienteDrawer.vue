@@ -20,7 +20,7 @@ import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { listUtilitiesPerBillingAccount } from '../api/anagrafiche'
 import { lookupUtilitiesPerEmittente } from '../../core/apiCore'
-import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { displayDate } from '../../core/utils/date'
 import { statoClienteSeverity } from '../../core/utils/severity'
@@ -408,7 +408,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
     </template>
 
     <div v-if="!contenutoVisibile" class="app-loading">
-      <i class="pi pi-spin pi-spinner" style="font-size: 1.5rem;"></i>
+      <i :class="STATUS_ICONS.CARICAMENTO" style="font-size: 1.5rem;"></i>
     </div>
     <div v-if="contenutoVisibile" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
 
@@ -425,7 +425,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
               text size="small" class="mt-1" @click="clearSoggetto" />
           </div>
           <div v-else>
-            <Button :label="t('resolver.open')" icon="pi pi-search"
+            <Button :label="t('resolver.open')" :icon="MANAGE_ICONS.RICERCA"
               outlined @click="resolverVisible = true" />
           </div>
         </template>

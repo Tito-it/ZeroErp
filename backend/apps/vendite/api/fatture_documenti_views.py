@@ -61,6 +61,7 @@ _views = build_documenti_sorgente_views(
     emittente_message="Emittente fiscale non risolto per la fattura.",
     get_entity=_get_entity,
     doc_service=_doc_service,
+    model_permission=("vendite", "fattura"),
 )
 
 ApiFatturaDocumentoGenera = _views.genera

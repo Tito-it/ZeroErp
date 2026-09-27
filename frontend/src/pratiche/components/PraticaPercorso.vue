@@ -20,7 +20,8 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { statoFlussoSeverity, faseSorgenteSeverity } from '../../core/utils/severity'
-import { RAMO_STEP, STATO_FLUSSO } from '../../core/constants'
+import { MANAGE_ICONS, RAMO_STEP, STATO_FLUSSO, STATUS_ICONS } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { useInjectTechnicalMode } from '../../core/composables/useTechnicalMode'
 import { getUiActivity } from '../uiActivityRegistry'
 import Tag from 'primevue/tag'
@@ -183,7 +184,7 @@ function isRamoChiuso(step) {
     <div v-if="!praticaId" class="percorso-empty" />
 
     <div v-else-if="loading" class="percorso-loading">
-      <i class="pi pi-spin pi-spinner" />
+      <i :class="STATUS_ICONS.CARICAMENTO" />
     </div>
 
     <template v-else>
@@ -197,7 +198,7 @@ function isRamoChiuso(step) {
           <!-- FATTI: passi conclusi, compatti, con esito umano -->
           <div v-if="fatti.length" class="rac-fatti">
             <div v-for="step in fatti" :key="step.template_flusso_id" class="rac-fatto" :class="{ 'is-selected': isSelected(step) }">
-              <i class="pi pi-check-circle rac-fatto-icon" />
+              <i class="rac-fatto-icon" :class="STATUS_ICONS.OK" />
               <span class="rac-fatto-title">{{ stepTitolo(step) }}</span>
               <span v-if="step.esito_descrizione" class="rac-fatto-esito">· {{ step.esito_descrizione }}</span>
               <!-- Documento del passo ancora VIVO dopo la chiusura del passo
@@ -217,7 +218,7 @@ function isRamoChiuso(step) {
                 :title="t('pratiche.percorso_ripeti_hint')"
                 @click="onRipeti(step)"
               >
-                <i class="pi pi-replay" /> {{ t('pratiche.percorso_ripeti') }}
+                <i :class="MANAGE_ICONS.RIPROVA" /> {{ t('pratiche.percorso_ripeti') }}
               </span>
             </div>
           </div>
@@ -261,7 +262,7 @@ function isRamoChiuso(step) {
               <Button
                 v-if="!attivita && canActGenerico(step)"
                 :label="step.flusso_id ? t('pratiche.percorso_apri') : t('pratiche.percorso_crea')"
-                :icon="step.flusso_id ? 'pi pi-folder-open' : 'pi pi-plus-circle'"
+                :icon="step.flusso_id ? NAV_ICONS.PRATICHE : MANAGE_ICONS.ADD"
                 size="small"
                 :disabled="busy"
                 @click="onClick(step)"
@@ -269,7 +270,7 @@ function isRamoChiuso(step) {
               <Button
                 v-else-if="attivita && step.flusso_id"
                 :label="t('pratiche.percorso_apri')"
-                icon="pi pi-folder-open"
+                :icon="NAV_ICONS.PRATICHE"
                 size="small"
                 text
                 :disabled="busy"
@@ -282,10 +283,10 @@ function isRamoChiuso(step) {
                 :title="t('pratiche.percorso_ripeti_hint')"
                 @click="onRipeti(step)"
               >
-                <i class="pi pi-replay" /> {{ t('pratiche.percorso_ripeti') }}
+                <i :class="MANAGE_ICONS.RIPROVA" /> {{ t('pratiche.percorso_ripeti') }}
               </span>
               <span v-if="!attivita && !canActGenerico(step)" class="rac-locked">
-                <i class="pi pi-lock" /> {{ t('pratiche.percorso_non_disponibile') }}
+                <i :class="STATUS_ICONS.BLOCCATO" /> {{ t('pratiche.percorso_non_disponibile') }}
               </span>
             </div>
           </div>
@@ -320,7 +321,7 @@ function isRamoChiuso(step) {
               {{ step.template_flusso_codice }}
               <i
                 v-if="step.has_handler"
-                class="pi pi-bolt percorso-handler"
+                class="percorso-handler" :class="STATUS_ICONS.AUTOMATICO"
                 :title="t('pratiche.percorso_handler')"
               />
             </div>
@@ -339,15 +340,15 @@ function isRamoChiuso(step) {
               doc: UNKNOWN (no resolver)
             </div>
             <div v-if="isRamoChiuso(step)" class="percorso-step-action percorso-ramo-chiuso">
-              <i class="pi pi-ban" :title="t('pratiche.percorso_ramo_chiuso_hint')" />
+              <i :class="STATUS_ICONS.ESCLUSO" :title="t('pratiche.percorso_ramo_chiuso_hint')" />
               {{ t('pratiche.percorso_ramo_chiuso') }}
             </div>
             <div v-else-if="!canActGenerico(step)" class="percorso-step-action">
-              <i class="pi pi-lock" :title="t('pratiche.percorso_non_disponibile')" />
+              <i :class="STATUS_ICONS.BLOCCATO" :title="t('pratiche.percorso_non_disponibile')" />
               {{ t('pratiche.percorso_non_disponibile') }}
             </div>
             <div v-else class="percorso-step-action">
-              <i :class="step.flusso_id ? 'pi pi-folder-open' : 'pi pi-plus-circle'" />
+              <i :class="step.flusso_id ? NAV_ICONS.PRATICHE : MANAGE_ICONS.ADD" />
               {{ step.flusso_id ? t('pratiche.percorso_apri') : t('pratiche.percorso_crea') }}
               <span
                 v-if="canRipeti(step)"
@@ -355,7 +356,7 @@ function isRamoChiuso(step) {
                 :title="t('pratiche.percorso_ripeti_hint')"
                 @click.stop="onRipeti(step)"
               >
-                <i class="pi pi-replay" /> {{ t('pratiche.percorso_ripeti') }}
+                <i :class="MANAGE_ICONS.RIPROVA" /> {{ t('pratiche.percorso_ripeti') }}
               </span>
             </div>
             <div
@@ -367,7 +368,7 @@ function isRamoChiuso(step) {
               <i :class="uiActivityFor(step).icon" /> {{ t(uiActivityFor(step).label) }}
             </div>
           </div>
-          <i v-if="i < percorso.length - 1" class="pi pi-angle-right percorso-arrow" />
+          <i v-if="i < percorso.length - 1" class="percorso-arrow" :class="MANAGE_ICONS.SUCCESSIVO" />
         </template>
       </div>
     </template>

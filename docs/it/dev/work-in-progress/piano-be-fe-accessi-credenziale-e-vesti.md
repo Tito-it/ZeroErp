@@ -12,7 +12,7 @@
 >
 > **Da dove viene**: [analisi-accessi-credenziale-e-vesti.md](analisi-accessi-credenziale-e-vesti.md)
 > (inventario, difetti M-4/M-5/M-6 e A-1…A-9, decisioni D-1…D-10) e
-> [brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md)
+> [brief-db-blocco-login-per-credenziale.md](../work-done/brief-db-blocco-login-per-credenziale.md)
 > (la forma DB di tentativi, blocco, cambio password obbligatorio ed email,
 > con le decisioni D-B1…D-B5). Questo piano non ripete il perché: lo rimanda.
 >

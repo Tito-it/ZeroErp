@@ -2,6 +2,7 @@
 // Scopo: Placeholder riutilizzabile per liste che partono vuote.
 // Mostra icona search e messaggio "Eseguire una ricerca" finche' l'utente non applica filtri.
 import { useI18n } from 'vue-i18n'
+import { MANAGE_ICONS } from '../constants'
 
 defineProps({
   message: { type: String, default: null }
@@ -12,7 +13,7 @@ const { t } = useI18n()
 
 <template>
   <div class="search-hint">
-    <i class="pi pi-search" />
+    <i class="search-hint-icon" :class="MANAGE_ICONS.RICERCA" />
     <span>{{ message || t('common.eseguire_ricerca') }}</span>
   </div>
 </template>
@@ -29,7 +30,7 @@ const { t } = useI18n()
   font-size: 0.95rem;
 }
 
-.search-hint .pi-search {
+.search-hint-icon {
   font-size: 2rem;
   opacity: 0.4;
 }

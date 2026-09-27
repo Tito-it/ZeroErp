@@ -9,6 +9,7 @@
 // gia' il valore corretto (CF || P.IVA), il banner non interpreta.
 import { useI18n } from 'vue-i18n'
 import Message from 'primevue/message'
+import { MANAGE_ICONS } from '../constants'
 
 defineProps({
   ragioneSociale: { type: String, default: '' },
@@ -21,7 +22,7 @@ const { t } = useI18n()
 <template>
   <Message severity="success" :closable="false">
     <div>
-      <i class="pi pi-user" />
+      <i :class="MANAGE_ICONS.SOGGETTO" />
       <strong>{{ ragioneSociale }}</strong>&nbsp;
       <span v-if="idFiscale" class="app-text-muted ml-05">
         {{ t('common.id_fiscale') }}: {{ idFiscale }}

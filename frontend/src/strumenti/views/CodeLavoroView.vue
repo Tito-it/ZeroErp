@@ -20,7 +20,8 @@ import TabPanel from 'primevue/tabpanel'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useTabDaQuery } from '../../core/composables/useTabDaQuery'
-import { CODE_TABS, READONLY_DOMAINS } from '../../core/constants'
+import { CODE_TABS, MANAGE_ICONS, READONLY_DOMAINS } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import CodaLavoriTab from '../components/CodaLavoriTab.vue'
 import CodaStampaTab from '../components/CodaStampaTab.vue'
 
@@ -58,10 +59,10 @@ const activeTab = useTabDaQuery({
     <Tabs v-model:value="activeTab" lazy>
       <TabList>
         <Tab :value="CODE_TABS.LAVORI">
-          <i class="pi pi-inbox" /> {{ t('strumenti.code.tab_lavori') }}
+          <i :class="NAV_ICONS.CODE_LAVORO" /> {{ t('strumenti.code.tab_lavori') }}
         </Tab>
         <Tab :value="CODE_TABS.STAMPA">
-          <i class="pi pi-print" /> {{ t('strumenti.code.tab_stampa') }}
+          <i :class="MANAGE_ICONS.STAMPA" /> {{ t('strumenti.code.tab_stampa') }}
         </Tab>
       </TabList>
       <TabPanels>

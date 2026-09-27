@@ -36,7 +36,7 @@ import {
   updateArticoloComponente,
   makeComponenteNotesApi,
 } from '../api/catalogo'
-import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { addDaysToToday, displayDate, toDateString } from '../../core/utils/date'
 import ArticoloLookup from './ArticoloLookup.vue'
 import NoteDrawer from '../../core/components/NoteDrawer.vue'
@@ -590,7 +590,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
 
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div v-if="listLoading" class="app-loading">
-        <i class="pi pi-spin pi-spinner" />
+        <i :class="STATUS_ICONS.CARICAMENTO" />
       </div>
 
       <template v-if="!listLoading">
@@ -650,7 +650,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
 
         <!-- Lista componenti (sempre visibile) -->
         <div v-if="componentiList.length === 0 && !adding" class="app-empty-state">
-          <i class="pi pi-sitemap" />
+          <i :class="MANAGE_ICONS.BOM" />
           <p>{{ t('catalogo.nessun_componente') }}</p>
         </div>
 
@@ -678,7 +678,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
           <Column field="coeff_qta" :header="t('catalogo.col_coeff_qta')" style="width: 70px;" sortable />
           <Column field="esposto_in_fattura" :header="t('catalogo.col_esposto_fattura')" style="width: 80px;">
             <template #body="{ data }">
-              <i :class="data.esposto_in_fattura ? 'pi pi-check' : 'pi pi-minus app-text-muted'" />
+              <i :class="data.esposto_in_fattura ? STATUS_ICONS.SI : [STATUS_ICONS.NO, 'app-text-muted']" />
             </template>
           </Column>
           <Column field="valido_al" :header="t('catalogo.field_valido_al')" style="width: 130px;" sortable>

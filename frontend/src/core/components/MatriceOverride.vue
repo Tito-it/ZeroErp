@@ -37,7 +37,7 @@ import Column from 'primevue/column'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
-import { MANAGE_ICONS } from '../constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../constants'
 
 const { t } = useI18n()
 
@@ -167,7 +167,7 @@ const avvisoDi = (voce) => (props.avviso ? props.avviso(voce) : null)
           <i
             v-if="avvisoDi(data)"
             v-tooltip.top="avvisoDi(data)"
-            :class="[MANAGE_ICONS.ERRORE, 'app-matrice-override-avviso']"
+            :class="[STATUS_ICONS.ERRORE, 'app-matrice-override-avviso']"
           />
         </template>
       </Column>

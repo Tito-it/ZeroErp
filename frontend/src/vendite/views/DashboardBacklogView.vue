@@ -23,7 +23,7 @@ import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
-import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../../core/constants'
+import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS, STATUS_ICONS } from '../../core/constants'
 import { extractApiError } from '../../core/utils/apiError'
 import { displayDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
@@ -401,7 +401,7 @@ onActivated(() => {
             {{ t('vendite.dashboard_backlog.unita_ferme', { n: card.unitaFerme }) }}
           </span>
           <span v-if="card.anzianitaMax > 0" class="app-dash-ritardo">
-            <i class="pi pi-clock" />
+            <i :class="STATUS_ICONS.IN_RITARDO" />
             {{ t('vendite.dashboard_backlog.anzianita_max', { n: card.anzianitaMax }) }}
           </span>
         </div>

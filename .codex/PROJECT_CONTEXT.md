@@ -279,6 +279,17 @@ scritto: il modello protegge da un backend che **sbaglia**, non da uno
   `--app-*` perché il loro **significato** non è nominato. Si decide caso per
   caso cosa dicono (il nome è il significato, non la tinta), poi un guard che
   tenga lo zero. Regola: frontend-standards § «Stili CSS».
+- ❓ **Le FK verso `django.auth_user` non nascono su un'installazione nuova**
+  (DB, domanda di forma per Tid, ereditata il 2026-09-27 dalla chiusura di
+  `work-done/brief-db-blocco-login-per-credenziale.md`, §11.5): con
+  `onFail: MARK_RAN` il changeSet del «ponte django» si segna quando Liquibase
+  gira prima di `manage.py migrate` (la tabella non esiste ancora) e non si
+  riprova più. In CI nessuna FK del ponte esiste e
+  `config/test-fk-auth-user-ponte-django-v1` salta. L'indice sull'email (D-B5 di
+  quel brief) usa invece `onFail: CONTINUE`, che salta senza segnare e riprova al
+  migrate successivo. Da decidere se portare a `CONTINUE` tutte le FK del ponte
+  (le 18 storiche e `20260925-22`/`-23`): è un cambio della forma di casa, del
+  team DB.
 - 🔴 **Il tetto d'area dei permessi non esiste** (BE + DB, difetto di
   modello, senza decisione; registrato il 2026-09-25 dall'analisi
   `work-in-progress/analisi-ui-permessi-operatore.md` §3, perché non si perda

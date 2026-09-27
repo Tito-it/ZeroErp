@@ -16,6 +16,7 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
+import { MANAGE_ICONS } from '../../core/constants'
 import { useNotify } from '../../core/composables/useNotify'
 import { extractApiError } from '../../core/utils/apiError'
 import { attivaAccessoShop } from '../api/portaleProfileApi'
@@ -51,7 +52,7 @@ async function onClick() {
 <template>
   <Button
     :label="t('portale.profile.activate_shop_btn')"
-    icon="pi pi-shopping-bag"
+    :icon="MANAGE_ICONS.ACCESSO_SHOP"
     :loading="loading"
     :disabled="activated"
     severity="info"

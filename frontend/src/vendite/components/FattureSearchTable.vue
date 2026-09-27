@@ -37,7 +37,7 @@ import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
-import { TAB_ENTITIES, TIPO_RUOLO } from '../../core/constants'
+import { TAB_ENTITIES, TIPO_RUOLO, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { statoDocFiscaleSeverity } from '../../core/utils/severity'
 import { exportFatture } from '../api/fatture'
 import { useFattureStore } from '../stores/fatture'
@@ -175,7 +175,7 @@ onMounted(() => {
             text
             size="small"
             :label="t('vendite.fatture.collegamento_rimuovi')"
-            icon="pi pi-times"
+            :icon="MANAGE_ICONS.FILTRI_PULISCI"
             @click="rimuoviCollegamento"
           />
         </div>
@@ -286,7 +286,7 @@ onMounted(() => {
 
         <template #empty>
           <div class="app-empty-state">
-            <i class="pi pi-file" />
+            <i :class="STATUS_ICONS.VUOTO" />
             <p>{{ t('vendite.fatture.nessuna_fattura') }}</p>
           </div>
         </template>

@@ -22,6 +22,7 @@ import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { DRAWER_WIDTH } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
@@ -191,7 +192,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
         :modificato="modificato"
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('ui.admin.preset')"
-        icon="pi pi-th-large"
+        :icon="NAV_ICONS.PERSONALIZZAZIONI_LISTE"
       />
     </template>
 

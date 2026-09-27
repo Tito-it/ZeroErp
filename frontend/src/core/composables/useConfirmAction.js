@@ -35,7 +35,7 @@
 
 import { useConfirm } from 'primevue/useconfirm'
 import { useI18n } from 'vue-i18n'
-import { MANAGE_ICONS } from '../constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../constants'
 
 // Icone standard ConfirmDialog (PrimeVue accetta `acceptIcon` / `rejectIcon`
 // nelle opzioni di `useConfirm.require`). Allineate al pattern FormFooter:
@@ -62,7 +62,7 @@ export function useConfirmAction() {
     confirm.require({
       header,
       message,
-      icon: MANAGE_ICONS.ERRORE,
+      icon: STATUS_ICONS.ERRORE,
       // ⛔ Spento di proposito: ESC lo gestisce la radice della ConfirmDialog
       //    in App.vue (chiude SOLO la conferma). Questo e' il listener su
       //    `document`, che si chiuderebbe insieme al Drawer sotto.

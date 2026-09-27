@@ -38,6 +38,7 @@ import Checkbox from 'primevue/checkbox'
 // (/smistamento/ → .righe), nel dialog d'azione — dettaglio del documento.
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import { STATUS_ICONS } from '../../../../core/constants'
 
 const { t } = useI18n()
 const store = usePreventiviStore()
@@ -262,7 +263,7 @@ function onSmista() {
       <div v-if="aggregato && aggregato.righe_totali > 0" class="smistamento-header">
         <Tag
           :severity="tutteSmistate ? 'success' : 'info'"
-          :icon="tutteSmistate ? 'pi pi-check-circle' : undefined"
+          :icon="tutteSmistate ? STATUS_ICONS.TUTTO_OK : undefined"
           v-tooltip.bottom="tutteSmistate ? t('vendite.preventivi.smistamento_completato') : ''"
           :value="t('vendite.preventivi.smistamento_progress', {
             smistate: righeSmistate, totali: aggregato.righe_totali,

@@ -69,6 +69,13 @@ from apps.documenti.api.multipart_helpers import extract_allegati
 #                             emetti_call is None.
 #         - emetti_post_permission: azione di processo per emetti (opzionale,
 #                             es. "cambia_stato_preventivi")
+#         - area_funzionale:  area delle view (default "vendite")
+#         - model_permission: oggetto del catalogo permessi della sorgente
+#                             (es. ("vendite", "preventivo")): i documenti sono
+#                             una parte dell'oggetto, e ne chiedono il livello
+#                             (brief-db-be-fe-catalogo-oggetti-permessi §3.2).
+#                             None = solo l'area. Si applica a tutte le view in
+#                             UN punto (fine della factory), come l'area.
 def build_documenti_sorgente_views(
     *,
     schema_prefix: str,
@@ -81,6 +88,7 @@ def build_documenti_sorgente_views(
     emetti_response_key: str | None = None,
     emetti_post_permission: str | None = None,
     area_funzionale: str = "vendite",
+    model_permission: tuple[str, str] | None = None,
 ) -> SimpleNamespace:
 
     # Scopo: Risolve il contesto comune (entity + sorgente_tipo_id) con i
@@ -151,7 +159,6 @@ def build_documenti_sorgente_views(
             })
 
     Emetti.__doc__ = f"`POST .../<sorgente_id>/emetti/` (multipart) — {schema_prefix}."
-    Emetti.area_funzionale = area_funzionale
     if emetti_post_permission is not None:
         Emetti.post_permission = emetti_post_permission
     # Sorgenti senza emissione manuale (FATTURA): la view emetti non viene
@@ -206,7 +213,6 @@ def build_documenti_sorgente_views(
             return handle_post_json(request, handler=_execute)
 
     DocumentoGenera.__doc__ = f"`POST .../documenti/genera/` — {schema_prefix}."
-    DocumentoGenera.area_funzionale = area_funzionale
 
     class DocumentoAnteprima(DomainAPIView):
         @extend_schema(
@@ -248,7 +254,6 @@ def build_documenti_sorgente_views(
             return response
 
     DocumentoAnteprima.__doc__ = f"`POST .../documenti/anteprima/` — {schema_prefix}."
-    DocumentoAnteprima.area_funzionale = area_funzionale
 
     class DocumentiList(DomainAPIView):
         @extend_schema(
@@ -283,7 +288,6 @@ def build_documenti_sorgente_views(
             })
 
     DocumentiList.__doc__ = f"`GET .../documenti/` — {schema_prefix}."
-    DocumentiList.area_funzionale = area_funzionale
 
     class DocumentoAllegati(DomainAPIView):
         # POST = upload multipart degli allegati su documento esistente.
@@ -335,7 +339,6 @@ def build_documenti_sorgente_views(
             return success_response(result)
 
     DocumentoAllegati.__doc__ = f"`GET/POST .../documenti/<documento_id>/allegati/` — {schema_prefix}."
-    DocumentoAllegati.area_funzionale = area_funzionale
 
     class DocumentoFile(DomainAPIView):
         @extend_schema(responses={200: bytes})
@@ -363,7 +366,6 @@ def build_documenti_sorgente_views(
             return response
 
     DocumentoFile.__doc__ = f"`GET .../documenti/<documento_id>/file/` — {schema_prefix}."
-    DocumentoFile.area_funzionale = area_funzionale
 
     class DocumentoFileDownload(DomainAPIView):
         @extend_schema(responses={200: bytes})
@@ -391,7 +393,6 @@ def build_documenti_sorgente_views(
             return response
 
     DocumentoFileDownload.__doc__ = f"`GET .../documenti/<documento_id>/file/<file_id>/` — {schema_prefix}."
-    DocumentoFileDownload.area_funzionale = area_funzionale
 
     class DocumentoRistampaFedele(DomainAPIView):
         @extend_schema(
@@ -448,7 +449,17 @@ def build_documenti_sorgente_views(
     DocumentoRistampaFedele.__doc__ = (
         f"`GET .../documenti/<documento_id>/ristampa/` — {schema_prefix}."
     )
-    DocumentoRistampaFedele.area_funzionale = area_funzionale
+
+    # Permesso: area e oggetto in un punto solo, per tutte le view costruite
+    # (anche Emetti, dove pero' decide `post_permission` quando c'e').
+    for view_cls in (
+        Emetti, DocumentoGenera, DocumentoAnteprima, DocumentiList,
+        DocumentoAllegati, DocumentoFile, DocumentoFileDownload,
+        DocumentoRistampaFedele,
+    ):
+        view_cls.area_funzionale = area_funzionale
+        if model_permission is not None:
+            view_cls.model_permission = model_permission
 
     return SimpleNamespace(
         emetti=emetti_view,

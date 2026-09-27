@@ -48,6 +48,7 @@ import { useNotify } from '../../core/composables/useNotify'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { bloccoAttivo, motivoBloccoRiga } from '../../core/utils/bloccoMotivo'
 import {
   getProcesso,
@@ -304,7 +305,7 @@ async function eseguiOra(sveglia) {
       <DrawerTitle
         :action="t('amministrazione.processi.drawer_action')"
         :title="codice || ''"
-        icon="pi pi-cog"
+        :icon="NAV_ICONS.PROCESSI_AUTOMATICI"
       />
     </template>
 
@@ -413,7 +414,7 @@ async function eseguiOra(sveglia) {
                   />
                   <Button
                     :label="t('amministrazione.processi.crea_identita')"
-                    icon="pi pi-user-plus"
+                    :icon="MANAGE_ICONS.ADD"
                     :disabled="!emittenteScelto || creazioneInCorso"
                     :loading="creazioneInCorso"
                     @click="creaIdentita"
@@ -424,7 +425,7 @@ async function eseguiOra(sveglia) {
                   <Button
                     v-if="daRiattivare"
                     :label="t('amministrazione.processi.riattiva_identita')"
-                    icon="pi pi-replay"
+                    :icon="MANAGE_ICONS.RIATTIVA"
                     severity="warn"
                     :disabled="creazioneInCorso"
                     :loading="creazioneInCorso"

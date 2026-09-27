@@ -14,6 +14,7 @@ import { computed } from 'vue'
 import Message from 'primevue/message'
 import Button from 'primevue/button'
 import vTooltip from 'primevue/tooltip'
+import { MANAGE_ICONS } from '../../../core/constants'
 
 const props = defineProps({
   // Oggetto { code, message, detail } prodotto da `classifyL2Error`. Falsy → nessun render.
@@ -38,7 +39,7 @@ const ctaLabel = computed(() => (props.loading ? props.labelLoading : props.labe
       <div>
         <Button
           :label="ctaLabel"
-          icon="pi pi-send"
+          :icon="MANAGE_ICONS.RICHIEDI_APPROVAZIONE"
           size="small"
           severity="secondary"
           :loading="loading"

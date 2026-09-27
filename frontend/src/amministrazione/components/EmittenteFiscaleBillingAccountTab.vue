@@ -244,14 +244,14 @@ function buildRowActions(data) {
         <div>
           <Button
             :label="t('amministrazione.emittenti_fiscali.ba_add_specific')"
-            icon="pi pi-plus"
+            :icon="MANAGE_ICONS.ADD"
             :loading="adding"
             :disabled="!selectedBA?.id"
             @click="addSpecificMapping"
           />
           <Button
             :label="t('amministrazione.emittenti_fiscali.ba_add_default')"
-            icon="pi pi-star"
+            :icon="MANAGE_ICONS.PREDEFINITO"
             severity="secondary"
             :disabled="hasDefault"
             @click="addDefaultMapping"

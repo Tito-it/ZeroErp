@@ -57,7 +57,7 @@ import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { useNotify } from '../../core/composables/useNotify'
 import { READONLY_KEY, useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { DATE_FORMAT, DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { DATE_FORMAT, DRAWER_WIDTH, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { displayDate, parseIsoDate, toDateString } from '../../core/utils/date'
 import { labelOrCode } from '../../core/utils/i18nLabel'
@@ -422,7 +422,7 @@ const suVisibile = gestoreVisibile(emit, onChiudi)
 
     <div class="app-drawer-content">
       <div v-if="loading && !detail" class="app-loading">
-        <i class="pi pi-spin pi-spinner" />
+        <i :class="STATUS_ICONS.CARICAMENTO" />
       </div>
 
       <template v-if="contentReady && detail">
@@ -563,7 +563,7 @@ const suVisibile = gestoreVisibile(emit, onChiudi)
 
           <template #empty>
             <div v-if="!storeRighe.erroreCaricamento" class="app-empty-state">
-              <i class="pi pi-list" />
+              <i :class="STATUS_ICONS.VUOTO" />
               <p>{{ t(`${f.i18n}.nessuna_riga`) }}</p>
             </div>
           </template>

@@ -67,7 +67,7 @@ import {
   LOTTO_AZIONE_PIPELINE_UI,
 } from '../composables/useLottoAzioni'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { extractApiError } from '../../core/utils/apiError'
 import {
@@ -1316,7 +1316,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
     @after-show="onAfterShow"
   >
     <template #header>
-      <DrawerTitle :title="t('vendite.lotti.drawer_titolo')" icon="pi pi-server" />
+      <DrawerTitle :title="t('vendite.lotti.drawer_titolo')" :icon="MANAGE_ICONS.LOTTO" />
     </template>
 
     <div class="app-drawer-content">
@@ -1479,7 +1479,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
                 <!-- Empty-state TRADOTTO: senza lo slot il BB lascia il default
                      PrimeVue, che e' in inglese. -->
                 <template #empty>
-                  <div class="app-empty-state"><i class="pi pi-inbox" /><p>{{ t('vendite.lotti.nessuna_fattura') }}</p></div>
+                  <div class="app-empty-state"><i :class="STATUS_ICONS.VUOTO" /><p>{{ t('vendite.lotti.nessuna_fattura') }}</p></div>
                 </template>
               </ListaConfigurabile>
             </TabPanel>
@@ -1528,7 +1528,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
                     v-else-if="data.commesse_n > 1"
                     v-tooltip.bottom="t('vendite.lotti.gruppo_commesse_multi_tooltip')"
                   >
-                    <i class="pi pi-clone" />
+                    <i :class="STATUS_ICONS.MULTIPLI" />
                     {{ t('vendite.lotti.gruppo_commesse_multi', { n: data.commesse_n }) }}
                   </span>
                   <span v-else>—</span>
@@ -1565,7 +1565,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
                     <i
                       v-if="data.stato_esecuzione === STATO_ESECUZIONE_LOTTO.ESCLUSO"
                       v-tooltip.bottom="uscitaTooltip(data)"
-                      class="pi pi-info-circle"
+                      :class="STATUS_ICONS.INFO"
                     />
                   </span>
                 </template>
@@ -1583,7 +1583,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
                      guardare. -->
                 <template #empty>
                   <div class="app-empty-state">
-                    <i class="pi pi-inbox" />
+                    <i :class="STATUS_ICONS.VUOTO" />
                     <p>{{ t('vendite.lotti.nessun_gruppo') }}</p>
                   </div>
                 </template>
@@ -1657,7 +1657,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
                   <Tag :value="data.task_stato" :severity="statoTaskRunSeverity(data.task_stato)" />
                 </template>
                 <template #empty>
-                  <div class="app-empty-state"><i class="pi pi-inbox" /><p>{{ t('vendite.lotti.nessun_task') }}</p></div>
+                  <div class="app-empty-state"><i :class="STATUS_ICONS.VUOTO" /><p>{{ t('vendite.lotti.nessun_task') }}</p></div>
                 </template>
               </ListaConfigurabile>
             </TabPanel>
@@ -1794,13 +1794,13 @@ const suVisibile = gestoreVisibile(emit, onClose)
                   </template>
                   <template #empty>
                     <div class="app-empty-state">
-                      <i class="pi pi-check-circle" />
+                      <i :class="STATUS_ICONS.TUTTO_OK" />
                       <p>{{ t('vendite.lotti.nessuna_segnalazione_livello') }}</p>
                     </div>
                   </template>
                 </ListaConfigurabile>
               </div>
-              <div v-else class="app-empty-state"><i class="pi pi-check-circle" /><p>{{ t('vendite.lotti.nessuna_segnalazione') }}</p></div>
+              <div v-else class="app-empty-state"><i :class="STATUS_ICONS.TUTTO_OK" /><p>{{ t('vendite.lotti.nessuna_segnalazione') }}</p></div>
             </TabPanel>
             <TabPanel :value="LOTTO_SCHEDE.STORIA">
 
@@ -1926,7 +1926,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
                    in cui la distinzione conta di più — e sono anche i due che
                    un pannello frettoloso confonde con l'ultimo. -->
               <div v-else class="app-empty-state">
-                <i :class="giornaleCaricato ? 'pi pi-check-circle' : 'pi pi-inbox'" />
+                <i :class="giornaleCaricato ? STATUS_ICONS.TUTTO_OK : STATUS_ICONS.VUOTO" />
                 <p v-if="!giornaleCaricato">{{ t('vendite.lotti.giornale_non_caricato') }}</p>
                 <p v-else-if="giornaleInfo > 0">
                   {{ t('vendite.lotti.giornale_solo_info', { n: giornaleInfo }) }}

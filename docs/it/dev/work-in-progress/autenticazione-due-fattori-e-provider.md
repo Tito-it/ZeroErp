@@ -5,7 +5,7 @@
 > **Data creazione originale**: 2026-04-01 (solo 2FA TOTP)
 > **Aggiornato**: 2026-04-23 — aggiunto piano OAuth/SSO
 > **Riscritto**: 2026-09-25 — riallineato al modello **credenziale + vesti**
-> ([brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md),
+> ([brief-db-blocco-login-per-credenziale.md](../work-done/brief-db-blocco-login-per-credenziale.md),
 > P-1 e P-2 applicati il 2026-09-25). La versione di aprile metteva l'obbligo
 > del 2FA sulla veste (`identita_digitali.totp_obbligatorio`) e citava
 > `risorse_umane_auth_user`: entrambe le cose non esistono più.

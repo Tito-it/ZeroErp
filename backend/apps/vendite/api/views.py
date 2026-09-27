@@ -1180,6 +1180,7 @@ class ApiLottoFattureExport(DomainAPIView):
     `vendite.lotto_fatture`: nascoste escluse, ordine e permessi rispettati."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "fattura")
     is_search_endpoint = True
     lista_codice = "vendite.lotto_fatture"
 
@@ -1220,6 +1221,7 @@ class ApiLottoFattureExport(DomainAPIView):
 
 class ApiLottoFattureList(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "fattura")
     # Lista configurabile 45: il codice dichiara da quale catalogo arrivano le colonne (e per chi ha piu' emittenti, da quale perimetro le righe).
     lista_codice = "vendite.lotto_fatture"
     is_search_endpoint = True

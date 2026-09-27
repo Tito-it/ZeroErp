@@ -26,6 +26,7 @@ import Popover from 'primevue/popover'
 import { sintesiScadenze } from '../composables/useScadenzeSintesi'
 import { displayDate } from '../utils/date'
 import { formatCurrency } from '../utils/format'
+import { MANAGE_ICONS } from '../constants'
 
 const { t } = useI18n()
 
@@ -77,7 +78,7 @@ function toggle(event) {
         type="button"
         text
         size="small"
-        icon="pi pi-list"
+        :icon="MANAGE_ICONS.LIST"
         icon-pos="right"
         :label="`${vista.indice}/${vista.count}`"
         :aria-label="t('common.scadenze_vedi_tutte')"

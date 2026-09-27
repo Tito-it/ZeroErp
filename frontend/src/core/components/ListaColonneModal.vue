@@ -24,7 +24,7 @@ import InputNumber from 'primevue/inputnumber'
 import Badge from 'primevue/badge'
 import Tag from 'primevue/tag'
 import { etichettaColonna } from '../utils/i18nLabel'
-import { DRAWER_WIDTH } from '../constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../constants'
 import { useConfirmAction } from '../composables/useConfirmAction'
 import { useDrawerContentReady } from '../composables/useDrawerContentReady'
 import { useDrawerFormPreserve, gestoreVisibile } from '../composables/useDrawerFormPreserve'
@@ -249,7 +249,7 @@ const suVisibile = gestoreVisibile(emit, onCancel)
               @update:model-value="(v) => updateColonna(col.codice, (c) => (c.larghezza = v ?? null))"
             />
             <Button
-              icon="pi pi-arrow-up"
+              :icon="MANAGE_ICONS.SPOSTA_SU"
               text
               rounded
               size="small"
@@ -258,7 +258,7 @@ const suVisibile = gestoreVisibile(emit, onCancel)
               @click="move(col.codice, 'up')"
             />
             <Button
-              icon="pi pi-arrow-down"
+              :icon="MANAGE_ICONS.SPOSTA_GIU"
               text
               rounded
               size="small"
@@ -280,7 +280,7 @@ const suVisibile = gestoreVisibile(emit, onCancel)
              Annulla/Salva, resta standalone. -->
         <Button
           :label="t('lista_config.reset_preferenza')"
-          icon="pi pi-refresh"
+          :icon="MANAGE_ICONS.RIPRISTINA_DEFAULT"
           severity="secondary"
           text
           :disabled="loading"

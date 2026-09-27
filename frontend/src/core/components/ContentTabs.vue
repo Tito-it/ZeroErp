@@ -15,7 +15,7 @@ import { useContextStore } from '../../stores/context'
 import { useUiStore } from '../../stores/ui'
 import { useConfirmCloseTab } from '../composables/useConfirmCloseTab'
 import { useNotify } from '../composables/useNotify'
-import { BREAKPOINTS, TABS } from '../constants'
+import { BREAKPOINTS, MANAGE_ICONS, TABS } from '../constants'
 import { resolveTabDisplayLabel } from '../navigation'
 
 const { t, te } = useI18n()
@@ -121,7 +121,7 @@ function handlePinTab(tab) {
         >
           <i v-if="tab.icon" :class="tab.icon" class="tab-icon"></i>
           <!-- Indicatore tab pinnata -->
-          <i v-if="tabs.isSplit && tabs.pinnedTab?.id === tab.id" class="pi pi-thumbtack tab-pin-icon"></i>
+          <i v-if="tabs.isSplit && tabs.pinnedTab?.id === tab.id" class="tab-pin-icon" :class="MANAGE_ICONS.TAB_FISSATA"></i>
           <!-- Il titolo e' l'unica parte della tab che si restringe: quando e'
                troncato il nome intero sta nel tooltip. Il delay evita che il
                tooltip compaia a ogni passaggio per cliccare una tab. -->
@@ -139,7 +139,8 @@ function handlePinTab(tab) {
           ></span>
           <!-- Pulsante chiusura -->
           <i
-            class="pi pi-times tab-close"
+            class="tab-close"
+            :class="MANAGE_ICONS.CANCEL"
             @click="handleCloseTab(tab, $event)"
             v-tooltip.top="t('tabs.close')"
           ></i>
@@ -163,7 +164,7 @@ function handlePinTab(tab) {
           @click="toggleSplitPopover"
           v-tooltip.top="tabs.isSplit ? t('tabs.split_close') : t('tabs.split_open')"
         >
-          <i :class="tabs.isSplit ? 'pi pi-times' : 'pi pi-objects-column'"></i>
+          <i :class="tabs.isSplit ? MANAGE_ICONS.CANCEL : MANAGE_ICONS.AFFIANCA"></i>
         </button>
 
         <!-- Popover con lista tab da affiancare -->

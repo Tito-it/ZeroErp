@@ -10,6 +10,7 @@
 import { ref, computed, watch, provide, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { READONLY_KEY } from '../../core/composables/useReadonlyMode'
+import { MANAGE_ICONS } from '../../core/constants'
 import {
   listRuoloContatti, listRuoloIndirizzi, listRuoloContiBancari,
   listSoggettoContatti, listSoggettoIndirizzi, listSoggettoContiBancari
@@ -113,21 +114,21 @@ watch(activeDrawer, (newVal, oldVal) => {
 <template>
   <div v-if="ownerId" class="preview-badges">
     <Button
-      outlined icon="pi pi-map-marker"
+      outlined :icon="MANAGE_ICONS.INDIRIZZI"
       :label="`${counts.indirizzi} ${t('anagrafiche.clienti.gestisci_indirizzi')}`"
       :loading="loading"
       class="app-badge-anteprima"
       @click="activeDrawer = 'indirizzi'"
     />
     <Button
-      outlined icon="pi pi-wallet"
+      outlined :icon="MANAGE_ICONS.CONTI_BANCARI"
       :label="`${counts.conti} ${t('anagrafiche.clienti.gestisci_conti')}`"
       :loading="loading"
       class="app-badge-anteprima"
       @click="activeDrawer = 'conti'"
     />
     <Button
-      outlined icon="pi pi-id-card"
+      outlined :icon="MANAGE_ICONS.CONTATTI"
       :label="`${counts.contatti} ${t('anagrafiche.clienti.gestisci_contatti')}`"
       :loading="loading"
       class="app-badge-anteprima"

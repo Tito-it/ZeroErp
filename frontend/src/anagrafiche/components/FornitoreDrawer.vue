@@ -264,7 +264,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
               text size="small" class="mt-1" @click="clearSoggetto" />
           </div>
           <div v-else>
-            <Button :label="t('resolver.open')" icon="pi pi-search"
+            <Button :label="t('resolver.open')" :icon="MANAGE_ICONS.RICERCA"
               outlined @click="resolverVisible = true" />
           </div>
         </template>

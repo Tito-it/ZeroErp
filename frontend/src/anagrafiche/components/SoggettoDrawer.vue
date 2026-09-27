@@ -481,7 +481,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
           </div>
           <Button
             :label="t('anagrafiche.contatto.gestisci_contatti')"
-            icon="pi pi-users"
+            :icon="MANAGE_ICONS.CONTATTI"
             text
             size="small"
             class="app-action-btn app-escape mt-025"
@@ -573,7 +573,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
           </div>
           <Button
             :label="t('anagrafiche.indirizzo_soggetto.gestisci_indirizzi')"
-            icon="pi pi-map-marker"
+            :icon="MANAGE_ICONS.INDIRIZZI"
             text
             size="small"
             class="app-action-btn app-escape mt-025"
@@ -600,7 +600,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
           </div>
           <Button
             :label="t('anagrafiche.conti_bancari.gestisci_conti')"
-            icon="pi pi-wallet"
+            :icon="MANAGE_ICONS.CONTI_BANCARI"
             text
             size="small"
             class="app-action-btn app-escape mt-025"

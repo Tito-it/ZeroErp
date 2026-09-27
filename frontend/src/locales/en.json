@@ -254,7 +254,6 @@
     "acquisti": "Purchases",
     "magazzino": "Warehouse",
     "pagamenti": "Payments",
-    "contabilita": "Accounting",
     "amm-software": "Admin Software",
     "strumenti": "Tools",
     "collapse": "Collapse",
@@ -878,7 +877,8 @@
     "minutes_ago": "{n} min ago",
     "hours_ago": "{n} hours ago",
     "yesterday": "Yesterday",
-    "days_ago": "{n} days ago"
+    "days_ago": "{n} days ago",
+    "col_data_inizio": "Session start"
   },
   "confirm": {
     "delete_title": "Confirm deletion",
@@ -1055,7 +1055,8 @@
       "col_tipo_ruolo_descrizione": "Role type",
       "col_attivo": "Status",
       "saved": "Matrix row updated.",
-      "created": "Matrix row created."
+      "created": "Matrix row created.",
+      "usage_col_override_attivo": "Override active"
     },
     "categorie_clienti": {
       "search_placeholder": "Search by code or description...",
@@ -1648,7 +1649,8 @@
       "dettaglio_titolo": "Error {codice}",
       "dettaglio_context": "Context (technical notes)",
       "dettaglio_context_vuoto": "No context recorded"
-    }
+    },
+    "col_codice_reparto": "Code"
   },
   "indirizzi": {
     "tab_indirizzi": "Addresses",
@@ -1709,7 +1711,8 @@
     "toponomastica": "Street Type",
     "comune": "Municipality",
     "cap": "Postal Code",
-    "indirizzo": "Address"
+    "indirizzo": "Address",
+    "col_provincia_nome": "Province name"
   },
   "catalogo": {
     "search_placeholder": "Search by article code or description...",
@@ -4244,6 +4247,14 @@
       "filtro_entita_tutte": "All entities",
       "filtro_filo": "Thread (tx_id or correlation_id)",
       "ritirate_nascoste": "{n} withdrawn signals hidden"
+    },
+    "revisioni": {
+      "col_rev": "Rev",
+      "col_numero": "Number",
+      "col_data": "Date",
+      "col_stato": "Status",
+      "col_attiva": "Active",
+      "col_totale": "Total"
     }
   },
   "pagamenti": {

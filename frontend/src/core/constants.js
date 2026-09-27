@@ -380,6 +380,8 @@ export const MANAGE_ICONS = {
   // di riga che aprono il drawer soggetto dalle liste figlie (clienti/fornitori).
   SOGGETTO: 'pi pi-users',
   CONTATTI: 'pi pi-id-card',
+  // INDIRIZZI ripete `NAV_ICONS.INDIRIZZO` (la voce di menu Indirizzi), per la
+  // stessa ragione di SOGGETTO: il drawer che si apre e' «quella li'».
   INDIRIZZI: 'pi pi-map-marker',
   CONTI_BANCARI: 'pi pi-wallet',
   // Titolo IVA del soggetto (I7/D10): un documento REGISTRATO che sostituisce
@@ -387,11 +389,10 @@ export const MANAGE_ICONS = {
   // punto del modello e' che l'agevolazione passa da una prova, non da un flag.
   TITOLI_IVA: 'pi pi-verified',
   // Catalogo
-  // UOM: icona composta box+cog (definita in main.css `.app-nav-icon-uom`).
-  // Differenzia visivamente le unita' di misura operative dall'articolo
-  // base (NAV_ICONS.CATALOGO = pi-box semplice). Semantica "quantita' +
-  // conversione operativa".
-  UOM: 'app-nav-icon app-nav-icon-uom',
+  // UOM: le unita' di misura (anche quelle operative di un articolo). Ripete
+  // `NAV_ICONS.UNITA_MISURA`, la voce di menu (Tid 2026-09-27): prima era
+  // l'icona composta box+cog, e lo stesso concetto portava due segni.
+  UOM: 'pi pi-arrows-h',
   BOM: 'pi pi-sitemap',
   NOTE: 'pi pi-file-edit',
   CONVERSIONI: 'pi pi-sync',
@@ -415,7 +416,7 @@ export const MANAGE_ICONS = {
   NUMERAZIONE: 'pi pi-hashtag',
   // FAMIGLIA_DOCUMENTO: la regola che il registro applica. Ha una voce di
   // navigazione (Amministrazione -> Famiglie di documento), quindi ripete la
-  // sua icona — `NAV_ICONS.FILE = pi pi-file` — per la stessa ragione di
+  // sua icona — `NAV_ICONS.FAMIGLIE_DOCUMENTO = pi pi-file` — per la stessa ragione di
   // SOGGETTO e FATTURE: il drawer che si apre dev'essere riconoscibile come
   // «quella li'», non come una funzione nuova.
   // ⚠️ Il valore si RIPETE invece di importarlo: `NAV_ICONS` vive in
@@ -469,31 +470,16 @@ export const MANAGE_ICONS = {
   // D20-b), e due lettori vogliono un nome (frontend-standards §«dove vive il
   // nome di un'icona»).
   REGISTRA: 'pi pi-lock',
-  // ═══ I DUE SEGNI CHE SI CONFONDONO, e vanno tenuti separati ═══════════
-  //
-  // ⭐ ERRORE — «qualcosa è andato storto». Era già lo standard DI FATTO in una
-  //    ventina di punti (`ErroreRigaInfo`, la spia della lista lotti, le
-  //    conferme di `useConfirmAction`, la vista d'errore): qui prende un NOME,
-  //    perché un segno usato ovunque senza nome è un segno che il ventunesimo
-  //    consumatore copia dal vicino sbagliato.
-  ERRORE: 'pi pi-exclamation-triangle',
-  //
   // ⛔ ANNULLA — si DISFA un atto che resta e viene dichiarato nullo: annulla
   //    il lotto, annulla la riga manuale, annulla la pratica.
-  // 🔴 NON È UN ERRORE, ed è la confusione che questa coppia esiste per
-  //    togliere: sul cruscotto Competenza il conteggio degli ERRORI portava
-  //    proprio questo segno — cioè il gesto per cancellarli — e il triangolo
-  //    stava sul lavoro ancora da fare (rilievo di Tid, 2026-09-09).
+  // 🔴 NON È UN ERRORE (`STATUS_ICONS.ERRORE`, il triangolo), ed è la
+  //    confusione che la coppia esiste per togliere: sul cruscotto Competenza il
+  //    conteggio degli ERRORI portava proprio questo segno — cioè il gesto per
+  //    cancellarli — e il triangolo stava sul lavoro ancora da fare (rilievo di
+  //    Tid, 2026-09-09).
   // ⚠️ E non è nemmeno `CANCEL` (`pi-times`: chiudere senza salvare) né
   //    `DELETE` (`pi-trash`: togliere la riga). Tre gesti vicini, tre segni.
   ANNULLA: 'pi pi-times-circle',
-  //
-  // ⚠️ ATTESA — lavoro che deve ancora essere fatto: non è un errore e non è un
-  //    ritardo. ⛔ Serve perché il triangolo torna all'errore: senza, i due
-  //    conteggi del semaforo mese porterebbero lo STESSO glifo distinti dal
-  //    solo colore. ⛔ E non `pi-clock`, che in quella stessa schermata dice
-  //    già «in ritardo».
-  ATTESA: 'pi pi-hourglass',
   //
   // ⚠️ LOTTO — il giro di fatturazione, quando serve NOMINARLO in una riga
   //    d'altro dominio: sul cruscotto Competenza dice chi sta trattenendo un
@@ -510,15 +496,25 @@ export const MANAGE_ICONS = {
   // corsie), il lotto di magazzino e' la PARTITA di merce di un articolo —
   // ⚠️ non il `LOTTO` qui sopra, che e' il giro di fatturazione: due cose,
   // due glifi, o una riga con entrambi li confonderebbe.
-  UBICAZIONI: 'pi pi-th-large',
-  LOTTO_MAGAZZINO: 'pi pi-tags',
+  // ⭐ UBICAZIONI e' la mappa, e il glifo lo dice (`pi-map`, 2026-09-27): prima
+  //    portava `pi-th-large`, che e' la voce «Personalizzazioni liste».
+  //    La pagina 404 (`STATUS_ICONS.NON_TROVATO`) ha lasciato la mappa per
+  //    questo.
+  UBICAZIONI: 'pi pi-map',
+  // ⭐ La partita di merce e' cio' che si legge dal codice a barre dell'etichetta
+  //    (2026-09-27). ⛔ Non `pi-tags`: quelle sono le categorie clienti
+  //    (`NAV_ICONS.CATEGORIE_CLIENTI`), due concetti che non si toccano.
+  LOTTO_MAGAZZINO: 'pi pi-barcode',
   // Spegnere/riaccendere un'anagrafica (`attivo`): due gesti, due glifi, e
   // il secondo non e' la spunta di `CONFIRM` — riattivare non e' confermare.
   // ⭐ E' un CONCETTO (lo stesso senso in magazzini, ubicazioni, lotti e
   // famiglie di documento): chi spegne/riaccende una riga passa da qui, non
   // da `CANCEL`/`RELOAD`, che dicono «annulla» e «ricarica».
+  // ⛔ RIATTIVA non e' `pi-replay` (lo era fino al 2026-09-27): quello e'
+  //    `CORREZIONE`, e due gesti non portano lo stesso segno. L'interruttore
+  //    dice «riaccendi», che e' esattamente il gesto.
   DISATTIVA: 'pi pi-ban',
-  RIATTIVA: 'pi pi-replay',
+  RIATTIVA: 'pi pi-power-off',
   KEBAB: 'pi pi-ellipsis-v',
   // Documenti PDF (lista/anteprima/scarica). Centralizzata 2026-05-30:
   // usata da EntityPdfButton (BB documenti) e dai
@@ -543,6 +539,13 @@ export const MANAGE_ICONS = {
   // Usare sempre dinamicamente: `icon: isExpanded ? COLLAPSE : EXPAND`.
   EXPAND: 'pi pi-chevron-down',
   COLLAPSE: 'pi pi-chevron-up',
+  // Toggle delle EXPANSION ROW di una DataTable: la stessa coppia del toggler
+  // di riga PrimeVue (chevron-right = chiusa, chevron-down = aperta), cosi'
+  // «espandi tutte» nella barra della lista porta lo stesso segno della riga.
+  // Stessa coppia per i gruppi annidati della sidebar (SidebarDomain).
+  // Usare dinamicamente: `icon: isExpanded ? ROW_COLLAPSE : ROW_EXPAND`.
+  ROW_EXPAND: 'pi pi-chevron-right',
+  ROW_COLLAPSE: 'pi pi-chevron-down',
   // Workflow approvazione prezzi (Sprint E listini v5).
   APPROVE: 'pi pi-check',
   REJECT: 'pi pi-times',
@@ -572,7 +575,358 @@ export const MANAGE_ICONS = {
   // Copia negli appunti (un identificativo tecnico: `tx_id`, `correlation_id`).
   // ⛔ Non CLONE (`pi-copy`): quello nel progetto duplica un RECORD.
   COPIA: 'pi pi-clipboard',
+  // Il cambio di stato di un oggetto (evento di giornale: pratica, flusso).
+  // ⛔ Non `pi-sync`, che e' `CONVERSIONI` (unita' di misura), ne' `AVANZA`,
+  // che e' il passo della pipeline del lotto: qui si dice solo «e' passato
+  // ad altro stato».
+  CAMBIO_STATO: 'pi pi-arrow-right',
+  // La tab tenuta ferma a sinistra nella vista divisa. ⛔ Non `pi-thumbtack`,
+  // che e' `PREDEFINITO` (il valore che vale quando non si dice altro).
+  TAB_FISSATA: 'pi pi-circle-fill',
+  // Maniglia di trascinamento per riordinare una voce. ⛔ Non `pi-bars`, che
+  // e' `MENU`; ne' `SPOSTA_SU`/`SPOSTA_GIU`, che sono i pulsanti a scatto.
+  TRASCINA: 'pi pi-arrows-v',
+  // L'operatore super-amministratore (chip in topbar). ⛔ Non `pi-shield`,
+  // che e' `PERMISSIONS`: il chip dice CHI sei, non che cosa puoi fare.
+  SUPER_ADMIN: 'pi pi-crown',
+  //
+  // ═══ Censimento icone per significato (2026-09-27, approvato da Tid) ══════
+  // docs/it/dev/work-in-progress/censimento-icone-per-significato.md. Il nome
+  // dice il SIGNIFICATO, non il disegno: due gesti diversi non portano lo
+  // stesso segno, e lo stesso significato ne porta uno solo.
+  //
+  // ─── Cercare, andare, aprire ───────────────────────────────────────────────
+  // Cercare: apre un resolver, la ricerca globale, l'invito «esegui una
+  // ricerca». E' la RICERCA che `FILTRI` nomina come vicina di barra. Assorbe
+  // l'ex `NAV_ICONS.SEARCH` (stesso valore, nome di disegno).
+  RICERCA: 'pi pi-search',
+  // Portare a un'altra vista. ⚠️ Solo RIPIEGO: dove la destinazione ha
+  // un'icona sua vale quella (regola di `bersaglioGesto`).
+  VAI_A: 'pi pi-external-link',
+  // Transizione BOZZA→APERTA (pratica). Coppia simmetrica di `CLOSE` (il
+  // lucchetto chiuso). ⛔ Non e' SBLOCCA, che toglie un blocco.
+  APRI: 'pi pi-lock-open',
+  // Togliere un blocco. ⛔ Non il lucchetto aperto: su un bottone si legge
+  // come STATO «aperto» (e il lucchetto aperto e' `APRI`).
+  SBLOCCA: 'pi pi-key',
+  //
+  // ─── Pipeline e lavori ─────────────────────────────────────────────────────
+  // Avanzare di uno step la pipeline del lotto. Coppia di `RIPORTA_A_BOZZA`.
+  AVANZA: 'pi pi-forward',
+  // Riportare un lotto in bozza (ritorno in lavorazione). ⛔ Non `UNDO`, che
+  // storna un fatto registrato: qui la pipeline torna indietro di stato.
+  RIPORTA_A_BOZZA: 'pi pi-backward',
+  // Rilanciare lo stesso passo fallito: riprova, rilancia, rimetti in coda.
+  // ⛔ Non `PLAY` (avvia la prima volta) ne' `CORREZIONE` (`pi-replay`).
+  RIPROVA: 'pi pi-play-circle',
+  // Rifare da capo la bozza (scarta il calcolo e ne nasce uno nuovo).
+  // ⛔ Non `RELOAD` (rilegge i dati) ne' `RIPROVA` (rilancia lo stesso passo).
+  RIGENERA: 'pi pi-file-plus',
+  // «Avvia e completa» un passo automatico in un colpo solo. ⛔ Non `PLAY`,
+  // che avvia soltanto.
+  ESEGUI: 'pi pi-fast-forward',
+  // Mettere da parte in attesa di risoluzione (pratica, riga contabile,
+  // evento di giornale). Coppia naturale di `PLAY`. Ripete
+  // `NAV_ICONS.CODA_SOSPESE`: e' la porta della stessa coda.
+  SOSPENDI: 'pi pi-pause',
+  // Stampare: la coda di stampa e il gesto che vi finisce dentro (ristampa).
+  STAMPA: 'pi pi-print',
+  // Togliere una riga dalla coda viva mettendola in archivio. Coppia di
+  // `ARCHIVE` (apre l'archivio). ⛔ Non `pi-inbox`: quella e' la coda.
+  ARCHIVIA: 'pi pi-folder-plus',
+  //
+  // ─── Documenti e fatturazione ──────────────────────────────────────────────
+  // Il verbo «Fattura» (gruppo, mese, selezionati). ⛔ Non `FATTURE`: quella
+  // e' la lista, un posto; questo e' un gesto.
+  FATTURA_GENERA: 'pi pi-file-export',
+  // Generare un documento a valle (es. la riconsegna di un reso). ⭐ Stesso
+  // segno di `FATTURA_GENERA` di proposito: e' lo stesso gesto, un documento
+  // che nasce da un altro.
+  GENERA_DOCUMENTO: 'pi pi-file-export',
+  // Il verbo «numera» dei lotti: rende definitivi i documenti assegnando il
+  // numero. ⭐ Stesso cancelletto di `NUMERAZIONE` (T4, Tid 2026-09-27): il
+  // numero e' cio' che il gesto da'. ⚠️ Il catalogo DB (`meta` delle azioni
+  // lotto) manda ancora `pi-verified`, letto da `useLottoAzioni`: divergenza
+  // aperta, brief-db-icone-azioni-per-significato §2.
+  NUMERA: 'pi pi-hashtag',
+  // Allegare file a un documento / evento «allegato aggiunto» / file caricato
+  // in attesa.
+  ALLEGATI: 'pi pi-paperclip',
+  // Direzione di un collegamento nella lineage (← origine, → destinazione).
+  // ⛔ Non `BACK` (`pi-arrow-left`, torna indietro). Il ramo inverso e'
+  // `CORREZIONE`.
+  DOC_ORIGINE: 'pi pi-arrow-circle-left',
+  DOC_DESTINAZIONE: 'pi pi-arrow-circle-right',
+  // Pannello esiti del giro di fatturazione. ⛔ Non `pi-chart-bar`, che e' la
+  // voce Dashboard competenza.
+  ESITI: 'pi pi-chart-line',
+  // Formati di export. ⛔ Il CSV non porta `pi-file`, che e'
+  // `FAMIGLIA_DOCUMENTO`.
+  FORMATO_XLSX: 'pi pi-file-excel',
+  FORMATO_CSV: 'pi pi-file-o',
+  //
+  // ─── Prezzi e listini ──────────────────────────────────────────────────────
+  // Strumento diagnostico «quale prezzo colpisce questo contesto»: apertura
+  // ed esecuzione portano lo stesso segno. ⛔ Non `pi-search` (RICERCA).
+  TEST_PREZZO: 'pi pi-bullseye',
+  // Variazione percentuale dei prezzi di una versione di listino. Assorbe
+  // l'ex `NAV_ICONS.PERCENTAGE` (nome di disegno, senza lettori).
+  VARIAZIONE_PREZZO: 'pi pi-percentage',
+  // Escludere una riga dall'eccezione di listino (la toglie dalla vendita a
+  // quel prezzo). ⛔ Non `DISATTIVA`: la riga non si spegne.
+  ESCLUDI: 'pi pi-cart-minus',
+  // Tornare al prezzo di listino (ripristina l'eccezione, «usa il prezzo di
+  // listino»). ⛔ Non `CORREZIONE` ne' `UNDO`.
+  RIPRISTINA_LISTINO: 'pi pi-reply',
+  // Riallineare un prezzo a quello vigente («rendilo uguale»). ⛔ Non
+  // `CONVERSIONI` (`pi-sync`, le unita' di misura).
+  RIALLINEA: 'pi pi-equals',
+  // La categoria «commerciale» delle prestazioni di una pratica (tile
+  // «Comincia» della home pratiche): il rapporto col cliente, la rubrica di chi
+  // si segue. ⛔ Non il carrello (`NAV_ICONS.VENDITE`), che e' la categoria
+  // «vendite» accanto (Tid 2026-09-27: due categorie, due segni).
+  COMMERCIALE: 'pi pi-address-book',
+  // Chiedere l'approvazione di livello 2 (chiede un «si'» a qualcun altro).
+  // ⛔ Non `SEND`, che spinge a valle, ne' `APPROVE`, che e' il si'.
+  RICHIEDI_APPROVAZIONE: 'pi pi-question-circle',
+  //
+  // ─── Incassi e competenza ──────────────────────────────────────────────────
+  // Legare l'incasso alla rata. Ripete `NAV_ICONS.CODA_ABBINARE`: e' la porta
+  // della stessa coda.
+  ABBINA: 'pi pi-link',
+  // Accredito richiesto al cliente (registro commessa). ⚠️ Ripete
+  // `NAV_ICONS.ECCEDENZE` (C18): l'eccedenza diventa credito, concetto vicino.
+  ACCREDITO: 'pi pi-money-bill',
+  // Generare righe della distinta scegliendole dalle rate. ⛔ Non
+  // `pi-list-check`, che e' la voce Inventari.
+  RIGHE_DA_RATE: 'pi pi-file-import',
+  // Riportare i residui al periodo successivo. ⛔ Non `pi-replay`
+  // (`CORREZIONE`): i residui vanno avanti nel calendario, non si correggono.
+  RIPORTA: 'pi pi-calendar-plus',
+  // La scheda «fondi da decidere» del tool di fatturazione: denaro in attesa
+  // di destinazione. ⛔ Non `pi-wallet` (Distinte, conti bancari).
+  FONDI: 'pi pi-euro',
+  // Rinunciare (alla riconsegna di un reso). ⛔ Non `DISATTIVA` (`pi-ban`) ne'
+  // `REJECT`: non si spegne niente e non si respinge una richiesta altrui.
+  RINUNCIA: 'pi pi-thumbs-down',
+  //
+  // ─── Scegliere, predefinire, valori ricavati ──────────────────────────────
+  // I preferiti dell'operatore (menu, pannello Home, stato vuoto).
+  PREFERITI: 'pi pi-star',
+  // «E' nei preferiti» (il clic lo toglie). Coppia di `PREFERITI`.
+  PREFERITO_ATTIVO: 'pi pi-star-fill',
+  // Il valore che vale quando non si dice altro (mapping di default, conto
+  // predefinito). ⛔ Non la stella (`PREFERITI`) ne' la spunta cerchiata
+  // (`PUBLISH`).
+  PREDEFINITO: 'pi pi-thumbtack',
+  // Hint «valore ricavato dal contesto» (istanza derivata dal BA o dalla
+  // pratica). ⛔ Non `pi-link` (`ABBINA`).
+  DERIVATO: 'pi pi-arrow-down-right',
+  // Scegliere questa voce fra piu' (es. «usa questo indirizzo»): e' un
+  // bottone radio. ⛔ Non `CONFIRM`: non si conferma un form.
+  SELEZIONA: 'pi pi-circle-on',
+  // Generare un valore invece di digitarlo (es. il codice fiscale).
+  // ⚠️ Non e' l'assistente AI, che ha `NAV_ICONS.ASSISTENTE_AI`.
+  GENERA: 'pi pi-sparkles',
+  // Fissare l'entita' come contesto di lavoro della sessione. ⛔ Non
+  // `PUBLISH` (`pi-check-circle`) ne' `PREDEFINITO`.
+  IMPOSTA_CONTESTO: 'pi pi-bookmark',
+  // Badge «figlio di» (billing account padre): la freccia punta al padre.
+  // ⛔ Non `pi-sitemap`, che e' la `BOM`.
+  GERARCHIA: 'pi pi-arrow-up-left',
+  //
+  // ─── Liste, elenchi, campi ─────────────────────────────────────────────────
+  // Riordinare (colonne, widget). ⛔ Non `EXPAND`/`COLLAPSE`.
+  SPOSTA_SU: 'pi pi-arrow-up',
+  SPOSTA_GIU: 'pi pi-arrow-down',
+  // Ripristinare le impostazioni di default (colonne, widget): «torna
+  // all'inizio». ⛔ Non `RELOAD` (`pi-refresh`), che rilegge i dati.
+  RIPRISTINA_DEFAULT: 'pi pi-fast-backward',
+  // Togliere un elemento da un ELENCO (file caricato, riga d'archivio) senza
+  // eliminare il record. ⛔ Non `DELETE` ne' `CANCEL`.
+  TOGLI: 'pi pi-delete-left',
+  // Svuotare un campo o una conversazione. ⛔ Non `CANCEL` (chiude) ne'
+  // `FILTRI_PULISCI` (toglie i filtri).
+  SVUOTA: 'pi pi-eraser',
+  // Anteprima del risultato (email, variazione) prima di farlo. ⛔ Non
+  // `INSPECT` (`pi-eye`), che guarda cio' che c'e' gia'.
+  ANTEPRIMA: 'pi pi-image',
+  // «Vedi novita'» del preset di lista. ⛔ Non `INSPECT`.
+  NOVITA: 'pi pi-bell',
+  //
+  // ─── Accessi, inviti, sessioni ─────────────────────────────────────────────
+  // Inviare/reinviare un invito (portale, shop, operatore). ⚠️ L'invito E'
+  // un'email: condivide la busta con `RECAPITO_ICONS.EMAIL` e
+  // `NAV_ICONS.EMAIL`, come `REGISTRA`/`CLOSE` condividono il lucchetto.
+  INVITA: 'pi pi-envelope',
+  // Attivare l'accesso allo shop (T8, Tid 2026-09-27: il negozio resta qui, il
+  // ruolo RESELLER passa al megafono). ⛔ Non `pi-shopping-bag` (ACQUISTI).
+  ACCESSO_SHOP: 'pi pi-shop',
+  // Gli accessi al portale web di un soggetto. ⛔ Non `pi-globe`, che e' la
+  // geografia (provincia/regione/stato).
+  ACCESSI_WEB: 'pi pi-sign-in',
+  // Le sessioni attive dell'operatore (titolo del pannello). ⛔ Non
+  // `PERMISSIONS` (`pi-shield`).
+  SESSIONI: 'pi pi-desktop',
+  // Revocare una sessione (butta fuori quel dispositivo). ⛔ Non `CANCEL`
+  // (`pi-times`) ne' `LOGOUT` (esco io, da qui).
+  REVOCA: 'pi pi-eject',
+  // Provare la connessione di un account email.
+  TEST_CONNESSIONE: 'pi pi-wifi',
+  //
+  // ─── Tecnico e giornale ────────────────────────────────────────────────────
+  // Riesporre il plumbing del motore (super-admin). ⛔ Non `pi-wrench`
+  // (dominio Strumenti).
+  MODALITA_TECNICA: 'pi pi-code',
+  // Rinascondere il plumbing. Coppia di `INSPECT` (`pi-eye`).
+  NASCONDI_TECNICO: 'pi pi-eye-slash',
+  // Evento «priorita' cambiata».
+  PRIORITA: 'pi pi-flag',
+  // La spia «strumenti usati» dall'assistente AI. ⛔ Non `pi-cog`
+  // (`PERSONALIZZA`, `NAV_ICONS.CONFIG`).
+  STRUMENTI_AI: 'pi pi-microchip',
+  //
+  // ─── Periodi (anno, mese) ──────────────────────────────────────────────────
+  // Stessi glifi del paginator PrimeVue. ⛔ Non `ROW_EXPAND`
+  // (`pi-chevron-right`), che apre una riga.
+  PRECEDENTE: 'pi pi-angle-left',
+  SUCCESSIVO: 'pi pi-angle-right',
+  //
+  // ─── Guscio dell'app (topbar, sidebar, finestre) ──────────────────────────
+  // Apre il menu su mobile.
+  MENU: 'pi pi-bars',
+  // Esci dall'applicazione.
+  LOGOUT: 'pi pi-sign-out',
+  // Cambio lingua. ⛔ Non `pi-globe` (geografia).
+  LINGUA: 'pi pi-language',
+  // Passa a tema chiaro / scuro.
+  TEMA_CHIARO: 'pi pi-sun',
+  TEMA_SCURO: 'pi pi-moon',
+  // Espandi / comprimi la sidebar.
+  SIDEBAR_ESPANDI: 'pi pi-angle-double-right',
+  SIDEBAR_COMPRIMI: 'pi pi-angle-double-left',
+  // Ingrandisci / riduci un widget flottante.
+  FINESTRA_ESPANDI: 'pi pi-window-maximize',
+  FINESTRA_RIDUCI: 'pi pi-window-minimize',
+  // Affianca due tab (vista divisa).
+  AFFIANCA: 'pi pi-objects-column',
+  // Scambia i due pannelli affiancati. ⛔ Non `pi-arrows-h`, che e' la voce
+  // Unita' di misura.
+  SCAMBIA: 'pi pi-arrow-right-arrow-left',
 }
+
+// Icone di STATO / ESITO (2026-09-27, T12 del censimento icone). ⛔ Non sono
+// GESTI (quelli stanno in `MANAGE_ICONS`) ne' PORTE dell'app (`NAV_ICONS`): una
+// spia dice com'e' una cosa, non cosa si puo' farne. Tenerle a parte e' cio'
+// che impedisce a un «si'» di prendere in prestito la spunta di `CONFIRM`, o a
+// un «bloccato» il lucchetto di `CLOSE`.
+// Uso: <i :class="STATUS_ICONS.INFO" />
+export const STATUS_ICONS = Object.freeze({
+  // ═══ I DUE SEGNI CHE SI CONFONDONO, e vanno tenuti separati ═══════════
+  //
+  // ⭐ ERRORE — «qualcosa è andato storto». Era già lo standard DI FATTO in una
+  //    ventina di punti (`ErroreRigaInfo`, la spia della lista lotti, le
+  //    conferme di `useConfirmAction`, la vista d'errore): qui prende un NOME,
+  //    perché un segno usato ovunque senza nome è un segno che il ventunesimo
+  //    consumatore copia dal vicino sbagliato. ⛔ Non è `MANAGE_ICONS.ANNULLA`
+  //    (il gesto che disfa un atto).
+  ERRORE: 'pi pi-exclamation-triangle',
+  //
+  // ⚠️ ATTESA — lavoro che deve ancora essere fatto: non è un errore e non è un
+  //    ritardo. ⛔ Serve perché il triangolo torna all'errore: senza, i due
+  //    conteggi del semaforo mese porterebbero lo STESSO glifo distinti dal
+  //    solo colore. ⛔ E non `pi-clock`, che in quella stessa schermata dice
+  //    già «in ritardo» (`IN_RITARDO`).
+  ATTESA: 'pi pi-hourglass',
+  //
+  // In ritardo / anzianita'. ⛔ Non `ATTESA`: il lavoro in attesa non e'
+  // ancora in ritardo.
+  IN_RITARDO: 'pi pi-clock',
+  // C'e' qualcosa da sapere (nota, perimetro, motivo). Controparte di `ERRORE`.
+  INFO: 'pi pi-info-circle',
+  //
+  // ─── Lo stato vuoto ───────────────────────────────────────────────────────
+  // Niente da mostrare / non ancora caricato. ⚠️ Ripete
+  // `NAV_ICONS.CODE_LAVORO` (T7, Tid 2026-09-27): la coda e' un vassoio, lo
+  // stato vuoto e' un vassoio vuoto al centro di un'area con testo — mai un
+  // gesto.
+  VUOTO: 'pi pi-inbox',
+  // «Caricato, e non c'e' niente che non va». ⚠️ Stesso glifo di
+  // `MANAGE_ICONS.PUBLISH`: qui e' uno stato, mai un bottone.
+  TUTTO_OK: 'pi pi-check-circle',
+  //
+  // ─── Esiti e spie ─────────────────────────────────────────────────────────
+  // Esito positivo di una verifica (diagnosi del resolver prezzi): stesso
+  // segno di `TUTTO_OK`, perche' dice la stessa cosa su un singolo controllo.
+  OK: 'pi pi-check-circle',
+  // La verifica non si applica a questo caso (il trattino del «n/a»).
+  // ⛔ Non `MANAGE_ICONS.ANNULLA` (`pi-times-circle`): non e' un fallimento.
+  NON_APPLICABILE: 'pi pi-minus',
+  // Spia booleana «si'» (default, esposto, regolare, compilato). ⛔ Non la
+  // spunta nuda, che e' `CONFIRM`/`APPROVE`: una spia non si clicca.
+  SI: 'pi pi-check-square',
+  // Spia booleana «no»: la coppia di `SI` (quadrato vuoto accanto a quello
+  // spuntato). ⛔ Non `NON_APPLICABILE`: «no» e' una risposta, «n/a» dice che
+  // la domanda non si pone.
+  NO: 'pi pi-stop',
+  // Caricamento in corso. Lo spinner di PrimeIcons con la sua rotazione: una
+  // costante sola, cosi' il segno dell'attesa breve e' lo stesso ovunque.
+  // ⛔ Non `ATTESA` (`pi-hourglass`): quello e' lavoro da fare, non un dato
+  // che sta arrivando.
+  CARICAMENTO: 'pi pi-spin pi-spinner',
+  // Il passo si esegue da solo (handler automatico nel percorso pratica).
+  // ⛔ Non `pi-bolt`, che e' `MANAGE_ICONS.UTILITY`; ne' `ESEGUI`, che e' il
+  // gesto di chi lo avvia.
+  AUTOMATICO: 'pi pi-step-forward',
+  // Bloccato / non disponibile / serve un'autorizzazione. ⛔ Non il lucchetto
+  // (`CLOSE`, `REGISTRA`, `VIETATO`): qui la cosa e' ferma, non chiusa.
+  BLOCCATO: 'pi pi-stop-circle',
+  // Chiuso / scartato / natura bloccata: uscito dal gioco. ⛔ Non `pi-ban`
+  // (`MANAGE_ICONS.DISATTIVA`, il gesto).
+  ESCLUSO: 'pi pi-minus-circle',
+  // Superato da una versione piu' recente. ⛔ Non `pi-history`
+  // (`MANAGE_ICONS.VERSIONI`, la cronologia).
+  SUPERATO: 'pi pi-angle-double-up',
+  // «Piu' di uno» (commesse, registri) in una cella. ⚠️ C19: glifo vicino a
+  // `MANAGE_ICONS.CLONE` (`pi-copy`), non affiancarli.
+  MULTIPLI: 'pi pi-clone',
+  // Evento di giornale senza icona propria (vocabolario aperto dal DB).
+  EVENTO: 'pi pi-circle',
+  //
+  // Sola lettura: il livello LETTURA sull'area o sull'oggetto (badge
+  // «Modalita' consultazione»). ⚠️ Stesso occhio di `MANAGE_ICONS.INSPECT`, come
+  // `TUTTO_OK` con `PUBLISH`: qui e' uno stato, mai un bottone.
+  SOLA_LETTURA: 'pi pi-eye',
+  //
+  // ─── Pagine di stato ──────────────────────────────────────────────────────
+  // Accesso negato (403). ⚠️ Lucchetto come `CLOSE`/`REGISTRA`: la porta e'
+  // chiusa per chi guarda.
+  VIETATO: 'pi pi-lock',
+  // Pagina inesistente (404). ⛔ Non `pi-map`, che e' `MANAGE_ICONS.UBICAZIONI`
+  // (P2): la bussola dice «qui non si arriva».
+  NON_TROVATO: 'pi pi-compass',
+  // Funzione non ancora costruita. ⛔ Non `pi-wrench` (dominio Strumenti).
+  IN_COSTRUZIONE: 'pi pi-hammer',
+})
+
+// Icone di CAMPO: il tipo di recapito / identificativo in una scheda (card
+// contatti, conti bancari). ⛔ Non sono gesti ne' porte, per questo non stanno
+// in `MANAGE_ICONS`; hanno un nome perche' si ripetono fra card e drawer.
+export const RECAPITO_ICONS = Object.freeze({
+  // ⚠️ Stessa busta di `MANAGE_ICONS.INVITA` e `NAV_ICONS.EMAIL`: tutti «un'email».
+  EMAIL: 'pi pi-envelope',
+  TELEFONO: 'pi pi-phone',
+  CELLULARE: 'pi pi-mobile',
+  // ⚠️ C20: stessa chiocciola di `NAV_ICONS.ACCOUNT_EMAIL`. Icona di campo,
+  // accettata dal censimento.
+  PEC: 'pi pi-at',
+  // Codice BIC/SWIFT: la banca. ⚠️ Stesso segno di `NAV_ICONS.CANALI_INCASSO`
+  // e del ruolo BANCA: il concetto «banca» e' uno solo.
+  BIC: 'pi pi-building-columns',
+  // La filiale della banca: l'edificio. ⚠️ Stesso segno di
+  // `MANAGE_ICONS.BUILDING` e `NAV_ICONS.COMUNE`: tutti «una sede».
+  FILIALE: 'pi pi-building',
+})
 
 // Scope readonly — area (schema DB) passata come primo arg a useReadonlyMode.
 // Unico punto dove compaiono i nomi degli schemi DB lato FE. Cambiare qui =

@@ -23,7 +23,7 @@ import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useNotify } from '../../core/composables/useNotify'
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { extractApiError } from '../../core/utils/apiError'
 import { coerceJsonbToObject } from '../../core/utils/meta'
 import { prioritaPraticaSeverity } from '../../core/utils/severity'
@@ -251,11 +251,11 @@ function buildRowActions(data) {
 
       <template #empty>
         <div v-if="listError" class="app-empty-state app-empty-state-error">
-          <i class="pi pi-lock" />
+          <i :class="STATUS_ICONS.VIETATO" />
           <p>{{ listError }}</p>
         </div>
         <div v-else-if="store.hasSearched" class="app-empty-state">
-          <i class="pi pi-check-circle" />
+          <i :class="STATUS_ICONS.TUTTO_OK" />
           <p>{{ t('vendite.approvazioni_prezzo.nessuna_richiesta') }}</p>
         </div>
       </template>

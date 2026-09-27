@@ -8,7 +8,7 @@
 //     Un campo e' disabled se !isModificabile OPPURE se compare in nonEditableFields.
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { DATE_FORMAT } from '../../../core/constants'
+import { DATE_FORMAT, MANAGE_ICONS } from '../../../core/constants'
 import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelect.vue'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
 import BillingAccountLookup from '../../../core/components/BillingAccountLookup.vue'
@@ -150,7 +150,7 @@ function onIstanzaClear() {
           @select="onIstanzaSelected"
           @clear="onIstanzaClear" />
         <div v-else class="app-field-hint">
-          <i class="pi pi-link" style="margin-right: 0.4rem;"></i>
+          <i :class="MANAGE_ICONS.DERIVATO" style="margin-right: 0.4rem;"></i>
           {{ t('vendite.preventivi.istanza_da_billing_account') }}
         </div>
       </div>

@@ -10,7 +10,6 @@ export const NAV_ICONS = Object.freeze({
   ACQUISTI: 'pi pi-shopping-bag',
   MAGAZZINO: 'pi pi-warehouse',
   PAGAMENTI: 'pi pi-credit-card',
-  CONTABILITA: 'pi pi-calculator',
   PRATICHE: 'pi pi-folder',
   CONFIG: 'pi pi-cog',
   AMM_SOFTWARE: 'pi pi-lock',
@@ -29,7 +28,9 @@ export const NAV_ICONS = Object.freeze({
   APPROVAZIONI_PREZZO: 'app-nav-icon app-nav-icon-approvazioni-prezzo',
   SITUAZIONE_APERTA: 'pi pi-chart-pie',
   DASHBOARD_COMPETENZA: 'pi pi-chart-bar',
-  DASHBOARD_BACKLOG: 'pi pi-inbox',
+  // ⛔ Non `pi-inbox` (la coda lavori e lo stato vuoto) ne' `pi-chart-line`
+  //    (`MANAGE_ICONS.ESITI`): il backlog e' il lavoro che scade nel tempo.
+  DASHBOARD_BACKLOG: 'pi pi-calendar-clock',
   LOTTI: 'pi pi-server',
   // Tool della fatturazione (vendite): cassetta attrezzi del giro, distinta
   // dal dominio Strumenti (pi-wrench) che raccoglie le viste trasversali.
@@ -73,19 +74,41 @@ export const NAV_ICONS = Object.freeze({
   HOME: 'pi pi-home',
   BACK: 'pi pi-arrow-left',
 
-  KEY: 'pi pi-key',
-  SEARCH: 'pi pi-search',
-  SITEMAP: 'pi pi-sitemap',
-  SHIELD: 'pi pi-shield',
-  ID_CARD: 'pi pi-id-card',
-  TAGS: 'pi pi-tags',
-  HISTORY: 'pi pi-history',
+  // ═══ Voci di Amministrazione software (2026-09-27, censimento icone P1) ═══
+  // Il nome e' quello della VOCE, non del disegno: prima erano `KEY`,
+  // `SITEMAP`, `SHIELD`… — e una chiave col nome del glifo invita a usarla
+  // ovunque serva quel glifo, qualunque cosa voglia dire.
+  //
+  // Profili di reparto: l'organigramma. ⚠️ Stesso albero di
+  // `MANAGE_ICONS.BOM` (distinta base): due alberi, da decidere se separarli.
+  PROFILI_REPARTO: 'pi pi-sitemap',
+  // Definizioni workflow: il PERCORSO di una pratica (il cartello). ⛔ Non
+  // piu' `pi-sitemap`, che portava anche i profili di reparto — due voci dello
+  // stesso menu con un segno solo.
+  DEFINIZIONI_WORKFLOW: 'pi pi-directions-alt',
+  // Stesso segno di `MANAGE_ICONS.PERMISSIONS`: lo stesso concetto.
+  PERMESSI: 'pi pi-shield',
+  // Chi EMETTE i documenti fiscali. ⛔ Non `pi-id-card`, che e'
+  // `MANAGE_ICONS.CONTATTI`.
+  EMITTENTI_FISCALI: 'pi pi-file-check',
+  // Le categorie clienti (T10, Tid 2026-09-27: tengono le etichette;
+  // `MANAGE_ICONS.LOTTO_MAGAZZINO` e' passato al codice a barre).
+  CATEGORIE_CLIENTI: 'pi pi-tags',
+  // Il registro delle modifiche: chi ha cambiato cosa. ⛔ Non `pi-history`,
+  // che e' `MANAGE_ICONS.VERSIONI` (le versioni di un listino).
+  AUDIT_LOG: 'pi pi-user-edit',
   // Processi automatici: ingranaggi = «gira da solo». Distinta da
   // CODE_LAVORO (la coda di ciò che sta girando adesso).
   PROCESSI_AUTOMATICI: 'pi pi-cog',
-  AT: 'pi pi-at',
-  FILE_EDIT: 'pi pi-file-edit',
-  ENVELOPE: 'pi pi-envelope',
+  // Gli account email di invio. ⚠️ C20: stessa chiocciola di
+  // `RECAPITO_ICONS.PEC` (icona di campo).
+  ACCOUNT_EMAIL: 'pi pi-at',
+  // I modelli delle email: il gesto «componi». ⛔ Non `pi-file-edit`, che e'
+  // `MANAGE_ICONS.NOTE`.
+  TEMPLATE_EMAIL: 'pi pi-pen-to-square',
+  // Le email (registro di invio, email dell'operatore). ⚠️ Stessa busta di
+  // `MANAGE_ICONS.INVITA` e `RECAPITO_ICONS.EMAIL`: tutti «un'email».
+  EMAIL: 'pi pi-envelope',
   // Anagrafiche: icone dedicate per le 3 liste root del modulo.
   // Soggetti = pi pi-users (omini, "anagrafe generale").
   // Clienti = icona composta receipt+user ("chi riceve fattura").
@@ -93,28 +116,71 @@ export const NAV_ICONS = Object.freeze({
   CLIENTI: 'app-nav-icon app-nav-icon-clienti',
   FORNITORI: 'app-nav-icon app-nav-icon-fornitori',
   // Amministrazione operatori (singolo utente tecnico, distinto da
-  // ANAGRAFICHE che usa pi-users per la rubrica multi-soggetto).
+  // ANAGRAFICHE che usa pi-users per la rubrica multi-soggetto). E' anche la
+  // voce di menu «Operatori» (C10: prima portava `pi-key`, che e'
+  // `MANAGE_ICONS.SBLOCCA`) e l'avatar dell'operatore nel widget AI.
   OPERATORE: 'pi pi-user',
+  // L'assistente AI: pulsante topbar, voce menu mobile, header e avatar del
+  // widget. E' una porta dell'app, per questo sta qui.
+  ASSISTENTE_AI: 'pi pi-microchip-ai',
   // Toponomastica / gestione indirizzi (drawer dedicati in core/components).
   // pi-building per il comune (edificio civico, distinto dal fornitore
   // che usa l'icona composta building+user). pi-globe condiviso tra
   // provincia/regione/stato (gerarchia geografica omogenea).
+  // INDIRIZZO e' anche la voce di menu Indirizzi (ex `MAP_MARKER`, stesso
+  // valore e stesso significato: una chiave sola).
   INDIRIZZO: 'pi pi-map-marker',
   TOPONOMASTICA: 'pi pi-directions',
   COMUNE: 'pi pi-building',
-  CAP: 'pi pi-inbox',
+  // Il CAP e' un punto sulla mappa (T9, Tid 2026-09-27). ⚠️ Stesso segnaposto
+  // di `INDIRIZZO`, accettato: e' un pezzo dell'indirizzo. ⛔ Non piu'
+  // `pi-inbox`, che e' la coda lavori.
+  CAP: 'pi pi-map-marker',
   PROVINCIA: 'pi pi-globe',
   REGIONE: 'pi pi-globe',
   STATO: 'pi pi-globe',
-  MAP_MARKER: 'pi pi-map-marker',
-  ARROWS_H: 'pi pi-arrows-h',
-  SYNC: 'pi pi-sync',
-  FILE: 'pi pi-file',
-  TAG: 'pi pi-tag',
-  PERCENTAGE: 'pi pi-percentage',
-  CHECK_CIRCLE: 'pi pi-check-circle',
-  FOLDER_OPEN: 'pi pi-folder-open',
+  // Unita' di misura (le due frecce della grandezza). La ripete
+  // `MANAGE_ICONS.UOM` (Tid 2026-09-27: un concetto, un segno).
+  UNITA_MISURA: 'pi pi-arrows-h',
+  // Famiglie di documento. Ripetuta da `MANAGE_ICONS.FAMIGLIA_DOCUMENTO`.
+  FAMIGLIE_DOCUMENTO: 'pi pi-file',
+  // Gestione pratiche (la cartella aperta). ⚠️ Stesso segno di
+  // `MANAGE_ICONS.ARCHIVE` (archivio documenti generati): preesistente, da
+  // decidere.
+  GESTIONE_PRATICHE: 'pi pi-folder-open',
 })
+
+// Icona del TIPO DI RUOLO di un soggetto (chip di contesto in topbar).
+// Spostata da `stores/context.js` il 2026-09-27 (censimento icone §3.1d): sta
+// accanto a NAV_ICONS perche' dove il ruolo ha una voce di menu (clienti,
+// fornitori) ne RIPETE l'icona — chi vede il chip deve riconoscere «quella
+// li'».
+// ⚠️ Le CHIAVI sono i codici di ruolo che arrivano dal backend
+// (`tipo_ruolo_codice`: `DISTRIB`, `BANK`…), non nomi scelti qui: rinominarle
+// spegnerebbe l'icona senza errore.
+// Ripiego (ruolo senza icona propria): `MANAGE_ICONS.SOGGETTO`, vedi
+// `resolveTipoRuoloIcon`.
+export const TIPO_RUOLO_ICONS = Object.freeze({
+  CLIENTE: NAV_ICONS.CLIENTI,
+  FORNITORE: NAV_ICONS.FORNITORI,
+  // Chi tratta col cliente. ⛔ Non `pi-briefcase`, che e' `MANAGE_ICONS.COMMESSA`
+  // (P8).
+  VENDITORE: 'pi pi-comments',
+  DISTRIB: 'pi pi-share-alt',
+  // Chi rivende e promuove (T8, Tid 2026-09-27). ⛔ Non `pi-shop`, che e'
+  // `MANAGE_ICONS.ACCESSO_SHOP`.
+  RESELLER: 'pi pi-megaphone',
+  // Chi trasporta: il camion, liberato dal fornitore (C16).
+  VETTORE: 'pi pi-truck',
+  // ⚠️ Stesso segno di `NAV_ICONS.CANALI_INCASSO` e `RECAPITO_ICONS.BIC`: il
+  // concetto «banca» e' uno solo.
+  BANK: 'pi pi-building-columns',
+})
+
+// Scopo: l'icona di un tipo di ruolo, col ripiego sul soggetto generico.
+export function resolveTipoRuoloIcon(codice) {
+  return TIPO_RUOLO_ICONS[codice] || MANAGE_ICONS.SOGGETTO
+}
 //
 // --- Convenzioni route meta ---
 // Ogni route autenticata DEVE avere meta.domain (stringa, es. 'vendite').
@@ -141,7 +207,6 @@ export const DOMAINS = [
   { key: 'acquisti', icon: NAV_ICONS.ACQUISTI, to: '/acquisti', schemaDb: 'acquisti' },
   { key: 'magazzino', icon: NAV_ICONS.MAGAZZINO, to: '/magazzino', schemaDb: 'magazzino' },
   { key: 'pagamenti', icon: NAV_ICONS.PAGAMENTI, to: '/pagamenti', schemaDb: 'pagamenti' },
-  { key: 'contabilita', icon: NAV_ICONS.CONTABILITA, to: '/contabilita', schemaDb: 'contabilita' },
   { key: 'pratiche', icon: NAV_ICONS.PRATICHE, to: '/pratiche', schemaDb: 'pratiche' },
   // Strumenti: viste operative trasversali. ⛔ SENZA `schemaDb` sul dominio,
   // di proposito (Tid 2026-09-26, assorbe il dominio «Personale»): le sue voci
@@ -178,25 +243,25 @@ export const DOMAINS = [
 //                               abilitata. Filter applicato lato sidebar.
 export const DOMAIN_MENUS = {
   'amm-software': [
-    { key: 'operatori', icon: NAV_ICONS.KEY, to: '/amm-software/operatori' },
-    { key: 'profili-reparto', icon: NAV_ICONS.SITEMAP, to: '/amm-software/profili-reparto' },
-    { key: 'permessi', icon: NAV_ICONS.SHIELD, to: '/amm-software/permessi' },
-    { key: 'emittenti-fiscali', icon: NAV_ICONS.ID_CARD, to: '/amm-software/emittenti-fiscali' },
+    { key: 'operatori', icon: NAV_ICONS.OPERATORE, to: '/amm-software/operatori' },
+    { key: 'profili-reparto', icon: NAV_ICONS.PROFILI_REPARTO, to: '/amm-software/profili-reparto' },
+    { key: 'permessi', icon: NAV_ICONS.PERMESSI, to: '/amm-software/permessi' },
+    { key: 'emittenti-fiscali', icon: NAV_ICONS.EMITTENTI_FISCALI, to: '/amm-software/emittenti-fiscali' },
     // Accanto agli emittenti, ed e' la loro vicina di casa: i registri di
     // numerazione vivono nel drawer dell'emittente, la REGOLA che applicano
     // vive qui — globale, uguale per tutti.
-    { key: 'famiglie-documento', icon: NAV_ICONS.FILE, to: '/amm-software/famiglie-documento' },
-    { key: 'categorie-clienti', icon: NAV_ICONS.TAGS, to: '/amm-software/categorie-clienti' },
-    { key: 'definizioni-workflow', icon: NAV_ICONS.SITEMAP, to: '/amm-software/definizioni-workflow' },
+    { key: 'famiglie-documento', icon: NAV_ICONS.FAMIGLIE_DOCUMENTO, to: '/amm-software/famiglie-documento' },
+    { key: 'categorie-clienti', icon: NAV_ICONS.CATEGORIE_CLIENTI, to: '/amm-software/categorie-clienti' },
+    { key: 'definizioni-workflow', icon: NAV_ICONS.DEFINIZIONI_WORKFLOW, to: '/amm-software/definizioni-workflow' },
     { key: 'matrici', icon: NAV_ICONS.TABELLE, to: '/amm-software/matrici' },
     { key: 'processi-automatici', icon: NAV_ICONS.PROCESSI_AUTOMATICI, to: '/amm-software/processi-automatici' },
-    { key: 'audit-log', icon: NAV_ICONS.HISTORY, to: '/amm-software/audit-log' },
+    { key: 'audit-log', icon: NAV_ICONS.AUDIT_LOG, to: '/amm-software/audit-log' },
     // Il registro degli errori tecnici (`dbops.error_log`): stessa famiglia
     // dei due diari accanto (audit e email).
     { key: 'error-log', icon: NAV_ICONS.ERROR_LOG, to: '/amm-software/error-log' },
-    { key: 'email-accounts', icon: NAV_ICONS.AT, to: '/amm-software/email-accounts' },
-    { key: 'email-templates', icon: NAV_ICONS.FILE_EDIT, to: '/amm-software/email-templates' },
-    { key: 'email-log', icon: NAV_ICONS.ENVELOPE, to: '/amm-software/email-log' },
+    { key: 'email-accounts', icon: NAV_ICONS.ACCOUNT_EMAIL, to: '/amm-software/email-accounts' },
+    { key: 'email-templates', icon: NAV_ICONS.TEMPLATE_EMAIL, to: '/amm-software/email-templates' },
+    { key: 'email-log', icon: NAV_ICONS.EMAIL, to: '/amm-software/email-log' },
     {
       key: 'personalizzazioni-liste-tecniche',
       icon: NAV_ICONS.PERSONALIZZAZIONI_LISTE,
@@ -210,7 +275,7 @@ export const DOMAIN_MENUS = {
     { key: 'soggetti', icon: NAV_ICONS.ANAGRAFICHE, to: '/anagrafiche/soggetti' },
     { key: 'clienti', icon: NAV_ICONS.CLIENTI, to: '/anagrafiche/clienti' },
     { key: 'fornitori', icon: NAV_ICONS.FORNITORI, to: '/anagrafiche/fornitori' },
-    { key: 'indirizzi', icon: NAV_ICONS.MAP_MARKER, to: '/anagrafiche/indirizzi' },
+    { key: 'indirizzi', icon: NAV_ICONS.INDIRIZZO, to: '/anagrafiche/indirizzi' },
     // Presidio dei titoli IVA sfondati (I7/Q4): l'altra meta' della decisione
     // del team DB di NON bloccare il superamento sulle forzature.
     { key: 'titoli-iva-sfondati', icon: MANAGE_ICONS.TITOLI_IVA, to: '/anagrafiche/titoli-iva-sfondati' }
@@ -221,7 +286,7 @@ export const DOMAIN_MENUS = {
     // sono tre schede della stessa vista dal 2026-09-04 (erano tre voci, cioe'
     // tre quarti del menu di dominio, con l'articolo — il soggetto vero del
     // catalogo — ridotto a una voce fra quattro).
-    { key: 'unita-misura', icon: NAV_ICONS.ARROWS_H, to: '/catalogo/unita-misura' }
+    { key: 'unita-misura', icon: NAV_ICONS.UNITA_MISURA, to: '/catalogo/unita-misura' }
   ],
   'vendite': [
     { key: 'situazione-aperta', icon: NAV_ICONS.SITUAZIONE_APERTA, to: '/vendite/situazione-aperta' },
@@ -279,7 +344,6 @@ export const DOMAIN_MENUS = {
     //    metterla fra le code la farebbe sembrare una coda da smaltire.
     { key: 'canali-incasso', icon: NAV_ICONS.CANALI_INCASSO, to: '/pagamenti/canali-incasso' },
   ],
-  'contabilita': [],
   // ⚠️ Ogni voce dichiara la SUA area (o nessuna): il dominio non ne ha una.
   'strumenti': [
     // Accesso primario = badge top bar; la voce menu e' la via secondaria
@@ -292,11 +356,11 @@ export const DOMAIN_MENUS = {
     { key: 'giornale', icon: NAV_ICONS.GIORNALE, to: '/strumenti/giornale', requireArea: 'vendite' },
     // Le email dell'operatore (dal 2026-09-26). ⛔ Senza `requireArea`: e' la
     // forma a video dello `skip_area_check` di `/core/email/log/`.
-    { key: 'email', icon: NAV_ICONS.ENVELOPE, to: '/strumenti/email' }
+    { key: 'email', icon: NAV_ICONS.EMAIL, to: '/strumenti/email' }
   ],
   'pratiche': [
     { key: 'home', icon: NAV_ICONS.HOME, to: '/pratiche' },
-    { key: 'gestione', icon: NAV_ICONS.FOLDER_OPEN, to: '/pratiche/gestione' }
+    { key: 'gestione', icon: NAV_ICONS.GESTIONE_PRATICHE, to: '/pratiche/gestione' }
   ],
   'config': [
     { key: 'tabelle', icon: NAV_ICONS.TABELLE, to: '/config/tabelle' },

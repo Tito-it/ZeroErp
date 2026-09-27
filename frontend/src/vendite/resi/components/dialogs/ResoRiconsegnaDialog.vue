@@ -220,13 +220,13 @@ function onRiapri(riga) {
           severity="warn"
           outlined
           :label="t('vendite.resi.rinuncia_azione')"
-          icon="pi pi-ban"
+          :icon="MANAGE_ICONS.RINUNCIA"
           :loading="loading"
           :disabled="selected.length === 0"
           @click="onRendiDefinitivo" />
         <Button
           :label="generaLabel"
-          icon="pi pi-send"
+          :icon="MANAGE_ICONS.GENERA_DOCUMENTO"
           :loading="loading"
           :disabled="selected.length === 0"
           @click="onGenera" />
@@ -299,7 +299,7 @@ function onRiapri(riga) {
               :actions="[{
                 key: 'riapri',
                 label: t('vendite.resi.rinuncia_riapri'),
-                icon: 'pi pi-undo',
+                icon: MANAGE_ICONS.UNDO,
                 command: () => onRiapri(data),
               }]" />
           </template>

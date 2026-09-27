@@ -15,7 +15,8 @@ import { useDrawerContentReady } from '../../core/composables/useDrawerContentRe
 import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { useEmailTemplatesStore } from '../stores/emailTemplates'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { previewEmailTemplate } from '../api/amministrazione'
@@ -133,7 +134,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
         :modificato="modificato"
         :action="t('common.edit')"
         :title="t('amministrazione.email_template_title')"
-        icon="pi pi-file-edit"
+        :icon="NAV_ICONS.TEMPLATE_EMAIL"
       />
     </template>
 
@@ -176,7 +177,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
         <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
           <Button
             :label="t('amministrazione.email_preview')"
-            icon="pi pi-eye"
+            :icon="MANAGE_ICONS.ANTEPRIMA"
             :loading="previewLoading"
             outlined
             size="small"

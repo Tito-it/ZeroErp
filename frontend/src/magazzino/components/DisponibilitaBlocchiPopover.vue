@@ -29,6 +29,7 @@ import { formatNumber } from '../../core/utils/format'
 import { listBlocchi } from '../api/magazzino'
 import { useEtichetteMagazzino } from '../etichette'
 
+import { STATUS_ICONS } from '../../core/constants'
 const { t } = useI18n()
 const { sorgenteMovimento } = useEtichetteMagazzino()
 const popover = ref(null)
@@ -63,7 +64,7 @@ defineExpose({ apri })
       </div>
 
       <div v-if="loading" class="app-loading">
-        <i class="pi pi-spin pi-spinner" />
+        <i :class="STATUS_ICONS.CARICAMENTO" />
       </div>
 
       <!-- ⛔ «Non sono riuscito a leggere» non e' «non ce ne sono». -->

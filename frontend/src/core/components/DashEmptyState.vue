@@ -5,6 +5,8 @@
 //        errore) placeholder neutro — mai un all-clear su dati mai arrivati.
 //        Estratto 2026-07-07 (regola del 2, ok Tid): blocco template
 //        duplicato in DashboardBacklogView e SituazioneApertaView.
+import { STATUS_ICONS } from '../constants'
+
 defineProps({
   // true = almeno una fetch riuscita (usePagedDashFetch.loaded).
   loaded: { type: Boolean, required: true },
@@ -17,7 +19,7 @@ defineProps({
 
 <template>
   <div class="app-empty-state">
-    <i :class="loaded ? 'pi pi-check-circle' : 'pi pi-inbox'" />
+    <i :class="loaded ? STATUS_ICONS.TUTTO_OK : STATUS_ICONS.VUOTO" />
     <p>{{ loaded ? emptyText : placeholderText }}</p>
   </div>
 </template>

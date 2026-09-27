@@ -56,11 +56,11 @@ export const LOTTO_AZIONE_PERMESSO = {
 // Presentazione dei due verbi che il DB non espone (vedi testata): il resto
 // delle azioni prende label/icona/severity dal `meta` di catalogo.
 export const LOTTO_AZIONE_PIPELINE_UI = {
-  avanza_step: { label_key: 'vendite.lotti.avanza', icon: 'pi pi-forward', severity: undefined },
+  avanza_step: { label_key: 'vendite.lotti.avanza', icon: MANAGE_ICONS.AVANZA, severity: undefined },
   // ⚠️ Icona DIVERSA da `avanza_step` di proposito: la freccia in avanti su un
   // gesto che non avanza e' la stessa bugia dell'etichetta.
-  rigenera_bozza: { label_key: 'vendite.lotti.rigenera', icon: 'pi pi-refresh', severity: undefined },
-  rilancia_step: { label_key: 'vendite.lotti.rerun', icon: 'pi pi-replay', severity: 'warn' },
+  rigenera_bozza: { label_key: 'vendite.lotti.rigenera', icon: MANAGE_ICONS.RIGENERA, severity: undefined },
+  rilancia_step: { label_key: 'vendite.lotti.rerun', icon: MANAGE_ICONS.RIPROVA, severity: 'warn' },
 }
 
 // Le tre CHIAVI dei due verbi che il DB non espone (`rigenera_bozza` è la

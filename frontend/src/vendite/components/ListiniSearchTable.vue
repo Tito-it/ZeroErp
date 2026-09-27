@@ -19,7 +19,7 @@ import { useListaConfigurabilePage } from '../../core/composables/useListaConfig
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { lookupCodici } from '../../core/apiCore'
-import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
+import { MANAGE_ICONS, TAB_ENTITIES, STATUS_ICONS } from '../../core/constants'
 import { PRICING_ACTIONS } from '../constants'
 import { statoVersioneListinoSeverity, statoVersioneVisibile } from '../../core/utils/severity'
 import { displayDate } from '../../core/utils/date'
@@ -212,7 +212,7 @@ const extraPageActions = computed(() => [
     key: 'test-prezzo',
     kind: 'utility',
     label: t('vendite.listini.test_prezzo'),
-    icon: 'pi pi-calculator',
+    icon: MANAGE_ICONS.TEST_PREZZO,
     severity: 'info',
     // Strumento diagnostico: oltre al SUPER_ADMIN (bypass) lo apriamo a chi
     // puo' fare override manuale del prezzo (azione `prezzo_override_manuale`).
@@ -373,7 +373,6 @@ onMounted(() => store.fetchList())
         <div class="app-row-expansion">
           <div class="app-row-expansion__header">
             <span class="app-row-expansion__title">
-              <i class="pi pi-arrow-turn-down-right"></i>
               <i :class="MANAGE_ICONS.VERSIONI"></i>
               {{ t('vendite.listini.tab_versioni') }} ({{ store.versioniByListino[listino.id]?.length ?? 0 }})
             </span>
@@ -383,10 +382,10 @@ onMounted(() => store.fetchList())
           </div>
 
           <div v-if="!store.versioniByListino[listino.id]" class="app-loading">
-            <i class="pi pi-spin pi-spinner" />
+            <i :class="STATUS_ICONS.CARICAMENTO" />
           </div>
           <div v-else-if="store.versioniByListino[listino.id].length === 0" class="app-empty-state">
-            <i class="pi pi-history" />
+            <i :class="MANAGE_ICONS.VERSIONI" />
             <p>{{ t('vendite.listini.nessuna_versione_inline') }}</p>
           </div>
           <DataTable v-else

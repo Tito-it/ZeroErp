@@ -36,6 +36,7 @@ import Tag from 'primevue/tag'
 import { computed, ref } from 'vue'
 import { statoCodaStampaSeverity, STATO_CODA_STAMPA_MAP } from '../../core/utils/severity'
 import { formatFatturaNumero } from '../../core/utils/format'
+import { MANAGE_ICONS } from '../../core/constants'
 import { archiviaCodaStampa, ripristinaCodaStampa } from '../../core/api/tracciamento'
 import { useCodaArchiviazione } from '../composables/useCodaArchiviazione'
 import { useCodaFiltri } from '../composables/useCodaFiltri'
@@ -104,7 +105,7 @@ function buildRowActions(row) {
     :stato-map="STATO_CODA_STAMPA_MAP"
     :stato-severity="statoCodaStampaSeverity"
     empty-key="strumenti.code.nessuna_riga"
-    empty-icon="pi pi-print"
+    :empty-icon="MANAGE_ICONS.STAMPA"
     :extra-loading="archiviazioneLoading"
     :build-row-actions="buildRowActions"
     :selezione="selezione"
@@ -139,7 +140,7 @@ function buildRowActions(row) {
     <!-- Colonne calcolate FE (seed: campo_sorgente vuoto, ordinabile=f). -->
     <template #cell-esito="{ data }">
       <span v-if="data.documento_id">
-        <i class="pi pi-file-pdf" /> {{ t('strumenti.code.esito_documento', { id: data.documento_id }) }}
+        <i :class="MANAGE_ICONS.PDF" /> {{ t('strumenti.code.esito_documento', { id: data.documento_id }) }}
       </span>
       <span v-else-if="erroreLabel(data)" class="app-code-errore">
         {{ erroreLabel(data) }}

@@ -17,7 +17,7 @@ import { useContextStore } from '../../stores/context'
 import { DOMAINS, NAV_ICONS } from '../navigation'
 import { getAIStatus } from '../api/ai-api'
 import { setAppLanguage, SUPPORTED_LOCALES } from '../i18n'
-import { MANAGE_ICONS } from '../constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../constants'
 import SearchDrawer from './SearchDrawer.vue'
 import AiAssistantDrawer from './AiAssistantDrawer.vue'
 import CodeLavoroDrawer from './CodeLavoroDrawer.vue'
@@ -169,7 +169,7 @@ const favoritesSubmenu = computed(() => {
   if (visibleFavorites.value.length === 0) {
     return [{
       label: t('nav.preferiti_empty_short'),
-      icon: 'pi pi-info-circle',
+      icon: STATUS_ICONS.INFO,
       disabled: true,
       class: TOPBAR_MENU_CLASS,
     }]
@@ -192,14 +192,14 @@ const userKebabItems = computed(() => {
   if (ui.isMobile) {
     items.push({
       label: t('context.tooltip_search'),
-      icon: 'pi pi-search',
+      icon: MANAGE_ICONS.RICERCA,
       class: TOPBAR_MENU_CLASS,
       command: () => ui.openSearchDrawer(),
     })
     if (codeDisponibile.value) {
       items.push({
         label: t('strumenti.code.badge_tooltip'),
-        icon: 'pi pi-inbox',
+        icon: NAV_ICONS.CODE_LAVORO,
         class: TOPBAR_MENU_CLASS,
         command: () => ui.openCodeDrawer(),
       })
@@ -215,7 +215,7 @@ const userKebabItems = computed(() => {
     if (ui.aiAvailable) {
       items.push({
         label: t('ai.title'),
-        icon: 'pi pi-microchip-ai',
+        icon: NAV_ICONS.ASSISTENTE_AI,
         class: TOPBAR_MENU_CLASS,
         command: () => ui.toggleAiDrawer(),
       })
@@ -223,19 +223,19 @@ const userKebabItems = computed(() => {
   }
   items.push({
     label: t('nav.preferiti'),
-    icon: 'pi pi-star',
+    icon: MANAGE_ICONS.PREFERITI,
     class: TOPBAR_MENU_CLASS,
     items: favoritesSubmenu.value,
   })
   items.push({
     label: `${t('common.language')} · ${languageLabel.value}`,
-    icon: 'pi pi-globe',
+    icon: MANAGE_ICONS.LINGUA,
     class: TOPBAR_MENU_CLASS,
     command: () => toggleLanguage(),
   })
   items.push({
     label: ui.isDark ? t('common.light_mode') : t('common.dark_mode'),
-    icon: ui.isDark ? 'pi pi-sun' : 'pi pi-moon',
+    icon: ui.isDark ? MANAGE_ICONS.TEMA_CHIARO : MANAGE_ICONS.TEMA_SCURO,
     class: TOPBAR_MENU_CLASS,
     command: () => ui.toggleDarkMode(),
   })
@@ -265,14 +265,14 @@ onMounted(async () => {
       <!-- Hamburger su mobile -->
       <Button
         v-if="showHamburger"
-        icon="pi pi-bars"
+        :icon="MANAGE_ICONS.MENU"
         text
         rounded
         size="small"
         class="topbar-hamburger"
         @click="emit('toggle-menu')"
       />
-      <i v-else class="pi pi-building"></i>
+      <i v-else class="topbar-emittente-icon" :class="MANAGE_ICONS.BUILDING"></i>
       <EmittenteAttivoSelect />
 
       <!-- Operatore: badge SUPER_ADMIN o iniziali, subito dopo l'emittente.
@@ -284,7 +284,7 @@ onMounted(async () => {
            cioe' tra cose che non descrivono l'identita'. -->
       <Chip v-if="auth.isSuperAdmin" class="admin-chip" v-tooltip.bottom="auth.displayName">
         <template #default>
-          <i class="pi pi-shield admin-chip-icon" />
+          <i class="admin-chip-icon" :class="MANAGE_ICONS.SUPER_ADMIN" />
           <span class="admin-chip-label">{{ t('auth.super_admin_badge') }}</span>
         </template>
       </Chip>
@@ -332,7 +332,7 @@ onMounted(async () => {
             : t('strumenti.code.badge_tooltip')"
           @click="ui.openCodeDrawer()"
         >
-          <i class="pi pi-inbox" :class="{ 'topbar-code-icon-warn': workerOk === false }"></i>
+          <i :class="[NAV_ICONS.CODE_LAVORO, { 'topbar-code-icon-warn': workerOk === false }]"></i>
           <Badge
             v-if="lavoriVivi > 0"
             :value="lavoriVivi"
@@ -375,7 +375,7 @@ onMounted(async () => {
           v-tooltip.bottom="t('context.tooltip_search')"
           @click="ui.openSearchDrawer()"
         >
-          <i class="pi pi-search"></i>
+          <i :class="MANAGE_ICONS.RICERCA"></i>
         </button>
 
         <!-- Pulsante assistente AI — visibile solo se AI disponibile -->
@@ -385,7 +385,7 @@ onMounted(async () => {
           v-tooltip.bottom="`${t('ai.title')} (Ctrl+.)`"
           @click="ui.toggleAiDrawer()"
         >
-          <i class="pi pi-microchip-ai"></i>
+          <i :class="NAV_ICONS.ASSISTENTE_AI"></i>
         </button>
       </div>
 
@@ -408,7 +408,7 @@ onMounted(async () => {
         v-tooltip.bottom="t('auth.logout')"
         @click="handleLogout"
       >
-        <i class="pi pi-sign-out"></i>
+        <i :class="MANAGE_ICONS.LOGOUT"></i>
       </button>
     </div>
   </header>
@@ -638,7 +638,7 @@ onMounted(async () => {
     display: none;
   }
 
-  .topbar-left i.pi-building {
+  .topbar-emittente-icon {
     display: none;
   }
 

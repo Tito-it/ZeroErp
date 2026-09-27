@@ -35,6 +35,7 @@ import { useDocumentoDrawer } from '../../../core/composables/useDocumentoDrawer
 import LineagePassaggiDialog from './LineagePassaggiDialog.vue'
 import { lineageDocumentoLabel } from './lineageLabels'
 import { useDocumentoPassaggi } from './useDocumentoPassaggi'
+import { MANAGE_ICONS } from '../../../core/constants'
 
 const props = defineProps({
   // Path lista API del dominio (es. '/vendite/ordini').
@@ -133,8 +134,8 @@ function chipLabel(chip) {
 // Glifo di direzione, coerente con la timeline della dialog: ← origine,
 // → destinazione, ↩ ramo di ritorno (DDT->Reso, fattura->nota di credito).
 function chipIcon(chip) {
-  if (chip.ramoInverso) return 'pi pi-replay'
-  return chip.avanti ? 'pi pi-arrow-right' : 'pi pi-arrow-left'
+  if (chip.ramoInverso) return MANAGE_ICONS.CORREZIONE
+  return chip.avanti ? MANAGE_ICONS.DOC_DESTINAZIONE : MANAGE_ICONS.DOC_ORIGINE
 }
 
 const passaggiDialogVisible = ref(false)

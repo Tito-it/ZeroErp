@@ -28,7 +28,7 @@ import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
-import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../../core/constants'
+import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS, STATUS_ICONS } from '../../core/constants'
 import { extractApiError } from '../../core/utils/apiError'
 import { displayDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
@@ -402,7 +402,7 @@ onActivated(() => {
             <i
               v-if="card.hint"
               v-tooltip.bottom="card.hint"
-              class="pi pi-info-circle app-dash-card-hint"
+              class="app-dash-card-hint" :class="STATUS_ICONS.INFO"
               role="img"
               tabindex="0"
               :aria-label="card.hint"

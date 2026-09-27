@@ -29,6 +29,7 @@ import SituazioneMerceDialog from './SituazioneMerceDialog.vue'
 import { compitiSituazioneMerce, sintesiSituazioneMerce } from './situazioneMerceSintesi'
 import { useSituazioneMerce } from './useSituazioneMerce'
 import { ROUTE_RESI, TAB_RESI } from '../../resi/constants'
+import { STATUS_ICONS } from '../../../core/constants'
 
 // Da quale documento si arriva → su quale filtro si apre la coda accrediti.
 // I due filtri sono ALTERNATIVI (il backend rifiuta la coppia).
@@ -124,7 +125,7 @@ const dialogVisible = ref(false)
       v-tooltip.bottom="t('vendite.situazione_merce.apri')"
       @click="dialogVisible = true"
     >
-      <Tag severity="success" icon="pi pi-check" :value="t('vendite.situazione_merce.tutto_regolare')" />
+      <Tag severity="success" :icon="STATUS_ICONS.SI" :value="t('vendite.situazione_merce.tutto_regolare')" />
     </button>
 
     <button

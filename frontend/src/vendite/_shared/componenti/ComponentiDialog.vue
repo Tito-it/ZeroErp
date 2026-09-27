@@ -46,6 +46,7 @@ import { pricingOrigineSeverity, pricingOrigineLabelKey } from '../../../core/ut
 import { useAuthStore } from '../../../stores/auth'
 import { PRICING_ACTIONS } from '../../constants'
 
+import { STATUS_ICONS } from '../../../core/constants'
 const { t, te } = useI18n()
 const notify = useNotify()
 const auth = useAuthStore()
@@ -339,7 +340,7 @@ function handleCancel() {
       <small class="app-text-muted">{{ t(localizedKey('dialog_hint')) }}</small>
 
       <div v-if="loading" style="padding: 1rem; text-align: center;">
-        <i class="pi pi-spin pi-spinner" style="margin-right: 0.5rem;" />
+        <i :class="STATUS_ICONS.CARICAMENTO" style="margin-right: 0.5rem;" />
         {{ t(localizedKey('dialog_caricamento')) }}
       </div>
 

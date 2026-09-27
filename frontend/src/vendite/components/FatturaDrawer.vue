@@ -64,6 +64,7 @@ import {
   MANAGE_ICONS,
   READONLY_DOMAINS,
   READONLY_MODELS,
+  STATUS_ICONS,
 } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { displayDate, displayTimestamp } from '../../core/utils/date'
@@ -467,7 +468,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
     <div v-else class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <template v-if="contentReady">
         <div v-if="loading && !fattura" class="app-loading">
-          <i class="pi pi-spin pi-spinner" />
+          <i :class="STATUS_ICONS.CARICAMENTO" />
         </div>
 
         <template v-if="fattura">
@@ -708,7 +709,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
             </Column>
             <template #empty>
               <div class="app-empty-state">
-                <i class="pi pi-inbox" /><p>{{ t('vendite.fatture.nessuna_riga') }}</p>
+                <i :class="STATUS_ICONS.VUOTO" /><p>{{ t('vendite.fatture.nessuna_riga') }}</p>
               </div>
             </template>
           </DataTable>
@@ -808,7 +809,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
                riuscito a chiederlo». Il secondo su un elenco filtrato è il
                caso in cui la distinzione conta di più. -->
           <div v-else class="app-empty-state">
-            <i :class="giornaleCaricato ? 'pi pi-check-circle' : 'pi pi-inbox'" />
+            <i :class="giornaleCaricato ? STATUS_ICONS.TUTTO_OK : STATUS_ICONS.VUOTO" />
             <p v-if="!giornaleCaricato">{{ t('vendite.fatture.giornale_non_caricato') }}</p>
             <p v-else-if="giornaleRitirate > 0">
               {{ t('vendite.fatture.giornale_solo_ritirate', { n: giornaleRitirate }) }}

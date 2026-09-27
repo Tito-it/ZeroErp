@@ -1149,7 +1149,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
                 {{ t('vendite.offerte.revisioni_intro') }}
               </p>
               <div v-if="!revisioni.length" class="app-empty-state">
-                <i class="pi pi-history" style="font-size: 2rem;" />
+                <i :class="MANAGE_ICONS.VERSIONI" style="font-size: 2rem;" />
                 <div>{{ t('vendite.offerte.revisioni_empty') }}</div>
               </div>
               <DataTable
@@ -1295,7 +1295,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
         />
         <Button
           :label="t('vendite.offerte.gia_generato_apri_contratto')"
-          icon="pi pi-arrow-right"
+          :icon="MANAGE_ICONS.CONTRATTI"
           severity="primary"
           :disabled="!detail?.contratto_id"
           @click="onApriContrattoEsistente"

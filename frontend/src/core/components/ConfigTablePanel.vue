@@ -14,6 +14,7 @@ import { useI18n } from 'vue-i18n'
 import { useReadonlyMode } from '../composables/useReadonlyMode'
 import { useApiHandler } from '../composables/useApiHandler'
 import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../constants'
+import { NAV_ICONS } from '../navigation'
 import { getTablesBySchema } from '../config-tables'
 import { labelOrCode } from '../utils/i18nLabel'
 import { chiaveEtichettaTabella } from '../utils/campoConfig'
@@ -249,7 +250,7 @@ function selectTable(rel) {
       </template>
 
       <div v-else class="config-panel-empty">
-        <i class="pi pi-table" style="font-size: 2rem; opacity: 0.3;"></i>
+        <i :class="NAV_ICONS.TABELLE" style="font-size: 2rem; opacity: 0.3;"></i>
         <p>{{ t('config_panel.select_tabella') }}</p>
       </div>
     </div>

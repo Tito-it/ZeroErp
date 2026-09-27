@@ -32,6 +32,7 @@ import { useDocumentiPerSorgenteStore } from '../stores/documentiPerSorgente'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { downloadBlob } from '../../core/utils/download'
 import { formatSize } from '../../core/utils/format'
+import { MANAGE_ICONS } from '../../core/constants'
 
 // MIME ammessi di default per gli allegati (allineato alla whitelist BE).
 const ACCEPT_DEFAULT = 'application/pdf,image/jpeg,image/png'
@@ -237,7 +238,7 @@ onBeforeUnmount(revokePreview)
             {{ t('documenti.emissione.allegati_titolo') }}
           </span>
           <Button
-            icon="pi pi-paperclip"
+            :icon="MANAGE_ICONS.ALLEGATI"
             :label="isAppendMode
               ? t('documenti.allegati.conferma')
               : t('documenti.emissione.aggiungi_allegati')"
@@ -264,11 +265,11 @@ onBeforeUnmount(revokePreview)
         <template v-if="!isAppendMode">
           <ul v-if="stagedFiles.length" class="documento-emissione__file-list">
             <li v-for="(f, idx) in stagedFiles" :key="idx" class="documento-emissione__file">
-              <i class="pi pi-file" />
+              <i :class="MANAGE_ICONS.ALLEGATI" />
               <span class="documento-emissione__file-name">{{ f.name }}</span>
               <span class="documento-emissione__file-size">{{ formatSize(f.size) }}</span>
               <Button
-                icon="pi pi-times"
+                :icon="MANAGE_ICONS.TOGLI"
                 text
                 rounded
                 size="small"
@@ -297,7 +298,7 @@ onBeforeUnmount(revokePreview)
           </span>
           <Button
             v-if="previewBlob"
-            icon="pi pi-download"
+            :icon="MANAGE_ICONS.DOWNLOAD"
             :label="t('documenti.emissione.anteprima_scarica')"
             size="small"
             text

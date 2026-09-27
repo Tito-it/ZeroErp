@@ -2,6 +2,8 @@
 // Un solo punto di modifica per i colori di stato in tutta l'applicazione.
 // Ogni mappa associa codice_interno (con trim) a una severity PrimeVue.
 
+import { MANAGE_ICONS, STATUS_ICONS } from '../constants'
+
 // --- Resolver generico ---
 // Scopo: Risolve severity da una mappa. Trim automatico, fallback 'secondary'.
 export function resolveSeverity(map, codice) {
@@ -133,21 +135,21 @@ export function faseSorgenteSeverity(fase, esito) {
 // chk_giornale_azione), non nomi astratti: azioneGiornaleStyle riceve il codice
 // grezzo (es. 'FLUSSO_STATO_CAMBIATO'), quindi le chiavi devono combaciare.
 export const AZIONE_GIORNALE_MAP = {
-  PRATICA_CREATA: { severity: 'info', icon: 'pi pi-plus-circle' },
-  PRATICA_GENERATA: { severity: 'info', icon: 'pi pi-copy' },
-  STATO_CAMBIATO: { severity: 'warn', icon: 'pi pi-sync' },
-  PRIORITA_CAMBIATA: { severity: 'secondary', icon: 'pi pi-flag' },
-  ASSEGNAZIONE_CAMBIATA: { severity: 'secondary', icon: 'pi pi-user' },
-  FLUSSO_CREATO: { severity: 'info', icon: 'pi pi-sitemap' },
-  FLUSSO_STATO_CAMBIATO: { severity: 'warn', icon: 'pi pi-sync' },
-  FLUSSO_ASSEGNAZIONE_CAMBIATA: { severity: 'secondary', icon: 'pi pi-user-plus' },
-  NOTA_AGGIUNTA: { severity: 'secondary', icon: 'pi pi-comment' },
-  ALLEGATO_AGGIUNTO: { severity: 'secondary', icon: 'pi pi-paperclip' },
-  SOSPENSIONE_REGISTRATA: { severity: 'warn', icon: 'pi pi-pause' },
-  SOSPENSIONE_CHIUSA: { severity: 'success', icon: 'pi pi-play' },
+  PRATICA_CREATA: { severity: 'info', icon: MANAGE_ICONS.ADD },
+  PRATICA_GENERATA: { severity: 'info', icon: MANAGE_ICONS.GENERA_DOCUMENTO },
+  STATO_CAMBIATO: { severity: 'warn', icon: MANAGE_ICONS.CAMBIO_STATO },
+  PRIORITA_CAMBIATA: { severity: 'secondary', icon: MANAGE_ICONS.PRIORITA },
+  ASSEGNAZIONE_CAMBIATA: { severity: 'secondary', icon: MANAGE_ICONS.ASSIGN },
+  FLUSSO_CREATO: { severity: 'info', icon: MANAGE_ICONS.ADD },
+  FLUSSO_STATO_CAMBIATO: { severity: 'warn', icon: MANAGE_ICONS.CAMBIO_STATO },
+  FLUSSO_ASSEGNAZIONE_CAMBIATA: { severity: 'secondary', icon: MANAGE_ICONS.ASSIGN },
+  NOTA_AGGIUNTA: { severity: 'secondary', icon: MANAGE_ICONS.NOTE },
+  ALLEGATO_AGGIUNTO: { severity: 'secondary', icon: MANAGE_ICONS.ALLEGATI },
+  SOSPENSIONE_REGISTRATA: { severity: 'warn', icon: MANAGE_ICONS.SOSPENDI },
+  SOSPENSIONE_CHIUSA: { severity: 'success', icon: MANAGE_ICONS.PLAY },
 }
 
-const _AZIONE_DEFAULT = { severity: 'secondary', icon: 'pi pi-circle' }
+const _AZIONE_DEFAULT = { severity: 'secondary', icon: STATUS_ICONS.EVENTO }
 
 // Eventi del REGISTRO delle righe di commessa (`vendite.commesse_attivita_log`).
 // ⚠️ Le chiavi sono i CODICI del database, non nomi astratti: la funzione riceve
@@ -156,14 +158,14 @@ const _AZIONE_DEFAULT = { severity: 'secondary', icon: 'pi pi-circle' }
 // niente — cade sul default e resta visibile col proprio codice. Mai una lista
 // chiusa che faccia sparire ciò che non conosce.
 export const EVENTO_REGISTRO_COMMESSA_MAP = {
-  ONERE_AGGIUNTO: { severity: 'info', icon: 'pi pi-plus-circle' },
-  RIGA_MANUALE_ANNULLATA: { severity: 'danger', icon: 'pi pi-times-circle' },
+  ONERE_AGGIUNTO: { severity: 'info', icon: MANAGE_ICONS.ADD },
+  RIGA_MANUALE_ANNULLATA: { severity: 'danger', icon: MANAGE_ICONS.ANNULLA },
   // Il ritiro non è un errore: è il documento di origine che è stato annullato
   // e si è portato via il lavoro non ancora emesso.
-  RIGA_RITIRATA_DA_SORGENTE: { severity: 'warn', icon: 'pi pi-undo' },
-  RIGA_RIPORTATA_DA_EMETTERE: { severity: 'warn', icon: 'pi pi-replay' },
-  ACCREDITO_RICHIESTO: { severity: 'info', icon: 'pi pi-money-bill' },
-  ACCREDITO_ANNULLATO: { severity: 'secondary', icon: 'pi pi-ban' },
+  RIGA_RITIRATA_DA_SORGENTE: { severity: 'warn', icon: MANAGE_ICONS.UNDO },
+  RIGA_RIPORTATA_DA_EMETTERE: { severity: 'warn', icon: MANAGE_ICONS.RIPORTA_A_BOZZA },
+  ACCREDITO_RICHIESTO: { severity: 'info', icon: MANAGE_ICONS.ACCREDITO },
+  ACCREDITO_ANNULLATO: { severity: 'secondary', icon: MANAGE_ICONS.UNDO },
 }
 
 // Scopo: Risolve severity+icon per un evento del registro commessa.

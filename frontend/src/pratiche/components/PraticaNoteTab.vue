@@ -10,7 +10,7 @@ import { fetchNote, createNota, updateNota, deleteNota } from '../api/pratiche-a
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { displayTimestamp } from '../../core/utils/date'
 import Textarea from 'primevue/textarea'
 import LookupSelect from '../../core/components/LookupSelect.vue'
@@ -128,7 +128,7 @@ watch(() => props.praticaId, (id) => {
 
     <!-- Lista note -->
     <div v-if="loading" class="text-center app-text-muted p-3">
-      <i class="pi pi-spin pi-spinner"></i>
+      <i :class="STATUS_ICONS.CARICAMENTO"></i>
     </div>
 
     <div v-else-if="note.length === 0" class="text-center app-text-muted p-3">

@@ -7,6 +7,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly, useInjectBlocked } from '../composables/useReadonlyMode'
+import { STATUS_ICONS } from '../constants'
 
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
@@ -22,7 +23,7 @@ const isVisible = computed(() => isReadonly.value && !isBlocked.value)
     v-tooltip.bottom="t('common.modalita_consultazione')"
     role="status"
   >
-    <i class="pi pi-eye app-readonly-badge__icon" />
+    <i class="app-readonly-badge__icon" :class="STATUS_ICONS.SOLA_LETTURA" />
     <span class="app-readonly-badge__text">{{ t('common.modalita_consultazione') }}</span>
   </span>
 </template>
