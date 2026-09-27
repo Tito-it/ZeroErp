@@ -43,7 +43,7 @@ service `get_fattura_giornale` (`apps.vendite.services.vendite_service`) →
 
 ⭐ **Dal 2026-09-27 è la lista a catalogo `vendite.giornale`** (lista 79, la
 stessa del giornale trasversale e della Storia del lotto —
-[brief-db-liste-datatable-grezze §3.1](../../../dev/work-in-progress/brief-db-liste-datatable-grezze.md),
+[brief-db-liste-datatable-grezze §3.1](../../../dev/work-done/brief-db-liste-datatable-grezze.md),
 decisione di Tid): contratto di lista standard, dichiarato una volta per le due
 Storie in `apps/vendite/api/_giornale_params.py`. ⛔ Il vecchio contratto
 (`page`/`page_size`/`sort_by`/`sort_dir`) non è più letto.

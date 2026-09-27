@@ -94,6 +94,7 @@ class ApiContrattiExportView(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "contratto")
     is_search_endpoint = True
     lista_codice = "vendite.contratti"
 
@@ -174,6 +175,7 @@ class ApiContrattiExportView(DomainAPIView):
 
 class ApiContrattiList(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "contratto")
     is_search_endpoint = True
     lista_codice = "vendite.contratti"
 
@@ -240,6 +242,7 @@ class ApiContrattiList(DomainAPIView):
 
 class ApiContrattoDetail(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "contratto")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -291,6 +294,7 @@ _CONTRATTO_STATO_REQUEST = inline_serializer(
 
 class ApiContrattoCambiaStato(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "contratto")
 
     @extend_schema(
         request=_CONTRATTO_STATO_REQUEST,
@@ -337,6 +341,7 @@ _RIGA_PATCH_REQUEST = schema_da_contratto(
 
 class ApiContrattoRigheList(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "contratto")
 
     @extend_schema(
         request=_RIGA_CREATE_REQUEST,
@@ -369,6 +374,7 @@ class ApiContrattoContestoPricing(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "contratto")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -426,6 +432,7 @@ class ApiContrattoRighePreview(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "contratto")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -443,6 +450,7 @@ class ApiContrattoRighePreview(DomainAPIView):
 
 class ApiContrattoRigaDetail(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "contratto")
 
     @extend_schema(
         request=_RIGA_PATCH_REQUEST,
@@ -484,6 +492,7 @@ class ApiContrattoRigaDetail(DomainAPIView):
 
 class ApiContrattoUtility(DomainAPIView):
     area_funzionale = "vendite"
+    model_permission = ("vendite", "contratto")
 
     @extend_schema(
         request=_UTILITY_CREATE_REQUEST,
@@ -533,6 +542,7 @@ class ApiContrattoRigaPreviewComponenti(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "contratto")
 
     @extend_schema(
         request=PREVIEW_COMPONENTI_REQUEST,
@@ -573,6 +583,7 @@ class ApiContrattoRigaComponentiList(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "contratto")
 
     @extend_schema(
         parameters=COMPONENTI_LIST_PARAMETERS,
@@ -603,6 +614,7 @@ class ApiContrattoRigaComponenteDetail(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "contratto")
 
     @extend_schema(
         request=COMPONENTE_PATCH_REQUEST,
@@ -647,6 +659,7 @@ _indirizzi_views = build_indirizzi_documento_views(
         contratto_id, payload),
     delete_call=lambda contratto_id, indirizzo_id: contratti_service.delete_indirizzo(
         contratto_id, indirizzo_id),
+    model_permission=("vendite", "contratto"),
 )
 ApiContrattoIndirizzi = _indirizzi_views.lista
 ApiContrattoIndirizzoDetail = _indirizzi_views.detail

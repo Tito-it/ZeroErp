@@ -18,7 +18,7 @@ import Button from 'primevue/button'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useLookupCodici } from '../../core/composables/useLookupCodici'
-import { MANAGE_ICONS, READONLY_DOMAINS, STATUS_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, READONLY_DOMAINS, READONLY_MODELS, STATUS_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { useAuthStore } from '../../stores/auth'
 import { usePraticheStore } from '../stores/pratiche'
@@ -29,7 +29,9 @@ const { t } = useI18n()
 const router = useRouter()
 const store = usePraticheStore()
 const auth = useAuthStore()
-const { isReadonly, isBlocked } = useReadonlyMode(READONLY_DOMAINS.PRATICHE)
+// Permessi: area `pratiche` + oggetto `pratica`, come le rotte `pratiche/…` del
+// BE, coda lavoro compresa (brief-db-be-fe-catalogo-oggetti-permessi §3.3, D-6).
+const { isReadonly, isBlocked } = useReadonlyMode(READONLY_DOMAINS.PRATICHE, READONLY_MODELS.PRATICA)
 
 // Solo l'operatore con emittente 1-a-1 ha una coda lavoro: admin
 // globale/portali → niente colonna Continua.

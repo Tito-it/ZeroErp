@@ -27,7 +27,7 @@ Indice test:
  6) test_offerta_legge_la_radice_per_uguaglianza_non_ricorsione
  7) test_offerta_default_revisione_numero_asc
  8) test_offerta_data_emissione_senza_direzione_parte_desc
- 9) test_offerta_codice_della_lista_principale_ripiega
+ 9) test_offerta_codice_ordina_e_chiave_principale_ripiega
 10) test_offerta_nessun_filtro_emittente
 11) test_whitelist_separate_da_quelle_principali
 """
@@ -120,10 +120,16 @@ class OffertaRevisioniListaTests(unittest.TestCase):
         sql, _, _ = self._cattura(order_by="data_emissione", order_dir=None)
         self.assertIn("ORDER BY v.data_emissione DESC NULLS LAST, v.id DESC", sql)
 
-    # Scopo: `codice` (la colonna «Numero») e' `ordinabile = f` a catalogo:
-    #        fuori whitelist, ripiega sul default.
-    def test_offerta_codice_della_lista_principale_ripiega(self):
+    # Scopo: `codice` (la colonna «Numero») ordina dal 2026-09-28 (§9.1 del
+    #        brief, colonna del nucleo resa `ordinabile = t`, gemella di
+    #        `numero` sui preventivi); una chiave della lista principale che
+    #        qui non c'e' ripiega ancora sul default.
+    # ⛔ Fino a quel giorno questo test fissava il ripiego di `codice`: era il
+    #    contratto di allora (`ordinabile = f`), non una regola.
+    def test_offerta_codice_ordina_e_chiave_principale_ripiega(self):
         sql, _, _ = self._cattura(order_by="codice", order_dir="desc")
+        self.assertIn("ORDER BY v.codice DESC NULLS LAST, v.id DESC", sql)
+        sql, _, _ = self._cattura(order_by="ragione_sociale_completa", order_dir="desc")
         self.assertIn("ORDER BY v.revisione_numero DESC NULLS LAST, v.id DESC", sql)
 
     # Scopo: come per il preventivo, nessun filtro emittente nella query.

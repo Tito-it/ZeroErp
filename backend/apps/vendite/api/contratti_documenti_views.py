@@ -64,6 +64,7 @@ _views = build_documenti_sorgente_views(
     doc_service=_doc_service,
     emetti_call=_emetti_call,
     emetti_response_key="contratto",
+    model_permission=("vendite", "contratto"),
 )
 
 ApiContrattoEmetti = _views.emetti

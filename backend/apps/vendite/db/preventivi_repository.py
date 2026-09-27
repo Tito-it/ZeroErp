@@ -95,9 +95,14 @@ _ORDER_COLS_PREVENTIVI: dict[str, str] = {
 #    gemelle della lista offerte hanno gli STESSI codici ma campo_sorgente
 #    diversi (`rev`/`revisione_numero`, `data`/`data_emissione`), ed e' questo
 #    che il FE manda come `order_by`.
+# ⚠️ `numero` e `stato_descrizione` dal 2026-09-28 (brief-db-liste-datatable-
+#    grezze §9.1): colonne del nucleo rese ordinabili dal seed, GEMELLE di
+#    quelle della lista 90 — si cambiano insieme.
 PREVENTIVO_REVISIONI_ORDER_COLUMNS: dict[str, str] = {
     "rev": "v.rev",
+    "numero": "v.numero",
     "data": "v.data",
+    "stato_descrizione": "v.stato_descrizione",
     "totale_documento": "v.totale_documento",
 }
 

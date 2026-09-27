@@ -12,9 +12,10 @@ import OrdiniDrawer from '../components/OrdiniDrawer.vue'
 const drawer = useDrawerState()
 const store = useOrdiniStore()
 
-// Permessi: livello area `vendite` + livello oggetto `ordine` (in attesa che il
-// BE catalogizzi il model in config.area_model_overrides — fallback ad area se
-// non catalogato, vedi frontend-standards §"Drawer autonomo vs figlio puro").
+// Permessi: livello area `vendite` + livello oggetto `ordine`, lo stesso che il
+// BE chiede su tutte le rotte `vendite/ordini/…`. Finche' il model non e' in
+// `config.area_model_overrides` vale l'area (frontend-standards §"Drawer
+// autonomo vs figlio puro").
 useReadonlyMode(READONLY_DOMAINS.VENDITE, READONLY_MODELS.ORDINE)
 
 // Su 'saved': refresh lista + chiude drawer. La transizione CREATE →

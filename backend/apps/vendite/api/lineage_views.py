@@ -109,24 +109,28 @@ ApiOrdinePassaggi = build_passaggi_view(
     schema_prefix="Ordine",
     url_kwarg="ordine_id",
     tipo_codice="ORDINE_VENDITA",
+    model_permission=("vendite", "ordine"),
 )
 
 ApiContrattoPassaggi = build_passaggi_view(
     schema_prefix="Contratto",
     url_kwarg="contratto_id",
     tipo_codice="CONTRATTO",
+    model_permission=("vendite", "contratto"),
 )
 
 ApiDdtPassaggi = build_passaggi_view(
     schema_prefix="Ddt",
     url_kwarg="ddt_id",
     tipo_codice="DDT_VENDITA",
+    model_permission=("vendite", "ddt"),
 )
 
 ApiResoPassaggi = build_passaggi_view(
     schema_prefix="Reso",
     url_kwarg="reso_id",
     tipo_codice="RESO_VENDITA",
+    model_permission=("vendite", "reso"),
 )
 
 # Fattura (2026-08-21): la decisione Q4 la teneva fuori come «capolinea senza

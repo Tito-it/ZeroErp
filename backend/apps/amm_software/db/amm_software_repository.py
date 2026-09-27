@@ -141,43 +141,6 @@ AUDIT_ORDER_COLUMNS: dict[str, str] = {
 }
 
 
-# Fase 8 — Model riservati: non possono essere target di override granulari.
-# Sono il kernel del sistema permessi: ammettere override a livello model
-# qui aprirebbe scenari di lockout ricorsivo (es. negare a un admin
-# l'accesso a `profili_accesso_bindings` => non puo' piu' rimuovere il
-# proprio binding => bypass automatico).
-#
-# Convenzione tuple: `(schema_db, model_logical_name)` — stessa del seed
-# `config.area_model_overrides` (es. `('anagrafiche', 'soggetto')`).
-# NOTA: alla data del 2026-04-29 NESSUN model di kernel e' presente in
-# `area_model_overrides` (verifica: il seed `20260410-11` registra solo
-# 12 model business). Questa blacklist e' quindi PREVENTIVA — defense
-# in depth contro futuri seed che includessero per errore tabelle di
-# kernel. Se la convenzione di registrazione cambia (es. uso di
-# Django app_label invece dello schema), aggiornare le tuple di
-# conseguenza.
-_MODEL_OVERRIDE_RISERVATI: frozenset[tuple[str, str]] = frozenset({
-    # Identita digitali (anagrafiche) — modificarla via override-oggetti
-    # lascerebbe l'utente bypassare i guard sul ruolo applicativo.
-    ("anagrafiche", "identita_digitali"),
-    # Catalogo profili accesso e binding SUPER_ADMIN.
-    ("config", "profili_accesso"),
-    ("config", "profili_accesso_bindings"),
-    # Catalogo del lookup stesso: override-abile solo via DDL.
-    ("config", "area_model_overrides"),
-    # Tabelle override granulari: ricorsione semantica.
-    ("config", "user_override_aree"),
-    ("config", "user_override_azioni"),
-    ("config", "user_override_oggetti"),
-    # Scope emittenti utente: cambiarlo cambia i dati visibili.
-    ("config", "user_emittenti_fiscali"),
-    # Profili accesso: livello sopra ai singoli operatori (modello generalizzato
-    # post-cutover PR-B; le legacy profili_reparto_* sono state rimosse).
-    ("config", "profili_accesso_aree"),
-    ("config", "profili_accesso_azioni"),
-})
-
-
 class AmmSoftwareRepository:
     """Accesso DB per amministrazione operatori e reparti."""
 
@@ -846,13 +809,21 @@ class AmmSoftwareRepository:
     # Scopo: Lista model registrati in area_model_overrides (lookup per dropdown admin).
     #        Ogni riga e' arricchita con capability `can_override` (bool) +
     #        `reason` (chiave i18n|None) — Fase 8: i model che afferiscono al
-    #        kernel del sistema permessi (auth_user, identita, bindings, override
+    #        kernel del sistema permessi (identita, profili, bindings, override
     #        stessi) NON possono essere target di override per evitare lockout
     #        ricorsivi. Pattern simmetrico a `can_change_scope`/`change_scope_reason`
     #        di Fase 2.
+    # ⭐ Il riservato e' la colonna `area_model_overrides.riservato` (D-4 di
+    #    brief-db-be-fe-catalogo-oggetti-permessi, `20260928-01`): il catalogo
+    #    DICHIARA i dieci oggetti del kernel, e la FK composita
+    #    `fk_user_override_oggetti_catalogo` rifiuta un override su un oggetto
+    #    fuori catalogo o riservato.
+    # ⛔ Fino al 2026-09-28 l'elenco era la costante Python
+    #    `_MODEL_OVERRIDE_RISERVATI`, preventiva e senza riscontro a DB: due
+    #    elenchi dei riservati, ritirata la copia (regola del 2).
     def list_model_overrides(self) -> list[dict[str, Any]]:
         sql = """
-            SELECT amo.id, amo.app_label, amo.model_name,
+            SELECT amo.id, amo.app_label, amo.model_name, amo.riservato,
                    af.id AS area_id,
                    af.schema_db AS area_schema, af.descrizione AS area_descrizione
               FROM config.area_model_overrides amo
@@ -864,7 +835,7 @@ class AmmSoftwareRepository:
             rows = rows_to_list(cursor)
 
         for row in rows:
-            riservato = (row["app_label"], row["model_name"]) in _MODEL_OVERRIDE_RISERVATI
+            riservato = bool(row.pop("riservato"))
             row["can_override"] = not riservato
             row["reason"] = "amm.model_override_reason_riservato" if riservato else None
         return rows

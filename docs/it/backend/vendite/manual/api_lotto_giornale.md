@@ -41,7 +41,7 @@ risolvere: qui c'è anche ciò che è andato bene e i tentativi poi superati.
 - Header sicurezza: `Authorization: Bearer <access_token>`
 - ⭐ **Dal 2026-09-27 è la lista a catalogo `vendite.giornale`** (la stessa
   della Storia della fattura e del giornale trasversale, decisione di Tid,
-  [brief-db-liste-datatable-grezze §3.1](../../../dev/work-in-progress/brief-db-liste-datatable-grezze.md)):
+  [brief-db-liste-datatable-grezze §3.1](../../../dev/work-done/brief-db-liste-datatable-grezze.md)):
   contratto di lista standard, dichiarato una volta per le due Storie in
   `apps/vendite/api/_giornale_params.py`. Il vecchio contratto
   (`page`/`page_size`/`sort_by`/`sort_dir`) non è più letto.

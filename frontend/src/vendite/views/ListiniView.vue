@@ -7,7 +7,7 @@ import { ref } from 'vue'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useDrawerSavedListRefresh } from '../../core/composables/useDrawerSavedListRefresh'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
-import { READONLY_DOMAINS } from '../../core/constants'
+import { READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
 import { useListiniStore } from '../stores/listini'
 import ListiniSearchTable from '../components/ListiniSearchTable.vue'
 import ListinoDrawer from '../components/ListinoDrawer.vue'
@@ -19,7 +19,9 @@ import TestResolverDialog from '../components/TestResolverDialog.vue'
 const drawer = useDrawerState()
 const store = useListiniStore()
 const { onDrawerSaved } = useDrawerSavedListRefresh(store, drawer)
-useReadonlyMode(READONLY_DOMAINS.VENDITE)
+// Permessi: area `vendite` + oggetto `listino`, come le rotte `vendite/listini/…`
+// del BE (brief-db-be-fe-catalogo-oggetti-permessi §3.3).
+useReadonlyMode(READONLY_DOMAINS.VENDITE, READONLY_MODELS.LISTINO)
 
 // Drawer righe prezzo (VersioneDrawer)
 const versioneDrawerVisible = ref(false)

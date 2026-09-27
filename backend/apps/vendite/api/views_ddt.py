@@ -83,6 +83,7 @@ class ApiDdtList(DomainAPIView):
     """GET/POST /api/v1/vendite/ddt/ — lista paginata + create BOZZA standalone."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ddt")
     is_search_endpoint = True
     lista_codice = "vendite.ddt"
 
@@ -143,6 +144,7 @@ class ApiDdtExportView(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ddt")
     is_search_endpoint = True
     lista_codice = "vendite.ddt"
 
@@ -204,6 +206,7 @@ class ApiDdtDetail(DomainAPIView):
     """GET/PATCH/DELETE /api/v1/vendite/ddt/<ddt_id>/."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ddt")
 
     @extend_schema(
         responses={200: _DDT_RESPONSE},
@@ -238,6 +241,7 @@ class ApiDdtCambiaStato(DomainAPIView):
     guard DB."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ddt")
 
     @extend_schema(
         request=CAMBIA_STATO_REQUEST,
@@ -258,6 +262,7 @@ class ApiDdtPush(DomainAPIView):
     (sorgente DDT_VENDITA, fatturazione differita)."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ddt")
 
     @extend_schema(
         request=None,
@@ -279,6 +284,7 @@ _indirizzi_views = build_indirizzi_documento_views(
     upsert_call=lambda ddt_id, payload: ddt_service.upsert_indirizzo(ddt_id, payload),
     delete_call=lambda ddt_id, indirizzo_id: ddt_service.delete_indirizzo(
         ddt_id, indirizzo_id),
+    model_permission=("vendite", "ddt"),
 )
 ApiDdtIndirizzi = _indirizzi_views.lista
 ApiDdtIndirizzoDetail = _indirizzi_views.detail
@@ -303,6 +309,7 @@ ApiDdtRiepilogoIva = build_riepilogo_iva_view(
 
     Area `vendite` livello LETTURA sufficiente.
     """,
+    model_permission=("vendite", "ddt"),
 )
 
 
@@ -316,6 +323,7 @@ class ApiDdtRighePerReso(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ddt")
 
     @extend_schema(
         responses={200: _DDT_LISTA_RESPONSE},
@@ -332,6 +340,7 @@ class ApiDdtRighe(DomainAPIView):
     """GET/POST /api/v1/vendite/ddt/<ddt_id>/righe/."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ddt")
 
     @extend_schema(
         responses={200: _DDT_LISTA_RESPONSE},
@@ -359,6 +368,7 @@ class ApiDdtRigaDetail(DomainAPIView):
     """PATCH/DELETE /api/v1/vendite/ddt/<ddt_id>/righe/<riga_id>/."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ddt")
 
     @extend_schema(
         request=_DDT_RIGA_UPDATE_REQUEST,
@@ -390,6 +400,7 @@ class ApiDdtRigaPreviewComponenti(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ddt")
 
     @extend_schema(
         request=PREVIEW_COMPONENTI_REQUEST,
@@ -417,6 +428,7 @@ class ApiDdtRigaComponentiList(DomainAPIView):
     """GET /api/v1/vendite/ddt/<ddt_id>/righe/<riga_id>/componenti/."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ddt")
 
     @extend_schema(
         parameters=COMPONENTI_LIST_PARAMETERS,
@@ -436,6 +448,7 @@ class ApiDdtRigaComponenteDetail(DomainAPIView):
     """PATCH/DELETE /.../righe/<riga_id>/componenti/<componente_id>/."""
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "ddt")
 
     @extend_schema(request=COMPONENTE_PATCH_REQUEST, responses={200: dict})
     # Scopo: Aggiorna un componente BoM (prezzo/attivo/meta, solo DRAFT).

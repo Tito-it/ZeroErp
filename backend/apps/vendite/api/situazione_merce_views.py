@@ -76,11 +76,18 @@ documento fuori perimetro risponde 404, indistinguibile da uno inesistente.
 #                          "OrdineSituazioneMerceResponse")
 #         - url_kwarg:     nome del kwarg URL del documento (es. "ordine_id")
 #         - get_call:      closure dominio (documento_id) -> dict sezioni
+#         - model_permission: oggetto del catalogo permessi del documento
+#                          (es. ("vendite", "ordine")): il pannello e' una
+#                          parte dell'oggetto e ne chiede il livello
+#                          (brief-db-be-fe-catalogo-oggetti-permessi §3.2).
+#                          Obbligatorio: i due documenti che lo servono sono
+#                          entrambi oggetti del catalogo.
 def build_situazione_merce_view(
     *,
     schema_prefix: str,
     url_kwarg: str,
     get_call: Callable[[int], dict[str, Any]],
+    model_permission: tuple[str, str],
 ) -> type[DomainAPIView]:
     class _SituazioneMerceView(DomainAPIView):
         area_funzionale = "vendite"
@@ -115,6 +122,7 @@ def build_situazione_merce_view(
     _SituazioneMerceView.__doc__ = _DOC_COMUNE
     _SituazioneMerceView.__name__ = f"Api{schema_prefix}SituazioneMerce"
     _SituazioneMerceView.__qualname__ = _SituazioneMerceView.__name__
+    _SituazioneMerceView.model_permission = model_permission
     return _SituazioneMerceView
 
 
@@ -124,10 +132,12 @@ ApiOrdineSituazioneMerce = build_situazione_merce_view(
     schema_prefix="Ordine",
     url_kwarg="ordine_id",
     get_call=lambda doc_id: vendite_service.get_situazione_merce(ordine_id=doc_id),
+    model_permission=("vendite", "ordine"),
 )
 
 ApiDdtSituazioneMerce = build_situazione_merce_view(
     schema_prefix="Ddt",
     url_kwarg="ddt_id",
     get_call=lambda doc_id: vendite_service.get_situazione_merce(ddt_id=doc_id),
+    model_permission=("vendite", "ddt"),
 )

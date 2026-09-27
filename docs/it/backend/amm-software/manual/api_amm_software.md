@@ -1143,16 +1143,24 @@ Il numero di sezione resta per non spostare i riferimenti.
 ### 4.8 GET /api/v1/amm-software/lookup/model-overrides/ -- (Fase 8)
 
 Lookup catalogo dei `(app_label, model_name)` ammessi come target di
-override v2 (livello model). Single source of truth: tabella
-`config.area_model_overrides` filtrata dalla blacklist applicativa
-`AmmSoftwareRepository._MODEL_OVERRIDE_RISERVATI`.
+override v2 (livello model). Single source of truth: la tabella
+`config.area_model_overrides`, che dichiara anche quali oggetti sono
+**riservati** (colonna `riservato`, dal 2026-09-28).
 
-**Capability**: ogni riga espone `can_override` (bool) e `reason` (chiave i18n
-o `null`). I model del kernel permessi (auth_user, identita_digitali,
-profili_accesso/_bindings, area_model_overrides, user_override_*,
-user_emittenti_fiscali, profili_reparto_*) hanno `can_override=False` con
-reason `amm.model_override_reason_riservato`. Override su questi model
-aprirebbero scenari di lockout ricorsivo.
+**Capability**: ogni riga espone `can_override` (bool, `NOT riservato`) e
+`reason` (chiave i18n o `null`). I model del kernel permessi
+(`identita_digitali`, `profili_accesso` e le sue tre tabelle figlie,
+`area_model_overrides`, `user_override_*`, `user_emittenti_fiscali`) hanno
+`can_override=False` con reason `amm.model_override_reason_riservato`. Override
+su questi model aprirebbero scenari di lockout ricorsivo.
+
+**Il rifiuto è del DB.** La FK composita `fk_user_override_oggetti_catalogo`
+lega ogni riga di `config.user_override_oggetti` a un oggetto a catalogo **e
+non riservato**: il `PUT` degli override oggetti controlla prima per dare un
+messaggio che nomina l'oggetto, e una violazione della FK (catalogo cambiato
+nel frattempo, o scrittura fuori dal service) esce comunque come
+`E_AMM_VALIDAZIONE`, non come 500. ⛔ Fino al 2026-09-28 l'elenco dei riservati
+era una costante Python (`_MODEL_OVERRIDE_RISERVATI`), ritirata.
 
 **Response shape**: lista in `data.results`. Ogni riga:
 
