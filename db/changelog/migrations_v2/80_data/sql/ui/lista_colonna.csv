@@ -976,16 +976,16 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 976,88,data_update,Data aggiornamento,Data e ora dell'ultima modifica della versione,data_update,informazione,datetime,datetime_short,150,70,center,,,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,common.data_update,10
 977,88,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-09-27 00:00:00,mctit,common.col_azioni,100
 978,89,rev,Rev,Numero di revisione,rev,identificatore,numeric,,70,10,center,Identificazione,1,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_rev,100
-979,89,numero,Numero,Numero o codice del documento della revisione,numero,informazione,string,,140,20,left,Identificazione,1,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_numero,40
+979,89,numero,Numero,Numero o codice del documento della revisione,numero,informazione,string,,140,20,left,Identificazione,1,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_numero,40
 980,89,data,Data,Data del documento: del preventivo o di emissione dell offerta (vuota in bozza),data,informazione,date,date_short,110,30,center,Identificazione,1,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_data,80
-981,89,stato,Stato,Stato della revisione,stato_descrizione,informazione,string,,130,40,center,Stato,2,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_stato,90
+981,89,stato,Stato,Stato della revisione,stato_descrizione,informazione,string,,130,40,center,Stato,2,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_stato,90
 982,89,attiva,Attiva,Revisione viva: non superata da una successiva e non abortita,is_attiva,informazione,boolean,yesno,90,50,center,Stato,2,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_attiva,70
 983,89,totale,Totale,Totale del documento,totale_documento,informazione,numeric,currency_eur,130,60,right,Importi,3,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_totale,75
 984,89,stato_codice_interno,Cod. Stato,Codice interno dello stato per la severita del Tag FE,stato_codice_interno,informazione,string,,80,130,left,Stato,2,f,f,f,f,f,t,2026-09-27 00:00:00,mctit,,5
 985,90,rev,Rev,Numero di revisione,revisione_numero,identificatore,numeric,,70,10,center,Identificazione,1,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_rev,100
-986,90,numero,Numero,Numero o codice del documento della revisione,codice,informazione,string,,140,20,left,Identificazione,1,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_numero,40
+986,90,numero,Numero,Numero o codice del documento della revisione,codice,informazione,string,,140,20,left,Identificazione,1,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_numero,40
 987,90,data,Data,Data del documento: del preventivo o di emissione dell offerta (vuota in bozza),data_emissione,informazione,date,date_short,110,30,center,Identificazione,1,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_data,80
-988,90,stato,Stato,Stato della revisione,stato_descrizione,informazione,string,,130,40,center,Stato,2,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_stato,90
+988,90,stato,Stato,Stato della revisione,stato_descrizione,informazione,string,,130,40,center,Stato,2,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_stato,90
 989,90,attiva,Attiva,Revisione viva: non superata da una successiva e non abortita,is_attiva,informazione,boolean,yesno,90,50,center,Stato,2,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,vendite.revisioni.col_attiva,70
 990,90,stato_codice_interno,Cod. Stato,Codice interno dello stato per la severita del Tag FE,stato_codice_interno,informazione,string,,80,130,left,Stato,2,f,f,f,f,f,t,2026-09-27 00:00:00,mctit,,5
 991,91,descrizione,Descrizione,Nome della regione,descrizione,identificatore,string,,240,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,geo.col_descrizione,100
@@ -997,7 +997,7 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 997,93,codice_iso2,ISO2,Codice ISO 3166-1 alpha-2,codice_iso2,informazione,string,,80,20,left,Codici,2,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,geo.col_iso2,90
 998,93,codice_iso3,ISO3,Codice ISO 3166-1 alpha-3,codice_iso3,informazione,string,,80,30,left,Codici,2,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,geo.col_iso3,70
 999,93,continente,Continente,Il continente dello stato,continente,informazione,string,,160,40,left,Territorio,3,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,geo.col_continente,60
-1000,93,sigla_stato,Sigla,Sigla dello stato,sigla_stato,informazione,string,,90,50,left,Codici,2,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,geo.col_sigla,30
+1000,93,sigla_stato,Sigla,Sigla dello stato,sigla_stato,informazione,string,,90,50,left,Codici,2,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,geo.col_sigla,30
 1001,93,codice_telefonico,Prefisso tel.,Prefisso telefonico internazionale,codice_telefonico,informazione,string,,110,60,left,Codici,2,f,f,t,f,f,t,2026-09-27 00:00:00,mctit,geo.col_telefono,20
 1002,94,descrizione,Comune,Nome del comune,descrizione,identificatore,string,,260,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_comune,100
 1003,94,provincia_sigla,Provincia,Sigla della provincia del comune,provincia_sigla,informazione,string,,100,20,left,Territorio,2,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_provincia,85
@@ -1007,3 +1007,4 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 1007,95,comune,Comune,Il comune servito dal CAP,comune_descrizione,informazione,string,,260,20,left,Territorio,2,t,t,t,t,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_comune,90
 1008,96,descrizione,Descrizione,Tipo di strada (via o piazza o altro),descrizione,identificatore,string,,260,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_descrizione,100
 1009,96,attivo,Stato,Tipo di strada attivo o disattivato,attivo,informazione,boolean,yesno,100,20,center,Stato,2,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_attivo,60
+1010,95,provincia_sigla,Provincia,Sigla della provincia del comune servito dal CAP,provincia_sigla,informazione,string,,100,30,left,Territorio,2,f,t,t,f,f,t,2026-09-27 00:00:00,mctit,indirizzi.col_provincia,85

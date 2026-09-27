@@ -1,6 +1,6 @@
 # Guida — Architettura Permessi e Autorizzazioni
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 28 settembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -68,9 +68,10 @@ Le API Django ereditano l'area dallo schema del model che servono.
 Questo mapping e' **automatico**: Django conosce lo schema di ogni model
 dalla `Meta.db_table`. Nessuna configurazione manuale per il caso standard.
 
-Un model puo' essere **riassegnato** a un'area diversa dal suo schema tramite
-la tabella `config.area_model_overrides` (vedi sezione 4.3), ma si tratta
-di un'eccezione rara.
+La tabella `config.area_model_overrides` (vedi sezione 4.3) e' il **catalogo
+degli oggetti**: dice quali model si possono personalizzare per operatore e,
+per ciascuno, a quale area appartengono. Un model fuori catalogo vale come
+la sua area.
 
 ### 2.2 Tre livelli di accesso per area
 
@@ -201,16 +202,38 @@ per descrizione dell'azione.
 
 > Struttura completa: [area_model_overrides](/dbzero/config/tabelle/area_model_overrides)
 
-Override opzionale per riassegnare un model Django a un'area diversa dal suo
-schema DB. Uso raro — serve solo quando la convenzione automatica
-(schema = area) non e' corretta per un model specifico.
+Il catalogo degli oggetti. Ogni riga e' un model (app label e nome) con due
+informazioni:
 
-**Esempio di uso:** si supponga che il model `core.parametri_globali`,
-per convenzione automatica mappato sull'area Core, debba essere
-amministrato sotto l'area Configurazione. Si registra un override
-indicando app label, nome del model e area di destinazione scelta dal
-catalogo delle aree funzionali. Da quel momento la risoluzione permessi
-per quel model usera' la nuova area.
+* **l'area a cui appartiene**. Di norma coincide con lo schema; un model
+  si puo' assegnare a un'area diversa scegliendola dal catalogo delle aree
+  funzionali, e da quel momento la risoluzione dei permessi usa quella;
+* **se e' riservato**. Un oggetto riservato e' a catalogo ma non si
+  personalizza per operatore: sono le tabelle del kernel dei permessi
+  (profili, binding, gli override stessi, le identita' digitali, lo scope
+  emittenti), dove un override aprirebbe un blocco ricorsivo — un
+  amministratore che si toglie da solo il diritto di rimediare.
+
+⭐ **Un override per oggetto esiste solo per un oggetto a catalogo e non
+riservato**, e lo garantisce il database: qualunque percorso di scrittura
+che provi a salvarne uno diverso viene rifiutato. Un oggetto fuori catalogo
+— per esempio la chiave di una tabella del pannello di configurazione —
+vale come la sua area.
+
+**Quando un oggetto entra a catalogo.** Solo quando **tutte** le porte che
+applicano il livello lo chiedono: le rotte del backend, i pulsanti del
+frontend e, per le tabelle del pannello, il verbo di scrittura. Un oggetto a
+catalogo che una porta non chiede e' un override che mente: il pannello lo
+mostra, e quella porta risponde con il livello dell'area. Per la stessa
+ragione il **billing account non e' a catalogo**: si gestisce dentro la
+scheda cliente, e il suo permesso e' sempre quello del cliente.
+
+**Esempio di uso:** l'amministratore vuole che un operatore del reparto
+Vendite, che ha `TUTTO` sull'area, veda le offerte in sola lettura. Sceglie
+l'oggetto «offerta commerciale» fra quelli personalizzabili e gli assegna
+`LETTURA`: l'operatore continua a lavorare su fatture e preventivi, e sulle
+offerte trova i pulsanti di modifica spenti e l'API che rifiuta le
+scritture.
 
 ### 4.4 Tabella `config.profili_accesso_aree`
 
@@ -905,8 +928,9 @@ erDiagram
 ### 9.3 Ambito emittente fiscale e override model
 
 Due meccanismi ortogonali: la whitelist emittenti fiscali limita
-l'**ambito operativo** dell'utente, mentre `area_model_overrides`
-riassegna un model a un'area diversa dal suo schema DB.
+l'**ambito operativo** dell'utente, mentre `area_model_overrides` e' il
+catalogo degli oggetti personalizzabili e dell'area a cui ciascuno
+appartiene.
 
 ```mermaid
 erDiagram
@@ -937,11 +961,20 @@ erDiagram
         varchar app_label
         varchar model_name
         int area_id FK
+        boolean riservato
+    }
+
+    user_override_oggetti {
+        bigint id PK
+        int auth_user_id FK
+        varchar app_label FK
+        varchar model_name FK
     }
 
     auth_user ||--o{ user_emittenti_fiscali : "scope"
     emittenti_fiscali ||--o{ user_emittenti_fiscali : "limita a"
-    aree_funzionali ||--o{ area_model_overrides : "riassegna"
+    aree_funzionali ||--o{ area_model_overrides : "assegna l'area"
+    area_model_overrides ||--o{ user_override_oggetti : "solo se non riservato"
 ```
 
 > **Nota:** `user_emittenti_fiscali` e' l'assegnazione **1-a-1** fra operatore ed
@@ -949,8 +982,8 @@ erDiagram
 > righe non si vede nessun emittente, e la riga mancante e' un errore di
 > configurazione. Chi ne e' privo si conta in `dbops.vw_operatori_senza_emittente`,
 > che **deve restare a zero righe**.
-> `area_model_overrides` e' usata raramente, solo quando un model
-> deve appartenere a un'area diversa dal suo schema.
+> Un override per oggetto punta al catalogo: senza la sua riga, o con la
+> riga riservata, non si salva (§4.3).
 
 ---
 

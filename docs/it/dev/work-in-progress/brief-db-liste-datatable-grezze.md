@@ -39,8 +39,20 @@
 >   padre «documento + emittente» estratto in BB (regola del 2), PK
 >   emittente esposta sul lotto, `useRevisioniTab.js` cancellato, NULLS come
 >   da BB, reparti solo attivi;
-> - ⏳ **§9: richiesta nuova al team DB** (colonne del nucleo ordinabili,
->   provincia nella lista CAP), poi la sua ricaduta BE (§9.3).
+> - ✅ **§9 lato DB applicato** da Tid alle 23:50 del 2026-09-27 (§9.4;
+>   `20260927-42` EXECUTED, mirror dei CSV RERAN); verificati a DB la vista
+>   con `provincia_id`/`provincia_sigla`, i cinque `ordinabile = t`, la 1010
+>   visibile nel preset 95. Scritto così:
+>   `20_code/config/20260927-42` (vista CAP con la provincia) e le righe dei
+>   CSV `lista_colonna` / `lista_preset_colonna`. Al migrate `20_code` precede
+>   `80_data`: la vista ha già `provincia_sigla` quando il CSV carica la
+>   colonna 1010, che il trigger valida contro la vista;
+> - ✅ corsa pgTAP di Tid dopo l'apply del §9: verde (2026-09-28);
+> - ⏳ **resta solo il BE (§9.3)**, che chiude `--verifica-ordinamento` e
+>   quindi il brief. Al 2026-09-28 nessun commit BE lo contiene (l'ultimo,
+>   `48dbee288`, è del brief icone). ⛔ Il test Django del seed legge il CSV ed
+>   è rosso finché la whitelist non segue (§9.4, presidi): il §9.3 va in
+>   `Tito-dev` insieme al giro DB.
 
 ---
 
@@ -482,3 +494,37 @@ Due comuni omonimi in province diverse oggi escono identici. Si chiede:
   `get_codice_postale`;
 - poi `--verifica-ordinamento` sulle quattro liste e i presidi
   `test_liste_configurabili_seed` / `test_lista_proiezione_campo_sorgente`.
+
+### 9.4 Lato DB — cosa è stato scritto (2026-09-27, applicato alle 23:50)
+
+| Dove | Cosa |
+| --- | --- |
+| `20_code/config/20260927-42` | `config.vw_codici_postali_lista`: in coda `c.provincia_id` e `TRIM(p.sigla) AS provincia_sigla`, `LEFT JOIN config.province` (`comuni.provincia_id` è nullable). Corpo dalla doc auto-gen, `security_invoker=on` ri-specificata, GRANT all'app ripetuto |
+| `80_data/sql/ui/lista_colonna.csv` | `ordinabile` da `f` a `t` su 979, 981, 986, 988 (le gemelle insieme) e 1000; riga nuova **1010** sulla 95: `provincia_sigla`, «Provincia», `indirizzi.col_provincia`, gruppo «Territorio», `ordine_default` 30 (dopo `comune`), `ordinabile = t`, `ricercabile_full = f`, `filtrabile = f` come la gemella 1003 dei comuni |
+| `80_data/sql/ui/lista_preset_colonna.csv` | `95,1010,30,t,f`: visibile nel preset di sistema 95 |
+
+**Prova fatta (2026-09-27) su `zeroerp_ci`, da owner, SQL estratto dallo YAML
+in transazione annullata:** la vista si ricrea con `security_invoker=on` e il
+GRANT all'app; la riga 1010 passa il trigger `valida_campo_sorgente`, e un
+`campo_sorgente` che la vista non ha è rifiutato con
+`E_UI_CAMPO_SORGENTE_NON_TROVATO`; l'`UPDATE` dei cinque `ordinabile` passa;
+un comune **costruito** senza provincia tiene la riga del suo CAP con
+`provincia_sigla` NULL.
+
+**Presidi:**
+
+- `db/pgtap/ui/test-lista-colonna-campo-sorgente-in-vista-v1.sql` test 2
+  (tutto il catalogo contro le viste) copre la 1010: nessun cambio al file;
+- `gen_seed_lista.py --verifica-ordinamento` oggi è **KO sulle quattro liste
+  per costruzione**: il seed promette ordinamenti che la whitelist BE non ha
+  ancora. Si chiude con il §9.3. ⚠️ Il «NUCLEO rotto: stato» su
+  `config.stati` è un match per sottostringa (`sigla_stato` contiene «stato»):
+  si spegne con `sigla_stato` in whitelist, non indica una colonna di stato
+  mancante;
+- ⛔ `backend/apps/core/tests/test_liste_configurabili_seed.py`
+  (`test_whitelist_copre_le_colonne_ordinabili`) legge **il CSV**, non il DB:
+  diventa rosso sulle quattro liste **appena il CSV entra nel ramo**, non
+  all'apply. ⇒ il §9.3 del BE va in `Tito-dev` **insieme** a questo giro DB
+  (stessa PR o subito dopo, prima che giri la CI), non «a seed applicati».
+  `test_lista_proiezione_campo_sorgente.py` invece non è toccato: esercita le
+  liste **senza** vista, e la 95 ne ha una.

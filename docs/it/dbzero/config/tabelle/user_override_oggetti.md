@@ -26,12 +26,14 @@
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
 | validita | daterange | NO |  |
+| riservato | boolean | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_user_override_oggetti_validita |  |
 | FOREIGN KEY | fk_config_user_override_oggetti_auth_user | auth_user_id |
+| FOREIGN KEY | fk_user_override_oggetti_catalogo | app_label, model_name, riservato |
 | PRIMARY KEY | pk_user_override_oggetti | id |
 | UNIQUE | uq_user_override_oggetti_user_app_model | auth_user_id, app_label, model_name |
 

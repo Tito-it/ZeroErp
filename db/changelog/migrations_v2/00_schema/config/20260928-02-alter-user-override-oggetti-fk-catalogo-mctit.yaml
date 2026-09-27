@@ -1,0 +1,120 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN OVERRIDE PER OGGETTO ESISTE SOLO PER UN OGGETTO A CATALOGO, NON RISERVATO
+#   Brief: brief-db-be-fe-catalogo-oggetti-permessi.md §3.1 punti 2 e 4
+#   (D-4 e D-5, Tid 2026-09-27)
+#
+#   D-4: la regola scende nel DB. Forma: FK composita
+#     (app_label, model_name, riservato) -> config.area_model_overrides
+#   con `riservato` nella figlia GENERATA a false. Una riga di override:
+#   - su un oggetto non a catalogo non trova il padre       -> 23503;
+#   - su un oggetto riservato non trova il padre (false/true) -> 23503;
+#   - non puo' scrivere riservato = true: la colonna e' generata -> 428C9.
+#   Nessun trigger e nessuna funzione: il vincolo e' dichiarativo, lo legge il
+#   catalogo e lo rispettano tutti i percorsi di scrittura.
+#   ⭐ Provato su PG18 (2026-09-28, tabelle temporanee): i cinque casi sopra
+#   piu' il catalogo che cambia sotto un override (UPDATE a riservato, DELETE)
+#   rispondono con la violazione di FK.
+#
+#   D-5: il billing account e' un pezzo del cliente, il permesso e' `cliente`.
+#   La voce esce dal catalogo (80_data, 20260928-04) e con lei gli override gia'
+#   scritti su quell'oggetto, qui, PRIMA della FK: non avrebbero piu' un padre.
+#   ⚠️ E' un dato di macchina, non di catalogo: su un database nuovo il DELETE
+#   tocca zero righe. Gli override per oggetto stanno solo in questa tabella
+#   (i profili non ne hanno: nessun'altra tabella porta app_label/model_name
+#   oltre al catalogo e a config.tabelle_gestibili, letto il 2026-09-28).
+#
+#   ⛔ Un override su un oggetto che NON e' a catalogo ferma il changeSet con
+#   l'elenco: e' una riga che il pannello non puo' mostrare ne' togliere, e va
+#   tolta a mano (o l'oggetto messo a catalogo nel CSV) prima del migrate.
+#
+#   Indice della FK: nessuno (dbops.fk_index_policy, consentito = false,
+#   20260928-05) — il padre e' un catalogo di poche righe che cambia dal seed.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260928-02-alter-user-override-oggetti-fk-catalogo-mctit.yaml
+
+  - changeSet:
+      id: 20260928-02-alter-user-override-oggetti-fk-catalogo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.user_override_oggetti: via gli override su anagrafiche.billing_account (D-5);
+        colonna riservato GENERATED ALWAYS AS (false) STORED e FK composita
+        fk_user_override_oggetti_catalogo (app_label, model_name, riservato) verso
+        config.area_model_overrides: un override esiste solo per un oggetto a catalogo e non
+        riservato (D-4). Brief: brief-db-be-fe-catalogo-oggetti-permessi.md §3.1.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: user_override_oggetti
+        - columnExists:
+            schemaName: config
+            tableName: area_model_overrides
+            columnName: riservato
+        - not:
+            - columnExists:
+                schemaName: config
+                tableName: user_override_oggetti
+                columnName: riservato
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- D-5: il billing account e' un pezzo del cliente.
+              DELETE FROM config.user_override_oggetti
+               WHERE app_label = 'anagrafiche' AND model_name = 'billing_account';
+
+              DO $orfani$
+              DECLARE
+                  v_orfani text;
+              BEGIN
+                  SELECT string_agg(DISTINCT format('%s.%s', uoo.app_label, uoo.model_name), ', ')
+                    INTO v_orfani
+                    FROM config.user_override_oggetti uoo
+                   WHERE NOT EXISTS (SELECT 1
+                                       FROM config.area_model_overrides amo
+                                      WHERE amo.app_label  = uoo.app_label
+                                        AND amo.model_name = uoo.model_name
+                                        AND NOT amo.riservato);
+                  IF v_orfani IS NOT NULL THEN
+                      RAISE EXCEPTION 'user_override_oggetti: override su oggetti non a catalogo (o riservati): %. Toglierli a mano, o mettere l''oggetto nel CSV del catalogo, prima del migrate', v_orfani;
+                  END IF;
+              END
+              $orfani$;
+
+              ALTER TABLE config.user_override_oggetti
+                ADD COLUMN riservato boolean GENERATED ALWAYS AS (false) STORED;
+
+              ALTER TABLE config.user_override_oggetti
+                ADD CONSTRAINT fk_user_override_oggetti_catalogo
+                FOREIGN KEY (app_label, model_name, riservato)
+                REFERENCES config.area_model_overrides (app_label, model_name, riservato);
+
+              COMMENT ON COLUMN config.user_override_oggetti.riservato IS
+                'Sempre false (colonna generata): e'' la terza colonna della FK composita '
+                'fk_user_override_oggetti_catalogo, che cosi'' trova il padre solo sulle righe del '
+                'catalogo con riservato = false. Non si scrive. Brief: '
+                'brief-db-be-fe-catalogo-oggetti-permessi §3.1 punto 4 (D-4, 2026-09-28).';
+
+              COMMENT ON CONSTRAINT fk_user_override_oggetti_catalogo ON config.user_override_oggetti IS
+                'Un override per oggetto esiste solo per un oggetto a catalogo (config.area_model_overrides) '
+                'e non riservato. Sostituisce la blacklist del backend (_MODEL_OVERRIDE_RISERVATI). '
+                'Brief: brief-db-be-fe-catalogo-oggetti-permessi, D-4 (2026-09-28).';
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE config.user_override_oggetti
+                DROP CONSTRAINT IF EXISTS fk_user_override_oggetti_catalogo;
+              ALTER TABLE config.user_override_oggetti DROP COLUMN IF EXISTS riservato;

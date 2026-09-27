@@ -24,15 +24,18 @@
 --    8) payload vuoto -> E_PANNELLO_DATI_VUOTI
 --   Il passo 3
 --    9) UPDATE di un id che non c'e' -> E_PANNELLO_RIGA_NON_TROVATA
---   ⭐ Il livello e' sull'oggetto della riga
+--   ⭐ Il livello e' sull'area della riga (la chiave della tabella la da', D-2)
 --   10) TUTTO su config NON basta per magazzino.causali -> E_PERMESSO_NEGATO
---   11) ...con TUTTO sull'oggetto ('magazzino', 'causali') si scrive
---   12) ⛔ config.profili_accesso, con TUTTO su config -> E_PANNELLO_TABELLA_NON_AMMESSA
+--   11) ⛔ ('magazzino', 'causali') non e' a catalogo: nessun override per oggetto
+--       (FK composita, D-4 del brief catalogo-oggetti) -> 23503
+--   12) ...con TUTTO sull'AREA della riga (magazzino) si scrive: una chiave non a
+--       catalogo vale come la sua area (D-2 dello stesso brief)
+--   13) ⛔ config.profili_accesso, con TUTTO su config -> E_PANNELLO_TABELLA_NON_AMMESSA
 --       (D-P6: il pannello non e' una seconda strada per i profili di permesso;
 --       fino al 2026-09-27 qui c'era ui.lista_definizione, uscita anch'essa)
 --   La forma
---   13) SECURITY DEFINER del proprietario, search_path bloccato
---   14) l'app la esegue, PUBLIC no
+--   14) SECURITY DEFINER del proprietario, search_path bloccato
+--   15) l'app la esegue, PUBLIC no
 --
 -- ⚠️ Gira come l'APPLICAZIONE (runner di default). Operatore COSTRUITO
 --   (fn_pgtap_crea_emittente_operatore): tecnico, non super admin; i livelli li
@@ -42,7 +45,7 @@ BEGIN;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(14);
+SELECT plan(15);
 
 CREATE TEMP TABLE _mondo AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo)); END $ctx$;
@@ -120,7 +123,7 @@ SELECT is(pg_temp.codice_di($q$ SELECT config.fn_pannello_scrivi('config.tipi_no
     '9) UPDATE di un id che non c''e'': E_PANNELLO_RIGA_NON_TROVATA');
 
 -- ============================================================
--- 10-12 Il livello e' sull'oggetto della riga (D-3)
+-- 10-13 Il livello e' sull'area della riga (D-3; D-2 del brief catalogo-oggetti)
 -- ============================================================
 SELECT is(pg_temp.codice_di($q$ SELECT config.fn_pannello_scrivi('magazzino.causali',
                                    (SELECT id FROM magazzino.causali WHERE codice_interno = 'CARICO_ACQ'),
@@ -129,23 +132,35 @@ SELECT is(pg_temp.codice_di($q$ SELECT config.fn_pannello_scrivi('magazzino.caus
     'E_PERMESSO_NEGATO',
     '10) ⭐ TUTTO su Configurazione NON basta per le causali di magazzino: si chiede l''area della riga');
 
-INSERT INTO config.user_override_oggetti (auth_user_id, app_label, model_name, livello, motivo)
-SELECT auth_user_id, 'magazzino', 'causali', 'TUTTO', 'Fixture pgTAP' FROM _mondo;
+-- ⭐ Fino al 2026-09-28 il test 11 concedeva TUTTO con un override sull'oggetto
+--   ('magazzino', 'causali'). La D-2 del brief catalogo-oggetti ha deciso che le
+--   chiavi del pannello NON sono oggetti personalizzabili: valgono come la loro
+--   area. La D-4 lo rende un vincolo, e questi due test lo dichiarano.
+SELECT throws_ok(
+    format($$INSERT INTO config.user_override_oggetti (auth_user_id, app_label, model_name, livello, motivo)
+             VALUES (%s, 'magazzino', 'causali', 'TUTTO', 'Fixture pgTAP')$$,
+           (SELECT auth_user_id FROM _mondo)),
+    '23503', NULL,
+    '11) ⛔ (''magazzino'', ''causali'') non e'' a catalogo: nessun override per oggetto (D-4)');
+
+INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)
+SELECT m.auth_user_id, af.id, 'TUTTO', 'Fixture pgTAP'
+  FROM _mondo m, config.aree_funzionali af WHERE af.schema_db = 'magazzino';
 
 SELECT is(pg_temp.codice_di($q$ SELECT config.fn_pannello_scrivi('magazzino.causali',
                                    (SELECT id FROM magazzino.causali WHERE codice_interno = 'CARICO_ACQ'),
                                    jsonb_build_object('descrizione',
                                        (SELECT descrizione FROM magazzino.causali WHERE codice_interno = 'CARICO_ACQ'))) $q$),
     'PASSA',
-    '11) ...con TUTTO sull''oggetto (''magazzino'', ''causali'') si scrive');
+    '12) ...con TUTTO sull''area della riga (magazzino) si scrive: la chiave vale come la sua area (D-2)');
 
 SELECT is(pg_temp.codice_di($q$ SELECT config.fn_pannello_scrivi('config.profili_accesso',
                                    (SELECT min(id) FROM config.profili_accesso), '{"descrizione":"x"}') $q$),
     'E_PANNELLO_TABELLA_NON_AMMESSA',
-    '12) ⛔ config.profili_accesso: TUTTO su Configurazione non apre il pannello sui profili di permesso (D-P6)');
+    '13) ⛔ config.profili_accesso: TUTTO su Configurazione non apre il pannello sui profili di permesso (D-P6)');
 
 -- ============================================================
--- 13-14 La forma
+-- 14-15 La forma
 -- ============================================================
 SELECT is(
     (SELECT format('%s|%s|%s', p.prosecdef::text,
@@ -155,7 +170,7 @@ SELECT is(
        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'config' AND p.proname = 'fn_pannello_scrivi'),
     'true|true|search_path=pg_catalog, public, pg_temp',
-    '13) SECURITY DEFINER del proprietario delle tabelle, search_path bloccato');
+    '14) SECURITY DEFINER del proprietario delle tabelle, search_path bloccato');
 
 SELECT is(
     (SELECT format('%s|%s', has_function_privilege('zeroerp_app', p.oid, 'EXECUTE')::text,
@@ -164,7 +179,7 @@ SELECT is(
        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'config' AND p.proname = 'fn_pannello_scrivi'),
     'true|false',
-    '14) l''app la esegue, PUBLIC no');
+    '15) l''app la esegue, PUBLIC no');
 
 SELECT * FROM finish();
 ROLLBACK;

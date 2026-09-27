@@ -8,8 +8,16 @@
 > La sua tabella «Stato attivazione» era vecchia, e il confronto con il codice
 > ha trovato il difetto di questo brief.
 > **Stato:** ✅ **D-1 → D-6 decise da Tid** (D-1 il 2026-09-26, le altre il
-> 2026-09-27, §4). ⏳ **Richiesta al team DB al §3.1.** 🟡 Caso A in corso lato
-> BE/FE (§3.2, §3.3): non dipende dal DB.
+> 2026-09-27, §4). ✅ **§3.1 lato DB applicato** da Tid il 2026-09-28 alle
+> 00:09 (`20260928-01…05` EXECUTED) e **pgTAP verdi** (corsa di Tid, stesso
+> giorno): catalogo in CSV con `offerta_commerciale` e `uom_tipi`,
+> `billing_account` fuori, 10 riservati, FK composita attiva. Verificati a DB:
+> 23 righe di catalogo, 10 `riservato = t`, nessun `billing_account`,
+> `fk_user_override_oggetti_catalogo` presente, riga di policy a `false`.
+> ⏳ **Tocca al BE**: le quattro ricadute del §3.1-bis («Al BE») — ⛔ la prima
+> è un test Django che **ora** è rosso contro il DB (`test_pannello_verbo_db`).
+> Restano fuori catalogo `ordine`, `ddt`, `contratto`, `reso`, finché il BE non
+> li applica (poi: una riga nel CSV). 🟡 Caso A in corso lato BE/FE (§3.2, §3.3).
 >
 > **In una riga:** il pannello permessi offre override su oggetti che nessuno
 > applica, e su altri oggetti, che vengono applicati, non lo offre.
@@ -106,6 +114,86 @@ a catalogo e ricadono sull'area. Se sia giusto lo decide la D-2.
    catalogo, e non riservato» vive **solo** nel backend
    (`put_override_oggetti` + `_MODEL_OVERRIDE_RISERVATI`).
    `config.user_override_oggetti` non ha né FK né guard verso il catalogo.
+
+### 3.1-bis DB — cosa è stato scritto (2026-09-28, applicato alle 00:09, pgTAP verdi)
+
+| changeSet | Cosa |
+| --- | --- |
+| `00_schema/config/20260928-01` | `area_model_overrides.riservato` (boolean NOT NULL DEFAULT false) e UNIQUE `(app_label, model_name, riservato)`, bersaglio della FK. COMMENT della tabella riscritto: è il catalogo degli oggetti, non una «eccezione rara» |
+| `00_schema/config/20260928-02` | **D-5**: via gli override su `billing_account`; controllo che si ferma con l'elenco se restano override fuori catalogo; **D-4**: `user_override_oggetti.riservato` **generata** a `false` e FK composita `fk_user_override_oggetti_catalogo` `(app_label, model_name, riservato)` → catalogo |
+| `80_data/changelog/20260928-03` + `sql/config/area_model_overrides.csv` | **D-3**: il catalogo in CSV, mirror `loadUpdateData` sulla chiave naturale. 23 righe: le 12 di prima **meno** `billing_account`, **più** `offerta_commerciale` e `uom_tipi` (caso B), **più** i 10 riservati di `_MODEL_OVERRIDE_RISERVATI` (area = il loro schema: `fn_area_di_oggetto` risponde come prima) |
+| `80_data/changelog/20260928-04` | `DELETE` della riga `billing_account` dal catalogo (il mirror non cancella) |
+| `80_data/changelog/20260928-05` + `sql/config/fk_index_policy_catalogo_oggetti.csv` | la FK nuova nella policy degli indici, `consentito = false` |
+| ⛔ cancellati `20260410-11` e `20260418-01` | i due seed SQL del catalogo (`INSERT … ON CONFLICT DO NOTHING`): una tabella, un CSV (§11.2). Le righe in `databasechangelog` restano orfane |
+
+**Perché solo `offerta_commerciale` e `uom_tipi` del caso B.** Sono gli unici
+che tutte le porte chiedono già: l'offerta su tutte le 30 rotte (BE del
+2026-09-27), `uom_tipi` sulle sue due; il FE li ha in `READONLY_MODELS`; il
+pannello config chiede la stessa chiave. `ordine`, `ddt`, `contratto`, `reso`
+no: il BE chiede ancora l'area sulle loro rotte principali, e un `BLOCCATO` a
+catalogo nasconderebbe i pulsanti lasciando aperta l'API (§1, terzo caso).
+**Entrano il giorno in cui il BE li applica**: una riga nel CSV.
+
+**Perché i riservati a catalogo e non fuori.** Con la sola FK, un oggetto
+fuori catalogo è già rifiutato. Ma la blacklist esisteva per un seed futuro
+che mettesse a catalogo, per errore, una tabella del kernel: dichiarandole
+`riservato = true`, quella riga c'è già, e renderla personalizzabile è un
+cambio visibile nel diff del CSV, non un'aggiunta silenziosa.
+
+**Prova fatta (2026-09-28) su `zeroerp_ci`, da owner, SQL estratto** dai due
+changeSet di schema, l'upsert del CSV come lo fa il mirror e il `DELETE` della
+-04, in transazione annullata: 23 righe, `billing_account` fuori. Con quell'SQL
+in testa: il pgTAP nuovo 12/12, `test-fn-pannello-scrivi-v1` 15/15,
+`test-permessi-user-overrides` 18/18, `test-permessi-funzioni-risoluzione`
+34/34, `test-fn-guard-livello-v1` 12/12, `test-fn-guard-azione-v1` 9/9,
+`test-permessi-strutture-base` 22/22. **Controprova**: le versioni di HEAD di
+tre di quei file, con la FK in testa, muoiono su
+`fk_user_override_oggetti_catalogo` — le correzioni servivano. Il vincolo
+stesso provato prima su tabelle temporanee (PG 18.6): la FK composita su una
+colonna generata è ammessa.
+
+**pgTAP:**
+
+- nuovo `db/pgtap/config/test-catalogo-oggetti-override-v1.sql` (12 test):
+  la forma, i sei casi del vincolo su oggetti **costruiti** (compreso il
+  catalogo che cambia sotto un override), il seed (`billing_account` fuori,
+  offerta e `uom_tipi` dentro, i dieci riservati, nessun caso B non applicato);
+- `test-fn-pannello-scrivi-v1`: il vecchio test 11 concedeva TUTTO con un
+  override su `(magazzino, causali)`, cioè proprio ciò che la **D-2** esclude.
+  Ora sono due test: l'override è rifiutato (11), TUTTO sull'**area** della
+  riga scrive (12). Plan 14 → 15;
+- `test-fn-guard-livello-v1`, `test-fn-guard-azione-v1`: l'oggetto di
+  fixture `pgtap_modello` entra a catalogo nella transazione del test;
+- `test-permessi-funzioni-risoluzione`: `'fatture'` → `'fattura'`;
+  `test-permessi-user-overrides`: `'lotto'` → `'preventivo'` (con `'lotto'`
+  il test delle date passava solo perché il guard `BEFORE ROW` scatta prima
+  della FK).
+
+**Doc:** guida `architettura-permessi-e-autorizzazioni` (§2.1, §4.3, §9.3),
+`manual/area_model_overrides.md` riscritta, `manual/user_override_oggetti.md`.
+
+#### ⛔ Al BE — nello stesso rilascio (dev/backend-tid) — ⏳ aperte al 2026-09-28
+
+1. **Rosso in CI se non segue**:
+   `backend/apps/core/tests/db/test_pannello_verbo_db.py`,
+   `_livello_sulle_causali` scrive un override su `('magazzino', 'causali')`:
+   dopo l'apply è una violazione di FK. Per la D-2 il livello si dà
+   sull'**area** (`config.user_override_aree`, area `magazzino`), come il
+   test 12 del pgTAP del pannello.
+2. `PermissionResolver.list_model_overrides_grouped` (permessi effettivi)
+   legge **tutto** il catalogo: senza `WHERE NOT amo.riservato` mostra i dieci
+   oggetti del kernel come oggetti dell'area.
+3. `AmmSoftwareRepository.list_model_overrides`: `can_override` da
+   `NOT riservato`, e `_MODEL_OVERRIDE_RISERVATI` si **ritira** (regola del 2:
+   due elenchi dei riservati divergono). Il controllo del service può
+   restare per il messaggio, leggendo la colonna; il rifiuto vero è la FK
+   (23503 su `fk_user_override_oggetti_catalogo`): va verificato che
+   `translate_db_errors` la renda come errore di validazione, non come 500.
+   Il commento sopra la costante cita il seed `20260410-11`, cancellato.
+4. **D-3**: `test_catalogo_oggetti_rotte.py` legge
+   `80_data/sql/config/area_model_overrides.csv`; il verso «voce a catalogo
+   senza rotte» esclude le righe `riservato = t`; `uom_tipi` ha il suo
+   perimetro.
 
 ### 3.2 BE (noi, dopo il DB)
 
