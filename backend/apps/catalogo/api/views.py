@@ -55,6 +55,7 @@ from apps.catalogo.services.catalogo_service import (
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     paginated_envelope,
     parse_list_params,
     qp_bool,
@@ -288,7 +289,7 @@ class ApiArticoloDetail(DomainAPIView):
     )
     # Scopo: Aggiorna un articolo sui soli campi presenti, con codice immutabile.
     def patch(self, request: Request, articolo_id: UUID) -> JsonResponse:
-        return success_response(fn_update_articolo(articolo_id, request.data))
+        return success_response(fn_update_articolo(articolo_id, corpo_oggetto(request)))
 
 
 class ApiArticoloDisattiva(DomainAPIView):
@@ -424,7 +425,7 @@ class ApiArticoloUomDetail(DomainAPIView):
     )
     # Scopo: Aggiorna una UoM operativa dell'articolo.
     def patch(self, request: Request, articolo_id: UUID, uom_op_id: int) -> JsonResponse:
-        return success_response(fn_update_uom_operativa(articolo_id, uom_op_id, request.data))
+        return success_response(fn_update_uom_operativa(articolo_id, uom_op_id, corpo_oggetto(request)))
 
     @extend_schema(
         responses={
@@ -486,7 +487,7 @@ class ApiArticoloComponenteDetail(DomainAPIView):
     )
     # Scopo: Aggiorna un componente BoM dell'articolo.
     def patch(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
-        return success_response(fn_update_componente(articolo_id, comp_id, request.data))
+        return success_response(fn_update_componente(articolo_id, comp_id, corpo_oggetto(request)))
 
     @extend_schema(
         responses={
@@ -551,7 +552,7 @@ class ApiNotaDetail(DomainAPIView):
     )
     # Scopo: Aggiorna una nota catalogo esistente.
     def patch(self, request: Request, nota_id: int) -> JsonResponse:
-        return success_response(fn_update_nota(nota_id, request.data))
+        return success_response(fn_update_nota(nota_id, corpo_oggetto(request)))
 
     @extend_schema(
         responses={
@@ -773,7 +774,7 @@ class ApiUomTipoDetail(DomainAPIView):
     )
     # Scopo: Aggiorna una tipologia UoM.
     def patch(self, request: Request, tipo_id: int) -> JsonResponse:
-        return success_response(fn_update_uom_tipo(tipo_id, request.data))
+        return success_response(fn_update_uom_tipo(tipo_id, corpo_oggetto(request)))
 
 
 # --- CRUD Unita' di Misura ---
@@ -866,7 +867,7 @@ class ApiUnitaMisuraDetail(DomainAPIView):
     )
     # Scopo: Aggiorna una unita' di misura.
     def patch(self, request: Request, uom_id: int) -> JsonResponse:
-        return success_response(fn_update_unita_misura(uom_id, request.data))
+        return success_response(fn_update_unita_misura(uom_id, corpo_oggetto(request)))
 
 
 class ApiUnitaMisuraDisattiva(DomainAPIView):
@@ -980,7 +981,7 @@ class ApiConversioneDetail(DomainAPIView):
     )
     # Scopo: Aggiorna una conversione UoM.
     def patch(self, request: Request, conv_id: int) -> JsonResponse:
-        return success_response(fn_update_conversione(conv_id, request.data))
+        return success_response(fn_update_conversione(conv_id, corpo_oggetto(request)))
 
 
 # =================================================================

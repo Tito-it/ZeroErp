@@ -149,7 +149,7 @@ class ApiPermessiEffettivi(DomainAPIView):
                             "user_id": serializers.IntegerField(),
                             "username": serializers.CharField(),
                             "is_super_admin": serializers.BooleanField(),
-                            "ruolo_applicativo": serializers.CharField(allow_null=True),
+                            "veste_operatore_attiva": serializers.BooleanField(),
                             "is_active": serializers.BooleanField(),
                             "unita_organizzativa_id": serializers.IntegerField(allow_null=True),
                             "aree": serializers.ListField(child=serializers.DictField()),
@@ -191,13 +191,18 @@ class ApiPermessiEffettivi(DomainAPIView):
                 detail=f"Nessun utente con id={user_id}.",
             )
 
-        # Risolvi i campi nativi multi-face (Fase 7): `is_super_admin` +
-        # `ruolo_applicativo` sostituiscono il legacy `ruolo_sistema`.
+        # Risolvi i campi nativi multi-face (Fase 7).
         # `is_active` arriva da `auth_user.is_active`; e' la dimensione
         # ortogonale "puo' loggarsi vs no" (sync-ata da fn_sync_auth_user_is_active).
+        # ⭐ Livelli d'area, livelli oggetto e super admin sono della veste
+        #    OPERATORE (passi 0-1 di `fn_resolve_livello_area`): la risposta
+        #    dice se il consultato ce l'ha, cioe' il fatto da cui dipendono.
+        # ⛔ Non `get_ruolo_applicativo(target_user)`: risponde per la
+        #    SESSIONE, e qui riportava la veste di chi guarda (S-6,
+        #    2026-09-27) — per un cliente del portale diceva OPERATORE.
         target_cache: dict = {}
         is_super = PermissionResolver.is_super_admin(target_user, cache=target_cache)
-        ruolo_app = PermissionResolver.get_ruolo_applicativo(
+        veste_operatore = PermissionResolver.has_veste_operatore_attiva(
             target_user, cache=target_cache
         )
         uo_id = PermissionResolver.get_unita_organizzativa_id(
@@ -252,7 +257,7 @@ class ApiPermessiEffettivi(DomainAPIView):
             "user_id": target_user.id,
             "username": target_user.get_username(),
             "is_super_admin": is_super,
-            "ruolo_applicativo": ruolo_app,
+            "veste_operatore_attiva": veste_operatore,
             "is_active": bool(target_user.is_active),
             "unita_organizzativa_id": uo_id,
             "aree": aree_result,
@@ -348,6 +353,12 @@ class ApiPermessiAudit(DomainAPIView):
         page_size = optional_int(
             {"page_size": request.query_params.get("page_size", "50")}, "page_size"
         )
+        # ⛔ Pagina e dimensione partono da 1: `page=0` dava un OFFSET negativo,
+        #    cioe' un errore del DB (F-4). `ValueError` = 400 E_VALIDATION_INPUT.
+        if page < 1:
+            raise ValueError("page_invalid")
+        if page_size < 1:
+            raise ValueError("page_size_invalid")
         page_size = min(page_size, 200)
 
         # Scopo: Risolve UO dell'utente target per includere tabelle reparto.

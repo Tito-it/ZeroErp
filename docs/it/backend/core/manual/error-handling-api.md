@@ -64,7 +64,7 @@ Il codice si sceglie cosi':
 
 1. se l'eccezione ha un `default_code` che inizia per `E_` (es. `VesteNonAttivaError` →
    `E_VESTE_NON_ATTIVA`, `JwtSenzaIdentitaError` → `E_JWT_SENZA_IDENTITA`), vince quello;
-2. altrimenti si usa la mappa sul **nome esatto** della classe:
+2. altrimenti si usa la mappa per **classe** (`isinstance`): una sottoclasse prende il codice della madre, per esempio `InvalidToken` di SimpleJWT (token scaduto o invalido) → `E_AUTHENTICATION_FAILED` (E-3, 2026-09-27):
 
 | Eccezione DRF          | Codice errore              |
 | ---------------------- | -------------------------- |
@@ -77,10 +77,6 @@ dell'eccezione) e `ui_action`; lo status HTTP resta quello dell'eccezione DRF.
 `meta.request_id` / `meta.idempotency_key` compaiono solo se disponibili.
 Le eccezioni che non producono un codice passano invariate nel formato default DRF.
 
-> ⚠️ Difetto noto (E-3): `InvalidToken` di SimpleJWT (token scaduto o invalido) ha
-> `default_code = "token_not_valid"` e un nome che non e' nella mappa: il 401 esce
-> nel formato grezzo di DRF. Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
->
 > ⚠️ Difetto noto (E-5): i messaggi mirati impostati da `ZeroERPPermission` vengono
 > sostituiti dalla frase di `E_PERMISSION_DENIED`. Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 

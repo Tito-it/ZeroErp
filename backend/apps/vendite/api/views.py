@@ -44,6 +44,7 @@ from apps.core.api.openapi_params import descrizione_order_by
 from apps.vendite.db.vendite_repository import GIORNALE_GRAVITA, GIORNALE_SORT_COLUMNS
 from apps.core.api.success_responses import success_response
 from apps.core.services.value_normalizer import as_bool
+from apps.core.services.service_errors import E_VALIDATION_INPUT
 from apps.vendite.services._fatturazione_job_helpers import (
     JOB_TYPE_FATTURAZIONE_GIRO,
     JOB_TYPE_FATTURAZIONE_NUMERA,
@@ -2619,7 +2620,7 @@ def _query_lotti_ids(request: Request) -> list[int] | None:
     if not grezzi:
         return None
     numeri = [qp_int_strict(v, "lotti", 0) for v in grezzi]
-    validati = parse_lotti(numeri, error_code="E_VALIDATION_INPUT")
+    validati = parse_lotti(numeri, error_code=E_VALIDATION_INPUT)
     return list(validati) if validati else None
 
 
@@ -2679,7 +2680,7 @@ def _accoda_job_fatturazione(
     competenza = optional_iso_date(payload, "competenza_mese")
     ErrorManager.require(
         competenza is not None,
-        code="E_VALIDATION_INPUT",
+        code=E_VALIDATION_INPUT,
         message="`competenza_mese` obbligatoria.",
     )
     assert competenza is not None
@@ -2707,7 +2708,7 @@ def _accoda_job_fatturazione(
     # Perimetro dell'emissione mirata: validato QUI (400 parlante al chiamante)
     # e non solo nel worker, dove diventerebbe un job fallito da leggere nei log.
     gruppi = (
-        parse_gruppi(payload.get("gruppi"), error_code="E_VALIDATION_INPUT")
+        parse_gruppi(payload.get("gruppi"), error_code=E_VALIDATION_INPUT)
         if accetta_gruppi
         else None
     )
@@ -2717,7 +2718,7 @@ def _accoda_job_fatturazione(
     # Perimetro della numerazione su SELEZIONE (lista lotti). Stessa disciplina
     # dei gruppi: validato qui, 400 parlante, mai un perimetro che degenera.
     lotti = (
-        parse_lotti(payload.get("lotti"), error_code="E_VALIDATION_INPUT")
+        parse_lotti(payload.get("lotti"), error_code=E_VALIDATION_INPUT)
         if accetta_lotti
         else None
     )

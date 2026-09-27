@@ -5,9 +5,64 @@ from datetime import date
 from typing import Any
 from uuid import UUID
 
-from apps.core.api.request_parsers import parse_iso_date
+from rest_framework.exceptions import ParseError
+
+from apps.core.api.request_parsers import oggetto_json, parse_iso_date
+from apps.core.services.service_errors import E_VALIDATION_INPUT, ServiceError
 
 # Validator centralizzati payload API (riusabili cross-domain).
+
+
+# ------------------------------------------------------------------
+# Corpo della richiesta (POST/PUT/PATCH DRF)
+# ------------------------------------------------------------------
+
+
+# Scopo: ⭐ Il corpo della richiesta come OGGETTO, o un 400 nell'envelope. Il
+#        JSON valido non e' per forza un oggetto: con una lista (o un numero)
+#        `request.data` e' quella lista, e il primo `.get()` diventava un 500
+#        (F-9, 2026-09-27: logout, refresh del token, override permessi…),
+#        mentre `dict(request.data)` su una lista di coppie la trasformava in
+#        un oggetto, in silenzio.
+# ⭐ La regola «e' un oggetto?» e' `oggetto_json`, la stessa di
+#    `handle_post_json`: qui si traduce il suo rifiuto nel codice del catalogo.
+#    Anche il JSON illeggibile (`ParseError` di DRF) passa di qui, e non esce
+#    piu' nel formato DRF.
+# ⛔ Non `{}` al posto del corpo sbagliato: un client che manda una lista ha
+#    sbagliato la richiesta, e un oggetto vuoto la farebbe eseguire coi
+#    default, in silenzio.
+# Un form (`QueryDict`) e' un dict: passa com'e'.
+_MESSAGGIO_CORPO = {
+    "invalid_json": "Il corpo della richiesta non e' un JSON valido.",
+    "invalid_payload": "Il corpo della richiesta deve essere un oggetto JSON.",
+}
+
+
+def corpo_oggetto(request: Any) -> dict[str, Any]:
+    try:
+        return oggetto_json(request.data)
+    except (ParseError, ValueError) as exc:
+        motivo = "invalid_json" if isinstance(exc, ParseError) else str(exc)
+        raise ServiceError(
+            code=E_VALIDATION_INPUT,
+            message=_MESSAGGIO_CORPO.get(motivo, _MESSAGGIO_CORPO["invalid_payload"]),
+            context={"motivo": motivo},
+        ) from exc
+
+
+# Scopo: ⭐ Una password dal corpo COSI' COM'E' digitata: assente = "", un
+#        valore che non e' testo = `ValueError` (400 E_VALIDATION_INPUT).
+# ⛔ Niente `strip` (S-5, 2026-09-27): si salva e si verifica quella digitata,
+#    come fa il login (`SidTokenObtainPairSerializer`). E niente `str(...)`: un
+#    numero non e' una password, e arrivava ai validatori di Django come 500.
+# Le regole della nuova password stanno in `auth_helpers.valida_nuova_password`.
+def password_digitata(payload: dict[str, Any], key: str) -> str:
+    value = payload.get(key)
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ValueError(f"{key}_invalid")
+    return value
 
 
 # ------------------------------------------------------------------

@@ -15,6 +15,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     optional_bool,
     optional_int,
     optional_iso_date,
@@ -301,7 +302,7 @@ class ApiPreventivoDetail(DomainAPIView):
     )
     # Scopo: Aggiorna un preventivo via PATCH.
     def patch(self, request: Request, preventivo_id: int) -> JsonResponse:
-        result = preventivi_service.aggiorna_preventivo(preventivo_id, request.data)
+        result = preventivi_service.aggiorna_preventivo(preventivo_id, corpo_oggetto(request))
         return success_response(result)
 
     @extend_schema(
@@ -668,7 +669,7 @@ class ApiPreventivoRigaDetail(DomainAPIView):
     def patch(self, request: Request, preventivo_id: int, riga_id: int) -> JsonResponse:
         auth_user_id = request.user.id if request.user and request.user.is_authenticated else None
         result = preventivi_service.aggiorna_riga(
-            preventivo_id, riga_id, request.data, auth_user_id=auth_user_id,
+            preventivo_id, riga_id, corpo_oggetto(request), auth_user_id=auth_user_id,
         )
         return success_response(result)
 
@@ -815,7 +816,7 @@ class ApiPreventivoRigaComponenteDetail(DomainAPIView):
             request.user.id if request.user and request.user.is_authenticated else None
         )
         result = preventivi_service.update_componente(
-            preventivo_id, riga_id, componente_id, request.data,
+            preventivo_id, riga_id, componente_id, corpo_oggetto(request),
             auth_user_id=auth_user_id,
         )
         return success_response(result)

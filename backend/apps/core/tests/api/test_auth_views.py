@@ -141,6 +141,7 @@ class AuditAuthViewsTests(TestCase):
             status=200,
         )
         request = MagicMock()
+        request.data = {"refresh": "r.x.y"}  # F-9: il corpo e' un oggetto
         request._request = MagicMock()
 
         view = AdminTokenRefreshView()
@@ -164,6 +165,7 @@ class AuditAuthViewsTests(TestCase):
             status=401,
         )
         request = MagicMock()
+        request.data = {"refresh": "r.x.y"}  # F-9: il corpo e' un oggetto
 
         view = AdminTokenRefreshView()
         response = view.post(request)
@@ -237,6 +239,7 @@ class AuditAuthViewsTests(TestCase):
             status=200,
         )
         request = MagicMock()
+        request.data = {"refresh": "r.x.y"}  # F-9: il corpo e' un oggetto
         request._request = MagicMock()
 
         view = AdminTokenRefreshView()
@@ -275,6 +278,7 @@ class AuditAuthViewsTests(TestCase):
             status=200,
         )
         request = MagicMock()
+        request.data = {"refresh": "r.x.y"}  # F-9: il corpo e' un oggetto
         request._request = MagicMock()
 
         view = AdminTokenRefreshView()

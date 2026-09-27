@@ -23,6 +23,7 @@ from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     optional_int,
     paginated_envelope,
     parse_list_params,
@@ -234,7 +235,7 @@ class EmailAccountDetailView(AdminAPIView):
     #    senza aver scritto il campo). Il drawer admin (`EmailAccountDrawer`)
     #    manda solo queste chiavi — verificato quel giorno.
     def patch(self, request: Request, account_id: int) -> JsonResponse:
-        data = request.data
+        data = corpo_oggetto(request)
         repo = EmailRepository()
         ErrorManager.require(
             repo.get_account(account_id) is not None,
@@ -406,7 +407,7 @@ class EmailTemplateDetailView(AdminAPIView):
     #    `E_EMAIL_ADMIN`, non uno scarto silenzioso. `EmailTemplateDrawer`
     #    manda `oggetto`, `corpo_html`, `corpo_testo` — verificato quel giorno.
     def patch(self, request: Request, template_id: int) -> JsonResponse:
-        data = request.data
+        data = corpo_oggetto(request)
         repo = EmailRepository()
         ErrorManager.require(
             repo.get_template(template_id) is not None,

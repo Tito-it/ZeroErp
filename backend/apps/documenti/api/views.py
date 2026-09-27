@@ -21,6 +21,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     paginated_envelope,
     parse_list_params,
     qp_bool_optional,
@@ -202,7 +203,7 @@ class ApiTemplateDetail(DomainAPIView):
     #        rifiutate dal service con E_DOCUMENTI_VALIDATION.
     def patch(self, request: Request, template_id: int) -> JsonResponse:
         result = TemplateAdminService().update_template(
-            request.user, int(template_id), dict(request.data)
+            request.user, int(template_id), dict(corpo_oggetto(request))
         )
         return success_response(result)
 
@@ -356,7 +357,7 @@ class ApiTemplateVersioneDetail(DomainAPIView):
             request.user,
             int(template_id),
             int(versione_id),
-            dict(request.data),
+            dict(corpo_oggetto(request)),
         )
         return success_response(result)
 
@@ -569,7 +570,7 @@ class ApiAssetList(DomainAPIView):
     #        del service (int, bool, ecc.). Conversioni "permissive":
     #        validazione fine demandata al PayloadValidator del service.
     def _extract_metadati(self, request: Request) -> dict:
-        raw = dict(request.data)
+        raw = dict(corpo_oggetto(request))
         metadati: dict = {}
         # Form multipart: i valori arrivano come liste in alcuni framework;
         # normalizziamo a singolo valore.
@@ -644,7 +645,7 @@ class ApiAssetDetail(DomainAPIView):
     #        blocca comunque modifiche a storage_key/sha256/file_size/mime/file_name.
     def patch(self, request: Request, asset_id: int) -> JsonResponse:
         result = TemplateAssetAdminService().update_asset_metadati(
-            request.user, int(asset_id), dict(request.data)
+            request.user, int(asset_id), dict(corpo_oggetto(request))
         )
         return success_response(result)
 

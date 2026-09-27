@@ -20,6 +20,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     paginated_envelope,
     parse_list_params,
     qp_int_optional,
@@ -265,7 +266,7 @@ class ApiContrattoDetail(DomainAPIView):
         auth_user_id = request.user.id if request.user.is_authenticated else None
         return success_response(
             ContrattiService().update_contratto(
-                contratto_id, request.data,
+                contratto_id, corpo_oggetto(request),
                 auth_user_id=auth_user_id,
             )
         )
@@ -304,7 +305,7 @@ class ApiContrattoCambiaStato(DomainAPIView):
     #        chiede la data al click). Trigger DB fa fail-fast su
     #        attivazione modalita' C incompleta.
     def post(self, request: Request, contratto_id: int) -> JsonResponse:
-        body = request.data or {}
+        body = corpo_oggetto(request)
         codice = body.get("codice_interno", "")
         valido_al_raw = body.get("valido_al")
         valido_al = parse_iso_date(valido_al_raw) if valido_al_raw else None
@@ -349,7 +350,7 @@ class ApiContrattoRigheList(DomainAPIView):
     def post(self, request: Request, contratto_id: int) -> JsonResponse:
         return success_response(
             ContrattiService().create_riga(
-                contratto_id, request.data,
+                contratto_id, corpo_oggetto(request),
                 auth_user_id=get_scope_user_id(request),
             )
         )
@@ -457,7 +458,7 @@ class ApiContrattoRigaDetail(DomainAPIView):
         auth_user_id = request.user.id if request.user.is_authenticated else None
         return success_response(
             ContrattiService().update_riga(
-                riga_id, request.data, auth_user_id=auth_user_id,
+                riga_id, corpo_oggetto(request), auth_user_id=auth_user_id,
             )
         )
 
@@ -494,7 +495,7 @@ class ApiContrattoUtility(DomainAPIView):
     # Scopo: Crea la riga utility 1:1 per il contratto.
     def post(self, request: Request, contratto_id: int) -> JsonResponse:
         return success_response(
-            ContrattiService().create_utility(contratto_id, request.data)
+            ContrattiService().create_utility(contratto_id, corpo_oggetto(request))
         )
 
     @extend_schema(
@@ -507,7 +508,7 @@ class ApiContrattoUtility(DomainAPIView):
     # Scopo: Aggiorna la riga utility (istanza/utility immutabili).
     def patch(self, request: Request, contratto_id: int) -> JsonResponse:
         return success_response(
-            ContrattiService().update_utility(contratto_id, request.data)
+            ContrattiService().update_utility(contratto_id, corpo_oggetto(request))
         )
 
 
@@ -615,7 +616,7 @@ class ApiContrattoRigaComponenteDetail(DomainAPIView):
     ) -> JsonResponse:
         return success_response(
             ContrattiService().update_componente_riga(
-                contratto_id, riga_id, componente_id, dict(request.data),
+                contratto_id, riga_id, componente_id, dict(corpo_oggetto(request)),
             )
         )
 

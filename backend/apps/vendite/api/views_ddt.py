@@ -25,6 +25,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     paginated_envelope,
     parse_list_params,
     qp_bool,
@@ -219,7 +220,7 @@ class ApiDdtDetail(DomainAPIView):
     #        gia' parsato il body; handle_post_json rileggerebbe il raw consumato).
     def patch(self, request: Request, ddt_id: int) -> JsonResponse:
         return success_response(
-            ddt_service.aggiorna_ddt(int(ddt_id), dict(request.data)),
+            ddt_service.aggiorna_ddt(int(ddt_id), dict(corpo_oggetto(request))),
         )
 
     @extend_schema(
@@ -367,7 +368,7 @@ class ApiDdtRigaDetail(DomainAPIView):
     def patch(self, request: Request, ddt_id: int, riga_id: int) -> JsonResponse:
         return success_response(
             ddt_service.aggiorna_riga(
-                int(ddt_id), int(riga_id), dict(request.data),
+                int(ddt_id), int(riga_id), dict(corpo_oggetto(request)),
                 auth_user_id=get_scope_user_id(request),
             ),
         )
@@ -443,7 +444,7 @@ class ApiDdtRigaComponenteDetail(DomainAPIView):
     ) -> JsonResponse:
         return success_response(
             ddt_service.update_componente(
-                int(ddt_id), int(riga_id), int(componente_id), dict(request.data),
+                int(ddt_id), int(riga_id), int(componente_id), dict(corpo_oggetto(request)),
             ),
         )
 

@@ -42,7 +42,7 @@ Path parameter:
     "user_id": 1,
     "username": "mario.rossi",
     "is_super_admin": false,
-    "ruolo_applicativo": "OPERATORE",
+    "veste_operatore_attiva": true,
     "is_active": true,
     "unita_organizzativa_id": 10,
     "aree": [
@@ -80,7 +80,7 @@ Campi risposta:
 | `user_id`                      | int           | ID utente consultato                                      |
 | `username`                     | string        | Username Django                                           |
 | `is_super_admin`               | bool          | Binding SUPER_ADMIN attivo sulla veste OPERATORE (`script.fn_is_super_admin`) |
-| `ruolo_applicativo`            | string\|null  | Veste letta dal contesto della richiesta (vedi Regole)    |
+| `veste_operatore_attiva`       | bool          | Il consultato ha una veste OPERATORE attiva e nella finestra (`script.fn_has_identita_attiva`). `false` ⇒ ogni area `BLOCCATO` |
 | `is_active`                    | bool          | `auth_user.is_active`: puo' fare login o no               |
 | `unita_organizzativa_id`       | int\|null     | Reparto (`script.fn_get_uo_id_for_user`); null per non operatori o senza risorsa umana attiva |
 | `aree`                         | array         | Livello effettivo per ogni area funzionale attiva         |
@@ -109,17 +109,20 @@ Campi risposta:
 - `has_profilo_reparto = false` con `livello = BLOCCATO` indica che nessun profilo
   applicabile configura l'area (diverso da un profilo che imposta esplicitamente
   BLOCCATO). Il nome del campo resta per compatibilita' col frontend.
-- `ruolo_applicativo` viene letto prima dalla GUC `app.ruolo_applicativo` della
-  richiesta, cioe' la veste di **chi chiama**; solo in assenza di GUC si legge
-  un'identita attiva dell'utente consultato. Per una consultazione di un altro
-  utente via HTTP il campo riporta quindi la veste del chiamante.
-  ⚠️ Difetto noto (S-6): [analisi-be-difetti-emersi-verifica-doc-api-core.md](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+- ⭐ **Livelli e super admin sono della veste OPERATORE.** Le altre vesti
+  (portale, shop) non hanno livelli d'area: le governa la porta. Per questo la
+  risposta non porta «il» ruolo applicativo del consultato — una credenziale puo'
+  averne piu' d'uno — ma il fatto da cui i livelli dipendono,
+  `veste_operatore_attiva`.
+- ⛔ Fino al 2026-09-27 c'era `ruolo_applicativo`, letto dalla GUC della
+  sessione: per un altro utente riportava la veste di **chi guarda** (sempre
+  OPERATORE), anche per un cliente del portale (S-6, chiuso).
 - `emittenti_ids = null` significa nessuna restrizione ambito emittente (l'utente vede tutto).
 
 ## Dipendenze DB
 
 - `config.aree_funzionali` — iterazione aree attive
-- `anagrafiche.identita_digitali` — identita' e `ruolo_applicativo`
+- `anagrafiche.identita_digitali` — veste OPERATORE del consultato (`script.fn_has_identita_attiva`)
 - `anagrafiche.risorse_umane` — unita_organizzativa_id (via `script.fn_get_uo_id_for_user`)
 - `config.user_override_aree` / `config.user_override_oggetti` — override individuali area e oggetto
 - `config.profili_accesso`, `config.profili_accesso_aree`, `config.profili_accesso_bindings` — profili applicabili

@@ -17,6 +17,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 from rest_framework.response import Response
 from apps.core.api.base_views import DomainAPIView
+from apps.core.api.payload_validators import corpo_oggetto
 from rest_framework_simplejwt.exceptions import TokenBackendError
 from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.state import token_backend
@@ -83,7 +84,7 @@ class LogoutView(DomainAPIView):
     #    nostro, altrui, illeggibile): il logout lato client procede comunque,
     #    e il caso anomalo si scrive nel log `security`.
     def post(self, request: Request) -> Response:
-        refresh_token = request.data.get("refresh")
+        refresh_token = corpo_oggetto(request).get("refresh")
         if not refresh_token or not isinstance(refresh_token, str):
             raise ServiceError(
                 code="E_LOGOUT_NO_TOKEN",

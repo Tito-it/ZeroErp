@@ -20,6 +20,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     parse_list_params,
     qp_bool_optional,
     qp_int_optional,
@@ -275,7 +276,7 @@ class ApiDistintaDetail(DomainAPIView):
     # ⛔ Lo stato non passa di qui: e' un'azione, e ha il suo endpoint.
     def patch(self, request: Request, contabile_id: int) -> JsonResponse:
         return success_response(
-            pagamenti_service.aggiorna_distinta(contabile_id, dict(request.data))
+            pagamenti_service.aggiorna_distinta(contabile_id, dict(corpo_oggetto(request)))
         )
 
 
@@ -552,7 +553,7 @@ class ApiRigaDetail(DomainAPIView):
     #    male.
     def patch(self, request: Request, riga_id: int) -> JsonResponse:
         return success_response(
-            pagamenti_service.aggiorna_riga(riga_id, dict(request.data))
+            pagamenti_service.aggiorna_riga(riga_id, dict(corpo_oggetto(request)))
         )
 
     @extend_schema(
@@ -1540,7 +1541,7 @@ class ApiEnteIncassoDetail(DomainAPIView):
     def patch(self, request: Request, ente_incasso_id: int) -> JsonResponse:
         return success_response(
             enti_incasso_service.aggiorna_ente_incasso(
-                ente_incasso_id, dict(request.data)
+                ente_incasso_id, dict(corpo_oggetto(request))
             )
         )
 

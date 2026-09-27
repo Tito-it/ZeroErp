@@ -76,7 +76,7 @@ class EmettiRefreshVesteTests(SimpleTestCase):
 
 @patch(f"{_BB}.SidTokenObtainPairSerializer.get_token", side_effect=_token_base)
 @patch(f"{_BB}.EmittenteAttivoService")
-@patch(f"{_VIEW}.validate_password")
+@patch("apps.core.services.auth_helpers.validate_password")
 @patch(f"{_VIEW}.apply_new_password")
 @patch(f"{_VIEW}.session_audit_service")
 @patch(f"{_VIEW}._auth_repo")

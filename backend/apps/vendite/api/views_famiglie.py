@@ -30,6 +30,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import AdminAPIView, DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     paginated_envelope,
     parse_list_params,
     qp_bool_optional,
@@ -247,7 +248,7 @@ class ApiFamigliaDetail(AdminAPIView):
     #    dei registri e' il guard `..._guard_struttura` — non un secondo elenco
     #    scritto qui.
     def patch(self, request: Request, famiglia_id: int) -> JsonResponse:
-        payload = dict(request.data or {})
+        payload = dict(corpo_oggetto(request))
         return success_response(
             FamiglieDocumentoService().update_famiglia(famiglia_id, payload),
         )
@@ -274,7 +275,7 @@ class ApiFamigliaAttivo(AdminAPIView):
     #        l'azione che il guard di disattivazione presidia, e riaccenderla e'
     #        cio' che si fa al posto di crearne un'altra sulla stessa tabella.
     def post(self, request: Request, famiglia_id: int) -> JsonResponse:
-        payload = request.data or {}
+        payload = corpo_oggetto(request)
         attivo = payload.get("attivo")
         ErrorManager.require(
             isinstance(attivo, bool),

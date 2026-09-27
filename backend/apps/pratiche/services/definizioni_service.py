@@ -18,6 +18,7 @@ from django.db import DatabaseError
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
+from apps.core.services.service_errors import E_VALIDATION_INPUT
 from apps.pratiche.db.definizioni_repository import (
     CHILD_SPECS,
     EDGE_SPECS,
@@ -157,7 +158,7 @@ def pubblica_definizione(definizione_id: int) -> dict[str, Any]:
 #    RuntimeError). I form dell'editor (DefinizioneStepForm, Step*Tab, Archi*Tab)
 #    mandano solo chiavi scrivibili — verificato quel giorno.
 def _clean_writable(fields: tuple[str, ...], payload: dict[str, Any]) -> dict[str, Any]:
-    PayloadValidator(validation_code="E_VALIDATION_INPUT").validate_allowed_keys(
+    PayloadValidator(validation_code=E_VALIDATION_INPUT).validate_allowed_keys(
         payload, allowed=frozenset(fields), message="Campi non modificabili nel payload.",
     )
     data: dict[str, Any] = {}
@@ -177,7 +178,7 @@ def _require_fields(data: dict[str, Any], required: tuple[str, ...], kind: str) 
     for campo in required:
         ErrorManager.require(
             data.get(campo) not in (None, ""),
-            code="E_VALIDATION_INPUT",
+            code=E_VALIDATION_INPUT,
             message=f"campo '{campo}' obbligatorio per {kind}",
         )
 
@@ -196,7 +197,7 @@ def create_step(definizione_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     data = _clean_writable(STEP_CORE_FIELDS, payload)
     ErrorManager.require(
         bool(data.get("codice")) and bool(data.get("descrizione")),
-        code="E_VALIDATION_INPUT",
+        code=E_VALIDATION_INPUT,
         message="codice e descrizione sono obbligatori per creare uno step",
     )
     with _mapped_db_errors("definizioni_service.create_step"):
@@ -212,7 +213,7 @@ def update_step(definizione_id: int, step_id: int, payload: dict[str, Any]) -> d
     data = _clean_writable(STEP_CORE_FIELDS, payload)
     ErrorManager.require(
         bool(data),
-        code="E_VALIDATION_INPUT",
+        code=E_VALIDATION_INPUT,
         message="nessun campo aggiornabile nel payload",
     )
     with _mapped_db_errors("definizioni_service.update_step"):
@@ -283,7 +284,7 @@ def update_step_figlio(
     data = _clean_child_payload(child_kind, payload)
     ErrorManager.require(
         bool(data),
-        code="E_VALIDATION_INPUT",
+        code=E_VALIDATION_INPUT,
         message="nessun campo aggiornabile nel payload",
     )
     with _mapped_db_errors(f"definizioni_service.update_step_figlio.{child_kind}"):
@@ -372,7 +373,7 @@ def update_arco(definizione_id: int, edge_kind: str, row_id: int,
     data = _clean_writable(EDGE_SPECS[edge_kind].writable, payload)
     ErrorManager.require(
         bool(data),
-        code="E_VALIDATION_INPUT",
+        code=E_VALIDATION_INPUT,
         message="nessun campo aggiornabile nel payload",
     )
     _valida_endpoint_in_def(definizione_id, edge_kind, data)

@@ -41,7 +41,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import optional_int, qp_int
+from apps.core.api.payload_validators import corpo_oggetto, optional_int, qp_int
 from apps.core.api.success_responses import success_response
 from apps.documenti.api.contesto_helpers import resolve_contesto_documentale
 from apps.documenti.api.multipart_helpers import extract_allegati
@@ -126,7 +126,7 @@ def build_documenti_sorgente_views(
         #        rollback dell'atomic esterno: stato invariato, niente record
         #        documentale orfano.
         def post(self, request: Request, sorgente_id: int) -> JsonResponse:
-            payload = request.data if isinstance(request.data, dict) else {}
+            payload = corpo_oggetto(request)
             template_id = optional_int(payload, "template_documento_id")
             tipo_output_id = optional_int(payload, "tipo_documento_output_id")
             allegati = extract_allegati(request)
@@ -224,7 +224,7 @@ def build_documenti_sorgente_views(
         #        `application/pdf` inline (il browser decide se aprire).
         def post(self, request: Request, sorgente_id: int) -> HttpResponse:
             # Manuale (no `handle_post_json`): la risposta e' binaria, non JSON.
-            payload = request.data if isinstance(request.data, dict) else {}
+            payload = corpo_oggetto(request)
             entity, sorgente_tipo_id = _resolve_contesto(sorgente_id)
             template_id = optional_int(payload, "template_documento_id")
             tipo_output_id = optional_int(payload, "tipo_documento_output_id")

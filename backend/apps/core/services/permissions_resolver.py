@@ -13,6 +13,8 @@ from typing import Any, Callable, TypeVar
 
 from django.db import connection
 
+from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
+
 T = TypeVar("T")
 
 # Mapping livello -> set di azioni CRUD consentite.
@@ -77,7 +79,14 @@ class PermissionResolver:
     def get_ruolo_applicativo(
         cls, user: Any, cache: dict[str, Any] | None = None
     ) -> str | None:
-        """Scopo: Restituisce il ruolo_applicativo dell'identita attiva.
+        """Scopo: Restituisce il ruolo_applicativo della SESSIONE corrente.
+
+        ⛔ Risponde per chi fa la richiesta, NON per `user` (S-6,
+        2026-09-27): la GUC e' della sessione, e una credenziale puo' avere
+        piu' vesti, quindi «il» ruolo applicativo di un altro utente non
+        esiste. `user` deve essere l'utente della richiesta. Per chiedere
+        qualcosa di un ALTRO utente si usa la domanda precisa
+        (`has_veste_operatore_attiva`), come fa permessi-effettivi.
 
         Strategia GUC-first (Q1): se `app.ruolo_applicativo` e'
         popolato (JwtAuditAuthentication lo ha gia' propagato per la
@@ -113,6 +122,30 @@ class PermissionResolver:
             return str(row[0]) if row and row[0] else None
 
         return _cached(cache, "ruolo_applicativo", _query)
+
+    @classmethod
+    def has_veste_operatore_attiva(
+        cls, user: Any, cache: dict[str, Any] | None = None
+    ) -> bool:
+        """Scopo: L'utente ha una veste OPERATORE attiva (e nella finestra)?
+
+        E' il passo 1 della catena di `fn_resolve_livello_area` e
+        `fn_resolve_livello_oggetto`: senza, ogni area e' BLOCCATO. Livelli
+        d'area, livelli oggetto e super admin esistono SOLO per la veste
+        OPERATORE; le altre vesti passano dalla porta, non dalle aree.
+        Delega a `script.fn_has_identita_attiva` (stessa lettura della
+        catena): risponde per `user`, qualunque sia la sessione.
+        """
+        def _query() -> bool:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT script.fn_has_identita_attiva(%s, %s::config.ruolo_applicativo)",
+                    [user.id, RUOLO_APPLICATIVO_OPERATORE],
+                )
+                row = cursor.fetchone()
+            return bool(row[0]) if row else False
+
+        return _cached(cache, "veste_operatore_attiva", _query)
 
     @classmethod
     def get_livello_area(

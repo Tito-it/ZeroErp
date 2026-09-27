@@ -201,7 +201,7 @@ class SpedisciTests(TestCase):
 
 @patch(f"{_BB}.transaction")
 @patch(f"{_BB}.apply_new_password")
-@patch(f"{_BB}.validate_password")
+@patch("apps.core.services.auth_helpers.validate_password")
 @patch(f"{_BB}.User")
 class AttivaTests(TestCase):
 

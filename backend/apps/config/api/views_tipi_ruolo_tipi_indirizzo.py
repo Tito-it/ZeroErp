@@ -19,6 +19,7 @@ from apps.config.services.tipi_ruolo_tipi_indirizzo_service import (
 from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     paginated_envelope,
     parse_list_params,
     qp_bool_optional,
@@ -126,4 +127,4 @@ class TipiRuoloTipiIndirizzoDetailView(AdminAPIView):
     # Scopo: Aggiorna campi modificabili (attivo, obbligatorio, fallback). FK immutabili.
     def patch(self, request: Request, record_id: int) -> JsonResponse:
         svc = TipiRuoloTipiIndirizzoService()
-        return success_response(svc.update_matrice(record_id, request.data))
+        return success_response(svc.update_matrice(record_id, corpo_oggetto(request)))

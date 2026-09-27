@@ -13,6 +13,7 @@ Indice test eseguiti:
  4) test_admin_puo_vedere_altro_utente       — ADMIN puo' interrogare altri user_id
  5) test_operativo_negato_altro_utente       — OPERATIVO non puo' vedere altri user_id
  6) test_utente_non_trovato                  — 404-equivalente se user_id inesistente
+ 7) test_altro_utente_senza_veste_operatore  — S-6: la risposta dice la veste del CONSULTATO, non di chi guarda
 """
 
 from unittest import TestCase
@@ -46,7 +47,7 @@ class ApiPermessiEffettiviViewTests(TestCase):
     def _base_resolver_mock(self, mock_resolver, is_super: bool = False) -> None:
         """Scopo: Configura i valori di default del resolver per i test base."""
         mock_resolver.is_super_admin.return_value = is_super
-        mock_resolver.get_ruolo_applicativo.return_value = "OPERATORE"
+        mock_resolver.has_veste_operatore_attiva.return_value = True
         mock_resolver.get_unita_organizzativa_id.return_value = None
         mock_resolver.get_emittenti_pk_ids.return_value = None
         mock_resolver.get_livello_area.return_value = "TUTTO"
@@ -168,6 +169,36 @@ class ApiPermessiEffettiviViewTests(TestCase):
         response = view.get(request, user_id=99)
 
         self.assertEqual(response.status_code, 200)
+
+    # Scopo: S-6 — il super admin (sessione OPERATORE) consulta un cliente
+    # del portale. Prima la risposta portava `ruolo_applicativo` letto dalla
+    # GUC della sessione, cioe' «OPERATORE»: la veste di chi guarda. Ora dice
+    # la veste operatore del consultato, e la domanda si fa su di lui.
+    @patch("apps.core.api.views.PermissionResolver")
+    @patch("apps.core.api.views.get_user_model")
+    @patch("apps.config.models.AreaFunzionale")
+    def test_altro_utente_senza_veste_operatore(self, mock_area_cls, mock_get_user, mock_resolver):
+        import json
+
+        from apps.core.api.views import ApiPermessiEffettivi
+
+        self._base_resolver_mock(mock_resolver, is_super=True)
+        mock_resolver.has_veste_operatore_attiva.return_value = False
+        mock_area_cls.objects.filter.return_value = []
+
+        target = MagicMock()
+        target.id = 99
+        target.get_username.return_value = "cliente.portale"
+        mock_get_user.return_value.objects.get.return_value = target
+
+        response = ApiPermessiEffettivi().get(_mock_request(user_id=1), user_id=99)
+
+        data = json.loads(response.content)["data"]
+        self.assertIs(data["veste_operatore_attiva"], False)
+        self.assertNotIn("ruolo_applicativo", data)
+        mock_resolver.has_veste_operatore_attiva.assert_called_once()
+        self.assertIs(mock_resolver.has_veste_operatore_attiva.call_args.args[0], target)
+        mock_resolver.get_ruolo_applicativo.assert_not_called()
 
     # Scopo: OPERATIVO non puo' vedere i permessi di altri utenti.
     @patch("apps.core.api.views.PermissionResolver")

@@ -16,7 +16,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import optional_int, paginated_envelope, parse_list_params, qp_bool_optional
+from apps.core.api.payload_validators import corpo_oggetto, optional_int, paginated_envelope, parse_list_params, qp_bool_optional
 from apps.core.api.success_responses import success_response
 from apps.anagrafiche.services.fornitori_service import FornitoriService
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
@@ -138,7 +138,7 @@ class FornitoriDetailView(DomainAPIView):
     # Scopo: Aggiorna campi editabili del fornitore (pagamento, fiscale, FE, rating, note).
     def patch(self, request: Request, fornitore_id: int) -> JsonResponse:
         svc = FornitoriService()
-        result = svc.update_fornitore(fornitore_id, request.data)
+        result = svc.update_fornitore(fornitore_id, corpo_oggetto(request))
         return success_response(result)
 
 

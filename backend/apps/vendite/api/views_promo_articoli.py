@@ -22,6 +22,7 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     paginated_envelope,
     parse_list_params,
     qp_bool_optional,
@@ -176,4 +177,4 @@ class PromoArticoliDetailView(DomainAPIView):
     # Scopo: Aggiorna una promo (codice, articolo_id, uom_id immutabili).
     def patch(self, request: Request, record_id: int) -> JsonResponse:
         svc = PromoArticoliService()
-        return success_response(svc.update_promo(record_id, request.data))
+        return success_response(svc.update_promo(record_id, corpo_oggetto(request)))
