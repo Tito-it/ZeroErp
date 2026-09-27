@@ -17,8 +17,12 @@ config,user_override_aree,9,t
 config,user_override_azioni,9,t
 config,user_override_oggetti,9,t
 pratiche,pratica,12,f
+vendite,contratto,2,f
+vendite,ddt,2,f
 vendite,fattura,2,f
 vendite,listino,2,f
 vendite,offerta_commerciale,2,f
+vendite,ordine,2,f
 vendite,preventivo,2,f
 vendite,promo_articolo,2,f
+vendite,reso,2,f
