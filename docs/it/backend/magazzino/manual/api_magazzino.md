@@ -108,8 +108,9 @@ Il dettaglio: la riga della lista, più
 * **`capabilities`** — il blob di `script.fn_available_actions_inventario` /
   `_rettifica`, **trasportato intatto** (R-1). Chiavi: `stato_codice`,
   `available_actions[]` (le transizioni richiedibili — `conferma`, `riapri`,
-  `annulla` — ciascuna con `target_state`, `label_key`, `severity`,
-  `requires_confirm`, `enabled`, `reason`, `reason_key`), `can_change_state`,
+  `annulla` — ciascuna con `target_state`, `label_key`,
+  `requires_confirm`, `enabled`, `reason`, `reason_key`, `manuale`; icona e
+  colore li sceglie il frontend dal `key`), `can_change_state`,
   `can_edit_testata`, `can_edit_righe`, `can_delete`, la terna **`can_registra`
   · `can_registra_reason` · `can_registra_reason_key`**, e `stato_info_key`
   (la nota degli stati chiusi, `null` altrove);

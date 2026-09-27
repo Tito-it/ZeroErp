@@ -20,7 +20,7 @@
 > Nel frontend **nessun letterale di icona** è rimasto fuori da `constants.js` e
 > `navigation.js`, tranne l'eccezione dichiarata `useLottoAzioni.js`
 > (`LOTTO_AZIONE_ICONA`). Quella è in attesa di
-> [brief-db-icone-azioni-per-significato.md](brief-db-icone-azioni-per-significato.md).
+> [brief-db-icone-azioni-per-significato.md](../work-done/brief-db-icone-azioni-per-significato.md).
 >
 > Regola scritta in frontend-standards §«Icone: un nome di significato, in un
 > punto solo».

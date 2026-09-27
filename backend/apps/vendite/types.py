@@ -1001,9 +1001,10 @@ class OffertaRow(TypedDict):
     # Il FE consuma questi campi con `useEntityCapabilities` +
     # `mapAvailableActionsToDrawerActions` senza ricalcolare la state
     # machine: la verita' della transizione vive solo in DB.
-    # `available_actions` e' lista di dict opachi (chiave/label_key/severity/
-    # icon/target_state/requires_confirm/requires_motivazione) — Any per non
-    # vincolare il TypedDict a una sotto-shape che il BE puo' arricchire.
+    # `available_actions` e' lista di dict opachi (key/target_state/label_key/
+    # requires_confirm/requires_motivazione) — Any per non vincolare il
+    # TypedDict a una sotto-shape che il BE puo' arricchire. Icona e colore
+    # non viaggiano: li sceglie il frontend dal `key` (`core/aspettoAzioni.js`).
     available_actions: list[dict[str, Any]]
     can_change_state: bool
     can_edit_testata: bool

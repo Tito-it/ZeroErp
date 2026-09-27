@@ -139,7 +139,7 @@ permessi — colonne nascoste escluse, ordine utente rispettato).
 
 | Campo | Tipo | Significato |
 | --- | --- | --- |
-| `available_actions[]` | array | Azioni cambio stato disponibili: `{key, target_state, label_key (i18n), severity, requires_confirm}` — L'icona non viaggia: la sceglie il frontend dal `key` (`frontend/src/core/aspettoAzioni.js`, dal 2026-09-27); il frontend ignora anche `severity`, che il DB ritira col §9 del brief icone. Non include transizioni automatiche (job notturno SCADUTO) |
+| `available_actions[]` | array | Azioni cambio stato disponibili: `{key, target_state, label_key (i18n), requires_confirm}` — Icona e colore non viaggiano: li sceglie il frontend dal `key` (`frontend/src/core/aspettoAzioni.js`; l'icona dal 2026-09-27, il colore dal 2026-09-28). Non include transizioni automatiche (job notturno SCADUTO) |
 | `can_edit_testata` | bool | `true` solo in DRAFT |
 | `can_edit_righe` | bool | `true` solo in DRAFT |
 | `can_create_revisione` | bool | `true` per ACCETTATO (revisione = nuova rev del preventivo) |

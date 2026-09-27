@@ -124,8 +124,9 @@ Testata (dalla vista + `meta`/`storicizza`) + capability **data-driven** da
 `script.fn_available_actions_ordine` (matrice `config.transizioni_stati_ordini`),
 nella chiave `capabilities`, non fuse nella testata (dal 2026-09-23, [api.md §«Il blob sta SOTTO `capabilities`»](../../../dev/api.md)):
 `available_actions[]` (azioni di stato con `key`/`target_state`/`label_key`/
-`severity`/`requires_confirm` — incl. `conferma`, `annulla`, e
-`push_commessa` come azione applicativa), `can_edit_testata`, `can_edit_righe`,
+`requires_confirm` — incl. `conferma`, `annulla`, e
+`push_commessa` come azione applicativa; icona e colore li sceglie il frontend
+dal `key`), `can_edit_testata`, `can_edit_righe`,
 `can_push_commessa` (+ `can_push_commessa_reason`/`_reason_key`),
 `non_editable_fields`, `stato_codice`, `pdf`; sulla testata `righe_count`. *(`can_conferma` non è
 più un flag: la conferma è un'entry di `available_actions`.)* 404

@@ -2,7 +2,7 @@
 
 > **Chi scrive:** sessione backend/frontend (`dev/backend-tid`), 2026-09-27.
 > **A chi:** Tid (decisione, §3), poi team DB (§4) e frontend (§5).
-> **Origine:** [censimento-icone-per-significato.md](censimento-icone-per-significato.md),
+> **Origine:** [censimento-icone-per-significato.md](../work-in-progress/censimento-icone-per-significato.md),
 > approvato da Tid il 2026-09-27. Nel frontend ogni icona è ora una costante
 > con nome di significato. Il presidio `frontend/src/core/icone.spec.js` fa
 > fallire la CI se compare un `'pi pi-...'` scritto a mano.
@@ -402,8 +402,8 @@ campo stantio. Le pagine API di §7.3 descrivono `severity` nell'output.
 > zero righe con `severity` nel `meta` delle matrici, nessun overload.
 > **pgTAP verdi, nessuna regressione** (corsa di Tid).
 >
-> **Il lato DB è chiuso.** Resta aperta la ricaduta BE del §10.4: il test Django
-> del documento interno (che ora fallisce), la fixture dei contratti, un
+> **Il lato DB è chiuso.** La ricaduta BE del §10.4 è consegnata nel §11. Era: il test Django
+> del documento interno (che falliva), la fixture dei contratti, un
 > commento in `types.py` e quattro pagine API. L'ordine di rilascio era libero
 > (§9.2): il frontend ignorava già la `severity` del DB, quindi a video non
 > cambia niente.
@@ -481,3 +481,25 @@ stantio da quando esiste `fn_available_actions_commessa`. Qui è tolto solo
 * **Pagine API** che descrivono `severity` nell'output delle azioni:
   `vendite/manual/api_ordini.md:127`, `api_offerte.md:342,348`,
   `api_commessa_stato.md:71,73,121`, `magazzino/manual/api_magazzino.md:111`.
+
+## 11. Consegna BE del §10.4 — 2026-09-28
+
+Chiude il §10.4. Contratto letto dalla doc auto-gen
+(`fn_available_actions_documento_interno`, rev `20260928-15`): le azioni
+escono con `key`, `target_state`, `label_key`, `requires_confirm`, `enabled`,
+`reason`, `reason_key`, `manuale`.
+
+* **Test Django**: `test_documento_interno_db.py` non si aspetta più
+  `severity` fra le chiavi dell'azione. Verde con `ZEROERP_TEST_DB_E2E=1` sul
+  dbdev, insieme a `test_contratti_service` e `test_preventivi_service`.
+* **Fixture** di `test_contratti_service.py`: tolto `severity`.
+* **`vendite/types.py`**: il commento di `available_actions` elencava
+  `severity` **e** `icon` (stantio dal §7): ora elenca le chiavi vive e dice che
+  icona e colore li sceglie il frontend dal `key`.
+* **Pagine API**: tolto `severity` dall'output descritto in `api_ordini.md`,
+  `api_offerte.md`, `api_commessa_stato.md`, `api_magazzino.md`; in
+  `api_preventivi.md` riscritta la nota del §8, che annunciava il ritiro come
+  futuro. Gli altri `severity` delle pagine API parlano di eventi, errori di
+  pipeline o del Tag di stato, non delle azioni.
+
+**Il brief è chiuso su tutti i lati.**
