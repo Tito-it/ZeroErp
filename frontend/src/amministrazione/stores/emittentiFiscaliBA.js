@@ -17,8 +17,11 @@ import {
   deleteEmittenteBillingAccount,
   getEmittenteBillingAccountSummary,
 } from '../api/emittentiFiscali'
+import { storePerIstanza } from '../../core/stores/storePerIstanza'
 
-export const useEmittentiFiscaliBAStore = createListaStore('amm-emittenti-fiscali-ba', {
+// ⭐ Uno store per ISTANZA del drawer (`storePerIstanza`, 2026-09-27): due
+//    drawer dello stesso tipo vivi insieme non si scrivono addosso la lista.
+export const useEmittentiFiscaliBAStore = storePerIstanza('amm-emittenti-fiscali-ba', (id) => createListaStore(id, {
   fetchPage: (emittenteId, params) => listEmittenteBillingAccount(emittenteId, params),
   parentField: 'emittenteId',
   // Parte piena: e' la lista dei mapping di QUESTO emittente.
@@ -75,4 +78,4 @@ export const useEmittentiFiscaliBAStore = createListaStore('amm-emittenti-fiscal
 
     return { hasDefaultMapping, countSpecifici, fetchSummary, addMapping, removeMapping, reset }
   },
-})
+}))

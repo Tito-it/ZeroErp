@@ -11,7 +11,7 @@ import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerFormPreserve, gestoreVisibile, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
 import { useAuthUser } from '../../core/composables/useAuthUser'
 import { useLookup } from '../../core/composables/useLookup'
-import { listUnitaOrganizzative, invitaOperatore, reinviaInvito } from '../api/amministrazione'
+import { listUnitaOrganizzative, invitaOperatore, reinviaInvito, getCredenzialePerEmail } from '../api/amministrazione'
 import { TIPO_RUOLO_CODICE } from '../constants'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
@@ -21,12 +21,15 @@ import { isEmailValid } from '../../core/utils/validators'
 import { useNotify } from '../../core/composables/useNotify'
 import { bloccoAttivo, motivoBloccoRiga } from '../../core/utils/bloccoMotivo'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfermata'
+import { etichettaRuoloApplicativo } from '../../core/utils/i18nLabel'
 import SoggettoResolver from '../../anagrafiche/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
 import AuthUserForm from '../../core/components/AuthUserForm.vue'
 import OperatorePermessiTab from './OperatorePermessiTab.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
+import AppDialog from '../../core/components/AppDialog.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
@@ -38,6 +41,7 @@ import TabList from 'primevue/tablist'
 import TabPanel from 'primevue/tabpanel'
 import TabPanels from 'primevue/tabpanels'
 import Button from 'primevue/button'
+import Message from 'primevue/message'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 
@@ -47,6 +51,22 @@ const { execute, loading, campiErrati } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 const notify = useNotify()
 const injectedReadonly = useInjectReadonly()
+
+// ⭐ La creazione e' un gesto a DUE TEMPI quando l'email e' gia' di una
+// credenziale (F-4, brief-db-credenziale-per-email §3): il DB rifiuta il primo
+// tentativo (`E_CREDENZIALE_DA_CONFERMARE`, `ui_action = confirm_and_retry`) e
+// accetta il secondo che DICHIARA l'id della credenziale vista. Il BB
+// riconosce il comportamento, non il codice. ⛔ Il primo tentativo parte
+// sempre senza `riusa_auth_user_id`: dichiararlo d'ufficio sarebbe un riuso
+// silenzioso, cioe' il difetto che il `20260925-51` ha chiuso.
+const creazione = useForzaturaConfermata()
+const { richiestaConferma } = creazione
+// La credenziale letta per il dialog: {auth_user_id, username, vesti}.
+const credenzialeDaConfermare = ref(null)
+// L'email del tentativo in corso (non reattiva: non serve alla resa).
+let emailInDomanda = null
+const dialogRiusoVisibile = computed(() =>
+  richiestaConferma.value !== null && credenzialeDaConfermare.value !== null)
 
 // Building block: auth user (solo creazione). Senza password: la sceglie
 // l'operatore attivando l'invito (regola unica, L-3).
@@ -163,6 +183,10 @@ function resetForm() {
 
 // Carica dati quando il drawer si apre
 watch(() => props.visible, async (val) => {
+  // La domanda di riuso vive col drawer: si chiude con lui (il dialog e'
+  // teleportato nel body, e resterebbe a video sopra un drawer chiuso) e non
+  // sopravvive a una riapertura, dove l'email potrebbe essere un'altra.
+  onAnnullaRiuso()
   if (!val) return
   emailEditInvalid.value = false
   activeTab.value = 'dati'
@@ -275,21 +299,70 @@ async function onSave() {
       qualifica_id: form.value.qualifica_id,
       unita_organizzativa_id: form.value.unita_organizzativa_id
     }
-    const result = await execute(
-      () => store.create(payload),
+    // L'email della domanda e' quella del PAYLOAD che si ripetera', non quella
+    // del form al momento del dialog: dialog e ripetizione parlano della stessa.
+    emailInDomanda = payload.email
+    const result = await creazione.esegui(
+      (dichiarazione) => store.create({ ...payload, ...dichiarazione }),
       { successMessage: t('amministrazione.operatore_creato') }
     )
-    if (result !== null) {
-      // Email gia' di una credenziale (D-6): la persona entrera' col suo
-      // username e la sua password, e l'admin deve saperlo.
-      if (result.credenziale_riusata) {
-        notify.warn(t('amministrazione.credenziale_riusata', { username: result.username }))
-      }
-      fissa()
-      emit('saved')
-    }
+    await dopoTentativoCreazione(result)
   }
 }
+
+// Scopo: Esito di un tentativo di creazione (primo o confermato). Creato ->
+//        chiude; domanda del DB -> legge la credenziale e apre il dialog. Anche
+//        dopo la conferma: se la credenziale e' cambiata nel frattempo, il DB
+//        chiede di nuovo e il dialog si ripropone coi dati NUOVI.
+async function dopoTentativoCreazione(result, domandaPrecedente = null) {
+  if (result !== null) {
+    credenzialeDaConfermare.value = null
+    // Email gia' di una credenziale (D-6): la persona entrera' col suo
+    // username e la sua password, e l'admin deve saperlo.
+    if (result.credenziale_riusata) {
+      notify.warn(t('amministrazione.credenziale_riusata', { username: result.username }))
+    }
+    fissa()
+    emit('saved')
+  } else if (richiestaConferma.value !== null && richiestaConferma.value !== domandaPrecedente) {
+    // Solo una domanda NUOVA del DB si rilegge: dopo un errore vero alla
+    // conferma la domanda resta quella di prima, e il dialog anche.
+    await leggiCredenzialeDaConfermare()
+  }
+}
+
+// Scopo: Legge la credenziale dell'email (B-20) per il dialog: la STESSA
+//        lettura del rifiuto del DB (`fn_get_credenziale_per_email`), quindi
+//        dialog e rifiuto dicono la stessa cosa.
+async function leggiCredenzialeDaConfermare() {
+  credenzialeDaConfermare.value = null
+  const dati = await execute(() => getCredenzialePerEmail(emailInDomanda))
+  credenzialeDaConfermare.value = dati?.credenziale ?? null
+  if (credenzialeDaConfermare.value === null) {
+    // Lettura fallita (toast gia' mostrato) o credenziale sparita nel frattempo:
+    // non c'e' niente da confermare, si chiude la domanda.
+    if (dati !== null) notify.warn(t('amministrazione.riuso_credenziale_sparita'))
+    creazione.annulla()
+  }
+}
+
+// Scopo: L'admin conferma il riuso: si ripete la creazione DICHIARANDO l'id
+//        della credenziale che ha visto nel dialog.
+async function onConfermaRiuso() {
+  const domanda = richiestaConferma.value
+  const result = await creazione.conferma({
+    riusa_auth_user_id: credenzialeDaConfermare.value.auth_user_id,
+  })
+  await dopoTentativoCreazione(result, domanda)
+}
+
+// Scopo: L'admin rinuncia: la domanda si chiude, il form resta com'e' (puo'
+// correggere l'email e salvare di nuovo).
+function onAnnullaRiuso() {
+  creazione.annulla()
+  credenzialeDaConfermare.value = null
+}
+
 
 // Tab attivo. Riportato a 'dati' a ogni apertura del drawer: il tab
 // 'permessi' esiste solo in modifica, quindi riaprendo in creazione un
@@ -543,7 +616,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
 
         <!-- Footer Salva/Annulla -->
         <div>
-          <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
+          <FormFooter :loading="loading || creazione.loading.value" :disabled="!canSave" @save="onSave" @cancel="onClose" />
         </div>
       </TabPanel>
 
@@ -554,6 +627,41 @@ const suVisibile = gestoreVisibile(emit, onClose)
       </TabPanels>
     </Tabs>
     </div>
+
+    <!-- Il consenso al riuso della credenziale (F-4): la domanda del DB, e cio'
+         che l'admin sta per collegare. Conferma = si dichiara l'id letto. -->
+    <AppDialog
+      v-if="!isEdit"
+      :visible="dialogRiusoVisibile"
+      :header="t('amministrazione.riuso_titolo')"
+      width="md"
+      :loading="creazione.loading.value"
+      :save-label="t('amministrazione.riuso_conferma')"
+      @save="onConfermaRiuso"
+      @cancel="onAnnullaRiuso"
+    >
+      <template v-if="credenzialeDaConfermare">
+        <!-- La frase del DB: nomina gia' email e username, e' multilingua. -->
+        <Message severity="warn" :closable="false">{{ richiestaConferma?.messaggio }}</Message>
+        <div class="form-field mt-1">
+          <label>{{ t('amministrazione.riuso_username') }}</label>
+          <strong>{{ credenzialeDaConfermare.username }}</strong>
+        </div>
+        <div class="form-field">
+          <label>{{ t('amministrazione.riuso_vesti') }}</label>
+          <ul v-if="credenzialeDaConfermare.vesti.length" class="riuso-vesti">
+            <li v-for="(veste, i) in credenzialeDaConfermare.vesti" :key="i">
+              {{ etichettaRuoloApplicativo(t, te, veste.ruolo_applicativo) }}<template v-if="veste.soggetto"> — {{ veste.soggetto }}</template>
+              <span class="app-text-muted">
+                ({{ veste.attivo ? t('amministrazione.riuso_veste_attiva') : t('amministrazione.riuso_veste_spenta') }})
+              </span>
+            </li>
+          </ul>
+          <span v-else class="app-text-muted">{{ t('amministrazione.riuso_nessuna_veste') }}</span>
+        </div>
+        <small class="app-field-hint">{{ t('amministrazione.riuso_spiegazione') }}</small>
+      </template>
+    </AppDialog>
 
     <!-- Sotto-drawer: SoggettoResolver (solo creazione) -->
     <SoggettoResolver
@@ -580,6 +688,10 @@ const suVisibile = gestoreVisibile(emit, onClose)
   flex-direction: column;
   line-height: 1.2;
   cursor: pointer;
+}
+.riuso-vesti {
+  margin: 0;
+  padding-left: 1.2rem;
 }
 .operatore-toggle-help {
   font-size: 0.78rem;

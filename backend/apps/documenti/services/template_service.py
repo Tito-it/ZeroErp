@@ -104,6 +104,11 @@ class TemplateService:
         *,
         attivo: bool | None = True,
         stato: str | None = None,
+        search: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int = 25,
+        offset: int = 0,
     ) -> dict[str, Any]:
         self.get_template(user, template_id)  # 404 se fuori scope
         if stato is not None and stato not in _STATI_VERSIONE_VALIDI:
@@ -113,10 +118,12 @@ class TemplateService:
                 detail=f"ammessi={sorted(_STATI_VERSIONE_VALIDI)!r}",
             )
             raise  # unreachable, per type checker
-        rows = self._repo.list_versioni(
-            template_id, attivo=attivo, stato=stato
+        rows, total = self._repo.list_versioni(
+            template_id, attivo=attivo, stato=stato, search=search,
+            order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
         )
-        return {"results": rows}
+        # Stessa forma di `list_templates`: la view ne fa l'envelope paginato.
+        return {"results": rows, "total_count": total}
 
     # Scopo: Dettaglio versione (incluso payload HTML/CSS/markdown).
     #        Pre-verifica template visibile, poi recupera la versione e

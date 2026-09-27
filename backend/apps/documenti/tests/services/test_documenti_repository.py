@@ -9,7 +9,8 @@
 #        - filtri attivi vs assenti;
 #        - scope emittente_ids;
 #        - get_template con scope: ritorna None se row vuota;
-#        - list_versioni filtra per template_id e attivo/stato;
+#        - list_versioni filtra per template_id e attivo/stato, paginata,
+#          ordinata dalla whitelist;
 #        - get_versione binda template_id (defense-in-depth).
 #
 # Indice test (0..N):
@@ -297,25 +298,55 @@ class DocumentiRepositoryGetTemplateTests(TestCase):
 
 
 class DocumentiRepositoryVersioniTests(TestCase):
-    # 6. list_versioni filtra per template_id, attivo, stato.
+    # 6. list_versioni filtra per template_id, attivo, stato — pagina e
+    #    totale in UNA query (`COUNT(*) OVER ()`), ordine di partenza
+    #    `versione DESC` (la piu' recente in cima, come il preset).
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
     def test_list_versioni_filters_by_template_and_state(self, mocked_factory) -> None:
         cursor = _mk_cursor(
             fetchone_results=[None],
-            descriptions=[_columns("id", "versione", "stato")],
-            fetchall_results=[[(1, 1, "PUBBLICATA")]],
+            descriptions=[_columns("id", "versione", "stato", "total_count")],
+            fetchall_results=[[(1, 1, "PUBBLICATA", 1)]],
         )
         mocked_factory.return_value = cursor
 
-        rows = DocumentiRepository().list_versioni(42, attivo=True, stato="PUBBLICATA")
+        rows, totale = DocumentiRepository().list_versioni(
+            42, attivo=True, stato="PUBBLICATA",
+        )
 
         sql, params = cursor.execute.call_args_list[0].args
         self.assertIn("v.template_documento_id = %s", sql)
         self.assertIn("v.attivo = %s", sql)
         self.assertIn("v.stato = %s", sql)
-        self.assertIn("ORDER BY v.versione DESC, v.id DESC", sql)
-        self.assertEqual(params, [42, True, "PUBBLICATA"])
+        self.assertIn("COUNT(*) OVER () AS total_count", sql)
+        self.assertIn("ORDER BY v.versione DESC NULLS LAST, v.id DESC", sql)
+        self.assertEqual(params, [42, True, "PUBBLICATA", 25, 0])
         self.assertEqual(rows, [{"id": 1, "versione": 1, "stato": "PUBBLICATA"}])
+        self.assertEqual(totale, 1)
+
+    # 6-bis. list_versioni ordina dalla whitelist chiavata sul campo_sorgente:
+    #        le DATE senza verso ripiegano DESC, `valido_al` vuota vale
+    #        «senza scadenza» (COALESCE infinity), cap 200 sul limite.
+    @patch("apps.documenti.db.documenti_repository.connection.cursor")
+    def test_list_versioni_ordina_dalla_whitelist(self, mocked_factory) -> None:
+        casi = [
+            (("titolo", "asc"), "ORDER BY v.titolo ASC NULLS FIRST, v.id ASC"),
+            (("valido_dal", None), "ORDER BY v.valido_dal DESC NULLS LAST, v.id DESC"),
+            (("valido_al", None), "ORDER BY COALESCE(v.valido_al, 'infinity'::date) DESC NULLS LAST, v.id DESC"),
+            (("data_update", None), "ORDER BY v.data_update DESC NULLS LAST, v.id DESC"),
+            (("versione", "asc"), "ORDER BY v.versione ASC NULLS FIRST, v.id ASC"),
+        ]
+        for (order_by, order_dir), atteso in casi:
+            with self.subTest(order_by=order_by):
+                cursor = _mk_cursor()
+                mocked_factory.return_value = cursor
+                DocumentiRepository().list_versioni(
+                    42, attivo=None, stato=None, order_by=order_by,
+                    order_dir=order_dir, limit=999, offset=0,
+                )
+                sql, params = cursor.execute.call_args_list[0].args
+                self.assertIn(atteso, sql)
+                self.assertEqual(params[-2:], [200, 0])
 
     # 7. get_versione richiede sia versione_id sia template_documento_id.
     @patch("apps.documenti.db.documenti_repository.connection.cursor")

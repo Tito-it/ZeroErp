@@ -13,6 +13,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
+from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import paginated_envelope, parse_list_params
 from apps.core.api.success_responses import success_response
@@ -26,7 +27,7 @@ class StatiView(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
             OpenApiParameter(name="order_by", type=str, required=False),

@@ -90,9 +90,12 @@ export function generaOrdineFromOfferta(id) {
   return api.post(`${BASE}/${id}/genera-ordine/`, {})
 }
 
-// Catena revisioni che condividono il root. Lettura libera in ogni stato.
-export function listRevisioniOfferta(id) {
-  return api.get(`${BASE}/${id}/revisioni/`)
+// Catena revisioni che condividono la radice, PAGINATA (lista a catalogo
+// `vendite.offerta_revisioni`): `params` porta pagina, ordinamento e
+// `emittente_fiscale_id` del documento (lo legge il cancello di perimetro).
+// Lettura libera in ogni stato.
+export function listRevisioniOfferta(id, params = {}) {
+  return api.get(`${BASE}/${id}/revisioni/`, { params })
 }
 
 // --- Push a contratto ---

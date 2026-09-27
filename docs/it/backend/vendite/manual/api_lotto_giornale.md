@@ -3,7 +3,8 @@
 ## Scopo
 
 Rispondere a una domanda sola: **«cosa è successo a questo lotto, in che
-ordine»** — il lotto **più le sue fatture**, limitato alle righe non-INFO.
+ordine»** — il lotto **più le sue fatture**; di default le sole righe non-INFO
+(«solo problemi», filtro `info`).
 Elenco paginato e di sola lettura che alimenta la scheda **«Storia»** del
 `LottoDrawer`.
 
@@ -38,24 +39,36 @@ risolvere: qui c'è anche ciò che è andato bene e i tentativi poi superati.
 - Metodo: `GET`
 - Path canonico: `/api/v1/vendite/lotti/{lotto_id}/giornale/`
 - Header sicurezza: `Authorization: Bearer <access_token>`
+- ⭐ **Dal 2026-09-27 è la lista a catalogo `vendite.giornale`** (la stessa
+  della Storia della fattura e del giornale trasversale, decisione di Tid,
+  [brief-db-liste-datatable-grezze §3.1](../../../dev/work-in-progress/brief-db-liste-datatable-grezze.md)):
+  contratto di lista standard, dichiarato una volta per le due Storie in
+  `apps/vendite/api/_giornale_params.py`. Il vecchio contratto
+  (`page`/`page_size`/`sort_by`/`sort_dir`) non è più letto.
 - Query param (tutti opzionali):
-  - `page` (int, default `1`) · `page_size` (int, default `50`, max `200`)
-  - `sort_by` — `gravita` (default) | `quando`. Fuori whitelist ricade sul default
-  - `sort_dir` — `desc` (default) | `asc`
-  - `info` (bool, default `false`) — include le righe di routine
-  - `ritirate` (bool, default `false`) — include le segnalazioni ritirate
+  - `limit` (int, default `25`, max `200`) · `offset` (int, default `0`)
+  - `order_by` — `quando` (default, il preset) | `gravita`. Fuori whitelist → **400**
+  - `order_dir` — assente = `desc` | `asc`
+  - `emittente_soggetto_ruolo_id` — l'emittente del lotto, `lista_emittente_param`
+    della view: scioglie il cancello di perimetro della lista per chi ha più
+    emittenti nello scope. Non filtra le righe (il perimetro è il lotto del path)
+  - `info` (bool strict, default `false`) — include le righe di routine: è il
+    filtro «solo problemi», proprio della Storia del lotto
+  - `ritirate` (bool strict, default `false`) — include le segnalazioni ritirate
 
 ## Output
 
 ```json
-{"data": {"lotto_id": 6260, "count": 113, "page": 1, "page_size": 50,
-          "total_pages": 3, "ritirate_count": 2, "info_count": 173,
+{"data": {"lotto_id": 6260, "count": 113, "page": 1, "page_size": 25,
+          "total_pages": 5, "ritirate_count": 2, "info_count": 173,
           "results": [...]}}
 ```
 
 Ogni riga porta `riga_key`, `registro`, `quando`, `gravita`, `cosa`,
 `etichetta_key`, `tx_id`, `correlation_id`, `auth_user_id`, `user_insert`,
-`ritirata` e — proprio di questo endpoint — **`entity_type` / `entity_id`**.
+`ritirata`, **`entity_type` / `entity_id`** e — dal 2026-09-27, per tutti e
+tre i lettori — **`entita_display`** (il codice del lotto o il numero del
+documento: la colonna «Riferimento» della lista a catalogo).
 
 ⭐ **`etichetta_key` (dal 2026-08-31)** è l'indirizzo i18n del fatto
 (`config.eventi_dominio`), valorizzato per le sole righe **`EVENT_LOG`** — là
@@ -74,7 +87,7 @@ perché»* diventano due frasi indistinguibili nello stesso elenco.
 | Regola | Perché |
 |---|---|
 | **«Non-INFO» = tutto ciò che non è INFO, NULL compreso** | Il filtro gira sul **rango**, mai su `gravita IN ('WARN','ERROR')`: una gravità nulla significa «un vincolo si è allargato e la mappa è rimasta indietro», ed è esattamente la riga da non perdere. Un filtro per elencazione la butterebbe via **in silenzio** |
-| **Le INFO si nascondono ma si CONTANO** (`info_count`) | Un elenco filtrato e uno completo si leggono uguali. «Tre problemi» e «tre problemi più 173 passi andati bene» sono due schermate diverse |
+| **Le INFO si nascondono ma si CONTANO** (`info_count`: quelle che il filtro toglie davvero, cioè fra le righe che `ritirate` lascia passare) | Un elenco filtrato e uno completo si leggono uguali. «Tre problemi» e «tre problemi più 173 passi andati bene» sono due schermate diverse |
 | **I conteggi si calcolano PRIMA dei filtri**, in una CTE | Una finestra sulla query filtrata non vedrebbe le righe nascoste — e dire quante se ne nascondono è metà del mestiere di nasconderle |
 | Le INFO si contano **solo fra le vive** | Una riga INFO già ritirata sarebbe contata due volte, e i numeri a video non tornerebbero col totale |
 | **Il rango di gravità si calcola in SQL** | Il vocabolario è testuale: ordinandolo per testo `ERROR` verrebbe prima di `INFO` e `WARN` — un ordine alfabetico spacciato per una scala |

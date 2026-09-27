@@ -20,6 +20,7 @@ Indice test eseguiti:
 5e) LogoutViewTests.test_logout_senza_sid_non_revoca
 6) SessioniAttiveListViewTests.test_list_sessioni_success
 7) SessioniAttiveListViewTests.test_list_sessioni_empty
+7b) SessioniAttiveListViewTests.test_list_sessioni_con_ricerca_totale_attive
 8) SessioneRevocaViewTests.test_revoca_success
 9) SessioneRevocaViewTests.test_revoca_sessione_corrente
 10) SessioneRevocaViewTests.test_revoca_sessione_not_found
@@ -28,6 +29,9 @@ Indice test eseguiti:
 12) SessioniRevocaTutteViewTests.test_revoca_tutte_senza_remote
 12b) SessioniRevocaTutteViewTests.test_revoca_tutte_sessione_senza_token
 13) SessionAuditRepositoryTests.test_list_sessioni_attive
+14) SessionAuditRepositoryTests.test_paginata_esclude_la_corrente_nella_sql
+15) SessionAuditRepositoryTests.test_paginata_ordina_sulla_whitelist
+16) SessionAuditRepositoryTests.test_paginata_ordine_fuori_whitelist_ripiega
 """
 
 import json
@@ -54,6 +58,7 @@ def _mock_request(user_id: int = 1, auth: dict | None = None) -> MagicMock:
     request.user.id = user_id
     request.user.is_authenticated = True
     request.auth = auth
+    request.query_params = {}
     request._request = MagicMock()
     request._request.META = {
         "REMOTE_ADDR": "127.0.0.1",
@@ -210,21 +215,19 @@ class LogoutViewTests(TestCase):
 
 class SessioniAttiveListViewTests(TestCase):
 
-    # Scopo: Verifica GET → 200 con lista sessioni (esclusa corrente tramite sid).
+    # Scopo: Verifica GET → 200 con envelope paginato; la sessione corrente la
+    #        esclude la SQL (`escludi_jti`), non la view dopo la pagina.
     @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository")
     @patch(f"{_SESSIONI_VIEW}.success_response")
     def test_list_sessioni_success(self, mock_resp, MockRepo):
         from apps.core.api.sessioni_view import SessioniAttiveListView
 
         mock_repo = MagicMock()
-        mock_repo.list_sessioni_attive.return_value = [
-            {"jti": "current-sid", "ultimo_evento": "LOGIN", "ip_address": "10.0.0.1",
-             "user_agent": "Firefox", "data_inizio": datetime(2026, 3, 9, 8, 0),
-             "data_ultimo_evento": datetime(2026, 3, 9, 10, 0)},
+        mock_repo.list_sessioni_attive_paginata.return_value = ([
             {"jti": "other-sid", "ultimo_evento": "LOGIN", "ip_address": "10.0.0.2",
              "user_agent": "Chrome", "data_inizio": datetime(2026, 3, 9, 7, 0),
              "data_ultimo_evento": datetime(2026, 3, 9, 9, 0)},
-        ]
+        ], 1)
         MockRepo.return_value = mock_repo
         mock_resp.return_value = MagicMock(status_code=200)
 
@@ -237,8 +240,18 @@ class SessioniAttiveListViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         call_args = mock_resp.call_args[0][0]
         self.assertEqual(call_args["count"], 1)
-        self.assertEqual(len(call_args["sessioni"]), 1)
-        self.assertEqual(call_args["sessioni"][0]["jti"], "other-sid")
+        self.assertEqual(call_args["totale_attive"], 1)
+        self.assertEqual(call_args["page"], 1)
+        self.assertEqual(call_args["page_size"], 25)
+        self.assertEqual(call_args["results"][0]["jti"], "other-sid")
+        kwargs = mock_repo.list_sessioni_attive_paginata.call_args.kwargs
+        self.assertEqual(kwargs["escludi_jti"], "current-sid")
+        self.assertIsNone(kwargs["search"])
+        self.assertEqual(kwargs["order_by"], "data_ultimo_evento")
+        # ⚠️ Assente = None: il verso lo decide il repository (DESC sulle date).
+        self.assertIsNone(kwargs["order_dir"])
+        # Senza ricerca il totale delle attive E' il count: nessuna seconda lettura.
+        mock_repo.conta_sessioni_attive.assert_not_called()
 
     # Scopo: Verifica GET con nessuna sessione → 200 con lista vuota.
     @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository")
@@ -247,7 +260,7 @@ class SessioniAttiveListViewTests(TestCase):
         from apps.core.api.sessioni_view import SessioniAttiveListView
 
         mock_repo = MagicMock()
-        mock_repo.list_sessioni_attive.return_value = []
+        mock_repo.list_sessioni_attive_paginata.return_value = ([], 0)
         MockRepo.return_value = mock_repo
         mock_resp.return_value = MagicMock(status_code=200)
 
@@ -258,7 +271,39 @@ class SessioniAttiveListViewTests(TestCase):
 
         call_args = mock_resp.call_args[0][0]
         self.assertEqual(call_args["count"], 0)
-        self.assertEqual(call_args["sessioni"], [])
+        self.assertEqual(call_args["results"], [])
+        self.assertEqual(call_args["totale_attive"], 0)
+
+    # Scopo: ⭐ Con una ricerca `count` conta le TROVATE e `totale_attive` le
+    #        sessioni che esistono: il badge e «revoca tutte» parlano del secondo.
+    @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository")
+    @patch(f"{_SESSIONI_VIEW}.success_response")
+    def test_list_sessioni_con_ricerca_totale_attive(self, mock_resp, MockRepo):
+        from apps.core.api.sessioni_view import SessioniAttiveListView
+
+        mock_repo = MagicMock()
+        mock_repo.list_sessioni_attive_paginata.return_value = ([{"jti": "a"}], 1)
+        mock_repo.conta_sessioni_attive.return_value = 3
+        MockRepo.return_value = mock_repo
+        mock_resp.return_value = MagicMock(status_code=200)
+
+        request = _mock_request(auth={"sid": "current-sid"})
+        request.query_params = {
+            "search": "firefox", "order_by": "ip_address", "order_dir": "asc",
+            "limit": "10", "offset": "10",
+        }
+
+        SessioniAttiveListView().get(request)
+
+        call_args = mock_resp.call_args[0][0]
+        self.assertEqual(call_args["count"], 1)
+        self.assertEqual(call_args["totale_attive"], 3)
+        self.assertEqual(call_args["page"], 2)
+        kwargs = mock_repo.list_sessioni_attive_paginata.call_args.kwargs
+        self.assertEqual(kwargs["search"], "firefox")
+        self.assertEqual((kwargs["order_by"], kwargs["order_dir"]), ("ip_address", "asc"))
+        self.assertEqual((kwargs["limit"], kwargs["offset"]), (10, 10))
+        mock_repo.conta_sessioni_attive.assert_called_once_with(1, escludi_jti="current-sid")
 
 
 # --------------- SessioneRevocaView ---------------
@@ -522,3 +567,53 @@ class SessionAuditRepositoryTests(TestCase):
         mock_cursor.execute.assert_called_once()
         call_args = mock_cursor.execute.call_args[0]
         self.assertEqual(call_args[1], [1, 1])
+
+    # Scopo: ⛔ La sessione corrente si toglie nella SQL (`IS DISTINCT FROM`),
+    #        cosi' `COUNT(*) OVER ()` conta giusto; parametri nell'ordine della
+    #        CTE (utente due volte), poi il sid, poi LIMIT/OFFSET.
+    @patch("apps.core.db.session_audit_repository.fetch_paged_with_total")
+    def test_paginata_esclude_la_corrente_nella_sql(self, mock_fetch):
+        from apps.core.db.session_audit_repository import SessionAuditRepository
+
+        mock_fetch.return_value = ([], 0)
+        SessionAuditRepository().list_sessioni_attive_paginata(
+            7, escludi_jti="sid-corrente", limit=25, offset=50,
+        )
+
+        sql, params = mock_fetch.call_args.args
+        self.assertIn("r.jti IS DISTINCT FROM %s", sql)
+        self.assertIn("COUNT(*) OVER () AS total_count", sql)
+        self.assertEqual(params, [7, 7, "sid-corrente", 25, 50])
+        # Il conteggio di ripiego ha lo stesso FROM/WHERE, senza pagina.
+        kwargs = mock_fetch.call_args.kwargs
+        self.assertIn("r.jti IS DISTINCT FROM %s", kwargs["fallback_count_sql"])
+        self.assertEqual(kwargs["fallback_params"], [7, 7, "sid-corrente"])
+        self.assertEqual(kwargs["offset"], 50)
+        # Default: l'ultimo evento dal piu' recente, spareggio sul sid.
+        self.assertIn("ORDER BY r.data_insert DESC NULLS LAST, r.jti DESC", sql)
+
+    # Scopo: le chiavi della whitelist sono i `campo_sorgente`; una data senza
+    #        verso ordina DESC (`colonne_desc`).
+    @patch("apps.core.db.session_audit_repository.fetch_paged_with_total")
+    def test_paginata_ordina_sulla_whitelist(self, mock_fetch):
+        from apps.core.db.session_audit_repository import SessionAuditRepository
+
+        mock_fetch.return_value = ([], 0)
+        repo = SessionAuditRepository()
+        repo.list_sessioni_attive_paginata(1, escludi_jti=None, order_by="ip_address", order_dir="asc")
+        self.assertIn("ORDER BY r.ip_address ASC NULLS FIRST, r.jti ASC", mock_fetch.call_args.args[0])
+        repo.list_sessioni_attive_paginata(1, escludi_jti=None, order_by="data_inizio")
+        self.assertIn("ORDER BY pl.data_inizio DESC NULLS LAST, r.jti DESC", mock_fetch.call_args.args[0])
+
+    # Scopo: un `order_by` fuori whitelist ripiega sul default, mai SQL grezzo.
+    @patch("apps.core.db.session_audit_repository.fetch_paged_with_total")
+    def test_paginata_ordine_fuori_whitelist_ripiega(self, mock_fetch):
+        from apps.core.db.session_audit_repository import SessionAuditRepository
+
+        mock_fetch.return_value = ([], 0)
+        SessionAuditRepository().list_sessioni_attive_paginata(
+            1, escludi_jti=None, order_by="user_agent; DROP TABLE x", order_dir="asc",
+        )
+        sql = mock_fetch.call_args.args[0]
+        self.assertNotIn("DROP", sql)
+        self.assertIn("ORDER BY r.data_insert ASC NULLS FIRST, r.jti ASC", sql)

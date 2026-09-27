@@ -24,13 +24,23 @@
 > - ✅ **seed delle righe 1-9 applicato** da Tid alle 01:00 (liste 83-96 e le
 >   loro 69 colonne a DB), nella versione con `vista_sql` NULL su quattro
 >   geografiche;
-> - ⏳ **§6.3 NON applicato** (scritto dopo le 01:00): `20260927-30` (trigger di
->   validazione nello schema), `-31` (quattro viste geografiche) e le righe CSV
->   cambiate (liste 14 e 24, `vista_sql` di 91/92/94/95). Al prossimo migrate
->   `20_code` precede `80_data`: viste e trigger corretti esistono prima che il
->   CSV aggiorni `vista_sql`, e il ricaricamento delle colonne le valida contro
->   le viste nuove;
-> - ⏳ corsa pgTAP di Tid (§7), poi il giro BE/FE (§4).
+> - ✅ **§6.3 applicato** da Tid alle 01:08 (`20260927-30`, `-31`); verificati
+>   a DB il 2026-09-27 (sessione BE): i due trigger cercano la vista in
+>   `schema_dati` (e la definizione scatta anche su `UPDATE OF schema_dati`),
+>   le quattro `config.vw_*_lista` con `security_invoker=on`, `vista_sql` su
+>   tutte e sei le geografiche con ogni `campo_sorgente` presente nella vista,
+>   lista 14 globale e 24 `multi_emittente`, messaggi 428/429 aggiornati; il
+>   lock generato copre `revisione_padre_id` e `revisione_radice_id`, nessuna
+>   radice NULL;
+> - ✅ corsa pgTAP di Tid (§7) — dichiarata nel commit `55bbc1e10`;
+> - ✅ giro BE/FE (§4) scritto il 2026-09-27, righe 1-10, non committato:
+>   suite BE e FE verdi, registro delle `DataTable` grezze abbassato (8 in
+>   meno, `GeoSearchTable` ritirato). Decisioni di Tid dello stesso giorno:
+>   padre «documento + emittente» estratto in BB (regola del 2), PK
+>   emittente esposta sul lotto, `useRevisioniTab.js` cancellato, NULLS come
+>   da BB, reparti solo attivi;
+> - ⏳ **§9: richiesta nuova al team DB** (colonne del nucleo ordinabili,
+>   provincia nella lista CAP), poi la sua ricaduta BE (§9.3).
 
 ---
 
@@ -232,7 +242,7 @@ manda come `order_by`); ogni costante ha un tiebreaker fisso.
 
 | # | Whitelist (colonna → espressione) | Ricerca (`RicercaFull`) | Da sapere |
 |---|---|---|---|
-| 1 | `ip_address`→`r.ip_address`, `data_ultimo_evento`→`r.data_insert`, `data_inizio`→`pl.data_inizio` NULLS LAST; tie `r.jti` | `user_agent`, `ip_address::text` | l'esclusione della sessione corrente va nella SQL (`r.jti <> %s`), o il conteggio conta una riga in più. «Dispositivo» legge `user_agent`: il FE ne ricava browser/OS in una cella |
+| 1 | `ip_address`→`r.ip_address`, `data_ultimo_evento`→`r.data_insert`, `data_inizio`→`pl.data_inizio` (NULL = minimo, come da BB: in fondo in DESC, in testa in ASC); tie `r.jti` | `user_agent`, `ip_address::text` | l'esclusione della sessione corrente va nella SQL (`r.jti <> %s`), o il conteggio conta una riga in più. «Dispositivo» legge `user_agent`: il FE ne ricava browser/OS in una cella |
 | 2 | `progressivo_sorgente`, `generato_at`, `titolo`, `nome_file`, `stato` su `d.*`; tie `d.id DESC` | `titolo`, `nome_file` | «Originale» legge `has_file_principale` (boolean). La view nasce da una factory che serve 8 sorgenti: il presidio `test_perimetro_emittente_copertura` non vede un `lista_codice` messo dalla factory — sottoclassi col codice scritto, o eccezione dichiarata al presidio |
 | 3 | `sequenza`→`f.sequenza`, `template_flusso_descrizione`→`tf.descrizione`, `stato_descrizione`→`sf.descrizione`, `esito_descrizione`, `data_scadenza`, `risorsa_umana_display`, `unita_organizzativa_descrizione` (NULLS LAST), `data_insert`; tie `f.id` | `tf.descrizione` | ⛔ il `JOIN pratiche.pratiche` resta anche nel `COUNT`: `pratiche.flussi` non ha RLS, il perimetro lo decide la pratica. L'esito esce come descrizione, non più come codice grezzo |
 | 4 | `emittente_codice`→`ef.codice`, `emittente_descrizione`→`s_ef.ragione_sociale_completa`, `emittente_attivo`→`ef.attivo`, `override_attivo`→`efu.attivo`; tie `ef.id` | `ef.codice`, ragione sociale | oggi la view «non accetta order_by»; lista e conteggio in una query (`fetch_paged_with_total`). Lista `multi_emittente` (§6) |
@@ -295,7 +305,7 @@ Non sono seed, ma bloccano la chiusura del registro delle `DataTable` grezze:
   reso, reso da DDT): stessa impalcatura sullo stesso BB
   `useRigheSelezioneQta`, candidata alla regola del 2.
 
-## 6. Lato DB — cosa è stato scritto (2026-09-27; §6.1-6.2 applicati, §6.3 no)
+## 6. Lato DB — cosa è stato scritto (2026-09-27; tutto applicato)
 
 ### 6.1 Seed delle righe 1-9
 
@@ -419,5 +429,56 @@ Non bloccano l'apply; ognuna si cambia dal CSV. ✅ = decisa da Tid il
      `multi_emittente`**;
    - ✅ i trigger che validano `vista_sql`/`campo_sorgente` cercano la vista
      **nel suo schema** (§6.3);
-   - ⏳ la lista CAP non restituisce la provincia, quindi due comuni omonimi
-     non si distinguono: aperta.
+   - ✅ la lista CAP non restituisce la provincia, quindi due comuni omonimi
+     non si distinguono: **deve mostrarla** (Tid, 2026-09-27) → §9.2.
+
+## 9. Seguito — richiesta al team DB (Tid, 2026-09-27)
+
+Emerso dal giro BE/FE del §4. Solo seed e una vista; il BE segue a seed
+applicati (§9.3).
+
+### 9.1 Colonne del nucleo rese ordinabili
+
+`gen_seed_lista.py --verifica-ordinamento` dava «NUCLEO rotto» su tre liste:
+una colonna identificativa o di stato con `ordinabile = f`. Decisione di Tid:
+**si rendono ordinabili**. In `lista_colonna.csv`, `ordinabile` da `f` a `t`:
+
+| id | Lista | Colonna | `campo_sorgente` |
+| --- | --- | --- | --- |
+| 1000 | 93 `config.stati` | `sigla_stato` | `sigla_stato` |
+| 979 | 89 `vendite.preventivo_revisioni` | `numero` | `numero` |
+| 981 | 89 `vendite.preventivo_revisioni` | `stato` | `stato_descrizione` |
+| 986 | 90 `vendite.offerta_revisioni` | `numero` | `codice` |
+| 988 | 90 `vendite.offerta_revisioni` | `stato` | `stato_descrizione` |
+
+⚠️ 979/986 e 981/988 restano **gemelle** (§4.1 «7 e 8, colonne gemelle»): si
+cambiano insieme.
+
+### 9.2 La provincia nella lista CAP (`config.codici_postali`, 95)
+
+Due comuni omonimi in province diverse oggi escono identici. Si chiede:
+
+- `config.vw_codici_postali_lista` (corpo dalla doc auto-gen): in coda
+  `c.provincia_id` e `TRIM(p.sigla) AS provincia_sigla`, con `LEFT JOIN
+  config.province p ON p.id = c.provincia_id` (il comune può non avere la
+  provincia: la riga del CAP non deve sparire). `security_invoker=on`
+  ri-specificata. Stessa forma e stesso TRIM di `vw_comuni_lista`
+  (`province.sigla` è `character(n)`);
+- una `lista_colonna` per la 95: `provincia_sigla`, etichetta «Provincia»,
+  chiave i18n `indirizzi.col_provincia` (già usata dalla colonna 1003 della
+  lista comuni), `ordinabile = t`, `ricercabile_full = f`, gruppo
+  «Territorio», dopo `comune`; e la sua `lista_preset_colonna` visibile nel
+  preset di sistema 95.
+
+### 9.3 Ricaduta BE (dev/backend-tid, dopo il seed)
+
+- whitelist: `sigla_stato` in `_STATI_ORDER_COLS`; `numero` e
+  `stato_descrizione` nelle due costanti delle revisioni
+  (`PREVENTIVO_REVISIONI_ORDER_COLUMNS` su `v.numero`,
+  `OFFERTA_REVISIONI_ORDER_COLUMNS` su `v.codice`, entrambe
+  `stato_descrizione` su `v.stato_descrizione`);
+- `geo_repository.list_codici_postali`: `provincia_sigla` nella proiezione e
+  in `_CODICI_POSTALI_ORDER_COLS`; lo stesso nel dettaglio
+  `get_codice_postale`;
+- poi `--verifica-ordinamento` sulle quattro liste e i presidi
+  `test_liste_configurabili_seed` / `test_lista_proiezione_campo_sorgente`.

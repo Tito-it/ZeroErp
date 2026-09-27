@@ -28,13 +28,16 @@ from apps.core.api.endpoint_helpers import get_scope_user_id
 from apps.core.api.payload_validators import (
     paginated_envelope,
     parse_list_params,
-    qp_int_strict,
     qp_str,
 )
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.vendite.api._giornale_params import (
+    EMITTENTE_PARAM_GIORNALE_ENTITA,
+    PARAMS_LISTA_GIORNALE_ENTITA,
+    parametri_lista_giornale_entita,
+)
 from apps.vendite.api._list_filters_helpers import extract_doc_list_filters
-from apps.core.services.value_normalizer import as_bool
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.vendite_service import (
     get_fattura_dettaglio,
@@ -115,6 +118,11 @@ class ApiFatturaGiornale(DomainAPIView):
     ⭐ E' il **primo consumatore** di quella vista: fino al 2026-08-24 il suo
     perimetro era verificato dal pgTAP e non dall'uso.
 
+    ⭐ Dal 2026-09-27 e' la lista a catalogo `vendite.giornale` — la stessa del
+    giornale trasversale e della Storia del lotto — filtrata sul documento:
+    contratto di lista standard (`limit`/`offset`/`order_by`/`order_dir`,
+    `_giornale_params`), ordine di partenza del preset (`quando desc`).
+
     ⛔ Non e' il pannello «Collegamenti» (`/passaggi/`), che dice **con quali
     altri documenti** questo e' legato: qui si risponde a *«cosa gli e'
     successo»*, che e' una domanda diversa e ha una sorgente diversa.
@@ -129,43 +137,11 @@ class ApiFatturaGiornale(DomainAPIView):
     # Stesso livello oggetto del dettaglio: chi non puo' vedere la fattura non
     # ne vede nemmeno la storia.
     model_permission = ("vendite", "fattura")
+    lista_codice = "vendite.giornale"
+    lista_emittente_param = EMITTENTE_PARAM_GIORNALE_ENTITA
 
     @extend_schema(
-        parameters=[
-            OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(
-                name="sort_by",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "Colonna di ordinamento: `gravita` (default, i piu' gravi "
-                    "prima) oppure `quando`. Un valore fuori whitelist ricade "
-                    "sul default. ⛔ L'ordinamento e' del SERVER perche' la "
-                    "lista e' paginata: ordinare la sola pagina caricata "
-                    "risponderebbe a una domanda piu' stretta senza dirlo."
-                ),
-            ),
-            OpenApiParameter(
-                name="sort_dir",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Verso: `desc` (default) o `asc`.",
-            ),
-            OpenApiParameter(
-                name="ritirate",
-                type=bool,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "Include anche le segnalazioni RITIRATE (`disabilitato`), che di "
-                    "default sono nascoste perche' appartengono a un tentativo poi "
-                    "rifatto. Quante ne sono state nascoste lo dice `ritirate_count`."
-                ),
-            ),
-        ],
+        parameters=PARAMS_LISTA_GIORNALE_ENTITA,
         responses={
             200: inline_serializer(
                 name="VenditeFatturaGiornaleResponse",
@@ -189,14 +165,9 @@ class ApiFatturaGiornale(DomainAPIView):
     )
     # Scopo: Restituisce via GET il giornale paginato della fattura.
     def get(self, request: Request, fattura_id: int) -> JsonResponse:
-        q = request.query_params
         data = get_fattura_giornale(
             fattura_id=fattura_id,
-            page=qp_int_strict(q.get("page"), "page", 1),
-            page_size=qp_int_strict(q.get("page_size"), "page_size", 50),
-            includi_ritirate=as_bool(q.get("ritirate"), default=False),
-            sort_by=q.get("sort_by") or "gravita",
-            sort_dir=q.get("sort_dir") or "desc",
+            **parametri_lista_giornale_entita(request.query_params),
             auth_user_id=get_scope_user_id(request),
         )
         return success_response(data)

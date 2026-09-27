@@ -41,13 +41,21 @@ service `get_fattura_giornale` (`apps.vendite.services.vendite_service`) →
 - Path: `/api/v1/vendite/fatture/<fattura_id>/giornale/`
 - Header: `Authorization: Bearer <access_token>`
 
+⭐ **Dal 2026-09-27 è la lista a catalogo `vendite.giornale`** (lista 79, la
+stessa del giornale trasversale e della Storia del lotto —
+[brief-db-liste-datatable-grezze §3.1](../../../dev/work-in-progress/brief-db-liste-datatable-grezze.md),
+decisione di Tid): contratto di lista standard, dichiarato una volta per le due
+Storie in `apps/vendite/api/_giornale_params.py`. ⛔ Il vecchio contratto
+(`page`/`page_size`/`sort_by`/`sort_dir`) non è più letto.
+
 | Query param | Default | Cosa fa |
 | --- | --- | --- |
-| `page` | `1` | Pagina (1-based) |
-| `page_size` | `50` | Righe per pagina (max 200) |
-| `sort_by` | `gravita` | Colonna di ordinamento: `gravita` (i più gravi prima) o `quando`. ⚠️ Fuori whitelist → ricade sul default, **non** è un 400: un ordinamento che non si può applicare è una preferenza mancata, non una richiesta sbagliata |
-| `sort_dir` | `desc` | Verso: `desc` o `asc` |
-| `ritirate` | `false` | Include anche le segnalazioni **ritirate**, di default nascoste |
+| `limit` | `25` | Righe per pagina (max 200) |
+| `offset` | `0` | Scostamento; la `page` della risposta si ricava da qui |
+| `order_by` | `quando` | Colonna di ordinamento (`campo_sorgente` del catalogo): `quando` o `gravita`. ⛔ Fuori whitelist → **400** `E_VENDITE_VALIDATION`: una lista ordinata diversamente da come è stata chiesta non solleva niente |
+| `order_dir` | *(assente = `desc`)* | Verso: `desc` o `asc` |
+| `emittente_soggetto_ruolo_id` | — | L'emittente (soggetto-ruolo) del documento. È il `lista_emittente_param` della view: la lista è `perimetro_emittente` e **non** `multi_emittente`, e senza chi ha più emittenti nello scope riceverebbe `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE` dentro il drawer. ⚠️ **Non filtra** le righe: il perimetro è la fattura del path, e a dire se la si vede è il cancello di testata |
+| `ritirate` | `false` | Include anche le segnalazioni **ritirate**, di default nascoste. Strict: un valore non booleano è un 400 |
 
 ## Output
 
@@ -59,7 +67,7 @@ service `get_fattura_giornale` (`apps.vendite.services.vendite_service`) →
     "fattura_id": 19563,
     "count": 2,
     "page": 1,
-    "page_size": 50,
+    "page_size": 25,
     "total_pages": 1,
     "ritirate_count": 1,
     "results": [
@@ -74,7 +82,10 @@ service `get_fattura_giornale` (`apps.vendite.services.vendite_service`) →
         "auth_user_id": null,
         "user_insert": "tid",
         "ritirata": false,
-        "etichetta_key": null
+        "entity_type": "FATTURA",
+        "entity_id": 19563,
+        "etichetta_key": null,
+        "entita_display": "19563 - A"
       }
     ]
   },
@@ -101,7 +112,12 @@ client la legga** prima di dichiarare fatta una capability. Se ne è accorto
 l'arrivo di `LOTTO_RIAPERTO` (2026-08-31), che a video sarebbe comparso come
 codice macchina.
 
-- `400`: `E_VENDITE_VALIDATION` — `fattura_id` non positivo, paginazione fuori limiti
+⭐ **`entita_display` — dal 2026-09-27** anche qui (prima solo nel giornale
+trasversale): è la colonna «Riferimento» della lista a catalogo, risolta sulla
+pagina da `_aggiungi_entita_display`, che ora chiama il corpo comune
+`_list_giornale` per tutti e tre i lettori.
+
+- `400`: `E_VENDITE_VALIDATION` — `fattura_id` non positivo, paginazione fuori limiti, `order_by`/`order_dir` fuori whitelist; `E_VALIDATION_INPUT` — `ritirate` non booleano
 - `403`: area `vendite` BLOCCATA, oppure oggetto `vendite.fattura` bloccato
 - `404`: `E_FATTURA_NON_TROVATA` — inesistente **oppure fuori scope emittente**
 
@@ -128,22 +144,31 @@ Verificato sul database, fattura 19563:
 regressione sarebbe **silenziosa**, perché la risposta sbagliata è un `200` con
 un elenco vuoto — che non somiglia a un difetto.
 
-### ⭐ L'ordine di default è la GRAVITÀ, non il tempo *(Tid, 2026-08-24)*
+### ⭐ L'ordine di default è il TEMPO, dal più recente *(dal 2026-09-27)*
 
-Deciso dopo la validazione in-app: davanti a un documento la prima domanda è
-**«c'è qualcosa che non va?»**, non «cosa è successo per primo». La cronologia
-resta a un clic, sulla colonna `quando`.
+È il preset della lista a catalogo (`giornale_default`, `quando desc`), e la sede
+è una per i tre lettori: `GIORNALE_ORDINE_DEFAULT` in `vendite_repository.py`.
+La gravità resta a un clic, sulla sua colonna.
+
+📌 **Dal 2026-08-24 al 2026-09-27 il default era la GRAVITÀ** (Tid, dopo la
+validazione in-app: davanti a un documento la prima domanda è «c'è qualcosa che
+non va?»). Quella domanda ha ora una risposta sua: il banner in testa al drawer
+legge `errore_vivo` dal **dettaglio** della fattura
+(`VenditeRepository.get_giornale_errore_vivo`, la riga ERROR più recente e non
+ritirata) e non dipende più dall'ordine della pagina — che il preset o
+l'operatore possono cambiare.
 
 ```sql
-ORDER BY t.rango_gravita DESC, t.quando DESC, t.riga_id DESC   -- default
-ORDER BY t.quando DESC, t.riga_id DESC                          -- sort_by=quando
+ORDER BY t.quando DESC, t.riga_id DESC                          -- default
+ORDER BY t.rango_gravita DESC, t.quando DESC, t.riga_id DESC   -- order_by=gravita
 ```
 
 ⛔ **L'ordinamento è del server, e non è pignoleria**: la lista è **paginata**,
 quindi riordinare nel client riordinerebbe la sola pagina caricata — «il più
 grave» diventerebbe «il più grave fra i primi 50 in ordine di tempo», senza
 dirlo. È un difetto silenzioso: a video un elenco ordinato male somiglia in
-tutto a uno ordinato bene. *(Lato frontend è il `lazy` della `DataTable`.)*
+tutto a uno ordinato bene. *(Lato frontend la lista è `<ListaConfigurabile>`
+paginata dal server, nel tab condiviso `GiornaleEntitaTab`.)*
 
 ⚠️ **Il rango non è la colonna**: il vocabolario normalizzato della vista è
 testuale — `INFO | WARN | ERROR` — e ordinarlo per testo darebbe **ERROR < INFO
@@ -173,7 +198,7 @@ istante l'ordine tornerà arbitrario: lì servirà una sequenza vera, non questo
 ripiego.
 
 ⭐ **Dentro la stessa gravità il tempo resta DISCENDENTE anche con
-`sort_dir=asc`**, ed è una scelta: *«i meno gravi prima»* non vuol dire *«i più
+`order_dir=asc`**, ed è una scelta: *«i meno gravi prima»* non vuol dire *«i più
 vecchi prima»*. Presidiato da un test apposta.
 
 ### Le segnalazioni ritirate si nascondono, e il numero le dichiara

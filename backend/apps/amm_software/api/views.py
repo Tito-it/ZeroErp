@@ -23,6 +23,7 @@ from apps.core.api.payload_validators import (
     corpo_oggetto,
     optional_int,
     optional_uuid,
+    paginated_envelope,
     parse_list_params,
     qp_bool_optional,
     qp_int,
@@ -31,6 +32,7 @@ from apps.core.api.payload_validators import (
     qp_str_upper,
 )
 from apps.core.api.success_responses import success_response
+from apps.amm_software.db.amm_software_repository import REPARTI_ORDER_COLUMNS
 from apps.amm_software.services.amm_software_service import AmmSoftwareService
 from apps.core.db.dbops_repository import ERROR_LOG_SORT_COLUMNS
 from apps.core.services.coda_lavori.scope import scope_operatore_da_request
@@ -121,6 +123,38 @@ class OperatoriListView(AdminAPIView):
     # Scopo: Crea operatore. Flusso A (soggetto nuovo) o B (soggetto esistente).
     def post(self, request: Request) -> JsonResponse:
         return handle_post_json(request, handler=AmmSoftwareService().create_operatore)
+
+
+class CredenzialePerEmailView(AdminAPIView):
+    """GET la credenziale che porta un'email: i dati del dialog di conferma del riuso."""
+
+    @extend_schema(
+        summary="Credenziale di un'email (dialog del consenso al riuso)",
+        description=(
+            "La credenziale che porta l'email, con username e vesti: e' cio' "
+            "che il pannello mostra all'admin sul 409 "
+            "`E_CREDENZIALE_DA_CONFERMARE` della creazione. Confermato, la "
+            "creazione si rimanda con `riusa_auth_user_id` = `auth_user_id` "
+            "letto qui. `data.credenziale` e' null se l'email non ha "
+            "credenziale (anche assente o vuota). Legge `script.fn_get_credenziale_per_email`, la "
+            "stessa lettura del rifiuto."
+        ),
+        parameters=[OpenApiParameter(
+            name="email", type=str, required=False,
+            description="L'email del modulo di creazione. Assente o vuota = nessuna credenziale (null, nessun 400).",
+        )],
+        responses={200: inline_serializer(name="CredenzialePerEmailResp", fields={
+            "data": inline_serializer(name="CredenzialePerEmailData", fields={
+                "credenziale": serializers.DictField(allow_null=True),
+            }),
+        })},
+    )
+    # Scopo: Legge la credenziale di un'email; None se non ne ha.
+    def get(self, request: Request) -> JsonResponse:
+        email = qp_str(request.query_params.get("email"))
+        return success_response(
+            {"credenziale": AmmSoftwareService().get_credenziale_per_email(email)}
+        )
 
 
 class OperatoriDetailView(AdminAPIView):
@@ -276,11 +310,40 @@ class EmittentiScopeView(AdminAPIView):
 
 
 class RepartiListView(AdminAPIView):
-    """GET lista reparti."""
+    """GET lista reparti (`amm.reparti`, lista 87): envelope paginato standard.
 
-    @extend_schema(responses={200: inline_serializer(name="RepartiListResp", fields={"data": serializers.DictField()})})
+    ⛔ Nessun `lista_codice`: su `AdminAPIView` il cancello di perimetro non
+    c'e', e la lista e' GLOBALE (`config.unita_organizzative`,
+    `perimetro_emittente = false`) — l'esenzione sta in
+    `test_perimetro_emittente_copertura._ESENZIONI`.
+    """
+
+    is_search_endpoint = True
+
+    @extend_schema(
+        parameters=[
+            param_ricerca_full(),
+            OpenApiParameter(name="limit", type=int, required=False),
+            OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(
+                name="order_by", type=str, required=False,
+                description=descrizione_order_by(REPARTI_ORDER_COLUMNS, "Default: descrizione."),
+            ),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
+        responses={200: inline_serializer(name="RepartiListResp", fields={"data": serializers.DictField()})},
+    )
+    # Scopo: Lista paginata dei reparti attivi con profilo e operatori.
     def get(self, request: Request) -> JsonResponse:
-        return success_response({"results": AmmSoftwareService().list_reparti()})
+        p = parse_list_params(request.query_params, default_order="descrizione")
+        results, total = AmmSoftwareService().list_reparti(
+            search=p["search"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            limit=p["limit"],
+            offset=p["offset"],
+        )
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
 
 class PermessiEreditatiView(AdminAPIView):

@@ -402,7 +402,7 @@ ha ogni store-lista, anche quelli scritti a mano: nessuno store la dichiara per
 conto suo. Nessuna view lo scrive a mano: la casella e il catalogo non possono più dire due
 cose diverse. ⚠️ Solo `false` la toglie — `null` («non si sa ancora») la lascia,
 così non lampeggia a ogni apertura. ⛔ Le caselle **senza lista a catalogo**
-(`GeoSearchTable`, `ConfigTablePanel`, i drawer di BoM e righe del contratto) e la
+(`ConfigTablePanel`, i drawer di BoM e righe del contratto) e la
 casella della dashboard gruppi, fuori da `FiltriLista`, restano come sono: non
 hanno un catalogo da leggere.
 
@@ -620,7 +620,7 @@ componente lo grida in console, ma una console la guarda chi apre quella lista,
 non la CI.
 ⚠️ **E il buco che resta è dichiarato**: quando il `:store` non si risolve a una
 sorgente leggibile (lo store arriva come **prop**: `DrawerTabLista`,
-`GeoSearchTable`, `CodaFiltriToolbar`) il file finisce fra i «non verificabili»
+`CodaFiltriToolbar`) il file finisce fra i «non verificabili»
 e viene **stampato**. Un cancello che tace su ciò che non sa guardare fa credere
 di averlo guardato.
 

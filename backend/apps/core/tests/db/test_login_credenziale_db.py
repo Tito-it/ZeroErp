@@ -38,6 +38,7 @@ Indice test eseguiti:
 7) LoginViewDbTests.test_attesa_crescente_403_con_i_secondi_nel_messaggio
 8) CicloOperatoreDbTests.test_operatore_nuovo_crea_invita_attiva_entra
 9) CicloOperatoreDbTests.test_credenziale_riusata_un_clic_e_password_intatta
+   (con la lettura del dialog, B-20: la conferma dichiara l'id letto dall'endpoint)
 """
 
 from __future__ import annotations
@@ -404,6 +405,14 @@ class CicloOperatoreDbTests(_ViewVere):
         assert dettaglio is not None
         return dettaglio["veste_attiva"]
 
+    # Scopo: La lettura del dialog (B-20) attraverso la view vera, da SUPER_ADMIN.
+    def _credenziale_per_email(self, email: str) -> dict | None:
+        client = APIClient()
+        client.force_authenticate(User.objects.get(id=self.admin_id))
+        r = client.get("/api/v1/amm-software/operatori/credenziale-per-email/", {"email": email})
+        self.assertEqual(r.status_code, 200, r.content)
+        return r.json()["data"]["credenziale"]
+
     def _richiede_password(self, token: str) -> bool:
         dati = APIClient().get(f"/api/v1/auth/attivazione-validate/{token}/").json()["data"]
         self.assertTrue(dati["valid"])
@@ -457,6 +466,13 @@ class CicloOperatoreDbTests(_ViewVere):
         self.assertEqual(structured_db_error_code(ctx.exception), "E_CREDENZIALE_DA_CONFERMARE")
         self.assertIn(persona.username, str(ctx.exception))
 
+        # Il dialog (B-20): legge la credenziale dall'endpoint vero, con la
+        # stessa email della creazione. Mostra username e vesti, e l'id letto
+        # e' quello che si dichiara confermando.
+        letta = self._credenziale_per_email(persona.email.upper())
+        self.assertEqual(letta, {"auth_user_id": persona.id, "username": persona.username, "vesti": []})
+        self.assertIsNone(self._credenziale_per_email(f"nessuno_{uuid.uuid4().hex[:8]}@example.invalid"))
+
         # La dichiarazione di un'ALTRA credenziale non passa: una che esiste
         # davvero, non un id inventato (proverebbe solo «id inesistente»).
         altra = _nuova_credenziale()
@@ -465,12 +481,15 @@ class CicloOperatoreDbTests(_ViewVere):
                        codice_fiscale=cf, riusa_auth_user_id=altra.id)
         self.assertEqual(structured_db_error_code(ctx.exception), "E_CREDENZIALE_DA_CONFERMARE")
 
-        # Secondo tempo: confermata la credenziale trovata, si crea.
+        # Secondo tempo: confermata la credenziale letta dal dialog, si crea.
         creato = self._crea(email=persona.email.upper(), username="ignorato_dalla_madre",
-                            codice_fiscale=cf, riusa_auth_user_id=persona.id)
+                            codice_fiscale=cf, riusa_auth_user_id=letta["auth_user_id"])
         self.assertTrue(creato["credenziale_riusata"])
         self.assertEqual(creato["auth_user_id"], persona.id)
         self.assertEqual(creato["username"], persona.username)
+        # Ora la credenziale ha la veste OPERATORE, spenta: il dialog la vede.
+        vesti = self._credenziale_per_email(persona.email)["vesti"]
+        self.assertEqual([(v["ruolo_applicativo"], v["attivo"]) for v in vesti], [("OPERATORE", False)])
 
         # Prima dell'attivazione non si entra. Qui la credenziale non ha
         # nessun'altra veste attiva, quindi `is_active` (l'OR delle vesti,

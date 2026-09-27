@@ -15,6 +15,7 @@ from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
     coerce_jsonb_dict,
+    fetch_paged_with_total,
     resolve_config_id_by_codice_interno,
     row_to_dict,
     rows_to_list,
@@ -110,6 +111,39 @@ _RICERCA_PRATICHE = RicercaFull("pratiche.pratiche", {
     "codice": "p.codice",
     "descrizione": "p.descrizione",
     "soggetto_display": "s.ragione_sociale_completa",
+})
+
+
+# Whitelist ORDER BY della lista `pratiche.flussi` (lista 85, tab «Flussi» del
+# drawer pratica — brief-db-liste-datatable-grezze §4.1 riga 3). Chiave = il
+# `campo_sorgente` del catalogo (e' cio' che il FE manda come `order_by`),
+# valore = l'espressione che la `SELECT` proietta con quel nome: si ordina la
+# colonna che si vede. `esito_descrizione` e non `esito`: la lista mostra la
+# descrizione del vocabolario, non il codice grezzo (§8 punto 3, Tid).
+# ⚠️ I vuoti (reparto, operatore, esito, scadenza) li colloca il BB
+#    (`sql_order_direction`: ASC NULLS FIRST / DESC NULLS LAST, «il vuoto sta
+#    dove starebbe lo zero»), come in ogni altra lista: niente `NULLS` scritto
+#    a mano accanto a una sola chiave.
+FLUSSI_ORDER_COLS: dict[str, str] = {
+    "sequenza": "f.sequenza",
+    "template_flusso_descrizione": "tf.descrizione",
+    "stato_descrizione": "sf.descrizione",
+    "esito_descrizione": "ef.descrizione",
+    "data_scadenza": "f.data_scadenza",
+    "risorsa_umana_display": "sru.ragione_sociale_completa",
+    "unita_organizzativa_descrizione": "uo.descrizione",
+    "data_insert": "f.data_insert",
+}
+
+# Colonne DATA della whitelist flussi: senza `order_dir` ordinano DESC (regola
+# di Tid del 2026-09-02). Confrontate col seed da `test_liste_configurabili_seed`
+# (test 10): devono coincidere con le colonne date/datetime ordinabili.
+FLUSSI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_scadenza", "data_insert"})
+
+# Il passo del percorso e' l'unica colonna che il catalogo accende alla ricerca
+# (lista_colonna 954): la chiave e' il nome di USCITA, il valore l'espressione.
+_RICERCA_FLUSSI = RicercaFull("pratiche.flussi", {
+    "template_flusso_descrizione": "tf.descrizione",
 })
 
 
@@ -444,7 +478,62 @@ class PraticheRepository:
         LEFT JOIN config.unita_organizzative uo ON uo.id = f.unita_organizzativa_id
     """
 
-    # Scopo: Restituisce i flussi di una pratica ordinati per sequenza, con display fields.
+    # Scopo: la LISTA `pratiche.flussi` (lista 85): i flussi di una pratica,
+    #        paginati, ordinati sulla whitelist e con la ricerca del catalogo.
+    #        Restituisce (righe, totale).
+    #
+    # ⛔ IL JOIN SU `pratiche.pratiche` RESTA ANCHE NEL CONTEGGIO, ed e' la
+    #    stessa ragione di `get_pratica_di_flusso`: `pratiche.flussi` non ha
+    #    RLS, la pratica si'. Un `COUNT` sulla sola `flussi` conterebbe i
+    #    flussi di una pratica fuori perimetro e direbbe «12» mostrandone 0.
+    #    Per questo il ripiego del conteggio usa lo STESSO frammento
+    #    FROM+JOIN+WHERE della pagina, non uno riscritto piu' magro.
+    # ⚠️ Default = l'ordine storico del tab (`sequenza`, poi `id`): e' la
+    #    posizione del flusso nella pratica, ed e' come la si legge.
+    def list_flussi_pagina(
+        self,
+        pratica_id: int,
+        *,
+        search: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int = 25,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        safe_limit = max(1, min(int(limit), 200))
+        safe_offset = max(0, int(offset))
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=FLUSSI_ORDER_COLS, default="f.sequenza", tiebreak="f.id",
+            colonne_desc=FLUSSI_SORT_COLONNE_DATA,
+        )
+        conditions: list[str] = ["f.pratica_id = %s"]
+        params: list[Any] = [pratica_id]
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_FLUSSI)
+        from_where = (
+            f"FROM pratiche.flussi f {self._FLUSSO_JOINS} "
+            f"WHERE {' AND '.join(conditions)}"
+        )
+        return fetch_paged_with_total(
+            f"""
+            SELECT {self._FLUSSO_SELECT},
+                   COUNT(*) OVER () AS total_count
+            {from_where}
+            ORDER BY {ordinamento}
+            LIMIT %s OFFSET %s
+            """,  # ORDER BY da sql_order_clause su whitelist FLUSSI_ORDER_COLS, WHERE da condizioni letterali + add_ricerca_full_condition, valori come parametri
+            params + [safe_limit, safe_offset],
+            fallback_count_sql=f"SELECT COUNT(*) {from_where}",  # stesso FROM/WHERE della pagina
+            fallback_params=params,
+            offset=safe_offset,
+        )
+
+    # Scopo: TUTTI i flussi di una pratica ordinati per sequenza, con display
+    #        fields — la lettura intera per chi ragiona sul percorso (il tool
+    #        dell'assistente AI), non la lista a video.
+    # ⚠️ La lista del tab e' `list_flussi_pagina`: stessa proiezione e stessi
+    #    JOIN (`_FLUSSO_SELECT`/`_FLUSSO_JOINS`), ma pagina, ordinamento e
+    #    ricerca sono dell'operatore. Qui l'ordine e' quello del percorso.
     def list_flussi(self, pratica_id: int) -> list[dict[str, Any]]:
         sql = f"""
             SELECT {self._FLUSSO_SELECT}

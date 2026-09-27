@@ -119,14 +119,12 @@ curl -H "Authorization: Bearer <token>" \
 
 ### 1.2 POST /api/v1/amm-software/operatori/ -- Crea utente
 
-Crea un nuovo operatore completo: utente Django, soggetto persona fisica, risorsa umana.
-La creazione e' orchestrata dalla funzione DB `anagrafiche.fn_crea_operatore`.
+Crea un nuovo operatore completo: credenziale, soggetto persona fisica, risorsa
+umana e veste `OPERATORE`. La creazione e' orchestrata dalla funzione DB
+`anagrafiche.fn_crea_operatore_v2`.
 
 **Contract Fase 1 multi-face**: il payload accetta `is_super_admin` (booleano).
-Il campo legacy `ruolo_sistema` e' **rifiutato** con `E_AMM_VALIDAZIONE`. Il
-service traduce internamente `is_super_admin` -> `ruolo_sistema` legacy per
-la fn DB `fn_crea_operatore` (compat layer interno mentre il refactor write-path
-DB e' in transizione).
+Il campo legacy `ruolo_sistema` e' **rifiutato** con `E_AMM_VALIDAZIONE`.
 
 **Payload JSON:**
 
@@ -137,7 +135,6 @@ DB e' in transizione).
 | `codice_fiscale` | string | si* | Codice fiscale italiano (*solo se `soggetto_id` non valorizzato) |
 | `username` | string | si | Username per login |
 | `email` | string | si | Email operatore |
-| `password` | string | si | Password in chiaro (viene hashata lato backend) |
 | `qualifica_id` | int | si | ID qualifica (da lookup) |
 | `is_super_admin` | bool | no | `true` per binding profilo SUPER_ADMIN, default `false` |
 | `soggetto_id` | UUID | no | Se valorizzato: associa soggetto esistente (flusso B). Se assente: crea soggetto PF nuovo (flusso A) |
@@ -149,18 +146,34 @@ DB e' in transizione).
 | `comune_nascita_id` | int | no | ID comune di nascita |
 | `indirizzo_resid_dettaglio_id` | int | no | ID dettaglio indirizzo residenza |
 | `indirizzo_domfisc_dettaglio_id` | int | no | ID dettaglio indirizzo domicilio fiscale |
+| `riusa_auth_user_id` | int | no | Il **consenso al riuso**: l'id della credenziale gia' esistente per l'email, che l'admin ha visto e confermato (vedi sotto). Al primo tentativo non si manda |
 
 **Note sul contract**:
 
 - **Niente `ruolo_sistema`**: il payload con la chiave legacy viene rifiutato
   prima di chiamare il repo. La promotion ad ADMIN passa da `is_super_admin: true`.
-- **Niente `attivo` su POST**: l'operatore e' sempre creato attivo. La
-  disabilitazione passa dal comando dedicato `/disabilita/` (vedi §1.5).
+- **Niente `password`**: la sceglie la persona attivando l'invito (regola
+  unica dell'invito). **Niente `attivo`**: la veste `OPERATORE` nasce
+  **spenta** e la accende l'attivazione dell'invito.
+- **Email gia' di una credenziale** (una persona, una credenziale): la
+  credenziale si **riusa**, con username e password suoi; la risposta lo dice
+  (`credenziale_riusata`, `username` effettivo). Il riuso vuole il **consenso**,
+  in due tempi:
+  1. il primo tentativo, senza `riusa_auth_user_id`, risponde **409
+     `E_CREDENZIALE_DA_CONFERMARE`** con `ui_action = confirm_and_retry`;
+  2. il pannello legge la credenziale (§1.2-bis), la mostra all'admin e, se
+     conferma, ripete con `riusa_auth_user_id` = l'id letto. Se nel frattempo
+     la credenziale e' cambiata, il DB chiede di nuovo.
+
+  Se l'email e' di una credenziale di un'**altra persona fisica** la risposta
+  e' **400 `E_CREDENZIALE_ALTRA_PERSONA`** (campo `email`): non si conferma, si
+  corregge l'email.
 - **Niente `ruolo_applicativo`**: per il drawer admin-software e' implicitamente
   `OPERATORE`. Le vesti `CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`
   nascono da flussi di invito dedicati (vedi `api_invito_portale_shop.md`).
 
-**Risposta:** dettaglio utente creato (stesso formato di GET dettaglio §1.3).
+**Risposta:** dettaglio utente creato (stesso formato di GET dettaglio §1.3),
+piu' `credenziale_riusata`.
 
 **Esempio curl:**
 
@@ -173,12 +186,37 @@ curl -X POST -H "Authorization: Bearer <token>" \
     "codice_fiscale": "RSSMRA85M01H501Z",
     "username": "mrossi",
     "email": "m.rossi@example.com",
-    "password": "SecurePass123!",
     "qualifica_id": 1,
     "is_super_admin": false,
     "unita_organizzativa_id": 2
   }' \
   "https://host/api/v1/amm-software/operatori/"
+```
+
+---
+
+### 1.2-bis GET /api/v1/amm-software/operatori/credenziale-per-email/ -- Credenziale di un'email
+
+I dati del dialog di conferma del riuso (§1.2): la credenziale che porta
+l'email, con username e vesti. Legge `script.fn_get_credenziale_per_email`, la
+**stessa** lettura con cui la madre compone il rifiuto
+`E_CREDENZIALE_DA_CONFERMARE`: dialog e rifiuto dicono la stessa cosa. Solo
+SUPER_ADMIN (`AdminAPIView`; a DB nessun guard, decisione di Tid del
+2026-09-27).
+
+| Parametro | Tipo | Obbligatorio | Descrizione |
+|---|---|---|---|
+| `email` | string | no | L'email del modulo di creazione. Maiuscole e spazi non contano; assente o vuota = nessuna credenziale |
+
+**Risposta:** `data.credenziale` = `{auth_user_id, username, vesti}` oppure
+`null` se l'email non ha credenziale (anche vuota o assente: nessun 400).
+`vesti` e' in ordine di id, ogni voce `{ruolo_applicativo, attivo, soggetto}`;
+lista vuota se la credenziale non ha vesti. Due credenziali con la stessa email
+→ 500 `E_CREDENZIALE_EMAIL_AMBIGUA`.
+
+```json
+{"data": {"credenziale": {"auth_user_id": 42, "username": "mario.rossi",
+  "vesti": [{"ruolo_applicativo": "CLIENTE_PORTALE", "attivo": true, "soggetto": "Rossi Srl"}]}}}
 ```
 
 ---
@@ -763,15 +801,29 @@ curl -H "Authorization: Bearer <token>" \
 
 ### 3.1 GET /api/v1/amm-software/reparti/ -- Lista reparti
 
-Restituisce la lista delle unita' organizzative attive con conteggi di configurazione.
+Restituisce la lista paginata delle unita' organizzative attive con conteggi
+di configurazione (lista a catalogo `amm.reparti`, contratto di lista standard).
 
-**Parametri:** nessuno.
+**Parametri di query:**
+
+| Parametro | Tipo | Descrizione |
+|---|---|---|
+| `search` | string | Ricerca libera su `descrizione`/`codice` (colonne accese a catalogo, soglia 1 carattere) |
+| `limit` / `offset` | integer | Paginazione (default 25, massimo 200) |
+| `order_by` | string | `descrizione` (default), `codice`, `profilo_aree_count`, `operatori_count`; fuori whitelist = default |
+| `order_dir` | string | `asc` / `desc` |
+
+Solo i reparti attivi (`attivo = true`).
 
 **Risposta:**
 
 ```json
 {
   "data": {
+    "count": 1,
+    "page": 1,
+    "page_size": 25,
+    "total_pages": 1,
     "results": [
       {
         "id": 2,

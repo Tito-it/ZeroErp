@@ -38,8 +38,10 @@ export function updateTemplateDocumento(id, payload) {
   return api.patch(`${BASE}/${id}/`, payload)
 }
 
-// Scopo: Lista versioni (non paginata: per design 1 template ha un numero
-//        contenuto di versioni — ciclo BOZZA->PUBBLICATA->OBSOLETA).
+// Scopo: Lista paginata delle versioni di un template.
+// ⭐ Contratto di lista standard (lista `documenti.template_versioni`,
+//    2026-09-27): `limit`/`offset`, `order_by`/`order_dir`, `search`, envelope
+//    `paginated_envelope` (`results`/`count`).
 export function listTemplateVersioni(templateId, params = {}) {
   return api.get(`${BASE}/${templateId}/versioni/`, { params })
 }
@@ -51,8 +53,11 @@ export function getTemplateVersione(templateId, versioneId) {
 
 // Scopo: Crea nuova versione BOZZA. Numero versione calcolato server-side
 //        (`MAX+1`); il client non lo passa.
-export function createTemplateVersione(templateId, payload) {
-  return api.post(`${BASE}/${templateId}/versioni/`, payload)
+// ⚠️ `params` in QUERY: la view della creazione e' la stessa della lista
+//    (`documenti.template_versioni`), e il cancello di perimetro emittente
+//    vale per ogni suo metodo — l'emittente del template viaggia qui.
+export function createTemplateVersione(templateId, payload, params = {}) {
+  return api.post(`${BASE}/${templateId}/versioni/`, payload, { params })
 }
 
 // Scopo: PATCH versione. Solo BOZZA modificabile (trigger DB A1

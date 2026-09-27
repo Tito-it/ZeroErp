@@ -18,6 +18,7 @@ Indice test eseguiti:
 8) FatturaDettaglioServiceTests.test_contatore_note_nel_payload
 9) FatturaDettaglioServiceTests.test_contatore_note_zero_e_un_numero
 10) FatturaDettaglioServiceTests.test_note_non_contate_se_testata_none  ← RLS assente
+11) FatturaDettaglioServiceTests.test_errore_vivo_dal_giornale_della_fattura
 """
 
 from unittest import TestCase
@@ -69,6 +70,7 @@ class FatturaDettaglioServiceTests(TestCase):
         repo.list_fattura_righe.return_value = list(_RIGHE)
         repo.list_fattura_riepilogo_iva.return_value = list(_RIEPILOGO)
         repo.list_fattura_scadenze.return_value = list(_SCADENZE)
+        repo.get_giornale_errore_vivo.return_value = None
         return repo
 
     # Scopo: id non positivo → 400 prima di qualunque round-trip.
@@ -131,6 +133,9 @@ class FatturaDettaglioServiceTests(TestCase):
         # esporrebbe NUMERO e DATA di un documento di un altro emittente — cioe'
         # il leak che le policy sui satelliti hanno chiuso altrove.
         repo.get_fattura_rettifiche.assert_not_called()
+        # Il giornale e' una vista `security_invoker`: fuori scope risponderebbe
+        # «nessun errore» — ma la domanda non va nemmeno fatta.
+        repo.get_giornale_errore_vivo.assert_not_called()
 
     # Scopo: lo scope dell'utente arriva al cancello (difesa applicativa che si
     #        somma alla RLS), non si ferma nel service.
@@ -153,7 +158,7 @@ class FatturaDettaglioServiceTests(TestCase):
         self.assertEqual(
             set(result.keys()),
             {"fattura", "righe", "riepilogo_iva", "scadenze", "contatori",
-             "rettifiche"},
+             "rettifiche", "errore_vivo"},
         )
         self.assertEqual(result["fattura"]["numero"], 123)
         self.assertEqual(result["righe"], _RIGHE)
@@ -213,3 +218,21 @@ class FatturaDettaglioServiceTests(TestCase):
             get_fattura_dettaglio(fattura_id=7, auth_user_id=42)
 
         self.note_svc.count_per_target.assert_not_called()
+
+    # ⭐ Il banner d'errore del drawer ha una FONTE SUA nel dettaglio (2026-09-27):
+    #    la Storia e' ora la lista a catalogo `vendite.giornale`, ordinata dal
+    #    preset o dall'operatore, e «il primo ERROR della pagina» avrebbe taciuto
+    #    appena l'errore fosse uscito dalla pagina. Qui si presidia che la
+    #    domanda si faccia sull'entita' giusta e che la risposta arrivi intera.
+    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    def test_errore_vivo_dal_giornale_della_fattura(self, mock_repo_cls):
+        repo = self._repo(mock_repo_cls)
+        riga = {"riga_key": "FATTURA_LOG:5", "gravita": "ERROR", "cosa": "Non numerabile"}
+        repo.get_giornale_errore_vivo.return_value = riga
+
+        result = get_fattura_dettaglio(fattura_id=7)
+
+        repo.get_giornale_errore_vivo.assert_called_once_with(
+            entity_type="FATTURA", entity_id=7,
+        )
+        self.assertEqual(result["errore_vivo"], riga)

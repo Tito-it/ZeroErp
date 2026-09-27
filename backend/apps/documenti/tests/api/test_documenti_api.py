@@ -13,7 +13,8 @@
 #   2. list_templates_propagates_filters_to_service
 #   3. detail_template_ok
 #   4. detail_template_404_when_service_raises_not_found
-#   5. versioni_list_ok
+#   5. versioni_list_ok (envelope standard + parametri di lista)
+#   5-bis. versioni_list_senza_ordine_lascia_decidere_il_repository
 #   6. versione_detail_ok
 #   7. post_template_201_happy_path
 #   8. post_template_validation_error_400
@@ -31,6 +32,7 @@
 #  20. asset_upload_happy_path_multipart
 #  21. asset_patch_metadati_happy_path
 #  22. asset_download_file_binary_happy_path
+#  23. le liste nei drawer dichiarano codice e parametro dell'emittente
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -38,7 +40,7 @@ from __future__ import annotations
 from unittest.mock import Mock, patch
 
 from django.core.cache import cache
-from django.test import Client
+from django.test import Client, SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
@@ -189,12 +191,46 @@ class DocumentiApiSmokeTests(JwtMockedApiTest):
     def test_versioni_list_ok(self, mocked_service_cls, _mock_auth) -> None:
         mocked_service_cls.return_value.list_versioni.return_value = {
             "results": [_VERSIONE_DETAIL],
+            "total_count": 1,
+        }
+        resp = self.client.get(
+            "/api/v1/documenti/templates/1/versioni/"
+            "?limit=10&offset=10&order_by=valido_al&order_dir=desc&search=fattura",
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()["data"]
+        results = data["results"]
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["stato"], "PUBBLICATA")
+        # Envelope di lista standard (`paginated_envelope`): `count`, non
+        # `total_count` — e' cio' che legge lo store del frontend.
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["page"], 2)
+        self.assertEqual(data["page_size"], 10)
+        kwargs = mocked_service_cls.return_value.list_versioni.call_args.kwargs
+        self.assertEqual(kwargs["order_by"], "valido_al")
+        self.assertEqual(kwargs["order_dir"], "desc")
+        self.assertEqual(kwargs["search"], "fattura")
+        self.assertEqual((kwargs["limit"], kwargs["offset"]), (10, 10))
+
+    # 5-bis. senza `order_by` decide il repository (`versione DESC`): la view
+    #        non inventa una chiave che arriverebbe senza verso.
+    @patch(
+        "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate",
+        return_value=(Mock(), None),
+    )
+    @patch("apps.documenti.api.views.TemplateService")
+    def test_versioni_list_senza_ordine_lascia_decidere_il_repository(
+        self, mocked_service_cls, _mock_auth,
+    ) -> None:
+        mocked_service_cls.return_value.list_versioni.return_value = {
+            "results": [], "total_count": 0,
         }
         resp = self.client.get("/api/v1/documenti/templates/1/versioni/")
         self.assertEqual(resp.status_code, 200)
-        results = resp.json()["data"]["results"]
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["stato"], "PUBBLICATA")
+        kwargs = mocked_service_cls.return_value.list_versioni.call_args.kwargs
+        self.assertFalse(kwargs["order_by"])
+        self.assertIsNone(kwargs["order_dir"])
 
     # 6. dettaglio versione (incluso payload html).
     @patch(
@@ -606,3 +642,43 @@ class DocumentiAssetApiTests(JwtMockedApiTest):
         self.assertIn('attachment; filename="logo.png"', resp["Content-Disposition"])
         self.assertEqual(resp["Content-Length"], "9")
         mocked_reader_cls.return_value.download_asset.assert_called_once()
+
+
+class ListeNeiDrawerDichiaranoIlCancelloTests(SimpleTestCase):
+    """Le due liste che si aprono DENTRO un documento (brief-db-liste-
+    datatable-grezze righe 2 e 6) dichiarano il codice di catalogo e il
+    parametro con cui ricevono l'emittente gia' fissato.
+
+    ⚠️ Senza `lista_emittente_param` il cancello di perimetro rifiuterebbe
+    (422) il super admin su «Tutti» dentro un drawer gia' aperto: le due liste
+    a catalogo NON sono certificate multi-emittente.
+    """
+
+    # 23. la lista delle versioni e le SEI liste documenti della factory.
+    def test_liste_nei_drawer_dichiarano_codice_e_parametro(self) -> None:
+        from apps.documenti.api.views import ApiTemplateVersioniList
+        from apps.vendite.api import (
+            contratti_documenti_views,
+            ddt_documenti_views,
+            fatture_documenti_views,
+            offerte_documenti_views,
+            ordini_documenti_views,
+            preventivi_documenti_views,
+        )
+
+        self.assertEqual(ApiTemplateVersioniList.lista_codice, "documenti.template_versioni")
+        self.assertEqual(ApiTemplateVersioniList.lista_emittente_param, "emittente_fiscale_id")
+        # ⭐ Una sola lista per gli otto domini: il codice lo scrive la
+        #    factory, non il dominio (vedi `build_documenti_sorgente_views`).
+        for view in (
+            contratti_documenti_views.ApiContrattoDocumentiList,
+            ddt_documenti_views.ApiDdtDocumentiList,
+            fatture_documenti_views.ApiFatturaDocumentiList,
+            offerte_documenti_views.ApiOffertaDocumentiList,
+            ordini_documenti_views.ApiOrdineDocumentiList,
+            preventivi_documenti_views.ApiPreventivoDocumentiList,
+        ):
+            with self.subTest(view=view.__qualname__):
+                self.assertEqual(view.lista_codice, "documenti.documenti_sorgente")
+                self.assertEqual(view.lista_emittente_param, "emittente_fiscale_id")
+                self.assertTrue(view.is_search_endpoint)

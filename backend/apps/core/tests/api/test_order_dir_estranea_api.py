@@ -50,7 +50,10 @@ from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _PERM_DOMINIO = "apps.core.api.permissions.ZeroERPPermission.has_permission"
 _PERM_ADMIN = "apps.core.api.permissions.IsAdminZeroERP.has_permission"
-_CONN_GEO = "apps.anagrafiche.db.geo_repository.connection"
+# ⚠️ La connessione delle liste geografiche e' quella del BB: dal 2026-09-27
+#    `GeoRepository` legge con `fetch_paged_with_total` (`_helpers`), e un
+#    patch sul modulo del repository non vedrebbe la query.
+_CONN_GEO = "apps.core.db._helpers.connection"
 _CONN_CATEGORIE = "apps.anagrafiche.db.categorie_clienti_repository.connection"
 _CONN_DOCUMENTI = "apps.documenti.db.documenti_repository.connection"
 _SCOPE_DOCUMENTI = "apps.documenti.services.template_service.TemplateService._resolve_emittente_scope"
@@ -101,7 +104,7 @@ class TestOrderDirEstraneaApi(JwtMockedApiTest):
         resp = self.client.get("/api/v1/anagrafiche/comuni/?order_dir=")
         self.assertEqual(resp.status_code, 200, resp.content)
         sql = cursor.execute.call_args[0][0]
-        self.assertIn("ORDER BY descrizione ASC NULLS FIRST, c.id ASC", sql)
+        self.assertIn("ORDER BY descrizione ASC NULLS FIRST, id ASC", sql)
 
     # 3. Percorso B: il service valida colonna E direzione, e il 400 porta il
     #    codice del dominio. Il repository non viene raggiunto.

@@ -21,6 +21,10 @@ Indice test eseguiti:
 10) test_list_comuni_empty — nessun risultato
 11) test_list_codici_postali — CAP per comune
 12) test_get_or_create_stradario — creazione via nuova
+13) test_codici_postali_leggono_la_vista_col_filtro_comune — vista di lista + filtro
+14) test_regioni_leggono_la_vista_col_filtro_stato — vista di lista + filtro
+15) test_stati_ordinano_per_iso3 — la freccia ISO3 entra in whitelist
+16) test_pagina_oltre_l_ultima_conta_di_nuovo — ripiego di `fetch_paged_with_total`
 """
 
 from unittest import TestCase
@@ -193,9 +197,13 @@ class TestUpdateIndirizzoDettaglio(TestCase):
 
 
 class TestListComuni(TestCase):
-    """Test GeoRepository.list_comuni()."""
+    """Test GeoRepository.list_comuni().
 
-    @patch("apps.anagrafiche.db.geo_repository.connection")
+    ⚠️ La connessione si finge sul BB (`_helpers`): dal 2026-09-27 la lista
+    legge `config.vw_comuni_lista` con `fetch_paged_with_total`.
+    """
+
+    @patch("apps.core.db._helpers.connection")
     def test_list_comuni(self, mock_conn):
         """Lista comuni con provincia e regione."""
         cols = ["id", "descrizione", "provincia_sigla", "provincia_descrizione",
@@ -215,7 +223,7 @@ class TestListComuni(TestCase):
         self.assertEqual(results[0]["provincia_sigla"], "MI")
         self.assertNotIn("total_count", results[0])
 
-    @patch("apps.anagrafiche.db.geo_repository.connection")
+    @patch("apps.core.db._helpers.connection")
     def test_list_comuni_empty(self, mock_conn):
         """Nessun comune trovato."""
         mc = _mock_cursor()
@@ -223,9 +231,74 @@ class TestListComuni(TestCase):
 
         from apps.anagrafiche.db.geo_repository import GeoRepository
 
-        results, total = GeoRepository().list_comuni(search="ZZZZZ")
+        with catalogo_ricerca_finto(["descrizione"]):
+            results, total = GeoRepository().list_comuni(search="ZZZZZ")
         self.assertEqual(results, [])
         self.assertEqual(total, 0)
+        sql, params = mc.execute.call_args[0]
+        self.assertIn("FROM config.vw_comuni_lista v", sql)
+        self.assertIn("(v.descrizione)::text ILIKE %s", sql)
+        self.assertIn("%ZZZZZ%", params)
+
+
+class TestListeGeoSuVista(TestCase):
+    """Le liste geografiche leggono la vista di lista a catalogo (2026-09-27).
+
+    ⭐ Brief liste-datatable-grezze §4.1 riga 9 / §6.3: la relazione letta e'
+    la stessa contro cui il trigger del catalogo valida i `campo_sorgente` —
+    una vista accanto alla query non proverebbe niente.
+    """
+
+    @patch("apps.core.db._helpers.connection")
+    def test_codici_postali_leggono_la_vista_col_filtro_comune(self, mock_conn):
+        mc = _mock_cursor()
+        _setup_conn(mock_conn, mc)
+        from apps.anagrafiche.db.geo_repository import GeoRepository
+
+        with catalogo_ricerca_finto(["codice", "comune_descrizione"]):
+            GeoRepository().list_codici_postali(search="201", comune_id=7)
+        sql, params = mc.execute.call_args[0]
+        self.assertIn("FROM config.vw_codici_postali_lista v", sql)
+        self.assertNotIn("JOIN", sql)
+        self.assertIn("v.comune_id = %s", sql)
+        self.assertIn("(v.codice)::text ILIKE %s OR (v.comune_descrizione)::text ILIKE %s", sql)
+        self.assertEqual(params[0], 7)
+
+    @patch("apps.core.db._helpers.connection")
+    def test_regioni_leggono_la_vista_col_filtro_stato(self, mock_conn):
+        mc = _mock_cursor()
+        _setup_conn(mock_conn, mc)
+        from apps.anagrafiche.db.geo_repository import GeoRepository
+
+        GeoRepository().list_regioni(stato_id=3, order_by="stato_descrizione", order_dir="desc")
+        sql, params = mc.execute.call_args[0]
+        self.assertIn("FROM config.vw_regioni_lista v", sql)
+        self.assertIn("v.stato_id = %s", sql)
+        self.assertIn("ORDER BY stato_descrizione DESC", sql)
+        self.assertEqual(params, [3, 25, 0])
+
+    @patch("apps.core.db._helpers.connection")
+    def test_stati_ordinano_per_iso3(self, mock_conn):
+        mc = _mock_cursor()
+        _setup_conn(mock_conn, mc)
+        from apps.anagrafiche.db.geo_repository import GeoRepository
+
+        GeoRepository().list_stati(order_by="codice_iso3", order_dir="asc")
+        sql = mc.execute.call_args[0][0]
+        self.assertIn("ORDER BY codice_iso3 ASC", sql)
+
+    @patch("apps.core.db._helpers.connection")
+    def test_pagina_oltre_l_ultima_conta_di_nuovo(self, mock_conn):
+        mc = _mock_cursor()
+        mc.fetchone.return_value = (12,)
+        _setup_conn(mock_conn, mc)
+        from apps.anagrafiche.db.geo_repository import GeoRepository
+
+        results, total = GeoRepository().list_province_paginated(regione_id=2, offset=50)
+        self.assertEqual((results, total), ([], 12))
+        conteggio, params = mc.execute.call_args[0]
+        self.assertIn("SELECT COUNT(*) FROM config.vw_province_lista v WHERE v.regione_id = %s", conteggio)
+        self.assertEqual(params, [2])
 
 
 class TestCodiciPostali(TestCase):

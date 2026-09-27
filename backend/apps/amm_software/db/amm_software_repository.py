@@ -17,7 +17,10 @@ from django.db import DatabaseError, connection, transaction
 from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
+    fetch_paged_with_total,
+    jsonb_out,
     rows_to_list,
+    sql_order_clause,
     sql_order_direction,
     sql_tiebreak_direction,
 )
@@ -25,7 +28,7 @@ from apps.core.db._helpers import (
 from apps.core.services.auth_constants import TIPO_PROFILO_SUPER_ADMIN
 from apps.core.services.error_manager import ErrorManager
 from apps.amm_software.constants import DEFAULT_LIMIT
-from apps.amm_software.types import OperatoreDetailRow, OperatoreRow
+from apps.amm_software.types import CredenzialePerEmailRow, OperatoreDetailRow, OperatoreRow
 
 # ⛔ GLI UTENTI TECNICI NON SONO OPERATORI, e le liste di questo modulo
 # parlano di PERSONE. Dal 2026-09-04 il database crea un utente per ogni
@@ -89,6 +92,28 @@ _RICERCA_OPERATORI = RicercaFull(
         "soggetto_ragione_sociale": "s.ragione_sociale_completa",
     },
 )
+
+
+# Whitelist ORDER BY della lista reparti (`amm.reparti`): chiave = `campo_sorgente`
+# del catalogo, valore = colonna della CTE `reparti` di `list_reparti` (alias
+# `rp`). I due conteggi sono alias della CTE, non colonne di tabella: e' per
+# loro che la SELECT e' avvolta.
+# `profilo_aree_count` a video e' «configurato / mancante», ma ordina il numero:
+# i reparti senza profilo vengono insieme, in testa in ASC.
+REPARTI_ORDER_COLUMNS: dict[str, str] = {
+    "descrizione": "rp.descrizione",
+    "codice": "rp.codice",
+    "profilo_aree_count": "rp.profilo_aree_count",
+    "operatori_count": "rp.operatori_count",
+}
+
+# Cosa si PUO' cercare nella lista reparti; cosa si cerca lo dice il catalogo
+# (soglia 1: codici corti, `ricerca_min_caratteri` della lista). Espressioni su
+# `uo`: la ricerca sta dentro la CTE, sulle colonne vere.
+_RICERCA_REPARTI = RicercaFull("amm.reparti", {
+    "descrizione": "uo.descrizione",
+    "codice": "uo.codice",
+})
 
 
 # Whitelist ORDER BY del log di audit (`storico.audit_log`): chiave =
@@ -654,6 +679,26 @@ class AmmSoftwareRepository:
                 "credenziale_riusata": bool(row[2]),
             }
 
+    # Scopo: La credenziale che porta un'email, con username e vesti, per il
+    #        dialog di conferma del riuso (B-20). Sede unica della lettura:
+    #        `script.fn_get_credenziale_per_email`, la stessa che la madre usa
+    #        per il rifiuto E_CREDENZIALE_DA_CONFERMARE. Email assente, vuota o
+    #        di nessuno -> None (zero righe: lo decide il DB, non qui); due
+    #        credenziali con la stessa email -> E_CREDENZIALE_EMAIL_AMBIGUA
+    #        dal DB. `vesti` e' jsonb: fuori dall'ORM arriva `str`, lo decodifica
+    #        `jsonb_out` (BB, esplode su un JSON malformato).
+    def get_credenziale_per_email(self, email: str | None) -> CredenzialePerEmailRow | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT auth_user_id, username, vesti"
+                "  FROM script.fn_get_credenziale_per_email(%s)",
+                [email],
+            )
+            row = cursor.fetchone()
+        if row is None:
+            return None
+        return {"auth_user_id": int(row[0]), "username": row[1], "vesti": jsonb_out(row[2])}
+
     # Scopo: Lista unita' organizzative per dropdown filtro.
     def list_unita_organizzative(self) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
@@ -884,33 +929,65 @@ class AmmSoftwareRepository:
     # Reparti e profili                                                    #
     # ================================================================== #
 
-    # Scopo: Lista reparti con flag profilo configurato e conteggio operatori.
+    # Scopo: Lista reparti (`amm.reparti`, lista 87) con flag profilo
+    #        configurato e conteggio operatori: paginata, ordinata sulla
+    #        whitelist `REPARTI_ORDER_COLUMNS`, con la ricerca libera del
+    #        catalogo. Ritorna (righe della pagina, totale).
     #        Conteggi su modello generalizzato profili_accesso_* via binding
     #        REPARTO (post-cutover PR-B): JOIN profili_accesso_bindings ->
     #        profili_accesso_aree/_azioni filtrato per unita_organizzativa_id.
-    def list_reparti(self) -> list[dict[str, Any]]:
-        sql = """
-            SELECT uo.id, uo.codice, uo.descrizione, uo.attivo,
-                   (SELECT COUNT(*)
-                      FROM config.profili_accesso_bindings pab
-                      JOIN config.profili_accesso_aree paa
-                        ON paa.profilo_accesso_id = pab.profilo_accesso_id
-                     WHERE pab.unita_organizzativa_id = uo.id) AS profilo_aree_count,
-                   (SELECT COUNT(*)
-                      FROM config.profili_accesso_bindings pab
-                      JOIN config.profili_accesso_azioni paz
-                        ON paz.profilo_accesso_id = pab.profilo_accesso_id
-                     WHERE pab.unita_organizzativa_id = uo.id) AS profilo_azioni_count,
-                   (SELECT COUNT(*) FROM anagrafiche.risorse_umane ru
-                     WHERE ru.unita_organizzativa_id = uo.id
-                       AND ru.attivo = true) AS operatori_count
-              FROM config.unita_organizzative uo
-             WHERE uo.attivo = true
-             ORDER BY uo.descrizione
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql)
-            return rows_to_list(cursor)
+    # ⭐ La SELECT sta in una CTE perche' due colonne ordinabili sono CONTEGGI
+    #    (sottoquery col loro alias): fuori dalla CTE si ordinano per nome come
+    #    le altre, e il `COUNT(*) OVER ()` si conta sulle righe gia' filtrate.
+    #    La ricerca invece resta DENTRO, sulle colonne vere di `uo`.
+    # ⚠️ Solo i reparti ATTIVI (`uo.attivo = true`), come prima della
+    #    paginazione: se servano anche i disattivati e' una domanda aperta
+    #    (brief-db-liste-datatable-grezze §8 punto 5), non una scelta di qui.
+    def list_reparti(
+        self, *, search: str | None = None,
+        order_by: str | None = "descrizione", order_dir: str | None = None,
+        limit: int = DEFAULT_LIMIT, offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        safe_limit = max(1, min(int(limit), 200))
+        safe_offset = max(0, int(offset))
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=REPARTI_ORDER_COLUMNS, default="rp.descrizione", tiebreak="rp.id",
+        )
+        conditions: list[str] = ["uo.attivo = true"]
+        params: list[Any] = []
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_REPARTI)
+        where_clause = "WHERE " + " AND ".join(conditions)
+        return fetch_paged_with_total(
+            f"""
+            WITH reparti AS (
+                SELECT uo.id, uo.codice, uo.descrizione, uo.attivo,
+                       (SELECT COUNT(*)
+                          FROM config.profili_accesso_bindings pab
+                          JOIN config.profili_accesso_aree paa
+                            ON paa.profilo_accesso_id = pab.profilo_accesso_id
+                         WHERE pab.unita_organizzativa_id = uo.id) AS profilo_aree_count,
+                       (SELECT COUNT(*)
+                          FROM config.profili_accesso_bindings pab
+                          JOIN config.profili_accesso_azioni paz
+                            ON paz.profilo_accesso_id = pab.profilo_accesso_id
+                         WHERE pab.unita_organizzativa_id = uo.id) AS profilo_azioni_count,
+                       (SELECT COUNT(*) FROM anagrafiche.risorse_umane ru
+                         WHERE ru.unita_organizzativa_id = uo.id
+                           AND ru.attivo = true) AS operatori_count
+                  FROM config.unita_organizzative uo
+                 {where_clause}
+            )
+            SELECT rp.*, COUNT(*) OVER () AS total_count
+              FROM reparti rp
+             ORDER BY {ordinamento}
+             LIMIT %s OFFSET %s
+            """,  # noqa: S608 — WHERE da condizioni letterali + add_ricerca_full_condition (_RICERCA_REPARTI), ORDER BY da sql_order_clause su REPARTI_ORDER_COLUMNS, valori come parametri
+            params + [safe_limit, safe_offset],
+            fallback_count_sql=f"SELECT COUNT(*) FROM config.unita_organizzative uo {where_clause}",  # noqa: S608 — stesso FROM/WHERE della CTE, condizioni letterali e valori come parametri
+            fallback_params=params,
+            offset=safe_offset,
+        )
 
     # Scopo: Restituisce il profilo completo di un reparto (aree + azioni).
     #        Legge dal modello generalizzato profili_accesso_* via binding

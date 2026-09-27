@@ -91,6 +91,11 @@ const isSelectedBuilderUnregistered = computed(() =>
 // del drawer template (i suoi pulsanti non salvano la versione e creano
 // confusione). Stesso pattern di PreventiviDrawer/PreventiviRigheTable.
 const formVersioneAperto = ref(false)
+// L'emittente del template LETTO (non quello del form): e' il padre della
+// lista delle versioni. Il form, riaprendo un altro template, tiene i valori
+// del precedente finche' il dettaglio non arriva — la lista partirebbe col
+// padre vecchio e ripartirebbe da capo un attimo dopo. `null` = in attesa.
+const emittenteLetto = ref(null)
 
 const form = ref(emptyForm())
 // Modifiche non salvate della testata: fotografia a form popolato, conferma
@@ -119,6 +124,7 @@ async function loadDetail() {
   if (!effectiveId.value) return
   const data = await store.fetchDetail(effectiveId.value)
   if (!data) return
+  emittenteLetto.value = data.emittente_fiscale_id ?? null
   form.value = {
     codice: data.codice ?? '',
     codice_interno: data.codice_interno ?? '',
@@ -142,6 +148,7 @@ watch(
     if (!visible) return
     localMode.value = mode
     createdId.value = null
+    emittenteLetto.value = null
     if (mode === 'edit') {
       loadDetail()
     } else {
@@ -215,6 +222,9 @@ async function handleSave() {
       // per consentire la gestione versioni. La lista padre viene aggiornata
       // tramite emit 'saved'.
       createdId.value = result.id
+      // Il template appena salvato ha l'emittente scelto nel form: e' il
+      // padre della lista delle versioni, che senza resterebbe in attesa.
+      emittenteLetto.value = result.emittente_fiscale_id ?? payload.emittente_fiscale_id ?? null
       localMode.value = 'edit'
       fissa()
       emit('saved', result)
@@ -377,6 +387,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
         <TemplateVersioniSection
           ref="versioniRef"
           :template-id="effectiveId"
+          :emittente-fiscale-id="emittenteLetto"
           :readonly="isReadOnlyEffective"
           @form-aperto="(v) => { formVersioneAperto = v }"
         />

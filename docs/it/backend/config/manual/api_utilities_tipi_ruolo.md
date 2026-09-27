@@ -103,6 +103,20 @@ immutabili per scelta di progetto).
 
 ### Envelope usage
 
+Lista a catalogo `config.utilities_tipi_ruolo_usage` (dal 2026-09-27), in una
+query sola (pagina + totale). Parametri di query:
+
+| Parametro | Tipo | Descrizione |
+|---|---|---|
+| `search` | string | Ricerca libera sulle colonne accese a catalogo (codice e ragione sociale dell'emittente) |
+| `limit` / `offset` | integer | Paginazione (default 25, massimo 200) |
+| `order_by` | string | Whitelist `USAGE_ORDER_COLS`: `emittente_codice`, `emittente_descrizione`, `emittente_attivo`, `override_attivo`; fuori whitelist = ordine di partenza |
+| `order_dir` | string | `asc` / `desc` (`400` su un valore diverso) |
+
+Senza ordinamento: ragione sociale, poi codice dell'emittente (ASC),
+spareggio sull'id dell'emittente. Nessun cancello di perimetro emittente: la
+lista è `multi_emittente` (ogni riga è un emittente) e la vista è admin.
+
 ```json
 {
   "data": {

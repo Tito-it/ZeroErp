@@ -125,6 +125,21 @@ GIORNALE_SORT_COLUMNS: dict[str, str] = {
     "quando": "quando",
 }
 
+# ⭐ L'ORDINE DI PARTENZA DEL GIORNALE, uno per i TRE lettori: il tempo, dal piu'
+#    recente — lo stesso del preset `giornale_default` di `vendite.giornale`.
+#    Dal 2026-09-27 (brief-db-liste-datatable-grezze §3.1, decisione di Tid) la
+#    Storia della fattura e quella del lotto sono la STESSA lista a catalogo del
+#    giornale trasversale, e una lista non parte in due modi a seconda della
+#    scheda da cui la si apre.
+# ⚠️ Fino a quel giorno la Storia di un'entita' partiva dalla GRAVITA' (Tid,
+#    2026-08-24): «c'e' qualcosa che non va?» e' ora il banner della fattura,
+#    che ha una fonte sua (`get_giornale_errore_vivo`) e non dipende piu'
+#    dall'ordine della pagina. La gravita' resta a un clic sulla colonna.
+# ⭐ La leggono le view (`parse_list_params(default_order=...)`) e
+#    `_giornale_order_clause` qui sotto: un nome solo, o le due sedi del
+#    default divergono al primo ritocco.
+GIORNALE_ORDINE_DEFAULT = "quando"
+
 # ⛔ I REGISTRI che la vista cuce NON stanno piu' qui (2026-09-19, brief-db-
 #    registri-giornale-catalogo): fino a quel giorno `GIORNALE_REGISTRI` era la
 #    seconda delle tre sedi che non si conoscevano (i letterali dei rami
@@ -147,9 +162,14 @@ GIORNALE_GRAVITA: tuple[str, ...] = ("ERROR", "WARN", "INFO")
 #        a video somiglia a un ordinamento giusto. Cosi' si prova senza DB.
 # ⚠️ Non concatena mai `NULLS ...` a mano: la direzione la compone
 #    `sql_order_direction`, che i NULL li porta gia' con se' (BB di casa).
+# ⚠️ Una colonna fuori whitelist ricade sul default (`GIORNALE_ORDINE_DEFAULT`):
+#    qui e' l'ultima rete, non il cancello — i service la rifiutano PRIMA con un
+#    400 (`_valida_ordinamento`), perche' un ordine diverso da quello chiesto
+#    non solleva niente.
 def _giornale_order_clause(sort_by: str | None, sort_dir: str | None) -> str:
     direzione = sql_order_direction(sort_dir, default_desc=True)
-    if GIORNALE_SORT_COLUMNS.get(sort_by or "", "rango") == "rango":
+    colonna = GIORNALE_SORT_COLUMNS.get(sort_by or "") or GIORNALE_SORT_COLUMNS[GIORNALE_ORDINE_DEFAULT]
+    if colonna == "rango":
         # ⚠️ Dentro la stessa gravita' ordina il TEMPO, sempre dal piu' recente,
         #    e NON segue il verso scelto: «i piu' gravi, e fra quelli i piu'
         #    recenti» resta la lettura utile anche guardando dal meno grave.
@@ -641,7 +661,15 @@ class VenditeRepository:
                 (SELECT count(*)
                    FROM vendite.fatturazione_lotti_esiti e_c
                   WHERE e_c.lotto_id = fl.id
-                    AND e_c.stato_esecuzione = '{STATO_ESECUZIONE_COMPLETED}') AS n_esiti_completati
+                    AND e_c.stato_esecuzione = '{STATO_ESECUZIONE_COMPLETED}') AS n_esiti_completati,
+                -- ⭐ La PK dell'emittente (2026-09-27, brief-db-liste-datatable-
+                -- grezze): il lotto porta il SOGGETTO-RUOLO, ma le liste aperte
+                -- dal suo drawer (i documenti di una fattura del lotto) passano
+                -- il cancello di perimetro con `emittente_fiscale_id`, la PK.
+                -- Due id diversi, non intercambiabili
+                -- (feedback_emittente_pk_vs_soggetto_ruolo). ⚠️ In coda, come
+                -- impone il mapper posizionale.
+                ef_pk.id AS emittente_fiscale_id
     """  # noqa: S608 — costanti di modulo STATO_ESECUZIONE_* letterali
 
     _LOTTO_JOINS = f"""
@@ -661,6 +689,12 @@ class VenditeRepository:
                 ON sr_ef.id = fl.emittente_soggetto_ruolo_id
             LEFT JOIN anagrafiche.soggetti s_ef
                 ON s_ef.id = sr_ef.soggetto_id
+            -- La PK dall'emittente soggetto-ruolo: `soggetto_ruolo_id` e' UNIQUE
+            -- su `emittenti_fiscali` (uq_emittenti_fiscali_ruolo), quindi la
+            -- JOIN non moltiplica la riga e il conteggio della lista resta
+            -- quello della tabella madre.
+            LEFT JOIN anagrafiche.emittenti_fiscali ef_pk
+                ON ef_pk.soggetto_ruolo_id = fl.emittente_soggetto_ruolo_id
     """
 
     # Scopo: mappa una riga (ordine di _LOTTO_SELECT_COLS) in LottoListRow.
@@ -718,6 +752,7 @@ class VenditeRepository:
             # (giri precedenti al 07-09): il client non mostra niente.
             "n_presi_in_carico": int(row[25]),
             "n_esiti_completati": int(row[26]),
+            "emittente_fiscale_id": None if row[27] is None else int(row[27]),
         }
 
     # Colonne ordinabili della lista lotti: chiave esposta al FE -> espressione
@@ -4187,6 +4222,15 @@ class VenditeRepository:
                 sdf.codice_interno           AS stato_codice_interno,
                 sdf.descrizione              AS stato_descrizione,
                 f.emittente_soggetto_ruolo_id,
+                -- ⭐ La PK dell'emittente VIVA, dalla colonna di testata (NOT
+                -- NULL) e non dallo snapshot: la chiede il cancello di
+                -- perimetro delle liste nel drawer (i documenti generati), e
+                -- in BOZZA lo snapshot puo' mancare — lo pretende solo
+                -- l'uscita dalla bozza. Dallo snapshot, su una bozza il dialog
+                -- dei documenti restava in attesa per sempre. Nessun effetto
+                -- sulle righe: `soggetto_ruolo_id` e' UNIQUE su
+                -- `emittenti_fiscali` (`uq_emittenti_fiscali_ruolo`).
+                ef_pk.id                     AS emittente_fiscale_pk,
                 -- ===== Intestazione EMITTENTE: dallo snapshot congelato =====
                 -- Chiavi piatte derivate dal jsonb per compatibilita' col
                 -- contratto esistente (drawer FE + template PDF v1). NULL se
@@ -4273,6 +4317,8 @@ class VenditeRepository:
                 ON sdf.id = f.stato_doc_fiscale_id
               LEFT JOIN config.valute val
                 ON val.id = f.valuta_id
+              LEFT JOIN anagrafiche.emittenti_fiscali ef_pk
+                ON ef_pk.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
              WHERE f.id = %s
         """
         # Parametri nell'ordine dei %s: subquery indirizzo fatturazione
@@ -5046,8 +5092,8 @@ class VenditeRepository:
         limit: int = 50,
         offset: int = 0,
         escludi_ritirate: bool = True,
-        sort_by: str = "gravita",
-        sort_dir: str = "desc",
+        sort_by: str | None = None,
+        sort_dir: str | None = None,
     ) -> tuple[list[dict[str, Any]], int, int, int]:
         return self._list_giornale(
             perimetro_sql="entity_type = %s AND entity_id = %s",
@@ -5084,8 +5130,8 @@ class VenditeRepository:
         offset: int = 0,
         escludi_ritirate: bool = True,
         escludi_info: bool = True,
-        sort_by: str = "gravita",
-        sort_dir: str = "desc",
+        sort_by: str | None = None,
+        sort_dir: str | None = None,
     ) -> tuple[list[dict[str, Any]], int, int, int]:
         return self._list_giornale(
             perimetro_sql="""
@@ -5103,6 +5149,46 @@ class VenditeRepository:
             sort_by=sort_by,
             sort_dir=sort_dir,
         )
+
+    # Scopo: L'ERRORE VIVO di un'entita' — la riga ERROR piu' recente e non
+    #        ritirata, o `None`. E' la fonte del banner in testa al drawer della
+    #        fattura («chi apre una fattura in errore la apre per quello»).
+    #
+    # ⭐ UNA FONTE SUA, e non la prima riga della pagina della Storia (2026-09-27,
+    #    brief-db-liste-datatable-grezze §3.1): da quando la Storia e' la lista a
+    #    catalogo `vendite.giornale`, l'ordine della pagina lo decide il preset
+    #    (`quando desc`) o l'operatore — e un banner che legge «il primo ERROR
+    #    della pagina» dice «nessun errore» appena l'errore scivola a pagina 2,
+    #    o appena qualcuno ordina per `quando` crescente. Nessun errore, un
+    #    documento in errore che a video sembra sano.
+    # ⭐ Lo STESSO corpo dei tre lettori (`_list_giornale`, una pagina da una
+    #    riga), non una quarta query: la riga esce con la stessa decodifica
+    #    (`etichetta_key`) e la stessa regola sulle ritirate della Storia — il
+    #    banner e la scheda parlano dello stesso fatto con lo stesso nome.
+    # ⚠️ `gravita = 'ERROR'` esatto, e la gravita' NULL resta FUORI: e' il
+    #    segnale di un vincolo allargato (la vista lo dichiara), non un errore
+    #    del documento — la Storia la mostra col trattino, il banner rosso
+    #    direbbe una cosa che non e'. Stessa regola del banner di prima.
+    # Perimetro: sola lettura. ⚠️ Nessun cancello qui: la vista e'
+    #    `security_invoker`, e il chiamante (`get_fattura_dettaglio`) la chiede
+    #    solo DOPO la testata, che e' il cancello.
+    def get_giornale_errore_vivo(
+        self, *, entity_type: str, entity_id: int,
+    ) -> dict[str, Any] | None:
+        righe, _vive, _ritirate, _info = self._list_giornale(
+            perimetro_sql="entity_type = %s AND entity_id = %s AND gravita = 'ERROR'",
+            perimetro_params=[entity_type, int(entity_id)],
+            limit=1,
+            offset=0,
+            escludi_ritirate=True,
+            escludi_info=False,
+            sort_by="quando",
+            sort_dir="desc",
+            con_conteggi=False,
+            # Il banner non mostra di chi e' la riga: e' la fattura aperta.
+            con_entita_display=False,
+        )
+        return righe[0] if righe else None
 
     # Scopo: i registri che il filtro `registro` del giornale trasversale puo'
     #        nominare — i `codice_interno` di `config.registri_giornale`, TUTTI,
@@ -5172,12 +5258,12 @@ class VenditeRepository:
         solo_vive: bool = True,
         limit: int = 50,
         offset: int = 0,
-        sort_by: str = "quando",
-        sort_dir: str = "desc",
+        sort_by: str | None = None,
+        sort_dir: str | None = None,
     ) -> tuple[list[dict[str, Any]], int, int, int]:
         gravita_valide = [g for g in gravita if g in GIORNALE_GRAVITA]
         registri_validi = list(registri) if registri is not None else None
-        righe, vive, ritirate, info_vive = self._list_giornale(
+        return self._list_giornale(
             perimetro_sql="""
                 (gravita = ANY(%s::text[]) OR (gravita IS NULL AND 'ERROR' = ANY(%s::text[])))
                 AND (%s::text[] IS NULL OR registro = ANY(%s::text[]))
@@ -5201,17 +5287,20 @@ class VenditeRepository:
             sort_by=sort_by,
             sort_dir=sort_dir,
         )
-        self._aggiungi_entita_display(righe)
-        return righe, vive, ritirate, info_vive
 
     # Scopo: `entita_display` sulle righe di UNA pagina — il codice del lotto,
     #        «serie/numero» del documento — risolto qui nel backend (memoria:
     #        liste API → display via JOIN, mai lookup client-side).
-    # ⭐ UNA query sulla pagina e NON un JOIN dentro `_list_giornale`: la' il
-    #    JOIN starebbe PRIMA di `LIMIT`, cioe' su tutto il perimetro (che con
-    #    un intervallo largo sono migliaia di righe per una pagina di 25), e
-    #    peserebbe anche sui due lettori per entita', che il display non lo
-    #    chiedono. Qui costa una lettura per chiave sulla pagina.
+    # ⭐ UNA query sulla pagina e NON un JOIN dentro la query di `_list_giornale`:
+    #    la' il JOIN starebbe PRIMA di `LIMIT`, cioe' su tutto il perimetro (che
+    #    con un intervallo largo sono migliaia di righe per una pagina di 25).
+    #    Qui costa una lettura per chiave sulla pagina.
+    # ⭐ La chiama `_list_giornale`, cioe' TUTTI E TRE i lettori (2026-09-27):
+    #    la Storia della fattura e del lotto sono la stessa lista a catalogo
+    #    del trasversale (`vendite.giornale`), e la colonna «Riferimento» legge
+    #    questo campo. Fino a quel giorno la chiamava il solo trasversale, e
+    #    sulle due Storie la colonna sarebbe uscita VUOTA senza nessun errore —
+    #    un campo dichiarato dal catalogo e trasportato da un lettore su tre.
     # ⚠️ I due JOIN attraversano tabelle in RLS: fuori scope darebbero `NULL` —
     #    ma fuori scope la riga del giornale NON c'e' (la vista e'
     #    `security_invoker`), quindi un `NULL` qui e' un'entita' cancellata, non
@@ -5277,15 +5366,17 @@ class VenditeRepository:
         offset: int,
         escludi_ritirate: bool,
         escludi_info: bool,
-        sort_by: str,
-        sort_dir: str,
+        sort_by: str | None,
+        sort_dir: str | None,
+        con_conteggi: bool = True,
+        con_entita_display: bool = True,
     ) -> tuple[list[dict[str, Any]], int, int, int]:
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
-        # ⭐ L'ORDINE DI DEFAULT E' LA GRAVITA' (decisione di Tid, 2026-08-24
-        #    dopo la validazione in-app): la prima domanda davanti a un
-        #    documento e' «c'e' qualcosa che non va?», non «cosa e' successo per
-        #    primo». La cronologia resta a un clic, sulla colonna «quando».
+        # ⭐ L'ORDINE DI DEFAULT E' IL TEMPO, dal piu' recente
+        #    (`GIORNALE_ORDINE_DEFAULT`, dal 2026-09-27: e' il preset della lista
+        #    a catalogo, la stessa per i tre lettori). La gravita' resta a un
+        #    clic, sulla sua colonna.
         # ⛔ E l'ordinamento sta QUI e non nel client: la lista e' PAGINATA lato
         #    server, quindi ordinare a valle ordinerebbe la sola pagina
         #    visibile — «il piu' grave» diventerebbe «il piu' grave fra i primi
@@ -5328,11 +5419,15 @@ class VenditeRepository:
                 ), conteggi AS (
                     SELECT COUNT(*) FILTER (WHERE NOT ritirata) AS vive,
                            COUNT(*) FILTER (WHERE ritirata)     AS ritirate,
-                           -- ⚠️ Le INFO si contano SOLO fra le righe vive: una
-                           -- riga INFO gia' ritirata sarebbe contata due volte,
-                           -- e i due numeri a video non tornerebbero col totale.
+                           -- ⚠️ Le INFO si contano fra le righe che il filtro
+                           -- sulle ritirate LASCIA PASSARE (solo le vive, o anche
+                           -- le ritirate quando le si chiede): sono quelle che il
+                           -- filtro «info» toglie davvero. Contate sulle sole vive
+                           -- con le ritirate a video, il totale mostrato
+                           -- supererebbe le righe di tante INFO ritirate — e il
+                           -- paginatore avrebbe pagine finali vuote.
                            COUNT(*) FILTER (
-                               WHERE NOT ritirata AND rango_gravita = 1
+                               WHERE rango_gravita = 1 AND (NOT %s OR NOT ritirata)
                            ) AS info_vive
                       FROM tutte
                 )
@@ -5373,6 +5468,7 @@ class VenditeRepository:
                 """.format(perimetro_sql=perimetro_sql, order_clause=order_clause),  # noqa: S608
                 [
                     *perimetro_params,
+                    bool(escludi_ritirate),  # conteggio delle INFO (CTE)
                     bool(escludi_ritirate), bool(escludi_info),
                     safe_limit, safe_offset,
                 ],
@@ -5383,11 +5479,17 @@ class VenditeRepository:
         # caso «tutte ritirate» — o, sul lotto, «tutte INFO»: la CTE li avrebbe,
         # ma i filtri non lasciano passare nulla da cui prenderli. Si ripiega su
         # una domanda secca, con lo STESSO perimetro.
+        # ⚠️ `con_conteggi=False` salta il ripiego: e' il lettore che vuole UNA
+        #    riga e non un elenco (`get_giornale_errore_vivo`), dove i numeri non
+        #    li legge nessuno — e il caso senza righe e' quello di gran lunga piu'
+        #    frequente, cioe' una seconda query a ogni apertura per niente.
         if rows:
             vive, ritirate, info_vive = int(rows[0][12]), int(rows[0][13]), int(rows[0][14])
+        elif not con_conteggi:
+            vive, ritirate, info_vive = 0, 0, 0
         else:
             vive, ritirate, info_vive = self._conta_giornale(
-                perimetro_sql, perimetro_params,
+                perimetro_sql, perimetro_params, escludi_ritirate=escludi_ritirate,
             )
         risultato: list[dict[str, Any]] = [
             {
@@ -5428,27 +5530,33 @@ class VenditeRepository:
             }
             for row in rows
         ]
+        # ⚠️ Una query in piu' (le etichette «di chi e' la riga»): la salta chi
+        #    non la mostra (`get_giornale_errore_vivo`, a ogni dettaglio fattura).
+        if con_entita_display:
+            self._aggiungi_entita_display(risultato)
         return risultato, vive, ritirate, info_vive
 
     # Scopo: i conteggi del giornale quando la pagina non ha righe da cui
     #        leggerli — vedi il ripiego qui sopra. Stesso perimetro, per
     #        costruzione: riceve la stessa coppia SQL/parametri.
     def _conta_giornale(
-        self, perimetro_sql: str, perimetro_params: list[Any],
+        self, perimetro_sql: str, perimetro_params: list[Any], *, escludi_ritirate: bool,
     ) -> tuple[int, int, int]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT COUNT(*) FILTER (WHERE NOT COALESCE(disabilitato, false)),
                        COUNT(*) FILTER (WHERE COALESCE(disabilitato, false)),
+                       -- Le INFO come nella CTE di `_list_giornale`: fra le
+                       -- righe che il filtro sulle ritirate lascia passare.
                        COUNT(*) FILTER (
-                           WHERE NOT COALESCE(disabilitato, false)
-                             AND gravita = 'INFO'
+                           WHERE gravita = 'INFO'
+                             AND (NOT %s OR NOT COALESCE(disabilitato, false))
                        )
                   FROM script.vw_giornale_entita
                  WHERE {perimetro_sql}
                 """.format(perimetro_sql=perimetro_sql),  # noqa: S608
-                perimetro_params,
+                [bool(escludi_ritirate), *perimetro_params],
             )
             row = cursor.fetchone()
         if not row:

@@ -10,11 +10,13 @@
 
 from __future__ import annotations
 
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
 from rest_framework.response import Response
 from apps.core.api.base_views import DomainAPIView
+from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.payload_validators import paginated_envelope, parse_list_params
 
 from apps.core.api.success_responses import success_response
 from apps.core.db.session_audit_repository import SessionAuditRepository
@@ -31,12 +33,28 @@ def _get_current_sid(request: Request) -> str | None:
 
 
 class SessioniAttiveListView(DomainAPIView):
-    """Lista sessioni attive dell'utente corrente, escludendo quella corrente."""
+    """Lista sessioni attive dell'utente corrente, escludendo quella corrente.
+
+    E' la lista a catalogo `core.sessioni_attive` (lista 83): envelope
+    paginato standard, ordinamento sulla whitelist del repository, ricerca
+    libera sulle colonne che il catalogo accende.
+    ⛔ Nessun `lista_codice`: la lista e' GLOBALE (`perimetro_emittente =
+    false`) — sono le sessioni dell'utente collegato, non dati di un'azienda —
+    e il suo posto e' `_ESENZIONI` di `test_perimetro_emittente_copertura`.
+    """
 
     skip_area_check = True
+    is_search_endpoint = True
 
     @extend_schema(
         summary="Lista altre sessioni attive utente",
+        parameters=[
+            param_ricerca_full(),
+            OpenApiParameter(name="limit", type=int, required=False),
+            OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
         responses={
             200: inline_serializer(
                 name="SessioniAttiveResponse",
@@ -44,11 +62,20 @@ class SessioniAttiveListView(DomainAPIView):
                     "data": inline_serializer(
                         name="SessioniAttiveData",
                         fields={
-                            "sessioni": serializers.ListField(
-                                help_text="Lista sessioni attive (esclusa la corrente)."
+                            "results": serializers.ListField(
+                                help_text="Pagina di sessioni attive (esclusa la corrente)."
                             ),
                             "count": serializers.IntegerField(
-                                help_text="Numero sessioni restituite."
+                                help_text="Sessioni che rispondono alla ricerca (tutte le pagine)."
+                            ),
+                            "page": serializers.IntegerField(),
+                            "page_size": serializers.IntegerField(),
+                            "total_pages": serializers.IntegerField(),
+                            "totale_attive": serializers.IntegerField(
+                                help_text=(
+                                    "Altre sessioni attive a prescindere dalla ricerca: "
+                                    "quelle che «revoca tutte» chiude."
+                                )
                             ),
                         },
                     ),
@@ -56,14 +83,33 @@ class SessioniAttiveListView(DomainAPIView):
             )
         },
     )
-    # Scopo: Lista le sessioni attive dell'utente corrente, escludendo quella corrente.
-    # Il frontend mostra il pannello solo se la lista non e' vuota.
+    # Scopo: Lista paginata delle sessioni attive dell'utente corrente, esclusa
+    #        la corrente. Il frontend mostra il pannello solo se ce n'e' almeno una.
+    # ⭐ `totale_attive` accanto a `count`, e non e' un doppione: `count` conta
+    #    le righe TROVATE, `totale_attive` le sessioni che esistono. Il badge
+    #    del pannello e la conferma di «revoca tutte» parlano del secondo — una
+    #    ricerca che trova una sessione su tre non deve far dire al dialog
+    #    «revocherai 1 sessione» mentre ne revoca tre. Senza ricerca coincidono,
+    #    e la seconda lettura non si fa.
     def get(self, request: Request) -> Response:
+        p = parse_list_params(request.query_params, default_order="data_ultimo_evento")
         repo = SessionAuditRepository()
-        sessioni = repo.list_sessioni_attive(request.user.id)
         current_sid = _get_current_sid(request)
-        altre = [s for s in sessioni if s["jti"] != current_sid]
-        return success_response({"sessioni": altre, "count": len(altre)})
+        results, total = repo.list_sessioni_attive_paginata(
+            request.user.id,
+            escludi_jti=current_sid,
+            search=p["search"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            limit=p["limit"],
+            offset=p["offset"],
+        )
+        envelope = paginated_envelope(results, total, p["page"], p["limit"])
+        envelope["totale_attive"] = (
+            repo.conta_sessioni_attive(request.user.id, escludi_jti=current_sid)
+            if p["search"] else total
+        )
+        return success_response(envelope)
 
 
 class SessioneRevocaView(DomainAPIView):

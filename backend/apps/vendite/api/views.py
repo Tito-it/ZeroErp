@@ -41,7 +41,16 @@ from apps.core.api.payload_validators import (
     qp_str_upper,
 )
 from apps.core.api.openapi_params import descrizione_order_by
-from apps.vendite.db.vendite_repository import GIORNALE_GRAVITA, GIORNALE_SORT_COLUMNS
+from apps.vendite.db.vendite_repository import (
+    GIORNALE_GRAVITA,
+    GIORNALE_ORDINE_DEFAULT,
+    GIORNALE_SORT_COLUMNS,
+)
+from apps.vendite.api._giornale_params import (
+    EMITTENTE_PARAM_GIORNALE_ENTITA,
+    PARAMS_LISTA_GIORNALE_ENTITA,
+    parametri_lista_giornale_entita,
+)
 from apps.core.api.success_responses import success_response
 from apps.core.services.value_normalizer import as_bool
 from apps.core.services.service_errors import E_VALIDATION_INPUT
@@ -1548,7 +1557,7 @@ class ApiGiornale(DomainAPIView):
     # ⭐ `order_dir` assente = `None`: decide il default `quando DESC`.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
-        p = parse_list_params(qp, default_order="quando")
+        p = parse_list_params(qp, default_order=GIORNALE_ORDINE_DEFAULT)
         return success_response(get_giornale_trasversale(
             **_filtri_giornale(qp),
             limit=p["limit"],
@@ -1606,17 +1615,23 @@ class ApiGiornaleExport(DomainAPIView):
 
 
 class ApiLottoGiornale(DomainAPIView):
-    """La STORIA di un lotto: il lotto PIU' le sue fatture, righe non-INFO.
+    """La STORIA di un lotto: il lotto PIU' le sue fatture, di default senza INFO.
 
-    Secondo (e ultimo) consumatore di `script.vw_giornale_entita`, la vista che
-    cuce i registri di evento del progetto in una forma normalizzata. Sul lotto
-    i registri che rispondono sono **tre** — `EVENT_LOG`, `LOTTO_LOG`,
+    Secondo consumatore di `script.vw_giornale_entita`, la vista che cuce i
+    registri di evento del progetto in una forma normalizzata. Sul lotto i
+    registri che rispondono sono **tre** — `EVENT_LOG`, `LOTTO_LOG`,
     `TASK_RUN` — piu' `FATTURA_LOG` per i documenti che contiene.
 
     ⭐ «Il lotto piu' le sue fatture» e' una DECISIONE (Tid, 2026-08-24), non una
     scelta di schermata: un pannello limitato all'entita' LOTTO ripeterebbe
     «Esito fatture lotto · WARN» e **non conterrebbe il motivo**, che sta sulla
-    fattura perche' la sua entita' e' la fattura (rilievo R-3).
+    fattura perche' la sua entita' e' la fattura (rilievo R-3). Per la stessa
+    ragione le colonne Entita'/Riferimento della lista servono: la Storia del
+    lotto mescola due entita'.
+
+    ⭐ Dal 2026-09-27 e' la lista a catalogo `vendite.giornale` (la stessa del
+    trasversale e della Storia della fattura): contratto di lista standard
+    (`_giornale_params`), piu' il filtro che e' solo suo, `info`.
 
     ⛔ Non e' la lista delle segnalazioni (`/segnalazioni/`), che elenca i
     problemi APERTI da risolvere: qui si risponde a *«cosa e' successo, in che
@@ -1628,23 +1643,12 @@ class ApiLottoGiornale(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    lista_codice = "vendite.giornale"
+    lista_emittente_param = EMITTENTE_PARAM_GIORNALE_ENTITA
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(
-                name="sort_by", type=str, location=OpenApiParameter.QUERY, required=False,
-                description=(
-                    "Colonna di ordinamento: `gravita` (default, i piu' gravi "
-                    "prima) oppure `quando`. Un valore fuori whitelist ricade "
-                    "sul default."
-                ),
-            ),
-            OpenApiParameter(
-                name="sort_dir", type=str, location=OpenApiParameter.QUERY, required=False,
-                description="Verso: `desc` (default) o `asc`.",
-            ),
+            *PARAMS_LISTA_GIORNALE_ENTITA,
             OpenApiParameter(
                 name="info", type=bool, location=OpenApiParameter.QUERY, required=False,
                 description=(
@@ -1653,13 +1657,6 @@ class ApiLottoGiornale(DomainAPIView):
                     "`info_count`. ⚠️ «Non-INFO» comprende la gravita' NULL, che "
                     "e' il segnale di un vincolo allargato e non un dato "
                     "mancante: resta visibile anche col filtro attivo."
-                ),
-            ),
-            OpenApiParameter(
-                name="ritirate", type=bool, location=OpenApiParameter.QUERY, required=False,
-                description=(
-                    "Include anche le segnalazioni RITIRATE, che appartengono a "
-                    "un tentativo poi rifatto. Il conteggio e' `ritirate_count`."
                 ),
             ),
         ],
@@ -1686,16 +1683,14 @@ class ApiLottoGiornale(DomainAPIView):
         },
     )
     # Scopo: Restituisce via GET il giornale paginato del lotto.
+    # ⚠️ `info` strict (`qp_bool_optional`): `?info=banana` e' un 400. Assente
+    #    = `False`, cioe' «solo problemi» — il default della scheda.
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
         q = request.query_params
         data = get_lotto_giornale(
             lotto_id=lotto_id,
-            page=qp_int_strict(q.get("page"), "page", 1),
-            page_size=qp_int_strict(q.get("page_size"), "page_size", 50),
-            includi_info=as_bool(q.get("info"), default=False),
-            includi_ritirate=as_bool(q.get("ritirate"), default=False),
-            sort_by=q.get("sort_by") or "gravita",
-            sort_dir=q.get("sort_dir") or "desc",
+            **parametri_lista_giornale_entita(q),
+            includi_info=qp_bool_optional(q.get("info"), "info") is True,
             auth_user_id=get_scope_user_id(request),
         )
         return success_response(data)

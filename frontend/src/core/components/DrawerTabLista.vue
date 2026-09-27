@@ -55,6 +55,11 @@ defineProps({
   // filtri»: e' il contratto di `FiltriLista` (`chiaviFiltro`,
   // `filtriDefault`, `azzeraFiltri`).
   // ⛔ Non si deriva da `rows`/`total`: quelli sono il risultato, non i filtri.
+  // ⭐ Dallo store si legge anche `attesaPadre` (padre composto a meta': il
+  //    documento c'e', il suo emittente non ancora), reso come CARICAMENTO —
+  //    qui e non nei chiamanti, perche' e' lo stesso per ogni tab-lista, e
+  //    senza la lista in attesa mostrerebbe la frase del vuoto su righe che
+  //    nessuno ha letto (`useListaStoreCore`, «il padre composto»).
   store: { type: Object, default: null },
   // Girata a <ListaConfigurabile>: l'emittente che il drawer ha gia' fissato.
   // ⭐ E' la ragione per cui un tab-lista dentro il drawer di un emittente non
@@ -198,7 +203,7 @@ defineExpose({
       :emittente-esplicito="emittenteEsplicito"
       :rows="rows"
       :total="total"
-      :loading="loading"
+      :loading="loading || store?.attesaPadre === true"
       :paginator-options="paginatorOptions"
       :paginata="paginata"
       :page="page"
@@ -210,8 +215,16 @@ defineExpose({
       @row-click="emit('row-click', $event)"
       @config-loaded="emit('config-loaded', $event)"
     >
+      <!-- ⚠️ La frase del vuoto del caller NON si rende mentre la lista carica
+           o aspetta il padre: il DataTable disegna la riga vuota anche sotto
+           la maschera di caricamento, e «nessuna revisione» sotto lo spinner
+           dice una cosa che nessuno ha ancora letto. -->
       <template v-for="nome in slotInoltrati($slots)" #[nome]="scope" :key="nome">
-        <slot :name="nome" v-bind="scope ?? {}" />
+        <slot
+          v-if="nome !== 'empty' || !(loading || store?.attesaPadre === true)"
+          :name="nome"
+          v-bind="scope ?? {}"
+        />
       </template>
     </ListaConfigurabile>
   </div>

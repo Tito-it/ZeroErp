@@ -31,9 +31,11 @@
 //    pagine che il backend rifiuta con 422. Il BB la espone per tutte.
 import { createListaStore } from '../../core/stores/createListaStore'
 import { listSoggettoTitoliIva } from '../api/anagrafiche'
+import { storePerIstanza } from '../../core/stores/storePerIstanza'
 
-export const useSoggettoTitoliIvaStore = createListaStore(
-  'anagrafiche-soggetto-titoli-iva',
+// ⭐ Uno store per ISTANZA del drawer (`storePerIstanza`, 2026-09-27): due
+//    drawer dello stesso tipo vivi insieme non si scrivono addosso la lista.
+export const useSoggettoTitoliIvaStore = storePerIstanza('anagrafiche-soggetto-titoli-iva', (id) => createListaStore(id,
   {
     fetchPage: listSoggettoTitoliIva,
     parentField: 'soggettoId',
@@ -45,4 +47,4 @@ export const useSoggettoTitoliIvaStore = createListaStore(
     //    una lista che tutti leggono dall'alto.
     orderDir: null,
   },
-)
+))

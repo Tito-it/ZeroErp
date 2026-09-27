@@ -19,8 +19,9 @@ Indice test eseguiti:
 8) FatturaGiornaleServiceTests.test_entity_type_e_fattura
 9) FatturaGiornaleServiceTests.test_ritirate_nascoste_di_default
 10) FatturaGiornaleServiceTests.test_ritirate_incluse_su_richiesta
-11) FatturaGiornaleServiceTests.test_ordinamento_di_default_e_la_gravita
+11) FatturaGiornaleServiceTests.test_ordinamento_di_default_lo_decide_il_repository
 12) FatturaGiornaleServiceTests.test_ordinamento_chiesto_arriva_al_repository
+13) FatturaGiornaleServiceTests.test_ordinamento_fuori_whitelist_400
 """
 
 from unittest import TestCase
@@ -97,13 +98,15 @@ class FatturaGiornaleServiceTests(TestCase):
         get_fattura_giornale(fattura_id=7, auth_user_id=99)
         repo.get_fattura_testata.assert_called_once_with(7, auth_user_id=99)
 
-    # Scopo: envelope paginato standard, con l'offset calcolato dalla pagina.
+    # Scopo: envelope paginato standard dal contratto di lista (`limit`/
+    #        `offset`, 2026-09-27): la pagina si RICAVA dall'offset, e l'offset
+    #        arriva intatto al repository.
     @patch("apps.vendite.services.vendite_service.VenditeRepository")
     def test_shape_risposta_e_paginazione(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
         repo.list_giornale_entita.return_value = (_RIGHE, 7, 0, 0)
-        data = get_fattura_giornale(fattura_id=7, page=2, page_size=3)
+        data = get_fattura_giornale(fattura_id=7, limit=3, offset=3)
         self.assertEqual(data["fattura_id"], 7)
         self.assertEqual(data["count"], 7)
         self.assertEqual(data["page"], 2)
@@ -163,22 +166,23 @@ class FatturaGiornaleServiceTests(TestCase):
         self.assertEqual(data["count"], 3)
         self.assertEqual(data["ritirate_count"], 0)
 
-    # Scopo: ⭐ L'ORDINE DI DEFAULT E' LA GRAVITA' (Tid, 2026-08-24, dopo la
-    #        validazione in-app): davanti a un documento la prima domanda e'
-    #        «c'e' qualcosa che non va?», non «cosa e' successo per primo».
-    # ⛔ E l'ordinamento e' del SERVER: la lista e' paginata, quindi riordinare
-    #    nel client riordinerebbe la sola pagina caricata — «il piu' grave»
-    #    diventerebbe «il piu' grave fra i primi 50», senza dirlo. Questo test
-    #    presidia che il default non si perda per strada fino al repository.
+    # Scopo: ⭐ L'ORDINE DI DEFAULT NON SI SCRIVE QUI (2026-09-27): la Storia e'
+    #        la lista a catalogo `vendite.giornale`, e il suo default — il
+    #        preset, `quando desc` — ha UNA sede, `GIORNALE_ORDINE_DEFAULT` nel
+    #        repository (presidiata in `test_giornale_ordinamento`). Il service
+    #        passa l'assenza cosi' com'e': un secondo default qui sarebbe la
+    #        copia che diverge (fino a quel giorno era la gravita').
+    # ⛔ E l'ordinamento resta del SERVER: la lista e' paginata, quindi
+    #    riordinare nel client riordinerebbe la sola pagina caricata.
     @patch("apps.vendite.services.vendite_service.VenditeRepository")
-    def test_ordinamento_di_default_e_la_gravita(self, repo_cls):
+    def test_ordinamento_di_default_lo_decide_il_repository(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
         repo.list_giornale_entita.return_value = (_RIGHE, 2, 1, 0)
         get_fattura_giornale(fattura_id=7)
         chiamata = repo.list_giornale_entita.call_args.kwargs
-        self.assertEqual(chiamata["sort_by"], "gravita")
-        self.assertEqual(chiamata["sort_dir"], "desc")
+        self.assertIsNone(chiamata["sort_by"])
+        self.assertIsNone(chiamata["sort_dir"])
 
     # Scopo: la cronologia resta a un clic — la colonna «quando» chiesta dal
     #        pannello arriva intatta al repository, verso compreso.
@@ -187,7 +191,19 @@ class FatturaGiornaleServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
         repo.list_giornale_entita.return_value = (_RIGHE, 2, 1, 0)
-        get_fattura_giornale(fattura_id=7, sort_by="quando", sort_dir="asc")
+        get_fattura_giornale(fattura_id=7, order_by="gravita", order_dir="asc")
         chiamata = repo.list_giornale_entita.call_args.kwargs
-        self.assertEqual(chiamata["sort_by"], "quando")
+        self.assertEqual(chiamata["sort_by"], "gravita")
         self.assertEqual(chiamata["sort_dir"], "asc")
+
+    # ⛔ Una colonna fuori whitelist e' un 400, non un ripiego muto sul default:
+    #    una lista ordinata diversamente da come e' stata chiesta non solleva
+    #    niente. E il rifiuto arriva PRIMA di toccare il database.
+    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    def test_ordinamento_fuori_whitelist_400(self, repo_cls):
+        repo = repo_cls.return_value
+        repo.get_fattura_testata.return_value = _TESTATA
+        with self.assertRaises(ServiceError) as ctx:
+            get_fattura_giornale(fattura_id=7, order_by="cosa")
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        repo.get_fattura_testata.assert_not_called()

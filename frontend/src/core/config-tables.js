@@ -26,7 +26,11 @@
 export const CONFIG_TABLES = [
   // --- config ---
   { schema: 'config', rel: 'config.ambiti' },
-  { schema: 'config', rel: 'config.aree_funzionali' },
+  // ⛔ `config.aree_funzionali` e' USCITA il 2026-09-27 (D-P8,
+  //    brief-db-pannello-config-verbo-generico): a DB `pannello = false`, e
+  //    resta solo nelle tendine (lookup). Le aree sono l'impalcatura dei
+  //    permessi, non un vocabolario da editare qui: la sua gestione e' la D-P9
+  //    (aperta, sede proposta `amm_software`, riservata al SUPER_ADMIN).
   { schema: 'config', rel: 'config.aspetti_beni' },
   { schema: 'config', rel: 'config.assets_ownership' },
   { schema: 'config', rel: 'config.canali_pratiche' },

@@ -102,6 +102,7 @@ ApiOffertaPassaggi = build_passaggi_view(
     schema_prefix="Offerta",
     url_kwarg="offerta_id",
     tipo_codice="OFFERTA_COMMERCIALE",
+    model_permission=("vendite", "offerta_commerciale"),
 )
 
 ApiOrdinePassaggi = build_passaggi_view(

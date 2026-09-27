@@ -32,9 +32,11 @@
 //    chiesto, e lo farebbe divergere dal default del backend.
 import { createListaStore } from '../../core/stores/createListaStore'
 import { listSistemazioniFattura } from '../api/pagamenti'
+import { storePerIstanza } from '../../core/stores/storePerIstanza'
 
-export const useSistemazioniFatturaStore = createListaStore(
-  'pagamenti-sistemazioni-fattura',
+// ⭐ Uno store per ISTANZA del drawer (`storePerIstanza`, 2026-09-27): due
+//    drawer dello stesso tipo vivi insieme non si scrivono addosso la lista.
+export const useSistemazioniFatturaStore = storePerIstanza('pagamenti-sistemazioni-fattura', (id) => createListaStore(id,
   {
     fetchPage: listSistemazioniFattura,
     parentField: 'fatturaId',
@@ -43,4 +45,4 @@ export const useSistemazioniFatturaStore = createListaStore(
     startsEmpty: false,
     orderDir: null,
   },
-)
+))

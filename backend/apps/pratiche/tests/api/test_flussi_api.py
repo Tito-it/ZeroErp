@@ -29,6 +29,9 @@ Indice test eseguiti:
 18) FlussiApiTests.test_get_operatori_reparto_ok
 19) FlussiApiTests.test_get_pratica_di_flusso_ok
 20) FlussiApiTests.test_get_pratica_di_flusso_non_visibile
+21) FlussiApiTests.test_get_lista_flussi_parametri_lista
+22) FlussiApiTests.test_lista_flussi_dichiara_il_cancello_col_parametro_emittente
+23) FlussiApiTests.test_post_crea_flusso_passa_l_emittente_della_query_al_cancello
 """
 
 import json
@@ -75,17 +78,71 @@ class FlussiApiTests(JwtMockedApiTest):
         super().setUp()
         self.client = Client()
 
-    # Scopo: Verifica GET lista flussi per pratica.
+    # Scopo: Verifica GET lista flussi per pratica: envelope paginato col
+    #        totale del repository (non `len(results)`), default `sequenza`.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_VIEWS}.PraticheRepository")
     def test_get_lista_flussi_ok(self, MockRepo, _auth):
         repo = MockRepo.return_value
-        repo.list_flussi.return_value = [_mock_flusso_row()]
+        repo.list_flussi_pagina.return_value = ([_mock_flusso_row()], 7)
 
         response = self.client.get("/api/v1/pratiche/1/flussi/")
         self.assertEqual(response.status_code, 200)
-        body = response.json()
-        self.assertEqual(len(body["data"]["results"]), 1)
+        data = response.json()["data"]
+        self.assertEqual(len(data["results"]), 1)
+        self.assertEqual(data["count"], 7)
+        repo.list_flussi_pagina.assert_called_once_with(
+            1, search=None, order_by="sequenza", order_dir=None, limit=25, offset=0,
+        )
+
+    # Scopo: la lista passa al repository ricerca, ordinamento e pagina come
+    #        arrivano; `emittente_fiscale_id` NON e' un filtro (lo legge il
+    #        cancello di perimetro), quindi al repository non arriva.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_VIEWS}.PraticheRepository")
+    def test_get_lista_flussi_parametri_lista(self, MockRepo, _auth):
+        repo = MockRepo.return_value
+        repo.list_flussi_pagina.return_value = ([], 0)
+
+        response = self.client.get(
+            "/api/v1/pratiche/3/flussi/?search=cont&order_by=data_scadenza"
+            "&order_dir=desc&limit=10&offset=20&emittente_fiscale_id=5",
+        )
+        self.assertEqual(response.status_code, 200)
+        repo.list_flussi_pagina.assert_called_once_with(
+            3, search="cont", order_by="data_scadenza", order_dir="desc",
+            limit=10, offset=20,
+        )
+        self.assertEqual(response.json()["data"]["page"], 3)
+
+    # Scopo: la view dichiara lista e parametro dell'emittente — e' il
+    #        contratto che il tab dentro il drawer pratica usa per non essere
+    #        sbarrato (422) a chi ha piu' emittenti nello scope.
+    def test_lista_flussi_dichiara_il_cancello_col_parametro_emittente(self):
+        from apps.pratiche.api.views import ApiPraticaFlussiList
+
+        self.assertEqual(ApiPraticaFlussiList.lista_codice, "pratiche.flussi")
+        self.assertEqual(ApiPraticaFlussiList.lista_emittente_param, "emittente_fiscale_id")
+
+    # Scopo: il cancello di perimetro vale anche sul POST (stessa rotta della
+    #        lista): l'emittente della pratica, in query, arriva al cancello
+    #        come emittente esplicito. Senza, chi vede piu' emittenti prendeva
+    #        un 422 creando un flusso dalla dashboard.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch("apps.core.services.perimetro_emittente.guard_lista_per_codice")
+    @patch(f"{_VIEWS}.pratiche_service.crea_flusso")
+    def test_post_crea_flusso_passa_l_emittente_della_query_al_cancello(self, mock_crea, mock_guard, _auth):
+        mock_crea.return_value = 99
+
+        response = self.client.post(
+            "/api/v1/pratiche/1/flussi/?emittente_fiscale_id=7",
+            data=json.dumps({"template_flusso_id": 10}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        mock_guard.assert_called_once_with(
+            user=ANY, lista_codice="pratiche.flussi", emittente_esplicito=7,
+        )
 
     # Scopo: Verifica POST creazione flusso con esito positivo.
     @patch(_AUTH, return_value=(Mock(), None))

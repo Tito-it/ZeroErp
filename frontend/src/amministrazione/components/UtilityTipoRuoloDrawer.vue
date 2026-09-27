@@ -1,13 +1,21 @@
+<!--
+  SPDX-License-Identifier: GPL-3.0-or-later
+  Copyright (C) 2026 Tid (Michele Carlo Titini)
+-->
 <script setup>
 // Scopo: Drawer crea/modifica riga matrice config.utilities_tipi_ruolo.
 //        - In create: select FK utility e tipo_ruolo abilitati.
 //        - In edit:   FK disabilitate (immutabili), toggle attivo modificabile,
 //                     tab "Utilizzo" mostra emittenti fiscali con override
-//                     per la stessa coppia.
+//                     per la stessa coppia: la lista a catalogo
+//                     `config.utilities_tipi_ruolo_usage` (lista 86), su
+//                     `useDrawerTabLista` + `<DrawerTabLista>`.
 //        - Sola lettura: prop `readonly` cumulativa con useInjectReadonly.
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUtilitiesTipiRuoloStore } from '../stores/utilitiesTipiRuolo'
+import { useUtilityTipoRuoloUsageStore } from '../stores/utilityTipoRuoloUsage'
+import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
@@ -23,15 +31,14 @@ import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'
 import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
+import InputText from 'primevue/inputtext'
 import AttivoTag from '../../core/components/AttivoTag.vue'
+import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
 import Message from 'primevue/message'
-
-
 
 const { t } = useI18n()
 const store = useUtilitiesTipiRuoloStore()
+const usageStore = useUtilityTipoRuoloUsageStore()
 const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
 
@@ -62,24 +69,29 @@ const form = ref({
 const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 
 const activeTab = ref('dati')
-const usageRows = ref([])
-const usageCount = ref(0)
-const usageLoading = ref(false)
-const usageLoaded = ref(false)
+// ⭐ Il tab «Utilizzo» si legge SOLO se l'operatore ci entra, come prima della
+//    conversione: la maggior parte delle aperture resta sul tab Dati, e una
+//    query per ogni apertura sarebbe lavoro che nessuno guarda. Una volta
+//    aperto resta acceso fino alla prossima riga: tornare su «Dati» e poi
+//    rientrare non deve perdere la pagina e l'ordine scelti.
+const usageAperto = ref(false)
 
 function resetForm() {
   form.value = { utility_id: null, tipo_ruolo_id: null, attivo: true }
   fissa()
 }
 
-// Scopo: Reset stato tab Utilizzo. Eseguito ad ogni apertura del drawer per
-//        evitare di mostrare dati di un record precedente (bug stale data
-//        quando il drawer rimane montato tra aperture diverse).
-function resetUsage() {
-  usageRows.value = []
-  usageCount.value = 0
-  usageLoaded.value = false
-}
+// ⚠️ `parentId` porta l'id SOLO a drawer aperto, in modifica e col tab gia'
+//    visitato: il `null` chiama `usageStore.reset()`, cosi' gli emittenti
+//    della riga precedente non lampeggiano sotto la prossima (era il «bug
+//    stale data» del reset a mano di prima, ora e' il BB a farlo).
+const {
+  searchText, onPage, onSort, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
+} = useDrawerTabLista(usageStore, {
+  parentId: () => (props.visible && isEdit.value && usageAperto.value ? props.recordId : null),
+  parentField: 'recordId',
+})
 
 async function loadDetail() {
   if (!props.recordId) return
@@ -93,19 +105,6 @@ async function loadDetail() {
   fissa()
 }
 
-async function loadUsage() {
-  if (!props.recordId || usageLoaded.value) return
-  usageLoading.value = true
-  try {
-    const data = await store.fetchUsage(props.recordId, { limit: 100 })
-    usageRows.value = data.results || []
-    usageCount.value = data.count || 0
-    usageLoaded.value = true
-  } finally {
-    usageLoading.value = false
-  }
-}
-
 // Watch combinato su visible+recordId: gestisce sia open/close sia switch
 // tra record diversi a drawer aperto. Reset usage SEMPRE ad ogni apertura.
 watch(
@@ -113,7 +112,7 @@ watch(
   ([visible]) => {
     if (!visible) return
     activeTab.value = 'dati'
-    resetUsage()
+    usageAperto.value = false
     if (isEdit.value) {
       loadDetail()
     } else {
@@ -123,7 +122,7 @@ watch(
 )
 
 watch(activeTab, (tab) => {
-  if (tab === 'usage' && isEdit.value) loadUsage()
+  if (tab === 'usage' && isEdit.value) usageAperto.value = true
 })
 
 const canSave = computed(() => {
@@ -235,38 +234,42 @@ const suVisibile = gestoreVisibile(emit, close)
                 {{ t('amministrazione.matrice_utilities_ruoli.usage_hint') }}
               </Message>
             </div>
-            <div class="form-field">
-              <strong>{{ t('amministrazione.matrice_utilities_ruoli.usage_count') }}:</strong>
-              {{ usageCount }}
-            </div>
-            <DataTable
-              :value="usageRows"
-              :loading="usageLoading"
-              striped-rows
-              size="small"
-              class="app-datatable"
+            <!-- Nessun «Emittenti con override: N» in testa: con una ricerca
+                 attiva il totale della lista e' quello delle TROVATE, e la
+                 riga direbbe un'altra cosa. Il numero lo da' il paginatore. -->
+            <DrawerTabLista
+              ref="listaRef"
+              codice="config.utilities_tipi_ruolo_usage"
               data-key="emittente_id"
+              :store="usageStore"
+              :rows="usageStore.items"
+              :total="usageStore.totalRecords"
+              :loading="usageStore.loading"
+              :paginator-options="paginatorProps"
+              :page="tablePage"
+              :sort-field="paginatorProps.sortField"
+              :sort-order="paginatorProps.sortOrder"
+              :page-actions="pageActions"
+              :dirty="dirty"
+              :perimetro-bloccato="perimetroBloccato"
+              @page="onPage"
+              @sort="onSort"
+              @config-loaded="onConfigLoaded"
             >
-              <Column
-                field="emittente_codice"
-                :header="t('amministrazione.matrice_utilities_ruoli.usage_col_codice')"
-                style="width: 140px;"
-              />
-              <Column
-                field="emittente_descrizione"
-                :header="t('amministrazione.matrice_utilities_ruoli.usage_col_ragione_sociale')"
-                style="min-width: 220px;"
-              />
-              <Column
-                field="emittente_attivo"
-                :header="t('common.attivo')"
-                style="width: 100px;"
-              >
-                <template #body="{ data }">
-                  <AttivoTag :active="data.emittente_attivo" />
-                </template>
-              </Column>
-            </DataTable>
+              <template #filtri-sempre>
+                <InputText
+                  v-model="searchText"
+                  class="app-filter-w-lg"
+                  :placeholder="t('amministrazione.matrice_utilities_ruoli.usage_cerca_placeholder')"
+                />
+              </template>
+              <template #cell-emittente_attivo="{ data }">
+                <AttivoTag :active="data.emittente_attivo" />
+              </template>
+              <template #cell-override_attivo="{ data }">
+                <AttivoTag :active="data.override_attivo" />
+              </template>
+            </DrawerTabLista>
           </TabPanel>
         </TabPanels>
       </Tabs>

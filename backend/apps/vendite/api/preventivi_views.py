@@ -602,19 +602,54 @@ class ApiPreventivoRootPerPratica(DomainAPIView):
 class ApiPreventivoRevisioniList(DomainAPIView):
     area_funzionale = "vendite"
     model_permission = ("vendite", "preventivo")
+    lista_codice = "vendite.preventivo_revisioni"
+    # ⭐ Il tab vive DENTRO il drawer di un preventivo, che ha gia' il suo
+    #    emittente: la lista a catalogo e' `perimetro_emittente = t` e
+    #    `multi_emittente = f`, quindi senza questa riga chi vede piu'
+    #    emittenti (il super admin su «Tutti») riceverebbe
+    #    E_UI_LISTA_EMITTENTE_DA_SCEGLIERE a drawer gia' aperto — gli si
+    #    chiederebbe di scegliere l'emittente del documento che sta guardando.
+    #    E' la PK (`emittenti_fiscali.id`), come `v.emittente_fiscale_id`.
+    lista_emittente_param = "emittente_fiscale_id"
 
     @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="emittente_fiscale_id", type=int, required=False,
+                description=(
+                    "Emittente del documento (PK). Lo legge SOLO il cancello di "
+                    "perimetro, per chi vede più emittenti: non filtra le righe "
+                    "(la catena è di un emittente solo) e non allarga niente — "
+                    "la visibilità resta allo scope e alla RLS."
+                ),
+            ),
+            OpenApiParameter(name="limit", type=int, required=False),
+            OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False,
+                             description="rev (default) | data | totale_documento"),
+            OpenApiParameter(name="order_dir", type=str, required=False,
+                             description="asc | desc (assente: asc; desc sulle date)"),
+        ],
         responses={200: inline_serializer(
             name="PreventivoRevisioniListResponse",
-            fields={"data": serializers.ListField()},
+            fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Lista catena revisioni che condividono lo stesso `numero` del
-    #        preventivo passato (ordinate per `rev` ASC). Mirror del pattern
-    #        offerte `ApiOffertaRevisioni`. Lettura libera in ogni stato.
+    # Scopo: Lista PAGINATA della catena revisioni che condividono lo stesso
+    #        `numero` del preventivo passato (default `rev` ASC). Mirror di
+    #        `ApiOffertaRevisioni`: stesso envelope, stesse colonne gemelle a
+    #        catalogo. Lettura libera in ogni stato.
     def get(self, request: Request, preventivo_id: int) -> JsonResponse:
-        del request
-        return success_response(preventivi_service.list_revisioni(preventivo_id))
+        qp = request.query_params
+        p = parse_list_params(qp, default_order="rev")
+        results, total = preventivi_service.list_revisioni(
+            preventivo_id,
+            limit=p["limit"],
+            offset=p["offset"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+        )
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
 
 # ── Righe: lista + creazione ──

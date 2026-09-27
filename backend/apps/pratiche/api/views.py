@@ -22,9 +22,10 @@ from apps.core.api.payload_validators import (
     qp_int_strict,
     qp_str,
 )
+from apps.core.api.openapi_params import descrizione_order_by, param_ricerca_full
 from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
-from apps.pratiche.db.pratiche_repository import PraticheRepository
+from apps.pratiche.db.pratiche_repository import FLUSSI_ORDER_COLS, PraticheRepository
 from apps.pratiche.services import generazione_service, pratiche_service
 
 
@@ -340,21 +341,61 @@ class ApiPraticaPercorso(DomainAPIView):
 class ApiPraticaFlussiList(DomainAPIView):
     area_funzionale = "pratiche"
     model_permission = ("pratiche", "pratica")
+    is_search_endpoint = True
+    lista_codice = "pratiche.flussi"
+    # ⭐ Il tab «Flussi» vive DENTRO il drawer di una pratica, e una pratica ha
+    #    UN emittente: e' la richiesta a fissarlo (`emittente_fiscale_id`, la
+    #    PK — lo stesso nome del filtro della lista pratiche). Senza questa
+    #    riga il cancello rifiuterebbe (422) chi ha piu' emittenti nello scope,
+    #    chiedendogli di scegliere l'emittente di una pratica gia' aperta: la
+    #    lista NON e' certificata `multi_emittente` (nessuna colonna dice di
+    #    quale emittente e' la riga) — brief-db-liste-datatable-grezze §4.1.
+    # ⚠️ Il parametro scioglie SOLO l'ambiguita' della schermata: le righe le
+    #    decide la pratica nel path, sotto la sua RLS. Non e' un filtro.
+    lista_emittente_param = "emittente_fiscale_id"
+
     @extend_schema(
+        parameters=[
+            param_ricerca_full(),
+            OpenApiParameter(
+                name="emittente_fiscale_id", type=int, required=False,
+                description=(
+                    "Emittente (PK) della pratica aperta: scioglie il cancello di "
+                    "perimetro per chi ha piu' emittenti nello scope. Non filtra."
+                ),
+            ),
+            OpenApiParameter(name="limit", type=int, required=False, description="Righe per pagina (default 25, max 200)."),
+            OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(
+                name="order_by", type=str, required=False,
+                description=descrizione_order_by(FLUSSI_ORDER_COLS, "Default: sequenza."),
+            ),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
         responses={200: inline_serializer(
             name="PraticaFlussiListResponse",
             fields={
                 "data": inline_serializer(name="PraticaFlussiListData", fields={
+                    "count": serializers.IntegerField(),
                     "results": serializers.ListField(child=serializers.DictField()),
                 }),
             },
         )},
     )
-    # Scopo: Restituisce via GET i flussi di una pratica.
+    # Scopo: la lista `pratiche.flussi` di una pratica — paginata, ordinabile
+    #        sulla whitelist, con la ricerca del catalogo. L'ordine di partenza
+    #        e' la posizione del flusso nella pratica (`sequenza`).
     def get(self, request: Request, pratica_id: int) -> JsonResponse:
-        repo = PraticheRepository()
-        flussi = repo.list_flussi(pratica_id)
-        return success_response({"results": flussi})
+        p = parse_list_params(request.query_params, default_order="sequenza")
+        results, total = PraticheRepository().list_flussi_pagina(
+            pratica_id,
+            search=p["search"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            limit=p["limit"],
+            offset=p["offset"],
+        )
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
     @extend_schema(
         request=inline_serializer(

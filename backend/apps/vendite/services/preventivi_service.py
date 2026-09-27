@@ -731,11 +731,20 @@ def crea_revisione(preventivo_id: int) -> dict[str, Any]:
 #        `numero`, ordinate per `rev`). Mirror del pattern offerte
 #        `list_revisioni`; differenza chiave: preventivi sono catenate via
 #        `numero` non via `revisione_padre_id`.
-#        Legge prima la testata: fuori perimetro e' un 404.
-def list_revisioni(preventivo_id: int) -> list[dict[str, Any]]:
+#        Legge prima la testata: fuori perimetro e' un 404 (e non una lista
+#        vuota, che direbbe «nessuna revisione» di un documento che non c'e').
+#        Paginata dal 2026-09-27: ritorna (righe, totale) per `paginated_envelope`.
+def list_revisioni(
+    preventivo_id: int, *,
+    limit: int = 25, offset: int = 0,
+    order_by: str | None = None, order_dir: str | None = None,
+) -> tuple[list[dict[str, Any]], int]:
     repo = PreventiviRepository()
     _get_testata_or_raise(repo, preventivo_id, op="list_revisioni")
-    return repo.list_revisioni(preventivo_id)
+    return repo.list_revisioni(
+        preventivo_id,
+        limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
+    )
 
 
 # Scopo: Aggancia il preventivo come ROOT a una pratica (pratiche_sorgenti).

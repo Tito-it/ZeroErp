@@ -24,8 +24,6 @@ import TabList from 'primevue/tablist'
 import TabPanel from 'primevue/tabpanel'
 import TabPanels from 'primevue/tabpanels'
 import Tag from 'primevue/tag'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 
 import BillingAccountLookup from '../../../core/components/BillingAccountLookup.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
@@ -49,7 +47,6 @@ import { useEntityCapabilities } from '../../../core/composables/useEntityCapabi
 import { useFetchVersion } from '../../../core/composables/useFetchVersion'
 import { useGlobalLookup } from '../../../core/composables/useGlobalLookup'
 import { useNotify } from '../../../core/composables/useNotify'
-import { useRevisioniTab } from '../../../core/composables/useRevisioniTab'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
 import {
   READONLY_KEY,
@@ -69,6 +66,8 @@ import {
   STATI_OFFERTA_TERMINALI,
 } from '../constants'
 import { useOfferteStore } from '../stores/offerte'
+import { useOffertaRevisioniStore } from '../stores/offertaRevisioni'
+import RevisioniTab from '../../_shared/revisioni/RevisioniTab.vue'
 import OffertaEccezioniDrawer from './OffertaEccezioniDrawer.vue'
 import OffertaNoteDrawer from './OffertaNoteDrawer.vue'
 import OffertaEmissioneDialog from './dialogs/OffertaEmissioneDialog.vue'
@@ -103,14 +102,14 @@ const form = ref({})
 // Modifiche non salvate: fotografia a form popolato (apertura, ricarica,
 // salvataggio), chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
 const { preserva, fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
-// Tab "Testata | Revisioni" — state + load con guard di race incapsulati nel
-// building block `useRevisioniTab` (regola del 2, estratto a 2026-05-28
-// insieme a PreventiviDrawer). Le revisioni hanno il loro guard di versione
-// indipendente da `fv` (fgVersion del detail): sono fetch best-effort separate.
-const revisioniTab = useRevisioniTab({
-  load: (id) => store.loadRevisioni(id),
-})
-const { activeTab, revisioni } = revisioniTab
+// Tab "Testata | Revisioni". Il tab attivo torna a "Testata" a ogni apertura
+// (`loadOrReset`). La catena delle revisioni e' la lista a catalogo
+// `vendite.offerta_revisioni`, montata da `RevisioniTab` (BB condiviso con
+// PreventiviDrawer, che dal 2026-09-27 ritira `useRevisioniTab`): store SUO,
+// padre = offerta + emittente, ricarica al cambio offerta e reset a drawer
+// chiuso — lo fa `useDrawerTabLista`, col guard anti-race della lista.
+const activeTab = ref('testata')
+const revisioniStore = useOffertaRevisioniStore()
 
 // State machine data-driven dal BE (Step 9b 2026-05-26:
 // script.fn_available_actions_offerta + arricchimento `get_offerta`).
@@ -223,8 +222,8 @@ const contrattoIspezioneId = ref(null)
 // Guard di versione per i fetch del detail (apertura/chiusura/cambio-id
 // rapide). Incrementato anche quando offertaId cambia con drawer ancora
 // aperto (caso rev N+1 dopo crea_revisione: il parent fa editRow senza
-// chiudere il drawer). Il guard delle revisioni e' indipendente e vive
-// dentro `revisioniTab` (useFetchVersion interno).
+// chiudere il drawer). Le revisioni hanno il loro guard, dentro lo store-lista
+// di `RevisioniTab`.
 const fv = useFetchVersion()
 
 function defaultForm() {
@@ -261,9 +260,7 @@ function defaultForm() {
 function resetForm() {
   form.value = defaultForm()
   detail.value = null
-  // Reset revisioni + tab attivo: il composable gestisce anche
-  // l'invalidate del proprio guard di versione (vedi useRevisioniTab).
-  revisioniTab.reset()
+  activeTab.value = 'testata'
 }
 
 function populateFromDetail(d) {
@@ -352,18 +349,24 @@ useBaFormDefaults({ form, isEdit, fetchDefaults: getOffertaFormDefaults })
 async function loadOrReset() {
   if (!props.visible) {
     fv.invalidate()
-    revisioniTab.reset()
+    activeTab.value = 'testata'
+    // ⚠️ A mano, e non da `RevisioniTab`: il Drawer smonta il contenuto nello
+    //    stesso giro in cui si chiude, e il `documentoId` null non arriva mai
+    //    al tab. Senza, il contatore «Revisioni (N)» della prossima apertura
+    //    parte dal documento precedente.
+    revisioniStore.reset()
     return
   }
   const t = fv.tag()
 
-  // Reset tab attivo + revisioni sempre, su qualunque apertura (EDIT e
-  // CREATE): senza questo, riaprendo il drawer su un'altra offerta il tab
-  // restava quello dell'apertura precedente (es. chiudo su "Revisioni",
-  // riapro su una nuova offerta → si vede "Revisioni" invece di "Testata").
-  // `resetForm` lo fa solo nel ramo CREATE, quindi qui copre anche
-  // EDIT/cambio-offertaId.
-  revisioniTab.reset()
+  // Reset tab attivo sempre, su qualunque apertura (EDIT e CREATE): senza
+  // questo, riaprendo il drawer su un'altra offerta il tab restava quello
+  // dell'apertura precedente (es. chiudo su "Revisioni", riapro su una nuova
+  // offerta → si vede "Revisioni" invece di "Testata"). `resetForm` lo fa
+  // solo nel ramo CREATE, quindi qui copre anche EDIT/cambio-offertaId.
+  // (Le revisioni le rilegge `RevisioniTab` al cambio di offerta: il BB
+  // riparte da capo a ogni padre nuovo.)
+  activeTab.value = 'testata'
 
   if (isEdit.value && props.offertaId) {
     const d = await loadDetailOrClose(() => store.fetchDetail(props.offertaId))
@@ -372,8 +375,6 @@ async function loadOrReset() {
     detail.value = d
     populateFromDetail(d)
     fissa()
-    // revisioniTab usa il proprio guard interno (useFetchVersion incluso).
-    revisioniTab.loadRevisioni(props.offertaId)
   } else {
     // CREATE: precarica DEFAULT_UTILITY (codice_interno -> id locale)
     // prima di resetForm cosi' che il defaultForm() ne legga il valore
@@ -534,12 +535,12 @@ async function refreshDetail() {
   collegamentiRef.value?.reload()
 }
 
-// Reload revisioni: thin wrapper su `revisioniTab.loadRevisioni` che ha gia'
-// guard di versione interno (useFetchVersion). Esposto per i callsite che
-// vogliono ricaricare solo le revisioni (post-save, post-revisione).
+// Reload revisioni dopo un'azione che cambia lo stato di una riga della
+// catena (emissione, esito, annullo): solo se il tab e' gia' agganciato a
+// QUESTA offerta (il perche' sta su `rileggiSeAgganciato`).
 function reloadRevisioni() {
   if (!props.offertaId) return
-  revisioniTab.loadRevisioni(props.offertaId)
+  return revisioniStore.rileggiSeAgganciato(props.offertaId)
 }
 
 // --- Dispatch azioni data-driven ---
@@ -862,6 +863,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
               <EntityPdfButton
                 :sorgente-code="SORGENTE_CODES.OFFERTA_COMMERCIALE"
                 :entity-id="props.offertaId"
+                :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
                 :pdf="capabilities.pdf"
                 i18n-prefix="vendite.offerte.pdf"
                 :dialog-title="detail.codice
@@ -922,7 +924,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
                  dedicato. Pattern allineato a ContrattoDrawer. -->
             <Tab value="revisioni" :disabled="!isEdit">
               {{ t('vendite.offerte.tab_revisioni') }}
-              <span v-if="isEdit && revisioni.length">({{ revisioni.length }})</span>
+              <span v-if="isEdit && revisioniStore.totalRecords">({{ revisioniStore.totalRecords }})</span>
             </Tab>
           </TabList>
 
@@ -1145,42 +1147,18 @@ const suVisibile = gestoreVisibile(emit, chiudi)
 
             <!-- ====================== TAB REVISIONI ====================== -->
             <TabPanel value="revisioni">
-              <p class="app-text-muted mt-1">
-                {{ t('vendite.offerte.revisioni_intro') }}
-              </p>
-              <div v-if="!revisioni.length" class="app-empty-state">
-                <i :class="MANAGE_ICONS.VERSIONI" style="font-size: 2rem;" />
-                <div>{{ t('vendite.offerte.revisioni_empty') }}</div>
-              </div>
-              <DataTable
-                v-else
-                :value="revisioni"
-                striped-rows
-                class="app-datatable app-datatable--inner"
-                data-key="id"
-              >
-                <Column field="revisione_numero"
-                  :header="t('vendite.offerte.col_revisione')"
-                  style="width: 80px;" />
-                <Column field="codice"
-                  :header="t('vendite.offerte.col_codice')"
-                  style="width: 140px;" />
-                <Column field="data_emissione"
-                  :header="t('vendite.offerte.col_emissione')"
-                  style="width: 120px;">
-                  <template #body="{ data }">{{ displayDate(data.data_emissione) }}</template>
-                </Column>
-                <Column field="stato_codice_interno"
-                  :header="t('vendite.offerte.col_stato')"
-                  style="width: 130px;">
-                  <template #body="{ data }">
-                    <Tag
-                      :value="data.stato_descrizione"
-                      :severity="statoOffertaSeverity(data.stato_codice_interno)"
-                    />
-                  </template>
-                </Column>
-              </DataTable>
+              <!-- Lista a catalogo `vendite.offerta_revisioni` (colonne
+                   gemelle di quelle del preventivo). Montata solo in EDIT: in
+                   CREATE il tab e' spento e non c'e' una catena da leggere. -->
+              <RevisioniTab
+                v-if="isEdit"
+                codice="vendite.offerta_revisioni"
+                :store="revisioniStore"
+                :documento-id="visible ? offertaId : null"
+                :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
+                :severity="statoOffertaSeverity"
+                :intro="t('vendite.offerte.revisioni_intro')"
+                :vuoto="t('vendite.offerte.revisioni_empty')" />
             </TabPanel>
           </TabPanels>
         </Tabs>

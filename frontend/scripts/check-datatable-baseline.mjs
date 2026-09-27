@@ -81,8 +81,9 @@ function fileVue(dir) {
 //    insieme al problema non si puo' usare per decidere niente.
 // ⚠️ L'elenco e' DICHIARATO e non derivato — un criterio automatico («sta in
 //    core/components») esenterebbe anche i BB che il debito ce l'hanno davvero
-//    (`GeoSearchTable`, che serve liste ancora da portare su
-//    `<ListaConfigurabile>`, resta contato apposta). In cambio l'esenzione e'
+//    (`GeoSearchTable`, che serviva liste ancora da portare su
+//    `<ListaConfigurabile>`, e' rimasto contato finche' e' esistito: ritirato
+//    il 2026-09-27, brief-db-liste-datatable-grezze riga 9). In cambio l'esenzione e'
 //    VERIFICATA sotto: un file dichiarato qui che non esiste piu', o che ha
 //    smesso di importare `DataTable`, ferma il guard invece di restare a
 //    coprire il vuoto.

@@ -25,6 +25,7 @@ Indice test eseguiti:
 14) test_admin_required_post — non admin -> 403
 15) test_admin_required_patch — non admin -> 403
 16) test_admin_required_usage — non admin -> 403
+17) test_get_usage_contratto_di_lista — ricerca/ordinamento/pagina passati al service
 """
 
 import json
@@ -277,6 +278,27 @@ class TestUtilitiesTipiRuoloUsage(JwtMockedApiTest):
         body = resp.json()
         self.assertEqual(body["data"]["count"], 1)
         self.assertEqual(body["data"]["results"][0]["emittente_codice"], "EF-001")
+        # Senza parametri: nessun ordinamento chiesto (decide il repository).
+        mock_svc_cls.return_value.list_usage.assert_called_once_with(
+            1, search=None, order_by=None, order_dir=None, limit=25, offset=0,
+        )
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_PERM, return_value=True)
+    @patch(_SVC)
+    def test_get_usage_contratto_di_lista(self, mock_svc_cls, _perm, _auth):
+        """Ricerca, ordinamento e pagina arrivano al service come li manda il FE."""
+        mock_svc_cls.return_value.list_usage.return_value = ([], 0)
+        resp = self.client.get(
+            _BASE + "4/usage/?search=acme&order_by=override_attivo&order_dir=desc"
+            "&limit=10&offset=10",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["data"]["page"], 2)
+        mock_svc_cls.return_value.list_usage.assert_called_once_with(
+            4, search="acme", order_by="override_attivo", order_dir="desc",
+            limit=10, offset=10,
+        )
 
 
 class TestUtilitiesTipiRuoloAdminRequired(JwtMockedApiTest):

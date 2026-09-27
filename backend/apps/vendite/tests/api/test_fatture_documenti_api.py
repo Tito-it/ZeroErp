@@ -111,15 +111,17 @@ class TestFattureDocumentiApi(JwtMockedApiTest):
             "id": 10, "codice": "FATTURA", "attivo": True,
         }
         doc_svc_cls.return_value.list_documenti_per_sorgente.return_value = {
-            "items": [], "total": 0,
+            "results": [], "total_count": 0,
         }
 
         resp = self.client.get(f"{_BASE}42/documenti/")
 
         self.assertEqual(resp.status_code, 200)
         body = resp.json()["data"]
+        # Envelope di lista standard (`paginated_envelope`, 2026-09-27).
         self.assertEqual(body["page"], 1)
-        self.assertEqual(body["total"], 0)
+        self.assertEqual(body["count"], 0)
+        self.assertEqual(body["results"], [])
 
     # 3. La rotta emetti/ NON esiste per FATTURA (nessuna emissione da UI):
     #    la factory è stata istanziata senza emetti_call → 404.

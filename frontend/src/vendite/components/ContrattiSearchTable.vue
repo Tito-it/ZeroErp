@@ -262,6 +262,7 @@ onMounted(() => {
       v-model:visible="pdfDialogVisible"
       sorgente-code="CONTRATTO"
       :sorgente-id="pdfDialogContratto?.id ?? null"
+      :emittente-fiscale-id="pdfDialogContratto?.emittente_fiscale_id ?? null"
       :title="pdfDialogContratto
         ? t('vendite.contratti.pdf.dialog_title', { numero: pdfDialogContratto.numero })
         : ''"

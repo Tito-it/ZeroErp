@@ -55,10 +55,8 @@ export const useRegistriNumerazioneStore = createListaStore('amm-registri-numera
     // Scopo: crea il registro e ricarica. L'emittente NON viene dal form: lo
     //        porta il contesto del tab.
     async function crea(payload) {
-      const res = await createRegistro({
-        ...payload,
-        emittente_soggetto_ruolo_id: emittenteSoggettoRuoloId.value,
-      })
+      const emittente = { emittente_soggetto_ruolo_id: emittenteSoggettoRuoloId.value }
+      const res = await createRegistro({ ...payload, ...emittente }, emittente)
       await fetchList()
       return res.data.data
     }

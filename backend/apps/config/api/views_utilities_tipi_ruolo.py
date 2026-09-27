@@ -24,11 +24,12 @@ from apps.core.api.payload_validators import (
     paginated_envelope,
     parse_list_params,
     qp_bool_optional,
-    qp_int,
     qp_int_optional,
+    qp_str,
 )
 from apps.core.api.success_responses import success_response
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.config.db.utilities_tipi_ruolo_repository import USAGE_ORDER_COLS
+from apps.core.api.openapi_params import descrizione_order_by, param_ricerca_full
 
 
 # =================================================================
@@ -141,23 +142,47 @@ class UtilitiesTipiRuoloDetailView(AdminAPIView):
 class UtilitiesTipiRuoloUsageView(AdminAPIView):
     """GET emittenti fiscali che usano la matrice (override esistente)."""
 
+    is_search_endpoint = True
+
     @extend_schema(
         parameters=[
+            param_ricerca_full(),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(
+                name="order_by", type=str, required=False,
+                description=descrizione_order_by(
+                    USAGE_ORDER_COLS, "Default: ragione sociale, poi codice.",
+                ),
+            ),
+            OpenApiParameter(name="order_dir", type=str, required=False),
         ],
         responses={200: inline_serializer(
             name="ConfigUtilitiesTipiRuoloUsageResp",
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Lista emittenti fiscali che usano la matrice indicata. Solo letture.
-    #        L'ORDER BY e' fisso lato repository (descrizione, codice): non
-    #        accetta order_by/order_dir, solo paginazione.
+    # Scopo: la lista `config.utilities_tipi_ruolo_usage` (lista 86): gli
+    #        emittenti fiscali che usano la riga di matrice indicata. Solo
+    #        letture, contratto di lista standard (ricerca, ordinamento sulla
+    #        whitelist, pagina).
+    # ⚠️ `order_by` si legge grezzo e non dal bundle: il `default_order` di
+    #    `parse_list_params` («descrizione») non e' una colonna di questa
+    #    lista, e l'ordine di partenza — a due criteri — lo decide il
+    #    repository.
+    # ⭐ Nessun cancello di perimetro, e non per dimenticanza: la vista e'
+    #    `AdminAPIView` (il cancello vive su `DomainAPIView`) e la lista e'
+    #    certificata `multi_emittente` — ogni riga E' un emittente, e lo dice.
+    #    Registrata in `_ESENZIONI` di `test_perimetro_emittente_copertura`.
     def get(self, request: Request, record_id: int) -> JsonResponse:
-        limit = min(qp_int(request.query_params.get("limit"), 25), 200)
-        offset = max(qp_int(request.query_params.get("offset"), 0), 0)
-        page = (offset // limit) + 1 if limit > 0 else 1
+        p = parse_list_params(request.query_params)
         svc = UtilitiesTipiRuoloService()
-        results, total = svc.list_usage(record_id, limit=limit, offset=offset)
-        return success_response(paginated_envelope(results, total, page, limit))
+        results, total = svc.list_usage(
+            record_id,
+            search=p["search"],
+            order_by=qp_str(request.query_params.get("order_by")),
+            order_dir=p["order_dir"],
+            limit=p["limit"],
+            offset=p["offset"],
+        )
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))

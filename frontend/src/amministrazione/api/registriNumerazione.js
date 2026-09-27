@@ -29,8 +29,13 @@ export function getRegistro(id) {
   return api.get(`${BASE}/${id}/`)
 }
 
-export function createRegistro(payload) {
-  return api.post(`${BASE}/`, payload)
+// ⚠️ `params` porta l'emittente anche in QUERY: la rotta e' la stessa della
+//    lista (`lista_codice` + `lista_emittente_param`), e il cancello di
+//    perimetro vale per OGNI metodo e legge solo la query string. Senza, chi
+//    vede piu' emittenti (il super admin su «Tutti») prendeva un 422 al
+//    salvataggio. Nel corpo resta: e' li' che la view lo verifica e lo scrive.
+export function createRegistro(payload, params = {}) {
+  return api.post(`${BASE}/`, payload, { params })
 }
 
 export function updateRegistro(id, payload) {

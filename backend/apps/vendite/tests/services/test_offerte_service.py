@@ -649,21 +649,29 @@ class OfferteServiceTests(TestCase):
             OfferteService().list_revisioni(1)
         self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
 
-    # Scopo: list_revisioni delega al repository e ritorna la catena.
+    # Scopo: list_revisioni delega al repository la PAGINA (id, limit/offset,
+    #        ordinamento) e ritorna (righe, totale).
+    #        ⚠️ Dal 2026-09-27 e' paginata: prima tornava la catena intera.
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
     def test_list_revisioni_ok_passa_id_al_repo(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "EMESSA"
-        repo.list_revisioni.return_value = [
+        repo.list_revisioni.return_value = ([
             {"id": 1, "revisione_numero": 1, "stato_codice_interno": "SUPERATA"},
             {"id": 42, "revisione_numero": 2, "stato_codice_interno": "BOZZA"},
-        ]
-        result = OfferteService().list_revisioni(1)
-        repo.list_revisioni.assert_called_once_with(1)
-        self.assertEqual(len(result), 2)
-        self.assertEqual(result[1]["revisione_numero"], 2)
+        ], 2)
+        righe, totale = OfferteService().list_revisioni(
+            1, limit=25, offset=0,
+            order_by="data_emissione", order_dir="desc",
+        )
+        repo.list_revisioni.assert_called_once_with(
+            1, limit=25, offset=0,
+            order_by="data_emissione", order_dir="desc",
+        )
+        self.assertEqual(totale, 2)
+        self.assertEqual(righe[1]["revisione_numero"], 2)
 
     # --- push a contratto (Step 8) -----------------------------------
 

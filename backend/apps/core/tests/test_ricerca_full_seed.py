@@ -149,6 +149,10 @@ _RICERCHE: tuple[tuple[str, object], ...] = (
     ("catalogo.articoli", _da_costante("apps.catalogo.db.catalogo_repository", "_RICERCA_ARTICOLI")),
     ("documenti.template_documenti", _da_costante("apps.documenti.db.documenti_repository", "_RICERCA_TEMPLATE_DOCUMENTI")),
     ("documenti.template_asset", _da_costante("apps.documenti.db.documenti_repository", "_RICERCA_TEMPLATE_ASSET")),
+    # Documenti di una sorgente e versioni di un template (2026-09-27,
+    # brief-db-liste-datatable-grezze righe 2 e 6).
+    ("documenti.documenti_sorgente", _da_costante("apps.documenti.db.documenti_repository", "_RICERCA_DOCUMENTI_SORGENTE")),
+    ("documenti.template_versioni", _da_costante("apps.documenti.db.documenti_repository", "_RICERCA_TEMPLATE_VERSIONI")),
     ("config.email_account", _da_costante("apps.core.db.email_repository", "_RICERCA_EMAIL_ACCOUNT")),
     ("config.email_template", _da_costante("apps.core.db.email_repository", "_RICERCA_EMAIL_TEMPLATE")),
     ("config.email_log", _da_costante("apps.core.db.email_repository", "_RICERCA_EMAIL_LOG")),
@@ -166,6 +170,20 @@ _RICERCHE: tuple[tuple[str, object], ...] = (
     ("pratiche.pratiche", _da_costante("apps.pratiche.db.pratiche_repository", "_RICERCA_PRATICHE")),
     ("anagrafiche.emittenti_fiscali", _da_costante("apps.anagrafiche.db.emittenti_fiscali_repository", "_RICERCA_EMITTENTI")),
     ("anagrafiche.emittente_billing_account", _da_costante("apps.anagrafiche.db.emittenti_fiscali_repository", "_RICERCA_EMITTENTE_BA")),
+    # Flussi di una pratica e utilizzo della matrice utility/ruoli (2026-09-27,
+    # brief-db-liste-datatable-grezze righe 3 e 4).
+    ("pratiche.flussi", _da_costante("apps.pratiche.db.pratiche_repository", "_RICERCA_FLUSSI")),
+    ("config.utilities_tipi_ruolo_usage", _da_costante("apps.config.db.utilities_tipi_ruolo_repository", "_RICERCA_USAGE")),
+    # Sessioni attive e reparti (2026-09-27, brief-db-liste-datatable-grezze righe 1 e 5).
+    ("core.sessioni_attive", _da_costante("apps.core.db.session_audit_repository", "_RICERCA_SESSIONI_ATTIVE")),
+    ("amm.reparti", _da_costante("apps.amm_software.db.amm_software_repository", "_RICERCA_REPARTI")),
+    # Le sei geografiche (2026-09-27, brief-db-liste-datatable-grezze riga 9).
+    ("config.stati", _da_costante("apps.anagrafiche.db.geo_repository", "_RICERCA_STATI")),
+    ("config.regioni", _da_costante("apps.anagrafiche.db.geo_repository", "_RICERCA_REGIONI")),
+    ("config.province", _da_costante("apps.anagrafiche.db.geo_repository", "_RICERCA_PROVINCE")),
+    ("config.comuni", _da_costante("apps.anagrafiche.db.geo_repository", "_RICERCA_COMUNI")),
+    ("config.codici_postali", _da_costante("apps.anagrafiche.db.geo_repository", "_RICERCA_CODICI_POSTALI")),
+    ("config.toponomastica", _da_costante("apps.anagrafiche.db.geo_repository", "_RICERCA_TOPONOMASTICA")),
 )
 
 # Liste con colonne `ricercabile_full = t` la cui ricerca e' ancora scritta a

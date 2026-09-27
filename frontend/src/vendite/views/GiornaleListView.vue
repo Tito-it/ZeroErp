@@ -24,7 +24,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
-import Tag from 'primevue/tag'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
@@ -36,18 +35,22 @@ import { useListaConfigurabilePage } from '../../core/composables/useListaConfig
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { useDebouncedAction } from '../../core/composables/useDebouncedAction'
 import { useLookupEtichettato } from '../../core/composables/useLookupEtichettato'
-import { lookupTipiEntita } from '../../core/apiCore'
 import { useAuthStore } from '../../stores/auth'
 import { azioniDaBersagli } from '../../core/bersaglioGesto'
 import { useGiornaleStore, GRAVITA_SOLO_ERRORI, GRAVITA_CON_AVVISI } from '../stores/giornale'
 import { exportGiornale } from '../api/giornale'
-import { labelOrCode } from '../../core/utils/i18nLabel'
-import { gravitaGiornaleSeverity } from '../../core/utils/severity'
+import GiornaleCella from '../_shared/giornale/GiornaleCella.vue'
+import {
+  CAMPO_CODICE_REGISTRO,
+  GIORNALE_CELLE,
+  SORGENTE_REGISTRI,
+  SORGENTE_TIPI_ENTITA,
+} from '../_shared/giornale/giornaleCelle'
 import { READONLY_DOMAINS } from '../../core/constants'
 import FiltroPeriodo from '../../core/components/FiltroPeriodo.vue'
 import FiltriLista from '../../core/components/FiltriLista.vue'
 
-const { t, te } = useI18n()
+const { t } = useI18n()
 useReadonlyMode(READONLY_DOMAINS.VENDITE)
 const store = useGiornaleStore()
 const auth = useAuthStore()
@@ -73,13 +76,17 @@ const router = useRouter()
 //       scelta vuota. La cache e' la stessa entry di un `<LookupSelect rel>`
 //       sullo stesso insieme, per costruzione (`useLookupCodici`). Il valore
 //       e' `codice_interno`, la chiave stabile che il backend valida.
-const { etichetta: etichettaEntita, opzioni: entitaOptions } = useLookupEtichettato(
-  { chiave: 'config.tipi_entita', fetcher: lookupTipiEntita },
+// ⭐ Dal 2026-09-27 le due SORGENTI e le celle stanno in `_shared/giornale`
+//    (`giornaleCelle`, `GiornaleCella`): la stessa lista si monta anche nella
+//    Storia di fattura e lotto, e tendine e celle devono leggere la stessa
+//    entry di cache. Qui restano le sole tendine.
+const { opzioni: entitaOptions } = useLookupEtichettato(
+  SORGENTE_TIPI_ENTITA,
   { tutti: () => t('vendite.giornale.filtro_entita_tutte') },
 )
-const { etichetta: etichettaRegistro, opzioni: registroOptions } = useLookupEtichettato(
-  { rel: 'config.registri_giornale', includiObsoleti: false },
-  { campoCodice: 'codice_interno', tutti: () => t('vendite.giornale.filtro_registro_tutti') },
+const { opzioni: registroOptions } = useLookupEtichettato(
+  SORGENTE_REGISTRI,
+  { campoCodice: CAMPO_CODICE_REGISTRO, tutti: () => t('vendite.giornale.filtro_registro_tutti') },
 )
 
 const {
@@ -222,31 +229,12 @@ onActivated(applicaDeepLink)
       @sort="onSort"
       @config-loaded="onConfigLoaded"
     >
-      <!-- `quando` non ha slot: il seed dichiara `datetime_short`. -->
-      <!-- ⚠️ NULL resta distinguibile — trattino e colore neutro: e' il segnale
-           di un vincolo allargato, non un dato mancante. -->
-      <template #cell-gravita="{ data }">
-        <Tag :value="data.gravita ?? '—'" :severity="gravitaGiornaleSeverity(data.gravita)" />
-      </template>
-      <!-- Il registro, etichettato dal catalogo (`etichetta_key` di
-           `config.registri_giornale`); fino al 19-09 era il codice grezzo. -->
-      <template #cell-registro="{ data }">
-        <span class="app-drawer-header-muted">{{ etichettaRegistro(data.registro) }}</span>
-      </template>
-      <template #cell-entity_type="{ data }">
-        <Tag :value="etichettaEntita(data.entity_type)" severity="secondary" />
-      </template>
-      <!-- ⭐ Il FATTO, tradotto quando il catalogo lo dichiara (`etichetta_key`
-           da `config.eventi_dominio`, solo EVENT_LOG); altrove `cosa` e' gia'
-           una frase. Ripiego fail-visible sul codice grezzo. -->
-      <template #cell-cosa="{ data }">
-        <span>{{ labelOrCode(t, te, data.etichetta_key, data.cosa) }}</span>
-      </template>
-      <template #cell-tx_id="{ data }">
-        <span class="app-mono app-giornale-mono">{{ data.tx_id }}</span>
-      </template>
-      <template #cell-correlation_id="{ data }">
-        <span class="app-mono app-giornale-mono">{{ data.correlation_id }}</span>
+      <!-- ⭐ Le celle con una resa propria vengono dal componente CONDIVISO con la
+           Storia di fattura e lotto (`GiornaleCella`, regola del 2): la stessa
+           riga si legge uguale nelle due schermate. `quando` non ha slot: il
+           seed dichiara `datetime_short`. -->
+      <template v-for="codice in GIORNALE_CELLE" :key="codice" #[`cell-${codice}`]="{ data }">
+        <GiornaleCella :codice="codice" :riga="data" />
       </template>
       <template #actions="{ data }">
         <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
@@ -260,9 +248,3 @@ onActivated(applicaDeepLink)
     />
   </div>
 </template>
-
-<style scoped>
-.app-giornale-mono {
-  font-size: 0.85em;
-}
-</style>

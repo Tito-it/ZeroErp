@@ -729,7 +729,7 @@ attiva) via helper condiviso `apps.documenti.api.contesto_helpers.resolve_contes
 
 | Metodo | Path | Effetto |
 | --- | --- | --- |
-| `GET` | `/api/v1/vendite/preventivi/<id>/documenti/` | Lista documenti generati per il preventivo (paginata, scope emittente) |
+| `GET` | `/api/v1/vendite/preventivi/<id>/documenti/` | Lista documenti generati per il preventivo (paginata, scope emittente) — contratto di lista in [api_documenti_per_sorgente](../../documenti/manual/api_documenti_per_sorgente.md) §3.4 |
 | `POST` | `/api/v1/vendite/preventivi/<id>/documenti/anteprima/` | Render PDF temporaneo, no persist (Decisione 30) |
 | `POST` | `/api/v1/vendite/preventivi/<id>/documenti/genera/` | Persiste PDF + record DB + evento `GENERATO` (per preventivi già EMESSI: ristampe successive all'emissione iniziale) |
 | `GET` | `/api/v1/vendite/preventivi/<id>/documenti/<doc_id>/file/` | Download PDF principale + evento `SCARICATO` (Decisione 31) |

@@ -100,6 +100,10 @@ _ESERCITATE_DAL_REPOSITORY: dict[str, str] = {
     "magazzino.lotti": _MAG + "test_la_ricerca_trova_ogni_colonna_accesa",
     "vendite.registri_numerazione": _QUI + "test_la_ricerca_trova_ogni_colonna_accesa_dal_repository",
     "amm.processi": _QUI + "test_la_ricerca_trova_ogni_colonna_accesa_dal_repository",
+    "amm.reparti": _QUI + "test_la_ricerca_trova_ogni_colonna_accesa_dal_repository",
+    "core.sessioni_attive": _QUI + "test_la_ricerca_trova_ogni_colonna_accesa_dal_repository",
+    "pratiche.flussi": _QUI + "test_la_ricerca_trova_ogni_colonna_accesa_dal_repository",
+    "config.utilities_tipi_ruolo_usage": _QUI + "test_la_ricerca_trova_ogni_colonna_accesa_dal_repository",
     "catalogo.unita_misura": _QUI + "test_la_ricerca_trova_ogni_colonna_accesa_dal_repository",
     "catalogo.conversioni_uom": _QUI + "test_la_ricerca_trova_ogni_colonna_accesa_dal_repository",
     "config.tipi_ruolo_tipi_indirizzo": _QUI + "test_la_ricerca_trova_ogni_colonna_accesa_dal_repository",
@@ -123,6 +127,8 @@ _ESERCITATE_DAL_REPOSITORY: dict[str, str] = {
     "pagamenti.rate": _PAG + "test_la_ricerca_trova_ogni_colonna_accesa",
     "documenti.template_documenti": _TPL + "test_la_ricerca_trova_ogni_colonna_accesa",
     "documenti.template_asset": _TPL + "test_la_ricerca_trova_ogni_colonna_accesa",
+    "documenti.template_versioni": _TPL + "test_versioni_e_documenti_sorgente_trovano_ogni_colonna_accesa",
+    "documenti.documenti_sorgente": _TPL + "test_versioni_e_documenti_sorgente_trovano_ogni_colonna_accesa",
     "config.email_account": _EML + "test_la_ricerca_trova_ogni_colonna_accesa",
     "config.email_template": _EML + "test_la_ricerca_trova_ogni_colonna_accesa",
     "config.email_log": _EML + "test_la_ricerca_trova_ogni_colonna_accesa",
@@ -233,6 +239,8 @@ class RicercaFullDbTests(unittest.TestCase):
         from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
         from apps.catalogo.db.catalogo_repository import CatalogoRepository
         from apps.core.db.processi_repository import ProcessiRepository
+        from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
+        from apps.core.db.session_audit_repository import SessionAuditRepository
         from apps.vendite.db.registri_repository import RegistriRepository
 
         try:
@@ -243,7 +251,7 @@ class RicercaFullDbTests(unittest.TestCase):
                 cur.execute("SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('ricerca full BE', 'RFC')")
                 colonne = [c.name for c in cur.description]
                 mondo = dict(zip(colonne, cur.fetchone()))
-                apri_contesto_operatore(cur)
+                operatore = apri_contesto_operatore(cur)
                 # Il mondo si COSTRUISCE: una riga per lista, con un valore per
                 # colonna che sta solo li'.
                 cur.execute(
@@ -372,6 +380,86 @@ class RicercaFullDbTests(unittest.TestCase):
                     self, cur, "amm.processi", processo,
                     {"codice": "digest_presidi", "descrizione": processo_descrizione},
                     lambda t: ProcessiRepository().list_processi(search=t, limit=500)[0],
+                )
+                # I reparti (2026-09-27): un'unita' organizzativa costruita,
+                # ATTIVA — la lista mostra solo quelle.
+                cur.execute(
+                    "INSERT INTO config.unita_organizzative (codice, codice_interno, descrizione) "
+                    "VALUES ('RICCODREP', 'RICCODREP', 'Reparto ricdescrep') RETURNING id"
+                )
+                reparto = cur.fetchone()[0]
+                verifica_ricerca_colonna_per_colonna(
+                    self, cur, "amm.reparti", reparto,
+                    {"codice": "riccodrep", "descrizione": "ricdescrep"},
+                    lambda t: AmmSoftwareRepository().list_reparti(search=t, limit=200)[0],
+                )
+                # Le sessioni attive (2026-09-27): un LOGIN di adesso per un
+                # utente che ne ha altri; la chiave della riga e' il sid.
+                # ⭐ L'IP si cerca come si mostra (`host()`, senza «/32»).
+                # L'utente del contesto gia' aperto sopra (`apri_contesto_operatore`).
+                utente = operatore
+                cur.execute(
+                    "INSERT INTO dbops.sessioni_utente (auth_user_id, evento, jti, ip_address, user_agent) "
+                    "VALUES (%s, 'LOGIN', 'ric-sid-sessione', '10.99.88.77', 'RicUA/1.0 ricuaagent')",
+                    [utente],
+                )
+                verifica_ricerca_colonna_per_colonna(
+                    self, cur, "core.sessioni_attive", "ric-sid-sessione",
+                    {"user_agent": "ricuaagent", "ip_address": "10.99.88.77"},
+                    lambda t: SessionAuditRepository().list_sessioni_attive_paginata(
+                        utente, escludi_jti=None, search=t, limit=200)[0],
+                    chiave="jti",
+                )
+                # I flussi di una pratica (2026-09-27, lista 85): un template
+                # costruito sul tipo della pratica del mondo e un flusso DA
+                # ESEGUIRE che lo istanzia. Si cerca per descrizione del
+                # template (l'unica colonna accesa).
+                cur.execute(
+                    "INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, attivo, ripetibilita) "
+                    "SELECT tipo_prestazione_id, 'TF_RICFLU', 'Template ricdescflu', true, 'SEMPRE' "
+                    "  FROM pratiche.pratiche WHERE id = %s RETURNING id",
+                    [pratica],
+                )
+                template_flusso = cur.fetchone()[0]
+                cur.execute(
+                    "INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id) "
+                    "SELECT %s, %s, id FROM config.stati_flussi_pratiche WHERE codice_interno = 'DA_ESEGUIRE' "
+                    "RETURNING id",
+                    [pratica, template_flusso],
+                )
+                flusso = cur.fetchone()[0]
+                verifica_ricerca_colonna_per_colonna(
+                    self, cur, "pratiche.flussi", flusso,
+                    {"template_flusso_descrizione": "ricdescflu"},
+                    lambda t: PraticheRepository().list_flussi_pagina(pratica, search=t, limit=200)[0],
+                )
+                # L'utilizzo di una riga di matrice (2026-09-27, lista 86): una
+                # riga SEED del ruolo EF (contratto) e un override dell'emittente
+                # del mondo sulla sua utility. La riga della lista E'
+                # l'emittente: chiave `emittente_id`.
+                cur.execute(
+                    "SELECT x.id, x.utility_id FROM config.utilities_tipi_ruolo x "
+                    "  JOIN config.tipi_ruoli tr ON tr.id = x.tipo_ruolo_id "
+                    " WHERE COALESCE(tr.codice_interno, tr.codice) = 'EF' AND x.attivo "
+                    " ORDER BY x.id LIMIT 1"
+                )
+                riga_ef = cur.fetchone()
+                self.assertIsNotNone(riga_ef, "seed `config.utilities_tipi_ruolo` del ruolo EF assente")
+                utr_ef, utr_ef_utility = riga_ef
+                cur.execute(
+                    "INSERT INTO anagrafiche.emittenti_fiscali_utilities "
+                    "       (emittente_soggetto_ruolo_id, utility_id, arrotondamento_importi_dec, "
+                    "        metodo_arrotondamento_importi) "
+                    "VALUES (%s, %s, 2, 'HALF_UP') "
+                    "ON CONFLICT (emittente_soggetto_ruolo_id, utility_id) DO NOTHING",
+                    [mondo["emittente_soggetto_ruolo_id"], utr_ef_utility],
+                )
+                verifica_ricerca_colonna_per_colonna(
+                    self, cur, "config.utilities_tipi_ruolo_usage", mondo["emittente_fiscale_id"],
+                    {"emittente_codice": ef_codice, "emittente_descrizione": ef_ragione},
+                    lambda t: UtilitiesTipiRuoloRepository().list_emittenti_usage(
+                        utr_ef, search=t, limit=200)[0],
+                    chiave="emittente_id",
                 )
                 _uom = {"attivo": None, "order_by": "codice", "order_dir": "asc", "limit": 200, "offset": 0}
                 verifica_ricerca_colonna_per_colonna(

@@ -105,14 +105,21 @@ niente** — nessun record, nessun file, nessun evento.
 
 ### 3.4 `GET /api/v1/vendite/<dominio>/{id}/documenti/`
 
-Lista paginata dei documenti della sorgente (`generato_at DESC`).
+Lista a catalogo `documenti.documenti_sorgente` (dal 2026-09-27: contratto di
+lista standard; fino ad allora `page`/`page_size` con default 50, che il FE non
+passava — la lista troncava in silenzio).
 
-| query param | default | limite |
-|---|---|---|
-| `page` | 1 | — |
-| `page_size` | 50 | **max 200** (cap lato view) |
+| query param | effetto |
+|---|---|
+| `search` | ricerca libera sulle colonne accese a catalogo (`titolo`, `nome_file`) |
+| `limit` / `offset` | paginazione (default 25, **max 200**) |
+| `order_by` | whitelist `DOCUMENTI_SORGENTE_ORDER_COLUMNS` (`progressivo_sorgente`, `generato_at`, `titolo`, `nome_file`, `stato`); senza = `generato_at DESC` |
+| `order_dir` | `asc` / `desc`; assente = DESC sulle date |
+| `emittente_fiscale_id` | PK dell'emittente del documento — `lista_emittente_param`: scioglie il cancello di perimetro per chi vede più emittenti (il dialog lo passa dal documento aperto). Non filtra |
 
-Risposta: envelope standard con i campi del service piu' `page` e `page_size`.
+Risposta: envelope paginato standard (`count`, `page`, `page_size`,
+`total_pages`, `results`). `422 E_UI_LISTA_EMITTENTE_DA_SCEGLIERE` con più
+emittenti nello scope e nessun `emittente_fiscale_id`.
 
 ### 3.5 `GET/POST /api/v1/vendite/<dominio>/{id}/documenti/{documento_id}/allegati/`
 

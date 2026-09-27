@@ -143,6 +143,17 @@ a catalogo e ricadono sull'area. Se sia giusto lo decide la D-2.
 - Test: vendite, pratiche, documenti, anagrafiche, ai_assistant, core.api verdi
   (3594); ruff pulito.
 
+✅ **Caso B, `offerta_commerciale`, lato BE — 2026-09-27 (Tid «correggi»,
+non committato)**, prima del catalogo e non «nello stesso rilascio»: la
+ragione del §1 è il catalogo **senza** il BE (un `BLOCCATO` che nasconde i
+pulsanti e lascia aperta l'API); il BE che chiede l'oggetto **prima** del
+catalogo non cambia niente — senza override vale l'area, come ieri — e il
+giorno in cui la riga entra le quattro porte dicono già la stessa cosa.
+`model_permission` su tutte le 30 rotte `vendite/offerte/…` (16 view a mano,
+le factory di documenti, passaggi e indirizzi, i form-defaults, più note e
+revisioni che l'avevano già); l'offerta è nel presidio con il suo perimetro.
+⏳ Resta la riga di catalogo al team DB (§3.1 punto 1).
+
 ### 3.3 FE (noi)
 
 - `useReadonlyMode(area, model)` sulle viste di `billing_account`, `listino`,

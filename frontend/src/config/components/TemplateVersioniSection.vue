@@ -4,6 +4,15 @@
 //        testata + form inline editabile per creazione/modifica
 //        (memoria feedback_master_detail_inline).
 //
+// ⭐ DAL 2026-09-27 LA LISTA E' `documenti.template_versioni` (88), montata con
+//    lo scaffolding dei tab-lista (`useDrawerTabLista` + `<DrawerTabLista>`):
+//    pagine, ordinamento, ricerca sul titolo, «Personalizza colonne». Era una
+//    `DataTable` grezza senza paginazione.
+// ⏳ DEBITO DICHIARATO (brief-db-liste-datatable-grezze §4 riga 6): il form
+//    della versione resta SOTTO la lista, al posto della lista, invece di un
+//    drawer autonomo della versione (`feedback_drawer_autonomi`). Non e' di
+//    questo giro: la conversione tocca la lista, non il master-detail.
+//
 //        Comandi versione (RowActionsMenu):
 //         - Pubblica  (solo BOZZA, dialog DatePicker valido_dal/al)
 //         - Clona     (qualunque stato, crea nuova BOZZA)
@@ -17,6 +26,7 @@ import { useTemplateVersioniStore } from '../stores/templateVersioni'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 // `useConfirmAction` espone `confirmAction` (signature object con
 // `onAccept` callback). Memoria feedback_useconfirmaction_destructuring:
 // usare destructured + nome callback `onAccept` (non `accept`) per
@@ -28,8 +38,7 @@ import {
   PAGE_FORMATS,
   PAGE_ORIENTATIONS,
 } from '../constants/documentiVersioniWhitelists'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
+import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Textarea from 'primevue/textarea'
@@ -42,11 +51,14 @@ import Button from 'primevue/button'
 import AppDialog from '../../core/components/AppDialog.vue'
 import Message from 'primevue/message'
 import LookupSelect from '../../core/components/LookupSelect.vue'
-import NewButton from '../../core/components/NewButton.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 
 const props = defineProps({
   templateId: { type: Number, required: true },
+  // L'emittente del template (PK `emittenti_fiscali`, NOT NULL a modello):
+  // la lista lo gira al cancello di perimetro, perche' il super admin su
+  // «Tutti» non debba scegliere l'emittente del template che ha gia' aperto.
+  emittenteFiscaleId: { type: [Number, null], default: null },
   readonly: { type: Boolean, default: false },
 })
 
@@ -115,13 +127,35 @@ const pubblicaDialog = ref(false)
 const pubblicaTargetId = ref(null)
 const pubblicaForm = ref({ valido_dal: null, valido_al: null })
 
-watch(() => props.templateId, (id) => {
-  closeForm()
-  store.fetchList(id)
-}, { immediate: true })
+// Il padre e' il template: al cambio, lo scaffolding scrive l'id nello store,
+// azzera pagina e ricerca e ricarica. Il «Nuovo» sta nella barra della lista,
+// spento in sola lettura e mentre il form e' aperto.
+const {
+  searchText, onPage, onSort, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato, reloadAll,
+} = useDrawerTabLista(store, {
+  // Il padre composto: il template e il suo emittente (vedi lo store).
+  parentId: {
+    templateId: () => props.templateId,
+    emittenteId: () => props.emittenteFiscaleId,
+  },
+  searchTableOptions: { defaultSortField: 'versione', defaultSortOrder: 'desc' },
+  extraActions: () => [{
+    key: 'new-versione',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('config.modelli_documenti.versioni.new'),
+    icon: MANAGE_ICONS.ADD,
+    visible: !props.readonly && !editing.value,
+    command: openCreate,
+  }],
+})
+
+// Al cambio template il form aperto sul template precedente si chiude.
+watch(() => props.templateId, () => closeForm())
 
 async function reload() {
-  await store.fetchList(props.templateId)
+  await reloadAll()
 }
 
 function statoSeverity(stato) {
@@ -303,47 +337,49 @@ async function confirmPubblica() {
   <div class="template-versioni-section">
     <div class="section-header">
       <h3>{{ t('config.modelli_documenti.versioni.title') }}</h3>
-      <NewButton
-        v-if="!props.readonly && !editing"
-        :tooltip="t('config.modelli_documenti.versioni.new')"
-        @click="openCreate"
-      />
     </div>
 
-    <DataTable
-      v-if="!editing"
-      :value="store.items"
+    <!-- `v-show` e non `v-if`: col form aperto la lista si nasconde ma resta
+         montata — configurazione, pagina e ricerca non si rileggono a ogni
+         apertura del form. -->
+    <DrawerTabLista
+      v-show="!editing"
+      ref="listaRef"
+      codice="documenti.template_versioni"
+      :emittente-esplicito="emittenteFiscaleId"
+      :store="store"
+      :rows="store.items"
+      :total="store.totalRecords"
       :loading="store.loading"
-      striped-rows
-      class="app-datatable"
-      data-key="id"
-      @row-click="(ev) => openEdit(ev.data)"
-      selection-mode="single"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
+      :page-actions="pageActions"
+      :dirty="dirty"
+      :perimetro-bloccato="perimetroBloccato"
+      @page="onPage"
+      @sort="onSort"
+      @row-click="openEdit"
+      @config-loaded="onConfigLoaded"
     >
-      <!-- Colonne compatte: pochi caratteri per versione (es. "v12"),
-           date in formato breve, stato/attivo come Tag.
-           La colonna azioni ha width esplicita per restare sempre visibile
-           senza spingere lo scroll orizzontale (memoria layout standard). -->
-      <Column field="versione" :header="t('config.modelli_documenti.versioni.col_versione')" style="width: 60px;" />
-      <Column field="titolo" :header="t('config.modelli_documenti.versioni.col_titolo')" />
-      <Column field="stato" :header="t('config.modelli_documenti.versioni.col_stato')" style="width: 110px;">
-        <template #body="{ data }">
-          <Tag :value="data.stato" :severity="statoSeverity(data.stato)" />
-        </template>
-      </Column>
-      <Column field="valido_dal" :header="t('config.modelli_documenti.versioni.col_valido_dal')" style="width: 100px;" />
-      <Column field="valido_al" :header="t('config.modelli_documenti.versioni.col_valido_al')" style="width: 100px;" />
-      <Column field="attivo" :header="t('common.attivo')" style="width: 80px;">
-        <template #body="{ data }">
-          <AttivoTag :active="data.attivo" />
-        </template>
-      </Column>
-      <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false" style="width: 64px;">
-        <template #body="{ data }">
-          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-        </template>
-      </Column>
-    </DataTable>
+      <template #filtri-sempre>
+        <InputText
+          v-model="searchText"
+          class="app-filter-w-lg"
+          :placeholder="t('config.modelli_documenti.versioni.search_placeholder')"
+        />
+      </template>
+      <template #cell-stato="{ data }">
+        <Tag :value="data.stato" :severity="statoSeverity(data.stato)" />
+      </template>
+      <template #cell-attivo="{ data }">
+        <AttivoTag :active="data.attivo" />
+      </template>
+      <template v-if="!props.readonly" #actions="{ data }">
+        <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
+      </template>
+    </DrawerTabLista>
 
     <div v-if="editing" class="form-grid mt-1">
       <Message severity="info" :closable="false">

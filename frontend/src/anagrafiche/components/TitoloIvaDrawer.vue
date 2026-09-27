@@ -41,7 +41,6 @@ import {
   createTitoloIvaForzatura,
 } from '../api/anagrafiche'
 import {
-  chiaveTitolo,
   useTitoloIvaAmbitiStore,
   useTitoloIvaMovimentiStore,
 } from '../stores/titoloIvaSottoliste'
@@ -152,12 +151,24 @@ const ambitoIncompleto = computed(
     && storeAmbiti.totalRecords === 0,
 )
 
+// Scopo: il padre COMPOSTO delle due sotto-liste (soggetto + titolo, i due id
+//        del path), acceso solo quando la sezione e' a video. ⚠️ La
+//        condizione sta su ENTRAMBE le parti: con una sola spenta il BB
+//        leggerebbe il padre come «a meta'» (in attesa) invece che assente, e
+//        la lista chiusa resterebbe in caricamento.
+function padreSeAperto(aperta) {
+  return {
+    soggettoId: () => (aperta() ? props.soggettoId : null),
+    titoloId: () => (aperta() ? props.titoloId : null),
+  }
+}
+
 // Scaffolding delle due sotto-liste. ⚠️ Deve stare DOPO `form`: il building
 // block ci mette sopra un `watch` **immediate**, e una variabile toccata da un
 // watch immediate dichiarata piu' sotto e' una TDZ silenziosa
 // (`feedback_vue_watch_immediate_tdz`).
 //
-// ⛔ `parentId` porta la chiave SOLO quando la sezione e' davvero a video, e i
+// ⛔ `parentId` porta il padre SOLO quando la sezione e' davvero a video, e i
 //    `null` non sono un dettaglio: sono quelli che dicono al BB di chiamare
 //    `reset()`. Senza, gli ambiti del titolo precedente resterebbero sotto il
 //    prossimo che si apre — righe vere di un padre sbagliato.
@@ -174,12 +185,9 @@ const {
   onConfigLoaded: onConfigLoadedAmbiti, pageActions: azioniAmbiti,
   perimetroBloccato: perimetroAmbiti, reloadAll: reloadAmbiti,
 } = useDrawerTabLista(storeAmbiti, {
-  parentId: () => (
-    props.visible && isEdit.value && form.value.ambito === 'RISTRETTO'
-      ? chiaveTitolo(props.soggettoId, props.titoloId)
-      : null
+  parentId: padreSeAperto(
+    () => props.visible && isEdit.value && form.value.ambito === 'RISTRETTO',
   ),
-  parentField: 'chiaveTitolo',
   newTooltipKey: 'anagrafiche.titoli_iva.aggiungi_ambito',
   onNew: () => {
     ambitoForm.value = nuovoAmbito()
@@ -195,12 +203,7 @@ const {
   onConfigLoaded: onConfigLoadedMovimenti, pageActions: azioniMovimenti,
   perimetroBloccato: perimetroMovimenti, reloadAll: reloadMovimenti,
 } = useDrawerTabLista(storeMovimenti, {
-  parentId: () => (
-    props.visible && isEdit.value && mostraPlafond.value
-      ? chiaveTitolo(props.soggettoId, props.titoloId)
-      : null
-  ),
-  parentField: 'chiaveTitolo',
+  parentId: padreSeAperto(() => props.visible && isEdit.value && mostraPlafond.value),
   // ⛔ Da qui si scrive SOLO una forzatura (Q3), e il pulsante lo dice nel nome:
   //    fatture e note di credito le produce la fatturazione, dalla primitiva che
   //    tiene il lock.
