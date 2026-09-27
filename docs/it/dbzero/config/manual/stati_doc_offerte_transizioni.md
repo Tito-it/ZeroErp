@@ -94,21 +94,11 @@ per costruire i bottoni azione nella UI.
 |--------|------|-------------|
 | `action_key` | `text` | Chiave semantica dell'azione (es. `emetti`, `annulla`, `accetta`, `rifiuta`) |
 | `label_key` | `text` | Chiave i18n per il label del bottone Vue (`$t(label_key)`) |
-| `severity` | `text` | Severity PrimeVue: `info` / `success` / `danger` |
-| _(icona)_ | — | Non è un dato del DB: il frontend la sceglie dall'`action_key` (mappa verbo → icona in `core/`) |
+| _(icona e colore)_ | — | Non sono dati del DB: il frontend li sceglie dall'`action_key` (mappa verbo → aspetto in `core/`, icona e `severity`). Il colore è uscito dal `meta` il 2026-09-28 |
 | `requires_confirm` | `boolean` | `true` → mostra dialog di conferma prima di eseguire |
 | `manuale` | `boolean` | `false` = transizione automatica (trigger); esclusa dalla lista UI |
 
 Le transizioni automatiche (id 5, EMESSA → SUPERATA) hanno `meta = {"manuale": false}`.
-
-**Valori `severity` correnti** (rev 28-05-2026):
-
-| id | Transizione | severity |
-|----|-------------|----------|
-| 1 | BOZZA → EMESSA | `info` (era `success` fino al 27-05-2026, allineata a preventivi con migration 20260528-03) |
-| 2 | BOZZA → ANNULLATA | `danger` |
-| 3 | EMESSA → ACCETTATA | `success` |
-| 4 | EMESSA → RIFIUTATA | `danger` |
 
 ---
 

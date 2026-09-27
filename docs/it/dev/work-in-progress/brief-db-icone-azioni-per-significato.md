@@ -367,6 +367,9 @@ cambia per **stato** (l'annulla di una bozza è solo bordato) e non per verbo.
 
 ### 9.3 Richiesta al team DB
 
+> ✅ **Consegnata e applicata il 2026-09-28, test verdi**: §10. Resta la
+> ricaduta BE del §10.4.
+
 Stesso perimetro del §4 e del §6.3, con `severity` al posto di `icon`:
 
 1. Togliere `severity` dall'output delle nove `fn_available_actions_*`. Oggi
@@ -389,3 +392,92 @@ Stesso perimetro del §4 e del §6.3, con `severity` al posto di `icon`:
 `magazzino/tests/db/test_documento_interno_db.py:420` elenca `severity` fra le
 chiavi dell'output, e fallirà. Le fixture di contratti e preventivi portano un
 campo stantio. Le pagine API di §7.3 descrivono `severity` nell'output.
+
+## 10. Consegna DB del §9 — 2026-09-28 ✅ applicata, test verdi
+
+> ✅ **Applicata su dbdev da Tid il 2026-09-28 alle 00:23**: `20260928-06` e
+> `-07` → `-15` tutti `EXECUTED` nel `databasechangelog`, e i nove mirror dei
+> CSV delle otto matrici ripartiti (`RERAN`; per i preventivi sono due). Letto
+> dopo l'apply: zero `script.fn_available_actions_*` con `severity` nel corpo,
+> zero righe con `severity` nel `meta` delle matrici, nessun overload.
+> **pgTAP verdi, nessuna regressione** (corsa di Tid).
+>
+> **Il lato DB è chiuso.** Resta aperta la ricaduta BE del §10.4: il test Django
+> del documento interno (che ora fallisce), la fixture dei contratti, un
+> commento in `types.py` e quattro pagine API. L'ordine di rilascio era libero
+> (§9.2): il frontend ignorava già la `severity` del DB, quindi a video non
+> cambia niente.
+
+### 10.1 Verifica del §9 — fatti che reggono, due precisazioni
+
+Letti i CSV di `80_data`, i corpi e i `COMMENT` in vigore (dbdev, 2026-09-28)
+e `core/aspettoAzioni.js`. **Il §9 regge**: i tre conflitti di §9.1 sono quelli,
+i letterali di §9.3.1 sono quelli, e per ogni altro verbo il colore del seed è
+uno solo e coincide con la mappa del frontend (20 verbi su 20, compresi i tre
+decisi da Tid).
+
+* I CHECK `ck_*_meta_ui` pretendono solo `action_key` e `label_key`: togliere
+  `severity` non li tocca. Nessun trigger, vista o funzione fuori dalle
+  `fn_available_actions_*` legge `meta->>'severity'`.
+* pgTAP: la sola asserzione sulla `severity` delle **azioni** è il test 1 di
+  `test-capability-annulla-aspetto-e-stato-leggibile-v1.sql` (la riga 155 del
+  §9.3.4 è dentro il test 1). Gli altri pgTAP che nominano `severity` parlano
+  di `event_log` o del Tag di stato delle liste.
+* Ricaduta BE: la fixture con `severity` è solo in
+  `test_contratti_service.py:166`; quella dei preventivi non la porta.
+
+### 10.2 Che cosa c'è
+
+| File | Che cosa fa |
+| --- | --- |
+| `00_schema/config/20260928-06-comment-meta-transizioni-senza-severity` | `COMMENT` di `meta` sulle sei matrici che nominavano `severity`: testo vivo senza `severity`, e la frase sull'icona riscritta per icona **e** colore. `stati_doc_fiscale_transizioni` e `transizioni_stati_preventivi` hanno un COMMENT generico: intatti |
+| `20_code/script/20260928-07` → `-15` `update-fn-available-actions-<dominio>-senza-severity` | le nove funzioni (lotto, offerta, preventivo, ordine, ddt, reso, commessa, contratto, documento interno) senza `'severity'`: 18 righe tolte dai `jsonb_build_object` (matrice e letterali) e, nel documento interno, la colonna della tabella di valori. `COMMENT` vivo + riga `rev 2026-09-28`; nel documento interno tolto `severity` dall'elenco delle chiavi |
+| otto CSV di `80_data` | tolta la chiave `severity` da `meta`: 39 righe, nessun'altra modifica. I mirror (`runOnChange` + `ANY`) si risvegliano da soli al migrate, come per `icon` (§7.1) |
+| `db/pgtap/script/test-capability-annulla-aspetto-e-stato-leggibile-v1.sql` | rev 2026-09-28 in testa. Test 1 solo `outlined`; test 4 e 9 contano la presenza di `icon` **o** `severity` (operatore «any key»), test 10 cerca anche `'severity'` nei corpi. `plan(10)` invariato |
+| pagine `dbzero/*/manual`: sette matrici, otto funzioni, `vendite/manual/ddt.md` | tolto `severity` dai contratti descritti; la riga «(icona)» delle tabelle del `meta` diventa «(icona e colore)» |
+
+**Ancoraggio dei tipi.** Corpi presi dal vivo (`prosrc` = corpo degli YAML
+`20260927-10` → `-18`, confrontati riga per riga), firme ancorate come allora.
+In più: la firma del `COMMENT ON FUNCTION` era `(bigint)` nudo e ora è
+`(<tabella>.id%TYPE)` come il parametro. Nel DECLARE una riga dichiara perché i
+tipi rimasti espliciti lo sono (valori calcolati: jsonb, flag, chiavi i18n).
+Il documento interno resta a tipi espliciti in firma e su `v_stato` /
+`v_destinazioni`, perché è **polimorfo**: `p_documento_id` è l'id di
+`inventari` **o** di `rettifiche` e `p_famiglia` non ha una colonna-vocabolario.
+Il DECLARE ora lo scrive; gli involucri `_inventario` / `_rettifica` sono
+ancorati. Tutte e nove restano `SECURITY INVOKER`, di proprietà del migratore.
+
+⚠️ `vendite/manual/transizioni_stati_commessa.md` dice ancora che «tutte le 11
+righe hanno `meta = {"manuale": false}`» e che i metadati UI sono «rinviati»: è
+stantio da quando esiste `fn_available_actions_commessa`. Qui è tolto solo
+`severity`; la riscrittura del paragrafo è un debito documentale a sé.
+
+### 10.3 Prove fatte — dbdev, in transazione chiusa in `ROLLBACK`
+
+* **SQL estratto dagli YAML** (parser, non riscritto): i dieci changeSet
+  compilano, compreso il `COMMENT ON FUNCTION` con `%TYPE`. Dopo: una sola
+  funzione per nome, firme identiche a prima, zero corpi che nominano
+  `severity`, zero `COMMENT` di matrice che la elencano.
+* **Comportamento**: uscita delle funzioni su **tutti** i documenti di dev, prima
+  e dopo: 539 documenti, dieci famiglie compresi inventario e rettifica.
+  Identica a meno della chiave `severity`: 631 chiavi prima, 0 dopo, 0 altre
+  differenze. ⚠️ È una misura sui dati di dev, dichiarata come tale: prova che
+  il taglio non ha toccato altro, non sostituisce il pgTAP.
+* **CSV ↔ DB**: ogni riga degli otto CSV coincide col `meta` a DB tolta la
+  `severity` (61 righe, 0 diverse, 0 mancanti); riscrivere il `meta` dal CSV
+  passa i guard.
+* **Asserzioni toccate**: il 9 conta 39 righe e il 10 nove funzioni sullo stato
+  di oggi (rossi), 0 e nessuna dopo (verdi); il 4 va da 631 chiavi a 0. Il test
+  1 (solo `outlined`) è verde prima e dopo.
+* Guardrail statici: runOnChange, preCondition/seed, DDL su trigger, GRANT
+  batch, letterali SQL, timestamp, preambolo pgTAP — tutti verdi.
+
+### 10.4 Richieste al BE (dopo l'apply)
+
+* **Test Django**: `magazzino/tests/db/test_documento_interno_db.py:420`
+  elenca `severity` fra le chiavi dell'output: **fallirà**. La fixture di
+  `vendite/tests/services/test_contratti_service.py:166` porta un campo che il
+  DB non manda più; il commento di `vendite/types.py:1004` lo nomina.
+* **Pagine API** che descrivono `severity` nell'output delle azioni:
+  `vendite/manual/api_ordini.md:127`, `api_offerte.md:342,348`,
+  `api_commessa_stato.md:71,73,121`, `magazzino/manual/api_magazzino.md:111`.

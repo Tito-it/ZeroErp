@@ -53,7 +53,6 @@ script.fn_available_actions_ordine(
             "key": "conferma",
             "target_state": "CONFERMATO",
             "label_key": "vendite.ordini.azione_conferma",
-            "severity": "info",
             "requires_confirm": true,
             "outlined": false
         }
@@ -97,7 +96,6 @@ piano `piano-db-fix-orfano-push-ordine-confermato.md`):
     "key": "push_commessa",
     "target_state": null,            // non cambia stato
     "label_key": "vendite.ordini.azione_push_commessa",
-    "severity": "success",
     "requires_confirm": true,
     "outlined": false
 }
@@ -145,7 +143,7 @@ da DRAFT è bloccata tutta la testata, allineata a `_UPDATE_KEYS_ORDINE` di
    `stato_id`, `codice_interno`. `NOT FOUND` → `RETURN NULL`.
 2. **Transizioni manuali** — `jsonb_agg` su `config.transizioni_stati_ordini` filtrata per
    `stato_da_id = v_stato_id AND attivo IS TRUE AND manuale IS NOT FALSE`. Metadati UI
-   (`label_key`, `severity`, `requires_confirm`, `outlined`) da `t.meta`; l'icona la sceglie
+   (`label_key`, `requires_confirm`, `outlined`) da `t.meta`; icona e colore li sceglie
    il frontend dal `key`. Ordine:
    `sa.ordine`. Guard defense-in-depth: `AND t.meta ? 'action_key' AND t.meta ? 'label_key'`.
 3. **`can_change_state`** — `jsonb_array_length(v_actions) > 0` calcolato **qui**, prima di
