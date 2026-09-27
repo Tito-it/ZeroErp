@@ -4,6 +4,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from django.http import JsonResponse
+from rest_framework import exceptions as drf_exceptions
 from rest_framework.views import exception_handler as drf_default_handler
 
 from apps.core.api.retry_policies import apply_retry_headers
@@ -82,11 +83,21 @@ def exception_to_error_response(exc: Exception) -> JsonResponse:
 
 # Scopo: Custom DRF exception handler — converte eccezioni auth/permessi
 # nell'envelope standard del progetto {"error": {"code": ..., "message": ...}}.
-_DRF_ERROR_CODE_MAP: dict[str, str] = {
-    "NotAuthenticated": "E_NOT_AUTHENTICATED",
-    "AuthenticationFailed": "E_AUTHENTICATION_FAILED",
-    "PermissionDenied": "E_PERMISSION_DENIED",
-}
+# ⛔ Per CLASSE (`isinstance`), non per nome: fino al 2026-09-27 la chiave era
+#    `type(exc).__name__`, e una sottoclasse restava fuori. `InvalidToken` di
+#    SimpleJWT (token scaduto o illeggibile) e' un `AuthenticationFailed`, ma
+#    col suo nome usciva nel formato grezzo di DRF, fuori envelope (E-3).
+_DRF_ERROR_CODE_MAP: tuple[tuple[type[Exception], str], ...] = (
+    (drf_exceptions.NotAuthenticated, "E_NOT_AUTHENTICATED"),
+    (drf_exceptions.AuthenticationFailed, "E_AUTHENTICATION_FAILED"),
+    (drf_exceptions.PermissionDenied, "E_PERMISSION_DENIED"),
+)
+
+
+# Scopo: Il codice E_* di un'eccezione DRF standard, dalla sua classe o da
+#        una delle classi madri. None = nessuna mappatura (resta il formato DRF).
+def _codice_drf(exc: Exception) -> str | None:
+    return next((code for cls, code in _DRF_ERROR_CODE_MAP if isinstance(exc, cls)), None)
 
 
 def drf_exception_handler(exc: Exception, context: dict) -> Response | None:
@@ -96,7 +107,7 @@ def drf_exception_handler(exc: Exception, context: dict) -> Response | None:
 
     # Priorita' al default_code applicativo di una subclass (es.
     # VesteNonAttivaError.default_code = "E_VESTE_NON_ATTIVA"). Se assente,
-    # fallback alla mappa type-name -> code. Cosi' le subclass custom
+    # fallback alla mappa classe -> code. Cosi' le subclass custom
     # preservano il proprio codice E_* nell'envelope senza dover essere
     # aggiunte a una mappa globale.
     # NB: questo ordine e' deliberato: aggiungere una subclass a
@@ -106,7 +117,7 @@ def drf_exception_handler(exc: Exception, context: dict) -> Response | None:
     if isinstance(exc_default_code, str) and exc_default_code.startswith("E_"):
         code = exc_default_code
     else:
-        code = _DRF_ERROR_CODE_MAP.get(type(exc).__name__)
+        code = _codice_drf(exc)
 
     if code:
         # Usa il user_message della policy: garantisce messaggi uniformi per lo

@@ -21,6 +21,13 @@ def parse_json_body(request: HttpRequest | Request) -> dict[str, Any]:
     except (json.JSONDecodeError, ParseError) as exc:
         raise ValueError("invalid_json") from exc
 
+    return oggetto_json(value)
+
+
+# Scopo: ⭐ La regola «il corpo e' un OGGETTO JSON», in un posto solo: la usano
+#        `parse_json_body` (per `handle_post_json`) e `corpo_oggetto` (per le
+#        view DRF che leggono `request.data`). Un form (`QueryDict`) e' un dict.
+def oggetto_json(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError("invalid_payload")
     return value

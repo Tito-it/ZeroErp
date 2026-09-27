@@ -31,6 +31,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     parse_list_params,
     qp_bool_optional,
     qp_int_optional,
@@ -222,7 +223,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
         #        il magazzino (si sceglie alla nascita).
         def patch(self, request: Request, doc_id: int) -> JsonResponse:
             return success_response(
-                magazzino_service.aggiorna_documento(codice, doc_id, dict(request.data))
+                magazzino_service.aggiorna_documento(codice, doc_id, dict(corpo_oggetto(request)))
             )
 
         @extend_schema(
@@ -383,7 +384,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
         # Scopo: Aggiorna via PATCH una riga (parziale; `null` azzera un nullable).
         def patch(self, request: Request, doc_id: int, riga_id: int) -> JsonResponse:
             return success_response(
-                magazzino_service.aggiorna_riga(codice, doc_id, riga_id, dict(request.data))
+                magazzino_service.aggiorna_riga(codice, doc_id, riga_id, dict(corpo_oggetto(request)))
             )
 
         @extend_schema(

@@ -185,9 +185,8 @@ La classe di ogni codice sta in `apps/core/services/error_policies_generated.py`
 `apps/core/services/error_ui_overrides.py`, i messaggi in
 `apps/core/services/error_messages_fallback.py`.
 
-> ⚠️ Difetto noto (E-3): `InvalidToken` di SimpleJWT non e' nella mappa di
-> `drf_exception_handler`, quindi il 401 da token scaduto/invalido esce fuori
-> envelope.
+> Il 401 da token scaduto o invalido (`InvalidToken` di SimpleJWT) esce
+> nell'envelope come `E_AUTHENTICATION_FAILED` (E-3, chiuso 2026-09-27).
 >
 > I tre rifiuti della credenziale sono 403, non 429: il 429 e' il throttle
 > per IP, che il frontend intercetta prima di leggere il codice. Modello

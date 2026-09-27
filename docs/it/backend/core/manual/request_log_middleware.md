@@ -20,7 +20,7 @@ Nessun valore restituito. Effetto: INSERT in `dbops.request_log` con i seguenti 
 |-------|---------|
 | `auth_user_id` | `request.user.id` (NULL se anonimo) |
 | `username` | `str(request.user)` se autenticato, altrimenti NULL |
-| `request_id` | Da `RequestContextMiddleware` (⚠️ Difetto noto [S-1](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md): un `X-Request-ID` non UUID fa fallire l'INSERT) |
+| `request_id` | Da `RequestContextMiddleware` (sempre un UUID: quello del client solo se valido, S-1) |
 | `method` | `request.method` (GET, POST, ...) |
 | `path` | `request.path` (troncato a 500 char) |
 | `query_string` | `request.META["QUERY_STRING"]` (troncato a 1000 char) |

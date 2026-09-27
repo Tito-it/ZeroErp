@@ -17,7 +17,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import paginated_envelope, parse_list_params, qp_bool_optional, qp_int_strict, qp_str
+from apps.core.api.payload_validators import corpo_oggetto, paginated_envelope, parse_list_params, qp_bool_optional, qp_int_strict, qp_str
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.listini_service import (
     fn_alert_scadenze,
@@ -258,7 +258,7 @@ class ApiListinoDetail(DomainAPIView):
     )
     # Scopo: Aggiorna il listino.
     def patch(self, request: Request, listino_id: int) -> JsonResponse:
-        return success_response(fn_update_listino(listino_id, request.data))
+        return success_response(fn_update_listino(listino_id, corpo_oggetto(request)))
 
     @extend_schema(
         responses={
@@ -331,7 +331,7 @@ class ApiListinoVersioneDetail(DomainAPIView):
     )
     # Scopo: Aggiorna la versione del listino.
     def patch(self, request: Request, listino_id: int, ver_id: int) -> JsonResponse:
-        return success_response(fn_update_versione(listino_id, ver_id, request.data))
+        return success_response(fn_update_versione(listino_id, ver_id, corpo_oggetto(request)))
 
     @extend_schema(
         responses={
@@ -457,7 +457,7 @@ class ApiListinoVersioneRigaDetail(DomainAPIView):
     )
     # Scopo: Aggiorna la riga prezzo della versione.
     def patch(self, request: Request, listino_id: int, ver_id: int, riga_id: int) -> JsonResponse:
-        return success_response(fn_update_riga(listino_id, ver_id, riga_id, request.data))
+        return success_response(fn_update_riga(listino_id, ver_id, riga_id, corpo_oggetto(request)))
 
     @extend_schema(
         responses={
@@ -489,7 +489,7 @@ class ApiListinoVersioneRigaRettificaControllata(DomainAPIView):
     #        Endpoint dedicato separato dal PATCH ordinario.
     def patch(self, request: Request, listino_id: int, ver_id: int, riga_id: int) -> JsonResponse:
         return success_response(
-            fn_rettifica_controllata_riga(listino_id, ver_id, riga_id, request.data)
+            fn_rettifica_controllata_riga(listino_id, ver_id, riga_id, corpo_oggetto(request))
         )
 
 

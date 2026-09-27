@@ -31,8 +31,6 @@ from typing import Any
 
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.contrib.auth.password_validation import validate_password
-from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 
 from apps.core.db.auth_repository import AuthRepository
@@ -46,6 +44,7 @@ from apps.core.services.auth_constants import (
 from apps.core.services.auth_helpers import (
     apply_new_password,
     extract_identita_id_from_token_meta,
+    valida_nuova_password,
 )
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
@@ -360,20 +359,7 @@ def attiva_veste(
 
     is_cross = not richiede_password(porta, token_type, auth_user_id, repo)
     if not is_cross:
-        ErrorManager.require(
-            bool(new_password),
-            code=codice,
-            message="Nuova password obbligatoria per questo token.",
-        )
-        ErrorManager.require(
-            new_password == new_password_confirm,
-            code=codice,
-            message="La nuova password e la conferma non coincidono.",
-        )
-        try:
-            validate_password(new_password, user=user)
-        except DjangoValidationError as exc:
-            ErrorManager.require(False, code=codice, message=" ".join(exc.messages))
+        valida_nuova_password(new_password, new_password_confirm, user=user, code=codice)
 
     with transaction.atomic():
         svc.consume(token, token_type, ip=ip)

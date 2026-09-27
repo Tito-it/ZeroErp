@@ -158,7 +158,7 @@ class ConfirmViewTests(TestCase):
     @patch("apps.core.api.throttling.PasswordResetRateThrottle.allow_request", return_value=True)
     @patch("apps.core.api.password_reset_views.transaction")
     @patch("apps.core.api.password_reset_views.apply_new_password")
-    @patch("apps.core.api.password_reset_views.validate_password")
+    @patch("apps.core.services.auth_helpers.validate_password")
     @patch("apps.core.api.password_reset_views.validate_and_extract_token", return_value=(42, {}))
     @patch(_USER_MODEL)
     @patch(_EMAIL_SVC)

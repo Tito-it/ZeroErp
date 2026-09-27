@@ -15,8 +15,6 @@ import logging
 from typing import Any
 
 from django.contrib.auth.models import User
-from django.contrib.auth.password_validation import validate_password
-from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.http import JsonResponse
 from drf_spectacular.utils import extend_schema, inline_serializer
@@ -26,11 +24,16 @@ from rest_framework.request import Request
 from rest_framework.views import APIView
 
 from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.payload_validators import password_digitata
 from apps.core.api.success_responses import success_response
 from apps.core.api.throttling import PasswordResetRateThrottle
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services.auth_constants import NOME_SISTEMA_EMAIL
-from apps.core.services.auth_helpers import apply_new_password, validate_and_extract_token
+from apps.core.services.auth_helpers import (
+    apply_new_password,
+    valida_nuova_password,
+    validate_and_extract_token,
+)
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.request_context import get_client_ip
@@ -160,15 +163,10 @@ class PasswordResetConfirmView(APIView):
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             token = (payload.get("token") or "").strip()
-            new_password = (payload.get("new_password") or "").strip()
-            new_password_confirm = (payload.get("new_password_confirm") or "").strip()
+            new_password = password_digitata(payload, "new_password")
+            new_password_confirm = password_digitata(payload, "new_password_confirm")
 
             ErrorManager.require(bool(token), code=E_RESET, message="Token obbligatorio.")
-            ErrorManager.require(bool(new_password), code=E_RESET, message="Nuova password obbligatoria.")
-            ErrorManager.require(
-                new_password == new_password_confirm,
-                code=E_RESET, message="La nuova password e la conferma non coincidono.",
-            )
 
             # Valida token SENZA consumarlo
             auth_user_id, _ = validate_and_extract_token(
@@ -181,10 +179,7 @@ class PasswordResetConfirmView(APIView):
             assert user is not None
 
             # Valida nuova password PRIMA di consumare il token
-            try:
-                validate_password(new_password, user=user)
-            except DjangoValidationError as exc:
-                ErrorManager.require(False, code=E_RESET, message=" ".join(exc.messages))
+            valida_nuova_password(new_password, new_password_confirm, user=user, code=E_RESET)
 
             # Consuma token + applica password + spegne il cambio obbligatorio
             # + blacklist + azzera i tentativi falliti (atomico).

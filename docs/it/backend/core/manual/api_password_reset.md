@@ -155,11 +155,9 @@ Dopo il commit, fuori transazione:
    viene solo loggato, la risposta resta 200)
 6. Log audit: `password_reset_confirmed`
 
-`token`, `new_password` e `new_password_confirm` vengono ripuliti dagli spazi
-iniziali e finali prima delle validazioni.
-
-> ⚠️ Difetto noto (S-5): la password salvata e' quella senza spazi ai bordi, che
-> puo' differire da quella digitata — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+`token` viene ripulito dagli spazi iniziali e finali; `new_password` e
+`new_password_confirm` **no**: si salva la password digitata, e il login non la
+ripulisce (S-5, 2026-09-27).
 
 #### Output
 

@@ -14,16 +14,16 @@
 >
 > **Stato:** ⏳ aperto — Tid (2026-09-24): *«partendo da quelle più gravi»*.
 > Chiusi: **M-1** (e con lui **S-3**), **M-2**, **M-3**; **M-4** il
-> 2026-09-25 nel cantiere accessi (lotto L-1). **M-5, M-6** restano in quel
-> cantiere, lotto **L-5** ancora da fare
+> 2026-09-25 nel cantiere accessi (lotto L-1); **F-2** il 2026-09-25 dal DB;
+> **E-3, S-1, S-5, S-6, F-4, F-9** il 2026-09-27; **F-3** a metà. **M-5, M-6**
+> restano nel cantiere accessi, lotto **L-5** ancora da fare
 > ([piano-be-fe-accessi-credenziale-e-vesti.md](piano-be-fe-accessi-credenziale-e-vesti.md) §4.3).
 > Le doc di `core/manual/` e `api_conti_bancari_ruolo.md` sono già
 > allineate al comportamento attuale e rimandano qui (2026-09-24).
 >
-> **Ultima verifica sul codice: 2026-09-25.** Le voci ancora aperte sono
-> state ricontrollate dopo i commit del cantiere accessi (L-0, L-1, L-3):
-> nessun'altra risulta chiusa; per S-5 i punti colpiti sono cambiati (vedi
-> riga).
+> **Ultima verifica sul codice: 2026-09-27**, sulle voci M-5, M-6, E-1, E-3,
+> S-1, S-5, S-6, F-3, F-4, F-9. Le altre (E-2, E-4…E-10, S-2, S-4, F-1,
+> F-5…F-8, §5) sono ferme al 2026-09-25.
 >
 > **Come leggere «Verificato»:** ✅ = riletto sul codice da chi scrive
 > (2026-09-24); 🔎 = segnalato con prova `file:riga` dalla verifica per lotti,
@@ -48,7 +48,7 @@
 | --- | --- | --- | --- |
 | E-1 | **Codici emessi ma non a catalogo** (niente classe, niente `ui_action`, niente ripiego): `E_ANAG_CONTO_NOT_FOUND`, `E_ANAG_CONTO_SOGGETTO_NOT_FOUND` (un «non trovato» esce **400** «Errore di validazione.»), `E_GUC_RESET_FAILED`, `E_DB_ROLE_UNSAFE`, `E_CAMBIO_PASSWORD_RICHIESTO`, `E_CAMBIO_PASSWORD_CHECK_FALLITO`. ➜ righe nel CSV del catalogo: **richiesta al team DB** | `anagrafiche/error_codes.py:7-8`, `core/middleware/jwt_audit_middleware.py:187,214,225`, `core/middleware/password_change_middleware.py:79,92` | ✅ (i primi quattro) |
 | E-2 | **Il cancello `test_ogni_codice_usato_e_dichiarato` non vede le costanti importate**: risolve solo quelle definite nello stesso modulo (`_costanti_modulo`). È il motivo per cui E-1 è passato. Va esteso agli import da `error_codes.py` (e simili), poi rieseguito: potrebbe trovare altri codici | `core/tests/test_error_codes_declared_guardrail.py:82-128` | ✅ |
-| E-3 | **Token scaduto o invalido fuori envelope.** `InvalidToken` di SimpleJWT deriva da `AuthenticationFailed`, ma `_DRF_ERROR_CODE_MAP` confronta il nome esatto della classe: il 401 esce nel formato grezzo di DRF | `core/api/error_responses.py:85-109` | ✅ |
+| E-3 | ✅ **CHIUSO 2026-09-27.** La mappa di `drf_exception_handler` confronta per **classe** (`isinstance`, `_codice_drf`), non per nome: `InvalidToken` (token scaduto o illeggibile) esce 401 `E_AUTHENTICATION_FAILED` nell'envelope. Il FE guarda solo lo status 401: il refresh non cambia. Test: `test_drf_exception_handler` n. 5. ~~Token scaduto o invalido fuori envelope: `_DRF_ERROR_CODE_MAP` confronta il nome esatto della classe~~ | `core/api/error_responses.py` | ✅ |
 | E-4 | **«Non trovato» / «negato» che escono 400**: `E_EMAIL_OP`, `E_EMAIL_ADMIN`, `E_OUTBOX`, `E_INVITO_PORTALE` («Cliente … non trovato»), `E_INVITO_OPERATORE` (tutti DATO_ERRATO); `user_id` inesistente in permessi effettivi/audit con `E_CORE_VALIDATION` | `core/api/email_views.py:62,68-72,217`, `amm_software/api/email_views.py:170,210,334`, `core/api/views.py:182-188,337-344` | 🔎 |
 | E-5 | **I messaggi mirati di `ZeroERPPermission` non arrivano al client**: `drf_exception_handler` li sostituisce con la frase di `E_PERMISSION_DENIED`. Esistono già `E_REPARTO_SENZA_PROFILO` ed `E_USER_DISABILITATO`, mai sollevati | `core/api/permissions.py:124,146,248`, `error_responses.py:109-128` | 🔎 |
 | E-6 | **Envelope incoerente per JSON non valido**: `invalid_json_response` / `invalid_payload_response` rispondono `{"error": "invalid_payload"}` (stringa, non oggetto); ogni `ValueError` sollevato dentro `handle_post_json` perde codice e messaggio | `core/api/error_responses.py:23-37`, `endpoint_helpers.py:163-175` | 🔎 |
@@ -61,12 +61,12 @@
 
 | # | Difetto | Dove | Verificato |
 | --- | --- | --- | --- |
-| S-1 | **`X-Request-ID` del client accettato senza controllo** e scritto in colonne `uuid`: con un valore non-UUID l'INSERT di `dbops.request_log` e di `dbops.sessioni_utente` fallisce (loggato e basta) → si perde l'audit di login e revoche. Il valore torna in risposta senza limite di lunghezza | `core/middleware/request_context_middleware.py:17`, `request_log_middleware.py:129`, `core/db/session_audit_repository.py:37` | ✅ |
+| S-1 | ✅ **CHIUSO 2026-09-27.** L'`X-Request-ID` del client si tiene solo se è un UUID (BB `optional_uuid`, forma canonica anche nella risposta); altrimenti se ne genera uno, senza rifiutare la richiesta. Test: `core/tests/middleware/test_request_context_middleware.py`. ~~Accettato senza controllo e scritto in colonne `uuid`: con un valore non-UUID l'INSERT dell'audit falliva~~ | `core/middleware/request_context_middleware.py` | ✅ |
 | S-2 | **`JwtAuditMiddleware.process_view` inerte per i client Bearer**: `request.user` lì è AnonymousUser (lo dice la sua docstring). Precaricamento L2 e rifiuto dei DISABILITATO non scattano; resta solo `ZeroERPPermission`. Stesso schema da verificare in `PasswordChangeRequiredMiddleware.process_view` | `core/middleware/jwt_audit_middleware.py:98-140`, `password_change_middleware.py:53-55` | 🔎 |
 | S-3 | ✅ **CHIUSO 2026-09-24 con M-1.** ~~`permissions_cache.invalidate_all()` non cancella niente~~: ora cambia la generazione globale, niente più `delete_pattern` | `core/services/permissions_cache.py` | ✅ |
 | S-4 | **`get_ruolo_applicativo`, ripiego non deterministico**: `LIMIT 1` senza `ORDER BY` su un'identità attiva qualsiasi | `core/services/permissions_resolver.py:103-111` | 🔎 |
-| S-6 | **`get_ruolo_applicativo(user)` risponde per chi chiama, non per `user`**: legge prima la GUC `app.ruolo_applicativo` della richiesta e ignora l'argomento. In permessi-effettivi, consultando un altro utente, `ruolo_applicativo` è la veste del chiamante. Da verificare lo stesso effetto sui livelli d'area, perché `fn_resolve_livello_area` legge la stessa GUC | `core/services/permissions_resolver.py:92-115`, `core/api/views.py:200` | ✅ |
-| S-5 | **Password ripulite dagli spazi**: reset, attivazione e cambio password fanno `.strip()` su `new_password` → la password salvata può differire da quella digitata. ⚠️ 2026-09-25: col lotto L-3 l'attivazione è passata nel BB `attivazione_veste_views.py`, e il difetto c'è anche nel **cambio password** (non era nell'elenco del 24-09) | `core/api/password_reset_views.py:147-148`, `core/api/attivazione_veste_views.py:122-123`, `core/api/change_password_view.py:56-57` | ✅ |
+| S-6 | ✅ **CHIUSO 2026-09-27** (solo backend, decisione Tid). ⚠️ La diagnosi del 24-09 era più larga del difetto: letti i corpi, livelli d'area/oggetto e super admin esistono **solo per la veste OPERATORE** (passi 0-1 di `fn_resolve_livello_area`/`_oggetto`), e la GUC fa da cancello per chi guarda, non presta la veste al consultato: i livelli di un altro utente erano già giusti. Sbagliato era il solo campo `ruolo_applicativo` di permessi-effettivi (la veste di chi guarda: per un cliente del portale diceva OPERATORE, provato sul DB vero). Ora la risposta porta `veste_operatore_attiva` del consultato (`PermissionResolver.has_veste_operatore_attiva` → `script.fn_has_identita_attiva`); `get_ruolo_applicativo` dichiara che risponde per la sessione. Nessun consumatore FE dell'endpoint. Test: `test_permessi_effettivi_api` n. 7. Doc: `api_permessi_effettivi.md`, `permissions_resolver.md`, api.md §Identità | `core/api/views.py`, `core/services/permissions_resolver.py` | ✅ |
+| S-5 | ✅ **CHIUSO 2026-09-27** (decisione Tid: la password non si tocca). ⚠️ La diagnosi del 24-09 era incompleta: anche il **login** ripuliva la password (`PasswordField` di SimpleJWT è un `CharField`, `trim_whitespace=True`), quindi i due lati erano coerenti e togliere lo strip solo in scrittura avrebbe chiuso fuori chi ha spazi ai bordi. Ora nessuno dei due la ripulisce: `SidTokenObtainPairSerializer` (tre porte) con `trim_whitespace=False`, e niente `.strip()` in reset, attivazione e cambio password (anche sulla password attuale). Lo username resta ripulito. Test: `test_multi_veste_token_serializer` n. 11 | `core/api/token_serializers.py`, `password_reset_views.py`, `attivazione_veste_views.py`, `change_password_view.py` | ✅ |
 
 ## 4. Funzionali
 
@@ -74,13 +74,13 @@
 | --- | --- | --- | --- |
 | F-1 | **Bozza email bloccata in READY**: `confirm_and_send` porta a READY con commit e **dopo** cerca l'account; se manca resta READY, non rinviabile né annullabile | `core/services/email_outbox_service.py:140-144` | 🔎 |
 | F-2 | ✅ **CHIUSO 2026-09-25** dal database ([brief-db-email-visibilita-per-ambito.md](../work-done/brief-db-email-visibilita-per-ambito.md) §8): «gli allegati si toccano solo in bozza» è il guard `config.trgfn_email_allegato_guard_solo_bozza` (`E_EMAIL_ALLEGATO_NON_BOZZA`, 409), che su una mail spedita rifiuta prima che il file venga toccato; `remove_attachment` lo lascia al DB, `add_attachment` lo dice prima di scrivere il file con lo stesso codice, `cancel_draft` toglie le righe prima di `CANCELLED`. Test: `core/tests/db/test_email_bozza_invio_db` n. 2-3. ~~**Si cancella l'allegato di una mail già spedita**: `remove_attachment` non controlla DRAFT, e `copy_allegati_to_log` aggiorna la stessa riga invece di copiarla~~ | `email_outbox_service.py`, `email_repository.py` | ✅ |
-| F-3 | **Invito operatore `inviato: true` anche a email fallita**; `invia_invito` non invalida i token precedenti | `invito_operatore_service.py:46-152` | 🔎 |
-| F-4 | **Permessi-audit**: `page` ≤ 0 → OFFSET negativo, errore DB; `data_a` esclude il giorno indicato (confronto con la mezzanotte) | `core/api/views.py:360-365`, `permissions_audit_repository.py:144-151` | 🔎 |
+| F-3 | 🟡 **Metà chiusa.** ✅ I token precedenti si invalidano (BB `InvitoVeste.emetti`, A-4: dentro la transazione del nuovo). ⏳ Aperta: **`inviato: true` anche a email fallita** — `InvitoVeste.spedisci` logga l'errore e prosegue, il service risponde comunque `inviato: true` (verificato 2026-09-27) | `anagrafiche/services/invito_operatore_service.py`, `core/services/invito_veste.py` | ✅ |
+| F-4 | ✅ **CHIUSO 2026-09-27.** `page`/`page_size` < 1 → 400 `E_VALIDATION_INPUT` prima del DB; `data_a` include il giorno (`valid_from < data + interval '1 day'`, idioma di `dbops_repository`), provato sul DB vero. Test: `test_permissions_audit` n. 15-16. ~~`page` ≤ 0 → OFFSET negativo; `data_a` esclude il giorno indicato~~ | `core/api/views.py`, `permissions_audit_repository.py` | ✅ |
 | F-5 | **Override parametri asimmetrici**: upsert user/emittente e `delete_emittente_override` non includono `categoria_cliente_id` fra le colonne che devono essere NULL | `core/db/parameter_repository.py:198-251` | 🔎 |
 | F-6 | **`/parameters/settings/`: `billing_account_id` non controllato** — inesistente = categoria NULL in silenzio, nessun controllo di scope | `core/api/views_parameters.py:264-273` | 🔎 |
 | F-7 | **Note partizionate**: i vincoli locali di offerta/ordine/DDT/fattura cadono su `E_NOTA_VALIDATION` (400) invece del codice mappato | `partitioned_note_service.py:76-150` | 🔎 |
 | F-8 | **Lookup codici oltre l'ultima pagina → `count: 0`** (`COUNT(*) OVER()` su pagina vuota) | `core/db/dbops_repository.py:466,496-497` | 🔎 |
-| F-9 | **Logout con body JSON a lista → 500** (`request.data.get` su una lista) | `core/api/logout_view.py:32` | 🔎 |
+| F-9 | ✅ **CHIUSO 2026-09-27**, e più largo del previsto: non solo il logout, ma **90 letture grezze di `request.data` in 35 file** (refresh del token compreso): con una lista nel corpo erano 500, e `dict(request.data)` su una lista di coppie la trasformava in un oggetto in silenzio. Ora tutte passano dal BB `corpo_oggetto(request)` (`payload_validators`, regola `oggetto_json` condivisa con `handle_post_json`): 400 `E_VALIDATION_INPUT` nell'envelope, anche per JSON illeggibile. Ritirate le 2 copie `isinstance(request.data, dict) else {}` di `documenti`. Test: `core/tests/api/test_corpo_oggetto.py`. Doc: api.md, catalogo BB | `core/api/payload_validators.py`, `request_parsers.py` + 35 view | ✅ |
 | F-10 | **`parse_json_body` e body non UTF-8**: `UnicodeDecodeError` non ha il messaggio `invalid_json` | `core/api/request_parsers.py:19` | 🔎 |
 
 ## 5. Minori (docstring e percorsi)

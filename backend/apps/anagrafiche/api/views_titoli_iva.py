@@ -24,7 +24,7 @@ from rest_framework.request import Request
 
 from apps.anagrafiche.db.titoli_iva_repository import SFONDATI_ORDER_DEFAULT
 from apps.anagrafiche.services.titoli_iva_service import TitoliIvaService
-from apps.core.api.payload_validators import parse_list_params, qp_str
+from apps.core.api.payload_validators import corpo_oggetto, parse_list_params, qp_str
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.success_responses import success_response
@@ -157,7 +157,7 @@ class SoggettoTitoliIvaDetailView(DomainAPIView):
     #    plafond gia' consumato, perche' i movimenti sono attaccati al titolo.
     def patch(self, request: Request, soggetto_id: str, titolo_id: int) -> JsonResponse:
         return success_response(
-            TitoliIvaService().update_titolo(soggetto_id, titolo_id, request.data),
+            TitoliIvaService().update_titolo(soggetto_id, titolo_id, corpo_oggetto(request)),
         )
 
     @extend_schema(

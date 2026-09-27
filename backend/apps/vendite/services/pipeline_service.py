@@ -15,6 +15,7 @@ from apps.core.db._helpers import order_dir_ammessa
 from apps.core.db.dbops_repository import DbopsRepository
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.fan_out import FanOutRunLogger, run_fan_out
+from apps.core.services.service_errors import E_VALIDATION_INPUT
 from apps.vendite.db.pipeline_repository import SdiPayloadRow, VenditePipelineRepository
 from apps.vendite.services._fatturazione_job_helpers import JOB_TYPES_FATTURAZIONE_APP
 from apps.vendite.services.lotto_segnalazioni_service import LottoSegnalazioniService
@@ -296,7 +297,7 @@ def finestra_numerazione(
     scelti = [p for p in (lotto_id, competenza_mese, lotti_ids) if p is not None]
     ErrorManager.require(
         len(scelti) == 1,
-        code="E_VALIDATION_INPUT",
+        code=E_VALIDATION_INPUT,
         message=(
             "Indicare `lotto_id`, `competenza_mese` oppure `lotti`, "
             "esattamente uno."

@@ -44,7 +44,7 @@ malformato, l'endpoint restituisce comunque 204 senza errore.
 - Se il token e' malformato, scaduto o gia' blacklistato (`TokenError`), l'endpoint restituisce 204 senza propagare errore — logout idempotente
 - Il claim `sid` viene letto dal token **senza** verificarne firma e scadenza, cosi' il logout si registra anche con un token scaduto
 - Dopo il blacklist, viene registrato l'evento LOGOUT in `dbops.sessioni_utente` con quel `sid` (nella colonna `jti`). Se il `sid` non si legge (token malformato o senza claim) **nessun evento** viene registrato: la risposta resta 204
-- ⚠️ Difetto noto (F-9): un body JSON che non e' un oggetto (es. una lista) produce un 500 invece di `E_LOGOUT_NO_TOKEN` — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)
+- Un body JSON che non e' un oggetto (es. una lista) e' un 400 `E_VALIDATION_INPUT` (BB `corpo_oggetto`, F-9, 2026-09-27)
 - L'evento LOGOUT chiude logicamente la sessione: la CTE `list_sessioni_attive` filtra sessioni il cui ultimo evento e' LOGIN o REFRESH
 
 ## Dipendenze DB

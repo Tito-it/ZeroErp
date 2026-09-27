@@ -32,8 +32,9 @@ URL: `GET /api/v1/core/users/{user_id}/permessi-audit/`
 `page` e `page_size` accettano solo cifre (altrimenti `E_VALIDATION_INPUT`, 400);
 `page` non ha limite inferiore.
 
-> ⚠️ Difetto noto (F-4): `page` ≤ 0 produce un OFFSET negativo e un errore DB;
-> `data_a` esclude il giorno indicato — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+`page` e `page_size` partono da 1 (sotto: 400 `E_VALIDATION_INPUT`, `page_size`
+tagliato a 200). `data_a` **include** il giorno indicato: intervallo
+`[data_da, data_a + 1 giorno)` (F-4, 2026-09-27).
 
 ## Output
 

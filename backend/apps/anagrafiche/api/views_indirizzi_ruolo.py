@@ -18,6 +18,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.success_responses import success_response
+from apps.core.api.payload_validators import corpo_oggetto
 from apps.core.services.error_manager import ErrorManager
 from apps.anagrafiche.db._helpers import resolve_soggetto_id
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
@@ -252,7 +253,7 @@ class RuoloIndirizziDetailView(DomainAPIView):
     def patch(self, request: Request, soggetto_ruolo_id: int, indirizzo_id: int) -> JsonResponse:
         # Dal service (2026-09-26): e' li' che si validano le chiavi del payload.
         return success_response(
-            SoggettiService().update_indirizzo_ruolo(soggetto_ruolo_id, indirizzo_id, request.data)
+            SoggettiService().update_indirizzo_ruolo(soggetto_ruolo_id, indirizzo_id, corpo_oggetto(request))
         )
 
     @extend_schema(

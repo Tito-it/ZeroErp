@@ -26,6 +26,7 @@ from rest_framework_simplejwt.exceptions import InvalidToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from apps.core.api.jwt_audit_authentication import set_jwt_gucs
+from apps.core.api.payload_validators import corpo_oggetto
 from apps.core.api.multi_veste_token_serializer import (
     AdminTokenSerializer,
     PortaleTokenSerializer,
@@ -423,7 +424,7 @@ class AuditTokenRefreshView(TokenRefreshView):
         # (es. refresh portale su /admin/token/refresh/). Nessuna
         # escalation di privilegio — il claim veste viene dal token
         # firmato — ma chiude l'ambiguita' semantica cross-path.
-        refresh_str = request.data.get("refresh")
+        refresh_str = corpo_oggetto(request).get("refresh")
         ruolo = _extract_ruolo_applicativo_from_refresh(refresh_str)
         if ruolo is None or ruolo not in self.expected_ruoli_applicativi:
             logger.warning(
@@ -435,7 +436,7 @@ class AuditTokenRefreshView(TokenRefreshView):
         response = super().post(request, *args, **kwargs)
         if response.status_code == 200:
             django_request = request._request if hasattr(request, "_request") else request
-            user_id, jti = self._extract_claims(request)
+            user_id, jti = self._extract_claims(refresh_str)
             # Hotfix BE-2.0ter: il refresh NON passa dalla DRF auth chain
             # (la request porta solo il refresh token nel body, niente
             # Authorization Bearer), quindi JwtAuditAuthentication NON
@@ -452,9 +453,7 @@ class AuditTokenRefreshView(TokenRefreshView):
                     # corretta — il refresh rotation produce un NUOVO refresh
                     # nella response, ma il claim identita_id e' gia'
                     # disponibile nel refresh in entrata (sufficiente per le GUC).
-                    identita_id = _extract_identita_id_from_refresh(
-                        request.data.get("refresh")
-                    )
+                    identita_id = _extract_identita_id_from_refresh(refresh_str)
                     gucs_ok = set_jwt_gucs(
                         username=username,
                         user_id=user_id,
@@ -463,9 +462,7 @@ class AuditTokenRefreshView(TokenRefreshView):
                         # preserva i claim custom): senza, ogni refresh
                         # riporterebbe l'utente in modalita' globale a sua
                         # insaputa. La CTE ricontrolla che sia ancora attivo.
-                        emittente_attivo_id=_extract_emittente_attivo_from_refresh(
-                            request.data.get("refresh")
-                        ),
+                        emittente_attivo_id=_extract_emittente_attivo_from_refresh(refresh_str),
                         request=django_request,
                     )
                     if not gucs_ok:
@@ -502,8 +499,8 @@ class AuditTokenRefreshView(TokenRefreshView):
     # (identico pattern di `_decode_refresh_payload`): il refresh qui e'
     # gia' stato validato da SimpleJWT nel super().post(), ci servono
     # solo i claim per audit + GUC.
-    def _extract_claims(request: Request) -> tuple[int, str | None]:
-        refresh_str = request.data.get("refresh", "")
+    # Riceve il refresh gia' letto da `post`: il corpo si legge in un punto solo.
+    def _extract_claims(refresh_str: str | None) -> tuple[int, str | None]:
         if not refresh_str:
             return 0, None
         payload = _decode_refresh_payload(refresh_str)

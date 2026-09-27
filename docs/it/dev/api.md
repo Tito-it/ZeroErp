@@ -780,16 +780,25 @@ class ApiPraticaDetail(APIView):
 | Metodo                          | Protocollo             | Motivo                                                                                                                                                     |
 | ------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **POST** (create, azioni)       | `handle_post_json`     | Parsing JSON raw, supporto idempotency, error envelope uniforme                                                                                            |
-| **PATCH/PUT** (update, replace) | `request.data` diretto | DRF ha gia' parsato il body; `handle_post_json` chiama `json.loads()` su body raw che in PATCH puo' essere gia' consumato da DRF, causando errori nei test |
+| **PATCH/PUT** (update, replace) | `corpo_oggetto(request)` | DRF ha gia' parsato il body; `handle_post_json` chiama `json.loads()` su body raw che in PATCH puo' essere gia' consumato da DRF, causando errori nei test |
 
 Esempio PATCH corretto (pattern adottato):
 
 ```python
 class UtentiDetailView(AdminAPIView):
     def patch(self, request, auth_user_id):
-        result = AmmSoftwareService().update_utente(auth_user_id, request.data)
+        result = AmmSoftwareService().update_utente(auth_user_id, corpo_oggetto(request))
         return success_response(result)
 ```
+
+⛔ **Mai `request.data` grezzo** (F-9, 2026-09-27). Il JSON valido non è per
+forza un oggetto: con una lista `request.data` è quella lista, il primo
+`.get()` è un **500** e `dict(request.data)` su una lista di coppie la
+trasforma in un oggetto **in silenzio**. `corpo_oggetto` (in
+`payload_validators`) applica la stessa regola di `handle_post_json`
+(`oggetto_json`) e risponde 400 `E_VALIDATION_INPUT` nell'envelope, anche per
+il JSON illeggibile. Non si ripiega su `{}`: eseguirebbe la richiesta coi
+default.
 
 La view resta sottile (una riga). L'error handling e' garantito dal service
 (`ServiceError`) e dal middleware (`ApiExceptionMiddleware`), non serve il
@@ -1206,7 +1215,9 @@ stato sostituito dal refactor multi-face auth con:
 * `ruolo_applicativo` — categoria dell'identita' digitale
   (`OPERATORE`, `CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`,
   `API_CLIENT`, `DISABILITATO`). Letto via
-  `PermissionResolver.get_ruolo_applicativo(user)` (GUC-first).
+  `PermissionResolver.get_ruolo_applicativo(user)` (GUC-first), che risponde
+  per la **sessione**: ⛔ mai per un altro utente (S-6). Di un altro si chiede
+  il fatto preciso, per esempio `has_veste_operatore_attiva(user)`.
 * `SUPER_ADMIN` — privilegio di bypass totale, bindato sulla singola
   identita' via `config.profili_accesso_bindings` (profilo id 9100).
   Letto via `PermissionResolver.is_super_admin(user)`.

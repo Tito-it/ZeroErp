@@ -13,8 +13,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from django.contrib.auth.password_validation import validate_password
-from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import JsonResponse
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
@@ -24,12 +22,14 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.jwt_audit_authentication import E_IDENTITA_NON_ATTIVA
 from apps.core.api.multi_veste_token_serializer import emetti_refresh_veste
+from apps.core.api.payload_validators import password_digitata
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services import session_audit_service
 from apps.core.services.auth_constants import JWT_CLAIM_SID
 from apps.core.services.auth_helpers import (
     apply_new_password,
     extract_identita_id_from_request,
+    valida_nuova_password,
 )
 from apps.core.services.error_manager import ErrorManager
 
@@ -63,17 +63,14 @@ class ChangePasswordView(DomainAPIView):
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             user = request.user
 
-            old_password = (payload.get("old_password") or "").strip()
-            new_password = (payload.get("new_password") or "").strip()
-            new_password_confirm = (payload.get("new_password_confirm") or "").strip()
+            old_password = password_digitata(payload, "old_password")
+            new_password = password_digitata(payload, "new_password")
+            new_password_confirm = password_digitata(payload, "new_password_confirm")
 
-            # Validazioni input
+            # Validazioni input: la nuova password col BB, poi le regole del
+            # cambio (diversa dalla precedente, precedente corretta).
             ErrorManager.require(bool(old_password), code=E_CHANGE_PW, message="Password attuale obbligatoria.")
-            ErrorManager.require(bool(new_password), code=E_CHANGE_PW, message="Nuova password obbligatoria.")
-            ErrorManager.require(
-                new_password == new_password_confirm,
-                code=E_CHANGE_PW, message="La nuova password e la conferma non coincidono.",
-            )
+            valida_nuova_password(new_password, new_password_confirm, user=user, code=E_CHANGE_PW)
             ErrorManager.require(
                 new_password != old_password,
                 code=E_CHANGE_PW, message="La nuova password deve essere diversa dalla precedente.",
@@ -84,12 +81,6 @@ class ChangePasswordView(DomainAPIView):
                 user.check_password(old_password),
                 code=E_CHANGE_PW, message="Password attuale non corretta.",
             )
-
-            # Validazione Django (4 validators: lunghezza, complessita', ecc.)
-            try:
-                validate_password(new_password, user=user)
-            except DjangoValidationError as exc:
-                ErrorManager.require(False, code=E_CHANGE_PW, message=" ".join(exc.messages))
 
             # La veste della sessione corrente: e' su QUELLA che si resetta il
             # flag deve_cambiare_password (§8.3.2+§8.4.1) ed e' in QUELLA che

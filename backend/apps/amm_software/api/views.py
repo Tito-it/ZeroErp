@@ -20,6 +20,7 @@ from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.openapi_params import descrizione_order_by
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     optional_int,
     optional_uuid,
     parse_list_params,
@@ -144,7 +145,7 @@ class OperatoriDetailView(AdminAPIView):
         responses={200: inline_serializer(name="OperatorePatchResp", fields={"data": serializers.DictField()})},
     )
     def patch(self, request: Request, auth_user_id: int) -> JsonResponse:
-        result = AmmSoftwareService().update_operatore(auth_user_id, request.data)
+        result = AmmSoftwareService().update_operatore(auth_user_id, corpo_oggetto(request))
         return success_response(result)
 
 
@@ -181,7 +182,7 @@ class OverrideAreeView(AdminAPIView):
         responses={200: inline_serializer(name="OverrideAreePutResp", fields={"data": serializers.DictField()})},
     )
     def put(self, request: Request, auth_user_id: int) -> JsonResponse:
-        results = AmmSoftwareService().put_override_aree(auth_user_id, request.data.get("items", []))
+        results = AmmSoftwareService().put_override_aree(auth_user_id, corpo_oggetto(request).get("items", []))
         return success_response({"results": results})
 
 
@@ -197,7 +198,7 @@ class OverrideAzioniView(AdminAPIView):
         responses={200: inline_serializer(name="OverrideAzioniPutResp", fields={"data": serializers.DictField()})},
     )
     def put(self, request: Request, auth_user_id: int) -> JsonResponse:
-        results = AmmSoftwareService().put_override_azioni(auth_user_id, request.data.get("items", []))
+        results = AmmSoftwareService().put_override_azioni(auth_user_id, corpo_oggetto(request).get("items", []))
         return success_response({"results": results})
 
 
@@ -215,7 +216,7 @@ class OverrideOggettiView(AdminAPIView):
     )
     # Scopo: Sostituisce override oggetti di un operatore.
     def put(self, request: Request, auth_user_id: int) -> JsonResponse:
-        results = AmmSoftwareService().put_override_oggetti(auth_user_id, request.data.get("items", []))
+        results = AmmSoftwareService().put_override_oggetti(auth_user_id, corpo_oggetto(request).get("items", []))
         return success_response({"results": results})
 
 
@@ -265,7 +266,7 @@ class EmittentiScopeView(AdminAPIView):
         responses={200: inline_serializer(name="EmittentiScopePutResp", fields={"data": serializers.DictField()})},
     )
     def put(self, request: Request, auth_user_id: int) -> JsonResponse:
-        result = AmmSoftwareService().put_emittenti_scope(auth_user_id, request.data)
+        result = AmmSoftwareService().put_emittenti_scope(auth_user_id, corpo_oggetto(request))
         return success_response(result)
 
 
@@ -323,8 +324,9 @@ class RepartoProfiloView(AdminAPIView):
         responses={200: inline_serializer(name="RepartoProfiloPutResp", fields={"data": serializers.DictField()})},
     )
     def put(self, request: Request, uo_id: int) -> JsonResponse:
+        corpo = corpo_oggetto(request)
         result = AmmSoftwareService().put_profilo_reparto(
-            uo_id, request.data.get("aree", []), request.data.get("azioni", []),
+            uo_id, corpo.get("aree", []), corpo.get("azioni", []),
         )
         return success_response(result)
 

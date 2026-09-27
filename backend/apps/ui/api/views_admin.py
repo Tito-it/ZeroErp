@@ -55,6 +55,7 @@ from apps.core.api.base_views import AdminAPIView, DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.permissions import cache_permessi_richiesta
 from apps.core.api.success_responses import success_response
+from apps.core.api.payload_validators import corpo_oggetto
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.ui.services import (
     lista_colonna_admin_service,
@@ -239,7 +240,7 @@ class ApiAdminPresetDetailView(DomainAPIView):
     # Scopo: Aggiorna campi mutabili di un preset.
     def patch(self, request: Request, preset_id: int) -> JsonResponse:
         result = ListaPresetAdminService().update_preset(
-            request.user, preset_id, dict(request.data),
+            request.user, preset_id, dict(corpo_oggetto(request)),
         )
         return success_response(result)
 
@@ -281,7 +282,7 @@ class ApiAdminPresetColonneView(DomainAPIView):
     # Scopo: Replace atomico della composizione del preset.
     def put(self, request: Request, preset_id: int) -> JsonResponse:
         result = ListaPresetAdminService().replace_preset_colonne(
-            preset_id, dict(request.data)
+            preset_id, dict(corpo_oggetto(request))
         )
         return success_response(result)
 
@@ -424,7 +425,7 @@ class ApiAdminListaDefinizioneAdminDetailView(AdminAPIView):
     #        sono mutabili: codice cambia con UNIQUE check DB.
     def patch(self, request: Request, lista_id: int) -> JsonResponse:
         result = ListaDefinizioneAdminService().update_definizione(
-            request.user, lista_id, dict(request.data),
+            request.user, lista_id, dict(corpo_oggetto(request)),
         )
         return success_response(result)
 
@@ -497,7 +498,7 @@ class ApiAdminListaColonnaDetailView(AdminAPIView):
     #        (per spostare una colonna fra liste, cancellarla e ricrearla).
     def patch(self, request: Request, colonna_id: int) -> JsonResponse:
         result = ListaColonnaAdminService().update_colonna(
-            request.user, colonna_id, dict(request.data),
+            request.user, colonna_id, dict(corpo_oggetto(request)),
         )
         return success_response(result)
 

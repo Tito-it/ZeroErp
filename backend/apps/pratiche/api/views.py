@@ -14,6 +14,7 @@ from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.endpoint_helpers import get_risorsa_umana_id, handle_post_json
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     optional_int,
     paginated_envelope,
     parse_list_params,
@@ -919,7 +920,7 @@ class ApiPraticaNotaDetail(DomainAPIView):
         pratiche_service.aggiorna_nota_pratica(
             nota_id=nota_id,
             pratica_id=pratica_id,
-            contenuto=str(request.data.get("contenuto", "")),
+            contenuto=str(corpo_oggetto(request).get("contenuto", "")),
         )
         return success_response({"updated": True})
 

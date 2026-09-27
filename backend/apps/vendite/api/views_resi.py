@@ -24,6 +24,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     optional_iso_date,
     paginated_envelope,
     parse_list_params,
@@ -542,7 +543,7 @@ class ApiResoDetail(DomainAPIView):
     #        request.data (DRF ha gia' parsato il body).
     def patch(self, request: Request, reso_id: int) -> JsonResponse:
         return success_response(
-            resi_service.aggiorna_reso(int(reso_id), dict(request.data)),
+            resi_service.aggiorna_reso(int(reso_id), dict(corpo_oggetto(request))),
         )
 
     @extend_schema(
@@ -798,7 +799,7 @@ class ApiResoRigaDetail(DomainAPIView):
     def patch(self, request: Request, reso_id: int, riga_id: int) -> JsonResponse:
         return success_response(
             resi_service.aggiorna_riga(
-                int(reso_id), int(riga_id), dict(request.data),
+                int(reso_id), int(riga_id), dict(corpo_oggetto(request)),
             ),
         )
 

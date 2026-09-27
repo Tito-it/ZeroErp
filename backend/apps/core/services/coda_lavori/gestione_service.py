@@ -45,7 +45,7 @@ from apps.core.services.processi import (
     PROCESSO_DRAINA_CODA_LAVORI,
     PROCESSO_DRAINA_CODA_STAMPA,
 )
-from apps.core.services.service_errors import ServiceError
+from apps.core.services.service_errors import E_VALIDATION_INPUT, ServiceError
 
 # Azione di processo che sblocca la vista cross-utente e le azioni su job
 # altrui (D-A). Seed a carico del team DB (brief §6, area core); finché non è
@@ -438,7 +438,7 @@ def requeue_job(
 ) -> dict[str, Any]:
     ErrorManager.require(
         1 <= int(extra_tentativi) <= 10,
-        code="E_VALIDATION_INPUT",
+        code=E_VALIDATION_INPUT,
         message="`extra_tentativi` deve essere tra 1 e 10.",
         detail=f"extra_tentativi={extra_tentativi}",
     )
@@ -545,7 +545,7 @@ def _guard_archiviazione(user: Any) -> None:
 def _valida_ids_archiviazione(ids: object, *, function_name: str) -> list[int]:
     ErrorManager.require(
         isinstance(ids, list) and len(ids) > 0,
-        code="E_VALIDATION_INPUT",
+        code=E_VALIDATION_INPUT,
         message="Selezionare almeno una riga.",
         detail="`ids` deve essere una lista non vuota.",
         context={"field": "ids"},
@@ -554,7 +554,7 @@ def _valida_ids_archiviazione(ids: object, *, function_name: str) -> list[int]:
     assert isinstance(ids, list)
     ErrorManager.require(
         all(isinstance(i, int) and not isinstance(i, bool) and i > 0 for i in ids),
-        code="E_VALIDATION_INPUT",
+        code=E_VALIDATION_INPUT,
         message="Elenco di righe non valido.",
         detail="Ogni elemento di `ids` deve essere un intero positivo.",
         context={"field": "ids"},
@@ -562,7 +562,7 @@ def _valida_ids_archiviazione(ids: object, *, function_name: str) -> list[int]:
     )
     ErrorManager.require(
         len(ids) <= MAX_RIGHE_ARCHIVIAZIONE,
-        code="E_VALIDATION_INPUT",
+        code=E_VALIDATION_INPUT,
         message=f"Troppe righe selezionate (massimo {MAX_RIGHE_ARCHIVIAZIONE}).",
         detail=f"Ricevute {len(ids)} righe.",
         context={"field": "ids"},

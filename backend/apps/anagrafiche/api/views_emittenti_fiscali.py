@@ -21,7 +21,7 @@ from apps.anagrafiche.services.emittenti_fiscali_service import (
 )
 from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import paginated_envelope, parse_list_params, qp_bool_optional
+from apps.core.api.payload_validators import corpo_oggetto, paginated_envelope, parse_list_params, qp_bool_optional
 from apps.core.api.success_responses import success_response
 from apps.core.api.openapi_params import param_ricerca_full
 
@@ -137,7 +137,7 @@ class EmittentiFiscaliDetailView(AdminAPIView):
     #        Il campo codice e' bloccato dal trigger DB lock_columns.
     def patch(self, request: Request, emittente_id: int) -> JsonResponse:
         svc = EmittentiFiscaliService()
-        result = svc.update_emittente(emittente_id, request.data)
+        result = svc.update_emittente(emittente_id, corpo_oggetto(request))
         return success_response(result)
 
 
@@ -189,7 +189,7 @@ class EmittentiFiscaliBillingAccountView(AdminAPIView):
     # Scopo: Crea un nuovo mapping BA->emittente. Senza billing_account_id crea il default globale.
     def post(self, request: Request, emittente_id: int) -> JsonResponse:
         svc = EmittentiFiscaliBillingAccountService()
-        result = svc.crea_mapping(emittente_id, request.data or {})
+        result = svc.crea_mapping(emittente_id, corpo_oggetto(request))
         return success_response(result)
 
 
@@ -274,7 +274,7 @@ class EmittentiFiscaliUtilitiesView(AdminAPIView):
     # Scopo: Crea un record utility per l'emittente.
     def post(self, request: Request, emittente_id: int) -> JsonResponse:
         svc = EmittentiFiscaliUtilitiesService()
-        result = svc.crea_record(emittente_id, request.data or {})
+        result = svc.crea_record(emittente_id, corpo_oggetto(request))
         return success_response(result)
 
 
@@ -297,7 +297,7 @@ class EmittentiFiscaliUtilitiesDetailView(AdminAPIView):
     # Scopo: Aggiorna campi editabili di un record utility (utility_id immutabile).
     def patch(self, request: Request, emittente_id: int, record_id: int) -> JsonResponse:
         svc = EmittentiFiscaliUtilitiesService()
-        result = svc.aggiorna_record(emittente_id, record_id, request.data)
+        result = svc.aggiorna_record(emittente_id, record_id, corpo_oggetto(request))
         return success_response(result)
 
     @extend_schema(

@@ -20,7 +20,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
-from apps.core.api.payload_validators import qp_bool, qp_int_strict, qp_str
+from apps.core.api.payload_validators import corpo_oggetto, qp_bool, qp_int_strict, qp_str
 from apps.core.api.success_responses import success_response
 from apps.core.services.partitioned_note_service import PartitionedNoteService
 
@@ -222,7 +222,7 @@ def make_note_views(
             updated = svc.aggiorna_nota(
                 note_id=note_id,
                 target_id=target_id,
-                patch=dict(request.data),
+                patch=dict(corpo_oggetto(request)),
                 auth_user_id=auth_user_id,
             )
             return success_response(updated)

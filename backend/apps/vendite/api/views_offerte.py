@@ -25,6 +25,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     paginated_envelope,
     parse_list_params,
     qp_bool,
@@ -319,7 +320,7 @@ class ApiOffertaDetail(DomainAPIView):
     # Scopo: Aggiorna testata offerta (solo in BOZZA, guard lato service).
     def patch(self, request: Request, offerta_id: int) -> JsonResponse:
         return success_response(
-            OfferteService().aggiorna_offerta(offerta_id, request.data or {})
+            OfferteService().aggiorna_offerta(offerta_id, corpo_oggetto(request))
         )
 
     @extend_schema(
@@ -362,7 +363,7 @@ class ApiOffertaRegistraEsito(DomainAPIView):
     #        RIFIUTATA. Routing per esito gestito dal service (`registra_esito`);
     #        la view e' sottile per ridurre logica business in API layer.
     def post(self, request: Request, offerta_id: int) -> JsonResponse:
-        body = request.data or {}
+        body = corpo_oggetto(request)
         return success_response(
             OfferteService().registra_esito(
                 offerta_id,
@@ -385,7 +386,7 @@ class ApiOffertaAnnulla(DomainAPIView):
     # Scopo: BOZZA -> ANNULLATA. Motivazione obbligatoria. Annullamento
     #        post-EMESSA non ammesso (state machine DB).
     def post(self, request: Request, offerta_id: int) -> JsonResponse:
-        body = request.data or {}
+        body = corpo_oggetto(request)
         motivazione = body.get("motivazione", "")
         return success_response(
             OfferteService().annulla(offerta_id, motivazione=motivazione)
@@ -486,7 +487,7 @@ class ApiOffertaPushContratto(DomainAPIView):
     #        con E_CONTRATTO_OVERLAP_ESISTENTE (vedi
     #        ApiOffertaContrattoSovrapposto per il preview del conflitto).
     def post(self, request: Request, offerta_id: int) -> JsonResponse:
-        body = request.data or {}
+        body = corpo_oggetto(request)
         pratica_id_raw = body.get("pratica_id")
         pratica_id: int | None = None
         if pratica_id_raw is not None:
@@ -583,7 +584,7 @@ class ApiOffertaEccezioni(DomainAPIView):
     def post(self, request: Request, offerta_id: int) -> JsonResponse:
         return success_response(
             OfferteService().crea_eccezione(
-                offerta_id, request.data or {},
+                offerta_id, corpo_oggetto(request),
                 auth_user_id=get_scope_user_id(request),
             )
         )
@@ -605,7 +606,7 @@ class ApiOffertaEccezioneDetail(DomainAPIView):
     ) -> JsonResponse:
         return success_response(
             OfferteService().aggiorna_eccezione(
-                offerta_id, eccezione_id, request.data or {},
+                offerta_id, eccezione_id, corpo_oggetto(request),
                 auth_user_id=get_scope_user_id(request),
             )
         )
@@ -716,7 +717,7 @@ class ApiOffertaEccezioneComponenteDetail(DomainAPIView):
     ) -> JsonResponse:
         return success_response(
             OfferteService().update_componente_eccezione(
-                offerta_id, eccezione_id, componente_id, dict(request.data),
+                offerta_id, eccezione_id, componente_id, dict(corpo_oggetto(request)),
             )
         )
 
@@ -767,7 +768,7 @@ class ApiOffertaUtility(DomainAPIView):
     # Scopo: Crea record utility 1:1 (UNIQUE offerta_id). Solo in BOZZA.
     def post(self, request: Request, offerta_id: int) -> JsonResponse:
         return success_response(
-            OfferteService().crea_utility(offerta_id, request.data or {})
+            OfferteService().crea_utility(offerta_id, corpo_oggetto(request))
         )
 
 
@@ -788,7 +789,7 @@ class ApiOffertaUtilityDetail(DomainAPIView):
     ) -> JsonResponse:
         return success_response(
             OfferteService().aggiorna_utility(
-                offerta_id, utility_id, request.data or {}
+                offerta_id, utility_id, corpo_oggetto(request)
             )
         )
 

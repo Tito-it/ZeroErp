@@ -182,9 +182,8 @@ payload si **ignora**.
 > Se la password e' troppo debole (es. "12345678"), il token resta valido
 > e l'operatore puo' riprovare con una password piu' forte.
 
-⚠️ Difetto noto (S-5): `new_password` e `new_password_confirm` vengono ripulite
-dagli spazi iniziali e finali (`.strip()`) prima di essere salvate — la password
-registrata puo' differire da quella digitata. Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+`new_password` e `new_password_confirm` non vengono ripulite dagli spazi: si
+salva la password digitata, e il login non la ripulisce (S-5, 2026-09-27).
 
 ### Azioni (atomiche)
 

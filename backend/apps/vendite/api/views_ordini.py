@@ -21,6 +21,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     paginated_envelope,
     parse_list_params,
     qp_bool,
@@ -276,7 +277,7 @@ class ApiOrdineDetail(DomainAPIView):
     #        body; handle_post_json rileggerebbe il raw consumato.
     def patch(self, request: Request, ordine_id: int) -> JsonResponse:
         return success_response(
-            ordini_service.aggiorna_ordine(int(ordine_id), dict(request.data)),
+            ordini_service.aggiorna_ordine(int(ordine_id), dict(corpo_oggetto(request))),
         )
 
     @extend_schema(
@@ -444,7 +445,7 @@ class ApiOrdineRigaDetail(DomainAPIView):
     def patch(self, request: Request, ordine_id: int, riga_id: int) -> JsonResponse:
         return success_response(
             ordini_service.aggiorna_riga(
-                int(ordine_id), int(riga_id), dict(request.data),
+                int(ordine_id), int(riga_id), dict(corpo_oggetto(request)),
                 auth_user_id=get_scope_user_id(request),
             ),
         )
@@ -519,7 +520,7 @@ class ApiOrdineRigaComponenteDetail(DomainAPIView):
     ) -> JsonResponse:
         return success_response(
             ordini_service.update_componente(
-                int(ordine_id), int(riga_id), int(componente_id), dict(request.data),
+                int(ordine_id), int(riga_id), int(componente_id), dict(corpo_oggetto(request)),
             ),
         )
 

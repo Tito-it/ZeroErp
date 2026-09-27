@@ -47,7 +47,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.openapi_params import param_ricerca_full
-from apps.core.api.payload_validators import optional_int, parse_list_params
+from apps.core.api.payload_validators import corpo_oggetto, optional_int, parse_list_params
 from apps.core.api.success_responses import success_response
 from apps.core.db.email_repository import EmailRepository
 from apps.core.services.email_allegati_storage import E_EMAIL_OP, percorso_allegato
@@ -250,7 +250,7 @@ class EmailOutboxDetailView(DomainAPIView):
         #    con un 400 (2026-09-26). Fino a quel giorno la view le filtrava qui
         #    e un campo sbagliato «riusciva» senza essere scritto.
         service = EmailOutboxService()
-        result = service.update_draft(outbox_id, **dict(request.data))
+        result = service.update_draft(outbox_id, **dict(corpo_oggetto(request)))
         return success_response(result)
 
 

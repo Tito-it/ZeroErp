@@ -50,9 +50,8 @@ Nessun valore restituito. Effetto: INSERT in `dbops.sessioni_utente`.
 - Gestione errori **silent**: se l'INSERT fallisce (DB down, schema mancante), l'errore viene loggato ma non propagato. Il flusso di login/refresh/logout non viene interrotto.
 - IP client estratto da `X-Forwarded-For` (primo IP) con fallback su `REMOTE_ADDR`.
 - User-Agent troncato a 500 caratteri per evitare inserimenti anomali.
-- `request_id` recuperato dal `RequestContextMiddleware` via `get_request_id()`.
-  ⚠️ Difetto noto ([S-1](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)): un `X-Request-ID` del client che non e' un UUID fa fallire
-  l'INSERT (colonna `uuid`), e l'evento si perde con il solo log dell'errore.
+- `request_id` recuperato dal `RequestContextMiddleware` via `get_request_id()`:
+  sempre un UUID (quello del client solo se valido, S-1).
 - Tutti e 4 i metodi delegano a `_log_event()` interno, che compone i parametri e chiama `SessionAuditRepository.log_session_event()`.
 
 ## Dipendenze DB

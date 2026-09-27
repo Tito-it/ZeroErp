@@ -138,11 +138,14 @@ class PermissionsAuditRepository:
         sql += "snapshot, tx_id, COUNT(*) OVER() AS total_count "
         sql += "FROM events WHERE true "
 
+        # Intervallo `[da, a + 1 giorno)`: `data_a` e' un GIORNO e lo include
+        # tutto. Il confronto `<= a::timestamptz` si fermava alla mezzanotte
+        # d'inizio, e gli eventi del giorno indicato sparivano (F-4).
         if data_da:
-            sql += "AND valid_from >= %s::timestamptz "
+            sql += "AND valid_from >= %s::date "
             params.append(data_da)
         if data_a:
-            sql += "AND valid_from <= %s::timestamptz "
+            sql += "AND valid_from < %s::date + interval '1 day' "
             params.append(data_a)
 
         sql += "ORDER BY valid_from DESC, tx_id DESC "

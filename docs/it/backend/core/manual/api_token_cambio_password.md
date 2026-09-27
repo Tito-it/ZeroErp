@@ -112,7 +112,7 @@ Authorization: Bearer {access_token}
    - `NumericPasswordValidator` — non solo numeri
    - `apps.core.password_validators.ComplexityValidator` — complessita' minima
 
-I tre campi vengono ripuliti dagli spazi iniziali e finali (`.strip()`) prima dei controlli.
+I tre campi **non** vengono ripuliti dagli spazi: si verifica e si salva la password digitata, come fa il login (S-5, 2026-09-27).
 
 #### Azioni
 

@@ -22,6 +22,7 @@ from rest_framework.request import Request
 from rest_framework.views import APIView
 
 from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.payload_validators import password_digitata
 from apps.core.api.success_responses import success_response
 from apps.core.api.throttling import PasswordResetRateThrottle
 from apps.core.services.invito_veste import (
@@ -121,8 +122,8 @@ class AttivazioneVesteView(APIView):
             esito = attiva_veste(
                 porta,
                 token=(payload.get("token") or "").strip(),
-                new_password=(payload.get("new_password") or "").strip(),
-                new_password_confirm=(payload.get("new_password_confirm") or "").strip(),
+                new_password=password_digitata(payload, "new_password"),
+                new_password_confirm=password_digitata(payload, "new_password_confirm"),
                 ip=get_client_ip(request._request if hasattr(request, "_request") else request),
             )
             return {

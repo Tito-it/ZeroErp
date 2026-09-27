@@ -6,6 +6,7 @@
 #        - extract_identita_id_from_request: claim `identita_id` dal JWT
 #        - extract_identita_id_from_token_meta: `identita_id` dal meta token monouso
 #        - validate_and_extract_token: validazione token senza consumo
+#        - valida_nuova_password: presente, uguale alla conferma, valida
 #        - apply_new_password: set password + reset flag + blacklist JWT
 #        Eliminano duplicazione tra password_reset, attivazione, change_password
 #        e middleware (§8.4.1).
@@ -18,6 +19,8 @@ import logging
 from typing import Any
 
 from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 
 from apps.core.db.auth_repository import AuthRepository
@@ -117,6 +120,35 @@ def validate_and_extract_token(
     )
     assert token_result is not None
     return token_result
+
+
+# Scopo: ⭐ Le regole della NUOVA password, in un posto solo: presente,
+#        uguale alla conferma, accettata dai validatori di Django. Le usano
+#        reset, attivazione della veste e cambio password, ognuno col proprio
+#        codice errore. Va chiamata PRIMA di consumare un token: una password
+#        rifiutata non brucia il link.
+# ⛔ La password arriva com'e' stata digitata (S-5, 2026-09-27): niente
+#    `strip`, qui o dal chiamante. La si legge dal corpo con
+#    `payload_validators.password_digitata`, che rifiuta cio' che non e' testo.
+# Un controllo in piu' del singolo flusso (es. «diversa dalla precedente» del
+# cambio password) resta al chiamante, dopo questa.
+def valida_nuova_password(
+    new_password: str,
+    new_password_confirm: str,
+    *,
+    user: User,
+    code: str,
+) -> None:
+    ErrorManager.require(bool(new_password), code=code, message="Nuova password obbligatoria.")
+    ErrorManager.require(
+        new_password == new_password_confirm,
+        code=code,
+        message="La nuova password e la conferma non coincidono.",
+    )
+    try:
+        validate_password(new_password, user=user)
+    except DjangoValidationError as exc:
+        ErrorManager.require(False, code=code, message=" ".join(exc.messages))
 
 
 # Scopo: Applica nuova password, spegne il cambio password obbligatorio,

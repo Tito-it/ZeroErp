@@ -22,6 +22,7 @@ Indice test eseguiti:
  8) test_admin_serializer_allowed_ruoli — solo OPERATORE
  9) test_portale_serializer_allowed_ruoli — solo clienti/fornitori portale
 10) test_shop_serializer_allowed_ruoli — solo SHOP_CUSTOMER
+11) test_password_non_ripulita_su_ogni_porta — la password arriva ad authenticate com'e' digitata (S-5)
 """
 
 from unittest import TestCase
@@ -202,3 +203,17 @@ class NamespaceSerializerConcreteTests(TestCase):
             tuple(ShopTokenSerializer.allowed_ruoli_applicativi),
             (RUOLO_APPLICATIVO_SHOP_CUSTOMER,),
         )
+
+
+class PasswordComeDigitataTests(TestCase):
+    """S-5: la password non si ripulisce dagli spazi, su nessuna porta."""
+
+    # Scopo: Il campo di SimpleJWT e' un `CharField` e toglieva gli spazi ai
+    # bordi: una password salvata con lo spazio non sarebbe piu' entrata.
+    # Lo username resta ripulito (lo legge `_nome_tentato`, brief §13.3).
+    def test_password_non_ripulita_su_ogni_porta(self):
+        for cls in (AdminTokenSerializer, PortaleTokenSerializer, ShopTokenSerializer):
+            with self.subTest(serializer=cls.__name__):
+                ser = cls(data={"username": " tid ", "password": " segreta "})
+                self.assertEqual(ser.fields["password"].run_validation(" segreta "), " segreta ")
+                self.assertEqual(ser.fields["username"].run_validation(" tid "), "tid")
