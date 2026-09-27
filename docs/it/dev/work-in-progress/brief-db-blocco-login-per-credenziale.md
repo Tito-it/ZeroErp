@@ -15,10 +15,12 @@
 > `architettura-multi-face-auth` §3.1 (§8). ⛔ Resta **B-6** (§12.4), il
 > consenso al riuso della credenziale: il backend passa già
 > `p_riusa_auth_user_id`, ma il dialog non si può scrivere perché i dati da
-> confermare non arrivano al client. ⏳ **Richiesta al team DB al §17.**
+> confermare non arrivano al client. 🟢 **§17 lato DB applicato il
+> 2026-09-27** (`20260927-40`, `-41`, §17.4), test verdi, nessuna
+> regressione. ⏳ Restano al backend e al frontend **B-20** e **F-4** (§17.3).
 > Elenco completo al §12.6.
 >
-> **Da leggere per primo**: §17 (il lavoro aperto), poi §12.6 (cosa resta), §12
+> **Da leggere per primo**: §17.3 (il lavoro aperto, BE/FE), poi §12.6 (cosa resta), §12
 > (il P-2), §11 (il P-1) e §2.
 >
 > **Due lavori, in quest'ordine**: **P-1** login, blocco e cambio password
@@ -1096,6 +1098,12 @@ il ripiego non va avanti al catalogo):
   ✅ 2026-09-27: `p_riusa_auth_user_id` va da view a madre, e
   `test_login_credenziale_db` (non più sospeso) prova i due tempi sul DB vero.
   ⏳ Il dialog di conferma **aspetta il DB**: §17.
+- ✅ DB: **§17** — `20260927-40` (`script.fn_get_credenziale_per_email`),
+  `-41` (la madre la legge), pgTAP `test-fn-get-credenziale-per-email-v1`,
+  descrizione di `E_CREDENZIALE_DA_CONFERMARE`, manual. ✅ Applicati (Tid,
+  2026-09-27), test verdi, nessuna regressione (§17.4). **Il lavoro DB del
+  brief è di nuovo chiuso.**
+- ⏳ Backend/Frontend: **B-20** e **F-4** (§17.3) — il dialog di conferma.
 
 ## 13. R-7 — La risposta del login non dice se il nome esiste (disegno, 2026-09-25)
 
@@ -1513,11 +1521,12 @@ lettura delle vesti, e un campo nuovo nell'envelope).
 - ⭐ **Regola del 2**: la madre, nel passo 2-bis, legge username e vesti **da
   questa funzione** al posto della sua `jsonb_agg`. Dialog e rifiuto leggono
   così la stessa cosa, e non possono divergere.
-- ❓ **Da decidere (Tid / team DB): chi può chiamarla.** Dice se un'email ha un
-  accesso e con quali vesti: è un'informazione da amministratore. Lato backend
-  il solo chiamante sarà un endpoint `AdminAPIView` (SUPER_ADMIN); la domanda è
-  se metterle anche a DB il guard `script.fn_guard_super_admin`, come ai verbi
-  di blocco e sblocco (D-B1).
+- **Chi può chiamarla.** Dice se un'email ha un accesso e con quali vesti: è
+  un'informazione da amministratore. Lato backend il solo chiamante sarà un
+  endpoint `AdminAPIView` (SUPER_ADMIN); la domanda era se metterle anche a DB
+  il guard `script.fn_guard_super_admin`, come ai verbi di blocco e sblocco
+  (D-B1). ✅ *Decisa da Tid il 2026-09-27: **nessun guard a DB**, il cancello è
+  l'`AdminAPIView` (motivi al §17.4).*
 - Manual della madre e descrizione di `E_CREDENZIALE_DA_CONFERMARE`: togliere
   «il contesto porta … per il dialog», che promette un trasporto che non c'è;
   il contesto resta, ma per il log.
@@ -1543,6 +1552,68 @@ sospeso: su una credenziale **senza altre vesti attive**, dopo la creazione
 `is_active` è spento (è l'OR delle vesti) e il login risponde **401**, non il
 403 `E_VESTE_NON_ATTIVA` che il test si aspettava. È il modello, non un
 difetto: il test è corretto, con la ragione scritta.
+
+### 17.4 Esecuzione (2026-09-27)
+
+**Decisione di Tid (2026-09-27), sulla domanda del §17.2: nessun guard di
+permesso a DB.** Il cancello resta la porta del backend (`AdminAPIView`, solo
+SUPER_ADMIN). Un `fn_guard_super_admin` nella funzione:
+
+- romperebbe la madre, che la chiama nel ramo del rifiuto. La madre è
+  `INVOKER` e non ha un guard SUPER_ADMIN suo, quindi chi non è SUPER_ADMIN
+  leggerebbe `E_PERMESSO_NEGATO` invece di `E_CREDENZIALE_DA_CONFERMARE`: un
+  permesso nato dentro un ramo d'errore;
+- non chiuderebbe niente: l'app legge già `django.auth_user` (contratto del
+  `-40` del 25-09, `provision_db_roles.sql`) e `anagrafiche.identita_digitali`
+  (la madre `INVOKER` la legge come app). Il modello del verbo chiude le
+  scritture, non le letture; D-B1 riguardava due verbi di scrittura.
+
+| Fase | ChangeSet | Cosa |
+| --- | --- | --- |
+| `20_code/script` | `20260927-40` | ⭐ `script.fn_get_credenziale_per_email(p_email)` → `TABLE(auth_user_id, username, vesti)`: zero righe se l'email non ha credenziale; una riga anche senza vesti (`vesti = []`); la credenziale la trova `fn_get_auth_user_id_for_email`; `vesti` nella forma della madre (`ruolo_applicativo`, `attivo`, `soggetto`, in ordine di id). `plpgsql`, tipi espliciti (nomina `django.*`), `STABLE`, `INVOKER` |
+| `20_code/anagrafiche` | `20260927-41` | la madre, passo 2-bis: username e vesti dalla funzione nuova, al posto della sua aggregazione (regola del 2). Firma invariata: `CREATE OR REPLACE`. Corpo di partenza `-51`, verificato uguale al vivo (corpo e `COMMENT`) |
+| `80_data` (CSV esistente) | — | `codici_errore.csv`, descrizione di `E_CREDENZIALE_DA_CONFERMARE`: il contesto porta i dati «per il log (al client non arriva)», e il dialog li legge dalla funzione. Messaggio (`messaggi_errore.csv`) invariato |
+| pgTAP | `script/test-fn-get-credenziale-per-email-v1` | 9 casi: firma; email di nessuno, `NULL`, vuota, di soli spazi → zero righe; credenziale senza vesti, cercata in maiuscolo con spazi → una riga, `vesti = []`; credenziale di un operatore → la veste letta dalle tabelle; il rifiuto della madre nomina lo username della funzione; presidio sul testo: la madre chiama la funzione e non ha un `jsonb_agg` suo |
+| manual | — | `script/manual/fn_get_credenziale_per_email` (nuovo), `fn_crea_operatore_v2` (regola 4, passo 2-bis, esempio, chiamanti, Storia), `fn_get_auth_user_id_for_email` (consumatore nuovo) |
+
+⚠️ **Email nuova con consenso dichiarato** (`v_trovata` `NULL`,
+`p_riusa_auth_user_id` valorizzato): la funzione dà zero righe, `SELECT INTO`
+azzera username e vesti, e il `COALESCE` rimette `vesti = []`. È lo stesso
+contesto di prima.
+
+⚠️ **Non cambiato, da sapere**: le vesti si leggono con `JOIN` interni su
+`soggetti_ruoli` e `soggetti`, sotto la RLS di chi chiama, come faceva la madre.
+Una veste il cui soggetto non è visibile al chiamante non compare. Per un
+SUPER_ADMIN non è un caso reale; lo si scrive per chi un giorno delegasse la
+porta.
+
+**Come è stato provato (2026-09-27).** Su **dbdev**, da owner, in una
+transazione ritirata con l'SQL **estratto** dai due changeSet: sullo scratch
+`zeroerp_ci` l'utente dell'env non ha i diritti di owner su `script` («permesso
+negato per lo schema script»). Dopo la prova, verificato che su dbdev non è
+rimasto niente (la funzione non esiste, la madre è quella del `-51`).
+
+| Prova | Esito |
+| --- | --- |
+| `plpgsql_check` sulle due funzioni | 0 errori; sulla madre resta l'avviso preesistente `v_ru_id` mai letto |
+| `test-fn-get-credenziale-per-email-v1` | 9/9 |
+| **Controprova**: la funzione senza il `-41` (madre del `-51`) | rosso **solo** il 9: il presidio vede l'aggregazione propria della madre |
+| `test-crea-operatore-riusa-credenziale-v1` con la madre nuova | 20/20, senza modifiche |
+| cancelli statici (runOnChange, letterali, preCondition, trigger, grant batch, timestamp, preambolo pgTAP) | verdi |
+
+⚠️ La prova gira da owner, non da `zeroerp_app`. La corsa col runner, che usa
+l'app, resta di Tid ([il runner](/guide/pgtap-come-si-scrive-un-test)).
+Presidi trasversali: `test-riferimenti-morti-v1` è coperto dal `plpgsql_check`
+qui sopra; `test-rubinetto-primo-motivo-v1` non è toccato, perché nessuna
+chiamata a `fn_raise_primo_motivo_se_presente`.
+
+✅ **Applicati da Tid il 2026-09-27** (`-40` e `-41` insieme): pgTAP verdi,
+nessuna regressione.
+
+⏳ **Ora tocca a B-20 e F-4** (§17.3): il backend chiama
+`SELECT * FROM script.fn_get_credenziale_per_email(%s)` dall'endpoint
+`AdminAPIView`; sul 409 `E_CREDENZIALE_DA_CONFERMARE` il drawer apre il dialog
+e rimanda con `riusa_auth_user_id`.
 
 ## Registro
 
@@ -1584,6 +1655,8 @@ difetto: il test è corretto, con la ragione scritta.
 | 2026-09-27 | BE | **B-17**: il rifiuto `E_INVITO_OPERATORE` prende il messaggio del catalogo (`ErrorPolicyRegistry`), `reason`/`reason_key` nel contesto; ripiego di `_check_invitabile` nella forma nuova. **B-18**: `invite_/disable_/demote_reason_key` in `OperatoreDetailRow`, docstring riscritta. **B-19**: il `detail` del rifiuto ultimo super admin non ricopia più il codice (va nel contesto). **B-8**: ripiego di `E_UTENTE_BLOCCATO` = frase del `-52` senza `%s`. Test: `test_invito_operatore`, `test_amm_software_service`, `test_login_credenziale_db` (+ i minuti nel `message` dell'envelope) verdi. Guida multi-face §3.1 e api.md (sesta famiglia di capability) |
 | 2026-09-27 | BE | B-6, parte che non dipende dal DB: `riusa_auth_user_id` dalla view alla madre; test del consenso sbloccato e verde. Trovato: i dati del dialog stanno nel contesto dell'errore, che non arriva al client (§17). Tid sceglie la lettura a DB + dialog; richiesta al team DB al §17.2 |
 | 2026-09-27 | FE | **F-3**: `OperatoreDrawer` rende i tre motivi col BB `bloccoMotivo` (prefissi `invite`/`disable`/`demote`), ritirato il ramo `veste_attiva`; i toggle «super admin» e «accesso attivo» spenti col motivo sotto quando `can_demote_super_admin`/`can_disable` sono falsi. Otto chiavi in `it.json`/`en.json`, ritirata `amministrazione.accesso_gia_attivo`. **F-1**: `E_UTENTE_BLOCCATO` in `MESSAGGIO_DB_CON_DATO`. `check_i18n_keys`, eslint e `npm run guards` verdi. ⚠️ Trovato: B-6 (consenso al riuso) mai fatto, §12.6 |
+| 2026-09-27 | Tid → DB | §17: nessun guard a DB sulla lettura della credenziale (il cancello è l'`AdminAPIView`). Scritti e provati `20260927-40` (`script.fn_get_credenziale_per_email`) e `-41` (la madre la legge, regola del 2), pgTAP `test-fn-get-credenziale-per-email-v1` (9), descrizione di `E_CREDENZIALE_DA_CONFERMARE`, manual (§17.4). Non applicati |
+| 2026-09-27 | Tid | `20260927-40`, `-41` applicati; pgTAP verdi, nessuna regressione. Lavoro DB del §17 chiuso. Resta a BE/FE: B-20, F-4 (§17.3) |
 
 ---
 {% include-markdown "signature-core.md" %}

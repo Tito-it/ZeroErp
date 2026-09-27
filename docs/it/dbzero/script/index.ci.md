@@ -76,6 +76,7 @@
 - [fn_get_contatti](manual/fn_get_contatti.md) — (latest review 25-03-26) * **Selezione univoca per tipo**   Per ogni `tipo_contatto_id` vengono restituiti **al più** un record, che rappresenta il contatto “migliore” in base al contesto richiesto.
 - [fn_get_contatto_default](manual/fn_get_contatto_default.md) — (latest review 25-03-26) La funzione **`script.fn_get_contatto_default`** restituisce **il contatto “di default”** per un determinato **soggetto** e, opzionalmente, per un determinato:
 - [fn_get_conto_bancario_predefinito](manual/fn_get_conto_bancario_predefinito.md) — (latest review 25-03-26)
+- [fn_get_credenziale_per_email](manual/fn_get_credenziale_per_email.md)
 - [fn_get_default_by_param](manual/fn_get_default_by_param.md) — (latest update 21-12-25) Recuperare in modo dinamico un valore (tipicamente una **PK**) da una tabella qualsiasi, basandosi su un **codice parametro**.
 - [fn_get_deve_cambiare_password](manual/fn_get_deve_cambiare_password.md) — (scritta il 25-09-2026)
 - [fn_get_emittenti_scope_pk_ids](manual/fn_get_emittenti_scope_pk_ids.md)

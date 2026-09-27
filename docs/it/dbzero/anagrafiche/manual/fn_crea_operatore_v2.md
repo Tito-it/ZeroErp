@@ -39,9 +39,13 @@ Quattro regole la governano, dal 2026-09-25
      persona esiste già, e si sceglie il soggetto esistente;
    - **negli altri casi** (vesti su un cliente azienda, o nessuna veste) decide
      l'admin, con una **dichiarazione**: `p_riusa_auth_user_id` dev'essere la
-     credenziale trovata. Senza, o con un'altra, `E_CREDENZIALE_DA_CONFERMARE`,
-     con `auth_user_id`, `username` e `vesti` della credenziale nel contesto,
-     per il dialog; il backend rimanda con l'id. Un id e non un sì/no: dice *a
+     credenziale trovata. Senza, o con un'altra, `E_CREDENZIALE_DA_CONFERMARE`.
+     Il dialog di conferma legge la credenziale da
+     [`script.fn_get_credenziale_per_email`](/dbzero/script/manual/fn_get_credenziale_per_email)
+     (username e vesti), e il backend rimanda con l'id. La madre prende username
+     e vesti dalla **stessa** funzione (dal 2026-09-27, `20260927-41`): dialog e
+     rifiuto non possono divergere. Nel contesto dell'errore restano, ma per il
+     log: al client non arrivano. Un id e non un sì/no: dice *a
      cosa* si è detto sì, e una credenziale cambiata fra il dialog e l'invio
      ferma di nuovo. Stampo: la dichiarazione di `pagamenti.fn_posta_contabile`.
      Il controllo sta **dopo** il soggetto, così i rifiuti definitivi parlano
@@ -77,7 +81,7 @@ sempre.
 | Guard | email e qualifica obbligatorie |
 | 1 — credenziale | cerca per email: se c'è, `FOR UPDATE` sulla riga (due creazioni sulla stessa persona si serializzano), rifiuto se ha già una veste OPERATORE, rifiuto se una sua veste sta su un'altra persona fisica; altrimenti `fn_crea_auth_user` |
 | 2 — soggetto | flusso **A** (nessun `p_soggetto_id`: cognome, nome e CF obbligatori, `fn_crea_soggetto_pf`) o **B** (soggetto esistente, dev'essere persona fisica) |
-| 2-bis — consenso | `p_riusa_auth_user_id` deve dichiarare la credenziale trovata (`NULL` se l'email era nuova) |
+| 2-bis — consenso | `p_riusa_auth_user_id` deve dichiarare la credenziale trovata (`NULL` se l'email era nuova); nel rifiuto, username e vesti vengono da `script.fn_get_credenziale_per_email` |
 | 3 — risorsa umana | `fn_crea_risorsa_umana_v2(…, p_attivo := false)`: risorsa umana attiva, veste OPERATORE **spenta**, binding SUPER_ADMIN se richiesto |
 | 4 — indirizzi | se c'è `p_indirizzo_resid_dettaglio_id`: residenza e domicilio fiscale (fallback sulla residenza) |
 
@@ -104,6 +108,7 @@ Più quelli propagati da `fn_crea_auth_user`, `fn_crea_soggetto_pf` e
 - DB: `dbops.fn_pgtap_crea_operatore_umano` (fixture pgTAP: dopo la madre fa
   il passo dell'attivazione, accende la veste).
 - pgTAP: `test-fn-crea-operatore`, `test-crea-operatore-riusa-credenziale-v1`,
+  `test-fn-get-credenziale-per-email-v1` (la lettura del rifiuto),
   `test-risorse-umane-guard-identita-attiva-v1`,
   `test-fn-check-operatore-invitabile`, `test-automazione-attivo-eccezioni-v1`.
 
@@ -115,14 +120,18 @@ Più quelli propagati da `fn_crea_auth_user`, `fn_crea_soggetto_pf` e
   `p_attivo` fuori dalla firma, ritorno `TABLE`.
 - 2026-09-25 (`20260925-51`): il riuso non è più silenzioso — altra persona
   rifiutata, consenso dichiarato con `p_riusa_auth_user_id` (in coda alla firma).
+- 2026-09-27 (`20260927-41`): nel rifiuto `E_CREDENZIALE_DA_CONFERMARE`
+  username e vesti vengono da `script.fn_get_credenziale_per_email`, la stessa
+  lettura del dialog di conferma (§17 del brief). Firma invariata.
 
 ## Esempio
 
 ```sql
 -- Operatore nuovo (flusso A). Se l'email e' gia' di un cliente del portale la
--- prima chiamata si ferma con E_CREDENZIALE_DA_CONFERMARE (username e vesti nel
--- contesto); confermato, si rimanda con p_riusa_auth_user_id := <auth_user_id
--- mostrato>: credenziale_riusata = true, password ignorata.
+-- prima chiamata si ferma con E_CREDENZIALE_DA_CONFERMARE; il dialog legge la
+-- credenziale con script.fn_get_credenziale_per_email e, confermato, si rimanda
+-- con p_riusa_auth_user_id := <auth_user_id mostrato>: credenziale_riusata =
+-- true, password ignorata.
 SELECT *
   FROM anagrafiche.fn_crea_operatore_v2(
          p_cognome           := 'Rossi',

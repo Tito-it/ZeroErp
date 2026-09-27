@@ -39,7 +39,8 @@ BEGIN
     --     dall'operatore, e' un'altra persona: E_CREDENZIALE_ALTRA_PERSONA;
     --   - negli altri casi il riuso vuole il CONSENSO: p_riusa_auth_user_id
     --     deve dichiarare la credenziale trovata, altrimenti
-    --     E_CREDENZIALE_DA_CONFERMARE (col contesto per il dialog).
+    --     E_CREDENZIALE_DA_CONFERMARE: username e vesti li legge
+            --     script.fn_get_credenziale_per_email, come il dialog (rev 20260927-41).
     -- Ritorna: la credenziale, il suo username EFFETTIVO, e se e'
     --   stata riusata (allora la password passata e' ignorata).
     -- =========================================================
@@ -225,20 +226,15 @@ BEGIN
     --   consenso, un'altra credenziale, una credenziale sparita nel frattempo —
     --   ferma PRIMA che il riuso diventi definitivo.
     IF p_riusa_auth_user_id IS DISTINCT FROM v_trovata THEN
-        SELECT COALESCE(jsonb_agg(jsonb_build_object(
-                   'ruolo_applicativo', idg.ruolo_applicativo,
-                   'attivo',            idg.attivo,
-                   'soggetto',          s.ragione_sociale_completa)
-                 ORDER BY idg.id), '[]'::jsonb)
-          INTO v_vesti
-          FROM anagrafiche.identita_digitali idg
-          JOIN anagrafiche.soggetti_ruoli sr ON sr.id = idg.soggetto_ruolo_id
-          JOIN anagrafiche.soggetti s        ON s.id  = sr.soggetto_id
-         WHERE idg.auth_user_id = v_trovata;
-
-        SELECT au.username INTO v_username
-          FROM django.auth_user au
-         WHERE au.id = v_trovata;
+        -- ⭐ Rev 20260927-41 (§17 del brief): username e vesti dal building
+        --   block che legge anche il dialog di conferma del backend: rifiuto e
+        --   dialog mostrano la stessa cosa (regola del 2). Zero righe se l'email
+        --   non ha credenziale (v_trovata NULL): SELECT INTO azzera le variabili,
+        --   e le vesti tornano all'array vuoto di prima.
+        SELECT c.username, c.vesti
+          INTO v_username, v_vesti
+          FROM script.fn_get_credenziale_per_email(p_email) c;
+        v_vesti := COALESCE(v_vesti, '[]'::jsonb);
 
         PERFORM script.fn_log_and_raise_error(
             'database', 'anagrafiche.fn_crea_operatore_v2',
@@ -296,7 +292,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_operatore_v2(p_soggetto_id uuid, p_cognome text, p_nome text, p_codice_fiscale text, p_username text, p_email text, p_password_hash text, p_qualifica_id integer, p_unita_organizzativa_id integer, p_data_nascita date, p_sesso character, p_is_super_admin boolean, p_valido_dal date, p_valido_al date, p_comune_nascita_id integer, p_indirizzo_resid_dettaglio_id bigint, p_indirizzo_domfisc_dettaglio_id bigint, p_riusa_auth_user_id integer)
-IS 'Orchestratore della creazione di un operatore (flusso A: soggetto PF nuovo; flusso B: soggetto esistente). ⭐ Rev 20260925-42 (brief-db-blocco-login-per-credenziale §5.2): (1) la credenziale dell''email, se esiste, si RIUSA (D-6, una persona una credenziale) senza toccarne password, username e nome — la cerca script.fn_get_auth_user_id_for_email, senza distinguere maiuscole e minuscole; altrimenti la crea fn_crea_auth_user; (2) la veste OPERATORE nasce SPENTA, sempre (regola unica dell''invito, R-2): la accende l''attivazione, e p_attivo e'' uscito dalla firma; (3) una credenziale che ha gia'' una veste OPERATORE, attiva o spenta, si rifiuta con E_CREDENZIALE_GIA_OPERATORE (il rimedio e'' il reinvito). ⭐ Rev 20260925-51 (§12.7): il riuso non e'' piu'' silenzioso — una credenziale con una veste su una PERSONA FISICA diversa dall''operatore si rifiuta (E_CREDENZIALE_ALTRA_PERSONA); negli altri casi serve il consenso, p_riusa_auth_user_id = la credenziale trovata, altrimenti E_CREDENZIALE_DA_CONFERMARE con username e vesti nel contesto (dichiarazione di cio'' che si e'' visto, come pagamenti.fn_posta_contabile). Ritorna TABLE(auth_user_id, username effettivo, credenziale_riusata): con credenziale_riusata = true la password passata e'' stata IGNORATA. Si legge con SELECT * FROM. INVOKER.';
+IS 'Orchestratore della creazione di un operatore (flusso A: soggetto PF nuovo; flusso B: soggetto esistente). ⭐ Rev 20260925-42 (brief-db-blocco-login-per-credenziale §5.2): (1) la credenziale dell''email, se esiste, si RIUSA (D-6, una persona una credenziale) senza toccarne password, username e nome — la cerca script.fn_get_auth_user_id_for_email, senza distinguere maiuscole e minuscole; altrimenti la crea fn_crea_auth_user; (2) la veste OPERATORE nasce SPENTA, sempre (regola unica dell''invito, R-2): la accende l''attivazione, e p_attivo e'' uscito dalla firma; (3) una credenziale che ha gia'' una veste OPERATORE, attiva o spenta, si rifiuta con E_CREDENZIALE_GIA_OPERATORE (il rimedio e'' il reinvito). ⭐ Rev 20260925-51 (§12.7): il riuso non e'' piu'' silenzioso — una credenziale con una veste su una PERSONA FISICA diversa dall''operatore si rifiuta (E_CREDENZIALE_ALTRA_PERSONA); negli altri casi serve il consenso, p_riusa_auth_user_id = la credenziale trovata, altrimenti E_CREDENZIALE_DA_CONFERMARE (dichiarazione di cio'' che si e'' visto, come pagamenti.fn_posta_contabile). ⭐ Rev 20260927-41 (§17): username e vesti della credenziale trovata li legge script.fn_get_credenziale_per_email, la stessa funzione del dialog di conferma del backend; nel contesto dell''errore restano per il log, che al client non arriva. Ritorna TABLE(auth_user_id, username effettivo, credenziale_riusata): con credenziale_riusata = true la password passata e'' stata IGNORATA. Si legge con SELECT * FROM. INVOKER.';
 ```
 
 ---
