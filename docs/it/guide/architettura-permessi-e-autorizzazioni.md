@@ -14,6 +14,7 @@
 > * [config.user_override_aree](/dbzero/config/tabelle/user_override_aree) / [config.user_override_oggetti](/dbzero/config/tabelle/user_override_oggetti) / [config.user_override_azioni](/dbzero/config/tabelle/user_override_azioni) — le eccezioni individuali
 > * [config.user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali) — il perimetro di emittenti dell'operatore
 > * [config.scope_policy](/dbzero/config/tabelle/scope_policy) / [config.identita_scope_bindings](/dbzero/config/tabelle/identita_scope_bindings) — le policy di scope e i loro legami
+> * [config.tabelle_gestibili](/dbzero/config/tabelle/tabelle_gestibili) — le tabelle del pannello di configurazione e delle tendine, ciascuna col suo oggetto
 >
 > **Vedi anche** — funzioni e trigger DB:
 >
@@ -23,6 +24,13 @@
 > * [script.fn_check_user_emittente_scope](/dbzero/script/funzioni/fn_check_user_emittente_scope) — la regola di scope emittente, sede unica
 > * [script.fn_get_emittenti_scope_pk_ids](/dbzero/script/funzioni/fn_get_emittenti_scope_pk_ids) / [script.fn_get_emittenti_scope_sr_ids](/dbzero/script/funzioni/fn_get_emittenti_scope_sr_ids) — gli emittenti nel perimetro dell'utente
 > * [script.trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope) — il write-guard di difesa in profondita'
+> * [script.fn_guard_azione](/dbzero/script/funzioni/fn_guard_azione) / [script.fn_guard_livello](/dbzero/script/funzioni/fn_guard_livello) / [script.fn_guard_super_admin](/dbzero/script/funzioni/fn_guard_super_admin) — il permesso nella prima riga di un verbo di scrittura
+> * [script.fn_area_di_oggetto](/dbzero/script/funzioni/fn_area_di_oggetto) — l'area a cui appartiene un oggetto, sede unica per DB e backend
+> * [config.fn_pannello_scrivi](/dbzero/config/funzioni/fn_pannello_scrivi) / [config.fn_pannello_colonne_scrivibili](/dbzero/config/funzioni/fn_pannello_colonne_scrivibili) — il verbo del pannello di configurazione e le colonne che scrive
+>
+> **Vedi anche** — API e service backend:
+>
+> * [API tabelle di configurazione](/backend/core/manual/api_config_tables) — il pannello generico, col permesso chiesto sull'oggetto della tabella
 >
 > **Vedi anche** — guide correlate:
 >
@@ -172,8 +180,14 @@ Catalogo delle aree funzionali del sistema. Ogni riga mappa uno schema DB
 a un'area logica con codice, descrizione e ordinamento per l'interfaccia.
 
 **A cosa serve:** e' la tabella di riferimento per tutte le regole di accesso.
-Quando si aggiunge un nuovo schema al sistema, basta inserire una riga qui
-perche' l'area diventi configurabile nei profili reparto e negli override utente.
+Un'area nuova e' un modulo nuovo: nasce nel seed del database (il CSV della
+tabella) insieme al suo schema, e da quel momento e' configurabile nei profili
+reparto e negli override utente.
+
+⛔ **Non si modifica dal pannello di configurazione.** `schema_db` e' la chiave
+con cui si risolvono i livelli: cambiarla stacca profili e override di
+un'area intera. Per questo la tabella sta nelle tendine ma non nel pannello
+(§7.5), come i profili di accesso.
 
 **Esempio di uso:** per ottenere l'elenco delle aree attive utilizzabili
 nell'interfaccia di configurazione, si filtra per quelle contrassegnate come
@@ -349,6 +363,7 @@ Chi resta senza assegnazione si conta in `dbops.vw_operatori_senza_emittente`, c
 | **Django/DRF**         | Autenticazione, enforcement permessi sulle API, filtering queryset | Permission classes, Mixins            |
 | **DB (config/script)** | Source of truth per profili, aree, override, ambito emittente      | Tabelle config, ENUM, funzioni script |
 | **DB (trigger)**       | Defense-in-depth: vincoli di coerenza, guard su ambito emittente   | Trigger sulle tabelle operative       |
+| **DB (verbi)**         | Il permesso applicato alla scrittura, dove il dominio lo adotta    | Funzioni di scrittura con guard (§7.4) |
 
 Il flusso di una richiesta attraversa, nell'ordine, cinque passaggi:
 
@@ -364,7 +379,9 @@ Il flusso di una richiesta attraversa, nell'ordine, cinque passaggi:
    base alla whitelist `user_emittenti_fiscali`.
 5. **View/Serializer** — esegue la logica applicativa; ogni eventuale
    tentativo di operare fuori perimetro viene intercettato come
-   ulteriore difesa dai trigger DB al momento di INSERT/UPDATE.
+   ulteriore difesa dai trigger DB al momento di INSERT/UPDATE. Sulle
+   tabelle chiuse all'applicazione la scrittura passa dal **verbo**, che
+   ricontrolla il permesso (§7.4).
 
 ---
 
@@ -497,7 +514,16 @@ occupano solo di:
 con lo schema DB (uguale a `app_label` Django). Se per quel model
 esiste un override in `area_model_overrides`, si usa l'area dichiarata
 dall'override; questo copre i rari casi in cui la convenzione
-automatica non e' corretta.
+automatica non e' corretta. La regola sta in una funzione sola,
+`script.fn_area_di_oggetto`: la chiama il resolver del backend e la
+chiamano i verbi del DB.
+
+**Oggetto ricavato dalla richiesta.** Una view che serve piu' oggetti con la
+stessa rotta — il pannello di configurazione, dove l'oggetto dipende dalla
+tabella nell'URL — dichiara `oggetto_permesso_da_richiesta()`: la permission
+class chiede il livello su quell'oggetto, in lettura e in scrittura, al posto
+dell'area fissa della classe. Valutata senza una richiesta (sulla sola classe,
+come fanno i tool dell'assistente) la view nega.
 
 ### 6.3 Ambito dati: whitelist EF per operatori, RLS per portale/shop
 
@@ -595,8 +621,17 @@ se la tripla non e' coerente.
 
 ## 7. Defense-in-depth DB
 
-Il database non replica l'enforcement di Django ma aggiunge guardie
-che il backend non puo' garantire.
+Il database non si fida del backend. Fa due cose diverse:
+
+* **il perimetro** — *quali righe*: il guard di ambito emittente e le
+  policy RLS (§7.1, §7.2);
+* **il permesso** — *chi puo' scrivere*: nei domini che adottano il modello
+  «una scrittura = un verbo», la funzione che scrive controlla il livello o
+  l'azione di chi agisce, e l'applicazione non puo' scrivere quelle tabelle
+  per altra via (§7.4).
+
+La regola resta una sola: DB e backend chiamano le stesse funzioni di
+risoluzione (§7.3). I **punti di applicazione** sono due.
 
 ### 7.1 Funzione di verifica ambito emittente
 
@@ -670,6 +705,98 @@ l'abilitazione di un'azione di processo. Entrambe applicano la stessa
 catena del backend (override individuale → profilo reparto → default
 sicuro), cosi' la regola resta unica indipendentemente dal livello
 che la consulta.
+
+### 7.4 Il permesso nel verbo di scrittura
+
+Calcolare i permessi non basta: una scrittura che il backend autorizza per
+errore — un endpoint col permesso dichiarato male, un tool dell'assistente
+legato alla rotta sbagliata — il database la eseguirebbe comunque. Il modello
+che chiude il buco e' **una scrittura = un verbo**.
+
+**Il verbo.** Ogni operazione di scrittura di un dominio che adotta il modello
+e' una funzione DB. Nella **prima riga** dichiara il suo permesso con uno dei
+guard, senza controlli scritti a mano:
+
+| Guard | Quando | Chi decide |
+| --- | --- | --- |
+| `script.fn_guard_azione` | operazioni di processo (registra, emetti, cambia stato…): il verbo **e'** l'azione | `fn_check_azione_processo` |
+| `script.fn_guard_livello` | operazioni semplici (crea, modifica): il verbo dichiara l'**oggetto** su cui scrive e il livello minimo | `fn_resolve_livello_oggetto`, con l'area da `fn_area_di_oggetto` |
+| `script.fn_guard_super_admin` | le porte che non sono un'area del catalogo (la gestione accessi, riservata al SUPER_ADMIN) | `fn_is_super_admin` |
+
+I tre guard si comportano allo stesso modo: l'utente arriva come parametro
+(il verbo lo legge da `app.current_user_id`), la regola la decide la funzione
+di risoluzione che usa anche il backend, e il rifiuto e' `E_PERMESSO_NEGATO`,
+lo stesso codice del backend — anche quando l'utente manca (fail-closed).
+
+Una forma sola per le operazioni di processo, una per quelle semplici:
+`azioni_processo` non si riempie di azioni che ripetono il livello, e
+l'amministratore ragiona come sempre, per area, azione e oggetto.
+
+**La porta.** Il verbo protegge solo se non si puo' aggirare:
+
+* l'applicazione perde `INSERT`/`UPDATE`/`DELETE` sulle tabelle che il verbo
+  protegge. La postura si dichiara nel loop dei grant, non con un `REVOKE`
+  sparso: l'elenco delle tabelle in sola lettura per l'app e' la lista
+  `v_tabelle_sola_lettura_app` del loop;
+* il verbo gira come **proprietario** (`SECURITY DEFINER`), e il perimetro che
+  la RLS non applica piu' lo rimette il verbo o il guard di ambito;
+* l'applicazione esegue **solo i verbi**, non le primitive che i verbi usano:
+  altrimenti il controllo si aggira chiamando la primitiva. Un guard che deve
+  sapere se e' attraversato da un verbo lo chiede a
+  `script.fn_is_proprietario_tabella`.
+
+**Il backend chiede, non decide due volte.** L'endpoint tiene il suo controllo:
+risponde 403 subito, con un messaggio utile, prima di aprire la transazione.
+Non e' una seconda copia della regola, perche' chiama le stesse funzioni.
+
+**Chi lo adotta.** I domini nuovi nascono cosi'; quelli esistenti ci passano
+quando un lavoro tocca le loro scritture, uno alla volta. ⚠️ Un dominio **a
+meta'** — alcune tabelle chiuse, altre ancora scrivibili dall'app — lo
+dichiara nella sua guida, con l'elenco delle tabelle aperte.
+
+⛔ **Cosa non protegge.** L'identita' la dichiara il backend: le GUC `app.*` le
+imposta la connessione dell'applicazione, e codice su quella connessione le
+puo' impostare a un altro utente. Il modello protegge da un backend **che
+sbaglia**, non da un backend **compromesso** — lo stesso limite delle policy
+RLS di perimetro.
+
+⛔ **Perche' non una policy RLS sul livello.** Una tabella non e'
+un'operazione: un operatore in `LETTURA` su un'area, con un'azione di processo
+concessa, deve poter scrivere le tabelle che quell'azione tocca, e una policy
+vede solo «UPDATE su questa tabella». Un'area non e' uno schema: un'operazione
+scrive anche in altri schemi. E le funzioni `SECURITY DEFINER` la
+scavalcherebbero. Il permesso appartiene all'**operazione**, e a DB
+l'operazione ha un nome solo: la funzione che la esegue.
+
+### 7.5 Il pannello di configurazione: un verbo generico
+
+Il pannello «Gestione tabelle» manutiene decine di vocabolari di schemi
+diversi con un solo form. Scrive con un verbo generico,
+`config.fn_pannello_scrivi`, nella forma sull'oggetto:
+
+* **la lista e' un dato del DB**: `config.tabelle_gestibili` ha una riga per
+  tabella, con due capacita' distinte — `lookup` (serve le tendine
+  dell'applicazione) e `pannello` (si manutiene dal pannello). Un pannello
+  implica il lookup. Backend e frontend leggono la lista da li';
+* **ogni riga nomina il suo oggetto** con la convenzione `(schema, tabella)`
+  — per esempio `('magazzino', 'causali')` — e il verbo chiede `TUTTO` su
+  quell'oggetto, cioe' sull'area a cui la tabella appartiene. Chi ha `TUTTO`
+  solo su Configurazione non scrive le causali di magazzino;
+* **le colonne scrivibili le dice una funzione**,
+  `config.fn_pannello_colonne_scrivibili`: la usa il verbo per accettare i
+  campi e il backend per costruire il form. Un campo che non si scrive e'
+  rifiutato col suo nome, non scartato;
+* **niente tabelle con perimetro**: il verbo, da proprietario, non vede la
+  RLS, e ricopiare in un verbo generico le policy di ogni tabella ne farebbe
+  una seconda sede. Le tabelle con RLS stanno nelle tendine e si scrivono dai
+  loro endpoint; il verbo lo verifica da se', non si fida della lista;
+* **fuori dal pannello anche cio' che ha un'altra porta o un altro padrone**:
+  le tabelle con una gestione propria e il suo cancello (i profili di
+  accesso, riservati al SUPER_ADMIN, e le altre con endpoint dedicati) e i
+  vocabolari di sistema che il seed possiede e il codice interpreta per
+  codice. Un pannello che li scrivesse sarebbe una seconda strada che salta
+  il cancello della prima — nel caso dei profili, un modo per alzarsi i
+  privilegi.
 
 ---
 
@@ -1019,6 +1146,7 @@ erDiagram
 * **Permission class API** → `ZeroERPPermission` (admin) / `PortaleBasePermission` (portale) / `ShopPermission` (shop), una per namespace
 * **Ambito queryset operatore** → `EmittenteFiscaleScopeMixin` (mixin su ViewSet, applica EF_WHITELIST)
 * **Defense-in-depth** → trigger DB + RLS policy + scope functions `script.fn_scope_*`; fail-closed su tripla GUC incoerente
+* **Permesso nella scrittura** → verbi DB con `fn_guard_azione` / `fn_guard_livello` / `fn_guard_super_admin` nella prima riga; tabelle protette in sola lettura per l'app (loop dei grant); il pannello di configurazione scrive col verbo generico `config.fn_pannello_scrivi`
 
 ---
 

@@ -4477,7 +4477,7 @@ Soggetto, indirizzi, contatti, conti bancari e geografia: fino al 2026-09-26 sta
 | `StatiDrawer` + `StatiSearchTable` | CRUD stati | IndirizziView |
 | `ToponomasticaDrawer` + `ToponomasticaSearchTable` | CRUD toponomastica | IndirizziView |
 | `CodiciPostaliDrawer` + `CodiciPostaliSearchTable` | CRUD codici postali | IndirizziView |
-| `ConfigTablePanel` + `GenericConfigDrawer` | CRUD generico dei vocabolari dichiarati in `config-tables.js` (metadata-driven: etichette i18n, FK→lookup, date) | ConfigView |
+| `ConfigTablePanel` + `GenericConfigDrawer` | CRUD generico dei vocabolari della lista a DB `config.tabelle_gestibili` (`pannello`; metadata-driven: etichette i18n, FK→lookup, date) | ConfigView |
 
 #### Building block dominio — soggetti e contatti
 

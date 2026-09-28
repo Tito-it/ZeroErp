@@ -20,22 +20,6 @@ from django.db import connection
 from apps.core.db.dbops_repository import LOOKUP_COLONNE_VALORE
 from apps.core.db.tabelle_gestibili_repository import TabelleGestibiliRepository
 
-# Colonne di sistema da escludere — audit, transazione, storicizzazione, e le
-# identita' tecniche che scrive il DB (`uid` con default `uuidv7()`): un campo
-# che l'operatore non deve compilare non si mostra come obbligatorio.
-# ⚠️ Regola, non elenco: una colonna il cui default e' una FUNZIONE e che non
-# e' mai un dato dell'operatore. Oggi `uid` e' la sola.
-# ⛔ DUE SEDI, dichiarate (2026-09-25): la stessa lista e' la costante
-# `c_escluse` del verbo `config.fn_pannello_scrivi`, che RIFIUTA le colonne
-# che qui si nascondono. Se divergono, il form offre un campo che il
-# salvataggio respinge (o nasconde uno che si potrebbe scrivere). Chiesto al
-# team DB di esporre le colonne scrivibili con una funzione che il verbo e
-# questo metadata leggano entrambi (brief-db-pannello-config-verbo-generico §6).
-_EXCLUDED_COLUMNS = frozenset({
-    "data_insert", "user_insert", "data_update", "user_update",
-    "tx_id", "storicizza", "uid",
-})
-
 # Mapping tipo SQL → tipo frontend per il renderer dinamico.
 _TYPE_MAP = {
     "integer": "number",
@@ -134,27 +118,34 @@ def _parse_column_default(raw_default: str | None, fe_type: str) -> Any:
 class ConfigMetadataRepository:
     """Legge metadata colonne da information_schema per il CRUD generico config."""
 
-    # Scopo: Restituisce la lista colonne gestibili di una tabella.
-    # Esclude colonne audit/sistema. Cacheable — si legge una volta.
+    # Scopo: Restituisce le colonne del form di una tabella del pannello: `id`
+    # piu' quelle che il verbo scrive (`config.fn_pannello_colonne_scrivibili`).
+    # Cacheable — si legge una volta.
     def get_table_columns(self, schema: str, table: str) -> list[dict[str, Any]]:
         cache_key = f"{schema}.{table}"
         if cache_key in _cache:
             return _cache[cache_key]
 
-        # ⛔ Fuori anche le colonne che il DB calcola da se' (generate, identity
-        # ALWAYS, salvo `id`): il verbo del pannello le RIFIUTA
-        # (`E_PANNELLO_CAMPO_NON_AMMESSO`), quindi mostrarle nel form sarebbe
-        # offrire un campo che il salvataggio respinge. Stessa regola del verbo.
+        # ⭐ QUALI colonne le dice il DB: `config.fn_pannello_colonne_scrivibili`
+        # e' la stessa funzione con cui il verbo `config.fn_pannello_scrivi`
+        # decide quali campi accettare (sede unica dal 2026-09-27,
+        # brief-db-pannello-config-verbo-generico §6.1). Qui si aggiunge solo
+        # `id`, la chiave che il form non scrive ma la lista e il dettaglio
+        # leggono. Fino ad allora il metadata aveva la sua copia della regola
+        # (colonne di audit, `uid`, generate, identity ALWAYS): se le due
+        # copie divergevano, il form offriva un campo che il salvataggio respinge.
+        # ⚠️ Una tabella fuori dal pannello da' NULL: resta il solo `id`, e a
+        # rifiutare e' `_parse_rel` del service, prima di arrivare qui.
         sql = """
             SELECT column_name, data_type, is_nullable, column_default
               FROM information_schema.columns
              WHERE table_schema = %s AND table_name = %s
-               AND is_generated <> 'ALWAYS'
-               AND (identity_generation IS DISTINCT FROM 'ALWAYS' OR column_name = 'id')
+               AND (column_name = 'id'
+                    OR column_name = ANY (config.fn_pannello_colonne_scrivibili(%s)))
              ORDER BY ordinal_position
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [schema, table])
+            cursor.execute(sql, [schema, table, f"{schema}.{table}"])
             rows = cursor.fetchall()
             cursor.execute(_SQL_FK, [schema, table])
             fk_per_colonna = {r[0]: (r[1], r[2]) for r in cursor.fetchall()}
@@ -163,8 +154,6 @@ class ConfigMetadataRepository:
         columns = []
         for row in rows:
             col_name = row[0]
-            if col_name in _EXCLUDED_COLUMNS:
-                continue
             fe_type = _TYPE_MAP.get(row[1], "text")
             # ⭐ La FK dice al drawer QUALE tabella e QUALE colonna la colonna
             # nomina; se quella tabella e' ammessa al lookup generico E la

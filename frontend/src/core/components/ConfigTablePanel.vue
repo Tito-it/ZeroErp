@@ -1,7 +1,12 @@
 <script setup>
-// Scopo: pannello gestione tabelle config — i VOCABOLARI del registro
-//        `config-tables.js` (tutti ammessi al lookup generico: la lista qui
-//        sotto passa da li').
+// Scopo: pannello gestione tabelle config — i VOCABOLARI della lista a DB
+//        `config.tabelle_gestibili` con `pannello` (`GET /core/config/tables/`;
+//        tutti ammessi al lookup generico: la lista qui sotto passa da li').
+//        ⛔ Nessun registro nel frontend: fino al 2026-09-28 c'era
+//        `config-tables.js`, terza copia della lista (D-P5,
+//        brief-db-pannello-config-verbo-generico). Aggiungere una tabella =
+//        una riga nel CSV del DB piu' l'etichetta
+//        `config_panel.tabelle.<schema>.<tabella>` in it.json e en.json.
 // Sinistra: lista tabelle raggruppate per schema.
 // Destra: DataTable della tabella selezionata con CRUD generico.
 // Note: ⚠️ Un errore della lista o del metadata va A VIDEO (toast di
@@ -9,13 +14,12 @@
 //       dichiarata nel registro (`magazzino.lotti`, senza `descrizione`) si
 //       vedeva come «lista vuota» — piano-be-fe-magazzino-anagrafiche-fuori-
 //       dal-pannello-config §1.
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useReadonlyMode } from '../composables/useReadonlyMode'
 import { useApiHandler } from '../composables/useApiHandler'
 import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../constants'
 import { NAV_ICONS } from '../navigation'
-import { getTablesBySchema } from '../config-tables'
 import { labelOrCode } from '../utils/i18nLabel'
 import { chiaveEtichettaTabella } from '../utils/campoConfig'
 import { useDrawerState } from '../composables/useDrawerState'
@@ -27,7 +31,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import AttivoTag from './AttivoTag.vue'
-import { getConfigTableMetadata, listConfigRecords } from '../api/configTables'
+import { getConfigTableMetadata, listConfigRecords, listConfigTables } from '../api/configTables'
 import FiltriLista from './FiltriLista.vue'
 
 const { t, te } = useI18n()
@@ -36,6 +40,7 @@ const drawer = useDrawerState()
 const { execute } = useApiHandler()
 
 // Stato
+const tabelle = ref([])
 const selectedRel = ref(null)
 const searchTable = ref('')
 const searchRecords = ref('')
@@ -47,15 +52,29 @@ const pageSize = ref(PAGINATION.DEFAULT_ROWS)
 const sortField = ref('descrizione')
 const sortOrder = ref(1)
 
-// Tabelle raggruppate, con l'etichetta tradotta (`config_panel.tabelle.<rel>`,
-// ripiego fail-visible sulla rel), e filtrate. Computed e non costante: cambia
-// col locale.
+// Le tabelle del pannello. Una volta sola: la lista cambia col seed del DB,
+// non durante la sessione. Lista non letta: il toast dice perche', e la
+// colonna resta vuota.
+onMounted(async () => {
+  const data = await execute(() => listConfigTables())
+  tabelle.value = data ? data.results : []
+})
+
+// Tabelle raggruppate per schema (schemi e tabelle in ordine alfabetico, le
+// tabelle per etichetta), con l'etichetta tradotta
+// (`config_panel.tabelle.<rel>`, ripiego fail-visible sulla rel), e filtrate.
+// Computed e non costante: cambia col locale.
 const tablesBySchema = computed(() => {
   const grouped = {}
-  for (const [schema, tables] of Object.entries(getTablesBySchema())) {
-    grouped[schema] = tables.map(tbl => ({ ...tbl, label: labelOrCode(t, te, chiaveEtichettaTabella(tbl.rel), tbl.rel) }))
+  for (const tbl of tabelle.value) {
+    if (!grouped[tbl.schema]) grouped[tbl.schema] = []
+    grouped[tbl.schema].push({ ...tbl, label: labelOrCode(t, te, chiaveEtichettaTabella(tbl.rel), tbl.rel) })
   }
-  return grouped
+  const ordinato = {}
+  for (const schema of Object.keys(grouped).sort()) {
+    ordinato[schema] = grouped[schema].sort((a, b) => a.label.localeCompare(b.label))
+  }
+  return ordinato
 })
 const filteredTables = computed(() => {
   const q = searchTable.value.toLowerCase()
