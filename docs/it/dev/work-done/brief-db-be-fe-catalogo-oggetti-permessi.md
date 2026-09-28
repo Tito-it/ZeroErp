@@ -4,7 +4,7 @@
 > (decisioni, §4), poi team DB (`dev/db-tid`) per il catalogo, poi backend e
 > frontend per l'applicazione.
 > **Origine:** rilettura di
-> [permessi-e-autorizzazioni-v3.md](permessi-e-autorizzazioni-v3.md), 2026-09-26.
+> [permessi-e-autorizzazioni-v3.md](../work-in-progress/permessi-e-autorizzazioni-v3.md), 2026-09-26.
 > La sua tabella «Stato attivazione» era vecchia, e il confronto con il codice
 > ha trovato il difetto di questo brief.
 > **Stato:** ✅ **D-1 → D-6 decise da Tid** (D-1 il 2026-09-26, le altre il
@@ -21,8 +21,9 @@
 > ✅ **§3.5 applicato da Tid il 2026-09-28 alle 00:53, pgTAP verdi** (§3.6):
 > le quattro righe di catalogo di `ordine`, `ddt`, `contratto`, `reso` e il
 > test 12 rovesciato. **Il lato DB è chiuso.**
-> ⏳ **Per chiudere il brief manca una cosa sola, al BE** (§3.6): svuotare
-> `_IN_ATTESA_DI_CATALOGO`, che col CSV nuovo va rosso finché non segue.
+> ✅ **Brief CHIUSO il 2026-09-28** (`dev/backend-tid`, §3.7): svuotato
+> `_IN_ATTESA_DI_CATALOGO`, presidio verde (7 test). Le quattro porte dicono
+> la stessa cosa su tutti i 17 oggetti personalizzabili del catalogo.
 >
 > **In una riga:** il pannello permessi offre override su oggetti che nessuno
 > applica, e su altri oggetti, che vengono applicati, non lo offre.
@@ -297,6 +298,7 @@ d'oggetto (`AccessoBloccatoPanel`).
 **Il presidio della D-3** (`test_catalogo_oggetti_rotte.py`, senza DB): legge
 il catalogo dal CSV (righe `riservato = f`) e `READONLY_MODELS` dal FE, e
 fallisce se
+
 - una rotta del perimetro di un oggetto non lo chiede (un perimetro per
   **ogni** oggetto a catalogo, non più solo il caso A);
 - un `model_permission` del BE non è a catalogo;
@@ -358,6 +360,18 @@ registro BE qui sotto.
 Con il CSV nuovo, `test_il_registro_in_attesa_non_ha_righe_gia_a_catalogo` va
 rosso finché restano, ed è il suo scopo. Svuotato il registro, può ritirarsi
 anche il registro stesso, se non serve più.
+
+### 3.7 BE — la chiusura (2026-09-28) ✅
+
+`backend/apps/core/tests/test_catalogo_oggetti_rotte.py`: le quattro voci
+(`ordine`, `ddt`, `contratto`, `reso`) escono da `_IN_ATTESA_DI_CATALOGO`.
+Presidio verde, 7 test su 7, e ruff pulito.
+
+⭐ **Il registro resta, vuoto.** È la strada già percorsa da questo brief per
+un oggetto nuovo (BE e FE lo applicano prima, la riga di catalogo arriva
+dopo), e il test 6 la sorveglia nei due versi: un oggetto in attesa che entra
+nel CSV senza uscire dal registro va rosso. Toglierlo vorrebbe dire riscriverlo
+al prossimo caso B.
 
 ---
 

@@ -10,6 +10,12 @@ import api from '../api'
 
 const BASE = '/core/config/tables'
 
+// Scopo: le tabelle del pannello (`{ schema, table, rel }`), dalla lista a DB
+//        `config.tabelle_gestibili` con `pannello`.
+export function listConfigTables() {
+  return api.get(`${BASE}/`)
+}
+
 // Scopo: le colonne della tabella, con widget e default del DB.
 export function getConfigTableMetadata(rel) {
   return api.get(`${BASE}/${rel}/metadata/`)

@@ -165,15 +165,10 @@ watch(() => props.visible, async (val) => {
   fissa()
 })
 
-// Validazione minima: almeno descrizione non vuota (se presente)
-const canSave = computed(() => {
-  const desc = form.value.descrizione
-  if (desc !== undefined && typeof desc === 'string') return desc.trim().length > 0
-  return true
-})
-
-async function handleSave() {
-  const payload = {}
+// Il payload del salvataggio, calcolato dal form: lo legge `canSave` per
+// sapere se in modifica c'e' qualcosa da mandare, e `handleSave` lo spedisce.
+const payload = computed(() => {
+  const dati = {}
   const isCreate = props.mode === 'create'
 
   for (const col of editableColumns.value) {
@@ -183,20 +178,39 @@ async function handleSave() {
       // Create: manda i campi con un valore; un campo vuoto NON viaggia, cosi'
       // vale il default del DB (un `null` esplicito lo scavalcherebbe). Il
       // boolean viaggia sempre: `false` e' un valore.
-      if (col.widget === WIDGET.BOOLEAN || (val !== undefined && val !== null && val !== '')) payload[col.name] = val
+      if (col.widget === WIDGET.BOOLEAN || (val !== undefined && val !== null && val !== '')) dati[col.name] = val
     } else if (!uguali(col, form.value[col.name], fotografia.value?.[col.name])) {
       // Edit: manda SOLO i campi modificati (delta) — un trigger di lock su una
       // colonna non toccata non deve scattare.
-      payload[col.name] = val
+      dati[col.name] = val
     }
   }
+  return dati
+})
 
+// Validazione minima: almeno descrizione non vuota (se presente); in modifica
+// serve anche un campo cambiato.
+// ⛔ Un delta vuoto non parte: il verbo lo rifiuta (`E_PANNELLO_DATI_VUOTI`,
+// dal 2026-09-25; prima era «Record non trovato»). Il confronto e' quello del
+// delta (`uguali`), non `modificato` del BB: un json riformattato o una data
+// ricreata uguale non sono una modifica da mandare.
+const canSave = computed(() => {
+  if (props.mode !== 'create' && Object.keys(payload.value).length === 0) return false
+  const desc = form.value.descrizione
+  if (desc !== undefined && typeof desc === 'string') return desc.trim().length > 0
+  return true
+})
+
+async function handleSave() {
+  if (!canSave.value) return
+  const isCreate = props.mode === 'create'
+  const dati = payload.value
   const msg = isCreate ? t('config_panel.record_creato') : t('config_panel.record_salvato')
 
   const result = await execute(
     () => isCreate
-      ? createConfigRecord(props.rel, payload)
-      : updateConfigRecord(props.rel, props.recordId, payload),
+      ? createConfigRecord(props.rel, dati)
+      : updateConfigRecord(props.rel, props.recordId, dati),
     { successMessage: msg }
   )
 

@@ -260,16 +260,23 @@ produzione, non c'è niente da aspettare.*
 D-5 di Tid, 2026-09-24, in `work-in-progress/brief-db-permesso-nel-verbo-di-scrittura.md`).
 Fino a quel giorno il DB **calcolava** i permessi ma li **applicava** solo il
 backend. Il modello è «una scrittura = un verbo»: una funzione DB che nella prima
-riga chiama il guard `script.fn_guard_azione` (azione di processo) — o la forma
-sul livello d'oggetto, che nascerà col verbo generico del pannello di
-configurazione (D-3) — e l'app che perde la scrittura diretta sulle tabelle che il
-verbo protegge. `magazzino` e `acquisti` nascono così; gli altri domini ci passano
+riga chiama un guard — `script.fn_guard_azione` (azione di processo),
+`script.fn_guard_livello` (livello sull'oggetto) o `script.fn_guard_super_admin`
+(gestione accessi) — e l'app che perde la scrittura diretta sulle tabelle che il
+verbo protegge. Il modello è descritto nella guida
+`architettura-permessi-e-autorizzazioni.md` §7.4-7.5. `magazzino` e `acquisti` nascono così; gli altri domini ci passano
 quando un cantiere tocca le loro scritture, senza data. ✅ **Primo caso chiuso il
 2026-09-24** (`work-done/brief-db-magazzino-verbi-con-permesso.md`,
 `20260924-38` → `-42`): `fn_posta_inventario` e `fn_posta_rettifica` applicano
 `registra_magazzino`, l'app non esegue più la primitiva del registro. Il limite è
 scritto: il modello protegge da un backend che **sbaglia**, non da uno
-**manomesso** (l'identità la dichiara il backend).
+**manomesso** (l'identità la dichiara il backend). ✅ **Secondo caso, il pannello di configurazione** (D-3,
+`work-in-progress/brief-db-pannello-config-verbo-generico.md`): scrive col verbo
+generico `config.fn_pannello_scrivi` sull'oggetto di ogni tabella, la lista è
+`config.tabelle_gestibili` (niente più `REL_CONSENTITE` nel BE né
+`config-tables.js` nel FE), `magazzino.causali` è chiusa all'app. D-P9 decisa
+(2026-09-28): `config.aree_funzionali` in sola lettura, nome e ordine si cambiano
+nel CSV; al team DB resta chiuderla all'app.
 
 ### Aperto — Media priorità
 - 🟡 **Colori PrimeVue ancora scritti nei componenti** (FE, registrato il

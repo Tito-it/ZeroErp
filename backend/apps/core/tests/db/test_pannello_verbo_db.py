@@ -21,7 +21,8 @@
 1. test_l_app_non_scrive_le_causali_da_sola
      la porta: l'app ha solo SELECT su `magazzino.causali` (P-4).
 2. test_crea_e_modifica_una_causale_col_verbo
-     il verbo scrive dove l'app non puo', e la riga si rilegge.
+     il verbo scrive dove l'app non puo', ritorna `id` e i campi del form, e
+     la riga si rilegge.
 3. test_un_campo_che_non_si_scrive_e_rifiutato_col_suo_nome
      D-P3: `E_PANNELLO_CAMPO_NON_AMMESSO`, non piu' scartato in silenzio.
 4. test_la_riga_che_non_c_e
@@ -106,6 +107,12 @@ class PannelloVerboDbTests(TestCase):
         self.assertIsInstance(riga["id"], int)
         self.assertEqual(riga["segno"], 1)
         self.assertNotIn("data_insert", riga)
+        # La riga scritta porta `id` e i campi del form, non altro: e' la
+        # stessa funzione che il metadata legge (§6.1).
+        with connection.cursor() as cur:
+            cur.execute("SELECT config.fn_pannello_colonne_scrivibili(%s)", [_REL])
+            scrivibili = cur.fetchone()[0]
+        self.assertEqual(set(riga), {"id", *scrivibili})
 
         esito = self.svc.update_record(_REL, riga["id"], {"descrizione": "Riscritta"})
         self.assertEqual(esito, {"updated": True})

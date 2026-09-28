@@ -395,7 +395,7 @@ l'envelope errore (HTTP 409).
 > ⚠️ Difetto noto (M-5): l'UPDATE su `identita_digitali` e' per `auth_user_id`,
 > senza filtro sul ruolo: disattiva e rinomina `DISABILITATO` **tutte** le vesti
 > della credenziale, comprese quelle portale e shop. Vedi
-> [analisi accessi](../../../dev/work-in-progress/analisi-accessi-credenziale-e-vesti.md).
+> [analisi accessi](../../../dev/work-done/analisi-accessi-credenziale-e-vesti.md).
 
 **Risposta:** dettaglio utente aggiornato (con `is_active=false`,
 `attivo=false`, `ruolo_applicativo="DISABILITATO"`).
@@ -429,7 +429,7 @@ richiede padre attivo).
 - ⚠️ Difetto noto (M-6): l'UPDATE e' per `auth_user_id` e porta a `OPERATORE`
   **tutte** le identita' della credenziale; con una veste cliente, fornitore o
   shop i vincoli del DB la fanno fallire. Vedi
-  [analisi accessi](../../../dev/work-in-progress/analisi-accessi-credenziale-e-vesti.md).
+  [analisi accessi](../../../dev/work-done/analisi-accessi-credenziale-e-vesti.md).
 - **Non riattiva il binding SUPER_ADMIN**: se l'utente era stato
   precedentemente promosso e poi disabilitato, l'eventuale binding va
   ri-impostato via PATCH `is_super_admin: true` (azione esplicita).

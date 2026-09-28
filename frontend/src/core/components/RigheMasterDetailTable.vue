@@ -1,12 +1,18 @@
 <script setup>
 // Scopo: shell master-detail inline righe documento (B10 2026-06-05, regola del
 //        2). Tabella sopra + form sotto nello stesso drawer (frontend-standards
-//        §Master-detail inline). Possiede la macchina a stati identica fra
-//        OrdiniRigheTable e PreventiviRigheTable: `formMode` null/create/edit,
-//        `rigaSelezionata`/`selezione`, load/new/edit/chiudi/saved/
-//        componentiChanged/delete, toolbar reload+nuovo, DataTable scaffold +
-//        colonna azioni con elimina. Le colonne dati e il form di riga sono
-//        slot (divergono per dominio: campo sconto, badge approvazione, ecc.).
+//        §Master-detail inline). Possiede cio' che e' identico fra
+//        OrdiniRigheTable e PreventiviRigheTable: load/saved/componentiChanged/
+//        delete, toolbar reload+nuovo, DataTable scaffold + colonna azioni con
+//        elimina. Le colonne dati e il form di riga sono slot (divergono per
+//        dominio: campo sconto, badge approvazione, ecc.).
+//        ⭐ La macchina del form (`formMode`, riga in modifica, nuova/apri/
+//        chiudi, chiusura al cambio di documento) e' il BB
+//        `useFormInline` dal 2026-09-28, lo stesso di `DistintaDrawer`
+//        e `DocumentoInternoDrawer` (regola del 2).
+//        🔵 L2 del brief-db-liste-righe-documento: la `DataTable` qui sotto
+//        diventa `<DrawerTabLista>` quando i documenti di vendita hanno il
+//        loro seed. Fino ad allora resta, ed e' l'ultima.
 //
 // Lo standard frontend prescriveva di COPIARE questa struttura; B10 la promuove
 // a BB → la duplicazione indotta dalla doc viene sanata (vedi frontend-standards
@@ -37,6 +43,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../composables/useApiHandler'
 import { useConfirmAction } from '../composables/useConfirmAction'
+import { useFormInline } from '../composables/useFormInline'
 import { MANAGE_ICONS } from '../constants'
 import RowActionsMenu from './RowActionsMenu.vue'
 import PageActionsBar from './PageActionsBar.vue'
@@ -80,11 +87,14 @@ const emit = defineEmits(['changed', 'form-aperto'])
 
 const righe = ref([])
 const loadingRighe = ref(false)
-// formMode: null (nessun form), 'create', 'edit'.
-const formMode = ref(null)
-watch(formMode, (m) => emit('form-aperto', m !== null))
-const rigaSelezionata = ref(null)
-const selezione = ref(null)
+const {
+  formMode, rigaInModifica, formAperto,
+  apriRiga, chiudiForm, risincronizza, azioneNuovaRiga,
+} = useFormInline({
+  padre: () => props.parentId,
+  puoModificare: () => props.isModificabile,
+})
+watch(formAperto, (aperto) => emit('form-aperto', aperto))
 
 const pageActions = computed(() => [
   {
@@ -94,15 +104,11 @@ const pageActions = computed(() => [
     icon: MANAGE_ICONS.RELOAD,
     command: loadRighe,
   },
-  {
-    key: 'new',
-    kind: 'primary',
+  azioneNuovaRiga({
     label: t('common.new'),
     tooltip: t(props.newTooltipKey),
-    icon: MANAGE_ICONS.ADD,
-    visible: props.isModificabile,
-    command: onNuovaRiga,
-  },
+    visible: () => props.isModificabile,
+  }),
 ])
 
 async function loadRighe() {
@@ -117,24 +123,6 @@ async function loadRighe() {
 
 watch(() => props.parentId, loadRighe, { immediate: true })
 
-function onNuovaRiga() {
-  rigaSelezionata.value = null
-  selezione.value = null
-  formMode.value = 'create'
-}
-
-function onEditRiga(riga) {
-  rigaSelezionata.value = riga
-  selezione.value = riga
-  formMode.value = 'edit'
-}
-
-function chiudiForm() {
-  formMode.value = null
-  rigaSelezionata.value = null
-  selezione.value = null
-}
-
 async function onRigaSaved() {
   chiudiForm()
   await loadRighe()
@@ -143,15 +131,11 @@ async function onRigaSaved() {
 
 // Mutation su un componente BoM CASO A (PATCH prezzo o DELETE): ricarica le
 // righe per riflettere il nuovo prezzo padre (SUM componenti via trigger DB),
-// MA NON chiude il form. Risincronizza rigaSelezionata sull'oggetto fresco
+// MA NON chiude il form. Risincronizza la riga in modifica sull'oggetto fresco
 // così il watcher del form ri-popola il prezzo corrente.
 async function onComponentiChanged() {
   await loadRighe()
-  if (formMode.value === 'edit' && rigaSelezionata.value?.id != null) {
-    const id = rigaSelezionata.value.id
-    const refreshed = righe.value.find((r) => r.id === id)
-    if (refreshed) rigaSelezionata.value = refreshed
-  }
+  risincronizza(righe.value)
   emit('changed')
 }
 
@@ -164,7 +148,7 @@ function onDeleteRiga(riga) {
         () => props.deleteAction(props.parentId, riga.id),
         { successMessage: t(props.deletedMessageKey) },
       )
-      if (rigaSelezionata.value?.id === riga.id) chiudiForm()
+      if (rigaInModifica.value?.id === riga.id) chiudiForm()
       await loadRighe()
       if (result !== null) emit('changed')
     },
@@ -196,9 +180,9 @@ const haColonnaAzioni = computed(
   () => props.isModificabile || righe.value.some((r) => props.extraRowActions(r).length > 0),
 )
 
+// La DataTable grezza emette l'evento PrimeVue: al BB arriva la riga.
 function onRowClick(event) {
-  if (!props.isModificabile) return
-  onEditRiga(event.data)
+  apriRiga(event.data)
 }
 
 defineExpose({ loadRighe })
@@ -218,7 +202,7 @@ defineExpose({ loadRighe })
       :loading="loadingRighe"
       :row-hover="isModificabile"
       :selection-mode="isModificabile ? 'single' : null"
-      v-model:selection="selezione"
+      :selection="rigaInModifica"
       paginator
       :rows="10"
       :rows-per-page-options="[10, 25, 50]"
@@ -252,7 +236,7 @@ defineExpose({ loadRighe })
       <h4>{{ formMode === 'edit' ? t(editLabelKey) : t(newLabelKey) }}</h4>
       <slot
         name="form"
-        :riga="rigaSelezionata"
+        :riga="rigaInModifica"
         :on-saved="onRigaSaved"
         :on-componenti-changed="onComponentiChanged"
         :on-cancel="chiudiForm"

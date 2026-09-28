@@ -6,15 +6,15 @@
 > [brief-db-permesso-nel-verbo-di-scrittura.md](brief-db-permesso-nel-verbo-di-scrittura.md)
 > (§7.1), con la **D-5** per la forma del permesso. È il secondo brief operativo
 > del modello, dopo [brief-db-magazzino-verbi-con-permesso.md](../work-done/brief-db-magazzino-verbi-con-permesso.md).
-> **Stato al 2026-09-27:**
+> **Stato al 2026-09-28:**
 >
 > | Parte | Stato |
 > | --- | --- |
 > | Decisioni | ✅ **D-P1 → D-P7 decise da Tid** (§4): D-P1…D-P5 sulla proposta del DB, D-P6 e D-P7 sulla proposta del backend (§4.1) |
 > | DB | ✅ `20260925-29…-34` applicati e committati (`7f3208a58`). ✅ **D-P6 chiusa**, applicata il 2026-09-27 (00:34): pgTAP verdi, nessuna regressione. ✅ **Applicati su dbdev il 2026-09-27 (01:00), pgTAP verdi** (§6.1): `config.aree_funzionali` fuori dal pannello (D-P8), la funzione unica delle colonne scrivibili (`20260927-21`, `-22`) e il `CHECK (NOT pannello OR lookup)` (`20260927-20`). Lato DB resta solo la D-P9 |
-> | Backend | ✅ **§6 fatto e committato**: è entrato in `e7dbbad73` (commit che nel messaggio cita il brief del blocco login). Verbo, lista a DB, `REL_CONSENTITE` ritirata, area da `fn_area_di_oggetto`, 403 sull'oggetto nella forma della D-P7 |
-> | Frontend | 🟡 **A metà** (§6): `enti_incasso` tolta dal registro (D-P2). Con la D-P6 applicata la lista a DB coincide col registro `config-tables.js` (64 righe): la D-P5 (ritiro del registro) è **sbloccata**, lavoro del frontend. Aperto il salvataggio senza modifiche |
-> | Aperto | ❓ **D-P9**: `config.aree_funzionali` in `amm_software`, sola lettura o anche modifica (§4) |
+> | Backend | ✅ **§6 fatto e committato**: è entrato in `e7dbbad73` (commit che nel messaggio cita il brief del blocco login). Verbo, lista a DB, `REL_CONSENTITE` ritirata, area da `fn_area_di_oggetto`, 403 sull'oggetto nella forma della D-P7. ✅ **§6.1 fatto il 2026-09-28** (non committato): il metadata legge `config.fn_pannello_colonne_scrivibili`, `_EXCLUDED_COLUMNS` ritirata |
+> | Frontend | ✅ **Fatto il 2026-09-28** (non committato): registro `config-tables.js` ritirato (D-P5), il pannello legge `GET /core/config/tables/`; «Salva» spento in modifica quando il delta è vuoto |
+> | Decisioni chiuse | ✅ **D-P9 decisa da Tid il 2026-09-28: strada A** (§4.2). Nome e ordine delle aree si cambiano nel CSV. ⏳ **Al team DB**: chiudere la tabella all'app (§4.2, richiesta) |
 >
 > **In una riga:** il pannello «Gestione tabelle» scrive su 87 tabelle con SQL
 > costruito nel backend, e chiede sempre il livello `TUTTO` sull'area
@@ -182,7 +182,7 @@ tutte endpoint propri.
 | **D-P6** | Le righe con `pannello = true` che il pannello non deve gestire (§4.1) | ✅ **DECISA da Tid il 2026-09-25 (sera), sulla proposta del backend:** **`pannello = false` su tutte e 19, `lookup` resta `true`.** Richiesta al team DB: si corregge il CSV `tabelle_gestibili.csv`, nessun changeSet di codice |
 | **D-P7** | Il 403 del backend sull'**oggetto della riga**, quando l'oggetto dipende dall'URL (§4.1) | ✅ **DECISA da Tid il 2026-09-25 (sera), sulla proposta del backend:** **un aggancio nella catena di `ZeroERPPermission`**: la view dichiara come ricava l'oggetto dalla richiesta, e la catena chiede il livello su quell'oggetto al posto dell'area fissa. Vale per **scritture e letture** del pannello (`TUTTO` e `LETTURA` sull'oggetto). Senza richiesta — la valutazione sulla sola classe, come per i tool dell'assistente — nega. Lavoro del backend |
 | **D-P8** | `config.aree_funzionali` nel pannello (§4.1) | ✅ **DECISA da Tid il 2026-09-27:** **esce dal pannello** (`pannello = false`, resta nelle tendine). La sua gestione va in un accesso riservato all'amministrazione (D-P9). Fatto nel CSV, §6.1 |
-| **D-P9** | Dove e come si gestisce `config.aree_funzionali`, fuori dal pannello | ❓ **Aperta.** Tid propone `amm_software`, riservato al SUPER_ADMIN, e la sede è giusta: legge già le aree (`list_aree_funzionali`) ed è la casa di `profili_accesso`. Da decidere **cosa** vi si fa, vedi §4.2 |
+| **D-P9** | Dove e come si gestisce `config.aree_funzionali`, fuori dal pannello | ✅ **DECISA da Tid il 2026-09-28: strada A, sola lettura.** Nessuna modifica dall'applicazione: nome (`descrizione`) e ordine (`ordinamento`) si cambiano nel CSV, e il migrate successivo li porta ovunque. Il CSV resta l'unico padrone della tabella. Scartata la B (modifica di nome e ordine in `amm_software`, SUPER_ADMIN): verbo, endpoint e drawer, e il CSV declassato a valore iniziale, per un'operazione rara che il CSV fa già. Vedi §4.2 |
 
 ### 4.1 D-P6 e D-P7 — cosa ha trovato il backend (2026-09-25, sera)
 
@@ -276,9 +276,26 @@ Fatti letti dalla struttura il 2026-09-27:
 | **A — sola lettura** (proposta del DB) | In `amm_software` le aree si **vedono**: codice, descrizione, schema, profili che le usano. Non si modificano: le possiede il CSV. La porta si chiude: `zeroerp_app` perde `INSERT`/`UPDATE`/`DELETE` sulla tabella (loop `v_tabelle_sola_lettura_app` e provisioning, come `tabelle_gestibili`) | Lato DB un passo nel loop dei grant, più un pgTAP. Lato backend niente, oltre alla vista in sola lettura se la si vuole |
 | **B — modifica di etichetta e ordine** | Il SUPER_ADMIN cambia `descrizione` e `ordinamento`, non `schema_db`, e non crea né cancella aree. Serve un verbo `fn_aree_funzionali_aggiorna` con `script.fn_guard_super_admin`. ⚠️ Le due colonne escono dall'elenco `columns` del mirror, altrimenti il CSV le riscrive, e il CSV diventa il valore iniziale e non più il padrone | Un changeSet di codice, la modifica del mirror, i pgTAP, un endpoint `amm_software` e il suo drawer |
 
-⭐ **Proposta: A.** Un'etichetta di area non è un dato che l'amministratore
-cambia: le etichette a video passano dalle chiavi i18n. La B introduce un
-padrone in più per una tabella che oggi ne ha uno solo, il CSV.
+⭐ **Proposta: A.** La B introduce un padrone in più per una tabella che oggi ne
+ha uno solo, il CSV.
+⚠️ **Correzione del 2026-09-28**: la prima stesura diceva che le etichette a
+video passano dalle chiavi i18n. È falso per le aree: le schermate dei permessi
+(`PermessiRiepilogoView`, `RepartoProfiloEditor`, `OperatorePermessiTab`)
+mostrano `aree_funzionali.descrizione`. Un cambio di nome nel CSV quindi si vede
+a video, ed è per questo che la A basta.
+
+✅ **Decisa da Tid il 2026-09-28: A.**
+
+**Richiesta al team DB (D-P9):**
+
+1. `config.aree_funzionali` in sola lettura per l'app: `v_tabelle_sola_lettura_app`
+   nel loop `20260205-41` più il blocco nel provisioning, come `tabelle_gestibili`
+   (P-4). Un changeSet `90_end` di revoke sullo stampo di `20260925-34`.
+2. Un pgTAP nella porta (`config/test-pannello-porta-v1` o uno suo): l'app non
+   ha `INSERT`/`UPDATE`/`DELETE` sulla tabella.
+3. Nella pagina `manual/` della tabella, una riga: si modifica solo dal CSV.
+
+Al backend niente: nessuno scrive la tabella fuori dal pannello di prima (§4.2).
 
 ## 5. I passi
 
@@ -290,7 +307,7 @@ padrone in più per una tabella che oggi ne ha uno solo, il CSV.
 | **P-3** | ✅ Scritto. `20_code/config/20260925-33-create-fn-pannello-scrivi`. **Nessuna funzione di lettura**: il backend legge la lista con un `SELECT`, che l'app ha. Quattro codici nuovi in `codici_errore.csv` e `messaggi_errore.csv` (id 1134…1137): `E_PANNELLO_TABELLA_NON_AMMESSA` (TECNICO), `E_PANNELLO_DATI_VUOTI`, `E_PANNELLO_CAMPO_NON_AMMESSO` (DATO_ERRATO, con `campo`), `E_PANNELLO_RIGA_NON_TROVATA` (NON_TROVATO) |
 | **P-4** | ✅ Scritto. `90_end/20260925-34-revoke-app-scrittura-pannello-magazzino` + `v_tabelle_sola_lettura_app` nel loop `20260205-41` + blocco nel provisioning: in sola lettura per l'app **`magazzino.causali`** e **`config.tabelle_gestibili`** (la lista è una porta: il verbo scrive come proprietario su ogni tabella che vi compare) |
 | **P-5** | ✅ Scritto e provato. `script/test-fn-guard-livello-v1` (12), `config/test-fn-pannello-scrivi-v1` (14), `config/test-pannello-porta-v1` (7). **Prova** su `zeroerp_ci` come proprietario, SQL estratto di `-29`, `-31…-34` più il CSV (con `\copy`: il `loadUpdateData` non è provato, la sua forma è quella del seed `20260919-09`) e i quattro codici, in transazione annullata: `plpgsql_check` a zero sulle tre funzioni; guard 12/12, verbo 14/14, porta 5/7 — rossi il 3 e il 4, veri solo come app (dichiarato nel file). Due difetti trovati nei test e corretti: `format('%s')` su un booleano scrive `t`; il 4 della porta, da proprietario, inseriva davvero una riga e sporcava il 6 (ora `WHERE false`). Guardrail statici verdi |
-| **P-6** | ✅ Brief e pagine `manual/` (`tabelle_gestibili`, `fn_pannello_scrivi`, `fn_guard_livello`, `fn_area_di_oggetto`). ⏳ La guida dei permessi e `PROJECT_CONTEXT` dopo l'apply |
+| **P-6** | ✅ Brief e pagine `manual/` (`tabelle_gestibili`, `fn_pannello_scrivi`, `fn_guard_livello`, `fn_area_di_oggetto`). ✅ **2026-09-28**: guida `architettura-permessi-e-autorizzazioni.md` (§7 riscritto: perimetro e permesso; §7.4 il verbo, §7.5 il pannello; §4.1, §5, §6.2, §10) e `PROJECT_CONTEXT` |
 
 ✅ **Tid:** apply su dbdev (19:16, codici compresi) e corsa col runner **verde**, come app (i due rossi «da owner» della porta sono verdi) — presidi trasversali compresi, presidi trasversali compresi (`test-riferimenti-morti-v1`; `test-rubinetto-primo-motivo-v1` non si sposta).
 
@@ -307,10 +324,10 @@ Stato al 2026-09-25 (sera). Dal 2026-09-27 risulta **committato** in `e7dbbad73`
 | ⚠️ **Effetto voluto** (§7.1 del modello): chi ha `TUTTO` solo su Configurazione non scrive più le tabelle degli altri domini | ✅ Provato sul DB vero (riga sotto). Qualche profilo andrà rivisto; non siamo in produzione |
 | **Test Django** che scrivano davvero sul DB dal pannello | ✅ `core/tests/db/test_pannello_verbo_db` (7, opt-in `ZEROERP_TEST_DB_E2E=1`): porta chiusa su `causali`, crea e modifica col verbo, campo rifiutato col suo nome, riga assente, tabella del solo lookup; e i **due punti di applicazione** sullo stesso operatore costruito — con `LETTURA` sull'oggetto `magazzino.causali` la catena lascia leggere e non scrivere, e il verbo rifiuta da solo con `E_PERMESSO_NEGATO`; con `TUTTO` passano entrambi. La catena, a resolver mockato: `core/tests/api/test_views_config_crud` (7) |
 | **I codici nuovi** (`E_PANNELLO_*`) nel catalogo generato; `E_PANNELLO_RIGA_NON_TROVATA` al posto di `E_ANAG_NOT_FOUND` | ✅ Policy e ripieghi rigenerati; `E_PANNELLO_RIGA_NON_TROVATA` anche per il dettaglio. ⚠️ `test_error_policies_divergenza_db` è rosso per `E_SCRITTURA_IN_LETTURA`, che arriva dal commit DB `501c5bcc8` (brief-be-letture-in-transazione-sola-lettura) non ancora nel branch: si rigenera dopo il merge, non prima |
-| ⚠️ **Il frontend non deve mandare campi in più** (D-P3) | ✅ Verificato: `GenericConfigDrawer` costruisce il payload solo dalle colonne del metadata, che esclude `id`, audit, generate e identity `ALWAYS` come il verbo. 🟡 **Aperto**: in modifica il drawer manda solo il delta, quindi «Salva» senza modifiche manda `{}` → `E_PANNELLO_DATI_VUOTI` (prima era «Record non trovato»). Il drawer deve non chiamare, o spegnere «Salva», quando il delta è vuoto |
+| ⚠️ **Il frontend non deve mandare campi in più** (D-P3) | ✅ Verificato: `GenericConfigDrawer` costruisce il payload solo dalle colonne del metadata, che esclude `id`, audit, generate e identity `ALWAYS` come il verbo. 🟡 **Aperto**: in modifica il drawer manda solo il delta, quindi «Salva» senza modifiche mandava `{}` → `E_PANNELLO_DATI_VUOTI`. ✅ **Chiuso il 2026-09-28**: in `GenericConfigDrawer` il delta è un `computed` letto da `canSave`, e in modifica «Salva» è spento finché il delta è vuoto |
 | Le quattro tabelle con RLS **escono dal pannello** (D-P2) | ✅ `pagamenti.enti_incasso` tolta dal registro del frontend (le altre tre non c'erano); l'elenco del backend legge `pannello` |
-| **Il registro del frontend si ritira** (D-P5) | ⏳ **Sbloccato**: D-P6 applicata il 2026-09-27 (§4.1). La lista `pannello = true` ha 64 righe, le stesse del registro. Il registro si può ritirare: lavoro del frontend |
-| ✅ **Richiesta al team DB (revisione del 2026-09-25): le colonne scrivibili in una sede** — **decisa da Tid il 2026-09-27, lato DB applicata (§6.1)**. ⏳ Al backend: il metadata legge la funzione, e `_EXCLUDED_COLUMNS` si ritira | Le colonne che il pannello non scrive stanno in **due** posti: la costante `c_escluse` (più generate e identity `ALWAYS`) dentro `config.fn_pannello_scrivi`, e `_EXCLUDED_COLUMNS` più lo stesso filtro in `config_metadata_repository`. Se divergono, il form offre un campo che il salvataggio respinge. Proposta: una funzione, per esempio `config.fn_pannello_colonne_scrivibili(p_tabella) → text[]`, che il verbo usa al passo 2 e il metadata legge; il backend ritira la sua costante nello stesso giro. Fino ad allora la doppia sede è dichiarata nel codice |
+| **Il registro del frontend si ritira** (D-P5) | ✅ **2026-09-28.** `frontend/src/core/config-tables.js` cancellato; `ConfigTablePanel` legge `GET /core/config/tables/` (`listConfigTables`), raggruppa per schema e ordina per etichetta. Il presidio `test_config_panel_registro_db` legge ora la lista a DB, e il suo test 1 (registro ⊂ pannello) non ha più oggetto: al suo posto il confronto metadata ↔ `fn_pannello_colonne_scrivibili` |
+| ✅ **Richiesta al team DB (revisione del 2026-09-25): le colonne scrivibili in una sede** — **decisa da Tid il 2026-09-27, lato DB applicata (§6.1)**. ⏳ Al backend: il metadata legge la funzione, e `_EXCLUDED_COLUMNS` si ritira — ✅ **fatto il 2026-09-28** (§6.1) | Le colonne che il pannello non scrive stanno in **due** posti: la costante `c_escluse` (più generate e identity `ALWAYS`) dentro `config.fn_pannello_scrivi`, e `_EXCLUDED_COLUMNS` più lo stesso filtro in `config_metadata_repository`. Se divergono, il form offre un campo che il salvataggio respinge. Proposta: una funzione, per esempio `config.fn_pannello_colonne_scrivibili(p_tabella) → text[]`, che il verbo usa al passo 2 e il metadata legge; il backend ritira la sua costante nello stesso giro. Fino ad allora la doppia sede è dichiarata nel codice |
 | ✅ **Richiesta al team DB (revisione del 2026-09-25): `pannello` implica `lookup`** — **decisa da Tid il 2026-09-27, applicata (§6.1)** | Il pannello elenca le righe col lookup generico, quindi una riga con `pannello = true` e `lookup = false` sarebbe un pannello che risponde 400. Oggi è vero solo per come è scritto il CSV: nessun `CHECK` lo impone. Proposta: `CHECK (NOT pannello OR lookup)` su `config.tabelle_gestibili` |
 
 ### 6.1 Il giro del 2026-09-27 — D-P8 e le due richieste del backend
@@ -346,6 +363,16 @@ estratto dai tre YAML e il CSV caricato da `\copy`:
 2. La risposta del salvataggio porta solo `id` e i campi del form (passo 4).
 3. `GET /core/config/tables/` elenca 63 righe.
 
+✅ **Fatto dal backend il 2026-09-28** (non committato). (1)
+`config_metadata_repository` filtra `information_schema.columns` su `id` più
+`config.fn_pannello_colonne_scrivibili(rel)`; ritirati `_EXCLUDED_COLUMNS` e il
+filtro su generate e identity. (2) `test_pannello_verbo_db` 2 verifica che la
+riga scritta porti esattamente `id` più le colonne della funzione. (3) Nessun
+test conta le righe; il presidio del registro itera le righe `pannello` della
+lista a DB. Nuovo presidio: `test_config_panel_registro_db` 1 confronta,
+tabella per tabella e nell'ordine, il metadata con la funzione. Suite mirata
+sul DB vero verde (39 test). Pagina `manual/api_config_tables.md` allineata.
+
 ✅ **Al frontend:** `config.aree_funzionali` è uscita dal registro
 `config-tables.js` il 2026-09-27 (con la sua etichetta
 `config_panel.tabelle.config.aree_funzionali`, rimasta orfana): il presidio
@@ -373,3 +400,5 @@ estratto dai tre YAML e il CSV caricato da `\copy`:
 | 2026-09-27 | Tid | D-P8 decisa: `aree_funzionali` fuori dal pannello, gestione in un accesso di amministrazione (D-P9, aperta: sede proposta `amm_software`). Accettate le due richieste del backend: colonne scrivibili in una sede, `CHECK (NOT pannello OR lookup)` |
 | 2026-09-27 | DB | Scritti e provati su `zeroerp_ci`, non applicati: CSV (`aree_funzionali`), `20260927-20` (`CHECK`), `-21` (`fn_pannello_colonne_scrivibili`), `-22` (verbo sulla sede unica). pgTAP: porta a 9, nuovo `test-fn-pannello-colonne-scrivibili-v1` (7). §6.1 e §4.2 (D-P9: proposta A, sola lettura) |
 | 2026-09-27 | Tid | `20260927-20…-22` e il seed applicati su dbdev (01:00), pgTAP verdi. Lato DB resta solo la D-P9. Al backend: metadata dalla funzione unica, ritiro di `_EXCLUDED_COLUMNS`, forma della risposta. Al frontend: D-P5 e `aree_funzionali` |
+| 2026-09-28 | Tid | **D-P9 decisa: A** (sola lettura, nome e ordine si cambiano nel CSV). Richiesta al team DB in §4.2. Corretta un'affermazione del §4.2: il nome delle aree a video viene dalla tabella, non dall'i18n |
+| 2026-09-28 | BE/FE | §6.1 fatto: metadata dalla funzione unica, `_EXCLUDED_COLUMNS` ritirata, presidio metadata ↔ funzione. D-P5 fatta: `config-tables.js` ritirato, il pannello legge la lista dall'API. «Salva» vuoto chiuso. La chiave i18n di `aree_funzionali` era già stata tolta il 27-09. Test BE mirati (39) e FE (467) verdi, build verde. Non committato. Poi P-6: guida dei permessi e PROJECT_CONTEXT aggiornati. Resta solo la D-P9 |

@@ -26,7 +26,7 @@
 > **Origine**: difetto M-4 di
 > [analisi-be-difetti-emersi-verifica-doc-api-core.md](../work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md),
 > diventato il cantiere
-> [analisi-accessi-credenziale-e-vesti.md](../work-in-progress/analisi-accessi-credenziale-e-vesti.md).
+> [analisi-accessi-credenziale-e-vesti.md](analisi-accessi-credenziale-e-vesti.md).
 > Decisioni di Tid del 2026-09-24:
 >
 > - **D-1**, *riletta il 2026-09-24 dopo l'analisi critica* — il blocco

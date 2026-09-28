@@ -51,14 +51,14 @@ function esitoLabel(v) {
 
 const form = reactive({ prerequisito_id: null, esito_richiesto: null })
 watch(
-  [() => coll.formMode.value, () => coll.rowInForm.value?.id],
+  [() => coll.formMode.value, () => coll.rigaInModifica.value?.id],
   () => {
     if (coll.formMode.value === 'create') {
       form.prerequisito_id = null
       form.esito_richiesto = null
     } else if (coll.formMode.value === 'edit') {
-      form.prerequisito_id = coll.rowInForm.value?.prerequisito_id ?? null
-      form.esito_richiesto = coll.rowInForm.value?.esito_richiesto ?? null
+      form.prerequisito_id = coll.rigaInModifica.value?.prerequisito_id ?? null
+      form.esito_richiesto = coll.rigaInModifica.value?.esito_richiesto ?? null
     }
   },
 )

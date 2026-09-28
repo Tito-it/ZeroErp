@@ -2,35 +2,40 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: ⭐ CIO' CHE IL REGISTRO DEL PANNELLO CONFIG DICHIARA SI PROVA PER
-#        INTERO (`feedback_contratto_dichiarato_provalo_intero`): per OGNI riga
-#        di `frontend/src/core/config-tables.js` la lista risponde (passa dal
-#        lookup generico), il metadata risponde, ogni colonna ha la sua
-#        etichetta in it.json E en.json, ogni FK nomina una relazione che esiste
-#        e il flag `references_lookup` dice il vero. Nasce il 2026-09-21 dal
-#        caso `magazzino.lotti`: dichiarata nel registro, senza `descrizione`,
-#        rifiutata dal lookup con un 400 che il pannello ingoiava — a video
-#        «lista vuota», e nessun presidio lo vedeva.
+# Scopo: ⭐ CIO' CHE IL PANNELLO CONFIG DICHIARA SI PROVA PER INTERO
+#        (`feedback_contratto_dichiarato_provalo_intero`): per OGNI riga di
+#        `config.tabelle_gestibili` con `pannello` la lista risponde (passa dal
+#        lookup generico), il metadata risponde con le colonne del verbo, ogni
+#        colonna ha la sua etichetta in it.json E en.json, ogni FK nomina una
+#        relazione che esiste e il flag `references_lookup` dice il vero. Nasce
+#        il 2026-09-21 dal caso `magazzino.lotti`: dichiarata nel registro,
+#        senza `descrizione`, rifiutata dal lookup con un 400 che il pannello
+#        ingoiava — a video «lista vuota», e nessun presidio lo vedeva.
+#        Dal 2026-09-28 il registro del frontend (`config-tables.js`) non c'e'
+#        piu' (D-P5, brief-db-pannello-config-verbo-generico): il pannello
+#        elenca `GET /core/config/tables/`, cioe' la lista a DB, e qui si legge
+#        quella.
 # Note: ⚠️ Le chiavi delle etichette sono COSTRUITE dal nome della colonna
 #       (`config_panel.campi.<col>`): `check_i18n_keys.py` non le vede, e a
 #       video il ripiego e' il nome grezzo — cioe' il difetto che questo
 #       cantiere ha chiuso. Questo test e' l'unico che se ne accorge.
-#       Gira sul DB provvisto (`richiedi_db_provvisto`): il registro e' del FE,
-#       le colonne sono del DB, e la giuntura la vede solo chi li legge insieme.
+#       Gira sul DB provvisto (`richiedi_db_provvisto`): le etichette sono del
+#       FE, tabelle e colonne del DB, e la giuntura la vede solo chi li legge
+#       insieme.
 # ------------------------------------------------------------
 #
 # Indice test:
-#  1. ogni rel del registro FE e' nel PANNELLO della lista a DB
-#     (`config.tabelle_gestibili.pannello`): fuori lista = 400 a video, e le
-#     tabelle con RLS non ci stanno (D-P2: il verbo non sa rimetterne il perimetro)
+#  1. il metadata di ogni rel offre `id` e le colonne che il verbo scrive
+#     (`config.fn_pannello_colonne_scrivibili`), non altre: la sede unica
+#     della regola (§6.1). Un campo in piu' nel form e' un salvataggio respinto
 #  2. ogni rel risponde alla lista (`fn_list_lookup_codici`, i parametri del pannello)
 #  3. ogni colonna del metadata ha l'etichetta in it.json e en.json; `uid` mai
 #  4. ogni `references` e' una relazione esistente; `references_column` e' la
 #     colonna referenziata; `references_lookup` e' vero sse la relazione e' fra
 #     quelle del lookup (`config.tabelle_gestibili.lookup`) — e in quel caso la colonna e' una che il lookup porta
 #     (`LOOKUP_COLONNE_VALORE`), altrimenti la `LookupSelect` salverebbe `undefined`
-#  5. ogni rel del registro ha l'etichetta `config_panel.tabelle.<schema>.<tabella>`
-#     in it.json e en.json (dal 21-09 il registro non porta piu' `label`)
+#  5. ogni rel del pannello ha l'etichetta `config_panel.tabelle.<schema>.<tabella>`
+#     in it.json e en.json (a video il ripiego e' la rel grezza)
 #  6. ogni rel che il FRONTEND passa al lookup generico (letta dal sorgente)
 #     e' nel lookup a DB
 
@@ -50,15 +55,8 @@ from apps.core.services.lookup_service import fn_list_lookup_codici
 from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
 
 _ROOT = Path(__file__).resolve().parents[5]
-_REGISTRO = _ROOT / "frontend" / "src" / "core" / "config-tables.js"
 _LOCALES = _ROOT / "frontend" / "src" / "locales"
 _PREFISSO = "config_panel.campi"
-
-
-# Scopo: le rel dichiarate dal registro FE, lette dal sorgente (e' un file di
-#        dati con una riga per tabella: la regex e' il suo parser).
-def _rel_del_registro() -> list[str]:
-    return re.findall(r"rel: '([a-z_]+\.[a-z_]+)'", _REGISTRO.read_text(encoding="utf-8"))
 
 
 # Le forme con cui il frontend passa una rel al LOOKUP GENERICO: la prop `rel`
@@ -110,19 +108,31 @@ class ConfigPanelRegistroDbTests(TestCase):
     def setUpClass(cls) -> None:
         super().setUpClass()
         richiedi_db_provvisto()
-        cls.rels = _rel_del_registro()
-        assert cls.rels, "registro FE vuoto o non letto"
         lista = TabelleGestibiliRepository()
-        cls.rel_pannello = frozenset(v["rel"] for v in lista.voci_pannello())
+        cls.rels = [v["rel"] for v in lista.voci_pannello()]
+        # ⚠️ Vuota = seed non caricato: i test sotto passerebbero a vuoto.
+        assert cls.rels, "config.tabelle_gestibili senza righe `pannello`: seed non caricato?"
         cls.rel_lookup = lista.rel_lookup()
 
-    # 1.
-    def test_ogni_rel_del_registro_e_nel_pannello(self) -> None:
-        fuori = sorted(set(self.rels) - self.rel_pannello)
-        self.assertEqual(
-            fuori, [],
-            "rel nel registro FE ma non nel pannello di config.tabelle_gestibili: la lista e' un 400",
-        )
+    # 1. ⭐ Il form e il verbo rispondono dalla STESSA funzione: si confronta il
+    #    metadata con la funzione, tabella per tabella, e anche l'ordine (e'
+    #    l'ordine dei campi a video).
+    def test_il_metadata_offre_le_colonne_che_il_verbo_scrive(self) -> None:
+        meta = ConfigMetadataRepository()
+        diverse: dict[str, tuple] = {}
+        with connection.cursor() as cur:
+            for rel in self.rels:
+                schema, tabella = rel.split(".", 1)
+                cur.execute("SELECT config.fn_pannello_colonne_scrivibili(%s)", [rel])
+                riga = cur.fetchone()
+                assert riga is not None
+                attese = riga[0] or []
+                colonne = meta.get_table_columns(schema, tabella)
+                offerte = [c["name"] for c in colonne if not c["is_pk"]]
+                chiavi = [c["name"] for c in colonne if c["is_pk"]]
+                if offerte != attese or chiavi != ["id"]:
+                    diverse[rel] = (chiavi + offerte, ["id", *attese])
+        self.assertEqual(diverse, {}, "metadata (offerte) diverso dalle colonne scrivibili del verbo (attese)")
 
     # 2. Ogni rel in un savepoint: si vogliono TUTTE le rotte in un giro, non
     #    la prima (il 21-09 erano tre — lotti, stati, titoli_cortesia — e una
@@ -143,7 +153,7 @@ class ConfigPanelRegistroDbTests(TestCase):
                 except Exception as exc:  # si raccoglie, si asserisce sotto
                     rotte[rel] = str(exc).splitlines()[0]
             transaction.set_rollback(True)
-        self.assertEqual(rotte, {}, "rel del registro FE che la lista del pannello non sa servire")
+        self.assertEqual(rotte, {}, "rel del pannello che la lista non sa servire")
 
     # 3.
     def test_ogni_colonna_ha_l_etichetta_in_entrambi_i_locales(self) -> None:

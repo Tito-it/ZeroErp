@@ -3,7 +3,10 @@
 // Consumato da wrapper di dominio thin (PreventivoNoteDrawer, ContrattoNoteDrawer,
 // ecc.) che istanziano l'apiClient con `makeNotesApi(basePath)`.
 //
-// Pattern formMode: null = lista, 'new' = crea, 'edit' = aggiorna.
+// Pattern formMode: null = lista, 'create' = crea, 'edit' = aggiorna. La
+// macchina e' il BB core `useFormInline` (sede unica, ok Tid 2026-09-28);
+// qui restano i verbi che ci aggiungono il form della nota. Fino a quel
+// giorno «crea» era 'new'.
 // Default applicativi minimi: anchor_tipo e posizione sono governati dal BE
 // (BE deriva da target_riga_id: DOCUMENTO/HEADER vs RIGA/AFTER). Stile via
 // `LookupSelect rel="config.note_stili"`.
@@ -24,6 +27,7 @@ import ToggleSwitch from 'primevue/toggleswitch'
 
 import { fetchParameterDefaults, lookupCodici } from '../apiCore'
 import { useApiHandler } from '../composables/useApiHandler'
+import { useFormInline } from '../composables/useFormInline'
 import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useDrawerClose } from '../composables/useDrawerClose'
 import { useDrawerFormPreserve, gestoreVisibile } from '../composables/useDrawerFormPreserve'
@@ -71,13 +75,15 @@ const { notes, total, loading: listLoading, loadAll, remove } = useNote({
 // le note per documento sono poche decine — niente paginazione UX nella v1.
 const PAGE_SIZE_DEFAULT = 200
 
-const formMode = ref(null)
-const editId = ref(null)
+// ⚠️ Il click apre la modifica solo in scrittura: il getter e' letto al click.
+const {
+  formMode, formAperto, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, azioneNuovaRiga,
+} = useFormInline({ puoModificare: () => !isReadonly.value })
 const form = ref(defaultForm())
 // Modifiche non salvate del form inline (nuova/modifica nota): la fotografia
 // vive finche' il form e' aperto, e si azzera da sola quando torna la lista.
 const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, {
-  visibile: () => props.visible && formMode.value !== null,
+  visibile: () => props.visible && formAperto.value,
 })
 const canSelectRiga = computed(() =>
   props.supportsRiga && props.righeOptions.length > 0,
@@ -86,15 +92,13 @@ const notesTableKey = computed(() =>
   notes.value.map(n => n.id).join('|') || 'empty',
 )
 const pageActions = computed(() => [
-  {
+  azioneNuovaRiga({
     key: 'new',
-    kind: 'primary',
     label: t('common.new'),
     tooltip: t('note.aggiungi'),
-    icon: MANAGE_ICONS.ADD,
-    visible: !isReadonly.value && !formMode.value,
+    visible: () => !isReadonly.value,
     command: onStartNew,
-  },
+  }),
 ])
 
 function defaultForm() {
@@ -140,8 +144,7 @@ watch(
   [() => props.visible, () => props.apiClient],
   async ([visible]) => {
     if (!visible) return
-    formMode.value = null
-    editId.value = null
+    chiudiForm()
     form.value = defaultForm()
     await loadAll({ page_size: PAGE_SIZE_DEFAULT })
   },
@@ -149,15 +152,14 @@ watch(
 )
 
 async function onStartNew() {
-  formMode.value = 'new'
-  editId.value = null
+  nuovaRiga()
   form.value = defaultForm()
   fissa()
   // Pre-fill lingua dal parametro sistema (best-effort, errori silenti).
   // L'utente puo' cambiare la selezione; il BE applica comunque il
   // fallback in save se id_lingua e' null.
   const linguaId = await resolveDefaultLinguaId()
-  if (linguaId != null && formMode.value === 'new') {
+  if (linguaId != null && formMode.value === 'create') {
     // Il default arriva dopo: rientra nella fotografia solo se l'utente non
     // ha ancora toccato niente (altrimenti fisseremmo anche le sue modifiche).
     const intatto = !modificato.value
@@ -167,8 +169,9 @@ async function onStartNew() {
 }
 
 function onStartEdit(n) {
-  formMode.value = 'edit'
-  editId.value = n.id
+  apriRiga(n)
+  // In sola lettura il BB non apre: niente form da popolare.
+  if (!formAperto.value) return
   form.value = {
     testo_md: n.testo_md || n.testo || '',
     id_stile: n.id_stile ?? null,
@@ -181,13 +184,12 @@ function onStartEdit(n) {
 }
 
 function onRowClick(event) {
-  if (formMode.value || isReadonly.value) return
+  if (formAperto.value) return
   onStartEdit(event.data)
 }
 
 function onCancelForm() {
-  formMode.value = null
-  editId.value = null
+  chiudiForm()
   form.value = defaultForm()
 }
 
@@ -220,18 +222,18 @@ async function onSaveForm() {
     payload.id_lingua = form.value.id_lingua
   }
   // target_riga_id solo in create (BE lo rifiuta in PATCH).
-  if (formMode.value === 'new' && form.value.target_riga_id != null) {
+  if (formMode.value === 'create' && form.value.target_riga_id != null) {
     payload.target_riga_id = form.value.target_riga_id
   }
-  const toCall = formMode.value === 'edit' && editId.value
-    ? () => props.apiClient.updateNota(editId.value, payload)
+  const editId = rigaInModifica.value?.id
+  const toCall = formMode.value === 'edit' && editId
+    ? () => props.apiClient.updateNota(editId, payload)
     : () => props.apiClient.createNota(payload)
   const result = await execute(toCall, {
     successMessage: t('note.saved'),
   })
   if (result === null) return
-  formMode.value = null
-  editId.value = null
+  chiudiForm()
   form.value = defaultForm()
   await loadAll({ page_size: PAGE_SIZE_DEFAULT })
   // `total` è già aggiornato dal loadAll qui sopra.

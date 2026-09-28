@@ -42,7 +42,11 @@ ordinamento validato contro whitelist.
 ### 1. `GET /api/v1/core/config/tables/`
 
 Le tabelle manutenibili. Risposta: `results` con `{schema, table, rel}` per ogni
-riga della lista con `pannello = true`, ordinate per `rel`.
+riga della lista con `pannello = true`, ordinate per `rel`. ⭐ Dal 2026-09-28 e'
+l'**unica** lista del pannello: il FE la legge per la colonna di sinistra, e il
+suo registro `config-tables.js` e' ritirato. Una tabella nuova nel pannello =
+una riga nel CSV del DB piu' l'etichetta `config_panel.tabelle.<schema>.<tabella>`
+nei locales del FE (il presidio `test_config_panel_registro_db` la chiede).
 
 ### 2. `GET /api/v1/core/config/tables/{rel}/metadata/`
 
@@ -63,12 +67,13 @@ li conosce. Ogni colonna porta anche `has_default` (c'era gia') (il DB la riempi
 anche quando `default` e' `null` perche' non e' un literal — `now()`,
 `nextval`): il FE marca obbligatoria una colonna solo se NOT NULL **senza**
 default.
-⚠️ Escluse, oltre alle colonne di audit e `tx_id`/`storicizza`, le **identita'
-tecniche** che scrive il DB (`uid` con default `uuidv7()`): un campo che
-l'operatore non deve compilare non si mostra come obbligatorio. Escluse anche
-le colonne **generate** e le identity `ALWAYS` (salvo `id`): il verbo non le
-scrive, e offrirle nel form sarebbe offrire un campo che il salvataggio
-rifiuta.
+⭐ **Quali colonne lo dice il DB**: `id` piu' quelle di
+[`config.fn_pannello_colonne_scrivibili`](/dbzero/config/manual/fn_pannello_colonne_scrivibili),
+la stessa funzione con cui il verbo decide quali campi accettare (sede unica
+dal 2026-09-27). Restano fuori le colonne che il DB scrive per ogni riga
+(audit, `tx_id`, `storicizza`, `uid`), le generate e le identity `ALWAYS`.
+Fino ad allora il metadata aveva una sua copia di quell'elenco: se le due
+divergevano, il form offriva un campo che il salvataggio rifiuta.
 
 ### 3. `GET /api/v1/core/config/tables/{rel}/`
 
@@ -88,8 +93,9 @@ ricerca. Un client che cicla su piu' tabelle prende 429 se non respira.
 
 ### 4. `POST /api/v1/core/config/tables/{rel}/`
 
-Crea un record col verbo e risponde con la riga scritta (senza le colonne di
-audit). Body JSON con le sole colonne **scrivibili** della tabella — quelle del
+Crea un record col verbo e risponde con la riga scritta: `id` e i campi del
+form, cioe' le colonne del metadata (dal 2026-09-27; prima «tutto tranne le
+colonne di audit»). Body JSON con le sole colonne **scrivibili** della tabella — quelle del
 metadata tranne `id`. ⛔ Dal 2026-09-25 una chiave che non e' una colonna
 scrivibile si **rifiuta** (`E_PANNELLO_CAMPO_NON_AMMESSO`, col campo nel
 contesto) invece di essere scartata in silenzio, e un body vuoto e'

@@ -15,6 +15,7 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useFormInline } from '../../core/composables/useFormInline'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
@@ -94,16 +95,16 @@ const {
       visible: isBozza.value,
       command: () => { showVariazioneDialog.value = true },
     },
-    {
+    // ⚠️ A form aperto «Nuovo» sparisce (regola del BB `useFormInline`):
+    //    prima restava attivo durante la modifica di una riga, e un clic
+    //    buttava via la modifica in corso.
+    azioneNuovaRiga({
       key: 'new',
-      kind: 'primary',
       label: t('common.new'),
       tooltip: t('vendite.listini.aggiungi_prezzo_hint'),
-      icon: MANAGE_ICONS.ADD,
-      visible: isBozza.value,
-      disabled: formMode.value === 'create' || isReadonly.value,
+      visible: () => isBozza.value,
       command: onNew,
-    },
+    }),
   ],
   searchTableOptions: {
     defaultSortField: 'articolo_descrizione',
@@ -113,14 +114,18 @@ const {
 const DRAWER_WIDTH_RIGHE_LISTINO = '1000px'
 
 // Stato master-detail inline
-// formMode: null (nessun form visibile), 'create', 'edit'
-const formMode = ref(null)
-const rigaEditId = ref(null)
+// formMode: null (nessun form visibile), 'create', 'edit' — la macchina e' il
+// BB core `useFormInline` (sede unica, ok Tid 2026-09-28); qui restano i verbi
+// che ci aggiungono il form del prezzo. Il click apre la modifica solo in
+// BOZZA (getter letto al click: `isBozza` e' dichiarata piu' sotto).
+const {
+  formMode, formAperto, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, azioneNuovaRiga,
+} = useFormInline({ puoModificare: () => isBozza.value })
 const form = ref({})
 // Modifiche non salvate del form inline: conferma alla chiusura del drawer e
 // all'Annulla del form, scritta arancio nel titolo.
 const inline = useDrawerFormPreserve(form, {
-  visibile: () => props.visible && formMode.value !== null,
+  visibile: () => props.visible && formAperto.value,
 })
 const modificato = inline.modificato
 
@@ -182,8 +187,7 @@ async function reloadAll() {
 // === Azioni master ===
 function onNew() {
   form.value = defaultForm()
-  formMode.value = 'create'
-  rigaEditId.value = null
+  nuovaRiga()
   resetUomOptions()
   inline.fissa()
 }
@@ -202,9 +206,9 @@ function onRowClick(r) {
     })
     return
   }
-  if (!isBozza.value) {
-    return
-  }
+  apriRiga(r)
+  // Fuori da BOZZA il BB non apre: sola lettura, nessun form.
+  if (!formAperto.value) return
   form.value = {
     articolo_id: r.articolo_id,
     articolo_obj: {
@@ -216,8 +220,6 @@ function onRowClick(r) {
     uom_id: r.uom_id,
     prezzo: r.prezzo != null ? Number(r.prezzo) : null,
   }
-  formMode.value = 'edit'
-  rigaEditId.value = r.id
   inline.fissa()
   // Edit: UoM gia' nel form, no autopick.
   loadUomPerArticolo(r.articolo_id)
@@ -314,8 +316,7 @@ async function onBundleConfirm({ overrides }) {
 }
 
 function closeForm() {
-  formMode.value = null
-  rigaEditId.value = null
+  chiudiForm()
   form.value = {}
   resetUomOptions()
 }
@@ -363,7 +364,7 @@ async function onSave() {
     }
   } else {
     const result = await execute(
-      () => updateRiga(props.listinoId, props.versione.id, rigaEditId.value, payload),
+      () => updateRiga(props.listinoId, props.versione.id, rigaInModifica.value?.id, payload),
       { successMessage: t('vendite.listini.riga_salvata') }
     )
     if (result !== null) {
@@ -402,7 +403,7 @@ function onDelete(row) {
     )
     if (result !== null) {
       // Se stavo editando questa riga, chiudi il form.
-      if (rigaEditId.value === row.id) closeForm()
+      if (rigaInModifica.value?.id === row.id) closeForm()
       await store.fetchList()
     }
   })

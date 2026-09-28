@@ -11,11 +11,10 @@
 > - il pannello permessi è stato rifatto il 2026-09-05 (tutte le voci, colonna
 >   «ereditato», reset): la sezione UX qui sotto è aggiornata, e l'albero
 >   gerarchico è **scartato** (decisione di Tid: si resta nel drawer);
-> - il modello **piatto** su cui la v3 costruisce non è allineato: oggetti a
->   catalogo che nessuno applica, e oggetti applicati che non sono a catalogo.
->   Si sistema prima, in
->   [brief-db-be-fe-catalogo-oggetti-permessi.md](brief-db-be-fe-catalogo-oggetti-permessi.md),
->   che è ora un **prerequisito** della v3;
+> - il modello **piatto** su cui la v3 costruisce è **allineato dal
+>   2026-09-28**: catalogo, BE, FE e pannello DB dicono la stessa cosa su ogni
+>   oggetto personalizzabile, e un test lo presidia
+>   ([brief-db-be-fe-catalogo-oggetti-permessi.md](../work-done/brief-db-be-fe-catalogo-oggetti-permessi.md), chiuso);
 > - la gerarchia padre/figlio dipende dal **tetto d'area**, difetto aperto e
 >   senza decisione (`.codex/PROJECT_CONTEXT.md` § «Aperto»).
 
@@ -58,10 +57,13 @@ Aggiungere un sotto-oggetto al sistema permessi richiede tre passi coordinati:
 ### 1. DB — migration Liquibase
 
 Aggiungere una riga al catalogo `config.area_model_overrides` per il sotto-model
-(es. `('anagrafiche', 'indirizzo')` sull'area `anagrafiche`). ⚠️ Nella forma che
-`linee-guida-sql §11.2` prescrive per i dati di `80_data`, non con un `INSERT`
-scritto a mano in una migration: la forma del seed del catalogo è in discussione
-nel [brief del catalogo](brief-db-be-fe-catalogo-oggetti-permessi.md) (D-3).
+(es. `('anagrafiche', 'indirizzo')` sull'area `anagrafiche`): una riga nel CSV
+`80_data/sql/config/area_model_overrides.csv` (D-3 del
+[brief del catalogo](../work-done/brief-db-be-fe-catalogo-oggetti-permessi.md)), mai un `INSERT` in una migration.
+⚠️ **L'ordine è BE e FE prima, catalogo dopo**: un oggetto a catalogo che il BE
+non chiede ancora nasconde i pulsanti e lascia aperta l'API. Nell'attesa
+l'oggetto sta in `_IN_ATTESA_DI_CATALOGO`
+(`backend/apps/core/tests/test_catalogo_oggetti_rotte.py`).
 
 Da questo momento il catalogo sa che `indirizzo` e' configurabile come oggetto autonomo.
 
@@ -190,20 +192,20 @@ Piu' flessibile, supporta N:M. Un indirizzo puo' essere figlio sia di soggetto c
 
 ## Stato attivazione attuale (base per v3)
 
-> 🔄 **Riscritto il 2026-09-26.** La tabella di aprile (7 model) era vecchia: il
-> catalogo oggi ha 12 oggetti, e non coincide con gli oggetti che BE e FE
-> applicano davvero. L'inventario per oggetto, con le quattro porte (catalogo,
-> BE, FE, pannello DB), sta **in un posto solo**: il §2 del
-> [brief del catalogo](brief-db-be-fe-catalogo-oggetti-permessi.md). Qui non si
-> ricopia, perché due copie divergerebbero al primo aggiornamento.
+> 🔄 **Riscritto il 2026-09-28.** Gli oggetti personalizzabili sono le righe
+> `riservato = f` del CSV `80_data/sql/config/area_model_overrides.csv`, e
+> `backend/apps/core/tests/test_catalogo_oggetti_rotte.py` fallisce se BE o FE
+> non li applicano tutti, o ne applicano uno fuori catalogo. L'elenco sta lì, e
+> qui non si ricopia: due copie divergerebbero al primo aggiornamento. Come ci
+> si è arrivati: [brief del catalogo](../work-done/brief-db-be-fe-catalogo-oggetti-permessi.md).
 
 Candidati per la v3 **non ancora** a catalogo né applicati (sotto-oggetti veri):
 - `anagrafiche.indirizzo` — figlio di soggetto/cliente/fornitore
 - `anagrafiche.contatto` — figlio di soggetto/cliente/fornitore
 
-(`billing_account`, `fattura`, `preventivo`, `listino` e `pratica`, candidati ad
-aprile, sono a catalogo dal seed `20260410-11`: vanno **applicati**, e lo fa il
-brief del catalogo.)
+(`fattura`, `preventivo`, `listino` e `pratica`, candidati ad aprile, sono a
+catalogo e applicati. `billing_account` è uscito dal catalogo: è un pezzo del
+cliente, e il permesso è `cliente` — D-5 del brief del catalogo.)
 
 ---
 
@@ -225,7 +227,7 @@ brief del catalogo.)
              i suoi oggetti col livello risolto; manca `is_override`. La matrice FE lo
              ricava dagli override. Da riaprire solo se la gerarchia lo richiede
 - [x] BE-3 — ~~Registrare `model_permission` sulle view mancanti~~ — spostato nel
-             [brief del catalogo](brief-db-be-fe-catalogo-oggetti-permessi.md) §3.2
+             [brief del catalogo](../work-done/brief-db-be-fe-catalogo-oggetti-permessi.md) §3.2, chiuso il 2026-09-28
 
 ### Frontend
 
@@ -243,9 +245,8 @@ brief del catalogo.)
 ## Dipendenze
 
 - v2 completata ✅
-- ⏳ **Modello piatto allineato**:
-  [brief-db-be-fe-catalogo-oggetti-permessi.md](brief-db-be-fe-catalogo-oggetti-permessi.md).
-  Un sotto-oggetto aggiunto oggi erediterebbe il disallineamento
+- ✅ **Modello piatto allineato** il 2026-09-28:
+  [brief-db-be-fe-catalogo-oggetti-permessi.md](../work-done/brief-db-be-fe-catalogo-oggetti-permessi.md)
 - 🔴 **Tetto d'area** (`.codex/PROJECT_CONTEXT.md` § «Aperto»): decide se un
   figlio può essere più permissivo del padre. Senza, la gerarchia non ha una
   semantica

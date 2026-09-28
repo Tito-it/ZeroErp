@@ -20,8 +20,8 @@ import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { MANAGE_ICONS } from '../../core/constants'
 
 defineProps({
-  // Istanza di useEditableCollection (espone formMode/saving/startCreate/
-  // closeForm/buildRowActions).
+  // Istanza di useEditableCollection (espone formMode/saving/nuovaRiga/
+  // chiudiForm/buildRowActions).
   coll: { type: Object, required: true },
   rows: { type: Array, default: () => [] },
   readonly: { type: Boolean, default: false },
@@ -37,7 +37,7 @@ const { t } = useI18n()
 <template>
   <div>
     <div v-if="!readonly" class="coll-toolbar">
-      <Button :label="addLabel" :icon="MANAGE_ICONS.ADD" size="small" text @click="coll.startCreate()" />
+      <Button :label="addLabel" :icon="MANAGE_ICONS.ADD" size="small" text @click="coll.nuovaRiga()" />
     </div>
     <DataTable :value="rows" data-key="id" striped-rows size="small" class="app-datatable app-datatable--inner">
       <template #empty>{{ emptyLabel }}</template>
@@ -52,7 +52,7 @@ const { t } = useI18n()
     <div v-if="coll.formMode.value" class="app-drawer-section coll-form">
       <slot name="form" />
       <div class="coll-form__actions">
-        <Button :label="t('common.cancel')" severity="secondary" text @click="coll.closeForm()" />
+        <Button :label="t('common.cancel')" severity="secondary" text @click="coll.chiudiForm()" />
         <Button :label="t('common.save')" :disabled="!canSave" :loading="coll.saving.value" @click="$emit('save')" />
       </div>
     </div>

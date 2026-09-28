@@ -150,7 +150,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
     :style="{ width: DRAWER_WIDTH.STANDARD }"
   >
     <template #header>
-      <DrawerTitle :modificato="modificatoInline" :action="formMode === 'new' ? t('common.new') : t('common.edit')" :title="t('anagrafiche.conti_bancari.titolo')" :icon="MANAGE_ICONS.CONTI_BANCARI" />
+      <DrawerTitle :modificato="modificatoInline" :action="formMode === 'create' ? t('common.new') : t('common.edit')" :title="t('anagrafiche.conti_bancari.titolo')" :icon="MANAGE_ICONS.CONTI_BANCARI" />
     </template>
 
     <!-- Livello oggetto BLOCCATO: pannello sostitutivo (safety net se

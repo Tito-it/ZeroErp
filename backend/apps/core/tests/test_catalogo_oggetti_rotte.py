@@ -83,15 +83,13 @@ def _readonly_models_fe() -> set[str]:
 
 
 # ⏳ Oggetti che BE (model_permission su tutte le rotte) e FE (READONLY_MODELS)
-#    applicano gia', in attesa della riga di catalogo (§3.1 punto 1 del brief,
-#    richiesta al team DB il 2026-09-28). Senza la riga vale l'area, come prima:
-#    il giorno in cui entra, le quattro porte dicono gia' la stessa cosa.
-_IN_ATTESA_DI_CATALOGO: dict[tuple[str, str], str] = {
-    ("vendite", "ordine"): "caso B, BE e FE applicati il 2026-09-28",
-    ("vendite", "ddt"): "caso B, BE e FE applicati il 2026-09-28",
-    ("vendite", "contratto"): "caso B, BE e FE applicati il 2026-09-28",
-    ("vendite", "reso"): "caso B, BE e FE applicati il 2026-09-28",
-}
+#    applicano gia', in attesa della riga di catalogo chiesta al team DB. Senza
+#    la riga vale l'area, come prima: il giorno in cui entra, le quattro porte
+#    dicono gia' la stessa cosa.
+# ⭐ VUOTO dal 2026-09-28: `ordine`, `ddt`, `contratto`, `reso` sono entrati
+#    nel CSV (§3.6 del brief). Il registro resta perche' e' la strada del
+#    prossimo oggetto (BE e FE prima, catalogo poi), e il test 6 la sorveglia.
+_IN_ATTESA_DI_CATALOGO: dict[tuple[str, str], str] = {}
 
 
 # Scopo: un oggetto del catalogo e il perimetro delle sue rotte (pattern sul

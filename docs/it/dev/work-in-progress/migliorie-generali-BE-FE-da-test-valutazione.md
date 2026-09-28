@@ -29,6 +29,15 @@
 > drf-spectacular di D3-b è andato a zero (`W001` 54 → 0, `W002` 73 → 0): D3-b
 > resta in §3 solo per la decisione sulla CI. In §3 restano **D1-f, D2-b, D3-b,
 > D3-c, D9-a, D10-bis, D12**.
+>
+> ✅ **Riallineato il 2026-09-28** sulle liste: il registro delle `DataTable`
+> grezze è sceso da 45 a **33** (+3 standard) e quelle senza motivazione da 33 a
+> **12**, con la riclassificazione del 26-09 e il
+> [brief delle liste grezze](../work-done/brief-db-liste-datatable-grezze.md)
+> chiuso il 28-09 (D10, §9). Riletti con la loro data i numeri di §2 (presidi
+> FE da 6 a 13, file `.spec.js` da 3 a 57) e di D9 (test sul DB vero da 22 a
+> 82 file). Corretto il rimando di D2-b: la riga sull'`assert` sta in
+> `PROJECT_CONTEXT.md`, non in `AGENTS.md`. Le voci aperte restano le stesse.
 
 ---
 
@@ -100,7 +109,8 @@ workflow. Al 2026-09-12 i file `.spec.js` erano **tre** (`useApiHandler`,
 fissano, non la superficie coperta. ⭐ Dal **2026-09-23** provano anche i
 **componenti** (D1-d-bis chiusa): il DOM si accende per file
 (`// @vitest-environment jsdom`), non globalmente, così i test puri — che
-restano la maggioranza — non pagano l'ambiente di chi monta.
+restano la maggioranza — non pagano l'ambiente di chi monta. Al **2026-09-28**
+i file `.spec.js` in git sono **57**, e otto accendono il DOM.
 
 ### 2.2 Analisi statica del backend — `ruff`, dal 2026-09-09
 
@@ -139,7 +149,8 @@ fallisce, la richiesta non viene servita.
 83 composable, 97 componenti core, 48 moduli API, 7 store globali, 16 utility.
 **Un solo** file importa `axios` (`src/core/api.js`); `v-html` a zero;
 `console.log` a zero; 63 view su `<ListaConfigurabile>` più 8 su
-`DrawerTabLista`. `bersagli.js` trasforma i `targets` di un errore in un
+`DrawerTabLista` (rilette il **2026-09-28**: **71** file montano
+`<ListaConfigurabile>` e **21** `<DrawerTabLista>`). `bersagli.js` trasforma i `targets` di un errore in un
 pulsante e degrada in modo esplicito (tipo senza destinazione, area BLOCCATA, id
 non convertibile ⇒ nessun pulsante).
 
@@ -154,10 +165,11 @@ lingua giusta è **completa**, e il seed `config/messaggi_errore.csv` ha 846
 righe `it` e **1** `en`: il consumatore esiste e aspetta il catalogo (gemello
 §2.3).
 
-### 2.7 Sei presidi scritti apposta per il frontend, in CI
+### 2.7 I presidi scritti apposta per il frontend, in CI — 13 al 2026-09-28
 
 Raccolti in `npm run guards` (`run-s guard:*`): chi ne aggiunge uno lo trova in
-CI senza toccare il workflow.
+CI senza toccare il workflow. Erano sei al 09-10; lo **scopo** di ognuno sta in
+testa al suo file in `frontend/scripts/`, e la tabella dice solo cosa tiene.
 
 | Presidio                                      | Cosa tiene                                                                                                                        |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
@@ -167,6 +179,13 @@ CI senza toccare il workflow.
 | `check-primeicons-codepoints.mjs`             | codepoint cablati + baseline anti-drift                                                                                           |
 | `check-keepalive-onactivated.mjs` (09-10, D8) | una view sotto `<KeepAlive>` ha un `onActivated`, suo o di un composable — criterio derivato dal router e risolto transitivamente |
 | `check-datatable-baseline.mjs` (09-10, D10)   | il registro delle `DataTable` grezze **può solo calare**                                                                          |
+| `check-dialog-chrome.mjs` (09-18)             | il chrome delle dialog modali in una sede sola (`DIALOG_CHROME`, `AppDialog`, `useConfirmAction`)                                 |
+| `check-filtri-lista.mjs` (09-22)              | `<FiltriLista>` è la sede dei filtri; registro `filtri-lista.baseline.json` a cricchetto, a **zero** su tutte e tre le voci dal 09-23 |
+| `check-capability-contratto.mjs` (09-23)      | ogni campo `capabilities.*` letto dal frontend è emesso davvero da una `fn_available_actions_*`                                   |
+| `check-api-componenti.mjs` (09-26)            | un componente non parla HTTP: l'URL vive in un modulo `api/` o dietro uno store                                                   |
+| `check-confini-domini.mjs` (09-26)            | `core/` non importa un dominio; ciò che un dominio aggiunge passa dai registri                                                     |
+| `check-lista-stato-esposto.mjs` (09-26)       | uno store su `useListaEmptyStateFetch` ne espone lo stato **intero**                                                              |
+| `check-media-soglie.mjs` (09-26)              | una soglia `@media` è una di `BREAKPOINTS`, in forma canonica                                                                     |
 
 ### 2.8 La convenzione `# Scopo:` è reale
 
@@ -214,8 +233,10 @@ oggi i due lati sono asimmetrici. Sede della decisione:
 
 **Aperto — D2-b**: decidere **se** il progetto vuole un type checker. Se sì,
 `python.analysis.typeCheckingMode` nel repo o `mypy --follow-imports=skip` sui
-soli `apps/*/services/`; se no, togliere da `AGENTS.md` la riga sull'`assert`
-«per aiutare il type checker», che oggi chiede un lavoro a beneficio di nessuno.
+soli `apps/*/services/`; se no, togliere da `PROJECT_CONTEXT.md` §«Error
+handling» la riga `assert value is not None  # sempre dopo require, per il type
+checker`, che oggi chiede un lavoro a beneficio di nessuno. (Fino al 28-09 qui
+c'era scritto `AGENTS.md`, dove la riga non c'è.)
 ⚠️ È la metà che vedrebbe i difetti di giuntura che una suite mockata (D9) non
 può vedere.
 
@@ -334,11 +355,13 @@ nell'elenco a cricchetto del passo `check --deploy` e si tolgono a §1 chiusa.
 giusto per validazione, dedup e not-found, non una copertura d'integrazione.
 
 ⭐ Il livello che attraversa la giuntura esiste e cresce da solo: **22 file** con
-`richiedi_db_provvisto` (rimisurato l'11-09; erano 19 il 09-09), accesi in CI da
-`ZEROERP_TEST_DB_E2E=1`, registrati in `api.md` §Test dal 09-09.
+`richiedi_db_provvisto` (rimisurato l'11-09; erano 19 il 09-09; **82** il
+2026-09-28), accesi in CI da `ZEROERP_TEST_DB_E2E=1`, registrati in `api.md`
+§Test dal 09-09.
 
-**Aperto — D9-a**: i sedici smoke di `backend/scripts/tests/` non li lancia
-niente. Sono isolati in transazione con rollback e il registro
+**Aperto — D9-a**: gli smoke Python di `backend/scripts/tests/` (sedici al
+09-09, **diciassette** al 28-09 con quello dell'inventario di magazzino) non li
+lancia niente. Sono isolati in transazione con rollback e il registro
 `baseline-smoke.tsv` ha **due** righe — ma ⛔ **in CI non si possono mettere
 così**: cercano i soggetti nei dati esistenti e su un DB ricostruito da zero
 uscirebbero quasi tutti `SENZA_MATERIA`, cioè un cancello verde per
@@ -356,8 +379,9 @@ Un registro è una buona invenzione **a condizione che scenda**. Stato:
 | -------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Errori `oxlint`                        | **0**                       | ✅ cancello in CI (`npm run lint`, senza `--fix`), dal 09-09                                                                                                                                                                                                          |
 | Rilievi `ruff`                         | **0**                       | ✅ cancello in pre-commit e CI, dal 09-09                                                                                                                                                                                                                             |
-| `DataTable` grezza in una view         | **45** grezze (+3 standard) | ✅ **cricchetto dal 09-10**: `check-datatable-baseline.mjs` + registro `frontend/scripts/datatable.baseline.json` che **elenca i file**. Rosso se cresce, rosso **anche se cala** senza riscrivere il registro                                                        |
-| …di cui senza commento di motivazione  | **33**                      | ✅ seconda soglia dello stesso cricchetto (finestra: quattro righe sopra l'import)                                                                                                                                                                                    |
+| `DataTable` grezza in una view         | **33** grezze (+3 standard), 28-09; erano 45 il 09-10 | ✅ **cricchetto dal 09-10**: `check-datatable-baseline.mjs` + registro `frontend/scripts/datatable.baseline.json` che **elenca i file**. Rosso se cresce, rosso **anche se cala** senza riscrivere il registro. ⭐ **Cala davvero dal 26-09** (§9 D10)                  |
+| …di cui senza commento di motivazione  | **12**, 28-09; erano 33      | ✅ seconda soglia dello stesso cricchetto (finestra: quattro righe sopra l'import). Dieci delle 12 sono **decisioni di Tid aperte** ([brief delle liste grezze](../work-done/brief-db-liste-datatable-grezze.md) §5); le righe di `FatturaDrawer` sono nel [brief righe documento](brief-db-liste-righe-documento.md); gli step di `PraticaFlussiTab` sono Gruppo B per il piano e manca solo il commento |
+| Filtri di lista scritti a mano         | **0** su tre voci, dal 09-23 | ✅ cricchetto `check-filtri-lista.mjs` + `filtri-lista.baseline.json` (blocchi grezzi, larghezze inline, coppie di date a mano)                                                                                                                                        |
 | File tracciati senza header di licenza | 1.169 su 5.787 (09-10)      | ✅ cala davvero (erano 2.042 il 08-26); l'hook guarda i soli file aggiunti, per scelta                                                                                                                                                                                |
 | `baseline-smoke.tsv`                   | 2 su 16                     | ⛔ nessun verso: vive o muore con D9-a                                                                                                                                                                                                                                |
 | `skip_area_check = True`               | 73 view (09-12)             | ✅ **presidio dal 09-12** (D15): chi **scrive** con lo skip dichiara un `<metodo>_permission` o sta in un registro motivato; le 15 **mute** sono un registro a cricchetto. ⚠️ Resta una lettura, non un conteggio, la legittimità delle sole **letture** cross-dominio |
@@ -365,6 +389,18 @@ Un registro è una buona invenzione **a condizione che scenda**. Stato:
 **Aperto — D10-bis**: la baseline degli smoke dipende da D9-a; degli
 `skip_area_check` resta da leggere la sola parte che il presidio non copre, le
 letture cross-dominio (le scritture e i muti sono in D15).
+
+⚠️ **Le `DataTable` grezze non sono in D10-bis**: il registro ha un verso e
+cala, e ciò che lo tiene sopra zero sono quasi solo decisioni, non letture.
+L'unica lettura rimasta è il commento che manca su `PraticaFlussiTab` (tabella
+degli step). La sede di
+quelle decisioni è il registro del
+[piano PrimeVue 5](piano-migrazione-primevue-5.md) (§«Gruppo B»), non questo
+documento. Il prossimo passo dichiarato è
+[brief-db-liste-righe-documento.md](brief-db-liste-righe-documento.md): le
+righe di un documento, oggi eccezione **nominata** (`RigheMasterDetailTable`),
+diventano `<ListaConfigurabile>` (decisione di Tid del 27-09; al 28-09 il
+lavoro non è ancora avviato e ci sono sette decisioni aperte al suo §8.9).
 
 ### D12 — La superficie dei portali esiste a database e non ha porte
 
@@ -414,9 +450,9 @@ Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione
 | **Perimetro e permessi (applicativo)**  | 🟠 medio | **7,5/10** | Catena unica, fail-closed, reset GUC incondizionato. ✅ 25-09 D5 chiuso con presidio aree/catalogo. ✅ 12-09: lo skip muto (D15) deciso e chiuso su tutte e 15 le view, presidiato dagli attributi **e** dal percorso reale |
 | **Correttezza dei contratti di lista**  | 🟠 medio | **8/10**   | Lookup con `troncato`, presidiato sul DB vero (D6). Nessun cancello sui `count: len()` senza `LIMIT`                                                                                                                   |
 | **Simmetria del dominio**               | 🟠 medio | **4/10**   | `acquisti`/`magazzino` modellati a DB e vuoti su BE e FE. La decisione dell'11-09 dà un verso al debito, non scrive il codice: il voto si muove col comportamento                                                      |
-| **Building block — frontend**           | 🟡 basso | **8,5/10** | Un solo punto HTTP, `bersagli`, contratto KeepAlive presidiato (D8). Restano le `DataTable` senza motivo                                                                                                               |
+| **Building block — frontend**           | 🟡 basso | **9/10**   | Un solo punto HTTP (presidiato anche nei componenti dal 26-09), `bersagli`, contratto KeepAlive presidiato (D8), 13 guard. `DataTable` grezze 45 → 33 e senza motivo 33 → 12 (28-09): le rimaste aspettano una decisione di Tid (voto rivisto il 28-09; era 8,5) |
 | **Multilingua**                         | 🟡 basso | **9/10**   | Parità perfetta e guard in CI. Il catalogo a monte è monolingue (§2.6)                                                                                                                                                 |
-| **Gestione del debito**                 | 🟡 basso | **8/10**   | Tre registri con cancello o cricchetto (D10). Senza verso: `skip_area_check` e baseline smoke                                                                                                                          |
+| **Gestione del debito**                 | 🟡 basso | **8/10**   | Registri con cancello o cricchetto (D10), e quello delle `DataTable` è sceso davvero il 26-28/09. Senza verso: le letture cross-dominio con `skip_area_check` e la baseline smoke                                        |
 | **Documentazione di contesto**          | 🟡 basso | **9/10**   | Sette righe su sette chiuse (§1)                                                                                                                                                                                       |
 
 ### Il giudizio, al 2026-09-12 (elenco degli aperti riallineato al 26-09)
@@ -481,7 +517,7 @@ D3-c, D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di l
 
 * [x] **D2-a** — ✅ 2026-09-09 (`F,E9`) e 2026-09-10 (allargamento): `ruff.toml`.
 * [ ] **D2-b** — decidere **se** il progetto vuole un type checker; se no,
-      togliere da `AGENTS.md` la riga sull'`assert` «per aiutare il type checker».
+      togliere da `PROJECT_CONTEXT.md` la riga sull'`assert` «per il type checker».
 
 ### 🟠 Il contratto verso chi consuma
 
@@ -527,6 +563,9 @@ D3-c, D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di l
 
 * [x] **D10 (in parte)** — ✅ 2026-09-10: `oxlint` e `ruff` a zero con cancello,
       `DataTable` con cricchetto.
+* [x] **D10 (le `DataTable`)** — ✅ 2026-09-26/28: riclassificazione dei 44 file
+      e brief delle liste grezze chiuso; registro 45 → 33, senza motivazione
+      33 → 12. Le rimaste aspettano decisioni di Tid (§3 D10).
 * [ ] **D10-bis** — gli `skip_area_check` (da leggere uno per uno) e la baseline
       degli smoke (con D9-a).
 * [x] **D11** — ✅ 2026-09-11: `acquisti`/`magazzino` prossimo cantiere, in `PROJECT_CONTEXT.md`.
@@ -588,7 +627,7 @@ D3-c, D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di l
 | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Il censimento **completo** degli endpoint senza consumatore    | Uno strumento testuale non lo sa fare, per una buona proprietà del codice: le famiglie cross-dominio (`/passaggi/`, `/note/`, `/indirizzi/`, `/documenti/`, `/situazione-merce/`, `/componenti/`) sono chiamate con il **dominio come parametro**. Le tredici di D7 sono il residuo verificato uno per uno: un **limite inferiore** |
 | Quanto della suite sia davvero *coperto* e non solo *nominato* | Non esiste `coverage` nel progetto. Il numero di test è un limite superiore alla copertura, non una misura                                                                                                                                                                                                                          |
-| Se le `DataTable` senza motivazione siano eccezioni legittime  | Richiede di leggere i componenti e decidere caso per caso: è il lavoro di D10, non una misura                                                                                                                                                                                                                                       |
+| ~~Se le `DataTable` senza motivazione siano eccezioni legittime~~ | ✅ **Fatto il 2026-09-26**: i 44 file riclassificati uno per uno, guardando da dove arrivano le righe e non dove sta la tabella. Dieci eccezioni vere col commento, due convertite subito, le liste vere seminate e convertite col [brief delle liste grezze](../work-done/brief-db-liste-datatable-grezze.md) (chiuso il 28-09) |
 
 ---
 
@@ -607,7 +646,7 @@ D3-c, D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di l
 | --- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | 1   | **D1-f** — `npm audit` nel job                     | Registro a **zero** dal 13-09, e il lato backend (`pip-audit`) c'è dal 26-09                        |
 | 2   | **D3-c** — HSTS / SSL_REDIRECT / CSP               | Proposta pronta (brief sicurezza §1); l'effetto lo decide il reverse proxy                          |
-| 3   | **D2-b** — type checker                            | Una decisione: sì (e come) o no (e si toglie la riga da `AGENTS.md`)                                |
+| 3   | **D2-b** — type checker                            | Una decisione: sì (e come) o no (e si toglie la riga da `PROJECT_CONTEXT.md`)                       |
 | 4   | **D10-bis** — le letture cross-dominio con lo skip | Lettura, non conteggio                                                                              |
 
 ### ⛔ Sembrano facili e non lo sono — sono cantieri veri
@@ -763,6 +802,20 @@ gli header di licenza che calano davvero (2.042 → **1.169**), e gli
 `skip_area_check` con il presidio di D15. Restano senza verso la baseline degli
 smoke (vive o muore con D9-a) e la lettura cross-dominio (D10-bis).
 
+✅ **Il registro delle `DataTable` cala davvero — 2026-09-26 → 28.** Decisione
+di Tid (26-09): *«correggere le DataTable grezze»*. I 44 file sono stati
+riclassificati uno per uno guardando da dove arrivano le righe: dieci eccezioni
+vere hanno preso il commento, due liste con seed ed endpoint già pronti sono
+state convertite lo stesso giorno (`ContrattiBillingAccountDrawer`,
+`UomConversioniDrawer`), e le liste vere a cui mancava il seed sono state
+seminate dal team DB e convertite su `<ListaConfigurabile>` col
+[brief delle liste grezze](../work-done/brief-db-liste-datatable-grezze.md),
+chiuso su DB, BE e FE il 28-09. Strada facendo: `GeoSearchTable` ritirato, il
+giornale di fattura e lotto su un solo componente (`GiornaleEntitaTab`, su
+`vendite.giornale`), la catena delle revisioni dell'offerta a DB, e la
+validazione del catalogo liste contro la vista (`schema_dati`). Registro:
+**45 → 33** grezze, senza motivazione **33 → 12**. Le rimaste sono in §3 D10.
+
 ### ✅ D11 — Quattro app scheletro: la decisione — 2026-09-11
 
 `acquisti` e `magazzino` sono il **prossimo cantiere** — scritto in
@@ -826,6 +879,8 @@ sui due workflow di CI e sull'esito di `manage.py check --deploy`; i numeri
 riletti dopo portano la loro data. **Riordinato il 2026-09-20**: §3 contiene solo
 i difetti aperti, le attività svolte stanno in §9 — con lo stesso numero in
 entrambe le sezioni quando una voce ha due facce. **Riallineato il 2026-09-26**
-(D1-d-bis, D5, D7, D13-quater e metà di D3-b in §9). Lo strato DB è valutato
+(D1-d-bis, D5, D7, D13-quater e metà di D3-b in §9) e il **2026-09-28** (il
+registro delle `DataTable` in D10, i numeri di §2 e D9, il rimando di D2-b). Lo
+strato DB è valutato
 separatamente in
 [migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md).*
