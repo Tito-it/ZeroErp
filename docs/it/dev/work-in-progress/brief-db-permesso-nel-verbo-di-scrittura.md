@@ -9,13 +9,13 @@
 > [brief-db-magazzino-verbi-con-permesso.md](../work-done/brief-db-magazzino-verbi-con-permesso.md)
 > (D-4, D-5). Il verbo generico del pannello (D-3) avrà il suo, all'inizio del
 > cantiere `magazzino`/`acquisti`.
-> **Avanzamento al 2026-09-27** — il percorso del §5, passo per passo:
+> **Avanzamento al 2026-09-28** — il percorso del §5, passo per passo:
 >
 > | Passo | Stato |
 > | --- | --- |
 > | 1. BB del permesso | ✅ **fatto**: `script.fn_guard_azione` (`20260924-38`) e `script.fn_guard_livello` (D-2, D-5; `20260925-32`, con `fn_area_di_oggetto` `-31`), applicati su dbdev e verdi |
 > | 2a. Porta del Lotto 2 (D-4) | ✅ **chiusa, committata, backend allineato e committato** (`0aefe15cd`, PR #1686); brief in `work-done/`. `20260924-38` → `-42` (commit `f2e724b47`, PR #1681); **D-V1 decisa il 2026-09-25 (strada A)**: la porta `POSTED` e le righe in `CONFIRM` si aprono solo con la GUC **e** dentro un verbo, col BB nuovo `script.fn_is_proprietario_tabella` (`20260925-37…-39`, commit `1d92ae6a2`, PR #1684). P-6 (`presidi.csv`) letto su dbdev: arrivato. §6 del brief operativo fatto dal backend il 2026-09-25 (fixture con `registra_magazzino`, test DB e smoke verdi) |
-> | 2b. Verbo generico del pannello (D-3) | 🟡 **Quasi chiuso**: brief operativo [brief-db-pannello-config-verbo-generico.md](brief-db-pannello-config-verbo-generico.md). **DB**: `20260925-29…-34` applicati e committati (`7f3208a58`). La **D-P6** (19 righe fuori dal pannello, fra cui `config.profili_accesso`) è **applicata il 2026-09-27**, con pgTAP verdi. Il 2026-09-27 sono stati applicati, con pgTAP verdi: `aree_funzionali` fuori dal pannello (D-P8), le colonne scrivibili in una sede sola e il `CHECK (NOT pannello OR lookup)` (`20260927-20…-22`). Lato DB resta solo la D-P9. **Backend**: §6 fatto nella forma D-P7 e committato (`e7dbbad73`); §6.1 (metadata dalla funzione unica) fatto il 2026-09-28. **Frontend**: D-P5 (ritiro di `config-tables.js`) e «Salva» vuoto fatti il 2026-09-28. Guida dei permessi (§7.4-7.5) e PROJECT_CONTEXT aggiornati il 2026-09-28. ✅ **D-P9 decisa il 2026-09-28: sola lettura**, nome e ordine si cambiano nel CSV. ⏳ Resta al team DB chiudere `config.aree_funzionali` all'app (brief del pannello §4.2); poi il passo 2b è chiuso |
+> | 2b. Verbo generico del pannello (D-3) | ✅ **Chiuso il 2026-09-28**: brief operativo [brief-db-pannello-config-verbo-generico.md](../work-done/brief-db-pannello-config-verbo-generico.md), in `work-done/`. **DB**: `20260925-29…-34`, `20260927-20…-22` e `20260928-30` applicati, con pgTAP verdi. L'ultimo è la D-P9: `config.aree_funzionali` in sola lettura per l'app. **Backend e frontend**: §6 in `e7dbbad73`; §6.1, D-P5 e «Salva» vuoto in `5bd689163`. Guida dei permessi (§4.1, §7.4-7.5) e PROJECT_CONTEXT aggiornati |
 > | 3. Domini esistenti | aperto per costruzione, senza data: questo passo non ha una fine, e il brief resta la sede del modello. ⭐ **Secondo caso già fatto** fuori dal cantiere magazzino: [brief-db-blocco-login-per-credenziale.md](../work-done/brief-db-blocco-login-per-credenziale.md) — i verbi di blocco/sblocco della credenziale chiedono `script.fn_guard_super_admin` (`20260925-06`), e l'app ha perso `INSERT`/`UPDATE`/`DELETE` su `config.credenziali` e `config.credenziali_provenienze` (`20260925-24`). DB committato in `e3d188dc0` |
 >
 > **In una riga:** oggi il DB **calcola** i permessi ma non li **applica**:
@@ -246,3 +246,5 @@ migrare.
 | 2026-09-27 | DB | Passo 2b: D-P8 e le due richieste del backend scritte (`20260927-20…-22`), da applicare. Aperta la D-P9 |
 | 2026-09-27 | Tid | `20260927-20…-22` applicati, pgTAP verdi. Passo 2b: lato DB aperta solo la D-P9. Restano il backend (metadata dalla funzione unica) e il frontend (D-P5) |
 | 2026-09-28 | BE/FE | Passo 2b: backend (metadata dalla funzione unica) e frontend (D-P5, «Salva» vuoto) fatti, non committati. Guida dei permessi e PROJECT_CONTEXT aggiornati: il modello ora vive nella guida (§7.4). Resta la D-P9 |
+| 2026-09-28 | DB | Passo 2b: BE/FE pushati (`5bd689163`); D-P9 scritta e provata (`90_end/20260928-30`), da applicare. È l'ultimo pezzo del brief operativo |
+| 2026-09-28 | Tid, DB | `20260928-30` applicato, nessuna regressione nei pgTAP. **Passo 2b chiuso**, e il brief operativo del pannello è in `work-done/`. Aperto resta il passo 3 |

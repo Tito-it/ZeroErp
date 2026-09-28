@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D-P9 — config.aree_funzionali in sola lettura per l'app: la possiede il CSV
+#   Brief: brief-db-pannello-config-verbo-generico, sezione 4.2 (D-P8, D-P9 strada A)
+#
+# ── ⭐ COSA FA ───────────────────────────────────────────────────────
+#   config.aree_funzionali e' il catalogo delle aree su cui poggiano i permessi:
+#   schema_db e' la chiave con cui fn_resolve_livello_area e fn_area_di_oggetto
+#   risolvono i livelli. Dal 2026-09-27 e' fuori dal pannello (D-P8); dal
+#   2026-09-28 (D-P9, strada A) nessuno la modifica dall'applicazione: nome
+#   (descrizione) e ordine (ordinamento) si cambiano nel CSV, e il mirror
+#   80_data/changelog/20260228-17 li porta a ogni migrate. Il CSV e' l'unico
+#   padrone della tabella; l'app la legge (tendine, schermate dei permessi).
+#   Nessun codice la scrive come app (censito il 2026-09-28: backend nessuno,
+#   funzioni e trigger nessuno; il solo pgTAP che la scriveva,
+#   config/test-permessi-strutture-base 12-13, passa a controllare le UNIQUE
+#   sul catalogo).
+#
+# ── 🔴 TRE SEDI (linee-guida §11.8) ─────────────────────────────────
+#   · QUESTO changeSet, che agisce subito su dev;
+#   · v_tabelle_sola_lettura_app nel loop 90_end/ci_apply/20260205-41;
+#   · il blocco «POSTURA DICHIARATA» di scripts/sql/provision_db_roles.sql.
+#   Le tiene allineate db/pgtap/config/test-pannello-porta-v1.sql (10-11).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260928-30-revoke-app-scrittura-aree-funzionali-mctit.yaml
+
+  - changeSet:
+      id: 20260928-30-revoke-app-scrittura-aree-funzionali
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        D-P9: a zeroerp_app SELECT soltanto su config.aree_funzionali, che si modifica solo dal CSV
+        (mirror 20260228-17). Postura resa stabile dal loop 20260205-41 e dal provisioning. Brief:
+        brief-db-pannello-config-verbo-generico §4.2.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: aree_funzionali
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $porta$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: skip porta di aree_funzionali.';
+                      RETURN;
+                  END IF;
+
+                  -- Il catalogo delle aree: l'applicazione legge, lo scrive solo il seed.
+                  GRANT  SELECT                 ON TABLE config.aree_funzionali TO   zeroerp_app;
+                  REVOKE INSERT, UPDATE, DELETE ON TABLE config.aree_funzionali FROM zeroerp_app;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Senza togliere la voce dal loop 20260205-41 e dal provisioning la
+              -- passata ci_apply successiva richiude la porta.
+              GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE config.aree_funzionali TO zeroerp_app;

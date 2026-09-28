@@ -5,7 +5,7 @@
 -- Test: la PORTA del pannello di configurazione e il presidio della sua lista.
 --   Brief: brief-db-pannello-config-verbo-generico, sezioni 3.1 e 3.5.
 --
--- Elenco test (plan 9):
+-- Elenco test (plan 11):
 --   La porta (tre sedi: forward 90_end/20260925-34, loop 20260205-41, provisioning)
 --    1) magazzino.causali: all'app SELECT si', nessuna scrittura
 --    2) config.tabelle_gestibili: all'app SELECT si', nessuna scrittura (la lista e' una porta)
@@ -23,8 +23,12 @@
 --       si risolvono) saltando il cancello SUPER_ADMIN di amm_software
 --    9) il CHECK chk_tabelle_gestibili_pannello_implica_lookup c'e' ed e' validato:
 --       una tabella del pannello e' anche nel lookup, da cui il pannello la elenca
+--   La porta di config.aree_funzionali (D-P9, 2026-09-28; forward 90_end/20260928-30,
+--   loop 20260205-41, provisioning)
+--   10) config.aree_funzionali: all'app SELECT si', nessuna scrittura (la possiede il CSV)
+--   11) come app, UPDATE di config.aree_funzionali: permesso negato
 --
--- ⚠️ Gira come l'APPLICAZIONE: 1-4 sono veri solo li' (da proprietario rossi per
+-- ⚠️ Gira come l'APPLICAZIONE: 1-4, 10 e 11 sono veri solo li' (da proprietario rossi per
 --   costruzione). Il 4 scrive con `WHERE false`: il privilegio si controlla lo
 --   stesso, e da proprietario non entra nessuna riga che sporchi i presidi dopo. I presidi 5-7 leggono la
 --   lista che il seed di CATALOGO semina (nessun context): su un database
@@ -35,7 +39,7 @@ BEGIN;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(9);
+SELECT plan(11);
 
 SELECT is(
     format('%s|%s', has_table_privilege('zeroerp_app', 'magazzino.causali', 'SELECT')::text,
@@ -105,6 +109,17 @@ SELECT is(
         AND c.conname = 'chk_tabelle_gestibili_pannello_implica_lookup'),
     'c|true',
     '9) CHECK pannello => lookup presente e validato (il pannello elenca dal lookup)');
+
+SELECT is(
+    format('%s|%s', has_table_privilege('zeroerp_app', 'config.aree_funzionali', 'SELECT')::text,
+                    has_table_privilege('zeroerp_app', 'config.aree_funzionali', 'INSERT, UPDATE, DELETE')::text),
+    'true|false',
+    '10) config.aree_funzionali: all''app SELECT si'', nessuna scrittura (nome e ordine si cambiano nel CSV)');
+
+SELECT throws_ok(
+    $$ UPDATE config.aree_funzionali SET id = id WHERE false $$,
+    '42501', NULL,
+    '11) come app, UPDATE di config.aree_funzionali: permesso negato');
 
 SELECT * FROM finish();
 ROLLBACK;

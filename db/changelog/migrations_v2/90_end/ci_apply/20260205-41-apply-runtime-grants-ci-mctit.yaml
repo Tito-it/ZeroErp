@@ -89,6 +89,10 @@
 #   del provisioning; pgTAP `db/pgtap/config/test-pannello-porta-v1.sql`.
 #   Forward su dev `90_end/20260925-62`, stesso blocco del provisioning, stesso
 #   pgTAP.
+#   ⭐ Dal 2026-09-28 anche `config.aree_funzionali` (D-P9, strada A): e' uscita
+#   dal pannello (D-P8) e la possiede il CSV, mirror `80_data/20260228-17`; nome e
+#   ordine si cambiano li'. Forward su dev `90_end/20260928-30`, stesso blocco del
+#   provisioning, stesso pgTAP (10-11).
 #
 # ── ⭐ IL REGISTRO DEGLI OWNER (dal 2026-09-26) ─────────────────────────────
 #   Brief: brief-db-registro-owner-e-sync-riservati-al-migratore, sezione 2.2
@@ -185,6 +189,9 @@ databaseChangeLog:
                   --   gestibili e' una porta (brief-db-pannello-config-verbo-generico §3.5).
                   'magazzino.causali',
                   'config.tabelle_gestibili',
+                  -- ⭐ Dal 2026-09-28 il catalogo delle AREE: lo possiede il CSV
+                  --   (D-P9, brief-db-pannello-config-verbo-generico §4.2).
+                  'config.aree_funzionali',
                   -- ⭐ Dal 2026-09-26 il REGISTRO DEGLI OWNER: chi lo scrive sceglie
                   --   il proprietario delle DEFINER di postgres. Lo scrive solo il
                   --   migratore; la sync ha la sua guardia nel corpo
