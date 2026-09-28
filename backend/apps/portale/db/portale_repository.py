@@ -12,9 +12,32 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from django.db import connection
+
+
+# Scopo: Lo stato accessi di una veste che ESISTE, dai suoi quattro fatti
+# (vedi `PortaleRepository.get_stato_identita` per il significato). Funzione
+# pura: il caso «link pendente, email mai partita» si prova costruendolo.
+def stato_veste(
+    *,
+    attivo: bool,
+    token_scade_at: datetime | None,
+    token_emesso_at: datetime | None,
+    invito_inviato_at: datetime | None,
+) -> str:
+    if attivo:
+        return "ATTIVO"
+    if token_scade_at is None:
+        return "DISATTIVO"
+    spedito = (
+        invito_inviato_at is not None
+        and token_emesso_at is not None
+        and invito_inviato_at >= token_emesso_at
+    )
+    return "PENDING" if spedito else "NON_SPEDITO"
 
 
 class PortaleRepository:
@@ -51,7 +74,7 @@ class PortaleRepository:
             if not row:
                 return None
             cols = [c.name for c in cursor.description or []]
-            return dict(zip(cols, row))
+            return dict(zip(cols, row, strict=True))
 
     # Scopo: Risolve soggetto_ruolo_id + dati anagrafici di un fornitore.
     # Simmetrico a get_cliente_info per il ruolo FO.
@@ -76,7 +99,7 @@ class PortaleRepository:
             if not row:
                 return None
             cols = [c.name for c in cursor.description or []]
-            return dict(zip(cols, row))
+            return dict(zip(cols, row, strict=True))
 
     # Scopo: Verifica se esiste gia' un'identita attiva con un certo
     # ruolo_applicativo legata a un dato soggetto_ruolo_id. Usato dal service
@@ -103,7 +126,7 @@ class PortaleRepository:
             if not row:
                 return None
             cols = [c.name for c in cursor.description or []]
-            return dict(zip(cols, row))
+            return dict(zip(cols, row, strict=True))
 
     # Scopo: La credenziale di un'email, senza distinguere maiuscole e
     # minuscole. La regola vive nel DB (`script.fn_get_auth_user_id_for_email`,
@@ -204,11 +227,22 @@ class PortaleRepository:
 
     # Scopo: Legge lo stato completo di un'identita (per una data coppia
     # soggetto_ruolo + ruolo_applicativo) decorato con info sul token
-    # pendente, se presente. Serve all'admin UI per distinguere 4 stati:
-    #   NESSUNO   : identita non esiste (mai invitato)
-    #   PENDING   : identita esiste, attivo=false, token non consumato attivo
-    #   DISATTIVO : identita esiste, attivo=false, nessun token pending
-    #   ATTIVO    : identita esiste, attivo=true
+    # pendente, se presente. Serve all'admin UI per distinguere 5 stati:
+    #   NESSUNO     : identita non esiste (mai invitato)
+    #   PENDING     : identita esiste, attivo=false, token non consumato attivo
+    #                 E l'email d'invito e' partita DOPO l'emissione di quel token
+    #   NON_SPEDITO : come PENDING, ma l'email di quel token non e' partita
+    #                 (`invito_inviato_at` nullo o precedente al token)
+    #   DISATTIVO   : identita esiste, attivo=false, nessun token pending
+    #   ATTIVO      : identita esiste, attivo=true
+    # ⭐ NON_SPEDITO (2026-09-28, F-3 dell'analisi difetti doc API core): il
+    #    token nasce nell'emissione, l'email parte dopo e fuori transazione, e
+    #    `invito_inviato_at` si scrive solo se e' partita. Un token pendente da
+    #    solo diceva «invito inviato» anche a email fallita. Si confronta col
+    #    token pendente (uno per veste: l'emissione invalida i precedenti), non
+    #    col solo `invito_inviato_at` — quello di un invito PRECEDENTE andato a
+    #    buon fine non dice niente del link di adesso. `>=`: emissione e
+    #    spedizione possono stare nella stessa transazione (stesso `now()`).
     # Ritorna dict con chiavi:
     #   stato (str), identita_id (int|None), auth_user_id (int|None),
     #   invito_inviato_at (datetime|None), token_scade_at (datetime|None).
@@ -230,7 +264,8 @@ class PortaleRepository:
                  LIMIT 1
             ),
             tk AS (
-                SELECT MAX(t.scadenza) AS token_scade_at
+                SELECT MAX(t.scadenza) AS token_scade_at,
+                       MAX(t.data_insert) AS token_emesso_at
                   FROM config.token_monouso t
                   JOIN id_row r ON r.auth_user_id = t.auth_user_id
                  -- Il token della VESTE, non della credenziale: cliente e
@@ -241,7 +276,7 @@ class PortaleRepository:
                    AND t.scadenza > now()
             )
             SELECT r.id, r.auth_user_id, r.attivo, r.invito_inviato_at,
-                   tk.token_scade_at,
+                   tk.token_scade_at, tk.token_emesso_at,
                    u.username, u.email
               FROM id_row r
               LEFT JOIN tk ON true
@@ -262,13 +297,14 @@ class PortaleRepository:
                 "token_scade_at": None,
             }
 
-        identita_id, auth_user_id, attivo, invito_at, token_scade_at, username, email = row
-        if attivo:
-            stato = "ATTIVO"
-        elif token_scade_at is not None:
-            stato = "PENDING"
-        else:
-            stato = "DISATTIVO"
+        (
+            identita_id, auth_user_id, attivo, invito_at,
+            token_scade_at, token_emesso_at, username, email,
+        ) = row
+        stato = stato_veste(
+            attivo=attivo, token_scade_at=token_scade_at,
+            token_emesso_at=token_emesso_at, invito_inviato_at=invito_at,
+        )
         return {
             "stato": stato,
             "identita_id": int(identita_id),

@@ -2072,7 +2072,7 @@ def fn_save_bundle(
         _translate_integrity_error(
             exc, function_name=function_name, entity="bundle",
         )
-        raise AssertionError("unreachable")  # pragma: no cover
+        raise AssertionError("unreachable")  # pragma: no cover  # noqa: B904 — riga morta: raise_error ha gia' sollevato, il `from` non porterebbe niente
     except DatabaseError as exc:
         # P0001 dai trigger DB su `listini_righe_componenti`
         # (immutabilita' versione ATTIVA/CHIUSA, guard coerenza BoM).

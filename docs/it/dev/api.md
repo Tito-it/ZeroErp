@@ -2068,11 +2068,13 @@ resta.
 
 **Eccezione — codici middleware-level.** Alcune risposte sono costruite
 direttamente da `JwtAuditMiddleware` (helper `_json_error`, stesso envelope)
-e **non** passano dall'exception handler / `error_policies.py`:
+e **non** passano dall'exception handler / `error_policies.py`. (Fino al
+2026-09-28 c'era anche `E_USER_DISABILITATO`, dal rifiuto in `process_view`:
+ritirato perché per i client Bearer non scattava mai — il rifiuto dei
+`DISABILITATO` è della catena di `ZeroERPPermission`.)
 
 | Codice                | HTTP | Quando                                                                                                                                                                                                           |
 | --------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `E_USER_DISABILITATO` | 403  | utente con `ruolo_applicativo = DISABILITATO` (rifiuto early)                                                                                                                                                    |
 | `E_GUC_RESET_FAILED`  | 500  | il reset GUC d'inizio richiesta è fallito (fail-closed, vedi §GUC)                                                                                                                                               |
 | `E_DB_ROLE_UNSAFE`    | 500  | la connessione del percorso richiesta è su un ruolo `BYPASSRLS` (guard fail-open RLS: `DB_USER` misconfigurato sul ruolo batch, o canale di sistema usato per errore nel web → richiesta rifiutata, fail-closed) |
 
@@ -2176,7 +2178,8 @@ accendere un cancello, non nella peggiore.
 
   ```bash
   DB_HOST=localhost DB_PORT=5432 DB_NAME=zeroerp DB_USER=zeroerp_app DB_PASSWORD=secret-app \
-  DJANGO_SECRET_KEY=ci-placeholder DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1" DJANGO_DEBUG=0 DJANGO_TRUSTED_PROXY_COUNT=0 FRONTEND_URL=https://localhost \
+  DJANGO_SECRET_KEY=ci-placeholder DJANGO_FIELD_ENCRYPTION_KEYS="$(printf ci-placeholder-fernet-key-32byte | base64)" \
+  DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1" DJANGO_DEBUG=0 DJANGO_TRUSTED_PROXY_COUNT=0 FRONTEND_URL=https://localhost \
   .venv/bin/python manage.py test -v 2
   ```
 

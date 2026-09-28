@@ -36,7 +36,9 @@ from apps.core.db.dbops_repository import (
 from apps.core.db.tabelle_gestibili_repository import TabelleGestibiliRepository
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 
-_CONN = "apps.core.db.dbops_repository.connection"
+# ⚠️ La query parte dal BB `fetch_paged_with_total` (F-8, 2026-09-28): e' la
+#    `connection` di `_helpers` quella da fingere, non quella del repository.
+_CONN = "apps.core.db._helpers.connection"
 # La lista delle rel ammesse sta a DB: nei test di composizione dell'SQL si
 # ammette tutto, il controllo vero lo prova il test 3.
 _AMMESSA = "apps.core.db.dbops_repository._richiedi_rel_lookup"

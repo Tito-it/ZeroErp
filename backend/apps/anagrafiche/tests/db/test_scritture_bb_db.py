@@ -126,7 +126,7 @@ class ScrittureBbAnagraficheDbTests(unittest.TestCase):
         try:
             with transaction.atomic(), connection.cursor() as cur:
                 cur.execute("SELECT * FROM dbops.fn_pgtap_crea_emittente()")
-                emittente = dict(zip([c.name for c in cur.description], cur.fetchone()))
+                emittente = dict(zip([c.name for c in cur.description], cur.fetchone(), strict=True))
                 apri_contesto_operatore(cur)
                 emittente_id = emittente["emittente_fiscale_id"]
                 self.assertTrue(EmittentiFiscaliRepository().update_emittente(

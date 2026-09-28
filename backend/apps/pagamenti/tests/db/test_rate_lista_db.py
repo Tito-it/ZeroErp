@@ -592,7 +592,7 @@ class RicercaListeDbTests(_MondoRateDbTests):
             valori_rata = dict(zip(
                 ("numero_documento", "ragione_sociale_completa", "ba_codice",
                  "id_fiscale_univoco_cf_piva"),
-                cur.fetchone(),
+                cur.fetchone(), strict=True,
             ))
             self.assertTrue(all(valori_rata.values()), f"rata della 101 senza un valore: {valori_rata}")
             verifica_ricerca_colonna_per_colonna(

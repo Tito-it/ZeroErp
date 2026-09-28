@@ -60,6 +60,7 @@ _SEGNAPOSTO = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
 # con l'email e il repository finti.
 def _variabili_comuni(porta: PortaInvito) -> frozenset[str]:
     email, repo = MagicMock(), MagicMock()
+    email.send_email.return_value = (1, True)
     repo.get_nomi_credenziale.return_value = {"first_name": "A", "last_name": "B", "username": "c"}
     invito = InvitoVeste(auth_repo=repo, token_service=MagicMock(), email_service=email)
     with override_settings(FRONTEND_URL="https://erp.example"):

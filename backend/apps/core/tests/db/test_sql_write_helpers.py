@@ -61,7 +61,7 @@ def _cursore(riga: dict | None = None) -> MagicMock:
     riga = {"id": 7} if riga is None else riga
     cursore = MagicMock()
     cursore.description = [MagicMock(name=k) for k in riga]
-    for colonna, k in zip(cursore.description, riga):
+    for colonna, k in zip(cursore.description, riga, strict=True):
         colonna.name = k
     cursore.fetchone.return_value = tuple(riga.values())
     cursore.rowcount = 1

@@ -109,7 +109,7 @@ Risposta:
 ```
 
 > **Nota sicurezza**: la password SMTP non e' mai esposta nelle API. E' salvata
-> crittografata con Fernet (chiave derivata da `SECRET_KEY`).
+> crittografata con Fernet (chiavi `DJANGO_FIELD_ENCRYPTION_KEYS`, separate dalla `SECRET_KEY`).
 
 ### Crea account
 
@@ -441,10 +441,11 @@ nessun stato ibrido con log linkato e allegati mancanti. Un outbox rimasto `READ
 progettare per NON ri-inviare (lo SMTP e' gia' partito): recupero idempotente, non
 re-send.
 
-⚠️ Difetto noto (F-1): lo stato `READY` viene scritto **prima** di cercare
-l'account di invio; se nessun account si risolve la chiamata fallisce con
-`E_OUTBOX` e la bozza resta `READY`, non piu' rinviabile ne' annullabile (entrambe
-le azioni pretendono `DRAFT`) — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+L'account di invio si risolve **prima** di portare la bozza a `READY`: se nessun
+account si risolve la chiamata fallisce con `E_OUTBOX` e la bozza **resta `DRAFT`**,
+quindi si puo' riprovare o annullare. Fino al 2026-09-28 l'ordine era inverso e la
+bozza restava `READY`, ne' rinviabile ne' annullabile (F-1 dell'
+[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 ### Annulla bozza
 
@@ -622,7 +623,7 @@ Per ogni email in coda, usa l'`email_account_id` originale (non risolve da zero)
 
 ## Sicurezza
 
-- Password SMTP crittografata con Fernet (chiave derivata da `SECRET_KEY`) — mai in chiaro in DB o API
+- Password SMTP crittografata con Fernet (chiavi `DJANGO_FIELD_ENCRYPTION_KEYS`, separate dalla `SECRET_KEY`) — mai in chiaro in DB o API
 - Guard su password NULL: `decrypt()` e `test_connection` gestiscono account senza password configurata
 - Ownership check su tutte le operazioni outbox e allegati (fail-closed se nessun outbox padre)
 - Path traversal guard su download allegati (`normpath` + `startswith`)

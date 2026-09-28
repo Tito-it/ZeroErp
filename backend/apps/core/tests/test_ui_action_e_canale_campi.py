@@ -159,31 +159,6 @@ class SitoPython:
     con_campo: bool
 
 
-# Scopo: il sorgente senza le DOCSTRING di modulo/classe/funzione: azzera le
-#        righe, non le toglie, cosi' i numeri di riga restano quelli del file.
-#        Stessa mossa di `test_stati_check_scrittori_python`; qui serve perche'
-#        le tuple e le chiamate si leggono dall'AST (che le docstring non
-#        contengono), ma le costanti `_CAMPO_PER_CODICE_DB` si cercano nel
-#        modulo per nome, e un nome citato in prosa non deve legare.
-def _senza_docstring(testo: str, tree: ast.Module) -> str:
-    righe = testo.split("\n")
-    for nodo in ast.walk(tree):
-        if not isinstance(nodo, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        if not nodo.body:
-            continue
-        primo = nodo.body[0]
-        if (
-            isinstance(primo, ast.Expr)
-            and isinstance(primo.value, ast.Constant)
-            and isinstance(primo.value.value, str)
-            and primo.end_lineno is not None
-        ):
-            for i in range(primo.lineno - 1, primo.end_lineno):
-                righe[i] = ""
-    return "\n".join(righe)
-
-
 # Scopo: le costanti di modulo che valorizzano un codice (`E_GIRO_PAYLOAD =
 #        "E_FATTURAZIONE_GIRO_PAYLOAD"`), come in
 #        `test_error_codes_declared_guardrail._costanti_modulo`.
@@ -290,22 +265,25 @@ class _SorgentiPython:
     def __init__(self, radice: Path) -> None:
         self.siti: dict[str, list[SitoPython]] = defaultdict(list)
         self.n_file = 0
-        moduli: dict[Path, tuple[str, ast.Module]] = {}
+        moduli: dict[Path, ast.Module] = {}
         for percorso in sorted(radice.rglob("*.py")):
             posix = percorso.as_posix()
             if "/tests/" in posix or percorso.name.startswith("test_"):
                 continue
-            grezzo = percorso.read_text(encoding="utf-8")
-            tree = ast.parse(grezzo)
-            moduli[percorso] = (_senza_docstring(grezzo, tree), tree)
+            # ⚠️ Solo l'AST, niente testo: tuple, chiamate e assegnamenti
+            #    `_CAMPO_PER_CODICE_DB` si leggono dall'albero, dove una
+            #    docstring non e' mai un assegnamento. Fino al 2026-09-28 qui
+            #    si calcolava anche il sorgente «senza docstring», per una
+            #    ricerca per nome nel testo che nessuno faceva (ruff B007).
+            moduli[percorso] = ast.parse(percorso.read_text(encoding="utf-8"))
         self.n_file = len(moduli)
 
         # Passata 1: le costanti locali di ogni modulo, per nome di modulo.
         self._radice = radice
-        locali = {self._nome_modulo(p): _costanti_locali(t) for p, (_, t) in moduli.items()}
+        locali = {self._nome_modulo(p): _costanti_locali(t) for p, t in moduli.items()}
 
         # Passata 2: i siti, con le costanti importate risolte.
-        for percorso, (testo, tree) in moduli.items():
+        for percorso, tree in moduli.items():
             costanti = dict(locali[self._nome_modulo(percorso)])
             for nodo in ast.walk(tree):
                 if isinstance(nodo, ast.ImportFrom) and nodo.module:

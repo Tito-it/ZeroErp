@@ -278,7 +278,7 @@ def _run_tool_loop(
     owner_identita_id: int | None = None,
 ) -> tuple[str | None, bool]:
     loop_start = time.monotonic()
-    for iteration in range(MAX_TOOL_ITERATIONS):
+    for _iterazione in range(MAX_TOOL_ITERATIONS):
         # Check timeout complessivo
         if time.monotonic() - loop_start > MAX_TOOL_LOOP_TIMEOUT:
             logger.warning("Timeout loop tool_call (%ds)", MAX_TOOL_LOOP_TIMEOUT)

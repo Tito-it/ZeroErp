@@ -25,6 +25,7 @@ Indice test eseguiti:
 15) DeleteFileTests.test_riga_rifiutata_toglie_il_file_scritto
 16) UpdateDraftTests.test_update_draft_chiave_estranea_rifiutata
 17) UpdateDraftTests.test_update_draft_cc_non_lista_rifiutato
+18) ConfirmAndSendTests.test_senza_account_la_bozza_resta_draft
 """
 
 import os
@@ -273,6 +274,25 @@ class ConfirmAndSendTests(TestCase):
         self.assertEqual(kwargs["creato_da_user_id"], 42)
         self.assertEqual(kwargs["emittente_fiscale_id"], 7)
         self.assertEqual(kwargs["allegati"], allegati)
+
+    # Scopo: ⭐ Senza account email la bozza RESTA DRAFT (F-1, 2026-09-28).
+    # ⛔ READY si committa subito e `cancel_draft` accetta solo DRAFT: con
+    #    l'account cercato dopo READY la bozza restava bloccata, ne' rinviabile
+    #    ne' annullabile. Il rifiuto deve arrivare prima di toccare lo stato.
+    @patch(_DISPATCH)
+    @patch(_REPO)
+    def test_senza_account_la_bozza_resta_draft(self, MockRepo, MockDispatch):
+        repo = MockRepo.return_value
+        dispatch = MockDispatch.return_value
+        repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
+        repo.resolve_account.return_value = None
+
+        with self.assertRaises(ServiceError) as ctx:
+            EmailOutboxService().confirm_and_send(10)
+
+        self.assertEqual(ctx.exception.code, "E_OUTBOX")
+        repo.update_outbox_stato.assert_not_called()
+        dispatch.send_raw.assert_not_called()
 
     # Scopo: Verifica che conferma di bozza non-DRAFT lanci errore.
     @patch(_DISPATCH)

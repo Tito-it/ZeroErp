@@ -20,6 +20,7 @@ Indice test eseguiti:
 9)  InvitoPortaleTests.test_identita_collegata_altro_auth_user_solleva
 11) InvitoPortaleTests.test_build_display_name_pg_e_pf
 12) InvitoShopCustomerTests.test_invia_invito_shop_happy_path_invito
+12b) InvitoShopCustomerTests.test_email_non_partita_risponde_inviato_false (F-3)
 13) InvitoShopCustomerTests.test_invia_invito_shop_cross_path
 14) InvitoShopCustomerTests.test_reinvia_invito_shop_invalida_entrambi_token
 15) GetStatoAccessiTests.test_cliente_include_portale_e_shop
@@ -597,6 +598,49 @@ class InvitoShopCustomerTests(TestCase):
         email_kwargs = MockEmail.return_value.send_email.call_args.kwargs
         self.assertEqual(email_kwargs["codice_template"], "INVITO_SHOP")
         self.assertIn("/attivazione-shop/tk_shop_new", email_kwargs["variabili"]["link"])
+
+    # Scopo: ⭐ F-3 — l'email che non parte (SMTP fallito, canale non
+    # configurato: `send_email` torna `False` senza eccezione) risponde
+    # `inviato: false`: la veste e il token ci sono, ma l'invito non e'
+    # arrivato, e `invito_inviato_at` non si scrive. Vale per cliente,
+    # fornitore e shop: la strada e' `_invia_invito_common`.
+    @patch(_SETTINGS)
+    @patch(_EMAIL_SVC)
+    @patch(_TOKEN_SVC)
+    @patch(_AUTH_REPO)
+    @patch(_REPO)
+    def test_email_non_partita_risponde_inviato_false(
+        self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
+    ):
+        mock_settings.FRONTEND_URL = "https://localhost"
+        repo = MockRepo.return_value
+        repo.get_cliente_info.return_value = {
+            "billing_account_id": 42,
+            "ba_codice": "BA-000123",
+            "soggetto_ruolo_id": 100,
+            "soggetto_id": "uuid-1",
+            "ragione_sociale": "ACME Shop",
+            "cognome": None, "nome": None, "codice_fiscale": None,
+        }
+        repo.find_auth_user_by_email.return_value = None
+        repo.create_auth_user_portale.return_value = 300
+        MockAuth.return_value.auth_user_ha_password.return_value = False
+        repo.find_identita_portale.return_value = None
+        repo.create_identita_portale.return_value = 600
+        MockToken.return_value.create.return_value = "tk_shop_new"
+        MockEmail.return_value.send_email.return_value = (1, False)
+
+        from apps.portale.services.invito_portale_service import InvitoPortaleService
+        with self.assertLogs("security", level="ERROR"):
+            result = InvitoPortaleService().invia_invito_shop_customer(
+                cliente_id=42,
+                email="shopper@acme.test",
+                invitato_da_user_id=1,
+            )
+
+        self.assertIs(result["inviato"], False)
+        self.assertEqual(result["identita_id"], 600)
+        MockAuth.return_value.set_invito_inviato_at.assert_not_called()
 
     # Scopo: Flow CROSS email esistente (operatore o altra veste) ->
     # identita SHOP_CUSTOMER disattivata + token ATTIVAZIONE_SHOP_CROSS.

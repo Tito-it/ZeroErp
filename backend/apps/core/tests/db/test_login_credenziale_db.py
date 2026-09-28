@@ -73,7 +73,7 @@ def _parametri() -> dict[str, int]:
     with connection.cursor() as cur:
         cur.execute("SELECT * FROM script.fn_login_parametri()")
         cols = [c.name for c in cur.description]
-        return dict(zip(cols, cur.fetchone()))
+        return dict(zip(cols, cur.fetchone(), strict=True))
 
 
 # Scopo: Credenziale fabbricata, senza nessuna veste: conta anch'essa (brief §3.1).
@@ -350,10 +350,10 @@ class LoginViewDbTests(_ViewVere):
 # Scopo: Un codice fiscale formalmente valido e sempre nuovo (le sei lettere
 # sono casuali), per fabbricare il soggetto dell'operatore.
 def _codice_fiscale() -> str:
-    dispari = dict(zip("0123456789", (1, 0, 5, 7, 9, 13, 15, 17, 19, 21)))
+    dispari = dict(zip("0123456789", (1, 0, 5, 7, 9, 13, 15, 17, 19, 21), strict=True))
     dispari.update(zip(string.ascii_uppercase, (
         1, 0, 5, 7, 9, 13, 15, 17, 19, 21, 2, 4, 18, 20, 11, 3, 6, 8, 12, 14, 16, 10, 22, 25, 24, 23,
-    )))
+    ), strict=True))
     pari = {**{str(i): i for i in range(10)}, **{c: i for i, c in enumerate(string.ascii_uppercase)}}
     base = "".join(random.choices(string.ascii_uppercase, k=6)) + "80A01H501"
     somma = sum(dispari[c] if i % 2 == 0 else pari[c] for i, c in enumerate(base))

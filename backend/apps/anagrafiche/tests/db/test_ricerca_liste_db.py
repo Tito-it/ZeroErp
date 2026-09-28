@@ -56,7 +56,7 @@ class _Annulla(Exception):
 #    ne pretenderebbe uno, e il PDP non e' il soggetto di questa prova.
 def _mondo_cliente(cur) -> tuple[dict, int]:
     cur.execute("SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('ricerca anagrafiche BE')")
-    mondo = dict(zip([c.name for c in cur.description], cur.fetchone()))
+    mondo = dict(zip([c.name for c in cur.description], cur.fetchone(), strict=True))
     cur.execute(
         "SELECT * FROM dbops.fn_pgtap_crea_cliente_ba("
         "  'ricerca anagrafiche',"
@@ -64,7 +64,7 @@ def _mondo_cliente(cur) -> tuple[dict, int]:
         "  %s)",
         [mondo["emittente_soggetto_ruolo_id"]],
     )
-    cli = dict(zip([c.name for c in cur.description], cur.fetchone()))
+    cli = dict(zip([c.name for c in cur.description], cur.fetchone(), strict=True))
     # ⛔ Cio' che il builder scrive si legge in un'istruzione SEPARATA.
     cur.execute(
         "INSERT INTO anagrafiche.clienti "
@@ -161,7 +161,7 @@ class RicercaListeAnagraficheDbTests(unittest.TestCase):
                 # costruzione dell'azienda di chi agisce (guard emittente_scope
                 # di vendite.listini), quindi nasce PRIMA del contesto di prova.
                 cur.execute("SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('ricerca matrice BE')")
-                mondo = dict(zip([c.name for c in cur.description], cur.fetchone()))
+                mondo = dict(zip([c.name for c in cur.description], cur.fetchone(), strict=True))
                 cur.execute(
                     "SELECT listino_id FROM dbops.fn_pgtap_crea_listino(%s, 'ricdesclst')",
                     [mondo["utility_id"]],

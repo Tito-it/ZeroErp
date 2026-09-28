@@ -250,7 +250,7 @@ class RicercaFullDbTests(unittest.TestCase):
                 # chi agisce (che qui non ne ha una).
                 cur.execute("SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('ricerca full BE', 'RFC')")
                 colonne = [c.name for c in cur.description]
-                mondo = dict(zip(colonne, cur.fetchone()))
+                mondo = dict(zip(colonne, cur.fetchone(), strict=True))
                 operatore = apri_contesto_operatore(cur)
                 # Il mondo si COSTRUISCE: una riga per lista, con un valore per
                 # colonna che sta solo li'.

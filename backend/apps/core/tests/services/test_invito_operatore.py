@@ -16,6 +16,7 @@ Indice test eseguiti:
 4) InvitoTests.test_reinvio_e_la_stessa_strada
 5) InvitoTests.test_piu_vesti_spente_rifiuta
 6) InvitoTests.test_nessuna_veste_spenta_rifiuta
+7) InvitoTests.test_email_non_partita_risponde_inviato_false (F-3)
 """
 
 from unittest import TestCase
@@ -40,6 +41,8 @@ def _servizio(*, invitabile=True, reason=None, reason_key=None, vesti=None):
     )
     auth.get_unita_organizzativa_id.return_value = 5
     invito.emetti.return_value = EmissioneInvito(token="tok", is_cross=False)
+    # Esplicito: un MagicMock e' «vero» per caso, e `inviato` lo copierebbe.
+    invito.spedisci.return_value = True
     svc._check_invitabile = MagicMock(return_value={
         "invitabile": invitabile, "reason": reason, "reason_key": reason_key,
         "email": "mario@test.com",
@@ -58,7 +61,7 @@ class InvitoTests(TestCase):
         svc, _, invito = _servizio()
         result = svc.invia_invito(42, invitato_da_user_id=1)
 
-        self.assertTrue(result["inviato"])
+        self.assertIs(result["inviato"], True)
         self.assertEqual(result["email"], "m***@test.com")
         kwargs = invito.emetti.call_args.kwargs
         self.assertIs(invito.emetti.call_args.args[0], PORTA_OPERATORE)
@@ -73,6 +76,16 @@ class InvitoTests(TestCase):
             {"nome": "Mario", "cognome": "Rossi", "username": "mrossi"},
         )
         self.assertEqual(spedisci["unita_organizzativa_id"], 5)
+
+    # Scopo: ⭐ F-3 — `inviato` e' l'esito della MAIL: se non e' partita la
+    # risposta lo dice (il token c'e' comunque, non si solleva), invece di
+    # dichiarare inviato un invito che la persona non ricevera'.
+    def test_email_non_partita_risponde_inviato_false(self):
+        svc, _, invito = _servizio()
+        invito.spedisci.return_value = False
+        result = svc.invia_invito(42, invitato_da_user_id=1)
+        self.assertIs(result["inviato"], False)
+        invito.emetti.assert_called_once()
 
     # Scopo: A-1 — l'invito non sovrascrive la password e non accende il
     # cambio obbligatorio: la credenziale puo' essere anche di un cliente.

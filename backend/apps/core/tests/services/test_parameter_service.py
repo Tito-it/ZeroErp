@@ -25,6 +25,7 @@ Indice test eseguiti:
 12) ParameterServiceTests.test_delete_user_override
 13) ParameterServiceTests.test_delete_user_override_not_found_raises
 14) ParameterServiceTests.test_get_emittente_fiscale_id_for_user
+15) ParameterServiceTests.test_upsert_parametro_inesistente_e_404_a_ogni_livello (E-9)
 """
 
 from decimal import Decimal
@@ -282,3 +283,20 @@ class ParameterServiceTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             self.svc.delete_categoria_cliente_override(314, 12)
         self.assertEqual(ctx.exception.code, "E_PARAMETER_NOT_FOUND")
+
+    # Scopo: ⭐ E-9 — parametro inesistente nell'upsert di OGNI livello:
+    # 404 `E_PARAMETER_NOT_FOUND`, non `E_DATABASE`. Il repository torna None
+    # quando il codice non risolve (niente INSERT con `parameter_id` NULL).
+    def test_upsert_parametro_inesistente_e_404_a_ogni_livello(self):
+        casi = (
+            ("upsert_user_override", 7),
+            ("upsert_emittente_override", 3),
+            ("upsert_categoria_cliente_override", 12),
+        )
+        for metodo, scope in casi:
+            with self.subTest(metodo=metodo):
+                getattr(self._mock_repo, metodo).return_value = None
+                with self.assertRaises(ServiceError) as ctx:
+                    getattr(self.svc, metodo)("NON_ESISTE", scope, "v")
+                self.assertEqual(ctx.exception.code, "E_PARAMETER_NOT_FOUND")
+

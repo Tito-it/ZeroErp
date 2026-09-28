@@ -1,5 +1,7 @@
 {
   "common": {
+    "invito_non_spedito": "Invitation created, but the email was not sent: the person did not receive the link. Check the email account and send the invitation again.",
+    "invito_non_spedito_info": "The invitation link was created, but the email was not sent: the person did not receive it. Check the system email account and resend the invitation.",
     "filtri": "Filters",
     "filtri_attivi": "Active filters: {n}",
     "filtri_default_attivi": "Default filters active: {n}",
@@ -681,6 +683,7 @@
     "stato": {
       "NESSUNO": "Not invited",
       "PENDING": "Invitation sent",
+      "NON_SPEDITO": "Invitation not sent",
       "ATTIVO": "Active",
       "DISATTIVO": "Disabled"
     },

@@ -124,7 +124,9 @@ class PannelloVerboDbTests(TestCase):
         for campo in ("non_esiste", "data_insert", "id"):
             with self.subTest(campo=campo):
                 self.assertEqual(
-                    self._codice(lambda: self.svc.update_record(_REL, riga["id"], {campo: "x"})),
+                    self._codice(
+                        lambda campo=campo: self.svc.update_record(_REL, riga["id"], {campo: "x"})
+                    ),
                     "E_PANNELLO_CAMPO_NON_AMMESSO",
                 )
         self.assertEqual(

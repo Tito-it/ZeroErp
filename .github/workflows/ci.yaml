@@ -380,12 +380,18 @@ jobs:
           # Smoke test
           # -------------------------
           - name: Run container and smoke-test
+            env:
+              # Chiave Fernet dei campi cifrati; obbligatoria (settings.py). E'
+              # la base64 di «ci-placeholder-fernet-key-32byte»: un segnaposto
+              # leggibile, non un segreto. Stesso valore di ci-validate.yaml.
+              DJANGO_FIELD_ENCRYPTION_KEYS: "Y2ktcGxhY2Vob2xkZXItZmVybmV0LWtleS0zMmJ5dGU="  # gitleaks:allow
             run: |
               set -euo pipefail
 
               # Avvia SENZA --rm così possiamo leggere i log se crasha
               docker run -d --name zeroerp_test -p 8000:8000 \
                 -e DJANGO_SECRET_KEY=ci-smoke-secret \
+                -e DJANGO_FIELD_ENCRYPTION_KEYS \
                 -e DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1 \
                 -e DJANGO_TRUSTED_PROXY_COUNT=0 \
                 -e FRONTEND_URL=https://localhost \

@@ -3,7 +3,7 @@
 // cliente/fornitore. Gestisce ciclo di vita completo delle vesti
 // non-operatore:
 //   - Invia / Reinvia invito (email + branching INVITO/CROSS lato BE)
-//   - Visualizza stato (NESSUNO / PENDING / ATTIVO / DISATTIVO)
+//   - Visualizza stato (NESSUNO / PENDING / NON_SPEDITO / ATTIVO / DISATTIVO)
 //   - Disattiva (soft revoke, idempotente)
 //
 // La sezione "Shop" e' visibile solo per clienti (`entitaTipo='cliente'`).
@@ -20,6 +20,7 @@ import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
+import { useEsitoInvito } from '../../core/composables/useEsitoInvito'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { isEmailValid } from '../../core/utils/validators'
 import { extractApiError } from '../../core/utils/apiError'
@@ -38,6 +39,7 @@ import {
 const { t } = useI18n()
 const { execute, loading } = useApiHandler()
 const notify = useNotify()
+const { notificaEsitoInvito } = useEsitoInvito()
 const { confirmAction } = useConfirmAction()
 
 const props = defineProps({
@@ -64,18 +66,26 @@ watch(
 )
 
 // Scopo: Tag severity per il badge stato di una veste.
-//   NESSUNO   -> contrast (neutro)
-//   PENDING   -> warn (giallo/arancio)
-//   ATTIVO    -> success
-//   DISATTIVO -> danger
+//   NESSUNO     -> contrast (neutro)
+//   PENDING     -> warn (giallo/arancio)
+//   NON_SPEDITO -> danger: il link c'e' ma l'email non e' partita (F-3),
+//                  la persona non puo' attivare finche' non si reinvia
+//   ATTIVO      -> success
+//   DISATTIVO   -> danger
 function statoSeverity(stato) {
   switch (stato) {
     case 'ATTIVO': return 'success'
     case 'PENDING': return 'warn'
+    case 'NON_SPEDITO': return 'danger'
     case 'DISATTIVO': return 'danger'
     default: return 'secondary'
   }
 }
+
+// Scopo: Una veste si disattiva quando esiste e non e' gia' spenta: accesa,
+// o con un invito in volo (spedito o no). Una regola per portale e shop.
+const STATI_DISATTIVABILI = ['ATTIVO', 'PENDING', 'NON_SPEDITO']
+const disattivabile = (stato) => STATI_DISATTIVABILI.includes(stato)
 
 // ── Load stato all'apertura + dopo ogni mutazione ────────────────
 
@@ -103,14 +113,17 @@ watch(() => props.entitaId, (newId) => { if (newId) loadStato() })
 // stato e notifica il parent. `successKey`/`errorKey` sono chiavi i18n;
 // `apiCall` e' un thunk che chiama la funzione API con gli argomenti
 // gia' legati. Unifica la vecchia coppia _doInvio / _doDisattiva.
-async function _runAction({ apiCall, successKey, errorKey }) {
+// `invito`: la risposta porta `inviato` (l'email e' partita?), e il toast lo
+// sceglie `notificaEsitoInvito` invece del successo fisso (F-3).
+async function _runAction({ apiCall, successKey, errorKey, invito = false }) {
   const res = await execute(apiCall, {
-    successMessage: t(successKey),
+    successMessage: invito ? null : t(successKey),
     errorHandler: (err) => {
       notify.error(extractApiError(err, t(errorKey)))
     },
   })
   if (res !== null) {
+    if (invito) notificaEsitoInvito(res, t(successKey))
     await loadStato()
     emit('stato-cambiato')
   }
@@ -118,12 +131,12 @@ async function _runAction({ apiCall, successKey, errorKey }) {
 
 // Scopo: Dialog conferma + esecuzione azione generica. `dangerKey` se
 // valorizzato, il dialog e' rosso (usato per reinvio e disattivazione).
-function _confirmAndRun({ titleKey, msgKey, msgParams = {}, danger = false, apiCall, successKey, errorKey }) {
+function _confirmAndRun({ titleKey, msgKey, msgParams = {}, danger = false, apiCall, successKey, errorKey, invito = false }) {
   confirmAction({
     header: t(titleKey),
     message: t(msgKey, msgParams),
     danger,
-    onAccept: () => _runAction({ apiCall, successKey, errorKey }),
+    onAccept: () => _runAction({ apiCall, successKey, errorKey, invito }),
   })
 }
 
@@ -144,6 +157,7 @@ function _confirmInvio({ reinvio, namespace, apiFn }) {
     apiCall: () => apiFn(props.entitaId, { email: email.value.trim(), reinvio }),
     successKey: reinvio ? `${namespace}.invito_reinviato` : `${namespace}.invito_inviato`,
     errorKey: `${namespace}.invito_errore`,
+    invito: true,
   })
 }
 
@@ -215,7 +229,7 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
     </div>
 
     <div class="portale-accesso-actions">
-      <!-- Invia: NESSUNO / DISATTIVO. Reinvia: PENDING / ATTIVO. -->
+      <!-- Invia: NESSUNO / DISATTIVO. Reinvia: PENDING / NON_SPEDITO / ATTIVO. -->
       <Button
         v-if="statoPortale.stato === 'NESSUNO' || statoPortale.stato === 'DISATTIVO'"
         :label="t('portale.btn_invia_invito')"
@@ -234,9 +248,9 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
         :loading="loading"
         @click="onReinvia"
       />
-      <!-- Disattiva: visibile solo per stato ATTIVO o PENDING. -->
+      <!-- Disattiva: visibile per ATTIVO, PENDING o NON_SPEDITO. -->
       <Button
-        v-if="statoPortale.stato === 'ATTIVO' || statoPortale.stato === 'PENDING'"
+        v-if="disattivabile(statoPortale.stato)"
         :label="t('portale.btn_disattiva')"
         :icon="MANAGE_ICONS.DISATTIVA"
         severity="danger"
@@ -254,6 +268,14 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
       class="mt-1"
     >
       {{ t('portale.invito_pending_info') }}
+    </Message>
+    <Message
+      v-else-if="statoPortale.stato === 'NON_SPEDITO'"
+      severity="error"
+      :closable="false"
+      class="mt-1"
+    >
+      {{ t('common.invito_non_spedito_info') }}
     </Message>
 
     <!-- Sezione Shop Customer (§13.7): solo per clienti. -->
@@ -298,7 +320,7 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
           @click="onReinviaShop"
         />
         <Button
-          v-if="statoShop.stato === 'ATTIVO' || statoShop.stato === 'PENDING'"
+          v-if="disattivabile(statoShop.stato)"
           :label="t('shop.btn_disattiva')"
           :icon="MANAGE_ICONS.DISATTIVA"
           severity="danger"
@@ -315,6 +337,14 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
         class="mt-1"
       >
         {{ t('shop.invito_pending_info') }}
+      </Message>
+      <Message
+        v-else-if="statoShop.stato === 'NON_SPEDITO'"
+        severity="error"
+        :closable="false"
+        class="mt-1"
+      >
+        {{ t('common.invito_non_spedito_info') }}
       </Message>
     </div>
   </section>

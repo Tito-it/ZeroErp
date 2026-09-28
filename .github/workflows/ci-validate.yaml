@@ -91,6 +91,10 @@ jobs:
       DB_USER: zeroerp
       DB_PASSWORD: secret
       DJANGO_SECRET_KEY: ci-placeholder
+      # Chiave Fernet dei campi cifrati; obbligatoria (settings.py). E' la
+      # base64 di «ci-placeholder-fernet-key-32byte»: un segnaposto leggibile,
+      # non un segreto. Stesso valore di ci.yaml (smoke del container).
+      DJANGO_FIELD_ENCRYPTION_KEYS: "Y2ktcGxhY2Vob2xkZXItZmVybmV0LWtleS0zMmJ5dGU="  # gitleaks:allow
       DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
       DJANGO_DEBUG: "0"
       # Nessun proxy davanti al client di test: vale REMOTE_ADDR (settings.py,

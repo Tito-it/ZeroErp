@@ -19,6 +19,7 @@ import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { capitalizeWords } from '../../core/utils/string'
 import { isEmailValid } from '../../core/utils/validators'
 import { useNotify } from '../../core/composables/useNotify'
+import { useEsitoInvito } from '../../core/composables/useEsitoInvito'
 import { bloccoAttivo, motivoBloccoRiga } from '../../core/utils/bloccoMotivo'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfermata'
@@ -50,6 +51,7 @@ const store = useOperatoriStore()
 const { execute, loading, campiErrati } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 const notify = useNotify()
+const { notificaEsitoInvito } = useEsitoInvito()
 const injectedReadonly = useInjectReadonly()
 
 // ⭐ La creazione e' un gesto a DUE TEMPI quando l'email e' gia' di una
@@ -412,7 +414,8 @@ function onInvita() {
         const msg = data?.email
           ? t('amministrazione.invito_inviato') + ` (${data.email})`
           : t('amministrazione.invito_inviato')
-        notify.success(msg)
+        // `inviato: false` = link creato, email non partita: avviso (F-3).
+        notificaEsitoInvito(data, msg)
         // Ricarica dettaglio per aggiornare invito_inviato_at
         await store.fetchDetail(props.authUserId)
       } catch (err) {

@@ -158,7 +158,7 @@ class DefinizioniRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             cols = [c[0] for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
 
     # Scopo: elenco edizioni per (tipo [, emittente]) con drift. Preset =
     # emittente_fiscale_id NULL; il drift e' valorizzato solo per le edizioni

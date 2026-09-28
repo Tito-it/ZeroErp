@@ -149,7 +149,7 @@ di integrazione che chiamano i service direttamente. Vedi guida
 
 ## Riferimenti
 
-* [JwtAuditMiddleware](jwt_audit_middleware.md) — middleware compagno (reset GUC, guard BYPASSRLS, DISABILITATO)
+* [JwtAuditMiddleware](jwt_audit_middleware.md) — middleware compagno (reset GUC, guard BYPASSRLS)
 * [Auth Views Audit](auth_views_audit.md) — login/refresh che chiamano `set_jwt_gucs` direttamente
 * [Risorse umane e accessi — Propagazione identita utente al database (GUC)](/guide/risorse-umane-e-accessi)
 * [Contratto GUC `app.*`](/guide/contratto-guc-app)

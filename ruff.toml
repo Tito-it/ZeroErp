@@ -79,18 +79,33 @@ exclude = [
 #       `logger.error(..., exc_info=True)`).
 # LOG = uso del logging, l'altra meta': `.exception()` FUORI da un except.
 #
-# ⛔ B (bugbear) NON e' acceso, e la ragione va scritta perche' e' il candidato
-#    piu' ovvio: dei 54 rilievi, `B017` (2) e' stato sanato subito — era un
-#    `assertRaises(Exception)`, cioe' un test che passa su QUALUNQUE errore, la
-#    stessa regola gia' scritta per i pgTAP — ma restano `B905` (34, `zip()`
-#    senza `strict=`: tronca in silenzio alla lista piu' corta) e `B023` (5),
-#    che sono 39 decisioni una per una, non una sostituzione.
-#    ⚠️ E `B904` (12) e' stato guardato e SCARTATO: 8 sono
-#    `raise AssertionError("unreachable")  # pragma: no cover`, righe che non
-#    si eseguono mai, e le altre 4 non traducono errori di database — nessuna
-#    perde la diagnostica psycopg, che e' l'unica cosa che il `from` porta qui
-#    (`db_error_fields` legge `__cause__` in cinque punti). Correggerle sarebbe
-#    stato rumore su righe morte.
+# ⭐ ALLARGAMENTO DEL 2026-09-28 — B = bugbear (brief
+#    `brief-be-fe-sicurezza-header-token-mfa.md` §4). Rimandato il 2026-09-10
+#    perche' chiedeva decisioni una per una, non una sostituzione; misurati il
+#    2026-09-28 74 rilievi, sanati PRIMA di accendere:
+#    - `B905` (50, `zip()` senza `strict=`): TUTTI `strict=True`. Nessuno
+#      voleva la troncatura: 45 sono `dict(zip(colonne, riga))`, dove colonne
+#      e valori hanno per costruzione la stessa lunghezza, gli altri coppie che
+#      devono combaciare (cifre e pesi del codice fiscale, rate e metadati).
+#      ⛔ La correzione automatica di ruff mette `strict=False`, cioe'
+#      conserva il difetto: una `zip` nuova si scrive `strict=True`, e
+#      `strict=False` solo dove la troncatura e' VOLUTA, col perche' accanto.
+#    - `B023` (6, funzione nel ciclo che legge la variabile del ciclo): tutte
+#      invocate subito, nessun difetto oggi; le variabili ora si LEGANO come
+#      argomenti di default, cosi' restano giuste se un giorno la chiamata
+#      viene rimandata (`commesse_service`, due test DB).
+#    - `B007` (11, variabile del ciclo non usata): rinominate `_x`. Due erano
+#      altro: in `test_ui_action_e_canale_campi` il sorgente «senza docstring»
+#      era calcolato e mai letto (codice morto, tolto); in
+#      `check_i18n_keys.py` le intestazioni rotte non dicevano DOVE, a
+#      differenza delle altre due liste dello stesso script (corretto).
+#    - `B904` (7, `raise` dentro `except` senza `from`): 3 punti veri
+#      (utente non trovato, intero non valido) ora `from None`; 4 sono
+#      `raise AssertionError("unreachable")` dopo `ErrorManager.raise_error`,
+#      righe che non si eseguono mai, marcate `noqa: B904` sul punto. ⚠️ La
+#      regola resta ACCESA: il 2026-09-10 era stata proposta da ignorare in
+#      blocco, ma i rilievi di allora non erano quelli di oggi — tre erano
+#      traduzioni d'errore vere.
 #
 # ⭐ ALLARGAMENTO DEL 2026-09-26 — S = regole di sicurezza (flake8-bandit, le
 #    stesse di Bandit: niente dipendenza nuova). Misurate 883 rilievi, sanati
@@ -129,7 +144,7 @@ exclude = [
 #    altre regole risultano spente, e ruff toglie TUTTI i `noqa` del repo
 #    (427 il 2026-09-26, ripristinati). Si usa la configurazione intera
 #    (`ruff check .`), e il motivo scritto dopo la direttiva va conservato.
-select = ["F", "E9", "T20", "C4", "A", "PIE", "G", "LOG", "S", "RUF100"]
+select = ["F", "E9", "T20", "C4", "A", "PIE", "G", "LOG", "S", "B", "RUF100"]
 ignore = ["S101"]
 
 [lint.per-file-ignores]

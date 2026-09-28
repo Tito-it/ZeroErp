@@ -205,10 +205,10 @@ Body JSON:
 - `scope=emittente`: emittente derivato dall'utente; `scope=categoria_cliente`: id
   dal body. Entrambi riservati agli amministratori (superuser o SUPER_ADMIN),
   altrimenti `E_PERMISSION_DENIED` (403).
-- Il `parameter_code` deve esistere in `config.parameters`: se manca, l'INSERT viola
-  il NOT NULL su `parameter_id` ed esce `E_DATABASE` (400).
-  > ⚠️ Difetto noto (E-9): dovrebbe essere `E_PARAMETER_NOT_FOUND` (404) — vedi
-  > [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+- Il `parameter_code` deve esistere in `config.parameters`: se manca, **404
+  `E_PARAMETER_NOT_FOUND`** e non si scrive niente (dal 2026-09-28; prima l'INSERT
+  violava il NOT NULL su `parameter_id` ed usciva `E_DATABASE` 400 — E-9 dell'
+  [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 - Errore `E_PARAMETER_VALIDATION` se `parameter_code` vuoto, `scope` non ammesso o
   `categoria_cliente_id` mancante/non positivo.
 
@@ -293,7 +293,6 @@ parameter_repository.py (Repository)
 
 | Codice                    | HTTP | Causa |
 |---------------------------|------|-------|
-| `E_PARAMETER_NOT_FOUND`   | 404  | Parametro non trovato o override non esistente |
+| `E_PARAMETER_NOT_FOUND`   | 404  | Parametro non trovato (anche nell'upsert di un override) o override non esistente |
 | `E_PARAMETER_VALIDATION`  | 400  | Valore non valido, codice vuoto, scope non ammesso, id categoria non positivo |
 | `E_PERMISSION_DENIED`     | 403  | Scope `emittente` / `categoria_cliente` da non amministratore |
-| `E_DATABASE`              | 400  | `parameter_code` inesistente nell'upsert (difetto E-9) |

@@ -124,9 +124,11 @@ sudo -u $APP_USER bash -lc "
 cd $APP_DIR/backend
 cp .env.example env.sh && chmod 600 env.sh
 "
-# Poi si valorizza env.sh (DJANGO_SECRET_KEY, DJANGO_ALLOWED_HOSTS,
-# DJANGO_TRUSTED_PROXY_COUNT=1, FRONTEND_URL=https://${TAIL_NAME}, DB_*).
-# Chiave: python -c "import secrets; print(secrets.token_urlsafe(64))"
+# Poi si valorizza env.sh (DJANGO_SECRET_KEY, DJANGO_FIELD_ENCRYPTION_KEYS,
+# DJANGO_ALLOWED_HOSTS, DJANGO_TRUSTED_PROXY_COUNT=1,
+# FRONTEND_URL=https://${TAIL_NAME}, DB_*).
+# SECRET_KEY: python -c "import secrets; print(secrets.token_urlsafe(64))"
+# Chiave Fernet: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 # Stesso elenco SENZA `export` in .env.systemd, per systemd:
 sudo -u $APP_USER bash -lc "cd $APP_DIR/backend && sed 's/^export //' env.sh > .env.systemd && chmod 600 .env.systemd"
 ```

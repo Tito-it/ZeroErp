@@ -39,7 +39,7 @@ class ConfigCrudRepository:
             row = cursor.fetchone()
             if not row:
                 return None
-            return dict(zip(cols, row))
+            return dict(zip(cols, row, strict=True))
 
     # Scopo: Scrive una riga col verbo del pannello: `record_id` None = nuova,
     # altrimenti modifica per id. Ritorna la riga scritta (senza audit).

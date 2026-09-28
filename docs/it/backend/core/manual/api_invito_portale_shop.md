@@ -104,6 +104,12 @@ lo shop aveva ancora l'invalidazione fuori-atomic).
 }
 ```
 
+`inviato` e' l'esito **dell'email** (dal 2026-09-28, F-3 dell'
+[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)):
+`false` se non e' partita. La chiamata non fallisce — veste e token ci sono, l'invito si
+recupera col reinvio — ma `invito_inviato_at` non si aggiorna e il fallimento si logga.
+Stesso contratto per le tre vesti (la strada e' una: `InvitoVeste.spedisci`).
+
 `is_cross=true` quando l'`auth_user` ha gia' una password vera: viene aggiunta
 una **2a identita** in attesa di attivazione cross. `nuovo_utente` dice solo se
 l'`auth_user` e' stato creato ora. In **tutti** i casi l'identita' e'
@@ -168,12 +174,13 @@ anagrafiche ≥ LETTURA.
 }
 ```
 
-`stato` ∈ `{NESSUNO, PENDING, ATTIVO, DISATTIVO}`:
+`stato` ∈ `{NESSUNO, PENDING, NON_SPEDITO, ATTIVO, DISATTIVO}`:
 
 | Stato | Significato |
 | --- | --- |
 | `NESSUNO` | identita non esiste (mai invitato) |
-| `PENDING` | identita `attivo=false` + token non consumato non scaduto |
+| `PENDING` | identita `attivo=false` + token non consumato non scaduto, **e** l'email d'invito e' partita dopo la sua emissione (`invito_inviato_at >= data_insert` del token) |
+| `NON_SPEDITO` | come `PENDING`, ma l'email di quel token **non e' partita** (`invito_inviato_at` nullo o precedente al token): la persona non ha il link, si reinvia |
 | `ATTIVO` | identita `attivo=true` |
 | `DISATTIVO` | identita `attivo=false`, nessun token pending (revocata o invito scaduto) |
 
@@ -182,7 +189,10 @@ anagrafiche ≥ LETTURA.
 volta che un token vivo esiste, quindi anche su `ATTIVO`.
 
 Dopo un invito, in entrambi i flussi, la veste e' **`PENDING`** fino
-all'attivazione. ⚠️ Fino al 2026-09-24 l'invito con email nuova creava l'identita'
+all'attivazione — **`NON_SPEDITO`** se l'email non e' partita (dal 2026-09-28, F-3
+dell'[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md):
+prima un link pendente bastava a dire «invito inviato»). La regola e' la funzione
+pura `stato_veste` di `portale_repository.py`. ⚠️ Fino al 2026-09-24 l'invito con email nuova creava l'identita'
 gia' attiva, e quel cliente risultava `ATTIVO` prima di aver scelto la password
 (M-3).
 

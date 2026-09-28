@@ -64,7 +64,7 @@ Poi `pct restart <CTID>` e si prosegue con il [Playbook](play-book-operativo-bac
   senza sanificarlo.
 * **Clone** in un CT nuovo: rigenerare le **SSH host keys** e il **certificato**,
   rifare `tailscale up`, e nei file d'ambiente (`backend/env.sh` e
-  `backend/.env.systemd`) cambiare `DJANGO_SECRET_KEY`, le credenziali DB,
+  `backend/.env.systemd`) cambiare `DJANGO_SECRET_KEY` e `DJANGO_FIELD_ENCRYPTION_KEYS` (prima ri-cifrando i segreti: [sicurezza](../sicurezza-e-qualita-statica.md#le-chiavi-dei-dati-cifrati)), le credenziali DB,
   `DJANGO_ALLOWED_HOSTS` e `FRONTEND_URL`; nel vhost Nginx, `server_name`.
 * **Backup `vzdump`**: su storage remoto impostare `tmpdir: /var/tmp`, per
   evitare errori `tar | zstd` su share instabili o piene.

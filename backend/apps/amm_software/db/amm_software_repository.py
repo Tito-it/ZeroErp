@@ -267,7 +267,7 @@ class AmmSoftwareRepository:
         total_count = rows[0][cols.index("total_count")]
         results: list[OperatoreRow] = []
         for row in rows:
-            d = dict(zip(cols, row))
+            d = dict(zip(cols, row, strict=True))
             d.pop("total_count", None)
             results.append(d)  # type: ignore[arg-type]
 
@@ -309,7 +309,7 @@ class AmmSoftwareRepository:
         if not row:
             return None
 
-        return dict(zip(cols, row))  # type: ignore[return-value]
+        return dict(zip(cols, row, strict=True))  # type: ignore[return-value]
 
     # Scopo: Aggiorna stato identita_digitali (attivo, ruolo_applicativo) per
     # l'utente. Helper privato per orchestrare le 3 write path dei writer
@@ -871,7 +871,7 @@ class AmmSoftwareRepository:
             row = cursor.fetchone()
         if not row:
             return None
-        return dict(zip(cols, row))
+        return dict(zip(cols, row, strict=True))
 
     # Scopo: Cambio scope emittenti atomico via
     # `script.fn_change_user_emittenti_scope(p_auth_user_id, p_emittente_ids)`.
@@ -979,7 +979,7 @@ class AmmSoftwareRepository:
                 [uo_id],
             )
             cols_a = [c.name for c in cursor.description]
-            aree = [dict(zip(cols_a, row)) for row in cursor.fetchall()]
+            aree = [dict(zip(cols_a, row, strict=True)) for row in cursor.fetchall()]
 
         # Azioni
         with connection.cursor() as cursor:
@@ -998,7 +998,7 @@ class AmmSoftwareRepository:
                 [uo_id],
             )
             cols_z = [c.name for c in cursor.description]
-            azioni = [dict(zip(cols_z, row)) for row in cursor.fetchall()]
+            azioni = [dict(zip(cols_z, row, strict=True)) for row in cursor.fetchall()]
 
         return {"aree": aree, "azioni": azioni}
 
@@ -1047,7 +1047,7 @@ class AmmSoftwareRepository:
                 [auth_user_id],
             )
             cols_a = [c.name for c in cursor.description]
-            aree = [dict(zip(cols_a, row)) for row in cursor.fetchall()]
+            aree = [dict(zip(cols_a, row, strict=True)) for row in cursor.fetchall()]
 
         with connection.cursor() as cursor:
             cursor.execute(
@@ -1067,7 +1067,7 @@ class AmmSoftwareRepository:
                 [auth_user_id],
             )
             cols_z = [c.name for c in cursor.description]
-            azioni = [dict(zip(cols_z, row)) for row in cursor.fetchall()]
+            azioni = [dict(zip(cols_z, row, strict=True)) for row in cursor.fetchall()]
 
         return {"aree": aree, "azioni": azioni}
 

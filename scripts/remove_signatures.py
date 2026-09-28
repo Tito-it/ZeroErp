@@ -25,7 +25,7 @@ def is_signature_line(line: str) -> bool:
     return 'signature-core.md' in line or 'signature.md' in line
 
 # Itera ricorsivamente la cartella docs
-for dirpath, dirnames, filenames in os.walk(DOCS_ROOT):
+for dirpath, _dirnames, filenames in os.walk(DOCS_ROOT):
     # Esclude cartelle manual
     if 'manual' in dirpath.replace('\\', '/').split('/'):
         continue

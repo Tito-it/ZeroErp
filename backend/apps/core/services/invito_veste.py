@@ -220,6 +220,18 @@ class InvitoVeste:
     # fallisce il token resta valido (l'admin rimanda). Le variabili comuni
     # (link, scadenza, firma, sistema, flusso) le aggiunge il BB; quelle
     # della veste (nome, entita', ...) le passa il chiamante.
+    # ⭐ Ritorna se l'email E' PARTITA, e il chiamante lo riporta al client
+    #    (`inviato`). Un fallimento non solleva — il token c'e' e vale — ma
+    #    non si tace: si logga, e `invito_inviato_at` («l'ultimo invito
+    #    inviato») resta dov'era.
+    # ⛔ Fino al 2026-09-28 l'esito di `send_email` si scartava: un SMTP
+    #    fallito o un canale non configurato tornano `False` SENZA eccezione,
+    #    quindi l'invito risultava inviato e il log taceva (analisi difetti doc
+    #    API core, F-3). L'eccezione copre l'altra meta': template o account
+    #    che mancano.
+    # ⚠️ In console mode (`DEBUG`) `send_email` torna `True`: la mail e' stata
+    #    stampata, e il giornale la segna `SIMULATA`. Per lo sviluppo e' il
+    #    comportamento voluto, e qui vale come partita.
     def spedisci(
         self,
         porta: PortaInvito,
@@ -231,10 +243,10 @@ class InvitoVeste:
         invitato_da_user_id: int,
         variabili: dict[str, str],
         unita_organizzativa_id: int | None = None,
-    ) -> None:
+    ) -> bool:
         link = f"{settings.FRONTEND_URL}{porta.link_path}/{emissione.token}"
         try:
-            self._email_service.send_email(
+            log_id, spedita = self._email_service.send_email(
                 # Il flusso sceglie il TESTO: «scegli la password» (nuovo) o
                 # «entra con le credenziali che usi gia'» (un clic).
                 codice_template=porta.template_cross if emissione.is_cross else porta.template,
@@ -256,6 +268,16 @@ class InvitoVeste:
                 "— token valido, invito recuperabile",
                 porta.nome, auth_user_id, emissione.is_cross,
             )
+            return False
+
+        if not spedita:
+            # Il motivo sta gia' nel giornale email (`FAILED` con `errore`).
+            logger.error(
+                "Email invito NON partita porta=%s user_id=%s is_cross=%s log_id=%s "
+                "— token valido, invito recuperabile",
+                porta.nome, auth_user_id, emissione.is_cross, log_id,
+            )
+            return False
 
         if not self._auth_repo.set_invito_inviato_at(auth_user_id, identita_id=identita_id):
             # Non fatale (il token c'e'), ma la veste non e' piu' dove
@@ -265,6 +287,7 @@ class InvitoVeste:
                 "— riga non trovata o credenziale divergente",
                 porta.nome, auth_user_id, identita_id,
             )
+        return True
 
 
 # Scopo: Un token della porta risolto senza consumarlo: credenziale, meta e

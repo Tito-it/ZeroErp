@@ -87,6 +87,7 @@ porta argomenti, così `ruff check` a mano e il cancello dicono la stessa cosa.
 | `PIE` | costruzioni ridondanti — fra cui la chiave duplicata in un `dict`/`TypedDict` |
 | `G`, `LOG` | uso corretto del logging (`logger.exception` dentro un `except`, e solo lì) |
 | **`S`** | **sicurezza** (le regole di Bandit, via flake8-bandit): SQL composto a stringhe, `except: pass`, template senza autoescape, `subprocess`, password cablate, hash deboli, `pickle`/`yaml.load`, ... |
+| `B` | bugbear, accesa il 2026-09-28: fra le altre `zip()` senza `strict=` (tronca **in silenzio** alla lista più corta: si scrive `strict=True`, e `strict=False` solo dove la troncatura è voluta, col perché), una funzione nel ciclo che legge la variabile del ciclo, `raise` dentro un `except` senza `from` |
 | `RUF100` | `# noqa` morti: una direttiva che non sopprime più niente |
 
 ### Le eccezioni, e perché
@@ -96,7 +97,7 @@ porta argomenti, così `ruff check` a mano e il cancello dicono la stessa cosa.
 | `ignore = ["S101"]` | ovunque | `assert` si usa per restringere il tipo. Il rischio della regola (`python -O` toglie gli assert) è chiuso alla radice: `settings.py` **rifiuta l'avvio** con gli assert spenti. Un **controllo** si scrive `if …: raise`, mai `assert` |
 | `T201`, `T203`, `S603`, `S607` | `scripts/**`, `backend/scripts/**` | negli script da riga di comando `print` è l'interfaccia e lanciare `git` dal PATH è il lavoro |
 | `S` | `**/tests/**`, `test_*.py`, `conftest.py` | nei test `assert` è il linguaggio e le password sono finte per costruzione |
-| `B` (bugbear) | — | **non accesa**: restano decisioni una per una (`zip()` senza `strict=`) |
+| `B904` | 4 righe, sul punto | `raise AssertionError("unreachable")` dopo `ErrorManager.raise_error`: righe che non si eseguono mai. La regola resta accesa |
 | formattatore | — | **spento**: riformattare tutto renderebbe illeggibile `git blame` |
 
 ### Come si usa `# noqa`
@@ -293,26 +294,64 @@ file che era già tracciato prima della regola. Il presidio è gitleaks.
 ### Default sicuri in `settings.py`
 
 * `DJANGO_SECRET_KEY` **obbligatoria**, senza ripiego: un ripiego costante sta nel repo, cioè è
-  pubblico, e il backend partirebbe lo stesso senza dirlo.
+  pubblico, e il backend partirebbe lo stesso senza dirlo. Lo stesso vale per
+  `DJANGO_FIELD_ENCRYPTION_KEYS`, che in più deve contenere chiavi Fernet valide e non ripetute.
 * `DJANGO_DEBUG` **spento** se non è impostato: si accende a mano (`DJANGO_DEBUG=1`) sulla
   macchina che lo vuole.
 * `DJANGO_TRUSTED_PROXY_COUNT`, `FRONTEND_URL`, `DB_NAME`/`DB_USER`/`DB_PASSWORD` obbligatorie.
 * Il backend **non parte** con `python -O` (assert spenti).
 
-### La `SECRET_KEY` e i dati cifrati
+### Le chiavi dei dati cifrati
 
-La `SECRET_KEY` non firma solo JWT e sessioni: da essa deriva la chiave **Fernet** con cui
-`crypto_service` cifra i segreti salvati nel DB (oggi: le password SMTP degli account email).
-Quindi:
+`crypto_service` cifra i segreti salvati nel DB (oggi le password SMTP degli account email)
+con le chiavi **Fernet** di `DJANGO_FIELD_ENCRYPTION_KEYS`, **separate dalla `SECRET_KEY`**.
+Fino al 2026-09-28 la chiave era derivata dalla `SECRET_KEY`: ruotare quella avrebbe reso
+illeggibile ogni dato cifrato, cioè non la si sarebbe ruotata mai.
 
-* chi conosce la `SECRET_KEY` può decifrare quei dati;
-* **cambiarla** invalida tutti i token (gli utenti rientrano) e rende illeggibili i dati cifrati
-  con la vecchia: prima di ruotarla, i segreti cifrati vanno reinseriti o ri-cifrati.
+* **La `SECRET_KEY`** firma JWT e sessioni. Cambiarla fa rientrare gli utenti e azzera i
+  contatori dei nomi di login inesistenti (`nome_tentato`); i dati cifrati non li tocca.
+* **Le chiavi di cifratura** sono un elenco separato da virgola: si cifra con la **prima**, si
+  decifra con **tutte** (`MultiFernet`). Chi le conosce può decifrare quei dati.
+* Ogni colonna cifrata è iscritta in `crypto_service.CAMPI_CIFRATI`: è l'elenco che la
+  rotazione percorre.
+
+Le chiavi si gestiscono con due script in `backend/scripts/`, che tengono allineati i due file
+d'ambiente (`env.sh` e `.env.systemd`), non stampano mai una chiave e salvano una copia dei due
+file in `backend/var/backup-env/` prima di scriverli.
+
+⚠️ **I comandi qui sotto si lanciano dalla radice del repo** (`~/apps/ZeroErp`). Da dentro
+`backend/` il percorso perde il `backend/` iniziale: `scripts/chiave-cifratura-aggiungi.sh`.
+Scritto nella forma sbagliata, la shell risponde «File o directory non esistente» e **non
+succede niente**: se si riavvia lo stesso, il backend non parte (`Missing env var:
+DJANGO_FIELD_ENCRYPTION_KEYS` nel journal, e al login «Accesso non disponibile per un problema
+tecnico»). Prima del riavvio conviene controllare che la variabile ci sia:
+`grep -c DJANGO_FIELD_ENCRYPTION_KEYS backend/.env.systemd` deve dare `1`.
+
+Rotazione delle chiavi di cifratura:
+
+1. `backend/scripts/chiave-cifratura-aggiungi.sh`: genera una chiave nuova e la mette **in
+   testa** all'elenco (le vecchie restano dopo);
+2. `backend/scripts/chiave-cifratura-ricifra.sh`: dry-run, conferma, poi
+   `manage.py ricifra_campi_cifrati`, che ri-cifra tutto con la prima chiave, **tutto o niente**.
+   Se un token non si apre con nessuna chiave, il comando fallisce e non scrive nulla: quel
+   segreto va reinserito (la password SMTP dal suo account);
+3. `backend/scripts/chiave-cifratura-aggiungi.sh --togli-vecchie`: verifica che la sola prima
+   chiave apra tutto, poi toglie le altre;
+4. `sudo systemctl restart zeroerp-gunicorn` (i timer rileggono `.env.systemd` a ogni giro).
+
+`backend/.env.systemd` e `backend/env.sh` contengono le chiavi: permessi **600**
+(`chmod 600`); lo script lo segnala se non lo sono.
+
+⭐ **Migrazione una-tantum** dei dati cifrati prima del 2026-09-28, su ogni macchina con dati:
+`chiave-cifratura-aggiungi.sh`, poi `chiave-cifratura-ricifra.sh --migrazione` (che passa
+`--anche-chiave-da-secret-key`), con la `SECRET_KEY` di allora **ancora in uso**, poi il
+riavvio. Solo **dopo** si può ruotare la `SECRET_KEY`. Fatta su `backend-dev` il 2026-09-28.
 
 Generazione:
 
 ```bash
-python -c "import secrets; print(secrets.token_urlsafe(64))"
+python -c "import secrets; print(secrets.token_urlsafe(64))"                                  # SECRET_KEY
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"     # chiave Fernet
 ```
 
 ---
@@ -325,10 +364,9 @@ Qui l'elenco di ciò che, in tema sicurezza, oggi **non** c'è.
 
 | Cosa | Stato |
 | --- | --- |
-| **Rotazione dei segreti** rimasti nella storia del repo (`backend/.env`, e la chiave che era commentata in `settings.py`) | non urgente, decisione di Tid del 2026-09-26: il repo è privato. Si ruotano insieme al passo «chiave di cifratura separata» del brief, §3.5 |
+| **Rotazione dei segreti** rimasti nella storia del repo (`backend/.env`, e la chiave che era commentata in `settings.py`) | non urgente, decisione di Tid del 2026-09-26: il repo è privato. La chiave di cifratura è separata dal 2026-09-28 (brief §3.5): la `SECRET_KEY` si può ruotare dopo la migrazione dei dati cifrati, sezione [Le chiavi dei dati cifrati](#le-chiavi-dei-dati-cifrati) |
 | Header HTTPS: HSTS, `SECURE_SSL_REDIRECT`, **CSP** | brief [sicurezza: header, token, MFA](work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md) §1 — registro, voce D3-c |
 | `npm audit` in CI, Dependabot | da decidere — registro, voce D1-f |
 | Token JWT in `localStorage` (leggibili da uno script iniettato) → cookie `httpOnly` | stesso brief, §2 |
 | Autenticazione a due fattori | stesso brief, §3 |
-| ruff `B` (bugbear) | stesso brief, §4 |
 | Nessun filtro che oscuri i dati sensibili nei log | proposto |

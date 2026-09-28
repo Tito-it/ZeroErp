@@ -149,12 +149,12 @@ class PerimetroContiIncassoTests(unittest.TestCase):
                 # soggetto potrebbe non avere conti di incasso — e va bene: qui
                 # si prova che non viene RIFIUTATO, non che ci sia del dato.
                 self._in_transazione_annullata(
-                    lambda: self.repo.list_conti_incasso(mio["soggetto_ruolo_id"])
+                    lambda mio=mio: self.repo.list_conti_incasso(mio["soggetto_ruolo_id"])
                 )
                 # L'altrui: rifiutato.
                 with self.assertRaises(ServiceError) as ctx:
                     self._in_transazione_annullata(
-                        lambda: self.repo.list_conti_incasso(
+                        lambda altrui=altrui: self.repo.list_conti_incasso(
                             altrui["soggetto_ruolo_id"]
                         )
                     )

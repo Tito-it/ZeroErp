@@ -36,7 +36,7 @@ _COLS = [
 def _mock_cursor(rows: list[tuple]) -> MagicMock:
     cursor = MagicMock()
     cursor.description = [MagicMock() for _ in _COLS]
-    for descr, nome in zip(cursor.description, _COLS):
+    for descr, nome in zip(cursor.description, _COLS, strict=True):
         descr.name = nome
     cursor.fetchall.return_value = rows
     return cursor

@@ -216,7 +216,7 @@ class Command(BaseCommand):
         with connection.cursor() as cursor:
             cursor.execute(sql, [limit])
             cols = [c.name for c in cursor.description]
-            rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
+            rows = [dict(zip(cols, r, strict=True)) for r in cursor.fetchall()]
 
         count = len(rows)
         if dry_run:
