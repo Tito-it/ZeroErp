@@ -14,7 +14,7 @@ Indice test eseguiti:
 3) test_lista_rifiutata
 4) test_lista_di_coppie_rifiutata
 5) test_json_illeggibile_rifiutato
-6) test_logout_con_lista_e_un_400_nell_envelope
+6) test_patch_con_lista_e_un_400_nell_envelope
 """
 
 from unittest import TestCase
@@ -61,20 +61,25 @@ class CorpoOggettoTests(TestCase):
         self.assertIn("JSON valido", ctx.exception.message)
 
 
-class LogoutCorpoListaTests(TestCase):
+class PatchCorpoListaTests(TestCase):
 
-    # Scopo: F-9 dal percorso vero: logout (autenticato) con una lista nel
-    # corpo. Era un 500 (`request.data.get` su una lista).
-    def test_logout_con_lista_e_un_400_nell_envelope(self):
+    # Scopo: F-9 dal percorso vero: PATCH di un articolo con una lista nel
+    # corpo. Era un 500 (`request.data.get` su una lista). Il rifiuto arriva
+    # PRIMA del servizio, quindi niente database.
+    # ⚠️ Fino al 2026-09-28 il percorso vero era il logout: da quel giorno il
+    #    logout non legge piu' il corpo (il refresh sta nel cookie, brief
+    #    sicurezza §2), e il presidio si e' spostato su una view che lo legge.
+    def test_patch_con_lista_e_un_400_nell_envelope(self):
+        import uuid
         from unittest.mock import MagicMock
 
+        from apps.catalogo.api.views import ApiArticoloDetail
         from apps.core.api.error_responses import exception_to_error_response
-        from apps.core.api.logout_view import LogoutView
 
-        request = _richiesta('[{"refresh": "x"}]')
+        request = _richiesta('[{"descrizione": "x"}]')
         request.user = MagicMock(id=1)
         with self.assertRaises(ServiceError) as ctx:
-            LogoutView().post(request)
+            ApiArticoloDetail().patch(request, uuid.uuid4())
         risposta = exception_to_error_response(ctx.exception)
         self.assertEqual(risposta.status_code, 400)
         self.assertIn(b"E_VALIDATION_INPUT", risposta.content)

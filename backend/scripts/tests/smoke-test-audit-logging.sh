@@ -14,6 +14,10 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
+# Gunicorn diretto in HTTP: ci si dichiara HTTPS come Nginx (redirect di Django).
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"
+# Refresh JWT nel cookie HttpOnly: lettura dal Set-Cookie e ripresentazione.
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_refresh.sh"
 USERNAME="${SMOKE_USER:-tid}"
 PASSWORD="${1:-${SMOKE_PASSWORD:-}}"
 
@@ -28,7 +32,7 @@ LAST_STATUS=""
 LAST_BODY=""
 
 TMPFILE=$(mktemp)
-trap "rm -f $TMPFILE" EXIT
+trap "rm -f $TMPFILE ${TMPFILE}.hdr" EXIT
 
 log_ok()   { ((PASS++)) || true; echo -e "  ${GREEN}OK${NC}  $1"; }
 log_fail() { ((FAIL++)) || true; echo -e "  ${RED}FAIL${NC} $1"; }
@@ -76,7 +80,7 @@ fi
 # Conta sessioni prima
 SESS_BEFORE=$(db_query "SELECT count(*) FROM dbops.sessioni_utente WHERE evento='LOGIN'" | tail -1)
 
-curl -s -w '\n%{http_code}' \
+curl -s -w '\n%{http_code}' -D "${TMPFILE}.hdr" \
     -H "Content-Type: application/json" \
     -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}" \
     "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE" 2>/dev/null
@@ -91,7 +95,8 @@ if [[ "$AUTH_STATUS" != "200" ]]; then
 fi
 
 TOKEN=$(json_get "$AUTH_BODY" ".access")
-REFRESH=$(json_get "$AUTH_BODY" ".refresh")
+# Il refresh e' nel cookie HttpOnly, non nel corpo.
+REFRESH=$(refresh_dal_set_cookie "${TMPFILE}.hdr")
 log_ok "JWT ottenuto (HTTP 200)"
 
 # Verifica sessione inserita
@@ -117,16 +122,15 @@ echo "-- 1. Token refresh → sessione audit --"
 
 SESS_BEFORE_R=$(db_query "SELECT count(*) FROM dbops.sessioni_utente WHERE evento='REFRESH'" | tail -1)
 
-curl -s -w '\n%{http_code}' \
-    -H "Content-Type: application/json" \
-    -d "{\"refresh\":\"$REFRESH\"}" \
+curl_refresh "$REFRESH" -s -w '\n%{http_code}' -D "${TMPFILE}.hdr" -X POST \
     "${BASE_URL}/api/v1/admin/token/refresh/" > "$TMPFILE" 2>/dev/null
 LAST_STATUS=$(tail -1 "$TMPFILE")
 LAST_BODY=$(sed '$d' "$TMPFILE")
 
 if [[ "$LAST_STATUS" == "200" ]]; then
     log_ok "Token refresh (HTTP 200)"
-    NEW_REFRESH=$(json_get "$LAST_BODY" ".refresh")
+    # Il refresh ruotato torna nel cookie.
+    NEW_REFRESH=$(refresh_dal_set_cookie "${TMPFILE}.hdr")
 else
     log_fail "Token refresh fallito (HTTP $LAST_STATUS)"
     NEW_REFRESH=""
@@ -177,9 +181,7 @@ echo "-- 3. Token blacklist → rotation --"
 if [[ -n "$NEW_REFRESH" ]]; then
     # Il vecchio refresh token dovrebbe essere blacklistato dopo la rotation
     # Proviamo a usare il vecchio refresh token — deve fallire
-    curl -s -w '\n%{http_code}' \
-        -H "Content-Type: application/json" \
-        -d "{\"refresh\":\"$REFRESH\"}" \
+    curl_refresh "$REFRESH" -s -w '\n%{http_code}' -X POST \
         "${BASE_URL}/api/v1/admin/token/refresh/" > "$TMPFILE" 2>/dev/null
     LAST_STATUS=$(tail -1 "$TMPFILE")
 

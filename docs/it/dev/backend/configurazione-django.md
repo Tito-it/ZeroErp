@@ -241,6 +241,32 @@ server {
     ssl_certificate     /etc/ssl/certs/backend-dev.crt;
     ssl_certificate_key /etc/ssl/private/backend-dev.key;
 
+    # Header di pagina. La CSP sta QUI e non in Django: la pagina HTML la
+    # servono Vite (sviluppo) o la build statica (produzione), non Django.
+    # HSTS e redirect invece sono in settings.py (sotto, «Settings Django»).
+    # ⚠️ Nessuna `location` qui sotto ha un proprio `add_header`: se una ne
+    #    aggiungesse uno, perderebbe TUTTI questi (regola di ereditarieta' di
+    #    Nginx) e andrebbero ripetuti li'.
+    # Passi: `-Report-Only` per un giro di collaudo a video su tutte le aree
+    # (le violazioni compaiono nella console del browser), poi si toglie
+    # `-Report-Only` e la politica diventa applicata.
+    #
+    # SVILUPPO (Vite): l'HMR inietta script e apre un websocket sulla porta
+    # della pagina, quindi rispetto alla produzione servono
+    # `script-src 'unsafe-inline'` e `connect-src wss:`. ⛔ Le due politiche
+    # differiscono SOLO in quei due punti: chi ne cambia una cambia l'altra.
+    add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' wss:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+    # PRODUZIONE (build statica), al posto della riga sopra:
+    # add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+    #
+    # Perche' ogni voce: `style-src 'unsafe-inline'` per gli <style> che
+    # PrimeVue inietta a runtime; `frame-src blob:` per l'anteprima PDF
+    # (DocumentoEmissioneDialog, `URL.createObjectURL` in un iframe);
+    # l'anteprima email (`srcdoc` con `sandbox=""`) e' gia' isolata.
+    # `frame-ancestors 'none'` vale come l'X-Frame-Options: DENY di Django.
+    add_header Referrer-Policy "same-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+
     # Static & media: gli stessi percorsi di STATIC_ROOT / MEDIA_ROOT in settings.py
     location /static/ { alias /var/www/ZeroErp/static/;  expires 7d; }
     location /media/  { alias /var/www/ZeroErp/media/;   expires off; }
@@ -271,6 +297,8 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_pass http://127.0.0.1:8000;
     }
+    # Senza X-Forwarded-Proto: `/health` e' esente dal redirect HTTPS di
+    # Django (SECURE_REDIRECT_EXEMPT), e risponde anche in HTTP diretto.
     location = /health {
         include proxy_params;
         proxy_pass http://127.0.0.1:8000;
@@ -339,6 +367,12 @@ la mappa, non una copia.
   scritto da Nginx; l'IP del client lo ricava un solo building block,
   `core.services.request_context.get_client_ip`, con
   `DJANGO_TRUSTED_PROXY_COUNT`.
+* **HSTS e redirect HTTPS**: `DJANGO_SECURE_HSTS_SECONDS` obbligatoria con
+  `DEBUG=0`, senza default (`0` con un certificato auto-firmato, come su
+  `backend-dev`); redirect acceso di default con `DEBUG=0`, `/health` esente.
+  Sottodomini e preload spenti per scelta. Dettaglio e chiamanti diretti di
+  Gunicorn: [Sicurezza e qualità statica](../sicurezza-e-qualita-statica.md),
+  «HSTS e redirect HTTPS». Cambiarle vuole `systemctl restart`, non `HUP`.
 * **Cookie e CSRF**: cookie `Secure` fuori da `DEBUG`; `CSRF_TRUSTED_ORIGINS` è
   l'indirizzo Tailscale di `backend-dev`. L'API autentica con JWT, quindi il CSRF
   riguarda solo le rotte a sessione.
@@ -377,6 +411,11 @@ curl -ksi https://<IP_TAILSCALE>/health         # 200
 # Superficie pubblica: 404 attesi, un 200 e' un'esposizione
 curl -I -k https://192.168.X.8/admin/login/     # 404
 curl -I -k https://192.168.X.8/api/docs/        # 404, salvo DJANGO_API_DOCS_ENABLED=1 + vhost aperto
+# Header di pagina (CSP, Referrer-Policy, Permissions-Policy) dal vhost
+curl -ksI https://192.168.X.8/ | grep -iE 'content-security|referrer|permissions'
+# Redirect di Django: Gunicorn diretto in HTTP → 301, /health esente → 200
+curl -sI http://127.0.0.1:8000/api/v1/core/me/ | head -1     # 301
+curl -sI http://127.0.0.1:8000/health | head -1              # 200
 # Django non esposto: da fuori la 8000 non risponde
 curl -m 3 http://192.168.X.8:8000/health        # deve FALLIRE (timeout/refused)
 # Rate limiting sull'autenticazione: dal 6°/7° tentativo 429

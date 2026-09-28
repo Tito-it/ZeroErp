@@ -16,6 +16,8 @@
 set -uo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
+# Gunicorn diretto in HTTP: ci si dichiara HTTPS come Nginx (redirect di Django).
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"
 USERNAME="${SMOKE_USER:-tid}"
 PASSWORD="${1:-${SMOKE_PASSWORD:-}}"
 DEF_ID="${DEF_ID:-419}"

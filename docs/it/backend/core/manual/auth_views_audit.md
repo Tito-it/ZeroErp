@@ -35,8 +35,8 @@ TokenRefreshView  (SimpleJWT)
 
 ### `AuditTokenObtainPairView` (base astratta)
 
-- **Astratta**: `serializer_class = None` + `assert` guard in `post()`.
-  Istanziarla direttamente → `AssertionError`. Le subclass DEVONO fornire
+- **Astratta**: `serializer_class = None` + guardia esplicita in `post()`:
+  usata senza subclass, il primo `post()` solleva `RuntimeError`. Le subclass DEVONO fornire
   un `serializer_class` sottoclasse di `MultiVesteTokenSerializer`.
 - **Throttle**: `LoginRateThrottle` (5 richieste / 5 minuti per IP) — contro
   chi **inonda** l'endpoint, qualunque credenziale provi. ⚠️ E' una regola
@@ -102,17 +102,30 @@ non ha la veste richiesta dal namespace → `VesteNonAttivaError` (403).
 
 ### `AuditTokenRefreshView` (base astratta)
 
-- **Astratta**: `expected_ruoli_applicativi = ()` + `assert` guard in `post()`.
-  Istanziarla direttamente → `AssertionError`.
-- **Guard cross-namespace**: estrae il claim `ruolo_applicativo` dal refresh
-  token via `_extract_ruolo_applicativo_from_refresh` (decode non-verificato
-  del payload JWT) e rifiuta con `VesteNonAttivaError` (403) se il claim
+- **Astratta**: `expected_ruoli_applicativi = ()` + guardia esplicita in
+  `post()`: usata senza subclass, il primo `post()` solleva `RuntimeError`.
+- **Refresh dal cookie**: il refresh non si legge dal corpo ma dal cookie
+  HttpOnly `zeroerp_refresh` (BB `refresh_cookie.py`, dal 2026-09-28). Prima
+  di tutto `richiedi_header_anti_csrf` pretende `X-Requested-With:
+  XMLHttpRequest` (403 `E_PERMISSION_DENIED`): e' l'unica richiesta
+  autenticata dal solo cookie. Poi `leggi_refresh_cookie`: senza cookie →
+  `InvalidToken` (401 `E_AUTHENTICATION_FAILED`).
+- **Guard cross-namespace**: legge il claim `ruolo_applicativo` da claim con
+  la **firma verificata** (`claims_refresh_firmati`, vedi la voce «Veste dal
+  token verificato») e rifiuta con `VesteNonAttivaError` (403) se il claim
   manca o non rientra in `expected_ruoli_applicativi`. Il guard gira **prima**
-  di `super().post()`: la firma del refresh viene validata da SimpleJWT solo
-  dopo.
-  > ⚠️ Difetto noto (E-8): un refresh illeggibile o senza claim
-  > `ruolo_applicativo` esce 403 `E_VESTE_NON_ATTIVA` invece di 401. Vedi
-  > [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+  di `_rinnova`, che ruoterebbe e metterebbe in blacklist il token: un refresh
+  del canale sbagliato non si brucia.
+- **`_rinnova`**: il corpo di `TokenViewBase.post` col refresh preso dal
+  cookie — stessa validazione (firma, scadenza, blacklist, rotazione) e stessa
+  traduzione di `TokenError` in `InvalidToken` (401). Il refresh ruotato esce
+  dal corpo e va nel `Set-Cookie` (`sposta_refresh_nel_cookie`).
+- **Veste dal token verificato** (E-8, chiuso 2026-09-28): prima del guard
+  cross-namespace i claim si leggono con la **firma verificata** (BB
+  `claims_refresh_firmati` di `refresh_cookie.py`, lo stesso del logout). Un
+  refresh illeggibile o non emesso da questo backend → 401; un refresh nostro
+  senza claim `ruolo_applicativo` o di un altro canale → 403
+  `E_VESTE_NON_ATTIVA`.
 - **Audit refresh**: dopo refresh OK, legge `user_id` e `sid` dal refresh in
   entrata con decode non verificato (`_extract_claims`: il refresh e' gia'
   blacklistato dalla rotation, `RefreshToken(...)` fallirebbe), risolve lo
@@ -133,14 +146,19 @@ Differiscono dalla base SOLO per `expected_ruoli_applicativi`:
 
 ## Input
 
-Vedi [api_multi_veste_token.md](api_multi_veste_token.md) §Input. Tutti e 6
-gli endpoint accettano JSON body standard SimpleJWT (`username+password`
-per login, `refresh` per refresh).
+Vedi [api_multi_veste_token.md](api_multi_veste_token.md) §Input. I 3 login
+accettano il JSON body standard SimpleJWT (`username+password`); i 3 refresh
+hanno corpo vuoto, leggono il refresh dal cookie `zeroerp_refresh` e
+pretendono l'header `X-Requested-With: XMLHttpRequest`.
 
 ## Output
 
-Envelope SimpleJWT standard (`access` + `refresh` + eventuale
-`password_change_required` al login). Il JWT contiene i claim custom
+Corpo `access` (+ eventuale `password_change_required` al login); il refresh
+non sta mai nel corpo ma nel `Set-Cookie` `zeroerp_refresh` (attributi in
+[api_multi_veste_token.md](api_multi_veste_token.md#cookie-di-refresh)). Al
+login lo sposta `sposta_refresh_nel_cookie` come **ultimo** passo di
+`AuditTokenObtainPairView.post`, dopo l'audit e le GUC che leggono ancora i
+claim dal refresh nel corpo. Il JWT contiene i claim custom
 (`identita_id`, `ruolo_applicativo`, `sid`, e `emittente_attivo_id` quando
 l'utente ha un emittente attivo) documentati in
 [api_multi_veste_token.md](api_multi_veste_token.md) §Claim JWT custom.

@@ -97,6 +97,10 @@ jobs:
       DJANGO_FIELD_ENCRYPTION_KEYS: "Y2ktcGxhY2Vob2xkZXItZmVybmV0LWtleS0zMmJ5dGU="  # gitleaks:allow
       DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
       DJANGO_DEBUG: "0"
+      # Obbligatoria con DEBUG=0 (settings.py). Qui non conta il valore: il
+      # client di test parla HTTP e HSTS vale solo su HTTPS; il redirect lo
+      # spegne il runner. Il valore di produzione lo prova `check --deploy`.
+      DJANGO_SECURE_HSTS_SECONDS: "0"
       # Nessun proxy davanti al client di test: vale REMOTE_ADDR (settings.py,
       # «Quanti proxy fidati»). Obbligatorio, senza il backend non parte.
       DJANGO_TRUSTED_PROXY_COUNT: "0"
@@ -638,18 +642,25 @@ jobs:
         #    Il cancello lo fa il grep qui sotto, con l'elenco a cricchetto dei
         #    rilievi ACCETTATI. Si toglie una voce quando si chiude, mai si
         #    aggiunge per far passare una PR.
-        #    - W004 (HSTS) e W008 (SSL_REDIRECT): header HTTPS, rimandati
-        #      (registro migliorie, voce D3-c).
+        #    - W005 (HSTS senza sottodomini) e W021 (HSTS senza preload):
+        #      spenti PER SCELTA (brief-be-fe-sicurezza-header-token-mfa
+        #      §1.3): riguardano il dominio intero, non ZeroErp, e il preload
+        #      e' di fatto irreversibile. Non sono debito da chiudere.
+        #    W004 (HSTS) e W008 (SSL_REDIRECT) chiusi il 2026-09-28 (§1).
         # ⭐ La chiave si GENERA qui: il segnaposto del job (`ci-placeholder`)
         #    fa scattare W009, come la farebbe scattare in produzione.
+        # ⭐ HSTS e redirect con i valori di PRODUZIONE (un anno, redirect
+        #    acceso), cosi' W004/W008 tornerebbero rossi se si spegnessero.
         run: |
           source .venv/bin/activate
           export DJANGO_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(64))')"
           export DJANGO_DEBUG=0
+          export DJANGO_SECURE_HSTS_SECONDS=31536000
+          export DJANGO_SECURE_SSL_REDIRECT=1
           out="$(python manage.py check --deploy --tag security 2>&1)" || { echo "$out"; exit 1; }
           echo "$out"
           nuovi="$(grep -oE '\(security\.[EW][0-9]+\)' <<<"$out" \
-                   | grep -vE 'security\.(W004|W008)\)' || true)"
+                   | grep -vE 'security\.(W005|W021)\)' || true)"
           if [ -n "$nuovi" ]; then
             echo "::error::check --deploy: rilievi di sicurezza non accettati: $nuovi"
             exit 1

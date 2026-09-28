@@ -1176,19 +1176,21 @@ Per i building block backend riutilizzabili (helpers, services, repository), con
 
 ## Autenticazione e autorizzazione
 
-| Aspetto          | Dettaglio                                                              |
-| ---------------- | ---------------------------------------------------------------------- |
-| Protocollo       | JWT Bearer su tutti gli endpoint `/api/v1/*`                           |
-| Token login      | 3 endpoint namespace-specific (admin/portale/shop), vedi sezione sotto |
-| Token refresh    | 3 endpoint namespace-specific con guard cross-veste                    |
-| JWT claim custom | `identita_id` + `ruolo_applicativo` + `sid` (session id stabile)       |
-| Permission class | `ZeroERPPermission` — risoluzione centralizzata                        |
-| Superuser        | Bypass totale                                                          |
-| SUPER_ADMIN      | Bypass via `script.fn_is_super_admin` (filtro veste OPERATORE, §8.3.7) |
-| DISABILITATO     | Rifiuto immediato su `ruolo_applicativo = DISABILITATO`                |
-| Azione processo  | Verificata se la view dichiara `post_permission` / `get_permission`    |
-| CRUD standard    | Livello area/oggetto (`TUTTO`, `LETTURA`, `BLOCCATO`)                  |
-| Scope emittente  | Filtra i dati per emittente fiscale autorizzato (vedi sotto)           |
+| Aspetto             | Dettaglio                                                               |
+| ------------------- | ----------------------------------------------------------------------- |
+| Protocollo          | JWT Bearer su tutti gli endpoint `/api/v1/*`                            |
+| Token login         | 3 endpoint namespace-specific (admin/portale/shop), vedi sezione sotto  |
+| Token refresh       | 3 endpoint namespace-specific con guard cross-veste                     |
+| Dove sta il refresh | ⛔ **Mai nel corpo**: cookie `HttpOnly` (dal 2026-09-28), vedi sotto     |
+| Durata access       | 10 minuti; il frontend lo tiene solo in memoria e lo rinnova dal cookie |
+| JWT claim custom    | `identita_id` + `ruolo_applicativo` + `sid` (session id stabile)        |
+| Permission class    | `ZeroERPPermission` — risoluzione centralizzata                         |
+| Superuser           | Bypass totale                                                           |
+| SUPER_ADMIN         | Bypass via `script.fn_is_super_admin` (filtro veste OPERATORE, §8.3.7)  |
+| DISABILITATO        | Rifiuto immediato su `ruolo_applicativo = DISABILITATO`                 |
+| Azione processo     | Verificata se la view dichiara `post_permission` / `get_permission`     |
+| CRUD standard       | Livello area/oggetto (`TUTTO`, `LETTURA`, `BLOCCATO`)                   |
+| Scope emittente     | Filtra i dati per emittente fiscale autorizzato (vedi sotto)            |
 
 ### Endpoint login/refresh multi-veste (§8.3 PR-B1)
 
@@ -1206,6 +1208,28 @@ alias** (breaking, grace 0). Client pre-refactor devono aggiornarsi.
 
 Contratto HTTP completo, claim JWT, codici errore e guard cross-namespace:
 [api_multi_veste_token.md](../backend/core/manual/api_multi_veste_token.md).
+
+### ⛔ Il refresh token viaggia nel cookie, mai nel corpo
+
+Dal 2026-09-28 ([brief sicurezza](work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md)
+§2). Il refresh vale un giorno e rinnova la sessione: in `localStorage` o in un
+corpo JSON lo legge qualunque script giri nella pagina. Ora sta in un cookie
+che il JavaScript non vede, e l'access (10 minuti) vive solo nella memoria del
+frontend.
+
+| Aspetto | Regola |
+| --- | --- |
+| Cookie | `zeroerp_refresh`, `HttpOnly`, `SameSite=Strict`, `Path=/api/v1/`, `Secure` fuori da DEBUG, durata = `REFRESH_TOKEN_LIFETIME` |
+| Chi lo scrive | login e refresh dei tre canali, cambio password, cambio emittente attivo: il refresh esce dal corpo e va nel `Set-Cookie` |
+| Chi lo legge | refresh, logout, cambio emittente attivo: dal cookie, il corpo non lo porta più |
+| Chi lo cancella | il logout, in ogni risposta |
+| Anti-CSRF | il refresh è l'unica rotta autenticata dal **solo** cookie, quindi pretende anche `X-Requested-With: XMLHttpRequest` (senza → 403 `E_PERMISSION_DENIED`). Logout e cambio emittente pretendono già il Bearer |
+| Sede | ⛔ **un** building block, `apps/core/api/refresh_cookie.py`: nome, attributi, lettura, scrittura e cancellazione. Un cookie scritto con un `Path` e cancellato con un altro non si cancella |
+
+⚠️ `Path=/api/v1/` e non il solo endpoint di refresh: il refresh serve anche a
+logout, cambio emittente e cambio password, che stanno altrove (decisione di
+Tid, 2026-09-28). Una view nuova che emette o consuma il refresh passa dal BB,
+non scrive `set_cookie` a mano.
 
 ### Identita utente: `ruolo_applicativo` e `SUPER_ADMIN`
 
@@ -2132,6 +2156,15 @@ accendere un cancello, non nella peggiore.
 * In testa a ogni file, un breve indice dei test (nome test/caso); negli smoke
   bash (`backend/scripts/tests/smoke-test-*.sh`) un blocco `# Indice test (0..N):`
   dopo l'header.
+* ⛔ Uno smoke bash nuovo, subito dopo `BASE_URL=`, include
+  `source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"`: parla con Gunicorn
+  diretto in HTTP, e fuori da `DEBUG` Django redirige in HTTPS (301). Il file si
+  dichiara HTTPS come Nginx. Presidio: `apps/core/tests/api/test_https_header.py`.
+  I test Django non ne hanno bisogno: il redirect lo spegne il runner.
+* Uno smoke bash che usa il refresh token (refresh, logout) include anche
+  `_smoke_refresh.sh`: il refresh non è più nel corpo del login ma nel cookie
+  `zeroerp_refresh`, e lo si legge dal `Set-Cookie` (`curl -D`) e ripresenta
+  con cookie e header anti-CSRF (`curl_refresh`).
 * Esecuzione: `./manage-test.sh apps.core.tests.api -v 2`. Smoke di docs/schema:
   `apps/core/tests/api/test_diagnostics_api.py`.
 
@@ -2178,7 +2211,7 @@ accendere un cancello, non nella peggiore.
 
   ```bash
   DB_HOST=localhost DB_PORT=5432 DB_NAME=zeroerp DB_USER=zeroerp_app DB_PASSWORD=secret-app \
-  DJANGO_SECRET_KEY=ci-placeholder DJANGO_FIELD_ENCRYPTION_KEYS="$(printf ci-placeholder-fernet-key-32byte | base64)" \
+  DJANGO_SECRET_KEY=ci-placeholder DJANGO_FIELD_ENCRYPTION_KEYS="$(printf ci-placeholder-fernet-key-32byte | base64)" DJANGO_SECURE_HSTS_SECONDS=0 \
   DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1" DJANGO_DEBUG=0 DJANGO_TRUSTED_PROXY_COUNT=0 FRONTEND_URL=https://localhost \
   .venv/bin/python manage.py test -v 2
   ```

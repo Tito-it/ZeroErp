@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: il runner dei test del progetto. Oggi fa una cosa sola: spegne
-#        `ERROR_LOG_DB_ENABLED`, cioe' impedisce alla suite di scrivere nel
-#        diario tecnico `dbops.error_log`.
+# Scopo: il runner dei test del progetto. Spegne `ERROR_LOG_DB_ENABLED`,
+#        cioe' impedisce alla suite di scrivere nel diario tecnico
+#        `dbops.error_log`, e il redirect HTTPS (`SECURE_SSL_REDIRECT`), che
+#        manderebbe in 301 il client di test.
 #
 #        PERCHE' SERVE, e perche' e' un recinto e non una preferenza.
 #        I test di questa suite girano contro il DATABASE CONFIGURATO VERO:
@@ -51,3 +52,9 @@ class ZeroErpTestRunner(DiscoverRunner):
     def setup_test_environment(self, **kwargs) -> None:
         super().setup_test_environment(**kwargs)
         settings.ERROR_LOG_DB_ENABLED = False
+        # Il client di test parla HTTP per costruzione: col redirect HTTPS
+        # acceso (default fuori da DEBUG) ogni richiesta sarebbe un 301. Stessa
+        # ragione del diario: dal runner vale ovunque, senza configurare
+        # niente. Chi prova il redirect lo riaccende con `override_settings`
+        # (`apps/core/tests/api/test_https_header.py`).
+        settings.SECURE_SSL_REDIRECT = False

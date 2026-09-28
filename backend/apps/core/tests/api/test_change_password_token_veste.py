@@ -25,6 +25,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.core.api.change_password_view import ChangePasswordView
+from apps.core.api.refresh_cookie import REFRESH_COOKIE_NAME
 from apps.core.api.multi_veste_token_serializer import emetti_refresh_veste
 
 _BB = "apps.core.api.multi_veste_token_serializer"
@@ -103,7 +104,10 @@ class ChangePasswordTokenVesteTests(SimpleTestCase):
         svc.return_value.risolvi_per_login.return_value = None
         resp = self._chiama()
         self.assertEqual(resp.status_code, 200)
-        refresh = RefreshToken(json.loads(resp.content)["data"]["refresh"], verify=False)
+        # Il refresh nuovo sta nel cookie HttpOnly, il corpo porta il solo
+        # access (brief sicurezza §2).
+        self.assertNotIn("refresh", json.loads(resp.content)["data"])
+        refresh = RefreshToken(resp.cookies[REFRESH_COOKIE_NAME].value, verify=False)
         self.assertEqual(refresh["identita_id"], 7)
         self.assertEqual(refresh["ruolo_applicativo"], "OPERATORE")
         repo.get_identita_dettaglio.assert_called_once_with(7, 42)
@@ -115,7 +119,7 @@ class ChangePasswordTokenVesteTests(SimpleTestCase):
         repo.get_identita_dettaglio.return_value = _OPERATORE
         svc.return_value.risolvi_per_login.return_value = None
         resp = self._chiama()
-        refresh = RefreshToken(json.loads(resp.content)["data"]["refresh"], verify=False)
+        refresh = RefreshToken(resp.cookies[REFRESH_COOKIE_NAME].value, verify=False)
         self.assertEqual(audit.record_login.call_args.kwargs["jti"], refresh["sid"])
 
     # Scopo: veste revocata nel frattempo → 401 E_IDENTITA_NON_ATTIVA e la

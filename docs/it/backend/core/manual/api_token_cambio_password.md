@@ -136,17 +136,25 @@ I tre campi **non** vengono ripuliti dagli spazi: si verifica e si salva la pass
 
 #### Output (successo)
 
+```http
+HTTP/1.1 200 OK
+Set-Cookie: zeroerp_refresh=eyJ...; HttpOnly; Max-Age=86400; Path=/api/v1/; SameSite=Strict; Secure
+```
+
 ```json
 {
   "data": {
-    "access": "eyJ...",
-    "refresh": "eyJ..."
+    "access": "eyJ..."
   },
   "meta": { "request_id": "..." }
 }
 ```
 
-Il frontend deve aggiornare i token nello store con quelli nuovi.
+Il corpo porta solo l'`access` della sessione nuova; il suo refresh sta nel
+`Set-Cookie` (`zeroerp_refresh`, attributi in
+[api_multi_veste_token.md](api_multi_veste_token.md#cookie-di-refresh)),
+scritto solo se la risposta e' 200. Il frontend sostituisce l'access in
+memoria; il cookie lo aggiorna il browser.
 
 #### Errori
 
@@ -175,12 +183,11 @@ Se attivo, la response include:
 ```json
 {
   "access": "eyJ...",
-  "refresh": "eyJ...",
   "password_change_required": true
 }
 ```
 
-Il token JWT viene comunque rilasciato (serve per chiamare `/change-password/`).
+(il refresh, come sempre, nel `Set-Cookie`). Il token JWT viene comunque rilasciato (serve per chiamare `/change-password/`).
 
 ### 2. Middleware blocco
 

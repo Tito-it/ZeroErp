@@ -1,8 +1,16 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import api from '../core/api'
+import api, { redirectToLogin, rinnovaAccess } from '../core/api'
 import { DOMAINS } from '../core/navigation'
-import { local, STORAGE_KEYS } from '../core/storage'
+import { local, STORAGE_KEYS, ritiraTokenDalLocalStorage } from '../core/storage'
+import {
+  EVENTO_SESSIONE,
+  accessValido,
+  annunciaAlleAltreSchede,
+  azzeraAccess,
+  impostaAccess,
+  suEventoAltraScheda
+} from '../core/sessione'
 import {
   RUOLO_APPLICATIVO,
   LIVELLO_ACCESSO,
@@ -13,13 +21,15 @@ import { resetAllUserScopedStores } from '../core/pinia-plugins/auto-reset'
 import { syncUserLanguage } from '../core/i18n'
 import { useUiStore } from './ui'
 import { useNavigationStore } from './navigation'
-import { isJwtExpired } from '../core/jwt'
 import { switchEmittenteAttivo } from '../core/api/emittenteAttivo'
 import { cambiaPassword as apiCambiaPassword } from '../core/api/password'
 
 export const useAuthStore = defineStore('auth', () => {
-  const accessToken = ref(local.get(STORAGE_KEYS.ACCESS_TOKEN))
-  const refreshToken = ref(local.get(STORAGE_KEYS.REFRESH_TOKEN))
+  // ⛔ I token non stanno più in localStorage (brief sicurezza §2, dal
+  //    2026-09-28): il refresh è in un cookie HttpOnly che il JavaScript non
+  //    vede, l'access solo in memoria (`core/sessione`). Si tolgono quelli
+  //    rimasti da prima, perché un refresh leggibile lì è il rischio chiuso.
+  ritiraTokenDalLocalStorage()
 
   // §8.5.2: canale di login corrente. Restored da localStorage al boot
   // (sopravvive al page reload), default ADMIN per sessioni pre-multi-face
@@ -38,22 +48,14 @@ export const useAuthStore = defineStore('auth', () => {
   // Flag cambio password obbligatorio (impostato al login se deve_cambiare_password = true)
   const passwordChangeRequired = ref(false)
 
-  // Validita' temporale dei token (firma non verificata client-side).
-  // Il leeway 5s evita race su clock skew browser/server al limite della
-  // scadenza. Reattivi: cambiano automaticamente quando setTokens/clearTokens
-  // aggiornano gli ref. Il computed `isAuthenticated` considera l'utente
-  // operativo se almeno il refreshToken e' ancora valido (l'access scaduto
-  // sara' rigenerato dal refresh proattivo nel router guard o dall'interceptor
-  // 401 in api.js).
-  const accessTokenValid = computed(() =>
-    !!accessToken.value && !isJwtExpired(accessToken.value, 5_000)
-  )
-  const refreshTokenValid = computed(() =>
-    !!refreshToken.value && !isJwtExpired(refreshToken.value, 5_000)
-  )
-  const isAuthenticated = computed(
-    () => accessTokenValid.value || refreshTokenValid.value
-  )
+  // Scopo: c'è in memoria un access non scaduto (firma non verificata
+  //        client-side). ⚠️ Al ricaricamento della pagina l'access non c'è
+  //        MAI, anche con una sessione viva nel cookie: chi deve sapere se
+  //        la sessione esiste chiama `ripristinaSessione()`, non questo.
+  //        `accessValido` legge il ref reattivo di `core/sessione`, quindi il
+  //        computed si aggiorna quando l'access cambia (anche da un'altra
+  //        scheda).
+  const isAuthenticated = computed(() => accessValido())
 
   // Nome visualizzato: priorità soggetto.nome > utente.first_name > username
   const displayName = computed(() => {
@@ -69,11 +71,29 @@ export const useAuthStore = defineStore('auth', () => {
     return utente?.username || ''
   })
 
-  function setTokens(access, refresh) {
-    accessToken.value = access
-    refreshToken.value = refresh
-    local.set(STORAGE_KEYS.ACCESS_TOKEN, access)
-    local.set(STORAGE_KEYS.REFRESH_TOKEN, refresh)
+  // Scopo: riparte dal boot con un ricaricamento completo. ⭐ Unica sede
+  //        dell'eccezione dichiarata in frontend-standards («Regole di
+  //        sicurezza»): la usano il cambio emittente e l'apertura di una
+  //        sessione diversa in un'altra scheda — due casi in cui ciò che la
+  //        pagina tiene in memoria (KeepAlive, cache di modulo) non appartiene
+  //        più alla sessione, e solo il boot garantisce di non mostrarlo.
+  function ripartiDalBoot(destinazione = '/') {
+    window.location.assign(destinazione)
+  }
+
+  // Scopo: garantisce un access valido in memoria. Se c'è, true; altrimenti
+  //        rinnova dal cookie del refresh — al ricaricamento della pagina è
+  //        sempre così. false = nessuna sessione (cookie assente, scaduto o
+  //        revocato): chi chiama porta al login.
+  async function ripristinaSessione() {
+    if (accessValido()) return true
+    try {
+      await rinnovaAccess()
+      return true
+    } catch {
+      azzeraAccess()
+      return false
+    }
   }
 
   // Scopo: Memorizza il canale di login scelto. Chiamato da `login()`;
@@ -93,13 +113,12 @@ export const useAuthStore = defineStore('auth', () => {
   //        Il canale di login NON viene pulito: dopo il logout il
   //        LoginView riusa la stessa selezione (ADMIN/PORTALE/SHOP) e
   //        `setLoginChannel` lo sovrascrivera' al prossimo login.
+  //        Il cookie del refresh non si tocca da qui (HttpOnly): lo cancella
+  //        il backend col logout.
   function clearAuthTokensOnly() {
-    accessToken.value = null
-    refreshToken.value = null
+    azzeraAccess()
     user.value = null
     passwordChangeRequired.value = false
-    local.remove(STORAGE_KEYS.ACCESS_TOKEN)
-    local.remove(STORAGE_KEYS.REFRESH_TOKEN)
   }
 
   // Scopo: azzera lo stato utente completo dell'intera app.
@@ -148,7 +167,11 @@ export const useAuthStore = defineStore('auth', () => {
     }
     const canale = resolveCanaleLogin(loginChannel.value)
     const response = await api.post(canale.tokenPath, { username, password })
-    setTokens(response.data.access, response.data.refresh)
+    // Il refresh l'ha scritto il backend nel cookie; qui arriva il solo access.
+    impostaAccess(response.data.access, { annuncia: false })
+    // Il cookie ora è di QUESTA sessione, per tutte le schede: quelle aperte
+    // su un'altra ripartono dal boot invece di mostrarne i dati.
+    annunciaAlleAltreSchede({ tipo: EVENTO_SESSIONE.SESSIONE_NUOVA })
     // Controlla flag cambio password dal backend
     passwordChangeRequired.value = !!response.data.password_change_required
     try {
@@ -159,36 +182,30 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function tryRefreshToken() {
-    if (!refreshToken.value) return false
-    try {
-      // Il refresh usa il canale correntemente salvato: stesso namespace
-      // del login originale. Coerente con il guard cross-namespace del BE
-      // (`AuditTokenRefreshView`, §8.3.5) che rifiuta refresh di veste
-      // incompatibile col path.
-      const canale = resolveCanaleLogin(loginChannel.value)
-      const response = await api.post(canale.refreshPath, {
-        refresh: refreshToken.value
-      })
-      setTokens(response.data.access, refreshToken.value)
-      return true
-    } catch {
-      clearTokens()
-      return false
-    }
-  }
-
   async function logout() {
-    // Invalida la sessione lato server prima di pulire i token
-    if (refreshToken.value) {
-      try {
-        await api.post('/auth/logout/', { refresh: refreshToken.value })
-      } catch {
-        // Se il logout server fallisce, procedi comunque con la pulizia locale
-      }
+    // Invalida la sessione lato server (il refresh lo porta il cookie, e il
+    // backend lo cancella); se il logout server fallisce si pulisce comunque.
+    try {
+      await api.post('/auth/logout/')
+    } catch {
+      // Se il logout server fallisce, procedi comunque con la pulizia locale
     }
+    // Il cookie è condiviso: anche le altre schede sono uscite.
+    annunciaAlleAltreSchede({ tipo: EVENTO_SESSIONE.LOGOUT })
     clearTokens()
   }
+
+  // Eventi delle altre schede (l'access nuovo lo gestisce `core/sessione` da
+  // solo). Registrato una volta: lo store si crea una volta per pagina.
+  suEventoAltraScheda(evento => {
+    if (evento.tipo === EVENTO_SESSIONE.LOGOUT) {
+      redirectToLogin()
+    } else if (evento.tipo === EVENTO_SESSIONE.SESSIONE_NUOVA) {
+      // Si resta sulla pagina corrente: il boot rifà il giro del guard con la
+      // sessione nuova (e porta al login o alla home del suo namespace).
+      ripartiDalBoot(window.location.href)
+    }
+  })
 
   // Multi-face auth Stage B: i nuovi campi nativi di /me/.
   // - isSuperAdmin: true se l'utente ha binding al profilo SUPER_ADMIN
@@ -419,16 +436,19 @@ export const useAuthStore = defineStore('auth', () => {
     return azioniAbilitate.value[codename] === true
   }
 
-  // Scopo: Cambia la password dell'operatore collegato. Il BE restituisce
-  //        token NUOVI (i vecchi sono revocati): salvarli e' compito dello
-  //        store, come per il cambio emittente — una view che li scrive a mano
-  //        e' una seconda sede della sessione. Ritorna la response axios; un
-  //        errore risale al chiamante, che lo mostra dove serve.
+  // Scopo: Cambia la password dell'operatore collegato. Il BE apre una
+  //        sessione NUOVA (le vecchie sono revocate): il refresh lo scrive nel
+  //        cookie, qui arriva l'access. Tenerlo e' compito dello store, come
+  //        per il cambio emittente — una view che lo scrive a mano e' una
+  //        seconda sede della sessione. Ritorna la response axios; un errore
+  //        risale al chiamante, che lo mostra dove serve.
   async function cambiaPassword({ oldPassword, newPassword, newPasswordConfirm }) {
     const response = await apiCambiaPassword({ oldPassword, newPassword, newPasswordConfirm })
     const data = response.data?.data || response.data
-    if (data?.access && data?.refresh) {
-      setTokens(data.access, data.refresh)
+    if (data?.access) {
+      // Stessa persona, stessa veste: le altre schede prendono l'access nuovo
+      // (il cookie è già quello della sessione nuova).
+      impostaAccess(data.access)
       passwordChangeRequired.value = false
       // Ricarica il profilo per aggiornare `deve_cambiare_password`.
       try { await fetchProfile() } catch { /* non blocca il flusso */ }
@@ -439,11 +459,10 @@ export const useAuthStore = defineStore('auth', () => {
   // Scopo: Cambia l'emittente attivo di sessione e riparte pulito.
   //        `emittenteFiscaleId = null` = «Tutti gli emittenti».
   //
-  //        I token vengono SOSTITUITI prima del ricaricamento: l'emittente
-  //        attivo vive in un claim JWT, quindi finche' i vecchi token restano
-  //        in localStorage la sessione continua a lavorare nell'emittente
-  //        precedente. Salvarli e' la parte che non puo' fallire — per questo
-  //        avviene qui e non nel componente.
+  //        L'emittente attivo vive in un claim JWT: il backend riscrive il
+  //        refresh nel cookie col claim nuovo e restituisce l'access. Le altre
+  //        schede ripartono anche loro (SESSIONE_NUOVA): con l'access vecchio
+  //        in memoria continuerebbero a lavorare nell'emittente precedente.
   //
   //        Il ricaricamento e' un `window.location.assign('/')` deliberato, non
   //        una navigazione del router: cambiare emittente cambia CIO' CHE SI
@@ -453,12 +472,13 @@ export const useAuthStore = defineStore('auth', () => {
   //        dell'emittente precedente, ed e' esattamente il rischio che
   //        l'impersonazione esiste per evitare. Costa un secondo.
   async function cambiaEmittenteAttivo(emittenteFiscaleId) {
-    const esito = await switchEmittenteAttivo(emittenteFiscaleId, refreshToken.value)
-    if (!esito?.access || !esito?.refresh) {
+    const esito = await switchEmittenteAttivo(emittenteFiscaleId)
+    if (!esito?.access) {
       throw new Error('Cambio emittente senza token: sessione non aggiornata')
     }
-    setTokens(esito.access, esito.refresh)
-    window.location.assign('/')
+    impostaAccess(esito.access, { annuncia: false })
+    annunciaAlleAltreSchede({ tipo: EVENTO_SESSIONE.SESSIONE_NUOVA })
+    ripartiDalBoot('/')
   }
 
   // Scopo: Getter per determinare se l'operatore deve cambiare password.
@@ -467,12 +487,9 @@ export const useAuthStore = defineStore('auth', () => {
   )
 
   return {
-    accessToken,
-    refreshToken,
     user,
     isAuthenticated,
-    accessTokenValid,
-    refreshTokenValid,
+    ripristinaSessione,
     isSuperAdmin,
     ruoloApplicativo,
     identitaId,
@@ -505,12 +522,10 @@ export const useAuthStore = defineStore('auth', () => {
     isObjectBlocked,
     azioniAbilitate,
     isActionAllowed,
-    setTokens,
     loginChannel,
     setLoginChannel,
     login,
     logout,
-    tryRefreshToken,
     clearTokens,
     fetchProfile,
     // Contratto plugin autoReset: clearUserState e` la primitiva che il

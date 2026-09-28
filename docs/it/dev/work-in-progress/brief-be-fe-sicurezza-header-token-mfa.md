@@ -9,7 +9,9 @@
 > **Stato:** 🔵 in corso dal 2026-09-28. Decisioni di Tid del 2026-09-26: §1 *«facciamo dopo»*,
 > §2–§4 *«più avanti»*; il 2026-09-28 Tid ha dato il via allo sviluppo. ✅ §3.5 consegnata a
 > codice il 2026-09-28 e migrata su `backend-dev` lo stesso giorno (§3.5 «Fatto»). ✅ §4 ruff `B`
-> accesa il 2026-09-28 (§4 «Fatto»).
+> accesa il 2026-09-28 (§4 «Fatto»). 🟡 §1: HSTS e redirect fatti il 2026-09-28, CSP scritta nel
+> vhost documentato e da applicare in Nginx (§1.6 «Fatto»). ✅ §2 token fuori da `localStorage` fatto il
+> 2026-09-28, resta il collaudo a video (§2.5 «Fatto»).
 >
 > **Contesto:** [Sicurezza e qualità statica](../sicurezza-e-qualita-statica.md), sezione
 > «Aperto». Registro del debito: [migliorie generali](migliorie-generali-BE-FE-da-test-valutazione.md),
@@ -126,6 +128,37 @@ add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
   diretto non viene rediretto;
 * a mano: `curl -kI https://<host>/` mostra la CSP; collaudo a video senza violazioni in console.
 
+✅ **HSTS e redirect fatti il 2026-09-28** (BE, `dev/backend-tid`):
+
+* `settings.py`: `SECURE_HSTS_SECONDS` da `DJANGO_SECURE_HSTS_SECONDS` (`parse_hsts_seconds`:
+  obbligatoria con `DEBUG=0`, senza default, intero ≥ 0); sottodomini e preload spenti;
+  `SECURE_SSL_REDIRECT` da `DJANGO_SECURE_SSL_REDIRECT`, default acceso con `DEBUG=0`;
+  `SECURE_REDIRECT_EXEMPT = [r"^health$"]`;
+* **chiamanti diretti di Gunicorn** (§1.4), cercati: `/health` (smoke del container in
+  `ci.yaml`) è esente; i **35 smoke bash** si dichiarano HTTPS come Nginx con il BB
+  `backend/scripts/tests/_smoke_https.sh` (scelta di Tid, 2026-09-28: header, non redirect spento
+  su `backend-dev`); i test Django lo trovano spento dal runner (`test_runner.py`). Gli smoke
+  Python girano in-process e non passano da HTTP; i timer usano comandi di gestione;
+* test: `apps/core/tests/api/test_https_header.py` (10: redirect, `/health`, richiesta da Nginx,
+  header HSTS, variabile d'ambiente, ogni smoke bash include il BB);
+* CI: `check --deploy` gira coi valori di produzione (un anno, redirect acceso) e **W004/W008
+  sono tolti** dall'elenco accettato; al loro posto `W005`/`W021`, sottodomini e preload spenti
+  per scelta (§1.3), che non sono debito. Nel job e nello smoke del container
+  `DJANGO_SECURE_HSTS_SECONDS=0`;
+* `backend-dev`: `DJANGO_SECURE_HSTS_SECONDS=0` dichiarato in `env.sh` e `.env.systemd`
+  (decisione §1.3). ⚠️ Va riavviato con `sudo systemctl restart zeroerp-gunicorn`: un `HUP` non
+  rilegge `.env.systemd` e i worker non partirebbero;
+* doc: `.env.example`, `configurazione-django.md` (settings, vhost, test di validazione),
+  `sicurezza-e-qualita-statica.md` § «HSTS e redirect HTTPS», api.md (smoke bash), catalogo BB.
+* Emerso nel giro, fuori perimetro: `smoke-test-pratiche.sh` aveva un errore di sintassi (una
+  virgoletta non chiusa nel riepilogo finale), quindi non partiva: corretto.
+
+⏳ **CSP: scritta, non ancora applicata.** La politica (sviluppo con Vite e produzione, una
+accanto all'altra), `Referrer-Policy` e `Permissions-Policy` sono nel vhost documentato in
+`configurazione-django.md`. Restano, a mano su `backend-dev` (sudo): copiarle nel vhost come
+`Content-Security-Policy-Report-Only`, `nginx -t && systemctl reload nginx`, collaudo a video su
+tutte le aree guardando la console, poi togliere `-Report-Only`. Chiusa quella, §1 è chiusa.
+
 ---
 
 ## 2. Token JWT fuori da `localStorage`
@@ -179,6 +212,41 @@ l'endpoint di refresh dopo un ricaricamento.
 * test FE (vitest): nessun token scritto in `localStorage`;
 * collaudo a video: ricarica pagina, due schede aperte per più di una durata dell'access, logout
   da una scheda.
+
+✅ **Fatto il 2026-09-28** (BE + FE, `dev/backend-tid`). Decisioni di Tid dello stesso giorno:
+più schede con la strada **A** (le schede si coordinano), access a **10 minuti**, cookie su
+`Path=/api/v1/` (non il solo endpoint di refresh: lo usano anche logout, cambio emittente e cambio
+password, che stanno altrove).
+
+* **BE**: BB `apps/core/api/refresh_cookie.py` — cookie `zeroerp_refresh`, `HttpOnly`,
+  `SameSite=Strict`, `Path=/api/v1/`, `Secure` = `REFRESH_COOKIE_SECURE` (segue
+  `SESSION_COOKIE_SECURE`), durata del token. Login e refresh dei tre canali, cambio password e
+  cambio emittente spostano il refresh dal corpo al cookie; refresh, logout e cambio emittente lo
+  leggono dal cookie; il logout lo cancella in ogni risposta. Il refresh pretende
+  `X-Requested-With: XMLHttpRequest` (403 `E_PERMISSION_DENIED`), senza cookie è 401. Nessun
+  codice d'errore nuovo: bastavano quelli a catalogo. `ACCESS_TOKEN_LIFETIME` = 10 minuti.
+* **FE**: BB `core/sessione.js` — access solo in memoria; `rinnovaCoordinato` = una volta per
+  scheda (promise condivisa) e una scheda alla volta (`navigator.locks`), con l'access nuovo sul
+  `BroadcastChannel` `zeroerp-sessione`. `core/api.js` `rinnovaAccess` è l'unica strada verso il
+  refresh (la vecchia coda `pendingRequests` è diventata la promise condivisa). Store `auth`:
+  niente token in `localStorage` (quelli rimasti si tolgono all'avvio), `ripristinaSessione()` nel
+  guard al posto del «refresh proattivo», eventi fra schede LOGOUT (escono tutte) e
+  SESSIONE_NUOVA (login o cambio emittente altrove: questa scheda riparte dal boot).
+  L'eccezione `window.location` ha ora una sede sola, l'azione `ripartiDalBoot`.
+* ⚠️ **CSRF e `SameSite`**: la protezione è doppia (cookie `Strict` + header custom) perché il
+  refresh è l'unica rotta autenticata dal solo cookie. Logout e cambio emittente pretendono il
+  Bearer, che un altro sito non ha.
+* **Test**: `test_auth_views` (`RefreshCookieTests`, 4 nuovi + i test del refresh riscritti sul
+  cookie), `test_sessioni_view` (logout legge e cancella il cookie), `test_emittente_attivo_view`,
+  `test_change_password_token_veste`; il presidio F-9 di `test_corpo_oggetto` si è spostato dal
+  logout (che il corpo non lo legge più) alla PATCH articolo. FE: `sessione.spec.js` (8).
+* **Smoke**: `smoke-test-core`, `-audit-logging`, `-jwt-audit-guc` leggono il refresh dal
+  `Set-Cookie` col BB `backend/scripts/tests/_smoke_refresh.sh`. ⚠️ Non ancora eseguiti contro il
+  backend vero: va riavviato col codice nuovo.
+* **Doc**: api.md § «Il refresh token viaggia nel cookie», frontend-standards § Sicurezza, i due
+  cataloghi BB, le pagine `backend/core/manual/` dei cinque endpoint, `sicurezza-e-qualita-statica.md`.
+* ⏳ **Resta il collaudo a video** (sopra, ultima voce): ricarica, due schede oltre i 10 minuti,
+  logout da una scheda, cambio emittente con due schede aperte.
 
 ---
 
@@ -346,6 +414,6 @@ Emerse nel giro, **non** fatte (decisione di Tid):
 | # | Domanda | § |
 | --- | --- | --- |
 | 1 | ✅ HSTS a `0` dichiarato sulla macchina di sviluppo (Tid, 2026-09-28) | 1.3 |
-| 2 | Più schede aperte: coordinamento `BroadcastChannel` o tolleranza sul refresh ruotato? | 2.4 |
+| 2 | ✅ Più schede: coordinamento fra schede (strada A), access a 10 minuti (Tid, 2026-09-28) | 2.4 |
 | 3 | Obbligo del secondo fattore: per credenziale, per ruolo, o entrambi? | 3.3 |
 | 4 | Dipendenze TOTP e QR: librerie o codice nostro? | 3.4 |

@@ -628,46 +628,42 @@ router.beforeEach(async (to) => {
   if (to.meta.public) {
     // ⛔ «Sei già dentro, torna alla home» NON vale quando è l'applicazione
     //    stessa a dichiarare la sessione morta (`reason=session_expired`, che
-    //    mandano l'interceptor 401 e questo guard). `isAuthenticated` guarda la
-    //    SCADENZA dei token in memoria, non se il server li accetta ancora: una
-    //    sessione revocata lato server ha token non scaduti, quindi il rimbalzo
-    //    scattava e il login diventava irraggiungibile — l'operatore restava su
-    //    una home che rispondeva 401 a ogni gesto e ne usciva solo ricaricando
-    //    (rilievo di Tid, 2026-09-04).
+    //    mandano l'interceptor 401 e questo guard). Un access in memoria può
+    //    essere non scaduto e già rifiutato dal server (sessione revocata),
+    //    quindi il rimbalzo scattava e il login diventava irraggiungibile —
+    //    l'operatore restava su una home che rispondeva 401 a ogni gesto e ne
+    //    usciva solo ricaricando (rilievo di Tid, 2026-09-04).
     // ⚠️ È la seconda metà della correzione, non un doppione: la prima azzera
     //    lo stato nello store (`redirectToLogin` in `core/api.js`), questa
-    //    impedisce che un `isAuthenticated` sbagliato per qualunque ALTRA
-    //    ragione ci rimandi indietro. Chi ha una sessione viva e digita /login
+    //    impedisce che una sessione creduta viva per qualunque ALTRA ragione
+    //    ci rimandi indietro. Chi ha una sessione viva e digita /login
     //    continua a essere riportato alla home.
     const sessioneDichiarataMorta = to.query.reason === 'session_expired'
-    if (to.name === 'login' && auth.isAuthenticated && !sessioneDichiarataMorta) {
+    // ⭐ Dal 2026-09-28 l'access sta solo in memoria: al ricaricamento non c'è
+    //    mai, e se la sessione è viva lo si sa solo chiedendolo al backend
+    //    (rinnovo dal cookie HttpOnly). Si chiede solo per il login: le altre
+    //    rotte pubbliche (reset, attivazione) non ne hanno bisogno.
+    if (
+      to.name === 'login' &&
+      !sessioneDichiarataMorta &&
+      (await auth.ripristinaSessione())
+    ) {
       return { name: 'home' }
     }
     return
   }
 
-  // Utente non autenticato -> login (vale per requiresAuth e rotte layout).
-  // `isAuthenticated` ora considera scaduto sia access che refresh: se entrambi
-  // morti, l'utente NON puo' navigare (prima poteva, perche' il check era solo
-  // sulla presenza dell'access token in localStorage, anche scaduto).
-  if (!auth.isAuthenticated) {
+  // Sessione assente o morta -> login (vale per requiresAuth e rotte layout).
+  // `ripristinaSessione` usa l'access in memoria se è valido, altrimenti
+  // rinnova dal cookie del refresh: al ricaricamento della pagina, o dopo i
+  // 10 minuti dell'access, è qui che la sessione si ritrova. Se il rinnovo
+  // fallisce (cookie assente, scaduto, revocato) si va al login con
+  // reason=session_expired. Sostituisce il vecchio «refresh proattivo», che
+  // guardava la scadenza del refresh in localStorage.
+  if (!(await auth.ripristinaSessione())) {
     const query = { reason: 'session_expired' }
     if (to.fullPath !== '/') query.redirect = to.fullPath
     return { name: 'login', query }
-  }
-
-  // Refresh proattivo: access scaduto ma refresh ancora valido. Evitiamo la
-  // chiamata 401 di troppo che farebbe poi scattare l'interceptor — qui
-  // preveniamo il problema prima che la pagina monti i suoi store. Se il
-  // refresh fallisce (es. refresh revocato server-side) il guard rimanda al
-  // login con reason=session_expired.
-  if (!auth.accessTokenValid && auth.refreshTokenValid) {
-    const ok = await auth.tryRefreshToken()
-    if (!ok) {
-      const query = { reason: 'session_expired' }
-      if (to.fullPath !== '/') query.redirect = to.fullPath
-      return { name: 'login', query }
-    }
   }
 
   // Carica profilo se mancante — se fallisce, token non valido → login

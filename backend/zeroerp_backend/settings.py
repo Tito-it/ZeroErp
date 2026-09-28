@@ -23,6 +23,21 @@ def env(name, default=None, required=False):
     return v
 
 
+# Scopo: Il valore di una variabile d'ambiente che deve essere un intero >= 0:
+#        altrimenti il backend non parte, col nome e il valore ricevuto.
+#        Estratta il 2026-09-28 (regola del 2, ok Tid): la stessa regola era
+#        scritta in linea per DJANGO_TRUSTED_PROXY_COUNT e in
+#        `parse_hsts_seconds`.
+def parse_intero_non_negativo(nome: str, valore: str) -> int:
+    try:
+        numero = int(valore)
+    except (TypeError, ValueError):
+        numero = -1
+    if numero < 0:
+        raise ImproperlyConfigured(f"{nome} deve essere un intero >= 0, ricevuto {valore!r}")
+    return numero
+
+
 # ⛔ Il backend NON parte con gli `assert` spenti (`python -O`, `PYTHONOPTIMIZE`).
 #    Il codice applicativo usa `assert` per restringere i tipi dopo un
 #    `ErrorManager.require` o dopo una funzione SQL che ritorna sempre una riga,
@@ -266,8 +281,12 @@ SPECTACULAR_SETTINGS = {
 }
 
 SIMPLE_JWT = {
-    # Per sviluppo: access token piu` lungo, refresh invariato a 1 giorno.
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
+    # Access BREVE (decisione Tid 2026-09-28, brief sicurezza §2): il frontend
+    # lo tiene solo in memoria e lo rinnova in silenzio dal cookie del
+    # refresh, quindi la durata non costa niente all'utente e limita quanto
+    # vale un access rubato. Il refresh sta nel cookie HttpOnly
+    # (`apps.core.api.refresh_cookie`).
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=10),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
     # Token rotation: ad ogni refresh il vecchio refresh token viene blacklistato.
     "ROTATE_REFRESH_TOKENS": True,
@@ -491,16 +510,50 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")  # fidati dell'hea
 # per provenienza frena tutti insieme); troppo alto, si torna a fidarsi di un
 # valore scritto dal client. Se la catena davanti al backend cambia (un
 # secondo proxy, un bilanciatore), questo numero si aggiorna.
-_trusted_proxy_count_env = env("DJANGO_TRUSTED_PROXY_COUNT", required=True)
-try:
-    TRUSTED_PROXY_COUNT = int(_trusted_proxy_count_env)
-except ValueError:
-    TRUSTED_PROXY_COUNT = -1
-if TRUSTED_PROXY_COUNT < 0:
-    raise ImproperlyConfigured(
-        "DJANGO_TRUSTED_PROXY_COUNT deve essere un intero >= 0, "
-        f"ricevuto {_trusted_proxy_count_env!r}"
-    )
+TRUSTED_PROXY_COUNT = parse_intero_non_negativo(
+    "DJANGO_TRUSTED_PROXY_COUNT", env("DJANGO_TRUSTED_PROXY_COUNT", required=True),
+)
+
+# --- HTTPS: HSTS e redirect (brief-be-fe-sicurezza-header-token-mfa §1) ---
+# Stanno QUI e non in Nginx: sono versionati, li verifica `check --deploy`, e
+# valgono qualunque proxy ci sia davanti. La CSP invece sta in Nginx, perche' la
+# pagina HTML non la serve Django (vhost in configurazione-django.md).
+#
+# ⛔ HSTS (`DJANGO_SECURE_HSTS_SECONDS`): obbligatoria fuori da DEBUG, SENZA
+#    default: chi mette in piedi una macchina deve scegliere. HSTS fa rifiutare
+#    al browser il sito con un certificato non valido, senza «procedi comunque»:
+#    una macchina con certificato auto-firmato dichiara `0` nel suo ambiente
+#    (decisione Tid 2026-09-28 per backend-dev). In produzione si parte breve
+#    (300) e si sale a un anno (31536000) dopo la verifica.
+#    Sottodomini e preload SPENTI per scelta: riguardano il dominio intero, non
+#    ZeroErp, e il preload e' di fatto irreversibile (`check --deploy` li
+#    segnala come W005/W021: accettati in CI con questa ragione).
+def parse_hsts_seconds(valore: str | None, *, debug: bool) -> int:
+    if valore is None or valore.strip() == "":
+        if debug:
+            return 0
+        raise ImproperlyConfigured(
+            "Missing env var: DJANGO_SECURE_HSTS_SECONDS (obbligatoria con DEBUG=0; "
+            "0 su una macchina con certificato auto-firmato)"
+        )
+    return parse_intero_non_negativo("DJANGO_SECURE_HSTS_SECONDS", valore)
+
+
+SECURE_HSTS_SECONDS = parse_hsts_seconds(env("DJANGO_SECURE_HSTS_SECONDS"), debug=DEBUG)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+SECURE_HSTS_PRELOAD = False
+
+# Redirect HTTP → HTTPS anche in Django, non solo in Nginx (308 da 80): il
+# redirect non dipende da un solo strato. Default ACCESO fuori da DEBUG.
+# Dietro Nginx funziona grazie a `SECURE_PROXY_SSL_HEADER` (sopra).
+# ⚠️ Chi chiama Gunicorn DIRETTO in HTTP su loopback riceve un 301:
+#    - `/health` e' esente (controlli locali, smoke del container in CI);
+#    - gli smoke bash si dichiarano HTTPS come fa Nginx
+#      (`backend/scripts/tests/_smoke_https.sh`), e un test lo presidia;
+#    - i test Django lo spengono dal runner (`test_runner.py`): il client di
+#      test parla HTTP per costruzione.
+SECURE_SSL_REDIRECT = env("DJANGO_SECURE_SSL_REDIRECT", "0" if DEBUG else "1") == "1"
+SECURE_REDIRECT_EXEMPT = [r"^health$"]
 
 if DEBUG:
     SESSION_COOKIE_SECURE = False
@@ -517,6 +570,11 @@ else:
     CSRF_TRUSTED_ORIGINS = [
             "https://backend-dev.tailXXXX.ts.net",
         ]
+
+# Il cookie del refresh JWT (`apps.core.api.refresh_cookie`) segue i cookie di
+# sessione: `Secure` fuori da DEBUG. In DEBUG si puo' lavorare in HTTP (Vite
+# da solo), e un cookie `Secure` il browser non lo rimanderebbe.
+REFRESH_COOKIE_SECURE = SESSION_COOKIE_SECURE
 
 
 # --- Logging applicativo ---

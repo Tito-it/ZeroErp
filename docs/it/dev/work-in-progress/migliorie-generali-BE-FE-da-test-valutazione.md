@@ -347,6 +347,10 @@ perché no. Proposta pronta in
 [brief-be-fe-sicurezza-header-token-mfa.md](brief-be-fe-sicurezza-header-token-mfa.md)
 §1 (decisione di Tid 2026-09-26: *«facciamo dopo»*); `W004`/`W008` sono
 nell'elenco a cricchetto del passo `check --deploy` e si tolgono a §1 chiusa.
+🟡 **2026-09-28: metà chiusa.** HSTS e redirect sono in `settings.py`, e
+`W004`/`W008` sono **tolti** dal cricchetto (restano `W005`/`W021`, sottodomini e
+preload spenti per scelta). Resta la **CSP**: scritta nel vhost documentato,
+da applicare in Nginx su `backend-dev` e collaudare a video (brief §1.6 «Fatto»).
 
 ### D9 — La suite è larga e poco profonda, e il livello profondo nessuno lo lancia — D9-b chiuso l'11-09 (§9), resta D9-a
 
@@ -536,6 +540,8 @@ D3-c, D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di l
 * [ ] **D3-c** — `SECURE_HSTS_SECONDS` / `SECURE_SSL_REDIRECT` (con chi gestisce
       nginx) e **decidere** sulla CSP.
       Proposta pronta: [brief sicurezza](brief-be-fe-sicurezza-header-token-mfa.md) §1.
+      🟡 2026-09-28: HSTS e redirect fatti, W004/W008 tolti dal cricchetto;
+      resta la CSP da applicare in Nginx e collaudare a video.
 * [x] **D4** — ✅ 2026-09-09: `hint` a video, filtro sui codici tecnici, sei
       `ui_action` dichiarate servite dal default.
 
@@ -645,7 +651,7 @@ D3-c, D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di l
 | #   | Cosa                                               | Perché sta qui                                                                                      |
 | --- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | 1   | **D1-f** — `npm audit` nel job                     | Registro a **zero** dal 13-09, e il lato backend (`pip-audit`) c'è dal 26-09                        |
-| 2   | **D3-c** — HSTS / SSL_REDIRECT / CSP               | Proposta pronta (brief sicurezza §1); l'effetto lo decide il reverse proxy                          |
+| 2   | **D3-c** — CSP (HSTS e redirect fatti il 28-09)    | Scritta nel vhost documentato (brief sicurezza §1.6); resta da applicare in Nginx e collaudare      |
 | 3   | **D2-b** — type checker                            | Una decisione: sì (e come) o no (e si toglie la riga da `PROJECT_CONTEXT.md`)                       |
 | 4   | **D10-bis** — le letture cross-dominio con lo skip | Lettura, non conteggio                                                                              |
 

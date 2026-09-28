@@ -19,10 +19,10 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.jwt_audit_authentication import E_IDENTITA_NON_ATTIVA
 from apps.core.api.multi_veste_token_serializer import emetti_refresh_veste
 from apps.core.api.payload_validators import password_digitata
+from apps.core.api.refresh_cookie import handle_post_json_con_refresh
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services import session_audit_service
 from apps.core.services.auth_constants import JWT_CLAIM_SID
@@ -59,8 +59,10 @@ class ChangePasswordView(DomainAPIView):
     #        all'operatore di cambiare la propria password (sia volontario
     #        che obbligatorio al primo accesso). Resetta flag, invalida
     #        sessioni precedenti, ritorna nuovi token JWT in envelope standard.
+    # ⭐ Il refresh nuovo va nel cookie HttpOnly, non nel corpo (brief
+    #    sicurezza §2, 2026-09-28): il corpo porta il solo `access`.
     def post(self, request: Request) -> JsonResponse:
-        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
+        def _handler(payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
             user = request.user
 
             old_password = password_digitata(payload, "old_password")
@@ -128,6 +130,6 @@ class ChangePasswordView(DomainAPIView):
             )
             logger.info("security.password_changed user_id=%s", user.id)
 
-            return {"access": str(refresh.access_token), "refresh": str(refresh)}
+            return {"access": str(refresh.access_token)}, str(refresh)
 
-        return handle_post_json(request, handler=_handler)
+        return handle_post_json_con_refresh(request, _handler)

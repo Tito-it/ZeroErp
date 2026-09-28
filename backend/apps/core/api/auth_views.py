@@ -22,11 +22,16 @@ from rest_framework.exceptions import AuthenticationFailed, ValidationError
 from rest_framework.fields import empty
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework_simplejwt.exceptions import InvalidToken
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from apps.core.api.jwt_audit_authentication import set_jwt_gucs
-from apps.core.api.payload_validators import corpo_oggetto
+from apps.core.api.refresh_cookie import (
+    claims_refresh_firmati,
+    leggi_refresh_cookie,
+    richiedi_header_anti_csrf,
+    sposta_refresh_nel_cookie,
+)
 from apps.core.api.multi_veste_token_serializer import (
     AdminTokenSerializer,
     PortaleTokenSerializer,
@@ -53,9 +58,12 @@ from apps.core.services.auth_constants import (
 
 
 # Scopo: Decode non-verificato (payload-only) del refresh token.
-# La firma/blacklist/exp sono gia' state validate da SimpleJWT a monte
-# (super().post() del login o del refresh), quindi qui basta leggere
-# il payload. Fail-open: dict vuoto se parse fallisce + log warning.
+# ⚠️ Solo per il LOGIN: il refresh e' quello appena emesso da SimpleJWT in
+# questa stessa richiesta, quindi e' nostro per costruzione. Il REFRESH
+# presentato dal browser non passa di qui: ha i claim con la firma
+# verificata (`claims_refresh_firmati`), e una seconda lettura alla cieca
+# dello stesso token sarebbe una seconda regola (dal 2026-09-28).
+# Fail-open: dict vuoto se parse fallisce + log warning.
 def _decode_refresh_payload(refresh_str: str | None) -> dict:
     if not refresh_str:
         return {}
@@ -70,28 +78,23 @@ def _decode_refresh_payload(refresh_str: str | None) -> dict:
         return {}
 
 
-# Scopo: Estrae il claim `identita_id` dal refresh token. Usato dai
-# call site login/refresh per passare l'identita a set_jwt_gucs.
+# Scopo: Un claim intero dei claim dati, None se assente o non intero.
+#        Una regola per `identita_id`, `emittente_attivo_id` e `user_id`, di
+#        login e refresh: fino al 2026-09-28 erano tre conversioni scritte a
+#        mano, e solo una sopravviveva a un valore non intero.
+def _int_claim(claims: dict, nome: str) -> int | None:
+    val = claims.get(nome)
+    try:
+        return int(val) if val is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+# Scopo: Estrae il claim `identita_id` dal refresh appena emesso al login,
+# per passare l'identita a set_jwt_gucs.
 def _extract_identita_id_from_refresh(refresh_str: str | None) -> int | None:
-    val = _decode_refresh_payload(refresh_str).get(JWT_CLAIM_IDENTITA_ID)
-    return int(val) if val is not None else None
+    return _int_claim(_decode_refresh_payload(refresh_str), JWT_CLAIM_IDENTITA_ID)
 
-
-# Scopo: Estrae il claim `emittente_attivo_id` dal refresh token, per
-# ripopolare la GUC durante il refresh (che non passa dalla DRF auth chain).
-# Claim assente = modalita' «Tutti gli emittenti» → None, GUC vuota.
-def _extract_emittente_attivo_from_refresh(refresh_str: str | None) -> int | None:
-    val = _decode_refresh_payload(refresh_str).get(JWT_CLAIM_EMITTENTE_ATTIVO_ID)
-    return int(val) if val is not None else None
-
-
-# Scopo: Estrae il claim `ruolo_applicativo` dal refresh token.
-# Usato dal guard cross-namespace di AuditTokenRefreshView per
-# verificare che il refresh fatto su /admin/token/refresh/ abbia
-# veste OPERATORE, /portale/token/refresh/ veste portale, ecc.
-def _extract_ruolo_applicativo_from_refresh(refresh_str: str | None) -> str | None:
-    val = _decode_refresh_payload(refresh_str).get(JWT_CLAIM_RUOLO_APPLICATIVO)
-    return str(val) if val is not None else None
 
 logger = logging.getLogger("security")
 _auth_repo = AuthRepository()
@@ -294,6 +297,10 @@ class AuditTokenObtainPairView(TokenObtainPairView):
                 request=django_request,
                 jti=jti,
             )
+            # ⭐ Ultimo passo: i claim del refresh sono gia' stati letti dal
+            #    corpo (sopra); ora il refresh esce dal corpo e va nel cookie
+            #    HttpOnly. Al client resta il solo access.
+            sposta_refresh_nel_cookie(response, response.data)
 
         return response
 
@@ -404,7 +411,7 @@ class AuditTokenRefreshView(TokenRefreshView):
     # senza override solleva RuntimeError.
     expected_ruoli_applicativi: tuple[str, ...] = ()
 
-    @extend_schema(summary="Refresh JWT con audit sessione", responses={200: dict})
+    @extend_schema(summary="Refresh JWT con audit sessione", request=None, responses={200: dict})
     # Scopo: Esegue il refresh JWT, valida la veste tramite il guard
     # cross-namespace e registra l'evento REFRESH in dbops.sessioni_utente.
     def post(self, request: Request, *args, **kwargs) -> Response:
@@ -419,13 +426,33 @@ class AuditTokenRefreshView(TokenRefreshView):
                 "subclass con expected_ruoli_applicativi settato)."
             )
 
+        # ⭐ Il refresh arriva dal cookie HttpOnly, mai dal corpo (brief
+        #    sicurezza §2, 2026-09-28): e' l'unica richiesta autenticata dal
+        #    SOLO cookie, quindi pretende anche l'header anti-CSRF. Senza
+        #    cookie: 401 come un token non valido, e il client va al login.
+        richiedi_header_anti_csrf(request)
+        refresh_str = leggi_refresh_cookie(request)
+        if refresh_str is None:
+            raise InvalidToken("Sessione assente: nessun cookie di refresh.")
+
+        # ⭐ La veste si legge da claim con la FIRMA verificata (BB
+        #    `claims_refresh_firmati`, 2026-09-28). Un token illeggibile o non
+        #    emesso da noi e' una sessione non valida: 401, come ogni altro
+        #    refresh rifiutato. Fino a quel giorno la decodifica era alla
+        #    cieca, e un token illeggibile diventava «veste assente» → 403
+        #    `E_VESTE_NON_ATTIVA` (E-8 dell'analisi difetti doc API core).
+        claims = claims_refresh_firmati(refresh_str)
+        if claims is None:
+            raise InvalidToken("Sessione non valida: refresh illeggibile o non emesso da questo backend.")
+
         # Guard cross-namespace: rifiuta il refresh di un token la cui
         # veste non rientra nel set ammesso dal namespace del path
         # (es. refresh portale su /admin/token/refresh/). Nessuna
         # escalation di privilegio — il claim veste viene dal token
-        # firmato — ma chiude l'ambiguita' semantica cross-path.
-        refresh_str = corpo_oggetto(request).get("refresh")
-        ruolo = _extract_ruolo_applicativo_from_refresh(refresh_str)
+        # firmato — ma chiude l'ambiguita' semantica cross-path. Un token
+        # nostro SENZA claim veste (pre-§8.3.2) resta 403: grace 0.
+        ruolo_claim = claims.get(JWT_CLAIM_RUOLO_APPLICATIVO)
+        ruolo = str(ruolo_claim) if ruolo_claim is not None else None
         if ruolo is None or ruolo not in self.expected_ruoli_applicativi:
             logger.warning(
                 "security.refresh_cross_namespace path=%s ruolo=%s",
@@ -433,49 +460,61 @@ class AuditTokenRefreshView(TokenRefreshView):
             )
             raise VesteNonAttivaError()
 
-        response = super().post(request, *args, **kwargs)
-        if response.status_code == 200:
-            django_request = request._request if hasattr(request, "_request") else request
-            user_id, jti = self._extract_claims(refresh_str)
-            # Hotfix BE-2.0ter: il refresh NON passa dalla DRF auth chain
-            # (la request porta solo il refresh token nel body, niente
-            # Authorization Bearer), quindi JwtAuditAuthentication NON
-            # setta le GUC. Le settiamo qui manualmente prima della
-            # scrittura di audit. Lo username viene risolto dal user_id
-            # estratto dal claim del refresh token (gia' validato dal
-            # parent SimpleJWT, quindi affidabile).
-            if user_id:
-                username = self._resolve_username(user_id)
-                if username:
-                    # §8.3.4: il refresh token (anche dopo rotation) preserva
-                    # il claim identita_id iniettato al login. Lo estraiamo
-                    # dal body della request per popolare le GUC sulla veste
-                    # corretta — il refresh rotation produce un NUOVO refresh
-                    # nella response, ma il claim identita_id e' gia'
-                    # disponibile nel refresh in entrata (sufficiente per le GUC).
-                    identita_id = _extract_identita_id_from_refresh(refresh_str)
-                    gucs_ok = set_jwt_gucs(
-                        username=username,
-                        user_id=user_id,
-                        identita_id=identita_id,
-                        # L'emittente attivo viaggia col refresh (rotation
-                        # preserva i claim custom): senza, ogni refresh
-                        # riporterebbe l'utente in modalita' globale a sua
-                        # insaputa. La CTE ricontrolla che sia ancora attivo.
-                        emittente_attivo_id=_extract_emittente_attivo_from_refresh(refresh_str),
-                        request=django_request,
+        # `_rinnova` risponde 200 o solleva: da qui in poi il rinnovo e' riuscito.
+        response = self._rinnova(refresh_str)
+        # Il refresh ruotato torna nel cookie, e dal corpo esce.
+        sposta_refresh_nel_cookie(response, response.data)
+        django_request = request._request if hasattr(request, "_request") else request
+        # Audit e GUC dagli STESSI claim verificati del guard, non da una
+        # seconda lettura del token (la rotazione preserva i claim custom).
+        user_id, jti = self._extract_claims(claims)
+        # Hotfix BE-2.0ter: il refresh NON passa dalla DRF auth chain
+        # (la request porta solo il refresh token nel cookie, niente
+        # Authorization Bearer), quindi JwtAuditAuthentication NON
+        # setta le GUC. Le settiamo qui manualmente prima della
+        # scrittura di audit. Lo username viene risolto dal user_id
+        # dei claim con la firma verificata, quindi affidabile.
+        if user_id:
+            username = self._resolve_username(user_id)
+            if username:
+                # §8.3.4: il refresh token (anche dopo rotation) preserva
+                # il claim identita_id iniettato al login: quello del
+                # refresh in entrata basta per le GUC sulla veste giusta.
+                identita_id = _int_claim(claims, JWT_CLAIM_IDENTITA_ID)
+                gucs_ok = set_jwt_gucs(
+                    username=username,
+                    user_id=user_id,
+                    identita_id=identita_id,
+                    # L'emittente attivo viaggia col refresh (rotation
+                    # preserva i claim custom): senza, ogni refresh
+                    # riporterebbe l'utente in modalita' globale a sua
+                    # insaputa. La CTE ricontrolla che sia ancora attivo.
+                    # Claim assente = «Tutti gli emittenti» → None.
+                    emittente_attivo_id=_int_claim(claims, JWT_CLAIM_EMITTENTE_ATTIVO_ID),
+                    request=django_request,
+                )
+                if not gucs_ok:
+                    logger.warning(
+                        "security.refresh_guc_mancate user_id=%s identita_id=%s",
+                        user_id, identita_id,
                     )
-                    if not gucs_ok:
-                        logger.warning(
-                            "security.refresh_guc_mancate user_id=%s identita_id=%s",
-                            user_id, identita_id,
-                        )
-            session_audit_service.record_refresh(
-                user_id=user_id,
-                request=django_request,
-                jti=jti,
-            )
+        session_audit_service.record_refresh(
+            user_id=user_id,
+            request=django_request,
+            jti=jti,
+        )
         return response
+
+    # Scopo: Il corpo di `TokenViewBase.post`, col refresh preso dal cookie
+    #        invece che da `request.data`: stessa validazione (firma, scadenza,
+    #        blacklist, rotazione) e stessa traduzione degli errori (401).
+    def _rinnova(self, refresh_str: str) -> Response:
+        serializer = self.get_serializer(data={"refresh": refresh_str})
+        try:
+            serializer.is_valid(raise_exception=True)
+        except TokenError as exc:
+            raise InvalidToken(exc.args[0]) from exc
+        return Response(serializer.validated_data, status=200)
 
     @staticmethod
     # Scopo: Risolve lo username da auth_user.id per la propagazione GUC.
@@ -489,29 +528,14 @@ class AuditTokenRefreshView(TokenRefreshView):
         return user.username if user else None
 
     @staticmethod
-    # Scopo: Estrae user_id e sid dal refresh token nel body della request.
-    # §8.3.9 fix audit REFRESH: NON usare `RefreshToken(refresh_str)` qui
-    # — il super().post() poco sopra ha gia' blacklistato il refresh in
-    # entrata (BLACKLIST_AFTER_ROTATION=True default), quindi SimpleJWT
-    # solleverebbe TokenError e il catch generico restituirebbe (0, None),
-    # facendo saltare set_jwt_gucs e scrivendo audit con
-    # user_insert=zeroerp_app. Usiamo `pyjwt.decode` senza validazione
-    # (identico pattern di `_decode_refresh_payload`): il refresh qui e'
-    # gia' stato validato da SimpleJWT nel super().post(), ci servono
-    # solo i claim per audit + GUC.
-    # Riceve il refresh gia' letto da `post`: il corpo si legge in un punto solo.
-    def _extract_claims(refresh_str: str | None) -> tuple[int, str | None]:
-        if not refresh_str:
-            return 0, None
-        payload = _decode_refresh_payload(refresh_str)
-        raw_user_id = payload.get("user_id")
-        raw_sid = payload.get(JWT_CLAIM_SID)
-        try:
-            user_id = int(raw_user_id) if raw_user_id is not None else 0
-        except (TypeError, ValueError):
-            user_id = 0
+    # Scopo: user_id e sid dai claim VERIFICATI del refresh presentato (quelli
+    # del guard). §8.3.9: non `RefreshToken(refresh_str)`, che a rotazione
+    # avvenuta trova il token in blacklist e solleva — l'audit finirebbe con
+    # user_insert=zeroerp_app.
+    def _extract_claims(claims: dict) -> tuple[int, str | None]:
+        raw_sid = claims.get(JWT_CLAIM_SID)
         sid = str(raw_sid) if raw_sid is not None else None
-        return user_id, sid
+        return _int_claim(claims, "user_id") or 0, sid
 
 
 # ── Refresh view per namespace (§8.3.5) ─────────────────────
