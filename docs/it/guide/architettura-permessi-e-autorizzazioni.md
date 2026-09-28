@@ -189,6 +189,11 @@ con cui si risolvono i livelli: cambiarla stacca profili e override di
 un'area intera. Per questo la tabella sta nelle tendine ma non nel pannello
 (§7.5), come i profili di accesso.
 
+⛔ **E non si modifica dall'applicazione.** La possiede il CSV: il nome
+dell'area (`descrizione`) e l'ordine (`ordinamento`) si cambiano li', e il
+migrate successivo li porta in tutte le schermate dei permessi. L'applicazione
+la legge soltanto: e' fra le tabelle in sola lettura per l'app (§7.4).
+
 **Esempio di uso:** per ottenere l'elenco delle aree attive utilizzabili
 nell'interfaccia di configurazione, si filtra per quelle contrassegnate come
 attive e si ordina in base al campo di ordinamento per mantenere la

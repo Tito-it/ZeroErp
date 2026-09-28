@@ -1,0 +1,230 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_check_esclusione_articolo_contratto: la versione in vigore dalla sede unica.
+#
+# Il ramo «contratto in bozza» guardava TUTTE le versioni ATTIVA/CHIUSA valide
+# oggi (EXISTS). Con 20260928-33/-34 sono al piu' una, e la dice
+# vendite.fn_listino_versione_in_vigore: il ramo legge i componenti di quella.
+# Stesso esito; il ramo del contratto attivo (versione fissata) non cambia.
+#
+# -- COME -------------------------------------------------------------
+#   · la FIRMA viene dall'ultimo YAML che la ha ancorata (20260928-29): la doc
+#     auto-gen scioglie i %TYPE. `SECURITY INVOKER` reso esplicito
+#     (linee-guida-sql §5b), senza cambio di comportamento;
+#   · il CORPO e' quello vivo (prosrc sullo scratch, 2026-09-28), patchato da
+#     script con la sostituzione contata: nessun'altra riga toccata. Il COMMENT
+#     resta sull'oggetto.
+# Cantiere: brief-db-liste-righe-documento §8.15, passo d)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260928-36-update-fn-check-esclusione-da-versione-in-vigore-mctit.yaml
+
+  - changeSet:
+      id: 20260928-36-update-fn-check-esclusione-da-versione-in-vigore
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        La check dell'esclusione legge la versione in vigore da vendite.fn_listino_versione_in_vigore
+        invece di scriversi la regola. Stesso esito.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_listino_versione_in_vigore'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_esclusione_articolo_contratto(
+                  p_contratto_id vendite.contratti.id%TYPE,
+                  p_articolo_id  catalogo.articoli.id%TYPE
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+
+              -- Scopo: elencare i motivi per cui un articolo NON si puo' escludere
+              --   da un contratto. Funzione PURA (fn_check_*): nessun raise di
+              --   dominio, nessuna scrittura.
+              -- Consumatori: il guard
+              --   vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle
+              --   (solleva il PRIMO motivo) e vendite.fn_contratto_righe_preview
+              --   (spegne «Escludi» sulla riga e dice perche').
+              -- Ritorna: [] se ammesso; altrimenti array ORDINATO di
+              --   {codice, reason, reason_key, dettaglio, valori}.
+              DECLARE
+                  v_motivi              jsonb := '[]'::jsonb;
+                  v_listino_id          vendite.contratti.listino_id%TYPE;
+                  v_listino_versione_id vendite.contratti.listino_versione_id%TYPE;
+                  v_e_figlio_bundle     boolean := false;
+              BEGIN
+                  SELECT c.listino_id, c.listino_versione_id
+                    INTO v_listino_id, v_listino_versione_id
+                    FROM vendite.contratti c
+                   WHERE c.id = p_contratto_id;
+
+                  -- Ramo 1: nessun listino -> nessun bundle da cui escludere.
+                  -- ⚠️ Vale anche per un contratto che non si vede o non esiste: la
+                  --    check non ha niente da nominare, e chi scrive passa comunque
+                  --    dalla policy e dalle FK.
+                  IF v_listino_id IS NULL THEN
+                      RETURN v_motivi;
+                  END IF;
+
+                  IF v_listino_versione_id IS NULL THEN
+                      -- Ramo 2: bozza -> la versione in vigore OGGI (ATTIVA o CHIUSA;
+                      -- BOZZA esclusa, «Bug A»). Era un EXISTS su tutte le valide: dal
+                      -- 2026-09-28 sono al piu' una per costruzione (§8.15).
+                      SELECT EXISTS (
+                          SELECT 1
+                            FROM vendite.listini_righe_componenti lrc
+                           -- rev 2026-09-28: la versione in vigore oggi, dalla sede
+                           -- unica (al piu' una per costruzione, §8.15).
+                           WHERE lrc.listino_versione_id =
+                                 vendite.fn_listino_versione_in_vigore(v_listino_id, CURRENT_DATE)
+                             AND lrc.articolo_figlio_id = p_articolo_id
+                             AND lrc.attivo             = TRUE
+                             AND lrc.validita          @> CURRENT_DATE
+                      ) INTO v_e_figlio_bundle;
+                  ELSE
+                      -- Ramo 3: contratto attivo -> la versione fissata.
+                      SELECT EXISTS (
+                          SELECT 1
+                            FROM vendite.listini_righe_componenti lrc
+                           WHERE lrc.listino_versione_id = v_listino_versione_id
+                             AND lrc.articolo_figlio_id  = p_articolo_id
+                             AND lrc.attivo              = TRUE
+                             AND lrc.validita           @> CURRENT_DATE
+                      ) INTO v_e_figlio_bundle;
+                  END IF;
+
+                  -- ---- MOTIVO 1 — e' un componente di un bundle ------------------
+                  -- Il bundle si vende come unita': si esclude il padre, mai il
+                  -- singolo figlio. `valori` e' il VARIADIC che il guard passava
+                  -- gia' (l'articolo): la frase non si ricompone in due posti.
+                  IF v_e_figlio_bundle THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA',
+                          'reason',     'FIGLIO_DI_BUNDLE',
+                          'reason_key', 'vendite.contratti.escludi_blocco.figlio_di_bundle',
+                          'dettaglio',  jsonb_build_object(
+                                            'contratto_id',        p_contratto_id,
+                                            'articolo_id',         p_articolo_id,
+                                            'listino_id',          v_listino_id,
+                                            'listino_versione_id', v_listino_versione_id),
+                          'valori',     jsonb_build_array(p_articolo_id::text));
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino: il corpo vivo prima di questo changeSet.
+              CREATE OR REPLACE FUNCTION script.fn_check_esclusione_articolo_contratto(
+                  p_contratto_id vendite.contratti.id%TYPE,
+                  p_articolo_id  catalogo.articoli.id%TYPE
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+
+              -- Scopo: elencare i motivi per cui un articolo NON si puo' escludere
+              --   da un contratto. Funzione PURA (fn_check_*): nessun raise di
+              --   dominio, nessuna scrittura.
+              -- Consumatori: il guard
+              --   vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle
+              --   (solleva il PRIMO motivo) e vendite.fn_contratto_righe_preview
+              --   (spegne «Escludi» sulla riga e dice perche').
+              -- Ritorna: [] se ammesso; altrimenti array ORDINATO di
+              --   {codice, reason, reason_key, dettaglio, valori}.
+              DECLARE
+                  v_motivi              jsonb := '[]'::jsonb;
+                  v_listino_id          vendite.contratti.listino_id%TYPE;
+                  v_listino_versione_id vendite.contratti.listino_versione_id%TYPE;
+                  v_e_figlio_bundle     boolean := false;
+              BEGIN
+                  SELECT c.listino_id, c.listino_versione_id
+                    INTO v_listino_id, v_listino_versione_id
+                    FROM vendite.contratti c
+                   WHERE c.id = p_contratto_id;
+
+                  -- Ramo 1: nessun listino -> nessun bundle da cui escludere.
+                  -- ⚠️ Vale anche per un contratto che non si vede o non esiste: la
+                  --    check non ha niente da nominare, e chi scrive passa comunque
+                  --    dalla policy e dalle FK.
+                  IF v_listino_id IS NULL THEN
+                      RETURN v_motivi;
+                  END IF;
+
+                  IF v_listino_versione_id IS NULL THEN
+                      -- Ramo 2: bozza -> le versioni operative OGGI (ATTIVA o
+                      -- CHIUSA; BOZZA esclusa, «Bug A»). EXISTS su tutte, come il
+                      -- guard ha sempre fatto.
+                      SELECT EXISTS (
+                          SELECT 1
+                            FROM vendite.listini_versioni lv
+                            JOIN vendite.listini_righe_componenti lrc
+                              ON lrc.listino_versione_id = lv.id
+                           WHERE lv.listino_id          = v_listino_id
+                             AND lv.attivo              = TRUE
+                             AND lv.stato               IN ('ATTIVA', 'CHIUSA')
+                             AND lv.validita           @> CURRENT_DATE
+                             AND lrc.articolo_figlio_id = p_articolo_id
+                             AND lrc.attivo             = TRUE
+                             AND lrc.validita          @> CURRENT_DATE
+                      ) INTO v_e_figlio_bundle;
+                  ELSE
+                      -- Ramo 3: contratto attivo -> la versione fissata.
+                      SELECT EXISTS (
+                          SELECT 1
+                            FROM vendite.listini_righe_componenti lrc
+                           WHERE lrc.listino_versione_id = v_listino_versione_id
+                             AND lrc.articolo_figlio_id  = p_articolo_id
+                             AND lrc.attivo              = TRUE
+                             AND lrc.validita           @> CURRENT_DATE
+                      ) INTO v_e_figlio_bundle;
+                  END IF;
+
+                  -- ---- MOTIVO 1 — e' un componente di un bundle ------------------
+                  -- Il bundle si vende come unita': si esclude il padre, mai il
+                  -- singolo figlio. `valori` e' il VARIADIC che il guard passava
+                  -- gia' (l'articolo): la frase non si ricompone in due posti.
+                  IF v_e_figlio_bundle THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA',
+                          'reason',     'FIGLIO_DI_BUNDLE',
+                          'reason_key', 'vendite.contratti.escludi_blocco.figlio_di_bundle',
+                          'dettaglio',  jsonb_build_object(
+                                            'contratto_id',        p_contratto_id,
+                                            'articolo_id',         p_articolo_id,
+                                            'listino_id',          v_listino_id,
+                                            'listino_versione_id', v_listino_versione_id),
+                          'valori',     jsonb_build_array(p_articolo_id::text));
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$;

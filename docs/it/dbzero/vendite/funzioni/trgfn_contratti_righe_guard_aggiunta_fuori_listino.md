@@ -12,6 +12,7 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_righe_guard_aggiunta_fuori_li
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
+
 -- Scopo: blocca INSERT/UPDATE su contratti_righe con tipo_eccezione='AGGIUNTA'
 --   se l'articolo è già presente nel listino operativo del contratto.
 -- Branch 1: listino_id IS NULL -> nessun check, AGGIUNTA sempre valida.
@@ -41,13 +42,11 @@ BEGIN
         -- stato IN ('ATTIVA','CHIUSA'): BOZZA non è operativa, non blocca.
         SELECT EXISTS (
             SELECT 1
-              FROM vendite.listini_versioni lv
-              JOIN vendite.listini_righe lr
-                ON lr.listino_versione_id = lv.id
-             WHERE lv.listino_id = v_listino_id
-               AND lv.attivo      = TRUE
-               AND lv.stato       IN ('ATTIVA', 'CHIUSA')
-               AND lv.validita   @> CURRENT_DATE
+              FROM vendite.listini_righe lr
+             -- rev 2026-09-28: la versione in vigore oggi, dalla sede
+             -- unica (al piu' una per costruzione, §8.15).
+             WHERE lr.listino_versione_id =
+                   vendite.fn_listino_versione_in_vigore(v_listino_id, CURRENT_DATE)
                AND lr.articolo_id = NEW.articolo_id
                AND lr.attivo      = TRUE
         ) INTO v_in_listino;

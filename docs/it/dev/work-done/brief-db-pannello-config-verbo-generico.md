@@ -3,18 +3,21 @@
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-09-25. **A chi:** Tid (decisioni,
 > §4), poi team DB e team backend/frontend (§6).
 > **Origine:** decisione **D-3** di
-> [brief-db-permesso-nel-verbo-di-scrittura.md](brief-db-permesso-nel-verbo-di-scrittura.md)
+> [brief-db-permesso-nel-verbo-di-scrittura.md](../work-in-progress/brief-db-permesso-nel-verbo-di-scrittura.md)
 > (§7.1), con la **D-5** per la forma del permesso. È il secondo brief operativo
-> del modello, dopo [brief-db-magazzino-verbi-con-permesso.md](../work-done/brief-db-magazzino-verbi-con-permesso.md).
+> del modello, dopo [brief-db-magazzino-verbi-con-permesso.md](brief-db-magazzino-verbi-con-permesso.md).
+> **Stato: ✅ CHIUSO il 2026-09-28.** Tutte le parti sono fatte, applicate e
+> committate. La D-P9 (`20260928-30`) è stata applicata su dbdev alle 11:48, e la
+> corsa pgTAP di Tid non ha regressioni.
+>
 > **Stato al 2026-09-28:**
 >
 > | Parte | Stato |
 > | --- | --- |
-> | Decisioni | ✅ **D-P1 → D-P7 decise da Tid** (§4): D-P1…D-P5 sulla proposta del DB, D-P6 e D-P7 sulla proposta del backend (§4.1) |
-> | DB | ✅ `20260925-29…-34` applicati e committati (`7f3208a58`). ✅ **D-P6 chiusa**, applicata il 2026-09-27 (00:34): pgTAP verdi, nessuna regressione. ✅ **Applicati su dbdev il 2026-09-27 (01:00), pgTAP verdi** (§6.1): `config.aree_funzionali` fuori dal pannello (D-P8), la funzione unica delle colonne scrivibili (`20260927-21`, `-22`) e il `CHECK (NOT pannello OR lookup)` (`20260927-20`). Lato DB resta solo la D-P9 |
-> | Backend | ✅ **§6 fatto e committato**: è entrato in `e7dbbad73` (commit che nel messaggio cita il brief del blocco login). Verbo, lista a DB, `REL_CONSENTITE` ritirata, area da `fn_area_di_oggetto`, 403 sull'oggetto nella forma della D-P7. ✅ **§6.1 fatto il 2026-09-28** (non committato): il metadata legge `config.fn_pannello_colonne_scrivibili`, `_EXCLUDED_COLUMNS` ritirata |
-> | Frontend | ✅ **Fatto il 2026-09-28** (non committato): registro `config-tables.js` ritirato (D-P5), il pannello legge `GET /core/config/tables/`; «Salva» spento in modifica quando il delta è vuoto |
-> | Decisioni chiuse | ✅ **D-P9 decisa da Tid il 2026-09-28: strada A** (§4.2). Nome e ordine delle aree si cambiano nel CSV. ⏳ **Al team DB**: chiudere la tabella all'app (§4.2, richiesta) |
+> | Decisioni | ✅ **D-P1 → D-P9 decise da Tid** (§4): D-P1…D-P5 sulla proposta del DB, D-P6 e D-P7 sulla proposta del backend (§4.1), D-P8 e D-P9 il 27 e il 28-09 |
+> | DB | ✅ `20260925-29…-34` applicati e committati (`7f3208a58`). ✅ **D-P6 chiusa**, applicata il 2026-09-27 (00:34): pgTAP verdi, nessuna regressione. ✅ **Applicati su dbdev il 2026-09-27 (01:00), pgTAP verdi** (§6.1): `config.aree_funzionali` fuori dal pannello (D-P8), la funzione unica delle colonne scrivibili (`20260927-21`, `-22`) e il `CHECK (NOT pannello OR lookup)` (`20260927-20`). ✅ **D-P9 applicata il 2026-09-28** (§4.2): `90_end/20260928-30`, loop dei grant, provisioning, pgTAP. Nessuna regressione |
+> | Backend | ✅ **Chiuso.** §6 committato in `e7dbbad73` (commit che nel messaggio cita il brief del blocco login): verbo, lista a DB, `REL_CONSENTITE` ritirata, area da `fn_area_di_oggetto`, 403 sull'oggetto nella forma della D-P7. §6.1 committato in `5bd689163` il 2026-09-28: il metadata legge `config.fn_pannello_colonne_scrivibili`, `_EXCLUDED_COLUMNS` ritirata |
+> | Frontend | ✅ **Chiuso**, committato in `5bd689163` il 2026-09-28: registro `config-tables.js` ritirato (D-P5), il pannello legge `GET /core/config/tables/`; «Salva» spento in modifica quando il delta è vuoto |
 >
 > **In una riga:** il pannello «Gestione tabelle» scrive su 87 tabelle con SQL
 > costruito nel backend, e chiede sempre il livello `TUTTO` sull'area
@@ -297,6 +300,35 @@ a video, ed è per questo che la A basta.
 
 Al backend niente: nessuno scrive la tabella fuori dal pannello di prima (§4.2).
 
+✅ **Fatto dal team DB il 2026-09-28, provato e applicato su dbdev (11:48); corsa pgTAP senza regressioni.**
+
+| Pezzo | File | Cosa |
+| --- | --- | --- |
+| Forward | `90_end/20260928-30-revoke-app-scrittura-aree-funzionali` | All'app resta solo `SELECT` su `config.aree_funzionali`. Stampo di `20260925-34` |
+| Loop | `90_end/ci_apply/20260205-41` | `config.aree_funzionali` in `v_tabelle_sola_lettura_app`, con la voce nell'intestazione |
+| Provisioning | `scripts/sql/provision_db_roles.sql` | La riga entra nel blocco della porta del pannello, accanto a `causali` e `tabelle_gestibili` |
+| pgTAP porta | `config/test-pannello-porta-v1` (da 9 a 11) | 10: sul catalogo, `SELECT` sì e scrittura no. 11: come app, `UPDATE … SET id = id WHERE false` dà `42501` |
+| pgTAP censito | `config/test-permessi-strutture-base` (12-13 dell'elenco) | Erano l'unico scrittore della tabella come app: due `INSERT` duplicati che aspettavano `23505`. Dopo la chiusura avrebbero preso `42501`. ⛔ Il marcatore `owner` non era la risposta, perché la fixture scriveva dove l'app non scrive. Ora sono due `col_is_unique` su `codice` e `schema_db` |
+| `manual/` | `config/manual/aree_funzionali.md` | Nuova sezione «Chi la scrive»: solo il CSV |
+
+**Censo degli scrittori** (2026-09-28): il backend non scrive la tabella, e nemmeno
+le funzioni e i trigger della doc auto-generata o dei `20_code`. Fra i pgTAP la
+scriveva solo il file qui sopra.
+
+**Prova** su `zeroerp_ci` da owner, con l'SQL estratto dal YAML e in una
+transazione annullata:
+
+* controprova senza il forward: il 10 e l'11 sono rossi. Il test vede il difetto;
+* col forward la porta fa 8/11: il 10 è verde; il 3, il 4 e l'11 sono rossi da
+  owner, come dichiarato nel file;
+* `test-permessi-strutture-base` fa 22/22;
+* dopo il `ROLLBACK` il privilegio dell'app su `zeroerp_ci` è invariato;
+* guardrail statici verdi: `runOnChange`, ruolo batch, trigger di automazione,
+  `preCondition`, letterali, preambolo pgTAP (debito `throws_ok` fermo a 117).
+
+✅ **Applicato il 2026-09-28**: `20260928-30` è `EXECUTED` su dbdev, e l'app non ha
+più `UPDATE` sulla tabella (letto sul catalogo). Corsa pgTAP di Tid senza regressioni.
+
 ## 5. I passi
 
 | Passo | Stato |
@@ -402,3 +434,6 @@ sul DB vero verde (39 test). Pagina `manual/api_config_tables.md` allineata.
 | 2026-09-27 | Tid | `20260927-20…-22` e il seed applicati su dbdev (01:00), pgTAP verdi. Lato DB resta solo la D-P9. Al backend: metadata dalla funzione unica, ritiro di `_EXCLUDED_COLUMNS`, forma della risposta. Al frontend: D-P5 e `aree_funzionali` |
 | 2026-09-28 | Tid | **D-P9 decisa: A** (sola lettura, nome e ordine si cambiano nel CSV). Richiesta al team DB in §4.2. Corretta un'affermazione del §4.2: il nome delle aree a video viene dalla tabella, non dall'i18n |
 | 2026-09-28 | BE/FE | §6.1 fatto: metadata dalla funzione unica, `_EXCLUDED_COLUMNS` ritirata, presidio metadata ↔ funzione. D-P5 fatta: `config-tables.js` ritirato, il pannello legge la lista dall'API. «Salva» vuoto chiuso. La chiave i18n di `aree_funzionali` era già stata tolta il 27-09. Test BE mirati (39) e FE (467) verdi, build verde. Non committato. Poi P-6: guida dei permessi e PROJECT_CONTEXT aggiornati. Resta solo la D-P9 |
+| 2026-09-28 | BE/FE | Backend e frontend committati e pushati in `5bd689163`. La parte BE/FE è chiusa |
+| 2026-09-28 | DB | **D-P9 scritta e provata** (§4.2): forward `90_end/20260928-30`, loop `20260205-41`, provisioning, `test-pannello-porta-v1` passato a 11 test, `test-permessi-strutture-base` 12-13 riscritti sul catalogo, pagina `manual/`. Da applicare. È l'ultimo pezzo del brief |
+| 2026-09-28 | Tid | `20260928-30` applicato (11:48), pgTAP senza regressioni. **Brief chiuso**, spostato in `work-done/` |

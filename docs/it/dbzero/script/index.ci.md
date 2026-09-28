@@ -35,6 +35,7 @@
 - [fn_check_disponibilita_uscita](manual/fn_check_disponibilita_uscita.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_check_documento_escludibile_da_giro](manual/fn_check_documento_escludibile_da_giro.md) — (latest review 2026-09-08)
 - [fn_check_documento_interno_registrabile](manual/fn_check_documento_interno_registrabile.md) — (scritta il 22-09-2026)
+- [fn_check_esclusione_articolo_contratto](manual/fn_check_esclusione_articolo_contratto.md) — (funzione nata il 2026-09-28, `20260928-29`; rev `-36` lo stesso giorno)
 - [fn_check_famiglia_documento_disattivabile](manual/fn_check_famiglia_documento_disattivabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_check_famiglia_documento_struttura_modificabile](manual/fn_check_famiglia_documento_struttura_modificabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_check_fattura_eliminabile_da_lotto](manual/fn_check_fattura_eliminabile_da_lotto.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono di togliere una fattura da un lotto**. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando la fattura si può togliere.
@@ -123,6 +124,7 @@
 - [fn_guard_super_admin](manual/fn_guard_super_admin.md) — (scritta il 25-09-2026)
 - [fn_guard_utility_tipo_ruolo](manual/fn_guard_utility_tipo_ruolo.md) — (latest review 16-02-2026) `script.fn_guard_utility_tipo_ruolo` valida la coerenza tra `utility_id` e `tipo_ruolo_id` con semantica:
 - [fn_has_identita_attiva](manual/fn_has_identita_attiva.md) — (latest review 19-04-2026)
+- [fn_imponibile_riga](manual/fn_imponibile_riga.md) — (funzione nata il 2026-09-28, `20260928-16`)
 - [fn_imposta_deve_cambiare_password](manual/fn_imposta_deve_cambiare_password.md) — (scritta il 25-09-2026)
 - [fn_indirizzi_obbligatori_mancanti](manual/fn_indirizzi_obbligatori_mancanti.md) — (rev 2026-07-11)
 - [fn_is_proprietario_tabella](manual/fn_is_proprietario_tabella.md) — (scritta il 25-09-2026)

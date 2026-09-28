@@ -116,4 +116,11 @@ SELECT iva_codice, iva_aliquota, imponibile, imposta
 
 ---
 
+<!-- rev-2026-09-28-liste-righe -->
+### 🔄 rev 2026-09-28 — brief-db-liste-righe-documento
+
+**Diventa la sorgente delle righe del preventivo** (`20260928-17`, D-8.6): la lista configurabile `vendite.preventivo_righe` e il repository la leggono. In coda `data_consegna_richiesta_cliente`, `stato_approvazione_prezzo`, `pratica_approvazione_prezzo_id`, `is_composito_caso_a` (prima solo nella query Python). Tolto l'`ORDER BY` dal corpo: l'ordine lo chiede chi legge. L'imponibile di riga della riga non è più scritto qui: viene da [script.fn_imponibile_riga](/dbzero/script/funzioni/fn_imponibile_riga), la sede unica della formula (`20260928-17`). Stesso valore — provato su una griglia di 252 casi e sui dati di dev — ma una regola sola: prezzo o quantità assenti danno **nessun valore**, mai zero; sconto assente è nessuno sconto; l'arrotondamento resta a chi consuma. Gemelle: [vw_ordini_righe_dettaglio](/dbzero/vendite/views/vw_ordini_righe_dettaglio), [vw_ddt_righe_dettaglio](/dbzero/vendite/views/vw_ddt_righe_dettaglio).
+
+---
+
 {% include-markdown "signature-core.md" %}

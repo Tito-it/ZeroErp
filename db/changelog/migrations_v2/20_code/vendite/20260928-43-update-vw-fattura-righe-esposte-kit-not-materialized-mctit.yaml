@@ -1,0 +1,250 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.vw_fattura_righe_esposte: il CTE `kit` NOT MATERIALIZED.
+#
+# -- IL COSTO -------------------------------------------------------------
+#   Il CTE `kit` (il raggruppamento dei componenti nel padre) e' letto da due
+#   rami della vista, quindi PostgreSQL lo MATERIALIZZAVA: calcolato a parte, su
+#   tutte le righe kit di TUTTE le fatture, e il filtro per fattura dei lettori
+#   non ci entrava. Ogni lettura di una fattura pagava l'archivio intero.
+#   Registrato il 2026-09-28 costruendo vw_fattura_righe_lista (brief §8.12.4);
+#   Tid: «dovremo sistemare».
+#
+# -- LA CURA, e perche' questa ------------------------------------------------
+#   `NOT MATERIALIZED`: il CTE si inlinea nei due rami e il filtro per fattura
+#   (fattura_id = X, uguaglianza su bigint, leakproof: entra anche sotto RLS)
+#   scende fino a vendite.fatture_righe, via indice.
+#   · I lettori FILTRANO tutti per fattura: vendite_repository.list_fattura_righe
+#     e vendite.vw_fattura_righe_lista (censimento del 2026-09-28: nessun altro
+#     lettore, ne' Python ne' DB). Per loro e' un guadagno netto.
+#   · ⚠️ Il prezzo, dichiarato: nel ramo dei componenti l'aggregato del kit si
+#     rivaluta per componente (loops = componenti), ma in memoria e sulle sole
+#     righe di quella fattura. Cresce con la fattura, non con l'archivio.
+#   · ⚠️ Una lettura SENZA filtro calcolerebbe l'aggregato due volte invece di
+#     una: oggi non ce n'e' nessuna, e una lettura dell'intero archivio di righe
+#     esposte non e' un caso d'uso della vista (PDF, SDI e portale sono per
+#     documento).
+#
+# -- MISURATO, come app col contesto operatore, su dev (fatti datati) ------------
+#   · righe della vista: 34 e 34, differenze 0 (EXCEPT ALL nei due versi);
+#   · fattura 835 (con kit): prima `CTE kit` = Seq Scan su fatture_righe (15
+#     righe kit di tutte le fatture), 4,8 ms; dopo, Bitmap Index Scan sulla sola
+#     fattura (9 righe), 1,75 ms.
+#
+# -- COSA NON CAMBIA -------------------------------------------------------------
+#   Colonne, nomi, tipi, righe: identici. `security_invoker = on` RIPETUTO (e'
+#   una reloption, un CREATE OR REPLACE che non la ripete la azzera). Il COMMENT
+#   resta sull'oggetto. Corpo vivo dalla doc auto-gen, cambiata solo la testata
+#   del CTE (sostituzione contata da script).
+# Cantiere: brief-db-liste-righe-documento §8.12.4, §8.14
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260928-43-update-vw-fattura-righe-esposte-kit-not-materialized-mctit.yaml
+
+  - changeSet:
+      id: 20260928-43-update-vw-fattura-righe-esposte-kit-not-materialized
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_fattura_righe_esposte: il CTE kit NOT MATERIALIZED, cosi' il filtro per fattura
+        entra nel raggruppamento dei kit invece di calcolarlo su tutte le fatture. Stesse
+        righe, stesse colonne; security_invoker ripetuto.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_fattura_righe_esposte
+              WITH (security_invoker=on) AS
+              -- rev 2026-09-28 (brief-db-liste-righe-documento §8.12.4): NOT MATERIALIZED.
+              -- Il CTE e' letto da due rami: materializzato, si calcolava su TUTTE le
+              -- fatture a ogni lettura e il filtro per fattura non ci entrava.
+              WITH kit AS NOT MATERIALIZED (
+                       SELECT r.fattura_id,
+                          r.kit_key,
+                          r.iva_id,
+                          r.dest_billing_account_id,
+                          r.kit_articolo_padre_id AS articolo_padre_id,
+                          r.kit_descrizione_padre AS descrizione_padre,
+                          min(r.riga_nr) AS riga_nr_padre,
+                          max(r.uom_id) AS uom_id,
+                          avg(r.qta) AS qta_media,
+                          sum(r.imponibile_riga) AS imponibile_totale,
+                          max((r.iva_natura)::text) AS iva_natura
+                         FROM vendite.fatture_righe r
+                        WHERE (r.kit_key IS NOT NULL)
+                        GROUP BY r.fattura_id, r.kit_key, r.iva_id, r.dest_billing_account_id, r.kit_articolo_padre_id, r.kit_descrizione_padre
+                      )
+               SELECT r.fattura_id,
+                      CASE
+                          WHEN (r.riga_capofila_id IS NOT NULL) THEN 'PARTE_PLAFOND'::text
+                          ELSE 'NORMALE'::text
+                      END AS tipo_riga,
+                  r.riga_nr,
+                  COALESCE(cap.riga_nr, r.riga_nr) AS ordinamento,
+                  (0)::smallint AS livello,
+                  r.id AS fatture_righe_id,
+                  r.articolo_id,
+                  r.descrizione,
+                  r.uom_id,
+                  r.qta,
+                  r.prezzo_unitario,
+                  r.sconto_percentuale,
+                  r.iva_id,
+                  r.iva_natura,
+                  r.imponibile_riga AS imponibile,
+                  r.dest_billing_account_id,
+                  NULL::text AS kit_key,
+                  r.riga_capofila_id
+                 FROM (vendite.fatture_righe r
+                   LEFT JOIN vendite.fatture_righe cap ON ((cap.id = r.riga_capofila_id)))
+                WHERE (r.kit_key IS NULL)
+              UNION ALL
+               SELECT k.fattura_id,
+                  'KIT_PADRE'::text AS tipo_riga,
+                  k.riga_nr_padre AS riga_nr,
+                  k.riga_nr_padre AS ordinamento,
+                  (0)::smallint AS livello,
+                  NULL::bigint AS fatture_righe_id,
+                  k.articolo_padre_id AS articolo_id,
+                  k.descrizione_padre AS descrizione,
+                  k.uom_id,
+                  k.qta_media AS qta,
+                      CASE
+                          WHEN (COALESCE(k.qta_media, (0)::numeric) = (0)::numeric) THEN NULL::numeric
+                          ELSE (k.imponibile_totale / k.qta_media)
+                      END AS prezzo_unitario,
+                  NULL::numeric AS sconto_percentuale,
+                  k.iva_id,
+                  k.iva_natura,
+                  k.imponibile_totale AS imponibile,
+                  k.dest_billing_account_id,
+                  k.kit_key,
+                  NULL::bigint AS riga_capofila_id
+                 FROM kit k
+              UNION ALL
+               SELECT r.fattura_id,
+                  'KIT_COMPONENTE'::text AS tipo_riga,
+                  r.riga_nr,
+                  k.riga_nr_padre AS ordinamento,
+                  (1)::smallint AS livello,
+                  r.id AS fatture_righe_id,
+                  r.articolo_id,
+                  r.descrizione,
+                  r.uom_id,
+                  r.qta,
+                  NULL::numeric AS prezzo_unitario,
+                  NULL::numeric AS sconto_percentuale,
+                  r.iva_id,
+                  r.iva_natura,
+                  NULL::numeric AS imponibile,
+                  r.dest_billing_account_id,
+                  r.kit_key,
+                  r.riga_capofila_id
+                 FROM (vendite.fatture_righe r
+                   JOIN kit k ON (((k.fattura_id = r.fattura_id) AND (k.kit_key = r.kit_key) AND (NOT (k.iva_id IS DISTINCT FROM r.iva_id)) AND (NOT (k.dest_billing_account_id IS DISTINCT FROM r.dest_billing_account_id)))))
+                WHERE ((r.kit_key IS NOT NULL) AND (r.kit_esposto_in_fattura IS TRUE));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino: il corpo vivo prima di questo changeSet (CTE materializzato).
+              CREATE OR REPLACE VIEW vendite.vw_fattura_righe_esposte
+              WITH (security_invoker=on) AS
+              WITH kit AS (
+                       SELECT r.fattura_id,
+                          r.kit_key,
+                          r.iva_id,
+                          r.dest_billing_account_id,
+                          r.kit_articolo_padre_id AS articolo_padre_id,
+                          r.kit_descrizione_padre AS descrizione_padre,
+                          min(r.riga_nr) AS riga_nr_padre,
+                          max(r.uom_id) AS uom_id,
+                          avg(r.qta) AS qta_media,
+                          sum(r.imponibile_riga) AS imponibile_totale,
+                          max((r.iva_natura)::text) AS iva_natura
+                         FROM vendite.fatture_righe r
+                        WHERE (r.kit_key IS NOT NULL)
+                        GROUP BY r.fattura_id, r.kit_key, r.iva_id, r.dest_billing_account_id, r.kit_articolo_padre_id, r.kit_descrizione_padre
+                      )
+               SELECT r.fattura_id,
+                      CASE
+                          WHEN (r.riga_capofila_id IS NOT NULL) THEN 'PARTE_PLAFOND'::text
+                          ELSE 'NORMALE'::text
+                      END AS tipo_riga,
+                  r.riga_nr,
+                  COALESCE(cap.riga_nr, r.riga_nr) AS ordinamento,
+                  (0)::smallint AS livello,
+                  r.id AS fatture_righe_id,
+                  r.articolo_id,
+                  r.descrizione,
+                  r.uom_id,
+                  r.qta,
+                  r.prezzo_unitario,
+                  r.sconto_percentuale,
+                  r.iva_id,
+                  r.iva_natura,
+                  r.imponibile_riga AS imponibile,
+                  r.dest_billing_account_id,
+                  NULL::text AS kit_key,
+                  r.riga_capofila_id
+                 FROM (vendite.fatture_righe r
+                   LEFT JOIN vendite.fatture_righe cap ON ((cap.id = r.riga_capofila_id)))
+                WHERE (r.kit_key IS NULL)
+              UNION ALL
+               SELECT k.fattura_id,
+                  'KIT_PADRE'::text AS tipo_riga,
+                  k.riga_nr_padre AS riga_nr,
+                  k.riga_nr_padre AS ordinamento,
+                  (0)::smallint AS livello,
+                  NULL::bigint AS fatture_righe_id,
+                  k.articolo_padre_id AS articolo_id,
+                  k.descrizione_padre AS descrizione,
+                  k.uom_id,
+                  k.qta_media AS qta,
+                      CASE
+                          WHEN (COALESCE(k.qta_media, (0)::numeric) = (0)::numeric) THEN NULL::numeric
+                          ELSE (k.imponibile_totale / k.qta_media)
+                      END AS prezzo_unitario,
+                  NULL::numeric AS sconto_percentuale,
+                  k.iva_id,
+                  k.iva_natura,
+                  k.imponibile_totale AS imponibile,
+                  k.dest_billing_account_id,
+                  k.kit_key,
+                  NULL::bigint AS riga_capofila_id
+                 FROM kit k
+              UNION ALL
+               SELECT r.fattura_id,
+                  'KIT_COMPONENTE'::text AS tipo_riga,
+                  r.riga_nr,
+                  k.riga_nr_padre AS ordinamento,
+                  (1)::smallint AS livello,
+                  r.id AS fatture_righe_id,
+                  r.articolo_id,
+                  r.descrizione,
+                  r.uom_id,
+                  r.qta,
+                  NULL::numeric AS prezzo_unitario,
+                  NULL::numeric AS sconto_percentuale,
+                  r.iva_id,
+                  r.iva_natura,
+                  NULL::numeric AS imponibile,
+                  r.dest_billing_account_id,
+                  r.kit_key,
+                  r.riga_capofila_id
+                 FROM (vendite.fatture_righe r
+                   JOIN kit k ON (((k.fattura_id = r.fattura_id) AND (k.kit_key = r.kit_key) AND (NOT (k.iva_id IS DISTINCT FROM r.iva_id)) AND (NOT (k.dest_billing_account_id IS DISTINCT FROM r.dest_billing_account_id)))))
+                WHERE ((r.kit_key IS NOT NULL) AND (r.kit_esposto_in_fattura IS TRUE));

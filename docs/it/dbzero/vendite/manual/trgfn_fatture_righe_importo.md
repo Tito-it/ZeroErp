@@ -101,3 +101,10 @@ z90  storico
 ```
 
 Un'operazione respinta dal guard non arriva mai al calcolo.
+
+---
+
+<!-- rev-2026-09-28-liste-righe -->
+### 🔄 rev 2026-09-28 — brief-db-liste-righe-documento
+
+L'imponibile **pieno** viene da [script.fn_imponibile_riga](/dbzero/script/funzioni/fn_imponibile_riga) (`20260928-26`); l'arrotondamento configurato per articolo (decimali e metodo, ripiego 2 / HALF_UP) resta esattamente dov'era: è la politica del documento fiscale, non della formula. Il valore scritto non cambia.

@@ -53,6 +53,12 @@ Ogni area corrisponde a uno **schema PostgreSQL** (es. `vendite`, `anagrafiche`,
 
 ---
 
+### Chi la scrive
+
+**Solo il CSV** `80_data/sql/config/aree_funzionali.csv`. Il nome dell'area (`descrizione`) e l'ordine (`ordinamento`) si cambiano lì, e il migrate successivo li porta ovunque. L'applicazione la legge e basta: non è nel pannello di configurazione e non ha una schermata di modifica. Un'area nuova è un modulo nuovo, quindi nasce nel CSV con il suo schema.
+
+---
+
 ### Seed iniziale
 
 | codice | schema_db | ordinamento | introdotta |

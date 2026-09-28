@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ex_listini_versioni_no_overlap vale anche per le versioni CHIUSE.
+#
+# -- IL BUCO ------------------------------------------------------------
+#   Il vincolo impediva la sovrapposizione solo fra versioni ATTIVE. Ma una
+#   versione CHIUSA e' ancora la versione di un periodo passato, e chi risolve
+#   un prezzo lavora su una data (vendite.fn_resolve_prezzo_listino_v2_esito,
+#   `p_data_riferimento`): una versione nuova che diventa ATTIVA con un
+#   `valido_dal` nel passato si sovrapponeva a una CHIUSA senza nessun errore, e
+#   per quelle date le versioni «valide» diventavano DUE. Oggi il codice ne
+#   sceglieva una (`ORDER BY stato = 'ATTIVA' DESC LIMIT 1`) in cinque punti e le
+#   guardava tutte in due: la stessa domanda con due risposte.
+#   Decisione di Tid, 2026-09-28: «le versioni valide oggi», e il buco si chiude
+#   («non si puo' modificare una sequenza di date di listino»).
+#   Brief: brief-db-liste-righe-documento §8.15, passo a).
+#
+# -- COSA CAMBIA --------------------------------------------------------
+#   Solo il predicato: `stato IN ('ATTIVA', 'CHIUSA')`. Le BOZZE restano fuori
+#   (non sono operative: «Bug A»), le righe disattivate pure.
+#   ⭐ Stesso NOME del vincolo: il BE lo traduce per nome in
+#   E_VENDITE_LISTINO_VERSIONE_OVERLAP (listini_service.py), e il registro
+#   dbops.automazione_overlap lo cerca per nome (il suo predicato si allinea in
+#   80_data, 20260928-42: il framework salta un vincolo che esiste gia', ma il
+#   registro e' la sede da cui lo ricreerebbe).
+#
+# -- ⚠️ LA preCondition, e cosa dice --------------------------------------
+#   Conta le coppie ATTIVA/CHIUSA gia' sovrapposte: se ce n'e' anche una,
+#   l'ADD CONSTRAINT fallirebbe a meta'; qui si ferma prima, con un messaggio che
+#   dice perche'. Fatto datato: su dev il 2026-09-28, come operatore, zero coppie
+#   su 31 versioni. Al migrate la conta gira come owner, senza RLS.
+#   E' una condizione sullo STATO dei dati di macchina, non sul contenuto di un
+#   seed di 80_data (linee-guida-sql §11.4).
+#
+# Base: 20260602-03 (il vincolo come esiste oggi).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260928-33-alter-listini-versioni-no-overlap-attiva-chiusa-mctit.yaml
+
+  - changeSet:
+      id: 20260928-33-alter-listini-versioni-no-overlap-attiva-chiusa
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        ex_listini_versioni_no_overlap esteso alle versioni CHIUSE: una versione nuova non
+        puo' piu' sovrapporsi al periodo di una chiusa, quindi per ogni data la versione in
+        vigore e' al piu' una. Stesso nome (BE e registro lo cercano per nome).
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >-
+            Ci sono versioni di listino ATTIVE o CHIUSE gia' sovrapposte sullo stesso
+            listino: il vincolo esteso non si puo' creare. Vanno sistemate a mano prima
+            (brief-db-liste-righe-documento §8.15).
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >-
+              SELECT count(*)
+                FROM vendite.listini_versioni a
+                JOIN vendite.listini_versioni b
+                  ON b.listino_id = a.listino_id
+                 AND b.id > a.id
+                 AND b.validita && a.validita
+               WHERE a.attivo IS TRUE AND b.attivo IS TRUE
+                 AND a.stato IN ('ATTIVA', 'CHIUSA')
+                 AND b.stato IN ('ATTIVA', 'CHIUSA')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.listini_versioni
+                  DROP CONSTRAINT ex_listini_versioni_no_overlap;
+
+              ALTER TABLE vendite.listini_versioni
+                  ADD CONSTRAINT ex_listini_versioni_no_overlap
+                  EXCLUDE USING gist (
+                      listino_id WITH =,
+                      validita   WITH &&
+                  )
+                  WHERE (attivo IS TRUE AND (stato)::text IN ('ATTIVA', 'CHIUSA'));
+
+              COMMENT ON CONSTRAINT ex_listini_versioni_no_overlap ON vendite.listini_versioni IS
+                  'Due versioni ATTIVE o CHIUSE dello stesso listino non si sovrappongono: per ogni '
+                  'data la versione in vigore e'' al piu'' una (vendite.fn_listino_versione_in_vigore). '
+                  'Le BOZZE e le righe disattivate restano fuori. Esteso a CHIUSA il 2026-09-28 '
+                  '(brief-db-liste-righe-documento §8.15): prima una versione nuova poteva coprire il '
+                  'periodo di una chiusa, e per quelle date le versioni valide diventavano due. Il BE '
+                  'lo traduce per nome in E_VENDITE_LISTINO_VERSIONE_OVERLAP.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_versioni
+                  DROP CONSTRAINT IF EXISTS ex_listini_versioni_no_overlap;
+              ALTER TABLE vendite.listini_versioni
+                  ADD CONSTRAINT ex_listini_versioni_no_overlap
+                  EXCLUDE USING gist (listino_id WITH =, validita WITH &&)
+                  WHERE (attivo IS TRUE AND (stato)::text = 'ATTIVA'::text);

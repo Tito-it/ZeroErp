@@ -82,6 +82,13 @@ HTTP mapping (BE): `422 Unprocessable Entity`.
 | **Questo trigger** | BEFORE trigger _a10_ | Articolo AGGIUNTA deve essere fuori listino |
 | `trg_contratti_righe_a10_lock_post_attivazione` (Step 2.3) | BEFORE trigger _a10_ | Nessuna modifica alle righe post-attivazione |
 
+<!-- rev-2026-09-28-liste-righe -->
+### 🔄 rev 2026-09-28 — brief-db-liste-righe-documento
+
+La versione del listino in vigore per il contratto in bozza non è più scelta qui: la dice [vendite.fn_listino_versione_in_vigore](/dbzero/vendite/funzioni/fn_listino_versione_in_vigore) (`20260928-37`). Per ogni data la versione in vigore è **al più una**, per costruzione (nessuna sovrapposizione fra versioni ATTIVE e CHIUSE, date di una CHIUSA bloccate), quindi «la prima» e «tutte le valide» sono la stessa cosa. Stesso esito, provato sui dati di dev.
+
+---
+
 {% include-markdown "signature-core.md" %}
 
 ---

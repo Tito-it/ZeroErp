@@ -66,8 +66,9 @@ BEGIN
         SELECT
             pr.preventivo_id,
             pr.iva_id,
-            pr.quantita * pr.prezzo_unitario
-              * (1 - COALESCE(pr.sconto_percentuale, 0) / 100) AS imponibile_riga
+            -- rev 2026-09-28 (brief-db-liste-righe-documento, D-8.8): la formula
+            --   vive in script.fn_imponibile_riga, qui come nelle viste righe.
+            script.fn_imponibile_riga(pr.quantita, pr.prezzo_unitario, pr.sconto_percentuale) AS imponibile_riga
           FROM vendite.preventivi_righe pr
          WHERE pr.preventivo_id = p_preventivo_id
            AND pr.attivo IS TRUE

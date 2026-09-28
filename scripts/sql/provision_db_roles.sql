@@ -238,9 +238,11 @@ WHERE to_regclass(t.nome) IS NOT NULL
 --   la lista del verbo, e la scrive solo il seed. Stesso elenco di
 --   `v_tabelle_sola_lettura_app` nel loop 20260205-41 e del forward
 --   90_end/20260925-34; `db/pgtap/config/test-pannello-porta-v1.sql` lo dice se
---   non lo fa.
+--   non lo fa. Dal 2026-09-28 anche `config.aree_funzionali` (D-P9, §4.2): la
+--   possiede il CSV, nome e ordine si cambiano li'. Forward 90_end/20260928-30.
 SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
-FROM (VALUES ('magazzino.causali'), ('config.tabelle_gestibili')) AS t(nome)
+FROM (VALUES ('magazzino.causali'), ('config.tabelle_gestibili'),
+             ('config.aree_funzionali')) AS t(nome)
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 

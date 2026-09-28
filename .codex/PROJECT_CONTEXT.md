@@ -270,13 +270,13 @@ quando un cantiere tocca le loro scritture, senza data. ✅ **Primo caso chiuso 
 `20260924-38` → `-42`): `fn_posta_inventario` e `fn_posta_rettifica` applicano
 `registra_magazzino`, l'app non esegue più la primitiva del registro. Il limite è
 scritto: il modello protegge da un backend che **sbaglia**, non da uno
-**manomesso** (l'identità la dichiara il backend). ✅ **Secondo caso, il pannello di configurazione** (D-3,
-`work-in-progress/brief-db-pannello-config-verbo-generico.md`): scrive col verbo
+**manomesso** (l'identità la dichiara il backend). ✅ **Secondo caso, il pannello di configurazione, chiuso il 2026-09-28** (D-3,
+`work-done/brief-db-pannello-config-verbo-generico.md`): scrive col verbo
 generico `config.fn_pannello_scrivi` sull'oggetto di ogni tabella, la lista è
 `config.tabelle_gestibili` (niente più `REL_CONSENTITE` nel BE né
-`config-tables.js` nel FE), `magazzino.causali` è chiusa all'app. D-P9 decisa
-(2026-09-28): `config.aree_funzionali` in sola lettura, nome e ordine si cambiano
-nel CSV; al team DB resta chiuderla all'app.
+`config-tables.js` nel FE), `magazzino.causali` è chiusa all'app. Anche
+`config.aree_funzionali` è in sola lettura per l'app (D-P9, `20260928-30`): nome e
+ordine si cambiano nel CSV.
 
 ### Aperto — Media priorità
 - 🟡 **Colori PrimeVue ancora scritti nei componenti** (FE, registrato il

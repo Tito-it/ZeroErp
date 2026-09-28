@@ -59,4 +59,11 @@ ORDER BY valid_from;
 * Per modifiche, aggiornare sempre `catalogo.articoli_componenti`.
 
 ---
+<!-- rev-2026-09-28-liste-righe -->
+### 🔄 rev 2026-09-28 — brief-db-liste-righe-documento
+
+**Diventa la sorgente unica delle righe della distinta base** (`20260928-27`, D-8.5): la lista configurabile `catalogo.articolo_componenti` e il repository la leggono. In coda `determina_qta_padre` ed `esposto_in_fattura`, che solo la copia Python aveva. La capability di chiusura resta qui, sede unica (il backend ritira la sua copia).
+
+---
+
 {% include-markdown "signature-core.md" %}

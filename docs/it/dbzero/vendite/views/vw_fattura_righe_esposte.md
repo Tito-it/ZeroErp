@@ -10,7 +10,7 @@
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_fattura_righe_esposte
 WITH (security_invoker=on) AS
-WITH kit AS (
+WITH kit AS NOT MATERIALIZED (
          SELECT r.fattura_id,
             r.kit_key,
             r.iva_id,

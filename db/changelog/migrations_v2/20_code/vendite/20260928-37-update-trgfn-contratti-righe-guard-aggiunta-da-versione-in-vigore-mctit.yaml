@@ -1,0 +1,209 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino: la versione in vigore dalla sede unica.
+#
+# Il ramo «contratto in bozza» guardava TUTTE le versioni ATTIVA/CHIUSA valide
+# oggi (EXISTS) per sapere se l'articolo e' gia' nel listino. Con
+# 20260928-33/-34 sono al piu' una: il ramo legge le righe di quella. Stesso
+# esito; il ramo del contratto attivo non cambia; il trigger non si tocca.
+#
+# -- COME -------------------------------------------------------------
+#   · la FIRMA viene dall'ultimo YAML che la ha ancorata (nessuno: funzione di trigger senza parametri, DECLARE gia' ancorato nel corpo): la doc
+#     auto-gen scioglie i %TYPE. `SECURITY INVOKER` reso esplicito
+#     (linee-guida-sql §5b), senza cambio di comportamento;
+#   · il CORPO e' quello vivo (prosrc sullo scratch, 2026-09-28), patchato da
+#     script con la sostituzione contata: nessun'altra riga toccata. Il COMMENT
+#     resta sull'oggetto.
+# Cantiere: brief-db-liste-righe-documento §8.15, passo d)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260928-37-update-trgfn-contratti-righe-guard-aggiunta-da-versione-in-vigore-mctit.yaml
+
+  - changeSet:
+      id: 20260928-37-update-trgfn-contratti-righe-guard-aggiunta-da-versione-in-vigore
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il guard dell'aggiunta fuori listino legge la versione in vigore da
+        vendite.fn_listino_versione_in_vigore invece di scriversi la regola. Stesso esito.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_listino_versione_in_vigore'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+
+              -- Scopo: blocca INSERT/UPDATE su contratti_righe con tipo_eccezione='AGGIUNTA'
+              --   se l'articolo è già presente nel listino operativo del contratto.
+              -- Branch 1: listino_id IS NULL -> nessun check, AGGIUNTA sempre valida.
+              -- Branch 2: DRAFT (listino_versione_id IS NULL) -> verifica versione
+              --   operativa a CURRENT_DATE: stato IN ('ATTIVA','CHIUSA') + attivo=TRUE.
+              --   FIX Bug A: BOZZA esclusa, non blocca su articoli non ancora operativi.
+              -- Branch 3: ATTIVO (listino_versione_id IS NOT NULL) -> verifica versione
+              --   fissata all'attivazione (solo listini_righe, senza listini_versioni).
+              -- Errore se articolo trovato: E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO (450).
+              DECLARE
+                  v_listino_id          vendite.contratti.listino_id%TYPE;
+                  v_listino_versione_id vendite.contratti.listino_versione_id%TYPE;
+                  v_in_listino          boolean := false;
+              BEGIN
+                  SELECT c.listino_id, c.listino_versione_id
+                    INTO v_listino_id, v_listino_versione_id
+                    FROM vendite.contratti c
+                   WHERE c.id = NEW.contratto_id;
+
+                  -- Branch 1: nessun listino -> AGGIUNTA sempre valida
+                  IF v_listino_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF v_listino_versione_id IS NULL THEN
+                      -- Branch 2: DRAFT -> versione operativa a CURRENT_DATE
+                      -- stato IN ('ATTIVA','CHIUSA'): BOZZA non è operativa, non blocca.
+                      SELECT EXISTS (
+                          SELECT 1
+                            FROM vendite.listini_righe lr
+                           -- rev 2026-09-28: la versione in vigore oggi, dalla sede
+                           -- unica (al piu' una per costruzione, §8.15).
+                           WHERE lr.listino_versione_id =
+                                 vendite.fn_listino_versione_in_vigore(v_listino_id, CURRENT_DATE)
+                             AND lr.articolo_id = NEW.articolo_id
+                             AND lr.attivo      = TRUE
+                      ) INTO v_in_listino;
+                  ELSE
+                      -- Branch 3: ATTIVO -> versione fissata (snapshot)
+                      SELECT EXISTS (
+                          SELECT 1
+                            FROM vendite.listini_righe lr
+                           WHERE lr.listino_versione_id = v_listino_versione_id
+                             AND lr.articolo_id = NEW.articolo_id
+                             AND lr.attivo = TRUE
+                      ) INTO v_in_listino;
+                  END IF;
+
+                  IF v_in_listino THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          TG_NAME::text,
+                          'E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO',
+                          jsonb_build_object(
+                              'campo', 'articolo_id',
+                              'contratto_id',        NEW.contratto_id,
+                              'articolo_id',         NEW.articolo_id,
+                              'listino_id',          v_listino_id,
+                              'listino_versione_id', v_listino_versione_id
+                          ),
+                          NULL::uuid,
+                          NEW.articolo_id::text,
+                          NEW.contratto_id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino: il corpo vivo prima di questo changeSet.
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+
+              -- Scopo: blocca INSERT/UPDATE su contratti_righe con tipo_eccezione='AGGIUNTA'
+              --   se l'articolo è già presente nel listino operativo del contratto.
+              -- Branch 1: listino_id IS NULL -> nessun check, AGGIUNTA sempre valida.
+              -- Branch 2: DRAFT (listino_versione_id IS NULL) -> verifica versione
+              --   operativa a CURRENT_DATE: stato IN ('ATTIVA','CHIUSA') + attivo=TRUE.
+              --   FIX Bug A: BOZZA esclusa, non blocca su articoli non ancora operativi.
+              -- Branch 3: ATTIVO (listino_versione_id IS NOT NULL) -> verifica versione
+              --   fissata all'attivazione (solo listini_righe, senza listini_versioni).
+              -- Errore se articolo trovato: E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO (450).
+              DECLARE
+                  v_listino_id          vendite.contratti.listino_id%TYPE;
+                  v_listino_versione_id vendite.contratti.listino_versione_id%TYPE;
+                  v_in_listino          boolean := false;
+              BEGIN
+                  SELECT c.listino_id, c.listino_versione_id
+                    INTO v_listino_id, v_listino_versione_id
+                    FROM vendite.contratti c
+                   WHERE c.id = NEW.contratto_id;
+
+                  -- Branch 1: nessun listino -> AGGIUNTA sempre valida
+                  IF v_listino_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF v_listino_versione_id IS NULL THEN
+                      -- Branch 2: DRAFT -> versione operativa a CURRENT_DATE
+                      -- stato IN ('ATTIVA','CHIUSA'): BOZZA non è operativa, non blocca.
+                      SELECT EXISTS (
+                          SELECT 1
+                            FROM vendite.listini_versioni lv
+                            JOIN vendite.listini_righe lr
+                              ON lr.listino_versione_id = lv.id
+                           WHERE lv.listino_id = v_listino_id
+                             AND lv.attivo      = TRUE
+                             AND lv.stato       IN ('ATTIVA', 'CHIUSA')
+                             AND lv.validita   @> CURRENT_DATE
+                             AND lr.articolo_id = NEW.articolo_id
+                             AND lr.attivo      = TRUE
+                      ) INTO v_in_listino;
+                  ELSE
+                      -- Branch 3: ATTIVO -> versione fissata (snapshot)
+                      SELECT EXISTS (
+                          SELECT 1
+                            FROM vendite.listini_righe lr
+                           WHERE lr.listino_versione_id = v_listino_versione_id
+                             AND lr.articolo_id = NEW.articolo_id
+                             AND lr.attivo = TRUE
+                      ) INTO v_in_listino;
+                  END IF;
+
+                  IF v_in_listino THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          TG_NAME::text,
+                          'E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO',
+                          jsonb_build_object(
+                              'campo', 'articolo_id',
+                              'contratto_id',        NEW.contratto_id,
+                              'articolo_id',         NEW.articolo_id,
+                              'listino_id',          v_listino_id,
+                              'listino_versione_id', v_listino_versione_id
+                          ),
+                          NULL::uuid,
+                          NEW.articolo_id::text,
+                          NEW.contratto_id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;

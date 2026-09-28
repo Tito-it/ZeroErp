@@ -1,0 +1,172 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle NON CONTIENE PIU'
+# IL PREDICATO: chiama script.fn_check_esclusione_articolo_contratto
+# (20260928-29) e ne solleva il PRIMO motivo.
+#
+# -- PERCHE' (linee-guida-sql §12.5.2) --------------------------------
+#   Lo stesso predicato serve ora a due consumatori: il guard, che rifiuta, e
+#   l'anteprima delle righe del contratto, che spegne «Escludi» con il motivo
+#   (20260928-32). Se il guard lo riscrivesse, un test che confronta i due esiti
+#   proverebbe solo che OGGI coincidono; con la chiamata non possono divergere.
+#
+# -- COSA RESTA UGUALE ------------------------------------------------
+#   · lo stesso codice (E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA), lo stesso
+#     VARIADIC (l'articolo), lo stesso tx_id, l'area `vendite` e il nome del
+#     trigger come funzione — cioe' lo stesso messaggio all'operatore;
+#   · il contesto registrato: contratto_id e articolo_id arrivano dal
+#     `dettaglio` del motivo (l'helper li fonde nel contesto), piu' listino e
+#     versione, piu' `campo = articolo_id`, che al form dice su quale campo
+#     cade l'errore;
+#   · il trigger NON si tocca: resta `WHEN (new.tipo_eccezione = 'ESCLUSIONE')`,
+#     cambia solo la funzione. Nessun DDL sul trigger (linee-guida-sql §11.5).
+#
+# ⚠️ Nessun DECLARE: le tre variabili del corpo vecchio (ancorate a
+#   vendite.contratti) sono andate con il predicato nella check.
+# ⚠️ Il sito entra nel conto esatto di
+#   db/pgtap/script/test-rubinetto-primo-motivo-v1.sql (test 5): da 25 a 26,
+#   aggiornato nello stesso giro.
+# ⚠️ SECURITY INVOKER reso esplicito (linee-guida-sql §5b): e' il default.
+#
+# Base: corpo vivo dalla doc auto-gen (identico a prosrc sullo scratch il
+#   2026-09-28), di cui resta solo la chiamata di raise.
+# Cantiere: brief-db-liste-righe-documento §8.13, §8.10 passo 9
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260928-31-update-trgfn-contratti-righe-guard-esclusione-da-check-mctit.yaml
+
+  - changeSet:
+      id: 20260928-31-update-trgfn-contratti-righe-guard-esclusione-da-check
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il guard dell'esclusione del figlio di bundle chiama
+        script.fn_check_esclusione_articolo_contratto e ne solleva il primo motivo, invece
+        di contenere il predicato: lo stesso lo legge l'anteprima per spegnere «Escludi».
+        Stesso codice, stesso messaggio; il trigger non si tocca.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_check_esclusione_articolo_contratto'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: rifiutare una riga di contratto ESCLUSIONE su un articolo che
+              --   e' componente di un bundle del listino del contratto: il bundle si
+              --   vende come unita', si esclude il padre, mai il figlio.
+              -- Uso:   BEFORE INSERT OR UPDATE FOR EACH ROW
+              --        WHEN (new.tipo_eccezione = 'ESCLUSIONE').
+              -- ⭐ rev 2026-09-28 (brief-db-liste-righe-documento): il predicato
+              --   vive in script.fn_check_esclusione_articolo_contratto, la stessa
+              --   funzione con cui l'anteprima delle righe spegne «Escludi». Qui si
+              --   solleva il suo PRIMO motivo, e basta: tooltip ed errore non possono
+              --   dire cose diverse. Su un array vuoto l'helper tace (= passa).
+              BEGIN
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'vendite',
+                      TG_NAME::text,
+                      script.fn_check_esclusione_articolo_contratto(NEW.contratto_id, NEW.articolo_id),
+                      'articolo_id',
+                      NEW.tx_id);
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle() IS
+                  'Guard ESCLUSIONE figlio bundle: rifiuta contratti_righe.tipo_eccezione = '
+                  'ESCLUSIONE se l''articolo e'' un componente di un bundle nel listino del '
+                  'contratto (E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA). ⭐ Dal 2026-09-28 '
+                  '(brief-db-liste-righe-documento) il predicato NON e'' qui: e'' in '
+                  'script.fn_check_esclusione_articolo_contratto, di cui il guard solleva il primo '
+                  'motivo con script.fn_raise_primo_motivo_se_presente. La stessa check la legge '
+                  'vendite.fn_contratto_righe_preview per spegnere «Escludi» sulla riga col motivo: '
+                  'un predicato, due consumatori, nessuna divergenza possibile. Rami (nella check): '
+                  'nessun listino -> passa; bozza -> versioni ATTIVA/CHIUSA valide oggi; attivo -> '
+                  'versione fissata. Trigger: BEFORE INSERT OR UPDATE, WHEN tipo_eccezione = '
+                  'ESCLUSIONE. §6.1 2026-05-16, rev 2026-09-28.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino: il corpo di 20260516-05 (predicato scritto nel guard).
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_listino_id          vendite.contratti.listino_id%TYPE;
+                  v_listino_versione_id vendite.contratti.listino_versione_id%TYPE;
+                  v_e_figlio_bundle     boolean := FALSE;
+              BEGIN
+                  SELECT c.listino_id, c.listino_versione_id
+                    INTO v_listino_id, v_listino_versione_id
+                    FROM vendite.contratti c
+                   WHERE c.id = NEW.contratto_id;
+                  IF v_listino_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+                  IF v_listino_versione_id IS NULL THEN
+                      SELECT EXISTS (
+                          SELECT 1
+                            FROM vendite.listini_versioni lv
+                            JOIN vendite.listini_righe_componenti lrc
+                              ON lrc.listino_versione_id = lv.id
+                           WHERE lv.listino_id = v_listino_id
+                             AND lv.attivo      = TRUE
+                             AND lv.stato       IN ('ATTIVA', 'CHIUSA')
+                             AND lv.validita   @> CURRENT_DATE
+                             AND lrc.articolo_figlio_id = NEW.articolo_id
+                             AND lrc.attivo             = TRUE
+                             AND lrc.validita          @> CURRENT_DATE
+                      ) INTO v_e_figlio_bundle;
+                  ELSE
+                      SELECT EXISTS (
+                          SELECT 1
+                            FROM vendite.listini_righe_componenti lrc
+                           WHERE lrc.listino_versione_id  = v_listino_versione_id
+                             AND lrc.articolo_figlio_id   = NEW.articolo_id
+                             AND lrc.attivo               = TRUE
+                             AND lrc.validita            @> CURRENT_DATE
+                      ) INTO v_e_figlio_bundle;
+                  END IF;
+                  IF v_e_figlio_bundle THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          TG_NAME::text,
+                          'E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA',
+                          jsonb_build_object(
+                              'contratto_id', NEW.contratto_id,
+                              'articolo_id',  NEW.articolo_id
+                          ),
+                          NEW.tx_id,
+                          NEW.articolo_id::text
+                      );
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;

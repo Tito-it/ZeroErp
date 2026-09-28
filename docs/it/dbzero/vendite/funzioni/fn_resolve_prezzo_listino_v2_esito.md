@@ -13,6 +13,7 @@ CREATE OR REPLACE FUNCTION vendite.fn_resolve_prezzo_listino_v2_esito(p_articolo
  LANGUAGE plpgsql
  STABLE
 AS $function$
+
 DECLARE
     -- Accumulatori del risultato.
     v_prezzo_finale            vendite.listini_righe.prezzo%TYPE;
@@ -310,15 +311,8 @@ BEGIN
                 IF v_contr_listino_versione_id IS NOT NULL THEN
                     v_listino_versione_id := v_contr_listino_versione_id;
                 ELSE
-                    SELECT lv.id
-                      INTO v_listino_versione_id
-                      FROM vendite.listini_versioni lv
-                     WHERE lv.listino_id = v_contr_listino_id
-                       AND lv.attivo     = TRUE
-                       AND lv.stato      IN ('ATTIVA', 'CHIUSA')
-                       AND lv.validita  @> p_data_riferimento
-                     ORDER BY (lv.stato = 'ATTIVA') DESC
-                     LIMIT 1;
+                    -- rev 2026-09-28: la sede unica (brief-db-liste-righe-documento §8.15).
+v_listino_versione_id := vendite.fn_listino_versione_in_vigore(v_contr_listino_id, p_data_riferimento);
 
                     IF v_listino_versione_id IS NULL THEN
                         esito_codice  := 'E_LISTINO_VERSIONE_NON_ATTIVA';
@@ -486,15 +480,8 @@ BEGIN
 
         -- Step 2-1: versione listino operativa.
         -- Bug A fix: stato IN ('ATTIVA','CHIUSA') esclude BOZZA.
-        SELECT lv.id
-          INTO v_listino_versione_id
-          FROM vendite.listini_versioni lv
-         WHERE lv.listino_id = v_matrice_listino_id
-           AND lv.attivo     = TRUE
-           AND lv.stato      IN ('ATTIVA', 'CHIUSA')
-           AND lv.validita  @> p_data_riferimento
-         ORDER BY (lv.stato = 'ATTIVA') DESC
-         LIMIT 1;
+        -- rev 2026-09-28: la sede unica (brief-db-liste-righe-documento §8.15).
+v_listino_versione_id := vendite.fn_listino_versione_in_vigore(v_matrice_listino_id, p_data_riferimento);
 
         IF v_listino_versione_id IS NULL THEN
             esito_codice  := 'E_LISTINO_VERSIONE_NON_ATTIVA';
