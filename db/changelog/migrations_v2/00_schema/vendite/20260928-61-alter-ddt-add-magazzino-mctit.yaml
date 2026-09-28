@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 — Da quale magazzino parte la bolla (e, per il trasferimento, dove arriva)
+#   vendite.ddt.magazzino_id, vendite.ddt.magazzino_arrivo_id
+#   Brief: brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 3 (D-L3-a, Tid 2026-09-26)
+#
+# -- PERCHE' SULLA TESTATA ------------------------------------------------------------------------
+#   Una bolla e' un viaggio, e un viaggio parte da un posto. Il magazzino e'
+#   l'ancora del perimetro (M-6) e la bolla ha gia' UN emittente sulla testata:
+#   le due informazioni stanno allo stesso livello. Il dettaglio fisico (lotto,
+#   seriale, ubicazione) sta sotto la riga, nei prelievi (D-L3-b, 20260928-62).
+#
+# -- NULLABLE, E NON E' UNA SVISTA ----------------------------------------------------------------
+#   La bozza si compila per gradi: il magazzino e' OBBLIGATORIO ALL'EMISSIONE
+#   quando la bolla muove merce, ed e' un motivo di script.fn_check_ddt_merce
+#   (20260928-67), non un NOT NULL. Una bolla che non muove merce (conto
+#   visione, solo articoli non gestiti) non ne ha bisogno.
+#
+# -- I DUE VINCOLI DI RIGA (gli altri li fa il guard, 20260928-69) -------------------------------
+#   * l'arrivo e' diverso dalla partenza: lo stesso magazzino fra due scaffali
+#     e' un trasferimento INTERNO (D-L2-g), non una bolla;
+#   * l'arrivo presuppone una partenza.
+#   «Arrivo solo e sempre per la causale TRASFERIMENTO», «stesso emittente» e
+#   «immutabili fuori bozza» guardano altre tabelle o lo stato vecchio: sono
+#   del guard, perche' un CHECK non guarda fuori dalla riga.
+#
+# -- FK ------------------------------------------------------------------------------------------
+#   ON DELETE NO ACTION: un magazzino citato da una bolla non si cancella (lo
+#   si spegne, attivo = false). Le righe in dbops.fk_index_policy stanno nel
+#   CSV principale: consentito = false, nessuna query dell'app entra dal
+#   magazzino della bolla.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260928-61-alter-ddt-add-magazzino-mctit.yaml
+
+  - changeSet:
+      id: 20260928-61-alter-ddt-add-magazzino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.ddt prende magazzino_id (da dove parte la merce) e magazzino_arrivo_id (solo la
+        bolla di trasferimento: dove arriva). Nullable: obbligatori all'emissione di una bolla che
+        muove merce, motivo di script.fn_check_ddt_merce. Due CHECK di riga: arrivo diverso dalla
+        partenza, arrivo solo con una partenza. Brief: brief-db-magazzino-lotto-3-scarico-da-ddt,
+        sezione 3 (D-L3-a).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: magazzino
+                tableName: magazzini
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: ddt
+                    columnName: magazzino_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.ddt
+                  ADD COLUMN magazzino_id        BIGINT,
+                  ADD COLUMN magazzino_arrivo_id BIGINT;
+
+              ALTER TABLE vendite.ddt
+                  ADD CONSTRAINT fk_ddt_magazzino
+                      FOREIGN KEY (magazzino_id)
+                      REFERENCES magazzino.magazzini (id)
+                      ON UPDATE CASCADE
+                      ON DELETE NO ACTION,
+                  ADD CONSTRAINT fk_ddt_magazzino_arrivo
+                      FOREIGN KEY (magazzino_arrivo_id)
+                      REFERENCES magazzino.magazzini (id)
+                      ON UPDATE CASCADE
+                      ON DELETE NO ACTION,
+                  -- L'arrivo presuppone una partenza, ed e' un altro magazzino:
+                  -- lo stesso magazzino fra due scaffali e' un trasferimento
+                  -- interno (D-L2-g), non una bolla.
+                  ADD CONSTRAINT chk_ddt_magazzino_arrivo_distinto
+                      CHECK (magazzino_arrivo_id IS NULL
+                             OR (magazzino_id IS NOT NULL AND magazzino_arrivo_id <> magazzino_id));
+
+              COMMENT ON COLUMN vendite.ddt.magazzino_id IS
+                  'Il magazzino da cui parte la merce della bolla (D-L3-a: sulla testata, '
+                  'accanto all''emittente — una bolla e'' un viaggio, e parte da un posto). '
+                  'Stesso emittente della bolla (guard trgfn_ddt_guard_magazzino). Nullable '
+                  'in bozza; obbligatorio all''emissione quando la bolla muove merce '
+                  '(script.fn_check_ddt_merce). All''INSERT, se manca, prende il magazzino '
+                  'predefinito dell''emittente (trgfn_ddt_default_magazzino, D-L3-h). Si sceglie '
+                  'solo in bozza. Brief: brief-db-magazzino-lotto-3-scarico-da-ddt.';
+              COMMENT ON COLUMN vendite.ddt.magazzino_arrivo_id IS
+                  'Solo per la bolla di trasferimento fra depositi (causale di trasporto con '
+                  'causale_magazzino = TRASF_OUT): il magazzino in cui la merce ENTRA, al '
+                  'CONSEGNATO (D-L3-c). Stesso emittente, diverso dalla partenza (CHECK). '
+                  'Su ogni altra causale deve essere NULL (guard). Brief: '
+                  'brief-db-magazzino-lotto-3-scarico-da-ddt.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.ddt
+                  DROP CONSTRAINT IF EXISTS chk_ddt_magazzino_arrivo_distinto,
+                  DROP CONSTRAINT IF EXISTS fk_ddt_magazzino_arrivo,
+                  DROP CONSTRAINT IF EXISTS fk_ddt_magazzino,
+                  DROP COLUMN IF EXISTS magazzino_arrivo_id,
+                  DROP COLUMN IF EXISTS magazzino_id;

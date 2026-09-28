@@ -19,3 +19,4 @@ id,codice_interno,codice,categoria,descrizione,attivo,meta,data_insert,user_inse
 18,RETTIFICA_RIGA,RETTIFICA_RIGA,RIGA,Riga di rettifica di giacenza,t,{},2026-09-15 00:00:00+02,titodb,2026-09-15 00:00:00+02,titodb,magazzino.rettifiche_righe,id,NULL,MAGAZZINO,NULL,NULL
 19,TRASFERIMENTO_RIGA,TRASFERIMENTO_RIGA,RIGA,Riga di trasferimento fra magazzini,t,{},2026-09-15 00:00:00+02,titodb,2026-09-15 00:00:00+02,titodb,magazzino.trasferimenti_righe,id,NULL,MAGAZZINO,NULL,NULL
 20,EVENTO_ASSET,EVENTO_ASSET,RIGA,Evento del ciclo di vita di un asset,t,{},2026-09-15 00:00:00+02,titodb,2026-09-15 00:00:00+02,titodb,magazzino.eventi_assets,id,NULL,MAGAZZINO,NULL,NULL
+21,DDT_VENDITA_PRELIEVO,DDT_VENDITA_PRELIEVO,RIGA,"Prelievo di una riga di bolla (lotto, seriale, ubicazione): sorgente del movimento di magazzino",t,{},2026-09-28 00:00:00+02,mctit,2026-09-28 00:00:00+02,mctit,vendite.ddt_righe_prelievi,id,NULL,MAGAZZINO,NULL,NULL

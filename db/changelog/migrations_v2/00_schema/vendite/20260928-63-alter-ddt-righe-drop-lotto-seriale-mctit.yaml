@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 — Via le due colonne testuali lotto e seriale dalle righe della bolla
+#   vendite.ddt_righe.lotto, vendite.ddt_righe.seriale
+#   Brief: brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 3 (D-L3-k, Tid 2026-09-28)
+#
+# -- PERCHE' --------------------------------------------------------------------------------------
+#   Sono varchar a testo libero: la stessa forma che M-5 ha tolto dal registro
+#   (il lotto e' una tabella, il seriale e' un asset). Accanto ai prelievi
+#   (20260928-62), che portano lotto_id e asset_id, sarebbero una seconda sede
+#   dello stesso dato, e la piu' debole.
+#
+# -- I LETTORI, CENSITI (2026-09-28, sulla struttura) ---------------------------------------------
+#   Zero riferimenti nel codice DB (funzioni e viste di vendite: nessuna vista
+#   seleziona dr.* ne' le due colonne), nel backend (apps/vendite, apps/documenti)
+#   e nel frontend dei DDT. Lo storico e' uno snapshot jsonb (trgfn_storico_generic
+#   scrive to_jsonb(OLD)): una colonna in meno non lo rompe. Un DROP con un
+#   lettore vivo fallirebbe comunque qui (dipendenza di vista) — non in silenzio.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260928-63-alter-ddt-righe-drop-lotto-seriale-mctit.yaml
+
+  - changeSet:
+      id: 20260928-63-alter-ddt-righe-drop-lotto-seriale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        DROP di vendite.ddt_righe.lotto e .seriale: testo libero senza lettori, sostituito dai
+        prelievi (lotto_id, asset_id). Brief: brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 3
+        (D-L3-k).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: ddt_righe_prelievi
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.ddt_righe
+                  DROP COLUMN IF EXISTS lotto,
+                  DROP COLUMN IF EXISTS seriale;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.ddt_righe
+                  ADD COLUMN IF NOT EXISTS lotto   VARCHAR,
+                  ADD COLUMN IF NOT EXISTS seriale VARCHAR;

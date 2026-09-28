@@ -34,6 +34,7 @@
 - [fn_check_commessa_pronta_fatturazione](funzioni/fn_check_commessa_pronta_fatturazione.md) — (rev 2026-08-21)
 - [fn_check_contabile_validabile](funzioni/fn_check_contabile_validabile.md) — (scritta il 18-09-2026)
 - [fn_check_ddt_emittibile](funzioni/fn_check_ddt_emittibile.md) — (creata 2026-07-19 — brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2)
+- [fn_check_ddt_merce](funzioni/fn_check_ddt_merce.md)
 - [fn_check_disponibilita_uscita](funzioni/fn_check_disponibilita_uscita.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_check_documento_escludibile_da_giro](funzioni/fn_check_documento_escludibile_da_giro.md) — (latest review 2026-09-08)
 - [fn_check_documento_interno_registrabile](funzioni/fn_check_documento_interno_registrabile.md) — (scritta il 22-09-2026)

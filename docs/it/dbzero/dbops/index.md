@@ -85,6 +85,7 @@
 - [fn_pgtap_concedi_azione](funzioni/fn_pgtap_concedi_azione.md) — (scritta il 2026-09-24)
 - [fn_pgtap_crea_articolo](funzioni/fn_pgtap_crea_articolo.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_pgtap_crea_cliente_ba](funzioni/fn_pgtap_crea_cliente_ba.md)
+- [fn_pgtap_crea_ddt](funzioni/fn_pgtap_crea_ddt.md)
 - [fn_pgtap_crea_emittente](funzioni/fn_pgtap_crea_emittente.md)
 - [fn_pgtap_crea_emittente_operatore](funzioni/fn_pgtap_crea_emittente_operatore.md)
 - [fn_pgtap_crea_fattura](funzioni/fn_pgtap_crea_fattura.md) — (rev 2026-09-23 — D7, lotto 1)
@@ -153,6 +154,7 @@
 - [vw_coda_lavori_da_guardare](views/vw_coda_lavori_da_guardare.md) — (latest review 05-09-2026)
 - [vw_codici_errore_da_dichiarare](views/vw_codici_errore_da_dichiarare.md) — (rev 2026-08-21)
 - [vw_codici_errore_forme_condizione](views/vw_codici_errore_forme_condizione.md) — (rev 2026-09-07)
+- [vw_ddt_emessi_senza_scarico](views/vw_ddt_emessi_senza_scarico.md)
 - [vw_diag_v_clienti_links](views/vw_diag_v_clienti_links.md) — (latest review 25-12-25) La vista **`dbops.vw_diag_v_clienti_links`** è una **vista diagnostica** che espone in modo “leggibile” i **legami strutturali** tra:
 - [vw_duplicate_indexes](views/vw_duplicate_indexes.md) — (latest review 27-07-26)
 - [vw_email_da_guardare](views/vw_email_da_guardare.md) — (latest review 11-09-2026)

@@ -31,7 +31,8 @@
 --   La postura (has_table_privilege):
 --    1) movimenti: SELECT si', INSERT/UPDATE/DELETE no
 --    2) valore_giacenza: idem
---    3) movimenti_attesi: SELECT/INSERT/UPDATE si', DELETE no
+--    3) movimenti_attesi: SELECT si', INSERT/UPDATE/DELETE no (rev 2026-09-28: dal Lotto 3
+--       i blocchi li scrivono i verbi fn_apri_blocco / fn_libera_blocco, D-L3-j)
 --   Il comportamento:
 --    4) INSERT diretto sul ledger come app -> 42501 (permesso negato)
 --    5) UPDATE diretto su valore_giacenza -> 42501
@@ -113,8 +114,8 @@ SELECT is(
              has_table_privilege('zeroerp_app', 'magazzino.movimenti_attesi', 'INSERT'),
              has_table_privilege('zeroerp_app', 'magazzino.movimenti_attesi', 'UPDATE'),
              has_table_privilege('zeroerp_app', 'magazzino.movimenti_attesi', 'DELETE'))::text),
-    '(t,t,t,f)',
-    '3) movimenti_attesi: un blocco si chiude, non si cancella');
+    '(t,f,f,f)',
+    '3) movimenti_attesi: sola lettura — i blocchi li aprono e li liberano i verbi (Lotto 3, D-L3-j)');
 
 -- ============================================================
 -- 4-7 Il comportamento (come app: e' il runner a garantirlo)

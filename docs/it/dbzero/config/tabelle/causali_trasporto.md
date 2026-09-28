@@ -18,10 +18,12 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
 | fatturabile | boolean | NO | false |
+| causale_magazzino | character varying | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| FOREIGN KEY | fk_causali_trasporto_causale_magazzino | causale_magazzino |
 | PRIMARY KEY | pk_causali_trasporto | id |
 | UNIQUE | causali_trasporto_codice_key | codice |
 

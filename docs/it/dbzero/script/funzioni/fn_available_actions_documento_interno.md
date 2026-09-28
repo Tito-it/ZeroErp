@@ -51,17 +51,17 @@ DECLARE
 BEGIN
     -- ⛔ Guard di PARAMETRO: chiamante rotto, non dato di una persona.
     IF p_famiglia IS NULL
-       OR p_famiglia NOT IN ('INVENTARIO', 'RETTIFICA')
+       OR p_famiglia NOT IN ('INVENTARIO', 'RETTIFICA', 'TRASFERIMENTO')
        OR p_documento_id IS NULL OR p_documento_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'script.fn_available_actions_documento_interno',
             'E_MAG_CHIAMATA_NON_VALIDA',
-            jsonb_build_object('detail', 'famiglia INVENTARIO o RETTIFICA, documento maggiore di zero',
+            jsonb_build_object('detail', 'famiglia INVENTARIO, RETTIFICA o TRASFERIMENTO, documento maggiore di zero',
                                'p_famiglia', p_famiglia,
                                'p_documento_id', p_documento_id),
             NULL::uuid,
             'script.fn_available_actions_documento_interno',
-            'p_famiglia (INVENTARIO | RETTIFICA), p_documento_id (obbligatorio, maggiore di zero)');
+            'p_famiglia (INVENTARIO | RETTIFICA | TRASFERIMENTO), p_documento_id (obbligatorio, maggiore di zero)');
     END IF;
 
     -- La testata, sotto RLS. Si guarda PRIMA della check, che su un
@@ -69,9 +69,13 @@ BEGIN
     IF p_famiglia = 'INVENTARIO' THEN
         SELECT i.stato_mag_inventario INTO v_stato
           FROM magazzino.inventari i WHERE i.id = p_documento_id;
-    ELSE
+    ELSIF p_famiglia = 'RETTIFICA' THEN
         SELECT t.stato_mag_rettifiche INTO v_stato
           FROM magazzino.rettifiche t WHERE t.id = p_documento_id;
+    ELSE
+        -- rev 2026-09-28: il trasferimento interno, terza famiglia (P-10).
+        SELECT t.stato_trasferimento INTO v_stato
+          FROM magazzino.trasferimenti t WHERE t.id = p_documento_id;
     END IF;
 
     IF v_stato IS NULL THEN
@@ -149,7 +153,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_documento_interno(p_famiglia text, p_documento_id bigint)
-IS 'Capability di un documento interno di magazzino (p_famiglia = INVENTARIO | RETTIFICA) per il detail API. Chiavi: stato_codice, available_actions[] (key conferma/riapri/annulla, target_state, label_key, requires_confirm, enabled, reason, reason_key, manuale), can_change_state, can_edit_testata, can_edit_righe, can_delete (tutti = stato DRAFT, lo stesso predicato dei guard), can_registra + _reason + _reason_key, stato_info_key. ⭐ Non contiene nessuna regola propria: le azioni vengono dalla matrice magazzino.fn_documento_interno_transizioni (quella che il guard fa rispettare) e la terna di registra dal primo motivo di script.fn_check_documento_interno_registrabile (quella che le madri del posting sollevano) — linee-guida-sql §12.1/§12.2. ⚠️ POSTED e'' nella matrice ma non e'' un''azione richiedibile (la porta la apre solo l''operazione con la GUC): esce dalle azioni ed e'' la terna can_registra. INVOKER: documento fuori perimetro o inesistente -> NULL, il 404 lo da'' il BE sulla testata. Chiavi i18n emesse: magazzino.documenti_interni.azione.{conferma,riapri,annulla}, ....registra_reason.{non_confermato,gia_registrato,annullato,senza_righe,righe_non_postabili}, ....stato_info.{posted,cancel}. Brief: brief-db-magazzino-lotto-2-bis-be-fe R-1. rev 2026-09-27 (20260927-18): le azioni non portano piu'' la chiave icon. Il DB manda il SIGNIFICATO (key), il frontend sceglie il segno dal key con una mappa verbo -> icona in core/ (decisione D-1 di Tid, opzione A): un segno scritto qui era l''unico dell''app che non passava dalle costanti del frontend, e lo stesso verbo ne portava due. Brief: brief-db-icone-azioni-per-significato (D-1). rev 2026-09-28 (20260928-15): le azioni non portano piu'' la chiave severity. Come l''icona, il colore del pulsante lo decide il VERBO, uguale in tutti i domini, e il frontend lo ricava dal key (mappa verbo -> aspetto in core/, decisione di Tid): lo stesso verbo portava colori diversi fra i domini. label_key e outlined restano dati. Brief: brief-db-icone-azioni-per-significato (§9).';
+IS 'Capability di un documento interno di magazzino (p_famiglia = INVENTARIO | RETTIFICA) per il detail API. Chiavi: stato_codice, available_actions[] (key conferma/riapri/annulla, target_state, label_key, requires_confirm, enabled, reason, reason_key, manuale), can_change_state, can_edit_testata, can_edit_righe, can_delete (tutti = stato DRAFT, lo stesso predicato dei guard), can_registra + _reason + _reason_key, stato_info_key. ⭐ Non contiene nessuna regola propria: le azioni vengono dalla matrice magazzino.fn_documento_interno_transizioni (quella che il guard fa rispettare) e la terna di registra dal primo motivo di script.fn_check_documento_interno_registrabile (quella che le madri del posting sollevano) — linee-guida-sql §12.1/§12.2. ⚠️ POSTED e'' nella matrice ma non e'' un''azione richiedibile (la porta la apre solo l''operazione con la GUC): esce dalle azioni ed e'' la terna can_registra. INVOKER: documento fuori perimetro o inesistente -> NULL, il 404 lo da'' il BE sulla testata. Chiavi i18n emesse: magazzino.documenti_interni.azione.{conferma,riapri,annulla}, ....registra_reason.{non_confermato,gia_registrato,annullato,senza_righe,righe_non_postabili}, ....stato_info.{posted,cancel}. Brief: brief-db-magazzino-lotto-2-bis-be-fe R-1. rev 2026-09-27 (20260927-18): le azioni non portano piu'' la chiave icon. Il DB manda il SIGNIFICATO (key), il frontend sceglie il segno dal key con una mappa verbo -> icona in core/ (decisione D-1 di Tid, opzione A): un segno scritto qui era l''unico dell''app che non passava dalle costanti del frontend, e lo stesso verbo ne portava due. Brief: brief-db-icone-azioni-per-significato (D-1). rev 2026-09-28 (20260928-15): le azioni non portano piu'' la chiave severity. Come l''icona, il colore del pulsante lo decide il VERBO, uguale in tutti i domini, e il frontend lo ricava dal key (mappa verbo -> aspetto in core/, decisione di Tid): lo stesso verbo portava colori diversi fra i domini. label_key e outlined restano dati. Brief: brief-db-icone-azioni-per-significato (§9). rev 2026-09-28 (brief-db-magazzino-lotto-3-scarico-da-ddt, P-10): terza famiglia TRASFERIMENTO (il trasferimento interno, D-L2-g) — stessa matrice, stesse chiavi i18n; la terna di registra dal primo motivo della stessa check, che ne conosce le righe.';
 ```
 
 ---

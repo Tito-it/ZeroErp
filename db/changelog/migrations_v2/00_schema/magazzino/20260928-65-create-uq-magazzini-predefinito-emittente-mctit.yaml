@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-4 — Un solo magazzino predefinito per emittente
+#   uq_mag_magazzini_predefinito_emittente
+#   Brief: brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 3 (D-L3-h, Tid 2026-09-28)
+#
+# -- PERCHE' --------------------------------------------------------------------------------------
+#   magazzini.predefinito esisteva senza vincolo e senza lettori: due
+#   predefiniti per lo stesso emittente erano ammessi, e «il predefinito» non
+#   diceva quale. Da qui fa da DEFAULT della bolla (trgfn_ddt_default_magazzino,
+#   20260928-69): un default ambiguo sarebbe una scelta a caso.
+#
+# -- LA preCondition ------------------------------------------------------------------------------
+#   expectedResult 0 sulle coppie gia' in conflitto: un database vuoto la
+#   soddisfa, e il senso del controllo e' proprio quello (linee-guida-sql §11.4).
+#   Se su una macchina ci fossero due predefiniti, il migrate si ferma qui e la
+#   scelta la fa una persona, non l'indice.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20260928-65-create-uq-magazzini-predefinito-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260928-65-create-uq-magazzini-predefinito-emittente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Indice UNIQUE parziale: un solo magazzino predefinito per emittente (D-L3-h). Il
+        predefinito diventa il default del magazzino di una bolla. Brief:
+        brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: magazzino
+                tableName: magazzini
+                columnName: predefinito
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM (
+                      SELECT m.emittente_fiscale_id FROM magazzino.magazzini m
+                       WHERE m.predefinito GROUP BY m.emittente_fiscale_id HAVING count(*) > 1) x;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE UNIQUE INDEX uq_mag_magazzini_predefinito_emittente
+                  ON magazzino.magazzini (emittente_fiscale_id)
+                  WHERE predefinito;
+
+              COMMENT ON INDEX magazzino.uq_mag_magazzini_predefinito_emittente IS
+                  'Un solo magazzino predefinito per emittente (D-L3-h): e'' il default del '
+                  'magazzino di una bolla nata senza (vendite.trgfn_ddt_default_magazzino), e '
+                  'un default ambiguo sarebbe una scelta a caso. Brief: '
+                  'brief-db-magazzino-lotto-3-scarico-da-ddt.';
+              COMMENT ON COLUMN magazzino.magazzini.predefinito IS
+                  'Il magazzino che una bolla prende quando nasce senza (D-L3-h). Al massimo '
+                  'uno per emittente (uq_mag_magazzini_predefinito_emittente).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS magazzino.uq_mag_magazzini_predefinito_emittente;

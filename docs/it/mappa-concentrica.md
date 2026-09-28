@@ -663,6 +663,41 @@ Il caso pratiche e' istruttivo perche' mostra cosa succede applicando il manifes
 
 Riferimento implementazione: `docs/it/dev/work-done/automazione-chiusure-scadenze.md`.
 
+## Caso di studio: il centro cresce, la coda resta fuori
+
+> Lezione aggiunta il 2026-09-28, da una rilettura dello sviluppo 2026 contro
+> la storia git. Vale per chi lavora da solo più che per chiunque altro.
+
+**Il sospetto era sbagliato.** A leggere il changelog sembrava che il lavoro
+sull'anello 0 fosse diventato *verifica della verifica*. Il codice dice altro:
+dei 287 changeSet di settembre in `dbops` e `script`, circa sette su dieci
+aggiungono una **capacità** (identità dei processi, scope RLS, blocco login,
+permessi ereditati, prezzi autorizzati, emittente di default…), uno su quattro
+è un presidio o una fixture, e solo uno su venti corregge un presidio. E quasi
+ogni ritorno al centro è **tirato da fuori**: una schermata, un documento, un
+collaudo che scopre che al centro manca qualcosa. È il principio 7 applicato,
+non un giro tondo. ⚠️ Il changelog racconta di più le lezioni sui presidi
+perché sono le più belle da scrivere: *si pesa il codice, non il racconto*.
+
+**Il difetto vero sta dall'altra parte.** Ogni capacità del centro si
+ripercuote fuori (una decisione sulle icone delle azioni ha toccato le
+`fn_available_actions_*` di nove documenti), e ogni ricaduta esterna chiede un
+**collaudo in-app**. Il collaudo è il lavoro più noioso, quindi il primo a
+restare indietro: a fine settembre i copioni aperti erano nove, e la frase *«è
+provato il cammino, mai l'esito»* torna nel changelog di agosto, del 14 e del
+19 settembre. Il centro avanza; la sua coda esterna si accumula.
+
+**Lezione metodologica.**
+
+> **Una capacità del centro è finita quando la sua prima ricaduta esterna si è
+> vista a video, non quando il pgTAP è verde.** Il collaudo che la chiude è
+> quello della **prima** ricaduta, non di tutte: poche righe, un percorso, un
+> esito. Il resto può aspettare il suo brief; quello no, perché è l'unica prova
+> che il centro ha servito qualcuno.
+
+Non è una regola in più da amministrare: è il criterio con cui si dichiara
+chiuso un brief che tocca l'anello 0 o 1.
+
 ---
 
 

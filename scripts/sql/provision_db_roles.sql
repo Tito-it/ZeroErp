@@ -211,7 +211,13 @@ FROM (VALUES ('magazzino.movimenti'), ('magazzino.valore_giacenza')) AS t(nome)
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 
-SELECT format('REVOKE DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+-- ⭐ Dal 2026-09-28 (Lotto 3, D-L3-j) `magazzino.movimenti_attesi` e' in SOLA
+--   LETTURA: i blocchi li aprono e li liberano i verbi fn_apri_blocco /
+--   fn_libera_blocco. Fino a quel giorno era senza DELETE soltanto. Stesso
+--   elenco di `v_tabelle_sola_lettura_app` nel loop 20260205-41 e del forward
+--   90_end/20260928-83; `db/pgtap/magazzino/test-blocco-manuale-e-porta-lotto3-v1.sql`
+--   lo dice se non lo fa.
+SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
 FROM (VALUES ('magazzino.movimenti_attesi')) AS t(nome)
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
@@ -274,7 +280,10 @@ SELECT format('REVOKE EXECUTE ON FUNCTION %I.%I(%s) FROM PUBLIC, %I',
 FROM pg_proc p
 JOIN pg_namespace n ON n.oid = p.pronamespace
 WHERE n.nspname = 'magazzino'
-  AND p.proname IN ('fn_scrivi_movimento', 'fn_ricalcola_valore_giacenza')
+  AND p.proname IN ('fn_scrivi_movimento', 'fn_ricalcola_valore_giacenza',
+                    -- ⭐ Dal 2026-09-28 (Lotto 3): le operazioni interne della bolla e
+                    --   lo storno. Forward 90_end/20260928-83.
+                    'fn_posta_ddt', 'fn_storna_movimenti_sorgente')
   AND p.prokind = 'f'
 \gexec
 
