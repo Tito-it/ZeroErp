@@ -254,17 +254,12 @@ class DbopsRepository:
         )
         extra_expr = spec.get("extra_expr", f"t.{spec['extra_col']}")
 
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                SELECT
-                    t.id,
-                    t.codice,
-                    {codice_interno_sql} AS codice_interno,
-                    t.descrizione,
-                    {attivo_sql} AS attivo,
-                    {extra_expr} AS {spec["extra_col"]},
-                    COUNT(*) OVER () AS total_count
+        # ⭐ Un frammento FROM+WHERE per la pagina e per il conteggio di
+        #    ripiego: il perimetro del totale e' quello della lista.
+        #    Identificatori interpolati: rel verificata su config.tabelle_gestibili
+        #    (CHECK di forma) e in _LOOKUP_SPECIALIZZATE, colonne da spec
+        #    costante, ORDER BY dal BB sql_order_clause; valori come parametri.
+        from_where = f"""
                   FROM {rel} t
                  WHERE {attivo_pred}
                    {obsoleto_pred}
@@ -273,35 +268,39 @@ class DbopsRepository:
                        OR t.codice ILIKE %(search)s
                        {search_codice_interno}
                        OR t.descrizione ILIKE %(search)s
-                   )
+                   )"""
+        params = {
+            "attivo_only": attivo_only,
+            "includi_obsoleti": includi_obsoleti,
+            "search": search_pattern,
+            "limit": limit,
+            "offset": offset,
+        }
+        # ⛔ Oltre l'ultima pagina la window function non vede righe e il
+        #    totale era 0 (F-8 dell'analisi difetti doc API core): il BB
+        #    `fetch_paged_with_total` lo ricalcola col conteggio di ripiego.
+        righe, total_count = fetch_paged_with_total(
+            f"""
+                SELECT
+                    t.id,
+                    t.codice,
+                    {codice_interno_sql} AS codice_interno,
+                    t.descrizione,
+                    {attivo_sql} AS attivo,
+                    {extra_expr} AS {spec["extra_col"]},
+                    COUNT(*) OVER () AS total_count
+                {from_where}
                  ORDER BY {ordinamento}
                  LIMIT %(limit)s OFFSET %(offset)s
-                """,  # noqa: S608 — rel verificata su config.tabelle_gestibili (CHECK di forma) e in _LOOKUP_SPECIALIZZATE, colonne da spec costante, ORDER BY dal BB sql_order_clause su order_map, valori come parametri
-                {
-                    "attivo_only": attivo_only,
-                    "includi_obsoleti": includi_obsoleti,
-                    "search": search_pattern,
-                    "limit": limit,
-                    "offset": offset,
-                },
-            )
-            rows = cursor.fetchall()
-
-        if not rows:
-            return [], 0
-
-        total_count = rows[0][6]
+            """,
+            params,
+            fallback_count_sql=f"SELECT COUNT(*)::int {from_where}",
+            fallback_params=params,
+            offset=offset,
+        )
         results = [
-            {
-                "id": row[0],
-                "codice": row[1],
-                "codice_interno": row[2],
-                "descrizione": row[3],
-                "attivo": row[4],
-                "codice_stabile": row[2] or row[1],  # COALESCE(codice_interno, codice)
-                spec["extra_col"]: row[5],
-            }
-            for row in rows
+            {**r, "codice_stabile": r["codice_interno"] or r["codice"]}  # COALESCE(codice_interno, codice)
+            for r in righe
         ]
         return results, total_count
 
@@ -341,18 +340,19 @@ class DbopsRepository:
         # Normalizzazione: search None o stringa vuota => nessun filtro.
         search_pattern = pattern_contiene(search)
 
-        with connection.cursor() as cursor:
-            # Wrappa fn_get_lookup_codici in una CTE con filtro ILIKE e paginazione esterna.
-            # Il limit interno (LOOKUP_MAX_SOURCE_ROWS) è una guardia; il filtro è applicato sul risultato.
-            # ⛔ L'ORDER BY lo scrive il BB `sql_order_clause` (2026-09-26): prima
-            #    `{order_col} {order_dir}` interpolati, fidandosi della whitelist
-            #    del service, e lo spareggio `id` sempre ASC.
-            ordinamento = sql_order_clause(
-                order_col, order_dir,
-                colonne=colonne_identita(*LOOKUP_ORDER_COLONNE),
-                default="descrizione", tiebreak="id", rifiuta_fuori_whitelist=True,
-            )
-            sql = """
+        # Wrappa fn_get_lookup_codici in una CTE con filtro ILIKE e paginazione esterna.
+        # Il limit interno (LOOKUP_MAX_SOURCE_ROWS) è una guardia; il filtro è applicato sul risultato.
+        # ⛔ L'ORDER BY lo scrive il BB `sql_order_clause` (2026-09-26): prima
+        #    `{order_col} {order_dir}` interpolati, fidandosi della whitelist
+        #    del service, e lo spareggio `id` sempre ASC.
+        ordinamento = sql_order_clause(
+            order_col, order_dir,
+            colonne=colonne_identita(*LOOKUP_ORDER_COLONNE),
+            default="descrizione", tiebreak="id", rifiuta_fuori_whitelist=True,
+        )
+        # ⭐ Un frammento (CTE + WHERE) per la pagina e per il conteggio di
+        #    ripiego: il perimetro del totale e' quello della lista.
+        base_where = """
                 WITH base AS (
                     SELECT id, codice, codice_interno, descrizione, attivo
                       FROM dbops.fn_get_lookup_codici(
@@ -365,56 +365,44 @@ class DbopsRepository:
                                %s
                            )
                 )
-                SELECT
-                    id,
-                    codice,
-                    codice_interno,
-                    descrizione,
-                    attivo,
-                    COUNT(*) OVER () AS total_count
+                SELECT {colonne}
                   FROM base
                  WHERE (
                      %s::text IS NULL
                      OR codice ILIKE %s
                      OR codice_interno ILIKE %s
                      OR descrizione ILIKE %s
-                 )
-                 ORDER BY {}
-                 LIMIT %s OFFSET %s
-                """.format(ordinamento)  # noqa: S608 — ORDER BY dal BB sql_order_clause (whitelist codice/descrizione), valori come parametri
-            cursor.execute(
-                sql,
-                [
-                    rel,
-                    order_col,
-                    order_dir,
-                    attivo_only,
-                    LOOKUP_MAX_SOURCE_ROWS,
-                    includi_obsoleti,
-                    search_pattern,
-                    search_pattern,
-                    search_pattern,
-                    search_pattern,
-                    limit,
-                    offset,
-                ],
-            )
-            rows = cursor.fetchall()
-
-        if not rows:
-            return [], 0
-
-        total_count = rows[0][5]
+                 )"""
+        params_base = [
+            rel,
+            order_col,
+            order_dir,
+            attivo_only,
+            LOOKUP_MAX_SOURCE_ROWS,
+            includi_obsoleti,
+            search_pattern,
+            search_pattern,
+            search_pattern,
+            search_pattern,
+        ]
+        data_sql = base_where.format(
+            colonne="id, codice, codice_interno, descrizione, attivo, COUNT(*) OVER () AS total_count",
+        ) + f"""
+                 ORDER BY {ordinamento}
+                 LIMIT %s OFFSET %s"""
+        # ⛔ Oltre l'ultima pagina la window function non vede righe e il
+        #    totale era 0 (F-8 dell'analisi difetti doc API core): il BB
+        #    `fetch_paged_with_total` lo ricalcola col conteggio di ripiego.
+        righe, total_count = fetch_paged_with_total(
+            data_sql,
+            [*params_base, limit, offset],
+            fallback_count_sql=base_where.format(colonne="COUNT(*)::int"),
+            fallback_params=params_base,
+            offset=offset,
+        )
         results = [
-            {
-                "id": row[0],
-                "codice": row[1],
-                "codice_interno": row[2],
-                "descrizione": row[3],
-                "attivo": row[4],
-                "codice_stabile": row[2] or row[1],  # COALESCE(codice_interno, codice)
-            }
-            for row in rows
+            {**r, "codice_stabile": r["codice_interno"] or r["codice"]}  # COALESCE(codice_interno, codice)
+            for r in righe
         ]
         return results, total_count
 

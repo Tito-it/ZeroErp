@@ -138,18 +138,17 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
 }
 ```
 - Regole:
-  - Esegue UPSERT su `config.parameter_overrides` con il filtro scope corretto:
-    - `user` → `django_user_id = utente corrente`; cerca la riga esistente con `emittente_fiscale_id`, `django_group_id`, `session_key`, `function_name` NULL (non guarda `categoria_cliente_id`)
-    - `emittente` → `emittente_fiscale_id = EF utente`; cerca la riga con `django_user_id`, `django_group_id`, `session_key`, `function_name` NULL (non guarda `categoria_cliente_id`)
-    - `categoria_cliente` → `categoria_cliente_id = <id>`, tutti gli altri scope NULL
-    > ⚠️ Difetto noto (F-5): user ed emittente non richiedono `categoria_cliente_id` NULL — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
-  - Se l'override esiste gia' (stessa tupla `(parameter_id, scope-key)`), aggiorna il valore e `data_update`
-  - Se il `parameter_code` non esiste in `config.parameters`, l'INSERT viola il NOT NULL su `parameter_id` e l'errore esce come `E_DATABASE` (400)
-    > ⚠️ Difetto noto (E-9): dovrebbe essere `E_PARAMETER_NOT_FOUND` (404) — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+  - Esegue UPSERT su `config.parameter_overrides` di un override **di livello puro**: la dimensione dello scope valorizzata, **tutte** le altre (`django_user_id`, `django_group_id`, `emittente_fiscale_id`, `categoria_cliente_id`, `session_key`, `function_name`) NULL:
+    - `user` → `django_user_id = utente corrente`
+    - `emittente` → `emittente_fiscale_id = EF utente`
+    - `categoria_cliente` → `categoria_cliente_id = <id>`
+    Le dimensioni stanno in una tupla sola del repository (`_DIMENSIONI_OVERRIDE`) e il NULL si deriva da lì. Fino al 2026-09-28 user ed emittente non azzeravano `categoria_cliente_id`, e una riga mista utente+categoria veniva sovrascritta come se fosse l'override personale (F-5 dell'[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+  - Se l'override esiste gia' (stessa tupla `(parameter_id, scope-key)`), aggiorna il valore e `data_update` e lo **riattiva** (`attivo = true`): impostare un override vuol dire volerlo in vigore. Fino al 2026-09-28 una riga spenta (`attivo` false o NULL) veniva aggiornata e restava spenta — risposta con l'id, ma override ignorato dalla risoluzione e assente dalla lista, che leggono solo `attivo = true`
+  - Se il `parameter_code` non esiste in `config.parameters` → **404 `E_PARAMETER_NOT_FOUND`**, niente scritto (dal 2026-09-28, E-9: prima `E_DATABASE` 400 dalla violazione del NOT NULL)
 - Errori:
   - `E_PARAMETER_VALIDATION` (400) — codice parametro vuoto, `scope` non ammesso, `categoria_cliente_id` mancante/non-positivo per scope categoria, emittente non risolvibile per scope emittente
   - `E_PERMISSION_DENIED` (403) — scope `emittente` o `categoria_cliente` da non-admin
-  - `E_DATABASE` (400) — `parameter_code` inesistente (vedi sopra)
+  - `E_PARAMETER_NOT_FOUND` (404) — `parameter_code` inesistente
 
 ---
 
@@ -174,9 +173,11 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
 }
 ```
 - Regole:
-  - `user` → verifica `django_user_id = self`
-  - `emittente` → verifica `emittente_fiscale_id = EF utente` + `django_user_id` e `django_group_id` NULL (admin-only; non guarda `categoria_cliente_id`, difetto F-5)
-  - `categoria_cliente` → verifica `categoria_cliente_id = <id query param>` + tutti gli altri scope NULL (admin-only). Difesa anti-tampering: niente cancellazione cross-categoria.
+  - Stesso perimetro dell'upsert: si cancella solo un override **di livello puro** dello scope (tutte le altre dimensioni NULL), dal 2026-09-28 per tutti e tre (F-5):
+  - `user` → `django_user_id = self`
+  - `emittente` → `emittente_fiscale_id = EF utente` (admin-only)
+  - `categoria_cliente` → `categoria_cliente_id = <id query param>` (admin-only). Difesa anti-tampering: niente cancellazione cross-categoria.
+  - ⚠️ Lato lettura resta un'asimmetria **del DB**: `script.fn_list_parameters_for_user` legge l'override utente senza escludere le altre dimensioni, e quello emittente senza escludere categoria, sessione e funzione. Una riga mista può quindi comparire in lista con un id che questa DELETE rifiuta (404). Richiesta al team DB nel §7 dell'analisi difetti.
 - Errori:
   - `E_PARAMETER_NOT_FOUND` (404) — override non trovato o non appartenente allo scope
   - `E_PARAMETER_VALIDATION` (400) — ID override non valido, `scope` non ammesso o `categoria_cliente_id` mancante/non-positivo

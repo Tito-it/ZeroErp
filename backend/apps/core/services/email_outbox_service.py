@@ -166,13 +166,18 @@ class EmailOutboxService:
             code=E_OUTBOX, message="Solo bozze DRAFT possono essere inviate.",
         )
 
-        # Porta a READY
-        self._repo.update_outbox_stato(outbox_id, "READY")
-
-        # Risolvi account per invio
+        # Risolvi account per invio.
+        # ⛔ PRIMA di portare a READY, non dopo: READY e' committato subito
+        #    (autocommit, vedi sotto), e `cancel_draft` accetta solo DRAFT.
+        #    Fino al 2026-09-28 l'ordine era inverso, e una bozza senza account
+        #    restava READY — ne' rinviabile ne' annullabile (analisi difetti
+        #    doc API core, F-1).
         account = self._repo.resolve_account(outbox.get("unita_organizzativa_id"))
         ErrorManager.require(account is not None, code=E_OUTBOX, message="Nessun account email configurato.")
         assert account is not None
+
+        # Porta a READY
+        self._repo.update_outbox_stato(outbox_id, "READY")
 
         # Invio via metodo pubblico send_raw — crea log + invia
         log_id, success = self._dispatch.send_raw(

@@ -20,7 +20,9 @@ Indice test eseguiti:
 5)  EmettiTests.test_con_password_vera_token_cross
 6)  EmettiTests.test_invalida_la_veste_prima_del_token_nuovo
 7)  EmettiTests.test_veste_fuori_dalla_porta_esplode
-8)  SpedisciTests.test_email_fallita_non_solleva_e_segna_l_invito
+8)  SpedisciTests.test_email_partita_segna_l_invito
+8a) SpedisciTests.test_email_non_partita_non_segna_l_invito (F-3)
+8c) SpedisciTests.test_email_con_eccezione_non_solleva_e_non_segna_l_invito
 8b) SpedisciTests.test_il_flusso_sceglie_il_template_della_porta
 9)  AttivaTests.test_con_password_consuma_imposta_e_accende
 10) AttivaTests.test_veste_sparita_solleva_dopo_il_consumo
@@ -83,6 +85,8 @@ def _invito(ha_password: bool) -> tuple[InvitoVeste, MagicMock, MagicMock, Magic
     repo, tokens, email = MagicMock(), MagicMock(), MagicMock()
     repo.auth_user_ha_password.return_value = ha_password
     tokens.create.return_value = "tok-in-chiaro"
+    # `(log_id, partita)`, come il vero: un MagicMock qui non si spacchetta.
+    email.send_email.return_value = (1, True)
     return InvitoVeste(auth_repo=repo, token_service=tokens, email_service=email), repo, tokens, email
 
 
@@ -151,24 +155,59 @@ class EmettiTests(TestCase):
 
 class SpedisciTests(TestCase):
 
-    # Scopo: L'email e' best-effort (il token resta valido): se fallisce non
-    # solleva, e la veste segna comunque l'invito. Link dalla porta.
+    # Scopo: Email partita → `True`, e la veste segna l'invito. Link dalla porta.
     @patch(f"{_BB}.nome_visualizzato", return_value="Admin")
-    def test_email_fallita_non_solleva_e_segna_l_invito(self, _nome):
+    def test_email_partita_segna_l_invito(self, _nome):
         from apps.core.services.invito_veste import EmissioneInvito
 
         invito, repo, _, email = _invito(ha_password=False)
-        email.send_email.side_effect = RuntimeError("smtp giu'")
         with override_settings(FRONTEND_URL="https://erp.example"):
-            invito.spedisci(
+            partita = invito.spedisci(
                 PORTA_PORTALE, EmissioneInvito(token="abc", is_cross=True),
                 auth_user_id=42, identita_id=500, destinatario="m@x.it",
                 invitato_da_user_id=1, variabili={"nome": "Mario"},
             )
+        self.assertTrue(partita)
         variabili = email.send_email.call_args.kwargs["variabili"]
         self.assertEqual(variabili["link"], "https://erp.example/attivazione-portale/abc")
         self.assertEqual(variabili["nome"], "Mario")
         repo.set_invito_inviato_at.assert_called_once_with(42, identita_id=500)
+
+    # Scopo: ⭐ F-3 — l'email che NON parte senza eccezione (SMTP fallito,
+    # canale non configurato: `send_email` torna `False`) non e' un invito
+    # inviato. Non solleva (il token vale), ma torna `False`, lo logga e non
+    # segna `invito_inviato_at`. Fino al 2026-09-28 l'esito si scartava.
+    @patch(f"{_BB}.nome_visualizzato", return_value="Admin")
+    def test_email_non_partita_non_segna_l_invito(self, _nome):
+        from apps.core.services.invito_veste import EmissioneInvito
+
+        invito, repo, _, email = _invito(ha_password=False)
+        email.send_email.return_value = (7, False)
+        with self.assertLogs("security", level="ERROR"):
+            partita = invito.spedisci(
+                PORTA_OPERATORE, EmissioneInvito(token="abc", is_cross=False),
+                auth_user_id=42, identita_id=500, destinatario="m@x.it",
+                invitato_da_user_id=1, variabili={},
+            )
+        self.assertFalse(partita)
+        repo.set_invito_inviato_at.assert_not_called()
+
+    # Scopo: L'eccezione (template o account che mancano) e' la stessa cosa:
+    # non solleva, torna `False`, non segna l'invito.
+    @patch(f"{_BB}.nome_visualizzato", return_value="Admin")
+    def test_email_con_eccezione_non_solleva_e_non_segna_l_invito(self, _nome):
+        from apps.core.services.invito_veste import EmissioneInvito
+
+        invito, repo, _, email = _invito(ha_password=False)
+        email.send_email.side_effect = RuntimeError("smtp giu'")
+        with self.assertLogs("security", level="ERROR"):
+            partita = invito.spedisci(
+                PORTA_PORTALE, EmissioneInvito(token="abc", is_cross=True),
+                auth_user_id=42, identita_id=500, destinatario="m@x.it",
+                invitato_da_user_id=1, variabili={"nome": "Mario"},
+            )
+        self.assertFalse(partita)
+        repo.set_invito_inviato_at.assert_not_called()
 
     # Scopo: B-16 — il flusso sceglie il TESTO, non una variabile: nuovo →
     # template della porta, un clic → il suo `_CROSS`. `is_cross` non viaggia

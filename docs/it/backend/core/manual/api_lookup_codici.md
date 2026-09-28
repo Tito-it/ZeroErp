@@ -90,9 +90,11 @@ con `E_VALIDATION_INPUT` (HTTP 400).
 Per le relazioni **specializzate** (vedi sotto) il payload include **una colonna
 in piu`** oltre al contratto generico.
 
-⚠️ Difetto noto (F-8): una pagina oltre l'ultima risponde `results: []` con
-`count: 0` e `total_pages: 0` — il totale si legge dalle righe della pagina, e
-una pagina vuota non ne ha. Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+Una pagina oltre l'ultima risponde `results: []` col **`count` vero**: la pagina
+passa dal BB `fetch_paged_with_total`, e quando è vuota il totale lo ricalcola il
+conteggio di ripiego sullo stesso frammento FROM+WHERE. Vale per il ramo generico e
+per gli specializzati. Fino al 2026-09-28 rispondeva `count: 0` e `total_pages: 0`
+(F-8 dell'[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 ## Lookup specializzati (colonna extra)
 

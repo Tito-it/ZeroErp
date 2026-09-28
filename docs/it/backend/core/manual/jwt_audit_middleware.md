@@ -8,7 +8,15 @@ Middleware Django per le request `/api/*`. Responsabilita':
    `JWT_IDENTITY_GUCS` prima dell'autenticazione DRF e di ogni query della view.
 2. **Guard BYPASSRLS** (`process_request`): rifiuta le richieste se la connessione web
    gira su un ruolo PostgreSQL che bypassa la RLS.
-3. **Rifiuto early degli utenti `DISABILITATO`** con HTTP 403 (`process_view`).
+
+> ⛔ **Il rifiuto dei `DISABILITATO` non sta qui** (ritirato il 2026-09-28, S-2 dell'
+> [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+> Stava in `process_view`, dove `request.user` e' l'utente di **sessione** di Django: per un
+> client Bearer JWT e' ancora `AnonymousUser` (l'autenticazione DRF gira dopo, nel dispatch
+> della view), quindi il ramo non scattava mai. Il rifiuto e' della catena di
+> [ZeroERPPermission](zeroerp_permission.md), al passo del ruolo applicativo. ⚠️ Il modello
+> **ammette** una veste `attivo` col ruolo `DISABILITATO` (il guard di coerenza lo esenta):
+> il caso esiste, ed e' la catena a coprirlo.
 
 > ⛔ **La cache permessi L2 non si precarica qui** (fino al 2026-09-24 si'). La sua chiave
 > e' il contesto di sessione (identita' + emittente effettivo), che nasce in
@@ -68,21 +76,7 @@ connessione web non bypassi la RLS:
 > (assenti da `CLASSE_PER_CODICE` in `error_policies_generated.py` e dai ripieghi). Vedi
 > [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 
-### 3. Rifiuto anticipato DISABILITATO (`process_view`)
-
-Per le stesse richieste:
-
-- legge `ruolo_applicativo` via `PermissionResolver.get_ruolo_applicativo()` (GUC-first);
-- se `DISABILITATO` → logga warning di sicurezza e restituisce 403 JSON con codice
-  `E_USER_DISABILITATO`.
-
-> ⚠️ Difetto noto (S-2): `process_view` legge il `request.user` di Django, che per i
-> client Bearer JWT e' ancora `AnonymousUser` (l'autenticazione DRF gira dopo, nel
-> dispatch della view). Per queste richieste il passo 3 non scatta: il rifiuto dei
-> `DISABILITATO` avviene solo in `ZeroERPPermission`. Vedi
-> [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
-
-### 4. Path non API
+### 3. Path non API
 
 Per i path che non iniziano con `/api/` il middleware non esegue alcuna operazione.
 
@@ -94,8 +88,8 @@ Le risposte del middleware non passano dal DRF exception handler: le costruisce
 ```json
 {
   "error": {
-    "code": "E_USER_DISABILITATO",
-    "message": "Utente disabilitato."
+    "code": "E_GUC_RESET_FAILED",
+    "message": "Errore interno di sicurezza sessione."
   },
   "meta": {
     "request_id": "<uuid>"
@@ -108,14 +102,12 @@ Le risposte del middleware non passano dal DRF exception handler: le costruisce
 
 | Codice | HTTP | Messaggio | Quando |
 | --- | --- | --- | --- |
-| `E_USER_DISABILITATO` | 403 | Utente disabilitato. | ruolo applicativo `DISABILITATO` |
 | `E_GUC_RESET_FAILED` | 500 | Errore interno di sicurezza sessione. | reset GUC di inizio richiesta fallito |
 | `E_DB_ROLE_UNSAFE` | 500 | Errore interno di sicurezza sessione. | connessione su ruolo BYPASSRLS o verifica fallita |
 
 ## Security logging
 
 ```text
-security.user_disabilitato user_id=<id> path=<path>
 security.web_connection_is_bypassrls path=<path> ...          (critical)
 jwt_audit_middleware.guc_reset_at_start_failed path=<path>    (exception)
 jwt_audit_middleware.bypassrls_check_failed path=<path>       (exception)
@@ -131,26 +123,20 @@ process_request(request)
   ├── JWT_GUC_RESET_SQL (6 GUC)      → DatabaseError? → 500 E_GUC_RESET_FAILED
   └── guard BYPASSRLS (1 volta/processo)
         └── bypass o errore?         → 500 E_DB_ROLE_UNSAFE
-
-process_view(request, ...)
-  │
-  ├── path non /api/* o user anonimo → None (prosegui)
-  ├── ruolo = PermissionResolver.get_ruolo_applicativo(user)
-  └── ruolo == DISABILITATO? → log warning + JsonResponse 403
 ```
 
 ## Dipendenze
 
 - `apps.core.api.jwt_audit_authentication.JWT_GUC_RESET_SQL` — SQL di reset derivato da `JWT_IDENTITY_GUCS`
 - `apps.core.services.system_context.connection_role_bypasses_rls()` — verifica del ruolo della connessione
-- `anagrafiche.identita_digitali` — `ruolo_applicativo` dell'identita' attiva (via `PermissionResolver`, GUC-first)
-- `apps.core.services.permissions_resolver` — `PermissionResolver.get_ruolo_applicativo()`
 - `apps.core.services.request_context` — `get_request_id()`, `get_idempotency_key()` per `meta`
 
 ## Note
 
-- Il check `DISABILITATO` nel middleware e' **defense-in-depth**: `ZeroERPPermission`
-  effettua lo stesso controllo a livello DRF (vedi il difetto S-2 sopra).
+- Un controllo che non scatta non e' difesa in profondita': e' una seconda sede che
+  sembra proteggere. Per questo il rifiuto `DISABILITATO` e' stato tolto invece di
+  lasciarlo accanto a `ZeroERPPermission`; il presidio
+  `test_il_middleware_non_ha_process_view` impedisce che torni.
 - **Storico audit pre-fix**: i record creati prima dello sprint BE-2.0bis
   hanno `user_insert`/`user_update` popolati con il ruolo DB (`zeroerp_app`/`titodb`)
   anziche' lo username JWT, perche' la GUC `app.jwt_user` non veniva propagata correttamente.

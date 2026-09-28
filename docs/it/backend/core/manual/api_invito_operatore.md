@@ -38,8 +38,8 @@ sezione «Invito e attivazione di una veste»).
    → token: INVITO_OPERATORE se la credenziale non ha una password vera,
      ATTIVAZIONE_OPERATORE_CROSS se ce l'ha (72 ore, meta con identita_id)
    → email con link {FRONTEND_URL}/attivazione/{token}
-   → invito_inviato_at sulla veste
-   → Response: { inviato: true, email: "m***@azienda.it", is_cross }
+   → invito_inviato_at sulla veste (solo se l'email e' partita)
+   → Response: { inviato, email: "m***@azienda.it", is_cross }
    |
 3. GET /auth/attivazione-validate/{token}/
    → { valid, token_type, requires_password }
@@ -91,13 +91,15 @@ portale) e attiverà con un clic.
 
 L'email e' mascherata per sicurezza (solo primo carattere + `***@dominio`).
 
-La risposta e' `inviato: true` anche se l'invio dell'email fallisce: l'errore viene
-solo loggato, il token resta valido e l'invito e' recuperabile col reinvio.
-⚠️ Difetto noto (F-3): `inviato: true` non dice se l'email e' partita. Vedi
-[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
-L'altra metà di F-3 è chiusa (2026-09-25): anche `invita`, come `reinvia-invito`,
-invalida i token pendenti della veste nella transazione del nuovo — vale un
-link solo.
+`inviato` e' l'esito **dell'email**: `false` se non e' partita (SMTP fallito, canale
+non configurato, template o account mancanti). La chiamata **non** fallisce — il token
+e' stato emesso e resta valido, l'invito si recupera col reinvio — ma il fallimento si
+logga (logger `security`, il motivo e' nel giornale email) e `invito_inviato_at` non si
+aggiorna. In console mode (`DEBUG`) la mail e' stampata e vale come partita. Fino al
+2026-09-28 la risposta era `inviato: true` anche a email fallita (F-3 dell'
+[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+Dal 2026-09-25 anche `invita`, come `reinvia-invito`, invalida i token pendenti della
+veste nella transazione del nuovo — vale un link solo.
 
 #### Errori
 

@@ -76,7 +76,9 @@ class InvitoOperatoreService:
         )
 
         nomi = self._auth_repo.get_nomi_credenziale(auth_user_id) or {}
-        self._invito.spedisci(
+        # ⭐ `inviato` e' l'esito della MAIL, non della chiamata (F-3): il
+        #    token c'e' comunque, e il client con `false` dice di reinviare.
+        inviato = self._invito.spedisci(
             PORTA_OPERATORE,
             emissione,
             auth_user_id=auth_user_id,
@@ -95,10 +97,10 @@ class InvitoOperatoreService:
         )
 
         logger.info(
-            "security.invito_inviato user_id=%s identita_id=%s da=%s reinvio=%s is_cross=%s",
-            auth_user_id, identita_id, invitato_da_user_id, reinvio, emissione.is_cross,
+            "security.invito_inviato user_id=%s identita_id=%s da=%s reinvio=%s is_cross=%s inviato=%s",
+            auth_user_id, identita_id, invitato_da_user_id, reinvio, emissione.is_cross, inviato,
         )
-        return {"inviato": True, "email": maschera_email(email), "is_cross": emissione.is_cross}
+        return {"inviato": inviato, "email": maschera_email(email), "is_cross": emissione.is_cross}
 
     # Scopo: Reinvia l'invito: la stessa strada (i token pendenti della veste
     # si invalidano DENTRO la transazione del nuovo; prima era una scrittura

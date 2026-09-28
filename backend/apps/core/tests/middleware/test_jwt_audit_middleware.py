@@ -2,26 +2,21 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Test unitari JwtAuditMiddleware — rifiuto DISABILITATO, reset GUC
-#        simmetrico (la cache permessi non si precarica piu' qui).
+# Scopo: Test unitari JwtAuditMiddleware — reset GUC di inizio richiesta e
+#        guard BYPASSRLS. Il rifiuto DISABILITATO non e' piu' qui (S-2).
 #        Le GUC di scrittura sono testate in
 #        test_jwt_audit_authentication.py (la auth class le setta).
 # ------------------------------------------------------------
 
 """
 Indice test eseguiti:
-1) test_disabilitato_returns_403_on_api
-2) test_disabilitato_no_reject_on_non_api
-3) test_anonymous_user_skipped
-4) test_operativo_passes_through
-5) test_middleware_non_precarica_la_cache_permessi
-6) test_process_view_does_not_touch_db
-7) test_process_request_resets_gucs_on_reused_connection
-8) test_process_request_skips_when_no_connection
-9) test_process_request_skips_non_api
-10) test_process_request_fail_closed_on_db_error
-11) test_process_request_rejects_bypassrls_connection (guard RLS Path A, fail-closed)
-12) test_process_request_passes_non_bypassrls_connection (guard ok, verifica una-volta)
+1) test_il_middleware_non_ha_process_view (S-2)
+2) test_process_request_resets_gucs_on_reused_connection
+3) test_process_request_skips_when_no_connection
+4) test_process_request_skips_non_api
+5) test_process_request_fail_closed_on_db_error
+6) test_process_request_rejects_bypassrls_connection (guard RLS Path A, fail-closed)
+7) test_process_request_passes_non_bypassrls_connection (guard ok, verifica una-volta)
 """
 
 from unittest import TestCase
@@ -32,7 +27,6 @@ from django.db import DatabaseError
 import apps.core.middleware.jwt_audit_middleware as jwt_mw
 from apps.core.middleware.jwt_audit_middleware import JwtAuditMiddleware
 
-_RESOLVER = "apps.core.middleware.jwt_audit_middleware.PermissionResolver"
 _BYPASSRLS = "apps.core.middleware.jwt_audit_middleware.connection_role_bypasses_rls"
 
 
@@ -59,57 +53,15 @@ class JwtAuditMiddlewareTests(TestCase):
         jwt_mw._WEB_CONN_ROLE_VERIFIED = False
         self.middleware = JwtAuditMiddleware(get_response=MagicMock())
 
-    # Scopo: Utente DISABILITATO su path /api/ deve ricevere 403.
-    @patch(f"{_RESOLVER}.get_ruolo_applicativo", return_value="DISABILITATO")
-    def test_disabilitato_returns_403_on_api(self, _mock_ruolo):
-        request = _mock_request(path="/api/v1/vendite/lotti/")
-        result = self.middleware.process_view(request, None, (), {})
-
-        self.assertIsNotNone(result)
-        self.assertEqual(result.status_code, 403)
-        body = result.json() if hasattr(result, 'json') else {}
-        if body:
-            self.assertEqual(body["error"]["code"], "E_USER_DISABILITATO")
-
-    # Scopo: Utente DISABILITATO su path non-API non viene rifiutato.
-    @patch(f"{_RESOLVER}.get_ruolo_applicativo", return_value="DISABILITATO")
-    def test_disabilitato_no_reject_on_non_api(self, _mock_ruolo):
-        request = _mock_request(path="/admin/")
-        result = self.middleware.process_view(request, None, (), {})
-        self.assertIsNone(result)
-
-    # Scopo: Utente anonimo su /api/* non triggera il check DISABILITATO.
-    @patch(f"{_RESOLVER}.get_ruolo_applicativo")
-    def test_anonymous_user_skipped(self, mock_ruolo):
-        request = _mock_request(authenticated=False)
-        request.user.is_authenticated = False
-        result = self.middleware.process_view(request, None, (), {})
-        self.assertIsNone(result)
-        mock_ruolo.assert_not_called()
-
-    # Scopo: Utente OPERATIVO passa senza blocco.
-    @patch(f"{_RESOLVER}.get_ruolo_applicativo", return_value="OPERATORE")
-    def test_operativo_passes_through(self, _mock_ruolo):
-        request = _mock_request()
-        result = self.middleware.process_view(request, None, (), {})
-        self.assertIsNone(result)
-
-    # Scopo: il middleware NON precarica piu' la cache permessi: la sua chiave
-    # e' il contesto di sessione, che nasce dopo (in set_jwt_gucs). M-1.
-    @patch(f"{_RESOLVER}.get_ruolo_applicativo", return_value="OPERATORE")
-    def test_middleware_non_precarica_la_cache_permessi(self, _mock_ruolo):
-        request = _mock_request()
-        self.middleware.process_view(request, None, (), {})
-        self.assertFalse(hasattr(request, "_zeroerp_perms_cache"))
-
-    # Scopo: process_view non tocca PIU' il DB (le GUC sono settate
-    # da JwtAuditAuthentication, non qui). Verifica regressione.
-    @patch("apps.core.middleware.jwt_audit_middleware.connection")
-    @patch(f"{_RESOLVER}.get_ruolo_applicativo", return_value="OPERATORE")
-    def test_process_view_does_not_touch_db(self, _mock_ruolo, mock_conn):
-        request = _mock_request()
-        self.middleware.process_view(request, None, (), {})
-        mock_conn.cursor.assert_not_called()
+    # Scopo: ⛔ Il middleware NON ha `process_view` (ritirato il 2026-09-28,
+    # analisi difetti doc API core S-2). Rifiutava i DISABILITATO, ma a quel
+    # punto `request.user` e' l'utente di SESSIONE: per un client Bearer e'
+    # anonimo (l'auth DRF gira dopo), e il ramo non scattava mai — i test che
+    # lo provavano mettevano a mano un utente autenticato. Il rifiuto vero e'
+    # nella catena di `ZeroERPPermission` (test_permissions). Questo test
+    # impedisce che una seconda sede inerte torni a sembrare una difesa.
+    def test_il_middleware_non_ha_process_view(self):
+        self.assertFalse(hasattr(JwtAuditMiddleware, "process_view"))
 
     # Scopo: process_request azzera i 5 GUC in 1 sola execute quando
     # esiste gia' una connessione (potenzialmente sporca di una request

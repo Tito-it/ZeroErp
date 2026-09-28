@@ -234,10 +234,11 @@ Superuser bypassa completamente il middleware.
 > catalogo codici: niente classe, `ui_action` ne' ripiego. La risposta 503 esce anche
 > senza `meta`.
 >
-> ⚠️ Difetto da verificare ([S-2](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)): il blocco gira in `process_view`,
+> ⛔ Difetto noto ([S-2](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md), verificato il 2026-09-28): il blocco gira in `process_view`,
 > dove per le richieste con JWT Bearer `request.user` e' ancora anonimo
-> (l'autenticazione DRF avviene dopo, nel dispatch della view): il controllo potrebbe
-> non scattare per i client Bearer.
+> (l'autenticazione DRF avviene dopo, nel dispatch della view): per i client Bearer
+> **non scatta**, e nessun'altra sede fa rispettare `deve_cambiare_password`. Si
+> sposta dopo l'autenticazione col lotto L-6 del piano accessi.
 
 ---
 
@@ -273,7 +274,7 @@ ApiExceptionMiddleware
 UserLanguageMiddleware
 CsrfViewMiddleware
 AuthenticationMiddleware
-JwtAuditMiddleware              ← reset GUC, rifiuto DISABILITATO (non autentica)
+JwtAuditMiddleware              ← reset GUC, guard BYPASSRLS (non autentica)
 PasswordChangeRequiredMiddleware ← blocca se deve cambiare password
 RequestLogMiddleware
 MessageMiddleware

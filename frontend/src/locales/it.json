@@ -1,5 +1,7 @@
 {
   "common": {
+    "invito_non_spedito": "Invito creato, ma l'email non è partita: la persona non ha ricevuto il link. Controlla l'account email e invia di nuovo l'invito.",
+    "invito_non_spedito_info": "Il link d'invito è stato creato, ma l'email non è partita: la persona non l'ha ricevuto. Controlla l'account email di sistema e reinvia l'invito.",
     "filtri": "Filtri",
     "filtri_attivi": "Filtri attivi: {n}",
     "filtri_default_attivi": "Filtri predefiniti attivi: {n}",
@@ -681,6 +683,7 @@
     "stato": {
       "NESSUNO": "Non invitato",
       "PENDING": "Invito inviato",
+      "NON_SPEDITO": "Invito non spedito",
       "ATTIVO": "Attivo",
       "DISATTIVO": "Disattivato"
     },

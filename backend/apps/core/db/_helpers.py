@@ -810,16 +810,18 @@ def conta_con_perimetro(
 
 def fetch_paged_with_total(
     data_sql: str,
-    params: list[Any],
+    params: list[Any] | dict[str, Any],
     *,
     fallback_count_sql: str | None = None,
-    fallback_params: list[Any] | None = None,
+    fallback_params: list[Any] | dict[str, Any] | None = None,
     offset: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:
     """Esegue una query paginata in UNA valutazione (COUNT(*) OVER()).
 
     `data_sql` DEVE proiettare `COUNT(*) OVER () AS total_count` e portare
     LIMIT/OFFSET nei propri `params`. Ritorna (righe dict, totale).
+    `params` posizionali (lista) o con nome (dict, `%(nome)s`): quello che
+    accetta `cursor.execute`.
 
     Fallback pagina-oltre-l'ultima: con `offset > 0` e 0 righe la window
     function non puo' dire il totale — se `fallback_count_sql` e' fornita

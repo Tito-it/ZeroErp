@@ -373,7 +373,9 @@ class InvitoPortaleService:
                 meta={"entita": entita_label},
             )
 
-        self._invito.spedisci(
+        # ⭐ `inviato` e' l'esito della MAIL, non della chiamata (F-3): il
+        #    token c'e' comunque, e il client con `false` dice di reinviare.
+        inviato = self._invito.spedisci(
             porta,
             emissione,
             auth_user_id=auth_user_id,
@@ -389,17 +391,18 @@ class InvitoPortaleService:
 
         logger.info(
             "security.invito_portale_inviato user_id=%s ruolo=%s da=%s "
-            "created_user=%s is_cross=%s identita_id=%s",
+            "created_user=%s is_cross=%s identita_id=%s inviato=%s",
             auth_user_id,
             ruolo_applicativo,
             invitato_da_user_id,
             was_created,
             emissione.is_cross,
             identita_id,
+            inviato,
         )
 
         return {
-            "inviato": True,
+            "inviato": inviato,
             "email": maschera_email(email),
             "auth_user_id": auth_user_id,
             "identita_id": identita_id,
