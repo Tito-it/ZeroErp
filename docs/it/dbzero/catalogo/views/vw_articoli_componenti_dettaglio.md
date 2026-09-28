@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Vista dettaglio componenti articolo: codici/descrizioni di prodotto e componente + capability di riga (puo_chiudersi, data_min_chiusura, data_default_chiusura, motivo_non_chiudibile) per il dialog "Chiudi riga" del FE.
+> Righe della distinta base (componenti di un articolo) con codici e descrizioni di prodotto e componente, piu' la capability di riga (puo_chiudersi, data_min_chiusura, data_default_chiusura, motivo_non_chiudibile) per «Chiudi riga». Dal 2026-09-28 (brief-db-liste-righe-documento, D-8.5) e' la SORGENTE UNICA delle righe: per la lista configurabile catalogo.articolo_componenti e per il repository, che prima ne rifaceva la proiezione e la capability in Python. Nello stesso giro aggiunte determina_qta_padre ed esposto_in_fattura, che solo la copia Python aveva. Tutte le righe, anche le non attive e le chiuse: filtro e ordine li mette chi legge.
 
 ```sql
 CREATE OR REPLACE VIEW catalogo.vw_articoli_componenti_dettaglio AS
@@ -41,7 +41,9 @@ SELECT ac.id,
         CASE
             WHEN (ac.valido_al IS NULL) THEN NULL::text
             ELSE 'RIGA_GIA_CHIUSA'::text
-        END AS motivo_non_chiudibile
+        END AS motivo_non_chiudibile,
+    ac.determina_qta_padre,
+    ac.esposto_in_fattura
    FROM ((catalogo.articoli_componenti ac
      LEFT JOIN catalogo.articoli ap ON ((ap.id = ac.prodotto_id)))
      LEFT JOIN catalogo.articoli acmp ON ((acmp.id = ac.componente_id)));

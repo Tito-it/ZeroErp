@@ -2360,6 +2360,10 @@
         "tooltip_lista": "PDF documents",
         "tooltip_lista_disabilitato": "Available after contract activation",
         "dialog_title": "PDF documents — Contract {numero}"
+      },
+      "col_prezzo_forzato": "Forced price",
+      "escludi_blocco": {
+        "figlio_di_bundle": "It is a component of a bundle in the price list: exclude the whole bundle, not the single component."
       }
     },
     "dash_comune": {
@@ -3666,8 +3670,8 @@
       "riga_articolo": "Item",
       "riga_cerca_articolo": "Search item...",
       "riga_descrizione": "Description",
-      "riga_quantita": "Qty",
-      "riga_uom": "UoM",
+      "riga_quantita": "Quantity",
+      "riga_uom": "Unit of measure",
       "riga_prezzo": "Price",
       "limiti_prezzo_hint": "Allowed price variation for your role: discount up to {sconto}%, markup up to {maggiorazione}%.",
       "limiti_prezzo_hint_con_cliente": "Allowed price variation for your role on this customer: discount up to {sconto}%, markup up to {maggiorazione}%.",

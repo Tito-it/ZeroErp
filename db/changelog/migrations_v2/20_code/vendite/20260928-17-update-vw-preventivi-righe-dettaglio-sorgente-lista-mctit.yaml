@@ -1,0 +1,159 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.vw_preventivi_righe_dettaglio DIVENTA LA SORGENTE delle righe del
+# preventivo — per la lista configurabile `vendite.preventivo_righe` e per il
+# repository, che oggi rifa' la stessa proiezione in Python.
+#
+# -- IL DIFETTO -------------------------------------------------------
+#   `preventivi_repository.list_righe` dice di leggere «via vista» ma legge la
+#   tabella, e aggiunge quattro colonne che la vista non ha:
+#   data_consegna_richiesta_cliente, stato_approvazione_prezzo,
+#   pratica_approvazione_prezzo_id, is_composito_caso_a. Due sorgenti della
+#   stessa riga, e la vista era quella rimasta indietro: la leggeva solo un
+#   pgTAP RLS. Decisione di Tid, 2026-09-28: D-8.6 del brief (la vista e' la
+#   sorgente, esteso a ordini e DDT: 20260928-18 e -19).
+#
+# -- COSA CAMBIA ------------------------------------------------------
+#   1. le quattro colonne IN CODA (CREATE OR REPLACE VIEW non ammette altro:
+#      le colonne esistenti restano con nome, tipo e posizione);
+#   2. importo_riga e imponibile_riga_full dalla sede unica
+#      script.fn_imponibile_riga (20260928-16, D-8.8): stesso valore;
+#   3. ⛔ via l'ORDER BY dal corpo. Una vista non ordina: l'ordine lo chiede chi
+#      legge (la whitelist del BE), e un ORDER BY qui si paga su ogni lettura,
+#      anche su quelle che poi riordinano;
+#   4. `security_invoker = true` RIPETUTO: e' una reloption, non sta nel corpo,
+#      e un CREATE OR REPLACE che non la ripete la azzera (preventivi_righe e'
+#      in RLS).
+#
+# ⚠️ NESSUN FILTRO su `attivo`: la vista espone tutte le righe, come le
+#   gemelle; `list_righe` filtra, `get_riga` (lettura per id) no.
+#
+# Base: corpo vivo da docs/it/dbzero/vendite/views/vw_preventivi_righe_dettaglio.md
+#   (identico a pg_get_viewdef sullo scratch il 2026-09-28); colonne nuove
+#   dalla query di preventivi_repository.list_righe.
+# Cantiere: brief-db-liste-righe-documento §8.6 (D-8.6), §8.10 passo 2
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260928-17-update-vw-preventivi-righe-dettaglio-sorgente-lista-mctit.yaml
+
+  - changeSet:
+      id: 20260928-17-update-vw-preventivi-righe-dettaglio-sorgente-lista
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_preventivi_righe_dettaglio diventa la sorgente delle righe del preventivo:
+        + data_consegna_richiesta_cliente, stato_approvazione_prezzo,
+        pratica_approvazione_prezzo_id, is_composito_caso_a in coda; importo dalla sede
+        unica script.fn_imponibile_riga; via l'ORDER BY dal corpo; security_invoker ripetuto.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_imponibile_riga'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_righe_dettaglio
+              WITH (security_invoker = true) AS
+              SELECT pr.id,
+                  pr.preventivo_id,
+                  pr.ordine,
+                  pr.attivo,
+                  pr.articolo_id,
+                  a.codice AS articolo_codice,
+                  a.descrizione AS articolo_descrizione,
+                  pr.descrizione,
+                  pr.quantita,
+                  pr.qta_operativa,
+                  pr.factor_to_base,
+                  pr.uom_operativa_id,
+                  um.codice AS uom_codice,
+                  pr.prezzo_unitario,
+                  pr.sconto_percentuale,
+                  pr.iva_id,
+                  iva.codice AS iva_codice,
+                  iva.descrizione AS iva_descrizione,
+                  iva.aliquota_iva AS iva_aliquota,
+                  -- Arrotondato per mostrare; pieno per chi aggrega.
+                  round(script.fn_imponibile_riga(pr.quantita, pr.prezzo_unitario,
+                                                  pr.sconto_percentuale), 2) AS importo_riga,
+                  script.fn_imponibile_riga(pr.quantita, pr.prezzo_unitario,
+                                            pr.sconto_percentuale) AS imponibile_riga_full,
+                  pr.meta,
+                  pr.data_insert,
+                  pr.data_update,
+                  -- ── in coda dal 2026-09-28 (D-8.6) ────────────────────────
+                  -- Data di consegna RICHIESTA dal cliente: sul preventivo c'e'
+                  -- solo la richiesta, la conferma nasce sull'ordine.
+                  pr.data_consegna_richiesta_cliente,
+                  -- Il tag «In approvazione» sulle righe col prezzo in attesa.
+                  pr.stato_approvazione_prezzo,
+                  pr.pratica_approvazione_prezzo_id,
+                  -- Vero se la riga ha almeno un componente attivo: il FE mostra
+                  -- la freccia di espansione solo dove serve, senza N letture.
+                  (EXISTS (SELECT 1
+                             FROM vendite.preventivi_righe_componenti prc
+                            WHERE prc.riga_preventivo_id = pr.id
+                              AND prc.attivo IS TRUE)) AS is_composito_caso_a
+                FROM vendite.preventivi_righe pr
+                LEFT JOIN catalogo.articoli a ON a.id = pr.articolo_id
+                LEFT JOIN catalogo.unita_misura um ON um.id = pr.uom_operativa_id
+                LEFT JOIN config.iva iva ON iva.id = pr.iva_id;
+
+              COMMENT ON VIEW vendite.vw_preventivi_righe_dettaglio IS
+                  'Righe del preventivo con articolo, UoM, IVA (codice + descrizione + aliquota): '
+                  'la SORGENTE delle righe per la lista configurabile vendite.preventivo_righe e per '
+                  'il repository (brief-db-liste-righe-documento, D-8.6, 2026-09-28). Tutte le righe, '
+                  'anche le non attive: il filtro lo mette chi legge. Nessun ORDER BY: l''ordine lo '
+                  'chiede chi legge. importo_riga = round(…, 2) per mostrare, imponibile_riga_full a '
+                  'precisione piena per chi aggrega, entrambi da script.fn_imponibile_riga. NESSUN '
+                  'campo IVA per riga: l''IVA aggregata e'' in vendite.preventivi_riepiloghi_iva. '
+                  'Dal 2026-09-28 anche data_consegna_richiesta_cliente, stato_approvazione_prezzo, '
+                  'pratica_approvazione_prezzo_id, is_composito_caso_a (prima solo nel repository). '
+                  'security_invoker: preventivi_righe e'' in RLS.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ CREATE OR REPLACE non toglie colonne: si torna indietro solo
+              --    con DROP + CREATE della forma 20260502-13 (+ security_invoker
+              --    di 20260909-29), dopo aver ritirato i lettori delle colonne nuove.
+              DROP VIEW IF EXISTS vendite.vw_preventivi_righe_dettaglio;
+              CREATE VIEW vendite.vw_preventivi_righe_dettaglio
+              WITH (security_invoker = true) AS
+              SELECT pr.id, pr.preventivo_id, pr.ordine, pr.attivo,
+                  pr.articolo_id, a.codice AS articolo_codice,
+                  a.descrizione AS articolo_descrizione,
+                  pr.descrizione, pr.quantita, pr.qta_operativa,
+                  pr.factor_to_base, pr.uom_operativa_id,
+                  um.codice AS uom_codice, pr.prezzo_unitario,
+                  pr.sconto_percentuale, pr.iva_id,
+                  iva.codice AS iva_codice, iva.descrizione AS iva_descrizione,
+                  iva.aliquota_iva AS iva_aliquota,
+                  round(pr.quantita * pr.prezzo_unitario
+                    * (1 - COALESCE(pr.sconto_percentuale, 0) / 100), 2) AS importo_riga,
+                  pr.quantita * pr.prezzo_unitario
+                    * (1 - COALESCE(pr.sconto_percentuale, 0) / 100) AS imponibile_riga_full,
+                  pr.meta, pr.data_insert, pr.data_update
+                FROM vendite.preventivi_righe pr
+                LEFT JOIN catalogo.articoli a ON a.id = pr.articolo_id
+                LEFT JOIN catalogo.unita_misura um ON um.id = pr.uom_operativa_id
+                LEFT JOIN config.iva iva ON iva.id = pr.iva_id
+               ORDER BY pr.preventivo_id, pr.ordine, pr.id;

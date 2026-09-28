@@ -95,3 +95,10 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert,multi
 94,config.comuni,Comuni,config,vw_comuni_lista,t,2026-09-27 00:00:00,mctit,f,f,3
 95,config.codici_postali,Codici postali (CAP),config,vw_codici_postali_lista,t,2026-09-27 00:00:00,mctit,f,f,3
 96,config.toponomastica,Toponomastica (tipi di strada),config,toponomastica,t,2026-09-27 00:00:00,mctit,f,f,3
+97,vendite.preventivo_righe,Righe di un preventivo,vendite,vw_preventivi_righe_dettaglio,t,2026-09-28 00:00:00,mctit,f,t,3
+98,vendite.ordine_righe,Righe di un ordine,vendite,vw_ordini_righe_dettaglio,t,2026-09-28 00:00:00,mctit,f,t,3
+99,vendite.ddt_righe,Righe di un DDT,vendite,vw_ddt_righe_dettaglio,t,2026-09-28 00:00:00,mctit,f,t,3
+100,vendite.reso_righe,Righe di un reso,vendite,vw_resi_righe_dettaglio,t,2026-09-28 00:00:00,mctit,f,t,3
+101,catalogo.articolo_componenti,Componenti della distinta base di un articolo,catalogo,vw_articoli_componenti_dettaglio,t,2026-09-28 00:00:00,mctit,f,t,3
+102,vendite.fattura_righe,Righe di una fattura,vendite,vw_fattura_righe_lista,t,2026-09-28 00:00:00,mctit,f,t,3
+103,vendite.contratto_righe,Righe di un contratto,vendite,NULL,t,2026-09-28 00:00:00,mctit,f,t,3

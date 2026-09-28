@@ -145,3 +145,10 @@ Uniforme tra Parte 1b (sorgente listino) e Parte 2b (sorgente contratto_righe_co
 - **Duplicazioni**: mutualmente esclusivi per costruzione. 1a usa `is_composito=FALSE` da listino, 1b usa padri compositi da `listini_righe_componenti`, 2a/2b filtrano su `tipo_eccezione=AGGIUNTA` con rispettivo `is_composito`. Non ci sono doppioni tra le parti.
 - **AGGIUNTA su articolo già in listino**: la guard `trgfn_contratti_righe_guard_aggiunta_fuori_listino` lo previene in fase di INSERT. La fn non duplica questo check.
 - **Contratto inesistente**: se `p_contratto_id` non corrisponde a nessun contratto, la fn ritorna zero righe (non raise).
+
+---
+
+<!-- rev-2026-09-28-liste-righe -->
+### 🔄 rev 2026-09-28 — brief-db-liste-righe-documento
+
+**Diventa la sorgente della lista `vendite.contratto_righe`** per le due forme del contratto (`20260928-32`, D-8.4). Tre colonne in coda: `riga_key` (`L:<articolo>:<uom>` per le righe del listino, `A:<id>` per le aggiunte: la chiave che il frontend inventava), `azioni` (i verbi che l'origine ammette: dal listino sovrascrivi prezzo / escludi; prezzo forzato modifica / ripristina il listino; esclusione modifica / ripristina l'articolo; aggiunta modifica / rimuovi) ed `escludi_blocco_codice` (il motivo per cui «Escludi» è spento, da [script.fn_check_esclusione_articolo_contratto](/dbzero/script/funzioni/fn_check_esclusione_articolo_contratto), lo stesso predicato del guard). Il blocco «fuori bozza» resta di documento. La versione del listino in vigore per il contratto in bozza non è più scelta qui: la dice [vendite.fn_listino_versione_in_vigore](/dbzero/vendite/funzioni/fn_listino_versione_in_vigore) (`20260928-39`). Per ogni data la versione in vigore è **al più una**, per costruzione (nessuna sovrapposizione fra versioni ATTIVE e CHIUSE, date di una CHIUSA bloccate), quindi «la prima» e «tutte le valide» sono la stessa cosa. Stesso esito, provato sui dati di dev.

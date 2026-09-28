@@ -12,6 +12,7 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_freeze_listino_versione()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
+
 -- Scopo: al momento dell'attivazione (DRAFT→ATTIVO), fissa la versione
 --   listino e verifica la coerenza del negoziato puro.
 -- A) listino_id IS NULL: verifica almeno una AGGIUNTA con prezzo.
@@ -64,15 +65,8 @@ BEGIN
     -- Con listino: fissa versione operativa snapshot se non già valorizzata.
     -- stato IN ('ATTIVA','CHIUSA'): BOZZA non è operativa, mai snapshot.
     IF NEW.listino_versione_id IS NULL THEN
-        SELECT lv.id
-          INTO v_versione_id
-          FROM vendite.listini_versioni lv
-         WHERE lv.listino_id = NEW.listino_id
-           AND lv.attivo     = TRUE
-           AND lv.stato      IN ('ATTIVA', 'CHIUSA')
-           AND lv.validita  @> CURRENT_DATE
-         ORDER BY (lv.stato = 'ATTIVA') DESC
-         LIMIT 1;
+        -- rev 2026-09-28: la sede unica (brief-db-liste-righe-documento §8.15).
+v_versione_id := vendite.fn_listino_versione_in_vigore(NEW.listino_id, CURRENT_DATE);
 
         -- Se trovata: fissa snapshot. Se non trovata (§4.4): attivazione
         -- consentita con listino_versione_id NULL (UI mostrerà warning).

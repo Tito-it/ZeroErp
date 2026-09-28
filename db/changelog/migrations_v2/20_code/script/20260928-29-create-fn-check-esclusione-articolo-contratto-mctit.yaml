@@ -1,0 +1,192 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NASCE script.fn_check_esclusione_articolo_contratto: i motivi per cui un
+# articolo NON si puo' escludere da un contratto.
+#
+# -- IL DIFETTO -------------------------------------------------------
+#   «Escludi» su un componente di un bundle del listino e' rifiutato dal guard
+#   vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle
+#   (E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA): il bundle si vende come
+#   unita', si esclude il padre, mai il singolo figlio. Ma il drawer non lo
+#   sapeva: il pulsante era acceso, l'operatore confermava, e il rifiuto
+#   arrivava dopo. E' la «terza via» della §12 delle linee guida SQL.
+#
+# -- LA FORMA (linee-guida-sql §12.5) ---------------------------------
+#   · la check NOMINA il motivo, non solleva: ritorna [] se l'esclusione e'
+#     ammessa, altrimenti un array ordinato di
+#     {codice, reason, reason_key, dettaglio, valori};
+#   · la leggono DUE consumatori: vendite.fn_contratto_righe_preview (colonna
+#     `escludi_blocco_codice`, il pulsante spento con il motivo, 20260928-32) e
+#     il guard (20260928-31), che solleva il PRIMO motivo con
+#     script.fn_raise_primo_motivo_se_presente. Il predicato vive qui e basta:
+#     tooltip ed errore non possono divergere;
+#   · il `codice` e' quello gia' a catalogo: nessun codice nuovo.
+#
+# -- ⭐ PRENDE I VALORI, NON L'ID DI UNA RIGA -------------------------------
+#   Una riga «dal listino» non esiste in contratti_righe finche' non la si
+#   esclude: la domanda e' su (contratto, articolo), e cosi' la check serve sia
+#   alla lista (riga non ancora scritta) sia al guard (riga in scrittura).
+#
+# -- IL PREDICATO, spostato dal guard e non riscritto -----------------------
+#   Tre rami, identici a quelli di 20260516-05 (corpo vivo, doc auto-gen):
+#     1. contratto senza listino -> nessun bundle, nessun motivo;
+#     2. contratto in bozza (listino_versione_id NULL) -> le versioni ATTIVA o
+#        CHIUSA valide oggi (EXISTS su tutte, BOZZA esclusa: «Bug A»);
+#     3. contratto attivo -> la versione fissata all'attivazione.
+#   ⚠️ La «versione operativa» e' scritta anche in altre cinque funzioni, e non
+#   sempre con la stessa semantica (brief §8.13.2 c): qui resta quella del
+#   guard, perche' la check deve dire esattamente cio' che il guard rifiuta.
+#
+# ⚠️ SECURITY INVOKER, come il guard che la chiama: legge vendite.contratti con
+#   i diritti di chi agisce. Un contratto fuori perimetro non ha motivi da
+#   nominare (nessun listino letto): la madre rifiuterebbe comunque, perche'
+#   l'INSERT passa dalla policy.
+#
+# Cantiere: brief-db-liste-righe-documento §8.13 (D-8.4), §8.10 passo 9
+# Verifica: db/pgtap/vendite/test-contratto-righe-lista-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260928-29-create-fn-check-esclusione-articolo-contratto-mctit.yaml
+
+  - changeSet:
+      id: 20260928-29-create-fn-check-esclusione-articolo-contratto
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Nasce script.fn_check_esclusione_articolo_contratto: [] se l'articolo si puo'
+        escludere dal contratto, altrimenti il motivo (componente di un bundle del listino).
+        Predicato spostato dal guard, che da 20260928-31 la chiama; la legge anche
+        fn_contratto_righe_preview per spegnere «Escludi» con il motivo.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_esclusione_articolo_contratto(
+                  p_contratto_id vendite.contratti.id%TYPE,
+                  p_articolo_id  catalogo.articoli.id%TYPE
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: elencare i motivi per cui un articolo NON si puo' escludere
+              --   da un contratto. Funzione PURA (fn_check_*): nessun raise di
+              --   dominio, nessuna scrittura.
+              -- Consumatori: il guard
+              --   vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle
+              --   (solleva il PRIMO motivo) e vendite.fn_contratto_righe_preview
+              --   (spegne «Escludi» sulla riga e dice perche').
+              -- Ritorna: [] se ammesso; altrimenti array ORDINATO di
+              --   {codice, reason, reason_key, dettaglio, valori}.
+              DECLARE
+                  v_motivi              jsonb := '[]'::jsonb;
+                  v_listino_id          vendite.contratti.listino_id%TYPE;
+                  v_listino_versione_id vendite.contratti.listino_versione_id%TYPE;
+                  v_e_figlio_bundle     boolean := false;
+              BEGIN
+                  SELECT c.listino_id, c.listino_versione_id
+                    INTO v_listino_id, v_listino_versione_id
+                    FROM vendite.contratti c
+                   WHERE c.id = p_contratto_id;
+
+                  -- Ramo 1: nessun listino -> nessun bundle da cui escludere.
+                  -- ⚠️ Vale anche per un contratto che non si vede o non esiste: la
+                  --    check non ha niente da nominare, e chi scrive passa comunque
+                  --    dalla policy e dalle FK.
+                  IF v_listino_id IS NULL THEN
+                      RETURN v_motivi;
+                  END IF;
+
+                  IF v_listino_versione_id IS NULL THEN
+                      -- Ramo 2: bozza -> le versioni operative OGGI (ATTIVA o
+                      -- CHIUSA; BOZZA esclusa, «Bug A»). EXISTS su tutte, come il
+                      -- guard ha sempre fatto.
+                      SELECT EXISTS (
+                          SELECT 1
+                            FROM vendite.listini_versioni lv
+                            JOIN vendite.listini_righe_componenti lrc
+                              ON lrc.listino_versione_id = lv.id
+                           WHERE lv.listino_id          = v_listino_id
+                             AND lv.attivo              = TRUE
+                             AND lv.stato               IN ('ATTIVA', 'CHIUSA')
+                             AND lv.validita           @> CURRENT_DATE
+                             AND lrc.articolo_figlio_id = p_articolo_id
+                             AND lrc.attivo             = TRUE
+                             AND lrc.validita          @> CURRENT_DATE
+                      ) INTO v_e_figlio_bundle;
+                  ELSE
+                      -- Ramo 3: contratto attivo -> la versione fissata.
+                      SELECT EXISTS (
+                          SELECT 1
+                            FROM vendite.listini_righe_componenti lrc
+                           WHERE lrc.listino_versione_id = v_listino_versione_id
+                             AND lrc.articolo_figlio_id  = p_articolo_id
+                             AND lrc.attivo              = TRUE
+                             AND lrc.validita           @> CURRENT_DATE
+                      ) INTO v_e_figlio_bundle;
+                  END IF;
+
+                  -- ---- MOTIVO 1 — e' un componente di un bundle ------------------
+                  -- Il bundle si vende come unita': si esclude il padre, mai il
+                  -- singolo figlio. `valori` e' il VARIADIC che il guard passava
+                  -- gia' (l'articolo): la frase non si ricompone in due posti.
+                  IF v_e_figlio_bundle THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA',
+                          'reason',     'FIGLIO_DI_BUNDLE',
+                          'reason_key', 'vendite.contratti.escludi_blocco.figlio_di_bundle',
+                          'dettaglio',  jsonb_build_object(
+                                            'contratto_id',        p_contratto_id,
+                                            'articolo_id',         p_articolo_id,
+                                            'listino_id',          v_listino_id,
+                                            'listino_versione_id', v_listino_versione_id),
+                          'valori',     jsonb_build_array(p_articolo_id::text));
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_esclusione_articolo_contratto(
+                  vendite.contratti.id%TYPE, catalogo.articoli.id%TYPE) IS
+                  'I motivi per cui un articolo NON si puo'' escludere da un contratto: [] se '
+                  'ammesso, altrimenti un array ordinato di {codice, reason, reason_key, dettaglio, '
+                  'valori} (linee-guida-sql §12.5). Unico motivo oggi: FIGLIO_DI_BUNDLE — '
+                  'l''articolo e'' un componente di un bundle del listino del contratto, e il bundle '
+                  'si vende come unita'' (si esclude il padre, mai il figlio); codice '
+                  'E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA, reason_key '
+                  'vendite.contratti.escludi_blocco.figlio_di_bundle. Il predicato era nel guard '
+                  'vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle, che da 20260928-31 '
+                  'chiama questa funzione e solleva il primo motivo; la legge anche '
+                  'vendite.fn_contratto_righe_preview per spegnere «Escludi» sulla riga con il motivo '
+                  '(brief-db-liste-righe-documento, 2026-09-28). Prende i VALORI (contratto, '
+                  'articolo) e non l''id di una riga: una riga dal listino non esiste in '
+                  'contratti_righe finche'' non la si esclude. Versione del listino: in bozza tutte '
+                  'le ATTIVA/CHIUSA valide oggi, da attivo quella fissata — la semantica del guard. '
+                  'SECURITY INVOKER: legge il contratto coi diritti di chi agisce.';
+
+              -- ⚠️ EXECUTE esplicito all'app, come le altre fn_check_*: la chiama
+              --    il ruolo applicativo attraverso l'anteprima e il guard.
+              GRANT EXECUTE ON FUNCTION script.fn_check_esclusione_articolo_contratto(
+                  vendite.contratti.id%TYPE, catalogo.articoli.id%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Solo dopo il rollback di 20260928-31 e -32, che la chiamano.
+              DROP FUNCTION IF EXISTS script.fn_check_esclusione_articolo_contratto(
+                  vendite.contratti.id%TYPE, catalogo.articoli.id%TYPE);

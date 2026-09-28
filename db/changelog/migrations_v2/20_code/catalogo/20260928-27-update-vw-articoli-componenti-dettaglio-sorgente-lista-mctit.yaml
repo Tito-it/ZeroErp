@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.vw_articoli_componenti_dettaglio DIVENTA LA SORGENTE delle righe
+# della distinta base — per la lista configurabile `catalogo.articolo_componenti`
+# e per il repository.
+#
+# -- IL DIFETTO -------------------------------------------------------
+#   La vista e `catalogo_bom_repository.COMPONENTE_DETAIL_COLUMNS` erano la
+#   stessa proiezione scritta due volte, capability di chiusura compresa, con un
+#   commento nel repository che diceva «aggiornare ENTRAMBI». Non e' successo:
+#   la vista non ha `esposto_in_fattura` (colonna della lista, priorita' 40) ne'
+#   `determina_qta_padre`. Il repository non la leggeva, quindi nessuno se n'e'
+#   accorto. Decisione di Tid, 2026-09-28: D-8.5 del brief — una sede sola, la
+#   vista; il BE ritira la sua proiezione nello stesso giro.
+#
+# -- COSA CAMBIA ------------------------------------------------------
+#   Le due colonne IN CODA (CREATE OR REPLACE VIEW non ammette altro). Il resto
+#   del corpo e' quello vivo, identico riga per riga. Aggiornato il COMMENT.
+#   ⚠️ Nessun `security_invoker`, com'e' oggi: `catalogo.articoli_componenti` e
+#   `catalogo.articoli` non sono in RLS (verificato sullo scratch il
+#   2026-09-28). Se un giorno lo diventassero, il presidio
+#   `rls/test-rls-viste-security-invoker` la segnalerebbe per criterio.
+#
+# Base: corpo vivo da docs/it/dbzero/catalogo/views/vw_articoli_componenti_dettaglio.md
+#   (identico a pg_get_viewdef sullo scratch il 2026-09-28).
+# Cantiere: brief-db-liste-righe-documento §8.5 (D-8.5), §8.10 passo 4
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20260928-27-update-vw-articoli-componenti-dettaglio-sorgente-lista-mctit.yaml
+
+  - changeSet:
+      id: 20260928-27-update-vw-articoli-componenti-dettaglio-sorgente-lista
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_articoli_componenti_dettaglio diventa la sorgente delle righe della distinta base:
+        + determina_qta_padre, esposto_in_fattura in coda (le aveva solo la proiezione del
+        repository). Il resto del corpo e' quello vivo.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >-
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'catalogo' AND table_name = 'articoli_componenti'
+                 AND column_name IN ('determina_qta_padre', 'esposto_in_fattura')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW catalogo.vw_articoli_componenti_dettaglio AS
+              SELECT ac.id,
+                  ac.prodotto_id,
+                  ac.componente_id,
+                  ac.coeff_qta,
+                  ac.partecipa_qta,
+                  ac.obbligatorio,
+                  ac.valido_dal,
+                  ac.valido_al,
+                  ac.meta,
+                  ac.user_insert,
+                  ac.user_update,
+                  ac.data_insert,
+                  ac.data_update,
+                  ac.tx_id,
+                  ac.storicizza,
+                  ac.attivo,
+                  ac.note_target_tipo,
+                  ac.note_id,
+                  ap.codice AS prodotto_codice,
+                  ap.descrizione AS prodotto_descrizione,
+                  acmp.codice AS componente_codice,
+                  acmp.descrizione AS componente_descrizione,
+                  -- Capability di chiusura: una riga si chiude finche' non ha
+                  -- una data di fine. Sede UNICA dal 2026-09-28 (il repository
+                  -- ne aveva una copia).
+                  (ac.valido_al IS NULL) AS puo_chiudersi,
+                  CASE
+                      WHEN (ac.valido_al IS NULL) THEN ac.valido_dal
+                      ELSE NULL::date
+                  END AS data_min_chiusura,
+                  CASE
+                      WHEN (ac.valido_al IS NULL) THEN GREATEST(ac.valido_dal, CURRENT_DATE)
+                      ELSE NULL::date
+                  END AS data_default_chiusura,
+                  CASE
+                      WHEN (ac.valido_al IS NULL) THEN NULL::text
+                      ELSE 'RIGA_GIA_CHIUSA'::text
+                  END AS motivo_non_chiudibile,
+                  -- ── in coda dal 2026-09-28 (D-8.5) ────────────────────────
+                  ac.determina_qta_padre,
+                  ac.esposto_in_fattura
+                FROM ((catalogo.articoli_componenti ac
+                  LEFT JOIN catalogo.articoli ap ON ((ap.id = ac.prodotto_id)))
+                  LEFT JOIN catalogo.articoli acmp ON ((acmp.id = ac.componente_id)));
+
+              COMMENT ON VIEW catalogo.vw_articoli_componenti_dettaglio IS
+                  'Righe della distinta base (componenti di un articolo) con codici e descrizioni di '
+                  'prodotto e componente, piu'' la capability di riga (puo_chiudersi, '
+                  'data_min_chiusura, data_default_chiusura, motivo_non_chiudibile) per «Chiudi '
+                  'riga». Dal 2026-09-28 (brief-db-liste-righe-documento, D-8.5) e'' la SORGENTE '
+                  'UNICA delle righe: per la lista configurabile catalogo.articolo_componenti e per '
+                  'il repository, che prima ne rifaceva la proiezione e la capability in Python. '
+                  'Nello stesso giro aggiunte determina_qta_padre ed esposto_in_fattura, che solo la '
+                  'copia Python aveva. Tutte le righe, anche le non attive e le chiuse: filtro e '
+                  'ordine li mette chi legge.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ CREATE OR REPLACE non toglie colonne: si torna alla forma
+              --    20260428-03 solo con DROP + CREATE, ritirati prima i lettori.
+              DROP VIEW IF EXISTS catalogo.vw_articoli_componenti_dettaglio;
+              CREATE VIEW catalogo.vw_articoli_componenti_dettaglio AS
+              SELECT ac.id, ac.prodotto_id, ac.componente_id, ac.coeff_qta,
+                  ac.partecipa_qta, ac.obbligatorio, ac.valido_dal, ac.valido_al,
+                  ac.meta, ac.user_insert, ac.user_update, ac.data_insert,
+                  ac.data_update, ac.tx_id, ac.storicizza, ac.attivo,
+                  ac.note_target_tipo, ac.note_id,
+                  ap.codice AS prodotto_codice, ap.descrizione AS prodotto_descrizione,
+                  acmp.codice AS componente_codice,
+                  acmp.descrizione AS componente_descrizione,
+                  (ac.valido_al IS NULL) AS puo_chiudersi,
+                  CASE WHEN ac.valido_al IS NULL THEN ac.valido_dal END AS data_min_chiusura,
+                  CASE WHEN ac.valido_al IS NULL
+                       THEN GREATEST(ac.valido_dal, CURRENT_DATE) END AS data_default_chiusura,
+                  CASE WHEN ac.valido_al IS NULL THEN NULL::text
+                       ELSE 'RIGA_GIA_CHIUSA'::text END AS motivo_non_chiudibile
+                FROM catalogo.articoli_componenti ac
+                LEFT JOIN catalogo.articoli ap ON ap.id = ac.prodotto_id
+                LEFT JOIN catalogo.articoli acmp ON acmp.id = ac.componente_id;

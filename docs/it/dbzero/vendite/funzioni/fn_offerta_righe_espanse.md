@@ -13,6 +13,7 @@ CREATE OR REPLACE FUNCTION vendite.fn_offerta_righe_espanse(p_offerta_id bigint)
  LANGUAGE plpgsql
  STABLE
 AS $function$
+
 -- Scopo: righe effettive ordine-ready di un'offerta (listino + variazione
 --   globale + eccezioni). Parte 1 dal core fn_espandi_listino_versione +
 --   overlay OVERRIDE (ESCLUSIONE rimossa); Parte 2 AGGIUNTA standalone+bundle.
@@ -39,15 +40,8 @@ BEGIN
     -- Versione operativa se snapshot non fissato (offerta BOZZA).
     -- listino_id e' NOT NULL: niente ramo "senza listino".
     IF v_listino_versione_id IS NULL THEN
-        SELECT lv.id
-          INTO v_listino_versione_id
-          FROM vendite.listini_versioni lv
-         WHERE lv.listino_id = v_listino_id
-           AND lv.attivo     = TRUE
-           AND lv.stato      IN ('ATTIVA', 'CHIUSA')
-           AND lv.validita  @> CURRENT_DATE
-         ORDER BY (lv.stato = 'ATTIVA') DESC
-         LIMIT 1;
+        -- rev 2026-09-28: la sede unica (brief-db-liste-righe-documento §8.15).
+v_listino_versione_id := vendite.fn_listino_versione_in_vigore(v_listino_id, CURRENT_DATE);
     END IF;
 
     -- PARTE 1: righe dal listino (core) + overlay OVERRIDE; ESCLUSIONE rimossa.

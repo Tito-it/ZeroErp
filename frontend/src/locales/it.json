@@ -2360,6 +2360,10 @@
         "tooltip_lista": "Documenti PDF",
         "tooltip_lista_disabilitato": "Disponibile dopo l'attivazione del contratto",
         "dialog_title": "Documenti PDF — Contratto {numero}"
+      },
+      "col_prezzo_forzato": "Prezzo forzato",
+      "escludi_blocco": {
+        "figlio_di_bundle": "È un componente di un bundle del listino: si esclude il bundle intero, non il singolo componente."
       }
     },
     "dash_comune": {
@@ -3666,8 +3670,8 @@
       "riga_articolo": "Articolo",
       "riga_cerca_articolo": "Cerca articolo...",
       "riga_descrizione": "Descrizione",
-      "riga_quantita": "Qta'",
-      "riga_uom": "UdM",
+      "riga_quantita": "Quantità",
+      "riga_uom": "Unità di misura",
       "riga_prezzo": "Prezzo",
       "limiti_prezzo_hint": "Variazione prezzo ammessa per il tuo ruolo: sconto fino al {sconto}%, maggiorazione fino al {maggiorazione}%.",
       "limiti_prezzo_hint_con_cliente": "Variazione prezzo ammessa per il tuo ruolo su questo cliente: sconto fino al {sconto}%, maggiorazione fino al {maggiorazione}%.",

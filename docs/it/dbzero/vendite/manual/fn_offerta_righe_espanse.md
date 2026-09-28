@@ -61,3 +61,10 @@ LANGUAGE plpgsql STABLE
 - IVA risolta dall'**articolo** (`catalogo.articoli.iva_id`): il listino non porta l'aliquota.
 - `componenti` jsonb (bundle AGGIUNTA / da-listino) include `articolo_componente_id` per la copia in `ordini_righe_componenti`.
 - `STABLE`; offerta inesistente → zero righe (no raise).
+
+---
+
+<!-- rev-2026-09-28-liste-righe -->
+### 🔄 rev 2026-09-28 — brief-db-liste-righe-documento
+
+La versione del listino in vigore per l'offerta senza versione fissata non è più scelta qui: la dice [vendite.fn_listino_versione_in_vigore](/dbzero/vendite/funzioni/fn_listino_versione_in_vigore) (`20260928-40`). Per ogni data la versione in vigore è **al più una**, per costruzione (nessuna sovrapposizione fra versioni ATTIVE e CHIUSE, date di una CHIUSA bloccate), quindi «la prima» e «tutte le valide» sono la stessa cosa. Stesso esito, provato sui dati di dev.

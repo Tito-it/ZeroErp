@@ -146,3 +146,10 @@ padre invece di una fusione silenziosa — degradazione sicura.
 tracciato fiscale, portale cliente — legge questa vista e non `fatture_righe`:
 leggere le righe direttamente significa ignorare l'esposizione dei kit e
 produrre un documento diverso da quello che gli altri canali mostrano.
+
+---
+
+<!-- rev-2026-09-28-liste-righe -->
+### 🔄 rev 2026-09-28 — brief-db-liste-righe-documento
+
+Il CTE `kit` è `NOT MATERIALIZED` (`20260928-43`): letto da due rami, era materializzato e si calcolava su **tutte** le fatture a ogni lettura, senza che il filtro per fattura ci entrasse. Ora il filtro scende fino alle righe (dev, fattura con kit: da 4,8 a 1,75 ms, fatto datato). Righe identiche. ⚠️ Nel ramo dei componenti l'aggregato si rivaluta per componente, sulle sole righe della fattura. La lista delle righe per il drawer è [vw_fattura_righe_lista](/dbzero/vendite/views/vw_fattura_righe_lista), che legge questa vista senza ricalcolarla. ⚠️ Nota di lettura: «`riga_nr` NON cambia» nel COMMENT vuol dire che ogni riga conserva il suo numero di linea; le due parti di una riga spezzata dal plafond hanno numeri diversi (indice unico) e condividono solo `ordinamento`.

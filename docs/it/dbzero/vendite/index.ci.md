@@ -190,6 +190,7 @@
 - [fn_list_lotto_task_runs](manual/fn_list_lotto_task_runs.md) — Elenca i task run di un lotto, con filtri opzionali per step e task.
 - [fn_list_ordini_da_pushare](manual/fn_list_ordini_da_pushare.md) — `vendite.fn_list_ordini_da_pushare(...)` seleziona le righe ordine pronte per il push verso `commesse_attivita`, restituendo un payload completo per l’handler di acquisizione.
 - [fn_list_preventivi_da_pushare](manual/fn_list_preventivi_da_pushare.md) — `vendite.fn_list_preventivi_da_pushare(...)` seleziona le righe preventivo pronte per il push verso `commesse_attivita`, restituendo un payload completo per l’handler di acquisizione.
+- [fn_listino_versione_in_vigore](manual/fn_listino_versione_in_vigore.md) — (funzione nata il 2026-09-28, `20260928-35`)
 - [fn_log_event](manual/fn_log_event.md) — `vendite.fn_log_event` fornisce un entrypoint unico (DB) per registrare eventi append-only in `vendite.event_log`, sia da servizi Python sia da funzioni SQL.
 - [fn_log_lotto_esito_fatture](manual/fn_log_lotto_esito_fatture.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_log_lotto_esito_fatture()`** registra un log di esito lotto dedotto dai log fatture associate al lotto.
 - [fn_log_pipeline_fase](manual/fn_log_pipeline_fase.md) — (latest review 2026-09-08)   La funzione **`vendite.fn_log_pipeline_fase()`** inserisce un record nel log del lotto per registrare l’avanzamento (fase) della pipeline.
@@ -330,6 +331,7 @@
 - [trgfn_listini_righe_guard_no_composito](manual/trgfn_listini_righe_guard_no_composito.md)
 - [trgfn_listini_righe_guard_stato](manual/trgfn_listini_righe_guard_stato.md) — Guard N6 — terzo livello di protezione: impedisce la modifica o cancellazione di righe listino quando lo stato della versione padre non lo consente o quando la riga e` gia` stata propagata a valle (commesse, attivita` fatturabili).
 - [trgfn_listini_righe_guard_tipologia](manual/trgfn_listini_righe_guard_tipologia.md) — (rev 2026-08-21 — pricing v5)
+- [trgfn_listini_versioni_guard_date_chiusa](manual/trgfn_listini_versioni_guard_date_chiusa.md) — (funzione nata il 2026-09-28, `20260928-34`)
 - [trgfn_listini_versioni_guard_transizione_stato](manual/trgfn_listini_versioni_guard_transizione_stato.md) — (latest review 26-04-2026)
 - [trgfn_logs_guard_delete](manual/trgfn_logs_guard_delete.md) — (rev 2026-09-18 — Passo D di `analisi-osservabilita-log.md`)   La funzione trigger **`vendite.trgfn_logs_guard_delete()`** protegge i log funzionali (`fatture_log`, `fatturazione_lotti_log`) dalla cancellazione **accidentale**, distinguendo però fra **cancellare la storia** e **ritirare ciò che è scaduto**.
 - [trgfn_lotto_fatture_guard_stato_coerente](manual/trgfn_lotto_fatture_guard_stato_coerente.md) — (rev 2026-08-21)
@@ -392,12 +394,14 @@
 - [vw_dash_fatturazione_preventivi](manual/vw_dash_fatturazione_preventivi.md) — (latest review 03-07-2026) Resolver dell'area **PREVENTIVI** per la Dashboard Fatturazione (brief-design-dashboard-fatturazione §5, Fase 1): una riga per preventivo con valore **imponibile** totale vs **transitato** (decisione D-4: senza IVA) e il motivo del fermo. Read-time, nessun mirror.
 - [vw_ddt_lista](manual/vw_ddt_lista.md) — (rev 2026-08-28)
 - [vw_ddt_riepilogo_iva_dettaglio](manual/vw_ddt_riepilogo_iva_dettaglio.md) — (rev 2026-08-21)
+- [vw_ddt_righe_dettaglio](manual/vw_ddt_righe_dettaglio.md) — (vista nata il 2026-09-28, `20260928-19`)
 - [vw_ddt_righe_iva_base](manual/vw_ddt_righe_iva_base.md) — (rev 2026-08-21)
 - [vw_documento_lineage](manual/vw_documento_lineage.md) — `vendite.vw_documento_lineage` è la vista **summary** (una riga per documento) pensata per **arricchire le liste vendite** con un solo JOIN. Risponde a due domande dalle liste:
 - [vw_documento_lineage_archi](manual/vw_documento_lineage_archi.md) — `vendite.vw_documento_lineage_archi` è il **grafo di genealogia/transito** dei documenti vendite in forma **normalizzata**: **una riga per arco** (relazione padre→figlio tra due documenti). È la base da cui derivano sia la summary `vw_documento_lineage` sia il traversal `fn_documento_lineage`.
 - [vw_documento_lineage_nodi](manual/vw_documento_lineage_nodi.md) — `vendite.vw_documento_lineage_nodi` è la **dimensione nodo** del grafo di genealogia dei documenti vendite (brief-db-lineage-documenti-vendite): **una riga per documento** delle 8 testate-nodo (preventivo, offerta, ordine, contratto, DDT, fattura, commessa, reso), con la **chiave nativa polimorfa** e lo **stato/fase normalizzati**.
 - [vw_famiglie_documento_lista](manual/vw_famiglie_documento_lista.md) — *(rev 2026-09-01 — vista nata il 2026-09-01)*
 - [vw_fattura_righe_esposte](manual/vw_fattura_righe_esposte.md) — Produce **come il documento va rappresentato**, a partire dalle righe che lo compongono.
+- [vw_fattura_righe_lista](manual/vw_fattura_righe_lista.md) — (vista nata il 2026-09-28, `20260928-28`)
 - [vw_fatture_scadenze_lista](manual/vw_fatture_scadenze_lista.md) — (rev 2026-09-17)
 - [vw_fondi_fattura_da_decidere](manual/vw_fondi_fattura_da_decidere.md) — (latest review 15-08-2026)
 - [vw_lotti_fase](manual/vw_lotti_fase.md) — **In che fase è questo lotto**, e in un posto solo.
@@ -407,6 +411,7 @@
 - [vw_offerte_commerciali_lista](manual/vw_offerte_commerciali_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_ordini_lista](manual/vw_ordini_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_ordini_riepilogo_iva_dettaglio](manual/vw_ordini_riepilogo_iva_dettaglio.md) — (latest review 05-06-2026)
+- [vw_ordini_righe_dettaglio](manual/vw_ordini_righe_dettaglio.md) — (vista nata il 2026-09-28, `20260928-18`)
 - [vw_ordini_righe_iva_base](manual/vw_ordini_righe_iva_base.md) — (latest review 05-06-2026)
 - [vw_partite_merce](manual/vw_partite_merce.md) — (latest review 2026-08-17)
 - [vw_preventivi](manual/vw_preventivi.md) — (rev 15-05-2026 · aggiornata 2026-08-28)

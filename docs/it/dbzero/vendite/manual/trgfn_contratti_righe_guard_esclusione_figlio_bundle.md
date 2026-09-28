@@ -100,4 +100,11 @@ l'errore resta correlabile alla transazione applicativa.
 
 ---
 
+<!-- rev-2026-09-28-liste-righe -->
+### 🔄 rev 2026-09-28 — brief-db-liste-righe-documento
+
+**Il predicato non è più qui** (`20260928-31`): il guard chiama [script.fn_check_esclusione_articolo_contratto](/dbzero/script/funzioni/fn_check_esclusione_articolo_contratto) e ne solleva il primo motivo; la stessa funzione spegne «Escludi» nella lista delle righe del contratto. Stesso codice, stesso messaggio; il trigger non è cambiato.
+
+---
+
 {% include-markdown "signature-core.md" %}

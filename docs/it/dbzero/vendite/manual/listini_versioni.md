@@ -248,4 +248,11 @@ di entrata in vigore:
 
 ---
 
+<!-- rev-2026-09-28-liste-righe -->
+### 🔄 rev 2026-09-28 — brief-db-liste-righe-documento
+
+**La versione in vigore a una data è al più una, per costruzione** (`20260928-33`/`-34`, decisione di Tid): `ex_listini_versioni_no_overlap` vale per le versioni ATTIVE **e CHIUSE** (prima una versione nuova poteva coprire il periodo di una chiusa), e le date di una versione CHIUSA non si modificano più ([trgfn_listini_versioni_guard_date_chiusa](/dbzero/vendite/funzioni/trgfn_listini_versioni_guard_date_chiusa), `E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI`). La domanda «quale versione vale in questa data» ha una sede sola: [vendite.fn_listino_versione_in_vigore](/dbzero/vendite/funzioni/fn_listino_versione_in_vigore). Il registro `dbops.automazione_overlap` porta lo stesso predicato (`20260928-42`).
+
+---
+
 {% include-markdown "signature-core.md" %}

@@ -13,8 +13,8 @@ WITH (security_invoker=on) AS
 WITH righe AS (
          SELECT orr.ordine_id,
             orr.id AS riga_id,
-            ((orr.quantita * orr.prezzo_unitario) * ((1)::numeric - (COALESCE(orr.sconto_percentuale, (0)::numeric) / 100.0))) AS valore_riga,
-            ((GREATEST((0)::numeric, ((orr.quantita - COALESCE(ful.evasa, (0)::numeric)) + vendite.fn_ordine_riga_qta_riconsegna(orr.id))) * orr.prezzo_unitario) * ((1)::numeric - (COALESCE(orr.sconto_percentuale, (0)::numeric) / 100.0))) AS valore_riga_residua,
+            script.fn_imponibile_riga(orr.quantita, orr.prezzo_unitario, orr.sconto_percentuale) AS valore_riga,
+            script.fn_imponibile_riga(GREATEST((0)::numeric, ((orr.quantita - COALESCE(ful.evasa, (0)::numeric)) + vendite.fn_ordine_riga_qta_riconsegna(orr.id))), orr.prezzo_unitario, orr.sconto_percentuale) AS valore_riga_residua,
             (EXISTS ( SELECT 1
                    FROM vendite.commesse_attivita ca
                   WHERE (((ca.segment_key)::text = ((('ORD:'::text || (o2.uid)::text) || ':R:'::text) || (orr.id)::text)) AND ((ca.stato_emissione)::text = 'EMESSA'::text)))) AS transitata

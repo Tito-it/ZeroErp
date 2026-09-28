@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Righe preventivo con dati articolo, UoM, IVA (codice + descrizione + aliquota). Espone importo_riga ROUND(2) per display e imponibile_riga_full per aggregazioni precise. NESSUN campo IVA per riga: l'IVA aggregata e' in vendite.preventivi_riepiloghi_iva.
+> Righe del preventivo con articolo, UoM, IVA (codice + descrizione + aliquota): la SORGENTE delle righe per la lista configurabile vendite.preventivo_righe e per il repository (brief-db-liste-righe-documento, D-8.6, 2026-09-28). Tutte le righe, anche le non attive: il filtro lo mette chi legge. Nessun ORDER BY: l'ordine lo chiede chi legge. importo_riga = round(…, 2) per mostrare, imponibile_riga_full a precisione piena per chi aggrega, entrambi da script.fn_imponibile_riga. NESSUN campo IVA per riga: l'IVA aggregata e' in vendite.preventivi_riepiloghi_iva. Dal 2026-09-28 anche data_consegna_richiesta_cliente, stato_approvazione_prezzo, pratica_approvazione_prezzo_id, is_composito_caso_a (prima solo nel repository). security_invoker: preventivi_righe e' in RLS.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -29,16 +29,21 @@ SELECT pr.id,
     iva.codice AS iva_codice,
     iva.descrizione AS iva_descrizione,
     iva.aliquota_iva AS iva_aliquota,
-    round(((pr.quantita * pr.prezzo_unitario) * ((1)::numeric - (COALESCE(pr.sconto_percentuale, (0)::numeric) / (100)::numeric))), 2) AS importo_riga,
-    ((pr.quantita * pr.prezzo_unitario) * ((1)::numeric - (COALESCE(pr.sconto_percentuale, (0)::numeric) / (100)::numeric))) AS imponibile_riga_full,
+    round(script.fn_imponibile_riga(pr.quantita, pr.prezzo_unitario, pr.sconto_percentuale), 2) AS importo_riga,
+    script.fn_imponibile_riga(pr.quantita, pr.prezzo_unitario, pr.sconto_percentuale) AS imponibile_riga_full,
     pr.meta,
     pr.data_insert,
-    pr.data_update
+    pr.data_update,
+    pr.data_consegna_richiesta_cliente,
+    pr.stato_approvazione_prezzo,
+    pr.pratica_approvazione_prezzo_id,
+    (EXISTS ( SELECT 1
+           FROM vendite.preventivi_righe_componenti prc
+          WHERE ((prc.riga_preventivo_id = pr.id) AND (prc.attivo IS TRUE)))) AS is_composito_caso_a
    FROM (((vendite.preventivi_righe pr
      LEFT JOIN catalogo.articoli a ON ((a.id = pr.articolo_id)))
      LEFT JOIN catalogo.unita_misura um ON ((um.id = pr.uom_operativa_id)))
-     LEFT JOIN config.iva iva ON ((iva.id = pr.iva_id)))
-  ORDER BY pr.preventivo_id, pr.ordine, pr.id;
+     LEFT JOIN config.iva iva ON ((iva.id = pr.iva_id)));
 ```
 
 

@@ -38,10 +38,10 @@ BEGIN
              ON r.articolo_id = NEW.articolo_id;
 
     -- La regola di arrotondamento vive in un punto solo.
+    -- rev 2026-09-28 (brief-db-liste-righe-documento, D-8.8): l'imponibile
+    --   pieno viene dalla sede unica, l'arrotondamento resta configurato.
     NEW.imponibile_riga := script.fn_arrotonda_importo(
-        NEW.qta
-          * NEW.prezzo_unitario
-          * (1 - COALESCE(NEW.sconto_percentuale, 0) / 100),
+        script.fn_imponibile_riga(NEW.qta, NEW.prezzo_unitario, NEW.sconto_percentuale),
         v_decimali,
         v_metodo
     );

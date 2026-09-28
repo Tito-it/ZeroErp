@@ -154,7 +154,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    25,
+    26,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -198,7 +198,13 @@ SELECT is(
     --   e vendite.fn_crea_revisione_offerta (20260924-35), che rifiutano una
     --   revisione col primo motivo di script.fn_check_prezzi_in_attesa (§10 del
     --   brief-db-preventivi-congelamento-pricing).
-    'le venticinque funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-09-28: da 25 a 26. Un sito NUOVO, e nasce da un'estrazione:
+    --   vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle
+    --   (20260928-31) non contiene piu' il predicato del figlio di bundle — lo
+    --   chiede a script.fn_check_esclusione_articolo_contratto (20260928-29), la
+    --   stessa funzione con cui fn_contratto_righe_preview spegne «Escludi», e ne
+    --   solleva il primo motivo (brief-db-liste-righe-documento §8.13).
+    'le ventisei funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la
