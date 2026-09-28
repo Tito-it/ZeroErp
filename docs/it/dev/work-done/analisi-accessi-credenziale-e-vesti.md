@@ -1,7 +1,7 @@
 # Analisi — Accessi: una credenziale, più vesti, un ciclo di vita solo
 
 > **Origine:** difetto M-4 di
-> [analisi-be-difetti-emersi-verifica-doc-api-core.md](analisi-be-difetti-emersi-verifica-doc-api-core.md)
+> [analisi-be-difetti-emersi-verifica-doc-api-core.md](../work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)
 > («il blocco login vale solo per la veste OPERATORE»), 2026-09-24. Alla
 > domanda «per veste o per credenziale?» Tid ha risposto:
 > *«non dovrebbe essere per veste ma per credenziali e dovrebbe essere tutto
@@ -13,10 +13,19 @@
 > proposto (§4) e le domande che decide Tid (§5). Non contiene codice: dalle
 > decisioni nasceranno un brief DB e un piano BE/FE (§6).
 >
-> **Stato:** ⏳ analisi — decise da Tid il 2026-09-24 **tutte e dieci**
-> (§5); **D-1 riletta** lo stesso giorno (blocco vero solo dall'admin, freno
-> automatico sulla coppia credenziale + provenienza). Brief DB scritto:
-> [brief-db-blocco-login-per-credenziale.md](../work-done/brief-db-blocco-login-per-credenziale.md).
+> **Stato:** ✅ **analisi chiusa il 2026-09-28** — decise da Tid il 2026-09-24
+> **tutte e dieci** (§5); **D-1 riletta** lo stesso giorno (blocco vero solo
+> dall'admin, freno automatico sulla coppia credenziale + provenienza). Brief DB
+> scritto e chiuso:
+> [brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md).
+>
+> ⭐ **Il lavoro che resta NON si segue qui**: la sede unica è il
+> [piano BE/FE](../work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md),
+> che al 2026-09-28 ha L-0, L-1 e L-3 fatti (L-3 tranne il consenso al riuso,
+> A-9) e **L-2, L-4, L-5, L-6 da fare** — cioè ancora aperti M-5, M-6, A-5…A-8
+> e il blocco vero dell'admin. Questo documento resta come **inventario e
+> motivazione** delle decisioni; le colonne di stato di §3 sono ferme al
+> 2026-09-28.
 >
 > **Come leggere «Verificato»:** ✅ = riletto sul codice o sulla doc
 > auto-generata da chi scrive (2026-09-24); 🔎 = dall'inventario per lotti, con
@@ -44,7 +53,7 @@ Due oggetti, e ciascuno ha le sue regole:
    credenziale e non della veste, ma le password sbagliate **frenano la coppia
    credenziale + provenienza** e, oltre un tetto, **rallentano** la credenziale
    senza chiuderla; il **blocco vero** è un atto autorizzato (verbo dell'admin).
-   Dettaglio: [brief DB](../work-done/brief-db-blocco-login-per-credenziale.md) §2;
+   Dettaglio: [brief DB](brief-db-blocco-login-per-credenziale.md) §2;
 2. **accessi, attivazioni e disattivazioni seguono la stessa logica per ogni
    veste**. Cambia la porta, non il ciclo di vita.
 
@@ -52,6 +61,10 @@ Due oggetti, e ciascuno ha le sue regole:
 e il manual `anagrafiche/manual/identita_digitali.md` dicono il contrario
 (*«lo stato di lockout è per-identità: un lockout sul portale non blocca lo
 shop»*). Vanno riscritti con la decisione, nello stesso giro del codice.
+✅ Fatto col lotto L-1 (2026-09-25): la guida ha la §3.1-bis «La credenziale:
+tentativi, freno, blocco» e il manual registra l'uscita delle colonne dalla
+veste (`20260925-25`); la frase sul lockout per-identità non c'è più (verificato
+2026-09-28).
 
 ---
 
@@ -117,8 +130,8 @@ e shop è generato dall'email e non compare nelle email d'invito (🔎); il rese
 
 | # | Difetto | |
 | --- | --- | --- |
-| M-5 | **Disattivare un operatore spegne tutte le vesti della credenziale** e le rinomina `DISABILITATO`: l'operatore che è anche cliente perde il portale, e il ruolo originale di ogni veste va perso | ✅ |
-| M-6 | **Riattivare un operatore porta a `OPERATORE` tutte le sue identità.** Una veste cliente o fornitore non può diventare OPERATORE (`trgfn_identita_digitali_guard_coerenza` vuole un soggetto_ruolo RIS_UMANA) e due righe attive con lo stesso ruolo violano l'unique `(auth_user_id, ruolo_applicativo) WHERE attivo`: la riattivazione di un operatore multi-veste **fallisce**, o, se passasse, corromperebbe le vesti. *Deduzione dai vincoli, da provare con un caso costruito* | ✅ il codice · 🔎 l'esito |
+| M-5 | **Disattivare un operatore spegne tutte le vesti della credenziale** e le rinomina `DISABILITATO`: l'operatore che è anche cliente perde il portale, e il ruolo originale di ogni veste va perso | ✅ — ⏳ piano, lotto **L-5** |
+| M-6 | **Riattivare un operatore porta a `OPERATORE` tutte le sue identità.** Una veste cliente o fornitore non può diventare OPERATORE (`trgfn_identita_digitali_guard_coerenza` vuole un soggetto_ruolo RIS_UMANA) e due righe attive con lo stesso ruolo violano l'unique `(auth_user_id, ruolo_applicativo) WHERE attivo`: la riattivazione di un operatore multi-veste **fallisce**, o, se passasse, corromperebbe le vesti. *Deduzione dai vincoli, da provare con un caso costruito* | ✅ il codice · 🔎 l'esito — ⏳ piano, lotto **L-5** |
 | M-4 | Blocco per password errate solo per chi ha la veste OPERATORE (vedi §2.3) | ✅ — **chiuso** il 2026-09-25 (P-1 DB + L-1 BE/FE): stato della credenziale per provenienza. ⚠️ Col test sul DB vero e' emerso che, per un import sbagliato, la view non contava **nessun** fallimento, per nessuna veste |
 
 ### 3.2 Asimmetrie fra le vesti
@@ -129,11 +142,11 @@ e shop è generato dall'email e non compare nelle email d'invito (🔎); il rese
 | A-2 | Il guard «ha già accesso» dell'operatore si basa su `last_login`, che nessuno scrive | un operatore già operativo può essere reinvitato, e si vede sostituire la password | ✅ — **chiuso** il 2026-09-25 (P-2 R-1 + L-3): rifiuto su veste attiva, e `last_login` scritto al login |
 | A-3 | Identità operatore **attiva prima** che l'invito sia accettato | l'accesso esiste prima del consenso (con una password ignota, ma esiste) | ✅ — **chiuso** il 2026-09-25 (P-2 R-2 + L-3): nasce spenta, la accende l'attivazione |
 | A-4 | Reinvio operatore con invalidazione fuori transazione | lo stesso difetto già chiuso sul portale col fix #17 | ✅ — **chiuso** il 2026-09-25 (L-3): building block unico d'invito |
-| A-5 | Revoca: blacklist, invalidazione dei token d'invito e della cache presenti in un flusso e assenti nell'altro | una veste revocata resta usabile fino alla scadenza dell'access token, e i permessi in cache restano | 🔎 |
-| A-6 | Lo shop si riattiva da solo (`ProfileActivateShopView`) anche dopo una revoca dell'admin | la revoca dell'admin non è definitiva | 🔎 |
-| A-7 | Periodo di validità della veste non applicato al login | una veste scaduta resta usabile se la credenziale ha un'altra veste valida | 🔎 |
-| A-8 | `PasswordChangeRequiredMiddleware` inerte col JWT | il cambio obbligatorio è affidato al solo frontend | ✅ meccanismo |
-| A-9 | La creazione dell'operatore esige una credenziale nuova (email duplicata rifiutata, confronto case-sensitive), il portale la riusa per email (case-insensitive) | la stessa persona non può essere operatore e cliente con una credenziale sola, se diventa operatore per seconda | 🟡 — P-2 + L-3 (2026-09-25): riuso per email senza maiuscole; il consenso dell'admin al riuso aspetta la rev -51 in git (piano §4.1-bis) |
+| A-5 | Revoca: blacklist, invalidazione dei token d'invito e della cache presenti in un flusso e assenti nell'altro | una veste revocata resta usabile fino alla scadenza dell'access token, e i permessi in cache restano | 🔎 — ⏳ piano, lotto **L-5** |
+| A-6 | Lo shop si riattiva da solo (`ProfileActivateShopView`) anche dopo una revoca dell'admin | la revoca dell'admin non è definitiva | 🔎 — ⏳ piano, lotto **L-5** |
+| A-7 | Periodo di validità della veste non applicato al login | una veste scaduta resta usabile se la credenziale ha un'altra veste valida | 🔎 — ⏳ piano, lotto **L-6** |
+| A-8 | `PasswordChangeRequiredMiddleware` inerte col JWT | il cambio obbligatorio è affidato al solo frontend | ✅ meccanismo — ⏳ piano, lotto **L-6** |
+| A-9 | La creazione dell'operatore esige una credenziale nuova (email duplicata rifiutata, confronto case-sensitive), il portale la riusa per email (case-insensitive) | la stessa persona non può essere operatore e cliente con una credenziale sola, se diventa operatore per seconda | 🟡 — P-2 + L-3 (2026-09-25): riuso per email senza maiuscole; il consenso dell'admin al riuso resta da fare: la rev -51 è in git dal `64a1ad2f4` (piano §4.1-bis) |
 
 ---
 
@@ -176,7 +189,7 @@ diverso da quello di invitare un cliente: è un diritto, non un ciclo di vita.
 
 | # | Domanda | Proposta |
 | --- | --- | --- |
-| D-1 | **Sede del blocco della credenziale**: una tabella 1:1 con `auth_user` in uno schema nostro (le colonne su `django.auth_user` sarebbero dentro una tabella di Django) | ✅ **DECISA (Tid, 2026-09-24): come proposto** — tabella nostra, forma a scelta del team DB; `tentativi_falliti`/`bloccato_fino_a` via da `identita_digitali` nello stesso giro. ⚠️ **Riletta lo stesso giorno** (Tid): *«chiunque abbia l'autorizzazione dovrebbe essere così»* — il blocco vero lo decide un utente autorizzato; le password sbagliate frenano la coppia credenziale + provenienza e, oltre un tetto, portano a un'attesa crescente (solo DB e backend, niente frontend per ora). Forma nel [brief DB](../work-done/brief-db-blocco-login-per-credenziale.md) §2; le decisioni di dettaglio (D-B1…D-B5) sono lì, §9, tutte prese il 2026-09-24 |
+| D-1 | **Sede del blocco della credenziale**: una tabella 1:1 con `auth_user` in uno schema nostro (le colonne su `django.auth_user` sarebbero dentro una tabella di Django) | ✅ **DECISA (Tid, 2026-09-24): come proposto** — tabella nostra, forma a scelta del team DB; `tentativi_falliti`/`bloccato_fino_a` via da `identita_digitali` nello stesso giro. ⚠️ **Riletta lo stesso giorno** (Tid): *«chiunque abbia l'autorizzazione dovrebbe essere così»* — il blocco vero lo decide un utente autorizzato; le password sbagliate frenano la coppia credenziale + provenienza e, oltre un tetto, portano a un'attesa crescente (solo DB e backend, niente frontend per ora). Forma nel [brief DB](brief-db-blocco-login-per-credenziale.md) §2; le decisioni di dettaglio (D-B1…D-B5) sono lì, §9, tutte prese il 2026-09-24 |
 | D-2 | Il **reset password riuscito sblocca** la credenziale? | ✅ **DECISA (Tid, 2026-09-24): sì, per i tentativi** — chi dimostra di possedere l'email ha già superato la prova che il freno protegge. ⛔ Dopo la rilettura di D-1: il reset **non** toglie il blocco dell'admin (D-B3 del brief) — dimostra il possesso dell'email, non annulla una decisione |
 | D-3 | **Riattivazione**: sempre con un nuovo invito (token), come portale e shop, oppure diretta dall'admin per tutte le vesti? | ✅ **DECISA (Tid, 2026-09-24): nuovo invito, per tutte le vesti** (*«ho un dubbio, però credo che sia meglio nuovo invito»*). ⭐ Ciò che scioglie il dubbio: col flusso deciso sulla credenziale, chi ha già una password riattiva con **un clic** (token CROSS, nessuna password nuova) — il costo è un giro di email, e in cambio nessuna veste torna attiva senza che la persona lo sappia. ⇒ la riattivazione diretta di `amm_software` si ritira; la risorsa umana (il rapporto di lavoro) e l'accesso restano due cose: riattivare la persona in HR non riapre la porta |
 | D-4 | La **revoca dell'admin** blocca la riattivazione self-service dello shop (A-6)? | ✅ **DECISA (Tid, 2026-09-24): sì** — la veste ricorda di essere stata **revocata dall'amministratore**; da revocata l'attivazione self-service dello shop è rifiutata e si torna solo con un nuovo invito (D-3). «Mai attivata» resta attivabile dal pulsante come oggi |
@@ -195,7 +208,7 @@ diverso da quello di invitare un cliente: è un diritto, non un ciclo di vita.
 2. **Prova di M-6** con un caso costruito (credenziale con veste operatore +
    cliente portale → disabilita → riattiva), prima di correggere.
 3. **Brief DB** — ✅ scritto il 2026-09-24:
-   [brief-db-blocco-login-per-credenziale.md](../work-done/brief-db-blocco-login-per-credenziale.md).
+   [brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md).
    Sede della credenziale (D-1 riletta, D-7), `fn_check_blocco_login` /
    `fn_registra_tentativo_login` per credenziale e provenienza, azzeramento al
    reset (D-2), verbi di blocco dell'admin, `totp_obbligatorio` che esce
@@ -206,7 +219,7 @@ diverso da quello di invitare un cliente: è un diritto, non un ciclo di vita.
    guard per la disattivazione per veste e la veste «revocata» (M-5, M-6, D-3,
    D-4), che avranno il loro.
 4. **Piano BE/FE** — ✅ scritto il 2026-09-24:
-   [piano-be-fe-accessi-credenziale-e-vesti.md](piano-be-fe-accessi-credenziale-e-vesti.md)
+   [piano-be-fe-accessi-credenziale-e-vesti.md](../work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md)
    (lotti L-0…L-6, richieste DB R-1…R-6, domande Q-1…Q-3). In origine: invito e attivazione operatore sulla regola unica
    (A-1…A-4), disattivazione/riattivazione per veste (M-5, M-6, A-5),
    validità al login (A-7), cambio password obbligatorio che funzioni col JWT

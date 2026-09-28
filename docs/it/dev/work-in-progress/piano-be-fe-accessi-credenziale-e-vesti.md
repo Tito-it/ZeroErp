@@ -2,15 +2,19 @@
 
 > **Tipo documento**: piano di lavoro backend + frontend (`dev/backend-tid`).
 >
-> **Data**: 2026-09-24 · **Stato**: 🟡 **IN CORSO** — ✅ L-0 fatto
-> (2026-09-24, §2); ✅ L-1 fatto (2026-09-25, §3.1-bis); 🟡 L-3 fatto tranne il
-> consenso al riuso, che aspetta la rev -51 in git (2026-09-25, §4.1-bis); gli
-> altri lotti da fare. ✅ **R-3, R-7, R-9 lato BE/FE scritti il 2026-09-25**,
-> non committati (brief DB §13–§15 e registro). ⚠️ La rev `-51` ora è in git
-> (`64a1ad2f4`): il consenso al riuso di L-3 si può fare.
+> **Data**: 2026-09-24 · **Stato** (riallineato il 2026-09-28): 🟡 **IN
+> CORSO** — ✅ L-0 fatto (2026-09-24, §2); ✅ L-1 fatto (2026-09-25, §3.1-bis);
+> 🟡 L-3 fatto tranne il consenso al riuso (A-9, §4.1-bis), **sbloccato**: la
+> rev `-51` è in git dal `64a1ad2f4`; ⏳ **L-2, L-4, L-5, L-6 da fare**. ✅ R-3,
+> R-7, R-9 lato BE/FE scritti il 2026-09-25 (brief DB §13–§15 e registro).
+> ⏳ R-4, R-5, R-6 aspettano il **secondo brief DB**, non ancora scritto (§5).
 > Le tre domande di §6 sono decise (Tid, 2026-09-24).
 >
-> **Da dove viene**: [analisi-accessi-credenziale-e-vesti.md](analisi-accessi-credenziale-e-vesti.md)
+> ⭐ **Questo piano è la sede unica del lavoro che resta** del cantiere accessi:
+> l'analisi è chiusa (2026-09-28) e sta in `work-done/`. Le sigle ancora aperte
+> sono riassunte qui sotto, §0.
+>
+> **Da dove viene**: [analisi-accessi-credenziale-e-vesti.md](../work-done/analisi-accessi-credenziale-e-vesti.md)
 > (inventario, difetti M-4/M-5/M-6 e A-1…A-9, decisioni D-1…D-10) e
 > [brief-db-blocco-login-per-credenziale.md](../work-done/brief-db-blocco-login-per-credenziale.md)
 > (la forma DB di tentativi, blocco, cambio password obbligatorio ed email,
@@ -20,6 +24,27 @@
 > brief, oppure nulla) e **cosa chiude** (le sigle dell'analisi). Un lotto che
 > dipende dal DB non parte prima del suo changeSet
 > (memoria di progetto: BE/FE solo con i prerequisiti DB pronti).
+
+---
+
+## 0. Le sigle ancora aperte (2026-09-28)
+
+Il perché di ognuna sta nell'[analisi](../work-done/analisi-accessi-credenziale-e-vesti.md)
+§3 e §5; qui solo **cosa** e **dove si chiude**.
+
+| Sigla | Cosa | Lotto |
+| --- | --- | --- |
+| **M-5** | Disattivare un operatore spegne **tutte** le vesti della credenziale e le rinomina `DISABILITATO`. ⚠️ **Due strade**, non una (verifica 2026-09-28, [analisi difetti core](analisi-be-difetti-emersi-verifica-doc-api-core.md) M-5): `disabilita_operatore` **e** `update_operatore` con `attivo=False` via `_set_identita_state` — quella **viva**, l'interruttore di `OperatoreDrawer.vue`. §4.3 va letto per tutte e due | L-5 |
+| **M-6** | Riattivare un operatore porta a `OPERATORE` tutte le sue identità (con una veste cliente i vincoli la fanno fallire). Anche qui due strade: `riattiva_operatore` **e** `update_operatore` con `attivo=True`. Prova con caso costruito prima della correzione | L-5 |
+| **A-5** | Revoca asimmetrica: blacklist, token d'invito e cache permessi presenti in un flusso e assenti nell'altro | L-5 |
+| **A-6** | Lo shop si riattiva da solo (`ProfileActivateShopView`) anche dopo una revoca dell'admin (D-4) | L-5 (R-4) |
+| **A-7** | `valido_dal`/`valido_al` della veste non applicati al login né a ogni richiesta | L-6 |
+| **A-8** | `PasswordChangeRequiredMiddleware` inerte col JWT: il cambio obbligatorio lo fa rispettare solo il FE | L-6 |
+| **A-9** | Resta il consenso dell'admin al riuso della credenziale (rev `-51`, già in git) | L-3 (coda) |
+| **D-1** | Il blocco **vero** è un verbo dell'admin: nessun endpoint `blocca-credenziale` ancora | L-2 (R-6) |
+| **D-9** | Portale e shop entrano con l'email; nome utente nell'invito operatore | L-4 |
+
+⭐ **L-6 non dipende dal DB** (§7): si può fare subito.
 
 ---
 
