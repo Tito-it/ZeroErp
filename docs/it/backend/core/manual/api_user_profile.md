@@ -150,7 +150,7 @@ lavorare** (impersonazione di scope).
 | metodo | fa |
 |---|---|
 | `GET` | le opzioni selezionabili per l'utente corrente: `{"data": {"opzioni": [...]}}` (per l'operatore al piu' una, per il super admin tutti gli attivi) |
-| `POST` | cambia l'emittente attivo **e riemette i token** — body: `emittente_fiscale_id` (opzionale: assente/null/"" = torna alla vista completa) e `refresh` (**obbligatorio**, il refresh token corrente). Risposta `{"data": {"emittente_attivo": {...}, "refresh": "...", "access": "..."}}` |
+| `POST` | cambia l'emittente attivo **e riemette i token** — body: `emittente_fiscale_id` (opzionale: assente/null/"" = torna alla vista completa); il refresh token corrente arriva dal cookie HttpOnly `zeroerp_refresh` (**obbligatorio**). Risposta `{"data": {"emittente_attivo": {...}, "access": "..."}}`; il refresh col claim aggiornato e' riscritto nel `Set-Cookie` (solo se 200) |
 
 ⭐ **Perche' il POST riemette i token invece di limitarsi a salvare la scelta.**
 La verita' della richiesta in corso e' il **claim JWT**, da cui nasce la GUC
@@ -164,7 +164,12 @@ la preferenza resta comunque salvata.
 Errori specifici:
 
 - `E_EMITTENTE_ATTIVO_NON_VALIDO` (403) — emittente inesistente, disattivato o fuori dal perimetro dell'utente
-- `E_EMITTENTE_ATTIVO_TOKEN` (400) — `refresh` mancante, non valido/scaduto, o di un utente diverso da quello autenticato
+- `E_EMITTENTE_ATTIVO_TOKEN` (400) — cookie `zeroerp_refresh` assente, refresh non valido/scaduto, o di un utente diverso da quello autenticato
+
+Il refresh viaggia nel cookie, mai nel corpo, in entrata e in uscita (dal
+2026-09-28; attributi del cookie in
+[api_multi_veste_token.md](api_multi_veste_token.md#cookie-di-refresh)). Non
+serve l'header anti-CSRF: l'endpoint pretende gia' il Bearer.
 
 ## Errori
 

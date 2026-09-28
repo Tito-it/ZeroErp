@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import Any
 
 from django.db import connection
+from apps.core.db._helpers import row_to_dict
 
 
 # Scopo: Lo stato accessi di una veste che ESISTE, dai suoi quattro fatti
@@ -70,11 +71,7 @@ class PortaleRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [cliente_id])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c.name for c in cursor.description or []]
-            return dict(zip(cols, row, strict=True))
+            return row_to_dict(cursor)
 
     # Scopo: Risolve soggetto_ruolo_id + dati anagrafici di un fornitore.
     # Simmetrico a get_cliente_info per il ruolo FO.
@@ -95,11 +92,7 @@ class PortaleRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [fornitore_id])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c.name for c in cursor.description or []]
-            return dict(zip(cols, row, strict=True))
+            return row_to_dict(cursor)
 
     # Scopo: Verifica se esiste gia' un'identita attiva con un certo
     # ruolo_applicativo legata a un dato soggetto_ruolo_id. Usato dal service
@@ -122,11 +115,7 @@ class PortaleRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [soggetto_ruolo_id, ruolo_applicativo])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c.name for c in cursor.description or []]
-            return dict(zip(cols, row, strict=True))
+            return row_to_dict(cursor)
 
     # Scopo: La credenziale di un'email, senza distinguere maiuscole e
     # minuscole. La regola vive nel DB (`script.fn_get_auth_user_id_for_email`,

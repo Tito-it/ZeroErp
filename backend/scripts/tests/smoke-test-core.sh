@@ -27,6 +27,10 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
+# Gunicorn diretto in HTTP: ci si dichiara HTTPS come Nginx (redirect di Django).
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"
+# Refresh JWT nel cookie HttpOnly: lettura dal Set-Cookie e ripresentazione.
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_refresh.sh"
 USERNAME="${SMOKE_USER:-tid}"
 PASSWORD="${1:-${SMOKE_PASSWORD:-}}"
 
@@ -42,7 +46,7 @@ LAST_STATUS=""
 LAST_BODY=""
 
 TMPFILE=$(mktemp)
-trap "rm -f $TMPFILE" EXIT
+trap "rm -f $TMPFILE ${TMPFILE}.hdr" EXIT
 
 log_ok()   { ((PASS++)) || true; echo -e "  ${GREEN}OK${NC}  $1"; }
 log_fail() { ((FAIL++)) || true; echo -e "  ${RED}FAIL${NC} $1"; }
@@ -60,6 +64,16 @@ try:
 except Exception:
     print('')
 " 2>/dev/null
+}
+
+# Scopo: logout col refresh dato nel cookie (come il browser) e il Bearer
+#        corrente. Stesso esito di do_curl in LAST_STATUS/LAST_BODY.
+logout_con_refresh() {
+    curl_refresh "$1" -s -w '\n%{http_code}' -X POST \
+        -H "Authorization: Bearer ${TOKEN:-none}" \
+        "${BASE_URL}/api/v1/auth/logout/" > "$TMPFILE" 2>/dev/null
+    LAST_STATUS=$(tail -1 "$TMPFILE")
+    LAST_BODY=$(sed '$d' "$TMPFILE")
 }
 
 do_curl() {
@@ -111,10 +125,11 @@ if [[ -z "$PASSWORD" ]]; then
     echo ""
 fi
 
-curl -s -w '\n%{http_code}' \
+curl -s -w '\n%{http_code}' -D "${TMPFILE}.hdr" \
     -H "Content-Type: application/json" \
     -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}" \
     "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE" 2>/dev/null
+REFRESH=$(refresh_dal_set_cookie "${TMPFILE}.hdr")
 
 AUTH_STATUS=$(tail -1 "$TMPFILE")
 AUTH_BODY=$(sed '$d' "$TMPFILE")
@@ -146,10 +161,8 @@ log_ok "JWT ottenuto per '$USERNAME' (user_id=$USER_ID)"
 echo ""
 echo "-- 1. Token refresh --"
 
-REFRESH=$(json_get "$AUTH_BODY" ".refresh")
-curl -s -w '\n%{http_code}' \
-    -H "Content-Type: application/json" \
-    -d "{\"refresh\":\"$REFRESH\"}" \
+# Il refresh e' nel cookie (letto al login), non nel corpo.
+curl_refresh "$REFRESH" -s -w '\n%{http_code}' -X POST \
     "${BASE_URL}/api/v1/admin/token/refresh/" > "$TMPFILE" 2>/dev/null
 LAST_STATUS=$(tail -1 "$TMPFILE")
 LAST_BODY=$(sed '$d' "$TMPFILE")
@@ -328,7 +341,7 @@ echo ""
 echo "-- 11. Logout --"
 
 # Secondo login per ottenere un refresh fresco da usare per il logout
-curl -s -w '\n%{http_code}' \
+curl -s -w '\n%{http_code}' -D "${TMPFILE}.hdr" \
     -H "Content-Type: application/json" \
     -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}" \
     "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE" 2>/dev/null
@@ -337,20 +350,20 @@ LOGOUT_BODY=$(sed '$d' "$TMPFILE")
 
 if [[ "$LOGOUT_STATUS" == "200" ]]; then
     LOGOUT_TOKEN=$(json_get "$LOGOUT_BODY" ".access")
-    LOGOUT_REFRESH=$(json_get "$LOGOUT_BODY" ".refresh")
+    LOGOUT_REFRESH=$(refresh_dal_set_cookie "${TMPFILE}.hdr")
 
     # Salva TOKEN originale e usa quello del secondo login
     ORIG_TOKEN="$TOKEN"
     TOKEN="$LOGOUT_TOKEN"
 
-    do_curl POST "/api/v1/auth/logout/" "{\"refresh\":\"$LOGOUT_REFRESH\"}"
+    logout_con_refresh "$LOGOUT_REFRESH"
     check "POST /auth/logout/ → 204" 204
 
     # --- 12. Logout idempotente (stesso refresh gia' blacklistato) ---
     echo ""
     echo "-- 12. Logout idempotente (token gia' blacklistato) --"
 
-    do_curl POST "/api/v1/auth/logout/" "{\"refresh\":\"$LOGOUT_REFRESH\"}"
+    logout_con_refresh "$LOGOUT_REFRESH"
     check "POST /auth/logout/ token gia' blacklistato → 204" 204
 
     # Ripristina TOKEN originale per i test successivi

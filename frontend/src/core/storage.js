@@ -1,12 +1,14 @@
 // Layer unico per accesso localStorage/sessionStorage.
 // Centralizza chiavi e operazioni — nessun modulo deve accedere direttamente a storage.
 
+// ⛔ I token JWT NON stanno qui (dal 2026-09-28, brief sicurezza §2): il
+//    refresh è in un cookie HttpOnly che il JavaScript non vede, l'access solo
+//    in memoria (`core/sessione.js`). Qualunque script della pagina legge il
+//    localStorage: un token lì è un token regalato a uno script iniettato.
 export const STORAGE_KEYS = {
-  ACCESS_TOKEN: 'access_token',
-  REFRESH_TOKEN: 'refresh_token',
   // §8.5.2: key del canale di login corrente (CANALE_LOGIN.{ADMIN,PORTALE,SHOP}).
-  // Persistita per consentire al refresh token di usare l'endpoint giusto
-  // dopo un page reload, senza dover decodificare il JWT lato client.
+  // Persistita per consentire al rinnovo di usare l'endpoint giusto dopo un
+  // page reload. Non è un segreto.
   LOGIN_CHANNEL: 'login_channel',
   SIDEBAR_COLLAPSED: 'sidebar_collapsed',
   OPEN_TABS: 'open_tabs',
@@ -20,6 +22,16 @@ export const STORAGE_KEYS = {
   // User-scoped: l'utente ritrova la sua scelta a logout/login successivi.
   // Default fallback: collassato (coerente col pattern SessioniAttivePanel).
   FAVORITES_EXPANDED: 'favorites_expanded'
+}
+
+// Le chiavi dove i token stavano fino al 2026-09-28. Un browser che le ha
+// ancora conserva un refresh leggibile da qualunque script: si tolgono.
+const CHIAVI_TOKEN_RITIRATE = ['access_token', 'refresh_token']
+
+// Scopo: toglie dal localStorage i token salvati prima del 2026-09-28.
+//        Idempotente; la chiama lo store `auth` alla creazione.
+export function ritiraTokenDalLocalStorage() {
+  CHIAVI_TOKEN_RITIRATE.forEach(chiave => localStorage.removeItem(chiave))
 }
 
 export function domainFavoriteKey(domainKey) {

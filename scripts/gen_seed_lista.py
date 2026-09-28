@@ -172,6 +172,13 @@ WHITELIST_BE: dict[str, tuple] = {
     # le righe hanno la loro (la quantita' ha un nome fisico diverso).
     "magazzino.inventari": ("apps/magazzino/db/magazzino_repository.py", "DOCUMENTI_SORT_COLUMNS"),
     "magazzino.rettifiche": ("apps/magazzino/db/magazzino_repository.py", "DOCUMENTI_SORT_COLUMNS"),
+    # Righe dei documenti di vendita (2026-09-28, brief-db-liste-righe-
+    # documento lotto A): whitelist di modulo del repository, con le colonne
+    # gemelle importate dal mixin (`**COLONNE_RIGHE_COMMERCIALI`).
+    "vendite.preventivo_righe": ("apps/vendite/db/preventivi_repository.py", "_ORDER_COLS_RIGHE"),
+    "vendite.ordine_righe": ("apps/vendite/db/ordini_repository.py", "_ORDER_COLS_RIGHE"),
+    "vendite.ddt_righe": ("apps/vendite/db/ddt_repository.py", "_ORDER_COLS_RIGHE"),
+    "vendite.reso_righe": ("apps/vendite/db/resi_repository.py", "_ORDER_COLS_RIGHE"),
     "magazzino.inventario_righe": ("apps/magazzino/db/magazzino_repository.py",
                                    "INVENTARIO_RIGHE_SORT_COLUMNS"),
     "magazzino.rettifica_righe": ("apps/magazzino/db/magazzino_repository.py",
@@ -1087,7 +1094,29 @@ def whitelist_backend(percorso: str, costante: str, dentro: str | None = None) -
                       if not r.strip().startswith("#"))
     # Forma dict (`"chiave": "v.colonna"`) oppure set (`"chiave", ...`).
     chiavi = set(re.findall(r'"([a-z_0-9]+)"\s*:', corpo))
+    # ⭐ `{**ALTRA, "chiave": ...}` (2026-09-28, righe dei documenti di vendita):
+    #    le colonne GEMELLE di tre liste sono dichiarate una volta
+    #    (`COLONNE_RIGHE_COMMERCIALI`) e ogni repository aggiunge le sue.
+    #    ⛔ Senza questo ramo il lettore vedrebbe solo le chiavi scritte a mano
+    #    e darebbe le gemelle per mancanti: un falso «KO» che insegna a
+    #    ignorare lo strumento.
+    for nome in re.findall(r"\*\*([A-Za-z_][A-Za-z0-9_]*)", corpo):
+        chiavi |= _whitelist_importata(percorso, testo, nome)
     return chiavi or set(re.findall(r'"([a-z_0-9]+)"', corpo))
+
+
+# Scopo: le chiavi di una costante nominata in un `**NOME`: nello stesso file,
+#        oppure nel modulo `apps.…` da cui il file la importa.
+def _whitelist_importata(percorso: str, testo: str, nome: str) -> set[str]:
+    if re.search(rf"^[ \t]*{re.escape(nome)}\s*(?::[^=\n]*)?=", testo, re.M):
+        return whitelist_backend(percorso, nome)
+    # Le due forme dell'import: fra parentesi (anche su piu' righe) o in linea.
+    for m in re.finditer(r"^from (apps(?:\.\w+)+) import (?:\(([^)]*)\)|([^\n(]+))$", testo, re.M):
+        elenco = m.group(2) if m.group(2) is not None else m.group(3)
+        importati = {n.split("#")[0].strip() for n in elenco.split(",")}
+        if nome in importati:
+            return whitelist_backend(m.group(1).replace(".", "/") + ".py", nome)
+    raise ValueError(f"`**{nome}` in {percorso}: costante non trovata ne' importata")
 
 
 # Scopo: confronta il seed con la whitelist di ordinamento del backend, lista

@@ -26,7 +26,7 @@ from typing import Any
 
 from django.db import connection, transaction
 
-from apps.core.db._helpers import fetchone_scalar
+from apps.core.db._helpers import fetchone_scalar, row_to_dict, rows_to_list
 from apps.core.db.sql_write_helpers import execute_dynamic_update
 
 
@@ -121,8 +121,7 @@ class UiAdminRepository:
                  ORDER BY descrizione, id
                 """
             )
-            cols = [c[0] for c in cursor.description]
-            return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Lista TUTTE le definizioni (incluse disattivate) con campi
     #        completi per la pagina tecnica Fase 2. Ordinate per
@@ -133,8 +132,7 @@ class UiAdminRepository:
                 self._DEFINIZIONE_SELECT_FULL
                 + " ORDER BY attivo DESC, codice, id"
             )
-            cols = [c[0] for c in cursor.description]
-            return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Conta TUTTE le definizioni (incluse disattivate), con lo stesso
     #        perimetro di `list_definizioni_admin` ma senza passare dalle righe.
@@ -167,11 +165,7 @@ class UiAdminRepository:
                 """,
                 [lista_id],
             )
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c[0] for c in cursor.description]
-            return dict(zip(cols, row, strict=True))
+            return row_to_dict(cursor)
 
     # Scopo: Restituisce la definizione per id (anche disattivate, campi
     #        completi inclusi vista_sql/note/audit). Usato dal service
@@ -186,11 +180,7 @@ class UiAdminRepository:
                 self._DEFINIZIONE_SELECT_FULL + " WHERE id = %s",
                 [lista_id],
             )
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c[0] for c in cursor.description]
-            return dict(zip(cols, row, strict=True))
+            return row_to_dict(cursor)
 
     # Scopo: INSERT lista_definizione. Il trigger
     #        trgfn_ui_lista_definizione_a10_valida_vista_sql verifica
@@ -348,8 +338,7 @@ class UiAdminRepository:
                 """,
                 [lista_id],
             )
-            cols = [c[0] for c in cursor.description]
-            return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Lista TUTTE le colonne di una lista (incluse disattivate)
     #        con campi completi per la pagina tecnica Fase 2. Stesso
@@ -367,8 +356,7 @@ class UiAdminRepository:
                   "          ordine_default, id",
                 [lista_id],
             )
-            cols = [c[0] for c in cursor.description]
-            return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Conta le colonne di una lista con lo STESSO perimetro di
     #        `list_colonne_by_lista_admin` (stessa tabella, stesso WHERE),
@@ -398,11 +386,7 @@ class UiAdminRepository:
                 self._COLONNA_SELECT_FULL + " WHERE id = %s",
                 [colonna_id],
             )
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c[0] for c in cursor.description]
-            return dict(zip(cols, row, strict=True))
+            return row_to_dict(cursor)
 
     # Scopo: INSERT lista_colonna. Il trigger valida_campo_sorgente
     #        verifica esistenza dell'attributo nella vista_sql della
@@ -587,11 +571,7 @@ class UiAdminRepository:
         ) + " ORDER BY p.ambito, p.codice, p.id"
         with connection.cursor() as cursor:
             cursor.execute(sql, [lista_id])
-            cols = [c[0] for c in cursor.description]
-            return [
-                self._normalize_preset_jsonb(dict(zip(cols, row, strict=True)))
-                for row in cursor.fetchall()
-            ]
+            return [self._normalize_preset_jsonb(r) for r in rows_to_list(cursor)]
 
     # Scopo: Conta i preset di una lista con lo STESSO perimetro di
     #        `list_preset_by_lista` (`p.lista_id = %s`), senza passare dalle
@@ -618,11 +598,8 @@ class UiAdminRepository:
         )
         with connection.cursor() as cursor:
             cursor.execute(sql, [preset_id])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c[0] for c in cursor.description]
-            return self._normalize_preset_jsonb(dict(zip(cols, row, strict=True)))
+            riga = row_to_dict(cursor)
+            return self._normalize_preset_jsonb(riga) if riga is not None else None
 
     # Scopo: Crea preset (testata). I campi `lista_id`/`ambito`/refs sono
     #        obbligatori e validati dal service; FK + CHECK ambito_refs
@@ -748,8 +725,7 @@ class UiAdminRepository:
                 """,
                 [preset_id],
             )
-            cols = [c[0] for c in cursor.description]
-            return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: REPLACE atomico della composizione di un preset. Cancella
     #        tutte le righe esistenti e re-inserisce quelle del payload
@@ -826,8 +802,7 @@ class UiAdminRepository:
                 """,
                 [lista_id],
             )
-            cols = [c[0] for c in cursor.description]
-            return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Conta i permessi di una lista con lo STESSO perimetro di
     #        `list_permessi_by_lista`, senza passare dalle righe.

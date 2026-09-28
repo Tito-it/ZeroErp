@@ -685,6 +685,7 @@ const drawerActions = computed(() => {
         <Divider />
         <OrdiniRigheTable
           :ordine-id="effectiveOrdineId"
+          :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
           :is-modificabile="canEditRighe && !isReadonly"
           @changed="loadDetail()"
           @form-aperto="(v) => { formRigaAperto = v }" />

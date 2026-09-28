@@ -26,6 +26,8 @@ from apps.vendite.api.views_resi import (
     ApiResoRigaAnnullaAccredito,
     ApiResoRigaDetail,
     ApiResoRighe,
+    ApiResoRigheListaExportView,
+    ApiResoRigheListaView,
 )
 
 urlpatterns = [
@@ -79,6 +81,12 @@ urlpatterns = [
     # Righe
     path("<int:reso_id>/righe/", ApiResoRighe.as_view(),
          name="vendite-resi-righe-list"),
+    # Righe: la LISTA configurabile (pagina + export). `…/righe/` sopra resta
+    # la lettura completa e la creazione (brief-db-liste-righe-documento).
+    path("<int:reso_id>/righe/lista/", ApiResoRigheListaView.as_view(),
+         name="vendite-resi-righe-lista"),
+    path("<int:reso_id>/righe/lista/export/", ApiResoRigheListaExportView.as_view(),
+         name="vendite-resi-righe-lista-export"),
     path("<int:reso_id>/righe/<int:riga_id>/", ApiResoRigaDetail.as_view(),
          name="vendite-resi-riga-detail"),
     # Annullo dell'accredito (D-NC-11): sta A MONTE del documento ed e' un'altra

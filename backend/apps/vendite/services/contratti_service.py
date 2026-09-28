@@ -42,6 +42,7 @@ from typing import Any
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import DatabaseError, IntegrityError, transaction
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
 from apps.core.services.testata_guard import riga_del_padre_o_not_found, testata_o_not_found
@@ -617,7 +618,7 @@ class ContrattiService:
         offset: int = 0,
         order_by: str = "data",
         order_dir: str = "desc",
-        max_limit: int = 200,
+        max_limit: int = MAX_LIMIT,
     ) -> tuple[list[dict[str, Any]], int]:
         self._v.validate_order_by(order_by, allowed=_ORDER_BY_CONTRATTI, order_dir=order_dir)
         if ambito is not None:

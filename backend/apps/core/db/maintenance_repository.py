@@ -25,7 +25,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import corsa_conclusa, pattern_contiene
+from apps.core.db._helpers import corsa_conclusa, fetch_paged_with_total, pattern_contiene
 from apps.core.types import JobRunLogRow
 
 
@@ -78,49 +78,43 @@ class MaintenanceRepository:
         offset: int = 0,
     ) -> tuple[list[JobRunLogRow], int]:
         search_pattern = pattern_contiene(search)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id, jobname, stepname,
-                       started_at::text, ended_at::text,
-                       ok, rows_affected, message,
-                       error_code, error_detail,
-                       agent_host, run_uuid::text,
-                       COUNT(*) OVER () AS total_count
-                  FROM maintenance.job_run_log
-                 WHERE (%s::text IS NULL OR jobname = %s)
-                   AND (%s::boolean IS NULL OR ok = %s)
-                   AND (%s::text IS NULL OR started_at >= %s::timestamptz)
-                   AND (%s::text IS NULL OR started_at <= %s::timestamptz + interval '1 day')
-                   AND (%s::text IS NULL
-                        OR jobname ILIKE %s
-                        OR stepname ILIKE %s
-                        OR message ILIKE %s)
-                 ORDER BY started_at DESC, id DESC
-                 LIMIT %s OFFSET %s
-                """,
-                [
-                    jobname, jobname,
-                    ok, ok,
-                    date_from, date_from,
-                    date_to, date_to,
-                    search_pattern, search_pattern, search_pattern, search_pattern,
-                    limit, offset,
-                ],
-            )
-            rows = cursor.fetchall()
-
-        if not rows:
-            return [], 0
-
-        total_count: int = rows[0][12]
+        rows, total_count = fetch_paged_with_total(
+            """
+            SELECT id, jobname, stepname,
+                   started_at::text, ended_at::text,
+                   ok, rows_affected, message,
+                   error_code, error_detail,
+                   agent_host, run_uuid::text,
+                   COUNT(*) OVER () AS total_count
+              FROM maintenance.job_run_log
+             WHERE (%s::text IS NULL OR jobname = %s)
+               AND (%s::boolean IS NULL OR ok = %s)
+               AND (%s::text IS NULL OR started_at >= %s::timestamptz)
+               AND (%s::text IS NULL OR started_at <= %s::timestamptz + interval '1 day')
+               AND (%s::text IS NULL
+                    OR jobname ILIKE %s
+                    OR stepname ILIKE %s
+                    OR message ILIKE %s)
+             ORDER BY started_at DESC, id DESC
+             LIMIT %s OFFSET %s
+            """,
+            [
+                jobname, jobname,
+                ok, ok,
+                date_from, date_from,
+                date_to, date_to,
+                search_pattern, search_pattern, search_pattern, search_pattern,
+                limit, offset,
+            ],
+            offset=offset,
+        )
         results: list[JobRunLogRow] = [
             JobRunLogRow(
-                id=r[0], jobname=r[1], stepname=r[2],
-                started_at=r[3], ended_at=r[4],
-                ok=r[5], rows_affected=r[6], message=r[7],
-                error_code=r[8], error_detail=r[9],
-                agent_host=r[10], run_uuid=r[11],
+                id=r["id"], jobname=r["jobname"], stepname=r["stepname"],
+                started_at=r["started_at"], ended_at=r["ended_at"],
+                ok=r["ok"], rows_affected=r["rows_affected"], message=r["message"],
+                error_code=r["error_code"], error_detail=r["error_detail"],
+                agent_host=r["agent_host"], run_uuid=r["run_uuid"],
             )
             for r in rows
         ]
@@ -256,49 +250,43 @@ class MaintenanceRepository:
             params.append(str(mese))
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                WITH summary AS (
-                    SELECT jobname,
-                           COUNT(*) AS total_runs,
-                           COUNT(*) FILTER (WHERE ok = true) AS ok_count,
-                           COUNT(*) FILTER (WHERE ok = false) AS fail_count
-                      FROM maintenance.job_run_log
-                      {where}
-                     GROUP BY jobname
-                ),
-                {_cte_corse(conditions)}
-                SELECT s.jobname, s.total_runs, s.ok_count, s.fail_count,
-                       r.started_at::text AS last_run_at,
-                       r.ended_at IS NULL AS in_corso,
-                       c.started_at, c.ended_at, c.ok,
-                       COUNT(*) OVER () AS total_count
-                  FROM summary s
-                  JOIN recente r USING (jobname)
-                  LEFT JOIN conclusa c USING (jobname)
-                 ORDER BY r.started_at DESC, s.jobname
-                 LIMIT %s OFFSET %s
-                """,  # noqa: S608 — `where` da condizioni whitelisted, valori parametrizzati
-                # ⚠️ Le condizioni compaiono TRE volte nel testo (summary,
-                #    recente, conclusa): i loro valori, nello stesso ordine.
-                [*params, *params, *params, limit, offset],
-            )
-            rows = cursor.fetchall()
-
-        if not rows:
-            return [], 0
-
-        total_count: int = rows[0][9]
+        rows, total_count = fetch_paged_with_total(
+            f"""
+            WITH summary AS (
+                SELECT jobname,
+                       COUNT(*) AS total_runs,
+                       COUNT(*) FILTER (WHERE ok = true) AS ok_count,
+                       COUNT(*) FILTER (WHERE ok = false) AS fail_count
+                  FROM maintenance.job_run_log
+                  {where}
+                 GROUP BY jobname
+            ),
+            {_cte_corse(conditions)}
+            SELECT s.jobname, s.total_runs, s.ok_count, s.fail_count,
+                   r.started_at::text AS last_run_at,
+                   r.ended_at IS NULL AS in_corso,
+                   c.started_at, c.ended_at, c.ok,
+                   COUNT(*) OVER () AS total_count
+              FROM summary s
+              JOIN recente r USING (jobname)
+              LEFT JOIN conclusa c USING (jobname)
+             ORDER BY r.started_at DESC, s.jobname
+             LIMIT %s OFFSET %s
+            """,  # noqa: S608 — `where` da condizioni whitelisted, valori parametrizzati
+            # ⚠️ Le condizioni compaiono TRE volte nel testo (summary,
+            #    recente, conclusa): i loro valori, nello stesso ordine.
+            [*params, *params, *params, limit, offset],
+            offset=offset,
+        )
         results = [
             {
-                "jobname": r[0],
-                "total_runs": r[1],
-                "ok_count": r[2],
-                "fail_count": r[3],
-                "last_run_at": r[4],
-                "in_corso": bool(r[5]),
-                "ultima_conclusa": corsa_conclusa(r[6], r[7], r[8]),
+                "jobname": r["jobname"],
+                "total_runs": r["total_runs"],
+                "ok_count": r["ok_count"],
+                "fail_count": r["fail_count"],
+                "last_run_at": r["last_run_at"],
+                "in_corso": bool(r["in_corso"]),
+                "ultima_conclusa": corsa_conclusa(r["started_at"], r["ended_at"], r["ok"]),
             }
             for r in rows
         ]

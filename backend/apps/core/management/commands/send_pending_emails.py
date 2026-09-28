@@ -29,6 +29,7 @@ import logging
 from django.core.management.base import BaseCommand
 from django.db import connection
 
+from apps.core.db._helpers import rows_to_list
 from apps.core.db.email_repository import EmailRepository
 from apps.core.db.processi_repository import ProcessiRepository
 from apps.core.services.coda_lavori.context import operator_identity_context
@@ -215,8 +216,7 @@ class Command(BaseCommand):
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [limit])
-            cols = [c.name for c in cursor.description]
-            rows = [dict(zip(cols, r, strict=True)) for r in cursor.fetchall()]
+            rows = rows_to_list(cursor)
 
         count = len(rows)
         if dry_run:

@@ -35,7 +35,6 @@ vi.mock('../api/preventiviApi', () => ({
   emettiPreventivo: vi.fn(),
   creaRevisione: vi.fn(),
   listRevisioni: vi.fn(),
-  listRighe: vi.fn(),
   createRiga: vi.fn(),
   updateRiga: vi.fn(),
   deleteRiga: vi.fn(),

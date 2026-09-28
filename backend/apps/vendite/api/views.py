@@ -5,6 +5,7 @@ from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.endpoint_helpers import (
@@ -348,7 +349,7 @@ class ApiLottoSegnalazioniRows(DomainAPIView):
             solo_attive=as_bool(q.get("solo_attive"), default=True),
             solo_job_corrente=as_bool(q.get("solo_job_corrente"), default=False),
             page=optional_int({"page": q.get("page", "1")}, "page") or 1,
-            page_size=optional_int({"page_size": q.get("page_size", "50")}, "page_size") or 50,
+            page_size=optional_int({"page_size": q.get("page_size")}, "page_size") or DEFAULT_LIMIT,
             order_by=(q.get("order_by") or None),
             order_dir=(q.get("order_dir") or "desc"),
         )
@@ -932,7 +933,7 @@ class ApiLottiList(DomainAPIView):
             OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False, description="Colonna di ordinamento: `campo_sorgente` del catalogo lista `vendite.lotti`. Whitelist autoritativa: `VenditeRepository.LOTTI_SORT_COLUMNS` — codice, competenza_mese, data_documento, tipo_lotto, tipo_doc_fiscale_descrizione, utility_descrizione, area_geografica_descrizione, emittente_ragione_sociale, stato_lotto, stato_operativo, stato_doc_fiscale_descrizione, n_fatture, totale_documenti, data_insert, user_insert."),
             OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False, description="Direzione ordinamento: asc | desc (default asc)."),
             OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False, description="Numero pagina (default 1)."),
-            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False, description="Dimensione pagina (default 50, max 200)."),
+            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False, description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT})."),
         ],
         responses={
             200: inline_serializer(
@@ -970,7 +971,7 @@ class ApiLottiList(DomainAPIView):
         )
 
         page = optional_int({"page": request.query_params.get("page", "1")}, "page")
-        page_size = optional_int({"page_size": request.query_params.get("page_size", "50")}, "page_size")
+        page_size = optional_int({"page_size": request.query_params.get("page_size", str(DEFAULT_LIMIT))}, "page_size")
 
         data = fn_list_lotti(
             **filtri,
@@ -1241,7 +1242,7 @@ class ApiLottoFattureList(DomainAPIView):
             OpenApiParameter(name="sort_by", type=str, location=OpenApiParameter.QUERY, required=False, description="Colonna di ordinamento (default fattura_id)."),
             OpenApiParameter(name="sort_dir", type=str, location=OpenApiParameter.QUERY, required=False, description="Direzione ordinamento: asc/desc (default asc)."),
             OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False, description="Numero pagina (default 1)."),
-            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False, description="Dimensione pagina (default 50, max 200)."),
+            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False, description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT})."),
         ],
         responses={
             200: inline_serializer(
@@ -1270,7 +1271,7 @@ class ApiLottoFattureList(DomainAPIView):
         sort_by = request.query_params.get("sort_by", "fattura_id").strip() or "fattura_id"
         sort_dir = request.query_params.get("sort_dir", "asc").strip() or "asc"
         page = optional_int({"page": request.query_params.get("page", "1")}, "page")
-        page_size = optional_int({"page_size": request.query_params.get("page_size", "50")}, "page_size")
+        page_size = optional_int({"page_size": request.query_params.get("page_size", str(DEFAULT_LIMIT))}, "page_size")
 
         auth_user_id = get_scope_user_id(request)
 
@@ -1369,7 +1370,7 @@ class ApiLottoGruppiList(DomainAPIView):
             #    e un verso dichiarato lo annullerebbe (api.md §parse_list_params).
             order_dir=qp_str(q.get("order_dir")),
             page=qp_int_strict(q.get("page"), "page", 1),
-            page_size=qp_int_strict(q.get("page_size"), "page_size", 50),
+            page_size=qp_int_strict(q.get("page_size"), "page_size", DEFAULT_LIMIT),
         )
         return success_response(data)
 
@@ -1954,7 +1955,7 @@ class ApiCommessaRegistro(DomainAPIView):
             ),
             OpenApiParameter(
                 name="limit", type=int, location=OpenApiParameter.QUERY, required=False,
-                description="Eventi per pagina (default 100, max 200).",
+                description=f"Eventi per pagina (default 100, max {MAX_LIMIT}).",
             ),
             OpenApiParameter(
                 name="offset", type=int, location=OpenApiParameter.QUERY, required=False,
@@ -2003,7 +2004,7 @@ class ApiCommessaAttivita(DomainAPIView):
             OpenApiParameter(name="stato_emissione", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro stato emissione (es. NON_EMESSA, EMESSA)."),
             OpenApiParameter(name="stato_approvazione", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro stato approvazione (es. BOZZA, APPROVATA)."),
             OpenApiParameter(name="competenza_mese", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro mese di competenza (YYYY-MM-DD)."),
-            OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False, description="Righe per pagina (default 50, max 200)."),
+            OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False, description=f"Righe per pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT})."),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False, description="Offset paginazione (default 0)."),
             OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False, description="Colonna di ordinamento (id, data_attivita, competenza_mese, segment_key, quantita, prezzo_snapshot, stato_approvazione, stato_emissione). Assente = ordine storico per id."),
             OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False, description="Direzione ordinamento: asc | desc (default asc)."),
@@ -2031,7 +2032,7 @@ class ApiCommessaAttivita(DomainAPIView):
         stato_emissione = request.query_params.get("stato_emissione") or None
         stato_approvazione = request.query_params.get("stato_approvazione") or None
         competenza_mese = request.query_params.get("competenza_mese") or None
-        limit = optional_int({"limit": request.query_params.get("limit", "50")}, "limit")
+        limit = optional_int({"limit": request.query_params.get("limit", str(DEFAULT_LIMIT))}, "limit")
         offset = optional_int({"offset": request.query_params.get("offset", "0")}, "offset")
         # order_by/order_dir passano al service, che li valida contro la
         # whitelist ATTIVITA_SORT_COLUMNS (specchio della fn DB).

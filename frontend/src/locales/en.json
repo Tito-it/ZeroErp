@@ -1,5 +1,6 @@
 {
   "common": {
+    "righe_non_lette": "Could not load the document lines.",
     "invito_non_spedito": "Invitation created, but the email was not sent: the person did not receive the link. Check the email account and send the invitation again.",
     "invito_non_spedito_info": "The invitation link was created, but the email was not sent: the person did not receive it. Check the system email account and resend the invitation.",
     "filtri": "Filters",
@@ -4802,7 +4803,6 @@
       "sezione_righe": "Lines",
       "testata_salvata": "Header saved",
       "righe_congelate": "Lines can only be edited in draft: bring the document back to draft to change them.",
-      "righe_non_lette": "Could not load the document lines.",
       "movimenti": "Movements",
       "conferma_transizione": "Proceed with «{azione}» on this document?",
       "stato_cambiato": "Document status updated.",

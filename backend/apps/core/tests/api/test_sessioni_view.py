@@ -37,6 +37,7 @@ Indice test eseguiti:
 import json
 from datetime import datetime
 from unittest import TestCase
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from apps.core.services.service_errors import ServiceError
@@ -100,9 +101,22 @@ class LogoutViewTests(TestCase):
     def _post(token: str | None, user_id: int = 1):
         from apps.core.api.logout_view import LogoutView
 
+        from apps.core.api.refresh_cookie import REFRESH_COOKIE_NAME
+
+        # Il refresh arriva nel cookie HttpOnly (brief sicurezza §2).
         request = _mock_request(user_id=user_id)
-        request.data = {} if token is None else {"refresh": token}
+        request.COOKIES = {} if token is None else {REFRESH_COOKIE_NAME: token}
         return request, LogoutView().post(request)
+
+    # Scopo: Il cookie del refresh esce CANCELLATO dalla risposta (stesso path
+    #        con cui e' stato scritto, scadenza nel passato).
+    def _assert_cookie_cancellato(self, response) -> None:
+        from apps.core.api.refresh_cookie import REFRESH_COOKIE_NAME
+
+        cookie = response.cookies[REFRESH_COOKIE_NAME]
+        self.assertEqual(cookie.value, "")
+        self.assertEqual(cookie["path"], "/api/v1/")
+        self.assertEqual(int(cookie["max-age"]), 0)
 
     # Scopo: refresh valido → 204, revoca della SESSIONE (tutti i token col suo
     #        sid) ed evento LOGOUT con quel sid.
@@ -112,6 +126,7 @@ class LogoutViewTests(TestCase):
         request, response = self._post(_jwt(sid="sid-abc-123"))
 
         self.assertEqual(response.status_code, 204)
+        self._assert_cookie_cancellato(response)
         mock_blocca.assert_called_once()
         user_id, vale_sid = mock_blocca.call_args[0]
         self.assertEqual(user_id, 1)
@@ -121,7 +136,7 @@ class LogoutViewTests(TestCase):
             user_id=1, request=request._request, jti="sid-abc-123",
         )
 
-    # Scopo: POST senza refresh token → 400 E_LOGOUT_NO_TOKEN.
+    # Scopo: POST senza cookie di refresh → 400 E_LOGOUT_NO_TOKEN.
     def test_logout_no_token(self):
         with self.assertRaises(ServiceError) as ctx:
             self._post(None)
@@ -145,6 +160,8 @@ class LogoutViewTests(TestCase):
         _request, response = self._post("invalid-token-string")
 
         self.assertEqual(response.status_code, 204)
+        # Anche senza niente da revocare il browser smette di portarlo.
+        self._assert_cookie_cancellato(response)
         mock_blocca.assert_not_called()
         mock_audit.record_logout.assert_not_called()
 
@@ -542,9 +559,16 @@ class SessionAuditRepositoryTests(TestCase):
         from apps.core.db.session_audit_repository import SessionAuditRepository
 
         mock_cursor = MagicMock()
+        # Colonne come quelle di psycopg (`.name`): le legge `row_to_dict`/`rows_to_list`.
         mock_cursor.description = [
-            ("jti",), ("ultimo_evento",), ("ip_address",),
-            ("user_agent",), ("data_inizio",), ("data_ultimo_evento",),
+            SimpleNamespace(name=c) for c in (
+                "jti",
+                "ultimo_evento",
+                "ip_address",
+                "user_agent",
+                "data_inizio",
+                "data_ultimo_evento",
+            )
         ]
         mock_cursor.fetchall.return_value = [
             ("sid-1", "LOGIN", "10.0.0.1", "Firefox/100",

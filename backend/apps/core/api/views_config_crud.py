@@ -14,6 +14,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serial
 from rest_framework import serializers
 from rest_framework.request import Request
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.success_responses import success_response
@@ -94,7 +95,7 @@ class ConfigTableRecordsView(_PermessoSullOggettoMixin, DomainAPIView):
             order_dir=qp.get("order_dir", "asc"),
             attivo_only=qp.get("attivo_only", "false").lower() not in ("0", "false", "no"),
             page=qp_int(qp.get("page"), 1),
-            page_size=qp_int(qp.get("page_size"), 50),
+            page_size=qp_int(qp.get("page_size"), DEFAULT_LIMIT),
         )
         return success_response(data)
 

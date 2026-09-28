@@ -27,6 +27,10 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
+# Gunicorn diretto in HTTP: ci si dichiara HTTPS come Nginx (redirect di Django).
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"
+# Refresh JWT nel cookie HttpOnly: lettura dal Set-Cookie e ripresentazione.
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_refresh.sh"
 USERNAME="${SMOKE_USER:-tid}"
 PASSWORD="${1:-${SMOKE_PASSWORD:-}}"
 
@@ -41,7 +45,7 @@ FAIL=0
 WARN=0
 
 TMPFILE=$(mktemp)
-trap "rm -f $TMPFILE" EXIT
+trap "rm -f $TMPFILE ${TMPFILE}.hdr" EXIT
 
 log_ok()   { ((PASS++)) || true; echo -e "  ${GREEN}OK${NC}    $1"; }
 log_fail() { ((FAIL++)) || true; echo -e "  ${RED}FAIL${NC}  $1"; }
@@ -89,7 +93,7 @@ if [[ -z "$PASSWORD" ]]; then
     echo ""
 fi
 
-curl -s -w '\n%{http_code}' \
+curl -s -w '\n%{http_code}' -D "${TMPFILE}.hdr" \
     -H "Content-Type: application/json" \
     -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}" \
     "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE"
@@ -187,10 +191,8 @@ fi
 # Usiamo l'endpoint di refresh JWT che inserisce in dbops.sessioni_utente.
 echo ""
 echo "    Triggering: refresh JWT (inserisce sessioni_utente.REFRESH)..."
-REFRESH=$(json_get "$AUTH_BODY" ".refresh")
-curl -s -o /dev/null \
-    -H "Content-Type: application/json" \
-    -d "{\"refresh\":\"$REFRESH\"}" \
+REFRESH=$(refresh_dal_set_cookie "${TMPFILE}.hdr")
+curl_refresh "$REFRESH" -s -o /dev/null -X POST \
     "${BASE_URL}/api/v1/admin/token/refresh/"
 
 sleep 0.3

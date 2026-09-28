@@ -7,6 +7,7 @@ from uuid import UUID
 
 from rest_framework.exceptions import ParseError
 
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.request_parsers import oggetto_json, parse_iso_date
 from apps.core.services.service_errors import E_VALIDATION_INPUT, ServiceError
 
@@ -174,8 +175,8 @@ def parse_list_params(
     qp,
     *,
     default_order: str = "descrizione",
-    default_limit: int = 25,
-    max_limit: int = 200,
+    default_limit: int = DEFAULT_LIMIT,
+    max_limit: int = MAX_LIMIT,
 ) -> dict:
     search = qp_str(qp.get("search"))
     # ⚠️ Il limite sta fra 1 e `max_limit`, l'offset non e' negativo: i

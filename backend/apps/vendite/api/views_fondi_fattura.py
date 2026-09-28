@@ -30,6 +30,7 @@ from drf_spectacular.utils import (
 from rest_framework import serializers
 from rest_framework.request import Request
 
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import qp_int_strict, qp_str, qp_str_upper
@@ -106,7 +107,7 @@ class ApiFondiFatturaDaDecidere(DomainAPIView):
                 type=int,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description="Dimensione pagina (default 50, max 200).",
+                description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
             ),
         ],
         responses={
@@ -136,7 +137,7 @@ class ApiFondiFatturaDaDecidere(DomainAPIView):
         order_by = qp_str(qp.get("order_by"))
         order_dir = qp_str(qp.get("order_dir"))
         page = qp_int_strict(qp.get("page"), "page", 1)
-        page_size = qp_int_strict(qp.get("page_size"), "page_size", 50)
+        page_size = qp_int_strict(qp.get("page_size"), "page_size", DEFAULT_LIMIT)
 
         data = fn_fondi_fattura_da_decidere(
             motivo=motivo,

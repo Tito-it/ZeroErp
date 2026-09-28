@@ -66,7 +66,6 @@ def render_pdf(
             message=f"Render engine '{engine}' non supportato in v1.",
             detail=f"engine_ammessi={sorted(_ENGINE_WHITELIST)!r}",
         )
-        raise  # unreachable, per type checker
 
     html_source = _render_html_with_jinja(
         template_versione["html_template"], context,
@@ -92,7 +91,6 @@ def _guard_versione_minima(versione: dict[str, Any]) -> None:
                 message=f"Versione template incompleta: campo '{key}' mancante.",
                 detail=f"versione_id={versione.get('id')!r}",
             )
-            raise  # unreachable
 
 
 # Scopo: Render Jinja del sorgente HTML con `context` come namespace.
@@ -128,7 +126,6 @@ def _render_html_with_jinja(html_template: str, context: dict[str, Any]) -> str:
             message="Errore di rendering del template HTML (Jinja).",
             detail=f"{type(exc).__name__}: {exc}",
         )
-        raise  # unreachable
 
 
 # Scopo: Conversione HTML+CSS -> PDF tramite WeasyPrint. Lazy import per
@@ -150,7 +147,6 @@ def _render_with_weasyprint(html_source: str, css_source: str) -> bytes:
             message="WeasyPrint non disponibile o dipendenze native mancanti.",
             detail=str(exc),
         )
-        raise  # unreachable
     try:
         document = HTML(string=html_source)
         stylesheets = [CSS(string=css_source)] if css_source else None
@@ -167,11 +163,9 @@ def _render_with_weasyprint(html_source: str, css_source: str) -> bytes:
             message="Errore di rendering PDF (WeasyPrint).",
             detail=f"{type(exc).__name__}: {exc}",
         )
-        raise  # unreachable
     if not pdf_bytes:
         ErrorManager.raise_error(
             code=E_RENDER_FAILED,
             message="WeasyPrint ha restituito output PDF vuoto.",
         )
-        raise  # unreachable
     return pdf_bytes

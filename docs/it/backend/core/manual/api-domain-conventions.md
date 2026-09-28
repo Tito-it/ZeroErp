@@ -53,8 +53,8 @@ Per ridurre duplicazioni tra app dominio usare helper core:
   - UI: `GET /api/docs/`
 
 ## Promemoria JWT (ambiente test/dev)
-- Durata `access_token`: 60 minuti.
-- Durata `refresh_token`: 1 giorno.
+- Durata `access_token`: 10 minuti (dal 2026-09-28); il frontend lo tiene solo in memoria e lo rinnova in silenzio.
+- Durata `refresh_token`: 1 giorno; viaggia solo nel cookie HttpOnly `zeroerp_refresh`, mai nel corpo (vedi [api_multi_veste_token.md](api_multi_veste_token.md#cookie-di-refresh)).
 - Dopo modifiche a `SIMPLE_JWT` in settings, riavviare Gunicorn per applicare i nuovi valori.
 
 ## Checklist operativa (nuove API dominio)

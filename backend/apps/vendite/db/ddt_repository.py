@@ -21,7 +21,9 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
+    limiti_pagina,
     RicercaFull,
     add_ricerca_full_condition,
     sql_order_clause,
@@ -34,6 +36,11 @@ from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynam
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
 from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
+from apps.vendite.db._righe_repo_mixin import (
+    COLONNE_RIGHE_COMMERCIALI,
+    RICERCA_RIGHE_COMMERCIALI,
+    RigheDocumentoRepositoryMixin,
+)
 
 
 # Scopo: Whitelist colonne ORDER BY per la lista DDT (SQL injection safe). Le
@@ -68,7 +75,18 @@ _ORDER_COLS_DDT: dict[str, str] = {
 }
 
 
+# Le righe del documento come lista configurabile `vendite.ddt_righe` (BB
+# `RigheDocumentoRepositoryMixin`, brief-db-liste-righe-documento lotto A).
+# Le colonne gemelle sono dichiarate una volta nel BB; qui solo cio' che e'
+# di questo documento. `test_ricerca_full_seed` legge `_RICERCA_RIGHE`.
+_RICERCA_RIGHE = RicercaFull("vendite.ddt_righe", RICERCA_RIGHE_COMMERCIALI)
+_ORDER_COLS_RIGHE: dict[str, str] = {
+    **COLONNE_RIGHE_COMMERCIALI,
+}
+
+
 class DdtRepository(
+    RigheDocumentoRepositoryMixin,
     ComponentiRepositoryMixin,
     RiepilogoIvaRepositoryMixin,
     IndirizziDocumentoRepositoryMixin,
@@ -85,6 +103,16 @@ class DdtRepository(
     on-the-fly dalle righe attive valorizzate: le righe con prezzo NULL — DDT
     solo di trasporto — restano fuori dal riepilogo per filtro in vista).
     """
+
+    # Righe (BB `RigheDocumentoRepositoryMixin`): vista, chiave, ordine del
+    # documento, whitelist e ricerca della lista `vendite.ddt_righe`.
+    _righe_vista = "vendite.vw_ddt_righe_dettaglio"
+    _righe_tabella = "vendite.ddt_righe"
+    _righe_fk_documento = "ddt_id"
+    _righe_ordine_documento = "riga_nr"
+    _righe_ordinamento = _ORDER_COLS_RIGHE
+    _righe_ricerca = _RICERCA_RIGHE
+    _righe_colonne_desc = ()
 
     # Configurazione mixin componenti (tabella + FK riga padre).
     _componenti_table_name = "vendite.ddt_righe_componenti"
@@ -129,7 +157,7 @@ class DdtRepository(
         offset: int,
         order_by: str = "data",
         order_dir: str = "desc",
-        max_limit: int = 200,
+        max_limit: int = MAX_LIMIT,
     ) -> tuple[list[dict[str, Any]], int]:
         # NULL = valore MINIMO (lo mette `sql_order_clause`): il `numero` e' NULL
         # su tutte le bozze (lo assegna il trigger a EMESSO) e i default
@@ -148,12 +176,11 @@ class DdtRepository(
             #    DDT il 2026-09-02).
             default_desc=True,
         )
-        # `max_limit`: la lista pagina (cap 200, gia' imposto da
+        # `max_limit`: la lista pagina (cap `MAX_LIMIT`, gia' imposto da
         # parse_list_params), l'export chiede fino a EXPORT_MAX_ROWS+1 per
         # intercettare l'overflow SENZA troncare in silenzio (il guard di
         # build_export_response usa la COUNT reale).
-        safe_limit = max(1, min(int(limit), max_limit))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset, tetto=max_limit)
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -298,116 +325,6 @@ class DdtRepository(
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Righe
     # ══════════════════════════════════════════════════════════
-
-    # Scopo: Conteggio righe attive del DDT (per `righe_count` del detail):
-    #        evita di materializzare l'intero elenco solo per contarlo.
-    def count_righe(self, ddt_id: int) -> int:
-        sql = (
-            "SELECT COUNT(*) FROM vendite.ddt_righe "
-            "WHERE ddt_id = %s AND attivo IS TRUE"
-        )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [ddt_id])
-            row = cursor.fetchone()
-            return int(row[0]) if row else 0
-
-    # Scopo: Righe attive del DDT con decodifiche articolo/uom/iva e flag
-    #        `is_composito_caso_a` (chevron expander FE). Importo riga calcolato
-    #        (quantita * prezzo * (1 - sconto%)).
-    def list_righe(self, ddt_id: int) -> list[dict[str, Any]]:
-        sql = """
-            SELECT
-                r.id,
-                r.ddt_id,
-                r.riga_nr,
-                r.attivo,
-                r.articolo_id,
-                a.codice                AS articolo_codice,
-                a.descrizione           AS articolo_descrizione,
-                r.descrizione,
-                r.quantita,
-                r.qta_operativa,
-                r.factor_to_base,
-                r.uom_operativa_id,
-                um.codice               AS uom_codice,
-                r.prezzo_unitario,
-                r.sconto_percentuale,
-                r.iva_id,
-                iva.codice              AS iva_codice,
-                iva.descrizione         AS iva_descrizione,
-                iva.aliquota_iva        AS iva_aliquota,
-                -- ⛔ NIENTE `COALESCE(r.prezzo_unitario, 0)` (V-2 del
-                -- brief-ddt-righe-senza-prezzo): con lo zero, una riga senza
-                -- prezzo mostrava importo 0,00 — indistinguibile da una riga
-                -- che vale davvero zero, e il totale del documento tornava
-                -- «giusto» sommando quel che non c'e'. Ora `importo_riga` esce
-                -- NULL, e il FE ha di che distinguere (DEC-6).
-                -- ⚠️ Lo sconto tiene il suo COALESCE: sconto assente vuol dire
-                -- sconto zero, e li' lo zero e' il fatto.
-                ROUND(
-                    (r.quantita * r.prezzo_unitario) *
-                    (1::numeric - COALESCE(r.sconto_percentuale, 0::numeric) / 100::numeric),
-                    2
-                ) AS importo_riga,
-                r.meta,
-                r.data_insert,
-                r.data_update,
-                EXISTS (
-                    SELECT 1
-                      FROM vendite.ddt_righe_componenti rc
-                     WHERE rc.riga_ddt_id = r.id
-                       AND rc.attivo IS TRUE
-                ) AS is_composito_caso_a
-              FROM vendite.ddt_righe r
-              LEFT JOIN catalogo.articoli a    ON a.id   = r.articolo_id
-              LEFT JOIN catalogo.unita_misura um ON um.id = r.uom_operativa_id
-              LEFT JOIN config.iva iva         ON iva.id = r.iva_id
-             WHERE r.ddt_id = %s
-               AND r.attivo IS TRUE
-             ORDER BY r.riga_nr, r.id
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [ddt_id])
-            return rows_to_list(cursor)
-
-    # Scopo: Carica una singola riga via lookup mirato per id (stessa proiezione
-    #        di list_righe senza caricare l'intero elenco). Usato da aggiorna_riga.
-    def get_riga(self, riga_id: int) -> dict[str, Any] | None:
-        sql = """
-            SELECT
-                r.id,
-                r.ddt_id,
-                r.riga_nr,
-                r.attivo,
-                r.articolo_id,
-                a.codice                AS articolo_codice,
-                a.descrizione           AS articolo_descrizione,
-                r.descrizione,
-                r.quantita,
-                r.qta_operativa,
-                r.factor_to_base,
-                r.uom_operativa_id,
-                um.codice               AS uom_codice,
-                r.prezzo_unitario,
-                r.sconto_percentuale,
-                r.iva_id,
-                iva.codice              AS iva_codice,
-                r.meta,
-                EXISTS (
-                    SELECT 1
-                      FROM vendite.ddt_righe_componenti rc
-                     WHERE rc.riga_ddt_id = r.id
-                       AND rc.attivo IS TRUE
-                ) AS is_composito_caso_a
-              FROM vendite.ddt_righe r
-              LEFT JOIN catalogo.articoli a    ON a.id   = r.articolo_id
-              LEFT JOIN catalogo.unita_misura um ON um.id = r.uom_operativa_id
-              LEFT JOIN config.iva iva         ON iva.id = r.iva_id
-             WHERE r.id = %s
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [riga_id])
-            return row_to_dict(cursor)
 
     # Scopo: Load atomico di un componente con scope completo (componente →
     #        riga → ddt) in un'unica query JOIN, per i guard del service.

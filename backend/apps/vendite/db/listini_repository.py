@@ -16,9 +16,10 @@ from uuid import UUID
 from django.db import connection, transaction
 
 from apps.core.db._helpers import (
+    limiti_pagina,
     RicercaFull,
     add_ricerca_full_condition,
-    extract_paginated,
+    fetch_paged_with_total,
     row_to_dict,
     rows_to_list,
     sql_order_clause,
@@ -143,8 +144,7 @@ class ListiniRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[dict[str, Any]], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
         # BB `sql_order_clause` (NULL come valore minimo, tiebreak `l.id`
         # allineato). Rigido: il service ha gia' validato `order_by`/`order_dir`
         # contro la stessa whitelist, un valore estraneo qui e' un errore.
@@ -759,8 +759,7 @@ class ListiniRepository:
         limit: int = 25,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
         # BB `sql_order_clause`, rigido come `list_listini`. Il default e'
         # l'ALIAS di uscita `articolo_descrizione`: dopo la UNION l'ORDER BY
         # vede solo i nomi proiettati — il vecchio ripiego `ad.descrizione`
@@ -914,11 +913,10 @@ class ListiniRepository:
             + [safe_limit, safe_offset]
         )
 
-        with connection.cursor() as cursor:
-            cursor.execute(data_sql, data_params)
-            # `extract_paginated` ricava righe e totale da `COUNT(*) OVER()`:
-            # una sola valutazione della union invece di count + data separati.
-            return extract_paginated(cursor)
+        # Righe e totale da `COUNT(*) OVER()`: una sola valutazione della union
+        # invece di count + data separati; oltre l'ultima pagina il BB rilegge
+        # la prima riga per il totale vero.
+        return fetch_paged_with_total(data_sql, data_params, offset=safe_offset)
 
     # Scopo: Restituisce il dettaglio singolo della riga prezzo in perimetro listino/versione.
     def get_riga(self, listino_id: int, versione_id: int, riga_id: int) -> dict[str, Any] | None:

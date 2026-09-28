@@ -46,4 +46,3 @@ def get_emittente_fiscale_id(request: Any) -> int:
         message="Impossibile determinare l'emittente fiscale dell'operatore.",
         detail="L'operatore non ha emittenti fiscali associati.",
     )
-    raise AssertionError("unreachable")

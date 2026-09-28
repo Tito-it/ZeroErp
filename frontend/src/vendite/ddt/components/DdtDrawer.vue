@@ -696,6 +696,7 @@ const drawerActions = computed(() => {
         <Divider />
         <DdtRigheTable
           :ddt-id="effectiveDdtId"
+          :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
           :is-modificabile="canEditRighe && !isReadonly"
           :causale-fatturabile="causaleFatturabile"
           @changed="loadDetail()"

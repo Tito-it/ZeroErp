@@ -593,7 +593,6 @@ class ApiAssetList(DomainAPIView):
                 code="E_DOCUMENTI_VALIDATION",
                 message="Campo 'file' mancante nel multipart/form-data.",
             )
-            raise  # unreachable, per type checker
         metadati = self._extract_metadati(request)
         result = TemplateAssetAdminService().upload_asset(
             request.user,

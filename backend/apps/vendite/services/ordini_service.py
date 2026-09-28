@@ -23,6 +23,7 @@ from typing import Any
 
 from django.db import DatabaseError, transaction
 
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.payload_validators import paginated_envelope
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._righe_bozza_guard import richiedi_righe_in_bozza
@@ -182,7 +183,7 @@ def list_ordini_rows(
     offset: int,
     order_by: str = "data",
     order_dir: str = "desc",
-    max_limit: int = 200,
+    max_limit: int = MAX_LIMIT,
 ) -> tuple[list[Any], int]:
     repo = OrdiniRepository()
     return repo.list_ordini(
@@ -212,12 +213,12 @@ def list_ordini(
     search: str | None = None,
     auth_user_id: int | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
     order_by: str = "data",
     order_dir: str = "desc",
 ) -> dict[str, object]:
     safe_page = max(1, int(page))
-    safe_size = max(1, min(int(page_size), 200))
+    safe_size = max(1, min(int(page_size), MAX_LIMIT))
     offset = (safe_page - 1) * safe_size
     rows, total = list_ordini_rows(
         stato_codice=stato_codice,
@@ -266,7 +267,7 @@ def resolve_filtri_export_label(
 def get_ordine(ordine_id: int) -> dict[str, object]:
     repo = OrdiniRepository()
     testata = _get_testata_or_raise(repo, ordine_id, op="get_ordine")
-    righe = repo.list_righe(ordine_id)
+    righe_count = repo.count_righe(ordine_id)
     # Capability data-driven da script.fn_available_actions_ordine (matrice
     # config.transizioni_stati_ordini): available_actions (conferma/annulla/
     # push), can_edit_testata/righe, can_push_commessa(+reason), non_editable_
@@ -279,7 +280,7 @@ def get_ordine(ordine_id: int) -> dict[str, object]:
     return {
         **testata,
         "capabilities": capabilities,
-        "righe_count": len(righe),
+        "righe_count": righe_count,
     }
 
 
@@ -289,6 +290,27 @@ def list_righe(ordine_id: int) -> list[dict[str, Any]]:
     repo = OrdiniRepository()
     _get_testata_or_raise(repo, ordine_id, op="list_righe")
     return repo.list_righe(ordine_id)
+
+
+# Scopo: Una PAGINA delle righe del ordine, per la lista configurabile
+#        (`GET …/righe/lista/`): ricerca, ordinamento e pagina. Legge prima la
+#        testata come `list_righe`. Ritorna `(righe, totale)`.
+def list_righe_pagina(
+    ordine_id: int,
+    *,
+    search: str | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    limit: int,
+    offset: int = 0,
+    max_limit: int = MAX_LIMIT,
+) -> tuple[list[dict[str, Any]], int]:
+    repo = OrdiniRepository()
+    _get_testata_or_raise(repo, ordine_id, op="list_righe_pagina")
+    return repo.list_righe_pagina(
+        ordine_id, search=search, order_by=order_by, order_dir=order_dir,
+        limit=limit, offset=offset, max_limit=max_limit,
+    )
 
 
 # Scopo: risolve l'ordine COLLEGATO a una pratica (per gli step a valle del
@@ -763,7 +785,7 @@ def crea_ordine_da_offerta(offerta_id: int) -> dict[str, Any]:
 def elimina_ordine(ordine_id: int) -> dict[str, Any]:
     repo = OrdiniRepository()
     _assert_stato(repo, ordine_id, _STATI_MODIFICABILI, op="elimina_ordine")
-    righe_count = len(repo.list_righe(ordine_id))
+    righe_count = repo.count_righe(ordine_id)
     ErrorManager.require(
         righe_count == 0,
         code="E_ORD_STATO_TRANSIZIONE",
@@ -788,10 +810,8 @@ def conferma(ordine_id: int, *, user: str | None = None) -> dict[str, Any]:
     # 2 rev 2026-07-16): contano solo le righe ATTIVE — un ordine con sole
     # righe disattivate non e' confermabile. Il guard autorevole resta il
     # trigger (E_ORDINE_CONFERMA_SENZA_RIGHE); qui si evita solo il round-trip.
-    righe = repo.list_righe(ordine_id)
-    righe_attive = [r for r in righe if r.get("attivo")]
     ErrorManager.require(
-        len(righe_attive) > 0,
+        repo.count_righe(ordine_id) > 0,
         code="E_ORD_NESSUNA_RIGA",
         message="Impossibile confermare un ordine senza righe attive.",
         detail=f"ordine_id={ordine_id}",

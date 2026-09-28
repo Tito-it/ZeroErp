@@ -9,7 +9,20 @@
 > **Stato:** 🔵 in corso dal 2026-09-28. Decisioni di Tid del 2026-09-26: §1 *«facciamo dopo»*,
 > §2–§4 *«più avanti»*; il 2026-09-28 Tid ha dato il via allo sviluppo. ✅ §3.5 consegnata a
 > codice il 2026-09-28 e migrata su `backend-dev` lo stesso giorno (§3.5 «Fatto»). ✅ §4 ruff `B`
-> accesa il 2026-09-28 (§4 «Fatto»).
+> accesa il 2026-09-28 (§4 «Fatto»). 🟡 §1: HSTS e redirect fatti il 2026-09-28, CSP scritta nel
+> vhost documentato e da applicare in Nginx (§1.6 «Fatto»). ✅ §2 token fuori da `localStorage` fatto il
+> 2026-09-28, resta il collaudo a video (§2.5 «Fatto»).
+> **Commit:** §3.5 e §4 in `077ade022`; §1 (HSTS/redirect), §2 e la revisione del cantiere in
+> `2356ed65c` (2026-09-28, `dev/backend-tid`).
+>
+> ⏳ **Cosa manca per chiudere il brief** (in ordine):
+> 1. riavviare il backend su `backend-dev` (`sudo systemctl restart zeroerp-gunicorn`: rilegge
+>    `.env.systemd`, dove c'è `DJANGO_SECURE_HSTS_SECONDS=0`) — senza, il frontend nuovo e il
+>    backend vecchio non si parlano sul rinnovo;
+> 2. eseguire i tre smoke del refresh (`smoke-test-core`, `-audit-logging`, `-jwt-audit-guc`);
+> 3. collaudo a video di §2 (§2.5, ultima voce);
+> 4. CSP in Nginx come `Report-Only`, collaudo a video, poi applicata (§1.6);
+> 5. §3 TOTP, dopo le decisioni 3 e 4 di §6 e la richiesta al DB (§3.3).
 >
 > **Contesto:** [Sicurezza e qualità statica](../sicurezza-e-qualita-statica.md), sezione
 > «Aperto». Registro del debito: [migliorie generali](migliorie-generali-BE-FE-da-test-valutazione.md),
@@ -126,6 +139,37 @@ add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
   diretto non viene rediretto;
 * a mano: `curl -kI https://<host>/` mostra la CSP; collaudo a video senza violazioni in console.
 
+✅ **HSTS e redirect fatti il 2026-09-28** (BE, `dev/backend-tid`):
+
+* `settings.py`: `SECURE_HSTS_SECONDS` da `DJANGO_SECURE_HSTS_SECONDS` (`parse_hsts_seconds`:
+  obbligatoria con `DEBUG=0`, senza default, intero ≥ 0); sottodomini e preload spenti;
+  `SECURE_SSL_REDIRECT` da `DJANGO_SECURE_SSL_REDIRECT`, default acceso con `DEBUG=0`;
+  `SECURE_REDIRECT_EXEMPT = [r"^health$"]`;
+* **chiamanti diretti di Gunicorn** (§1.4), cercati: `/health` (smoke del container in
+  `ci.yaml`) è esente; i **35 smoke bash** si dichiarano HTTPS come Nginx con il BB
+  `backend/scripts/tests/_smoke_https.sh` (scelta di Tid, 2026-09-28: header, non redirect spento
+  su `backend-dev`); i test Django lo trovano spento dal runner (`test_runner.py`). Gli smoke
+  Python girano in-process e non passano da HTTP; i timer usano comandi di gestione;
+* test: `apps/core/tests/api/test_https_header.py` (10: redirect, `/health`, richiesta da Nginx,
+  header HSTS, variabile d'ambiente, ogni smoke bash include il BB);
+* CI: `check --deploy` gira coi valori di produzione (un anno, redirect acceso) e **W004/W008
+  sono tolti** dall'elenco accettato; al loro posto `W005`/`W021`, sottodomini e preload spenti
+  per scelta (§1.3), che non sono debito. Nel job e nello smoke del container
+  `DJANGO_SECURE_HSTS_SECONDS=0`;
+* `backend-dev`: `DJANGO_SECURE_HSTS_SECONDS=0` dichiarato in `env.sh` e `.env.systemd`
+  (decisione §1.3). ⚠️ Va riavviato con `sudo systemctl restart zeroerp-gunicorn`: un `HUP` non
+  rilegge `.env.systemd` e i worker non partirebbero;
+* doc: `.env.example`, `configurazione-django.md` (settings, vhost, test di validazione),
+  `sicurezza-e-qualita-statica.md` § «HSTS e redirect HTTPS», api.md (smoke bash), catalogo BB.
+* Emerso nel giro, fuori perimetro: `smoke-test-pratiche.sh` aveva un errore di sintassi (una
+  virgoletta non chiusa nel riepilogo finale), quindi non partiva: corretto.
+
+⏳ **CSP: scritta, non ancora applicata.** La politica (sviluppo con Vite e produzione, una
+accanto all'altra), `Referrer-Policy` e `Permissions-Policy` sono nel vhost documentato in
+`configurazione-django.md`. Restano, a mano su `backend-dev` (sudo): copiarle nel vhost come
+`Content-Security-Policy-Report-Only`, `nginx -t && systemctl reload nginx`, collaudo a video su
+tutte le aree guardando la console, poi togliere `-Report-Only`. Chiusa quella, §1 è chiusa.
+
 ---
 
 ## 2. Token JWT fuori da `localStorage`
@@ -179,6 +223,60 @@ l'endpoint di refresh dopo un ricaricamento.
 * test FE (vitest): nessun token scritto in `localStorage`;
 * collaudo a video: ricarica pagina, due schede aperte per più di una durata dell'access, logout
   da una scheda.
+
+✅ **Fatto il 2026-09-28** (BE + FE, `dev/backend-tid`). Decisioni di Tid dello stesso giorno:
+più schede con la strada **A** (le schede si coordinano), access a **10 minuti**, cookie su
+`Path=/api/v1/` (non il solo endpoint di refresh: lo usano anche logout, cambio emittente e cambio
+password, che stanno altrove).
+
+* **BE**: BB `apps/core/api/refresh_cookie.py` — cookie `zeroerp_refresh`, `HttpOnly`,
+  `SameSite=Strict`, `Path=/api/v1/`, `Secure` = `REFRESH_COOKIE_SECURE` (segue
+  `SESSION_COOKIE_SECURE`), durata del token. Login e refresh dei tre canali, cambio password e
+  cambio emittente spostano il refresh dal corpo al cookie; refresh, logout e cambio emittente lo
+  leggono dal cookie; il logout lo cancella in ogni risposta. Il refresh pretende
+  `X-Requested-With: XMLHttpRequest` (403 `E_PERMISSION_DENIED`), senza cookie è 401. Nessun
+  codice d'errore nuovo: bastavano quelli a catalogo. `ACCESS_TOKEN_LIFETIME` = 10 minuti.
+* **FE**: BB `core/sessione.js` — access solo in memoria; `rinnovaCoordinato` = una volta per
+  scheda (promise condivisa) e una scheda alla volta (`navigator.locks`), con l'access nuovo sul
+  `BroadcastChannel` `zeroerp-sessione`. `core/api.js` `rinnovaAccess` è l'unica strada verso il
+  refresh (la vecchia coda `pendingRequests` è diventata la promise condivisa). Store `auth`:
+  niente token in `localStorage` (quelli rimasti si tolgono all'avvio), `ripristinaSessione()` nel
+  guard al posto del «refresh proattivo», eventi fra schede LOGOUT (escono tutte) e
+  SESSIONE_NUOVA (login o cambio emittente altrove: questa scheda riparte dal boot).
+  L'eccezione `window.location` ha ora una sede sola, l'azione `ripartiDalBoot`.
+* ⚠️ **CSRF e `SameSite`**: la protezione è doppia (cookie `Strict` + header custom) perché il
+  refresh è l'unica rotta autenticata dal solo cookie. Logout e cambio emittente pretendono il
+  Bearer, che un altro sito non ha.
+* **Test**: `test_auth_views` (`RefreshCookieTests`, 4 nuovi + i test del refresh riscritti sul
+  cookie), `test_sessioni_view` (logout legge e cancella il cookie), `test_emittente_attivo_view`,
+  `test_change_password_token_veste`; il presidio F-9 di `test_corpo_oggetto` si è spostato dal
+  logout (che il corpo non lo legge più) alla PATCH articolo. FE: `sessione.spec.js` (8).
+* **Smoke**: `smoke-test-core`, `-audit-logging`, `-jwt-audit-guc` leggono il refresh dal
+  `Set-Cookie` col BB `backend/scripts/tests/_smoke_refresh.sh`. ⚠️ Non ancora eseguiti contro il
+  backend vero: va riavviato col codice nuovo.
+* **Doc**: api.md § «Il refresh token viaggia nel cookie», frontend-standards § Sicurezza, i due
+  cataloghi BB, le pagine `backend/core/manual/` dei cinque endpoint, `sicurezza-e-qualita-statica.md`.
+* ⏳ **Resta il collaudo a video** (sopra, ultima voce): ricarica, due schede oltre i 10 minuti,
+  logout da una scheda, cambio emittente con due schede aperte.
+
+✅ **Revisione critica del cantiere** (2026-09-28, nello stesso commit `2356ed65c`):
+
+* **E-8 chiuso** (analisi difetti doc API core, ok Tid): la veste del refresh si legge da claim con
+  la **firma verificata**. La funzione del logout è diventata il BB `claims_refresh_firmati` di
+  `refresh_cookie.py` (regola del 2), copia ritirata. Refresh illeggibile o firmato da altri → 401;
+  refresh nostro di un altro canale → 403 come prima. Audit e GUC del refresh nascono dagli stessi
+  claim verificati: prima si rileggeva il token tre volte alla cieca.
+* **Regola del 2, ok Tid**: `handle_post_json_con_refresh` (cambio password e cambio emittente
+  scrivevano il cookie «solo se 200» con lo stesso schema a mano) e `parse_intero_non_negativo` in
+  `settings.py` (`DJANGO_TRUSTED_PROXY_COUNT` e HSTS).
+* **Fragile**: un rinnovo che risponde senza access ora è un rinnovo fallito (prima le richieste
+  ripartivano con `Bearer undefined`); la conversione dei claim interi è una sola.
+* **Valori in tre linguaggi**: nome del cookie e header anti-CSRF stanno in Python, in bash e nel
+  frontend; `test_nome_cookie_e_header_uguali_nei_tre_linguaggi` li confronta.
+* Test aggiunti: `test_auth_views` fino al n. 30 (GUC dai claim verificati, token veri per E-8, il
+  BB del POST con refresh), `test_https_header` n. 11, `sessione.spec.js` n. 9.
+* ⚠️ Lasciato, da decidere: dopo un logout fatto in un'altra scheda questa arriva al login con
+  la frase «sessione scaduta» (serve un motivo nuovo e le sue traduzioni).
 
 ---
 
@@ -314,17 +412,44 @@ sono nel commento di `ruff.toml`; in breve:
   (`views.py` ×2, `payload_validators.py`), ora `from None`. Quindi la regola **resta accesa**
   invece di finire in `ignore`.
 
-Emerse nel giro, **non** fatte (decisione di Tid):
+Emerse nel giro, rimandate il 2026-09-28 e ✅ **fatte lo stesso giorno** (richiesta di Tid):
 
-1. **Regola del 2 su `row_to_dict` / `rows_to_list`** (`core/db/_helpers.py`): 32 conversioni
-   riga→dizionario riscritte a mano fuori dai test (`amm_software`, `ui_admin`, `auth`,
+1. ✅ **Regola del 2 su `row_to_dict` / `rows_to_list`** (`core/db/_helpers.py`): ritirate le 32
+   conversioni riga→dizionario scritte a mano in 12 file (`amm_software`, `ui_admin`, `auth`,
    `portale`, `session_audit`, `parameter`, `lookup`, `config_crud`, `pratiche`,
-   `approvazioni_prezzo`, `send_pending_emails`). Il BB c'è: le copie andrebbero ritirate. Non
-   sono tutte identiche (alcune leggono `fetchone` dopo altra logica, una normalizza il JSONB),
-   quindi è un giro a sé, dominio per dominio.
-2. **`ErrorManager.raise_error` dichiarata `-> NoReturn`**: oggi ritorna `None`, ed è per questo
-   che dopo ogni chiamata serve una riga `raise AssertionError("unreachable")` (19 nel codice
-   applicativo). Con `NoReturn` il type checker sa che non si torna, e quelle righe si tolgono.
+   `approvazioni_prezzo`, `send_pending_emails`). Le due forme ricorrenti sono diventate le
+   chiamate ai BB; le varianti a mano (conteggio `total_count` da togliere, JSONB normalizzato,
+   `require` fra lettura e conversione, guardia su `cursor.description`) conservano il loro
+   passo in più. ⚠️ Una sola resta fuori, ed è un'altra operazione: `vendite_repository` (fondi
+   da decidere) mappa tuple già estratte da `_query_paged_view`, con `strict=False` dichiarato
+   per la colonna in coda. Due test avevano un `description` finto fatto di tuple (senza
+   `.name`, che psycopg ha): ora `SimpleNamespace(name=...)`. Provato anche sul DB vero
+   (`ZEROERP_TEST_DB_E2E=1`, suite intera).
+2. ✅ **`ErrorManager.raise_error` dichiarata `-> NoReturn`**, e con lei
+   `listini_service._translate_integrity_error` (chiude con `map_integrity_error`, già
+   `NoReturn`). Tolte le **21** righe `raise AssertionError("unreachable"/"irraggiungibile")`
+   (le 19 contate più una dentro `ErrorManager` stesso e una in `plafond_fattura_service`). Due
+   `ErrorManager.require(False, ...)` — un «solleva sempre» mascherato da controllo — sono ora
+   `raise_error`, quello nell'`except` con `cause=exc`. Presidio: `test_error_manager` (ogni
+   ramo solleva; `NoReturn` dichiarato sulle tre funzioni).
+   Stessa operazione sull'altra forma della riga, il `raise` nudo (`raise  # unreachable, per
+   type checker`): 66 nel codice applicativo, classificati per la chiamata che li precede.
+   ✅ Tolti i **57** che seguono `ErrorManager.raise_error` (`documenti` 53, `parameter_service`
+   2, `amm_software_repository` 1, `pipeline_runner` 1): dipendevano solo da `raise_error`, già
+   `NoReturn`. ⚠️ Il primo conteggio li aveva mancati perché cercava solo la forma
+   `AssertionError(...)`: una ricerca per **testo** vede una forma, quella per **significato**
+   («riga dopo una chiamata che solleva sempre») le vede tutte.
+   ⏳ **Restano, un giro a sé**:
+   * 9 `raise` nudi dopo traduttori d'errore **locali** non dichiarati `NoReturn`:
+     `_raise_known_db_error` (`pratiche_service` ×6, `definizioni_service` ×1) e
+     `_translate_nota_integrity_error` (`catalogo_service` ×2). Si tolgono dichiarando
+     `NoReturn` il traduttore, dopo averne provato che solleva su ogni ramo;
+   * 4 `ErrorManager.require(False, ...)`, lo stesso «solleva sempre» mascherato da controllo
+     convertito sopra: `soggetti_service` ×2, `amm_software_service` ×1, `auth_helpers` ×1 →
+     `raise_error` (con `cause=exc` se dentro un `except`).
+
+   Non c'è un type checker in CI: `NoReturn` oggi lo legge l'editor, e un test come
+   `test_error_manager` ne prova la verità.
 
 ---
 
@@ -346,6 +471,6 @@ Emerse nel giro, **non** fatte (decisione di Tid):
 | # | Domanda | § |
 | --- | --- | --- |
 | 1 | ✅ HSTS a `0` dichiarato sulla macchina di sviluppo (Tid, 2026-09-28) | 1.3 |
-| 2 | Più schede aperte: coordinamento `BroadcastChannel` o tolleranza sul refresh ruotato? | 2.4 |
+| 2 | ✅ Più schede: coordinamento fra schede (strada A), access a 10 minuti (Tid, 2026-09-28) | 2.4 |
 | 3 | Obbligo del secondo fattore: per credenziale, per ruolo, o entrambi? | 3.3 |
 | 4 | Dipendenze TOTP e QR: librerie o codice nostro? | 3.4 |

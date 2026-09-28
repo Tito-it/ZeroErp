@@ -41,7 +41,6 @@ def register_builder(builder: "DocumentContextBuilder") -> None:
             message="DocumentContextBuilder senza CODE non registrabile.",
             detail=f"class={type(builder).__name__}",
         )
-        raise  # unreachable, per type checker
     _REGISTRY[builder.CODE] = builder
 
 

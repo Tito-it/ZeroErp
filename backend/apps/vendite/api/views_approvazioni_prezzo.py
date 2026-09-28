@@ -24,10 +24,11 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import qp_int, qp_str
 from apps.core.api.success_responses import success_response
+from apps.core.db._helpers import limiti_pagina
 from apps.vendite.services import approvazioni_prezzo_service
 from apps.vendite.services._approvazioni_prezzo_constants import (
     SORGENTE_CONTRATTO,
@@ -286,9 +287,11 @@ class ApprovazioniPrezzoCodaView(DomainAPIView):
     )
     def get(self, request: Request):
         auth_user_id = request.user.id if request.user.is_authenticated else None
-        # Clamp esplicito su DEFAULT_LIMIT/MAX_LIMIT centralizzati (apps/core/api/constants).
-        limit = max(1, min(MAX_LIMIT, qp_int(request.query_params.get("limit"), default=DEFAULT_LIMIT)))
-        offset = max(0, qp_int(request.query_params.get("offset"), default=0))
+        # Clamp dal BB `limiti_pagina` (tetto `MAX_LIMIT` di core).
+        limit, offset = limiti_pagina(
+            qp_int(request.query_params.get("limit"), default=DEFAULT_LIMIT),
+            qp_int(request.query_params.get("offset"), default=0),
+        )
         # `order_by`/`order_dir` passano al service, che li valida contro la
         # whitelist delle pratiche. Prima del 2026-08-02 la view non li leggeva
         # e il service inchiodava `data_insert desc`: la lista non ordinava.

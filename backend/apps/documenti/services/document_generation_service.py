@@ -231,7 +231,6 @@ class DocumentGenerationService:
                     f"emittente_template={template['emittente_fiscale_id']}"
                 ),
             )
-            raise  # unreachable
         if template["sorgente_tipo_id"] != sorgente_tipo_id:
             ErrorManager.raise_error(
                 code=E_VALIDATION,
@@ -241,7 +240,6 @@ class DocumentGenerationService:
                     f"sorgente_tipo_template={template['sorgente_tipo_id']}"
                 ),
             )
-            raise  # unreachable
 
         # 3) carica versione PUBBLICATA attiva
         versione = self._resolve_versione_pubblicata(template["id"])
@@ -258,7 +256,6 @@ class DocumentGenerationService:
                 code=E_RENDER_FAILED,
                 message="Render ha restituito output PDF vuoto.",
             )
-            raise  # unreachable
 
         # 7) compute hashes + nome_file + progressivo + storage_key.
         #    Il context viene normalizzato JSON-safe una sola volta:
@@ -468,13 +465,11 @@ class DocumentGenerationService:
                 code=E_VALIDATION,
                 message="Template non coerente con l'emittente richiesto.",
             )
-            raise  # unreachable
         if template["sorgente_tipo_id"] != sorgente_tipo_id:
             ErrorManager.raise_error(
                 code=E_VALIDATION,
                 message="Template non coerente con il tipo sorgente richiesto.",
             )
-            raise  # unreachable
 
         versione = self._resolve_versione_pubblicata(template["id"])
         context = self._build_context_for_sorgente(
@@ -486,7 +481,6 @@ class DocumentGenerationService:
                 code=E_RENDER_FAILED,
                 message="Render anteprima ha restituito output PDF vuoto.",
             )
-            raise  # unreachable
 
         nome_file = self._format_nome_file(template, context)
         return {
@@ -584,7 +578,6 @@ class DocumentGenerationService:
                 message="Errore lettura file documento dallo storage.",
                 detail=f"documento_id={documento_id}",
             )
-            raise  # unreachable
 
         # Emit evento SCARICATO in tx separata: il download e' la priorita'.
         # Se il log fallisce (es. tx rollback per FK race) il file e' gia'
@@ -711,7 +704,6 @@ class DocumentGenerationService:
                 code=E_RENDER_FAILED,
                 message="Ristampa fedele ha restituito output PDF vuoto.",
             )
-            raise  # unreachable
 
         # 5) verifica di fedelta'. Il template_hash ricalcolato sulla versione
         #    caricata deve coincidere con quello congelato: se diverge, la
@@ -927,7 +919,6 @@ class DocumentGenerationService:
                 message="Errore lettura file documento dallo storage.",
                 detail=f"documento_id={documento_id} file_id={file_id}",
             )
-            raise  # unreachable
 
         try:
             with transaction.atomic():
@@ -1162,7 +1153,6 @@ class DocumentGenerationService:
                 message="Template senza context_builder_code configurato.",
                 detail=f"template_id={template['id']}",
             )
-            raise  # unreachable
         builder = get_builder(code)
         return builder.build_context(
             sorgente_id,
@@ -1193,7 +1183,6 @@ class DocumentGenerationService:
                 ),
                 detail=f"missing={exc!r}",
             )
-            raise  # unreachable
 
     # Scopo: Titolo applicativo del documento generato. v1: descrizione
     #        del template (sempre valorizzata) come fallback codice.
@@ -1274,7 +1263,6 @@ class DocumentGenerationService:
                     message="Allegato vuoto o non leggibile.",
                     detail=f"allegato_index={idx} file_name={name!r}",
                 )
-                raise  # unreachable
             if mime not in _MIME_WHITELIST_ALLEGATO:
                 ErrorManager.raise_error(
                     code=E_VALIDATION,
@@ -1284,7 +1272,6 @@ class DocumentGenerationService:
                     ),
                     detail=f"allegato_index={idx} mime={mime!r}",
                 )
-                raise  # unreachable
             size = len(file_bytes)
             if size > max_bytes:
                 ErrorManager.raise_error(
@@ -1292,7 +1279,6 @@ class DocumentGenerationService:
                     message=f"Allegato troppo grande. Limite: {max_mb} MB.",
                     detail=f"allegato_index={idx} size_bytes={size} max_bytes={max_bytes}",
                 )
-                raise  # unreachable
             file_bytes_immutable = bytes(file_bytes)
             sha = self._sha256_bytes(file_bytes_immutable)
             ext = self._resolve_extension_allegato(name, mime)

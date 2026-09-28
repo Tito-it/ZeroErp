@@ -196,7 +196,6 @@ class TemplateAdminService:
                 message="Campi immutabili presenti in payload update.",
                 detail=f"campi non aggiornabili={intersect!r}",
             )
-            raise  # unreachable, per type checker
 
         self._v.validate_allowed_keys(
             payload,

@@ -116,15 +116,14 @@ def normalize_componenti_overrides(
         try:
             dec = Decimal(str(v))
         except (InvalidOperation, TypeError, ValueError) as exc:
-            ErrorManager.require(
-                False,
+            ErrorManager.raise_error(
                 code=error_code,
                 message=(
                     f"Prezzo override non valido per componente {k!r}: {v!r}."
                 ),
                 function_name=function_name,
+                cause=exc,
             )
-            raise AssertionError("unreachable") from exc
         # Defense-in-depth: `Decimal("Infinity")` e `Decimal("NaN")` superano
         # il cast ma non sono valori sensati per un prezzo.
         ErrorManager.require(

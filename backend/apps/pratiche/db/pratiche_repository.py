@@ -12,6 +12,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    limiti_pagina,
     RicercaFull,
     add_ricerca_full_condition,
     coerce_jsonb_dict,
@@ -238,8 +239,7 @@ class PraticheRepository:
         order_by: str = "data_insert",
         order_dir: str = "desc",
     ) -> tuple[list[dict[str, Any]], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=PRATICHE_ORDER_COLS,
@@ -500,8 +500,7 @@ class PraticheRepository:
         limit: int = 25,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=FLUSSI_ORDER_COLS, default="f.sequenza", tiebreak="f.id",
@@ -853,8 +852,7 @@ class PraticheRepository:
     def get_giornale_pratica(
         self, pratica_id: int, *, limit: int = 100, offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
 
         count_sql = """
             SELECT COUNT(*)

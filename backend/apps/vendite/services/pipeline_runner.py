@@ -1113,7 +1113,6 @@ class LottoPipelineRunner:
                 log_to_db=lotto_id is None,
                 cause=exc,
             )
-            raise  # unreachable: raise_error alza sempre; aiuta il type checker
 
     # Guard anti-loop del driver "until done": i cataloghi reali hanno pochi step,
     # un valore alto intercetta solo bug (es. step che non avanzano).

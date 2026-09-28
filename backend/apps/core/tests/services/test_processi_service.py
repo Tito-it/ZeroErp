@@ -32,7 +32,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock
 
-from apps.core.db._helpers import LIST_MAX_LIMIT
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.processi_service import ProcessiService
 from apps.core.services.service_errors import ServiceError
 
@@ -117,7 +117,7 @@ class ProcessiServiceFiltriTests(unittest.TestCase):
         svc, repo = _service()
         svc.list_processi(limit=100_000, offset=-5)
         kwargs = repo.list_processi.call_args.kwargs
-        self.assertEqual(kwargs["limit"], LIST_MAX_LIMIT)
+        self.assertEqual(kwargs["limit"], MAX_LIMIT)
         self.assertEqual(kwargs["offset"], 0)
 
         svc.list_processi(limit=0)

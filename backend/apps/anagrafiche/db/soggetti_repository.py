@@ -17,7 +17,7 @@ from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
     sql_order_clause,
-    extract_paginated,
+    fetch_paged_with_total,
     row_to_dict,
     rows_to_list,
     soglia_ricerca,
@@ -209,9 +209,12 @@ class SoggettiRepository:
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params.extend([limit, offset])
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            results, total_count = extract_paginated(cursor)
+        # ⚠️ Nessun conteggio di ripiego scritto a parte: i parametri dello scope
+        #    stanno nella SELECT (prima di quelli del WHERE), e un conteggio
+        #    senza SELECT dovrebbe sapere quanti sono — un `params[2:]` che si
+        #    disallinea in silenzio al primo parametro in piu' dello scope. Il
+        #    BB rilegge la stessa query con `LIMIT 1 OFFSET 0`.
+        results, total_count = fetch_paged_with_total(sql, params, offset=offset)
         # Normalizza ruoli (jsonb_agg): psycopg in alcune configurazioni
         # ritorna jsonb come stringa anziche' lista. Garantiamo sempre list.
         for r in results:

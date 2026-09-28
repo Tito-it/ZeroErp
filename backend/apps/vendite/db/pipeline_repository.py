@@ -15,8 +15,9 @@ from typing import Any, cast
 
 from django.db import connection, transaction
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
-    LIST_MAX_LIMIT,
+    limiti_pagina,
     call_jsonb_fn,
     coerce_jsonb_dict,
     conta_con_perimetro,
@@ -64,9 +65,18 @@ logger = logging.getLogger(__name__)
 _ORIGINE_SEGNALAZIONE_BE = "BE_PIPELINE"
 
 # Il tetto delle righe ESPORTABILI dei due elenchi del drawer lotto. Il tetto di
-# PAGINA (500) resta quello di sempre: sono due limiti per due usi diversi, e
-# confonderli significa o una pagina enorme o un file troncato in silenzio.
+# PAGINA (`LOTTO_LISTE_PAGINA_MAX`) resta quello di sempre: sono due limiti per
+# due usi diversi, e confonderli significa o una pagina enorme o un file
+# troncato in silenzio.
 _DRAWER_EXPORT_MAX_ROWS = 10_000
+
+# Il tetto di PAGINA dei due elenchi del drawer lotto (segnalazioni e task run).
+# ⚠️ NON e' `MAX_LIMIT` di core: e' il contratto delle due funzioni DB che li
+#    leggono (`fn_list_lotto_segnalazioni`, `fn_list_lotto_task_runs`:
+#    `LEAST(GREATEST(p_limit, 1), 500)`), e qui lo si rispecchia per validare
+#    prima di chiamarle. Una sede in Python: prima era scritto quattro volte
+#    (repository e service), e il presidio della paginazione non lo vedeva.
+LOTTO_LISTE_PAGINA_MAX = 500
 
 # Le colonne del riepilogo segnalazioni che NON sono conteggi: oggi il solo
 # verdetto `fermo` (`20260919-02`). Il riepilogo si legge per nome e si
@@ -614,15 +624,14 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         origine: str | None = None,
         solo_attive: bool = True,
         solo_job_corrente: bool = False,
-        limit: int = 200,
+        limit: int = MAX_LIMIT,
         offset: int = 0,
         order_by: str | None = None,
         order_dir: str = "desc",
         max_rows: int | None = None,
     ) -> tuple[list[LottoSegnalazioneRow], int, int]:
-        tetto = _DRAWER_EXPORT_MAX_ROWS if max_rows else 500
-        safe_limit = max(1, min(int(max_rows or limit), tetto))
-        safe_offset = max(0, int(offset))
+        tetto = _DRAWER_EXPORT_MAX_ROWS if max_rows else LOTTO_LISTE_PAGINA_MAX
+        safe_limit, safe_offset = limiti_pagina(max_rows or limit, offset, tetto=tetto)
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -787,9 +796,8 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         # `total_count + esclusi_count` = le righe che il lotto ha davvero.
         # ⛔ Per questo il metodo torna una TERNA e non piu' una coppia: chi
         # legge il totale filtrato deve avere sotto mano anche cio' che manca.
-        tetto = _DRAWER_EXPORT_MAX_ROWS if max_rows else 500
-        safe_limit = max(1, min(int(max_rows or limit), tetto))
-        safe_offset = max(0, int(offset))
+        tetto = _DRAWER_EXPORT_MAX_ROWS if max_rows else LOTTO_LISTE_PAGINA_MAX
+        safe_limit, safe_offset = limiti_pagina(max_rows or limit, offset, tetto=tetto)
         # Lista vuota trattata come assente: «nessuno stato scelto» e «tutti gli
         # stati» sono la stessa domanda, e un array vuoto a DB non lo sarebbe.
         stati = [s for s in (task_stato or []) if s] or None
@@ -2882,8 +2890,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         if not includi_archiviate:
             conditions.append("NOT c.archiviato")
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-        safe_limit = max(1, min(int(limit), LIST_MAX_LIMIT))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
         # Whitelist prima dell'SQL: BB `sql_order_clause` RIGIDO — sort_by o
         # sort_dir fuori lista sono `ValueError`, mai il default.
         order_by = sql_order_clause(

@@ -19,6 +19,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    limiti_pagina,
     RicercaFull,
     add_ricerca_full_condition,
     fetch_paged_with_total,
@@ -474,15 +475,13 @@ class DocumentiRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[dict[str, Any]], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
         if order_by not in TEMPLATES_ORDER_COLUMNS:
             ErrorManager.raise_error(
                 code="E_DOCUMENTI_VALIDATION",
                 message=f"Colonna di ordinamento non valida: '{order_by}'.",
                 detail=f"ammesse={sorted(TEMPLATES_ORDER_COLUMNS.keys())!r}",
             )
-            raise  # unreachable, per type checker
         # ⛔ Direzione dal BB (`sql_order_clause`), non da un confronto scritto
         #    qui: fino al 2026-09-26 `"DESC" if order_dir.lower() == "desc" else
         #    "ASC"` trasformava in ASC, in silenzio, qualunque valore estraneo.
@@ -592,8 +591,7 @@ class DocumentiRepository:
         limit: int = 25,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=TEMPLATE_VERSIONI_ORDER_COLUMNS,
@@ -796,15 +794,13 @@ class DocumentiRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[dict[str, Any]], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
         if order_by not in ASSET_ORDER_COLUMNS:
             ErrorManager.raise_error(
                 code="E_DOCUMENTI_VALIDATION",
                 message=f"Colonna di ordinamento non valida: '{order_by}'.",
                 detail=f"ammesse={sorted(ASSET_ORDER_COLUMNS.keys())!r}",
             )
-            raise  # unreachable
         # ⛔ Direzione dal BB, come `list_templates` (2026-09-26): prima un
         #    valore estraneo diventava ASC in silenzio.
         ordinamento = sql_order_clause(
@@ -1203,8 +1199,7 @@ class DocumentiRepository:
         order_by: str | None = None,
         order_dir: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
         # ⚠️ Il default e' la colonna DATA e ripiega DESC anche lui: una
         #    lista che si apre senza ordinamento deve mostrare l'ultimo
         #    documento emesso, come faceva la query scritta a mano.

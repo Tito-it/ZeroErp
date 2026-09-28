@@ -54,6 +54,7 @@ from django.test import Client, override_settings
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 from apps.core.services.service_errors import ServiceError
+from apps.core.api.constants import DEFAULT_LIMIT
 
 
 @override_settings(API_STRONG_IDEMPOTENCY_ENABLED=False)
@@ -244,7 +245,7 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
         self.assertEqual(response.status_code, 200)
         mocked_list.assert_called_once_with(
             commessa_id=1, stato_emissione="NON_EMESSA", stato_approvazione="APPROVATA",
-            competenza_mese="2026-02-01", limit=50, offset=0,
+            competenza_mese="2026-02-01", limit=DEFAULT_LIMIT, offset=0,
             order_by=None, order_dir=None,
             tipo_movimento=None,
         )
@@ -260,7 +261,7 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
         self.assertEqual(response.status_code, 200)
         mocked_list.assert_called_once_with(
             commessa_id=1, stato_emissione=None, stato_approvazione=None,
-            competenza_mese=None, limit=50, offset=0,
+            competenza_mese=None, limit=DEFAULT_LIMIT, offset=0,
             order_by="data_attivita", order_dir="desc",
             tipo_movimento=None,
         )

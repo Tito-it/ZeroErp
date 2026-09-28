@@ -46,8 +46,15 @@
 // 24. con `emittenteParam` senza emittente non legge, ed e' in attesa
 // 25. l'emittente viaggia in query col nome del backend, non nel path
 // 26. `paramsEmittente` porta l'emittente agli altri verbi della view
+// 26b. `paramsExport` = filtri della videata + emittente (l'export passa dal cancello)
 // 27. l'emittente da solo non e' un'attesa: senza documento non c'e' padre
 // 28. `reset()` azzera TUTTE le parti del padre
+//  — la pagina che non c'e' piu' (2026-09-28) —
+// 29. oltre l'ultima pagina, col totale vero: rilegge dall'ULTIMA pagina reale
+// 30. oltre l'ultima col totale 0 (backend che non sa contare li'): da capo
+// 31. pagina piena: nessuna rilettura
+// 32. prima pagina vuota: e' la lista vuota, nessuna rilettura
+// 33. una rilettura sola, anche se la seconda risposta e' ancora vuota
 // ------------------------------------------------------------
 
 import { describe, it, expect, vi } from 'vitest'
@@ -367,6 +374,19 @@ describe('useListaStoreCore — il padre composto', () => {
     expect(useListaStoreCore({ fetchPage: fetchMai }).paramsEmittente()).toEqual({})
   })
 
+  it('`paramsExport` porta i filtri della videata E l\'emittente', () => {
+    const s = useListaStoreCore({
+      fetchPage: fetchMai, parentField: 'documentoId', emittenteParam: 'emittente_fiscale_id',
+    })
+    s.filters.value.search = 'vite'
+    s.emittenteId.value = 5
+    expect(s.paramsExport()).toEqual({ ...s.paramsFiltro(), emittente_fiscale_id: 5 })
+    expect(s.paramsExport()).toMatchObject({ search: 'vite' })
+    // Senza `emittenteParam` coincide con `paramsFiltro`.
+    const semplice = useListaStoreCore({ fetchPage: fetchMai })
+    expect(semplice.paramsExport()).toEqual(semplice.paramsFiltro())
+  })
+
   it('l\'emittente da solo non e\' un\'attesa: senza documento non c\'e\' padre', () => {
     const s = useListaStoreCore({
       fetchPage: fetchMai, parentField: 'documentoId', emittenteParam: 'emittente_fiscale_id',
@@ -386,5 +406,62 @@ describe('useListaStoreCore — il padre composto', () => {
     s.reset()
     expect([s.soggettoId.value, s.titoloId.value, s.emittenteId.value]).toEqual([null, null, null])
     expect(s.attesaPadre.value).toBe(false)
+  })
+})
+
+describe('useListaStoreCore — la pagina che non c\'e\' piu\'', () => {
+  // Scopo: una `fetchPage` che risponde in sequenza le buste date, e registra.
+  function risposte(...buste) {
+    const coda = [...buste]
+    return vi.fn(async () => {
+      const [results, count] = coda.shift() ?? [[], 0]
+      return { data: { data: { results, count } } }
+    })
+  }
+
+  // ⭐ Il caso che l'ha fatta nascere: pagina 3 (offset 20, 10 per pagina),
+  //    l'operatore elimina l'unica riga che c'era. Restano 20 righe: la
+  //    pagina giusta e' la 2, non la 1.
+  it('oltre l\'ultima pagina, col totale vero: rilegge dall\'ULTIMA pagina reale', async () => {
+    const fetchPage = risposte([[], 20], [[{ id: 11 }], 20])
+    const s = useListaStoreCore({ fetchPage, startsEmpty: false, limit: 10 })
+    s.filters.value.offset = 20
+    expect(await s.fetchList()).toBe(true)
+    expect(fetchPage).toHaveBeenCalledTimes(2)
+    expect(fetchPage.mock.calls[1][0]).toMatchObject({ offset: 10, limit: 10 })
+    expect(s.filters.value.offset).toBe(10)
+    expect(s.items.value).toEqual([{ id: 11 }])
+  })
+
+  it('oltre l\'ultima col totale 0 (backend che non sa contare li\'): da capo', async () => {
+    const fetchPage = risposte([[], 0], [[{ id: 1 }], 3])
+    const s = useListaStoreCore({ fetchPage, startsEmpty: false, limit: 10 })
+    s.filters.value.offset = 30
+    await s.fetchList()
+    expect(fetchPage.mock.calls[1][0]).toMatchObject({ offset: 0 })
+    expect(s.totalRecords.value).toBe(3)
+  })
+
+  it('pagina piena: nessuna rilettura', async () => {
+    const fetchPage = risposte([[{ id: 21 }], 21])
+    const s = useListaStoreCore({ fetchPage, startsEmpty: false, limit: 10 })
+    s.filters.value.offset = 20
+    await s.fetchList()
+    expect(fetchPage).toHaveBeenCalledTimes(1)
+  })
+
+  it('prima pagina vuota: e\' la lista vuota, nessuna rilettura', async () => {
+    const fetchPage = risposte([[], 0])
+    const s = useListaStoreCore({ fetchPage, startsEmpty: false })
+    await s.fetchList()
+    expect(fetchPage).toHaveBeenCalledTimes(1)
+  })
+
+  it('una rilettura sola, anche se la seconda risposta e\' ancora vuota', async () => {
+    const fetchPage = risposte([[], 20], [[], 0], [[{ id: 1 }], 1])
+    const s = useListaStoreCore({ fetchPage, startsEmpty: false, limit: 10 })
+    s.filters.value.offset = 20
+    await s.fetchList()
+    expect(fetchPage).toHaveBeenCalledTimes(2)
   })
 })

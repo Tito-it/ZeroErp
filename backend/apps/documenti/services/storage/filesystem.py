@@ -79,7 +79,6 @@ class FilesystemDocumentStorage(DocumentStorage):
                 message="File documento non trovato sullo storage.",
                 detail=f"storage_uri={storage_uri}",
             )
-            raise  # unreachable, per type checker
         return target_path.read_bytes()
 
     # Scopo: Cancella il file. Best-effort: ritorna False se gia' assente,
@@ -98,7 +97,6 @@ class FilesystemDocumentStorage(DocumentStorage):
                 message="Errore eliminazione file documento.",
                 detail=f"storage_uri={storage_uri}, errno={exc.errno}",
             )
-            raise  # unreachable
 
     # Scopo: Verifica esistenza file persistito.
     def exists(self, storage_uri: str) -> bool:
@@ -122,7 +120,6 @@ class FilesystemDocumentStorage(DocumentStorage):
                 code="E_DOCUMENTI_VALIDATION",
                 message="Chiave storage vuota.",
             )
-            raise  # unreachable
         cleaned = key.strip().replace("\\", "/").lstrip("/")
         # Blocca path traversal: '..' come segmento o sequenza letterale.
         segments = cleaned.split("/")
@@ -133,7 +130,6 @@ class FilesystemDocumentStorage(DocumentStorage):
                     message="Chiave storage non valida (path traversal).",
                     detail=f"key={key!r}",
                 )
-                raise  # unreachable
         return cleaned
 
     # Scopo: Costruisce path fisico assoluto a partire dalla chiave normalizzata.
@@ -149,7 +145,6 @@ class FilesystemDocumentStorage(DocumentStorage):
                 message="Chiave storage non valida (out of root).",
                 detail=f"key={normalized_key!r}",
             )
-            raise  # unreachable
         return target
 
     # Scopo: Costruisce lo storage_uri stabile salvato su DB.
@@ -171,7 +166,6 @@ class FilesystemDocumentStorage(DocumentStorage):
                 message="storage_uri malformato.",
                 detail=f"storage_uri={storage_uri!r}",
             )
-            raise  # unreachable
         provider, _, prefixed_key = storage_uri.partition(":")
         if provider != self.PROVIDER:
             ErrorManager.raise_error(
@@ -179,7 +173,6 @@ class FilesystemDocumentStorage(DocumentStorage):
                 message="Provider storage non corrisponde.",
                 detail=f"atteso={self.PROVIDER}, trovato={provider}",
             )
-            raise  # unreachable
         # Ritorniamo la parte oltre al prefix per riallineare al normalize.
         if self._prefix and prefixed_key.startswith(f"{self._prefix}/"):
             return prefixed_key[len(self._prefix) + 1:]

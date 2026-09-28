@@ -448,31 +448,25 @@ class DbopsRepository:
         offset: int = 0,
     ) -> tuple[list[DominioTaskRow], int]:
         search_pattern = pattern_contiene(search)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id, codice, descrizione, attivo,
-                       COUNT(*) OVER () AS total_count
-                  FROM dbops.domini_task
-                 WHERE (%s IS FALSE OR attivo = true)
-                   AND (%s::text IS NULL
-                        OR codice ILIKE %s
-                        OR descrizione ILIKE %s)
-                 ORDER BY codice, id
-                 LIMIT %s OFFSET %s
-                """,
-                [attivo_only, search_pattern, search_pattern, search_pattern,
-                 limit, offset],
-            )
-            rows = cursor.fetchall()
-
-        if not rows:
-            return [], 0
-
-        total_count: int = rows[0][4]
+        rows, total_count = fetch_paged_with_total(
+            """
+            SELECT id, codice, descrizione, attivo,
+                   COUNT(*) OVER () AS total_count
+              FROM dbops.domini_task
+             WHERE (%s IS FALSE OR attivo = true)
+               AND (%s::text IS NULL
+                    OR codice ILIKE %s
+                    OR descrizione ILIKE %s)
+             ORDER BY codice, id
+             LIMIT %s OFFSET %s
+            """,
+            [attivo_only, search_pattern, search_pattern, search_pattern,
+             limit, offset],
+            offset=offset,
+        )
         results: list[DominioTaskRow] = [
             DominioTaskRow(
-                id=r[0], codice=r[1], descrizione=r[2], attivo=r[3],
+                id=r["id"], codice=r["codice"], descrizione=r["descrizione"], attivo=r["attivo"],
             )
             for r in rows
         ]
@@ -490,36 +484,30 @@ class DbopsRepository:
         offset: int = 0,
     ) -> tuple[list[TaskRegistryRow], int]:
         search_pattern = pattern_contiene(search)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT r.id, r.dominio_id, d.codice AS dominio_codice,
-                       r.task_code, r.descrizione, r.attivo,
-                       COUNT(*) OVER () AS total_count
-                  FROM dbops.pipeline_task_registry r
-                  JOIN dbops.domini_task d ON d.id = r.dominio_id
-                 WHERE (%s IS FALSE OR r.attivo = true)
-                   AND (%s::text IS NULL OR d.codice = %s)
-                   AND (%s::text IS NULL
-                        OR r.task_code ILIKE %s
-                        OR r.descrizione ILIKE %s)
-                 ORDER BY d.codice, r.task_code, r.id
-                 LIMIT %s OFFSET %s
-                """,
-                [attivo_only, dominio_codice, dominio_codice,
-                 search_pattern, search_pattern, search_pattern,
-                 limit, offset],
-            )
-            rows = cursor.fetchall()
-
-        if not rows:
-            return [], 0
-
-        total_count: int = rows[0][6]
+        rows, total_count = fetch_paged_with_total(
+            """
+            SELECT r.id, r.dominio_id, d.codice AS dominio_codice,
+                   r.task_code, r.descrizione, r.attivo,
+                   COUNT(*) OVER () AS total_count
+              FROM dbops.pipeline_task_registry r
+              JOIN dbops.domini_task d ON d.id = r.dominio_id
+             WHERE (%s IS FALSE OR r.attivo = true)
+               AND (%s::text IS NULL OR d.codice = %s)
+               AND (%s::text IS NULL
+                    OR r.task_code ILIKE %s
+                    OR r.descrizione ILIKE %s)
+             ORDER BY d.codice, r.task_code, r.id
+             LIMIT %s OFFSET %s
+            """,
+            [attivo_only, dominio_codice, dominio_codice,
+             search_pattern, search_pattern, search_pattern,
+             limit, offset],
+            offset=offset,
+        )
         results: list[TaskRegistryRow] = [
             TaskRegistryRow(
-                id=r[0], dominio_id=r[1], dominio_codice=r[2],
-                task_code=r[3], descrizione=r[4], attivo=r[5],
+                id=r["id"], dominio_id=r["dominio_id"], dominio_codice=r["dominio_codice"],
+                task_code=r["task_code"], descrizione=r["descrizione"], attivo=r["attivo"],
             )
             for r in rows
         ]
@@ -536,37 +524,31 @@ class DbopsRepository:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[TaskRegistryImplRow], int]:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT i.id, i.task_registry_id, r.task_code,
-                       i.implementation_key, i.handler_code,
-                       i.is_default, i.attivo,
-                       COUNT(*) OVER () AS total_count
-                  FROM dbops.pipeline_task_registry_impl i
-                  JOIN dbops.pipeline_task_registry r ON r.id = i.task_registry_id
-                  JOIN dbops.domini_task d ON d.id = r.dominio_id
-                 WHERE (%s IS FALSE OR i.attivo = true)
-                   AND (%s::text IS NULL OR r.task_code = %s)
-                   AND (%s::text IS NULL OR d.codice = %s)
-                 ORDER BY r.task_code, i.implementation_key, i.id
-                 LIMIT %s OFFSET %s
-                """,
-                [attivo_only, task_code, task_code,
-                 dominio_codice, dominio_codice,
-                 limit, offset],
-            )
-            rows = cursor.fetchall()
-
-        if not rows:
-            return [], 0
-
-        total_count: int = rows[0][7]
+        rows, total_count = fetch_paged_with_total(
+            """
+            SELECT i.id, i.task_registry_id, r.task_code,
+                   i.implementation_key, i.handler_code,
+                   i.is_default, i.attivo,
+                   COUNT(*) OVER () AS total_count
+              FROM dbops.pipeline_task_registry_impl i
+              JOIN dbops.pipeline_task_registry r ON r.id = i.task_registry_id
+              JOIN dbops.domini_task d ON d.id = r.dominio_id
+             WHERE (%s IS FALSE OR i.attivo = true)
+               AND (%s::text IS NULL OR r.task_code = %s)
+               AND (%s::text IS NULL OR d.codice = %s)
+             ORDER BY r.task_code, i.implementation_key, i.id
+             LIMIT %s OFFSET %s
+            """,
+            [attivo_only, task_code, task_code,
+             dominio_codice, dominio_codice,
+             limit, offset],
+            offset=offset,
+        )
         results: list[TaskRegistryImplRow] = [
             TaskRegistryImplRow(
-                id=r[0], task_registry_id=r[1], task_code=r[2],
-                implementation_key=r[3], handler_code=r[4],
-                is_default=r[5], attivo=r[6],
+                id=r["id"], task_registry_id=r["task_registry_id"], task_code=r["task_code"],
+                implementation_key=r["implementation_key"], handler_code=r["handler_code"],
+                is_default=r["is_default"], attivo=r["attivo"],
             )
             for r in rows
         ]
@@ -594,51 +576,45 @@ class DbopsRepository:
         # Guardia e filtro leggono lo STESSO valore: con la guardia sul nome
         # grezzo, «  » passava la guardia e finiva in `ILIKE NULL` (zero righe).
         function_pattern = pattern_contiene(function_name)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id, function_name, executed_by, executed_at::text,
-                       status, message, duration_ms, tx_id::text,
-                       exec_mode, rule_type, dry_run, rows_affected,
-                       params, result,
-                       COUNT(*) OVER () AS total_count
-                  FROM dbops.audit_log
-                 WHERE (%s::text IS NULL OR status = %s)
-                   AND (%s::text IS NULL OR function_name ILIKE %s)
-                   AND (%s::text IS NULL OR executed_at >= %s::timestamptz)
-                   AND (%s::text IS NULL OR executed_at <= %s::timestamptz + interval '1 day')
-                   AND (%s::text IS NULL
-                        OR function_name ILIKE %s
-                        OR message ILIKE %s)
-                 ORDER BY executed_at DESC, id DESC
-                 LIMIT %s OFFSET %s
-                """,
-                [
-                    status, status,
-                    function_pattern, function_pattern,
-                    date_from, date_from,
-                    date_to, date_to,
-                    search_pattern, search_pattern, search_pattern,
-                    limit, offset,
-                ],
-            )
-            rows = cursor.fetchall()
-
-        if not rows:
-            return [], 0
-
-        total_count: int = rows[0][14]
+        rows, total_count = fetch_paged_with_total(
+            """
+            SELECT id, function_name, executed_by, executed_at::text,
+                   status, message, duration_ms, tx_id::text,
+                   exec_mode, rule_type, dry_run, rows_affected,
+                   params, result,
+                   COUNT(*) OVER () AS total_count
+              FROM dbops.audit_log
+             WHERE (%s::text IS NULL OR status = %s)
+               AND (%s::text IS NULL OR function_name ILIKE %s)
+               AND (%s::text IS NULL OR executed_at >= %s::timestamptz)
+               AND (%s::text IS NULL OR executed_at <= %s::timestamptz + interval '1 day')
+               AND (%s::text IS NULL
+                    OR function_name ILIKE %s
+                    OR message ILIKE %s)
+             ORDER BY executed_at DESC, id DESC
+             LIMIT %s OFFSET %s
+            """,
+            [
+                status, status,
+                function_pattern, function_pattern,
+                date_from, date_from,
+                date_to, date_to,
+                search_pattern, search_pattern, search_pattern,
+                limit, offset,
+            ],
+            offset=offset,
+        )
         results: list[AuditLogRow] = [
             AuditLogRow(
-                id=r[0], function_name=r[1], executed_by=r[2],
-                executed_at=r[3], status=r[4], message=r[5],
-                duration_ms=r[6], tx_id=r[7], exec_mode=r[8],
-                rule_type=r[9], dry_run=r[10], rows_affected=r[11],
+                id=r["id"], function_name=r["function_name"], executed_by=r["executed_by"],
+                executed_at=r["executed_at"], status=r["status"], message=r["message"],
+                duration_ms=r["duration_ms"], tx_id=r["tx_id"], exec_mode=r["exec_mode"],
+                rule_type=r["rule_type"], dry_run=r["dry_run"], rows_affected=r["rows_affected"],
                 # ⛔ `jsonb_out` e non una decodifica a mano (2026-09-19): la
                 #    forma precedente era il BB riscritto, con una parentesi in
                 #    piu' che il presidio `test_coercizione_jsonb_dal_bb` non vedeva.
-                params=jsonb_out(r[12]),
-                result=jsonb_out(r[13]),
+                params=jsonb_out(r["params"]),
+                result=jsonb_out(r["result"]),
             )
             for r in rows
         ]
@@ -697,6 +673,22 @@ class DbopsRepository:
             tiebreak="e.id",
         )
         prefisso = _prefisso_like(function_name.strip()) if function_name and function_name.strip() else None
+        # Un WHERE per la pagina e per il suo conteggio di ripiego.
+        where_sql = """WHERE (%s::text IS NULL OR e.area = %s)
+               AND (%s::text IS NULL OR e.function_name LIKE %s)
+               AND (%s::text IS NULL OR e.messaggio_errore_id IN (
+                        SELECT mm.id FROM config.messaggi_errore mm WHERE mm.codice = %s))
+               AND (%s::uuid IS NULL OR e.tx_id = %s::uuid)
+               AND (%s::date IS NULL OR e.occurred_at >= %s::date)
+               AND (%s::date IS NULL OR e.occurred_at < %s::date + interval '1 day')"""
+        where_params = [
+            area, area,
+            prefisso, prefisso,
+            codice, codice,
+            tx_id, tx_id,
+            data_da, data_da,
+            data_a, data_a,
+        ]
         righe, totale = fetch_paged_with_total(
             f"""
             SELECT e.id, e.occurred_at, e.area, e.function_name,
@@ -708,25 +700,18 @@ class DbopsRepository:
               -- ⚠️ LEFT: un messaggio il cui codice fosse uscito dal catalogo dei
               --    codici non deve far sparire la riga dal diario.
               LEFT JOIN config.codici_errore ce ON ce.codice = m.codice
-             WHERE (%s::text IS NULL OR e.area = %s)
-               AND (%s::text IS NULL OR e.function_name LIKE %s)
-               AND (%s::text IS NULL OR e.messaggio_errore_id IN (
-                        SELECT mm.id FROM config.messaggi_errore mm WHERE mm.codice = %s))
-               AND (%s::uuid IS NULL OR e.tx_id = %s::uuid)
-               AND (%s::date IS NULL OR e.occurred_at >= %s::date)
-               AND (%s::date IS NULL OR e.occurred_at < %s::date + interval '1 day')
+             {where_sql}
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
             """,  # noqa: S608 — ORDER BY da sql_order_clause su whitelist ERROR_LOG_SORT_COLUMNS, valori come parametri
-            [
-                area, area,
-                prefisso, prefisso,
-                codice, codice,
-                tx_id, tx_id,
-                data_da, data_da,
-                data_a, data_a,
-                limit, offset,
-            ],
+            [*where_params, limit, offset],
+            # Stesso FROM della pagina meno il LEFT JOIN (non cambia il numero).
+            fallback_count_sql=f"""
+                SELECT COUNT(*) FROM dbops.error_log e
+                  JOIN config.messaggi_errore m ON m.id = e.messaggio_errore_id
+                 {where_sql}
+            """,  # noqa: S608 — WHERE costante, valori come parametri
+            fallback_params=where_params,
             offset=offset,
         )
         risultato: list[ErrorLogRow] = [

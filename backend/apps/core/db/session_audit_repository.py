@@ -15,9 +15,11 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
-    RicercaFull,
+    limiti_pagina,
     add_ricerca_full_condition,
     fetch_paged_with_total,
+    RicercaFull,
+    rows_to_list,
     sql_order_clause,
 )
 
@@ -150,8 +152,7 @@ class SessionAuditRepository:
         )  # frammenti SQL letterali del modulo, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [auth_user_id, auth_user_id])
-            columns = [col[0] for col in cursor.description]
-            return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: La lista del pannello «altre sessioni attive» (`core.sessioni_attive`):
     #        paginata, ordinata sulla whitelist e con la ricerca libera del
@@ -168,8 +169,7 @@ class SessionAuditRepository:
         order_by: str | None = None, order_dir: str | None = None,
         limit: int = 25, offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=SESSIONI_ATTIVE_ORDER_COLUMNS, default="r.data_insert",

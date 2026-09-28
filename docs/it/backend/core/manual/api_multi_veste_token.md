@@ -50,25 +50,45 @@ Headers: nessun auth necessario (endpoint pubblico `AllowAny`).
 
 ### Refresh (tutti e 3)
 
-```json
-{
-  "refresh": "eyJhbGciOi..."
-}
+Corpo **vuoto**: il refresh token arriva dal cookie `zeroerp_refresh`, che il
+browser manda da solo (vedi [Cookie di refresh](#cookie-di-refresh)).
+
+```http
+POST /api/v1/admin/token/refresh/
+X-Requested-With: XMLHttpRequest
+Cookie: zeroerp_refresh=eyJhbGciOi...
 ```
 
-Headers: nessun auth necessario (il token del body fa fede).
+Headers:
+
+- nessun `Authorization`: la sessione la porta il solo cookie;
+- `X-Requested-With: XMLHttpRequest` **obbligatorio** (anti-CSRF): e' l'unico
+  endpoint autenticato dal solo cookie, e un form o un link di un altro sito
+  non puo' mandare un header custom. Senza l'header → 403 `E_PERMISSION_DENIED`,
+  prima ancora di leggere il cookie.
+
+Senza cookie (o con cookie vuoto) → 401 `E_AUTHENTICATION_FAILED`
+(`InvalidToken`): il client torna al login.
 
 ## Output
 
 ### Login success (HTTP 200)
 
+```http
+HTTP/1.1 200 OK
+Set-Cookie: zeroerp_refresh=eyJhbGciOi...; HttpOnly; Max-Age=86400; Path=/api/v1/; SameSite=Strict; Secure
+```
+
 ```json
 {
   "access": "eyJhbGciOi...",
-  "refresh": "eyJhbGciOi...",
   "password_change_required": true
 }
 ```
+
+Il corpo porta solo l'`access`: il refresh esce nel `Set-Cookie`, mai nel
+corpo. La view lo sposta come ultimo passo (`sposta_refresh_nel_cookie`),
+dopo l'audit e le GUC che ne leggono ancora i claim.
 
 `password_change_required` e' presente (valore `true`) solo se la
 **credenziale** ha l'obbligo di cambio password (`fn_get_deve_cambiare_password`:
@@ -77,17 +97,48 @@ chiave **manca** (non vale mai `false`).
 
 ### Refresh success (HTTP 200)
 
+```http
+HTTP/1.1 200 OK
+Set-Cookie: zeroerp_refresh=eyJhbGciOi...; HttpOnly; Max-Age=86400; Path=/api/v1/; SameSite=Strict; Secure
+```
+
 ```json
 {
-  "access": "eyJhbGciOi...",
-  "refresh": "eyJhbGciOi..."
+  "access": "eyJhbGciOi..."
 }
 ```
 
-Il nuovo refresh e' rotato (`SIMPLE_JWT.ROTATE_REFRESH_TOKENS=True`)
-e il vecchio blacklistato (`BLACKLIST_AFTER_ROTATION=True`). I claim
-custom (`identita_id`, `ruolo_applicativo`, `sid`, `emittente_attivo_id`) sono **preservati**
-nel nuovo refresh (SimpleJWT ruota solo `jti/exp/iat`).
+Il nuovo refresh e' rotato (`SIMPLE_JWT.ROTATE_REFRESH_TOKENS=True`), il
+vecchio blacklistato (`BLACKLIST_AFTER_ROTATION=True`), e torna nel
+`Set-Cookie` al posto del precedente. I claim custom (`identita_id`,
+`ruolo_applicativo`, `sid`, `emittente_attivo_id`) sono **preservati** nel
+nuovo refresh (SimpleJWT ruota solo `jti/exp/iat`). La validazione (firma,
+scadenza, blacklist, rotazione) e' quella di `TokenViewBase.post`, col refresh
+preso dal cookie (`AuditTokenRefreshView._rinnova`).
+
+### Cookie di refresh
+
+Dal 2026-09-28 il refresh token non viaggia mai nel corpo, ne' in entrata ne'
+in uscita: sta in un cookie che lo script della pagina non puo' leggere. La
+sede unica di nome, attributi, lettura, scrittura e cancellazione e' il
+building block `apps/core/api/refresh_cookie.py`.
+
+| Attributo  | Valore                                                                                          |
+| ---------- | ----------------------------------------------------------------------------------------------- |
+| Nome       | `zeroerp_refresh`                                                                               |
+| `HttpOnly` | sempre                                                                                          |
+| `SameSite` | `Strict`                                                                                        |
+| `Path`     | `/api/v1/` — il refresh serve anche a logout, cambio password e cambio emittente attivo, che stanno fuori da `/token/` |
+| `Secure`   | setting `REFRESH_COOKIE_SECURE` (segue `SESSION_COOKIE_SECURE`: attivo fuori da `DEBUG`)       |
+| `Max-Age`  | `SIMPLE_JWT.REFRESH_TOKEN_LIFETIME` (1 giorno): il cookie non sopravvive al token che porta    |
+
+Lo scrivono login e refresh dei tre canali, il cambio password e il cambio
+emittente attivo; lo legge il logout, che lo cancella
+([api_logout.md](api_logout.md)).
+
+L'access token resta nel corpo, dura `SIMPLE_JWT.ACCESS_TOKEN_LIFETIME` =
+**10 minuti**, e il frontend lo tiene solo in memoria, rinnovandolo in silenzio
+dal cookie.
 
 ## Claim JWT custom
 
@@ -137,18 +188,18 @@ subset del namespace. Se assente:
 
 ### 2. Guard cross-namespace al refresh (§8.3.5)
 
-Prima di delegare al parent SimpleJWT, `AuditTokenRefreshView.post()`
-estrae il claim `ruolo_applicativo` dal refresh token e verifica che
+Prima della validazione SimpleJWT (`_rinnova`), `AuditTokenRefreshView.post()`
+controlla l'header anti-CSRF, legge il refresh dal cookie, ne
+estrae il claim `ruolo_applicativo` e verifica che
 rientri nel set `expected_ruoli_applicativi` del namespace chiamato:
 
 - Refresh OPERATORE su `/portale/token/refresh/` → 403 `E_VESTE_NON_ATTIVA`
 - Refresh OPERATORE su `/admin/token/refresh/` → OK
-- Refresh senza claim `ruolo_applicativo`, o non decodificabile → 403
-  `E_VESTE_NON_ATTIVA` (il guard gira **prima** della validazione SimpleJWT).
-
-> ⚠️ Difetto noto (E-8): un refresh illeggibile riceve 403
-> `E_VESTE_NON_ATTIVA` invece di un 401 — vedi
-> [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+- Refresh nostro senza claim `ruolo_applicativo` → 403 `E_VESTE_NON_ATTIVA`
+  (il guard gira **prima** della validazione SimpleJWT, che ruoterebbe il token).
+- Refresh illeggibile o con una firma non nostra → 401 `E_AUTHENTICATION_FAILED`:
+  la veste si legge solo da claim con la **firma verificata** (BB
+  `claims_refresh_firmati`, lo stesso del logout; E-8, chiuso 2026-09-28).
 
 Non c'e' escalation di privilegio (il claim veste viene dal token firmato),
 ma chiude l'ambiguita' semantica cross-path.
@@ -168,9 +219,9 @@ Ad **ogni** richiesta con Bearer, `JwtAuditAuthentication.authenticate()`:
 
 | Codice                    | HTTP | UI action         | Quando                                                                         | Policy        |
 | ------------------------- | ---- | ----------------- | ------------------------------------------------------------------------------ | ------------- |
-| `E_AUTHENTICATION_FAILED` | 401  | show_error_banner | Credenziali errate                                                             | Pre-esistente |
-| _(nessuno)_               | 401  | —                 | Token scaduto/invalido: esce nel formato grezzo DRF (`{"detail", "code": "token_not_valid", ...}`), fuori envelope | ⚠️ E-3 |
+| `E_AUTHENTICATION_FAILED` | 401  | show_error_banner | Credenziali errate; refresh senza cookie `zeroerp_refresh` o con refresh non valido/scaduto/in blacklist | Pre-esistente |
 | `E_NOT_AUTHENTICATED`     | 401  | show_error_banner | Header `Authorization` assente su endpoint protetto                            | Pre-esistente |
+| `E_PERMISSION_DENIED`     | 403  | show_error_banner | Refresh senza header `X-Requested-With: XMLHttpRequest` (anti-CSRF)            | 2026-09-28    |
 | `E_VESTE_NON_ATTIVA`      | 403  | show_error_banner | Utente senza identita del namespace chiamato (login) / refresh cross-namespace | §8.3.2        |
 | `E_JWT_SENZA_IDENTITA`    | 401  | redirect_login    | JWT senza claim `identita_id` (token pre-refactor)                             | §8.3.4        |
 | `E_JWT_SENZA_SID`         | 401  | redirect_login    | JWT senza claim `sid` (o con `sid` vuoto)                                      | —             |
@@ -217,7 +268,8 @@ l'audit procede comunque con GUC vuote.
   non esiste piu'. I client devono aggiornarsi a `/api/v1/admin/token/`.
   Nessun alias/grace period.
 - Le view base `AuditTokenObtainPairView` e `AuditTokenRefreshView` sono
-  **astratte**: istanziarle direttamente solleva AssertionError.
+  **astratte**: registrarne una direttamente in una rotta fa sollevare
+  `RuntimeError` al primo `post()` (guardia esplicita, non un `assert`).
   Usare SEMPRE le subclass namespace-specific.
 - Il claim `sid` e' preservato da `SidTokenObtainPairSerializer`: il
   `MultiVesteTokenSerializer` eredita da Sid (non da `TokenObtainPairSerializer`
@@ -243,7 +295,7 @@ l'audit procede comunque con GUC vuote.
 
 | File                                            | Ruolo                                                                                                                                                                                                                               |
 | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/core/api/auth_views.py`                   | `AuditTokenObtainPairView` (astratta) + 3 subclass login; `AuditTokenRefreshView` (astratta) + 3 subclass refresh; helper `_extract_identita_id_from_refresh`, `_extract_ruolo_applicativo_from_refresh`, `_decode_refresh_payload` |
+| `apps/core/api/auth_views.py`                   | `AuditTokenObtainPairView` (astratta) + 3 subclass login; `AuditTokenRefreshView` (astratta) + 3 subclass refresh; helper `_extract_identita_id_from_refresh`, `_decode_refresh_payload` (claim per audit e GUC, dopo la validazione); la veste del guard da `claims_refresh_firmati` di `refresh_cookie.py` |
 | `apps/core/api/multi_veste_token_serializer.py` | `MultiVesteTokenSerializer` + 3 subclass (Admin/Portale/Shop), `VesteNonAttivaError`                                                                                                                                                |
 | `apps/core/api/jwt_audit_authentication.py`     | `JwtAuditAuthentication` (legge claim + popola GUC), `set_jwt_gucs`, `JwtSenzaIdentitaError`, `IdentitaNonAttivaError`                                                                                                              |
 | `apps/core/api/token_serializers.py`            | `SidTokenObtainPairSerializer` (parent di MultiVeste, aggiunge `sid`)                                                                                                                                                               |

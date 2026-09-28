@@ -358,7 +358,8 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
 
 - Metodo: `GET`
 - Path: `/api/v1/vendite/preventivi/{id}/righe/`
-- Output `200`: lista righe con JOIN articolo (codice, descrizione), UoM (codice), IVA (codice, aliquota)
+- Output `200`: TUTTE le righe attive, nell'ordine del documento, dalla vista `vw_preventivi_righe_dettaglio`
+- La **lista configurabile** delle righe (pagina ed export, `…/righe/lista/`) è il BB condiviso: vedi [api_righe_documento.md](api_righe_documento.md).
 
 ---
 

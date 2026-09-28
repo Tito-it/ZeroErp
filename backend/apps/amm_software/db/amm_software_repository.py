@@ -10,15 +10,17 @@ from __future__ import annotations
 
 import re
 from functools import lru_cache
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 from django.db import DatabaseError, connection, transaction
 
 from apps.core.db._helpers import (
-    RicercaFull,
+    limiti_pagina,
     add_ricerca_full_condition,
     fetch_paged_with_total,
     jsonb_out,
+    RicercaFull,
+    row_to_dict,
     rows_to_list,
     sql_order_clause,
     sql_order_direction,
@@ -252,26 +254,12 @@ class AmmSoftwareRepository:
              {order_clause}
              LIMIT %s OFFSET %s
         """  # noqa: S608 — WHERE da frammenti letterali + colonne _RICERCA_OPERATORI, ORDER BY da whitelist ALLOWED_ORDER_COLUMNS, valori come parametri
-        params.extend([limit, offset])
-
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            if not cursor.description:
-                return [], 0
-            cols = [c.name for c in cursor.description]
-            rows = cursor.fetchall()
-
-        if not rows:
-            return [], 0
-
-        total_count = rows[0][cols.index("total_count")]
-        results: list[OperatoreRow] = []
-        for row in rows:
-            d = dict(zip(cols, row, strict=True))
-            d.pop("total_count", None)
-            results.append(d)  # type: ignore[arg-type]
-
-        return results, total_count
+        # ⚠️ Il clamp sta nel repository, non nella view: un `?limit=-5`
+        #    arrivava a DB come `LIMIT -5` e rispondeva 500.
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
+        params.extend([safe_limit, safe_offset])
+        rows, total_count = fetch_paged_with_total(sql, params, offset=safe_offset)
+        return cast(list[OperatoreRow], rows), total_count
 
     # Scopo: Restituisce il dettaglio completo di un operatore con conteggi
     # override e i 9 campi capability (can_invite/disable/demote + reason
@@ -303,13 +291,7 @@ class AmmSoftwareRepository:
             )
             if not cursor.description:
                 return None
-            cols = [c.name for c in cursor.description]
-            row = cursor.fetchone()
-
-        if not row:
-            return None
-
-        return dict(zip(cols, row, strict=True))  # type: ignore[return-value]
+            return row_to_dict(cursor)  # type: ignore[return-value]
 
     # Scopo: Aggiorna stato identita_digitali (attivo, ruolo_applicativo) per
     # l'utente. Helper privato per orchestrare le 3 write path dei writer
@@ -867,11 +849,7 @@ class AmmSoftwareRepository:
             )
             if not cursor.description:
                 return None
-            cols = [c.name for c in cursor.description]
-            row = cursor.fetchone()
-        if not row:
-            return None
-        return dict(zip(cols, row, strict=True))
+            return row_to_dict(cursor)
 
     # Scopo: Cambio scope emittenti atomico via
     # `script.fn_change_user_emittenti_scope(p_auth_user_id, p_emittente_ids)`.
@@ -919,8 +897,7 @@ class AmmSoftwareRepository:
         order_by: str | None = "descrizione", order_dir: str | None = None,
         limit: int = DEFAULT_LIMIT, offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=REPARTI_ORDER_COLUMNS, default="rp.descrizione", tiebreak="rp.id",
@@ -978,8 +955,7 @@ class AmmSoftwareRepository:
                     ORDER BY af.ordinamento, af.codice""",
                 [uo_id],
             )
-            cols_a = [c.name for c in cursor.description]
-            aree = [dict(zip(cols_a, row, strict=True)) for row in cursor.fetchall()]
+            aree = rows_to_list(cursor)
 
         # Azioni
         with connection.cursor() as cursor:
@@ -997,8 +973,7 @@ class AmmSoftwareRepository:
                     ORDER BY af.ordinamento, ap.permission_codename""",
                 [uo_id],
             )
-            cols_z = [c.name for c in cursor.description]
-            azioni = [dict(zip(cols_z, row, strict=True)) for row in cursor.fetchall()]
+            azioni = rows_to_list(cursor)
 
         return {"aree": aree, "azioni": azioni}
 
@@ -1046,8 +1021,7 @@ class AmmSoftwareRepository:
                     ORDER BY e.area_id""",
                 [auth_user_id],
             )
-            cols_a = [c.name for c in cursor.description]
-            aree = [dict(zip(cols_a, row, strict=True)) for row in cursor.fetchall()]
+            aree = rows_to_list(cursor)
 
         with connection.cursor() as cursor:
             cursor.execute(
@@ -1066,8 +1040,7 @@ class AmmSoftwareRepository:
                     ORDER BY e.azione_id""",
                 [auth_user_id],
             )
-            cols_z = [c.name for c in cursor.description]
-            azioni = [dict(zip(cols_z, row, strict=True)) for row in cursor.fetchall()]
+            azioni = rows_to_list(cursor)
 
         return {"aree": aree, "azioni": azioni}
 
@@ -1099,7 +1072,6 @@ class AmmSoftwareRepository:
                     message="Reparto inesistente.",
                     detail=f"unita_organizzativa_id={uo_id}",
                 )
-                raise  # unreachable, per type checker
             codice_interno, descrizione_uo, attivo_uo = row
             codice_profilo = f"REPARTO_{codice_interno}"
 
@@ -1301,7 +1273,7 @@ class AmmSoftwareRepository:
         tabella: str | None = None,
         order_by: str | None = None,
         order_dir: str | None = None,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         # ⛔ Il cache GREZZO e non `list_audit_sources()`: quello e' il payload
@@ -1372,31 +1344,26 @@ class AmmSoftwareRepository:
         else:
             sql += "ORDER BY valid_from DESC "
         sql += "LIMIT %s OFFSET %s"
-        params.extend([limit, offset])
-
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            rows = cursor.fetchall()
-
-        if not rows:
-            return [], 0
-
-        total_count = rows[0][8]
+        # ⚠️ Il clamp sta nel repository, non nella view: un `?limit=-5`
+        #    arrivava a DB come `LIMIT -5` e rispondeva 500.
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
+        params.extend([safe_limit, safe_offset])
+        rows, total_count = fetch_paged_with_total(sql, params, offset=safe_offset)
         events = [
             {
-                "code": row[0],
+                "code": r["code"],
                 # Manteniamo `tabella` come alias di `code` per retrocompat
                 # con consumer FE legacy. Nuovi consumer usano `code`.
-                "tabella": row[0],
-                "area_funzionale": row[1],
-                "storico_id": row[2],
-                "timestamp": row[3].isoformat() if row[3] else None,
-                "tipo_operazione": self._OP_LABELS.get(row[4], str(row[4])),
-                "user_modifica": row[5],
-                "snapshot": row[6],
-                "audit": row[7],  # {"summary": "...", "diff": [...]}
+                "tabella": r["code"],
+                "area_funzionale": r["area_funzionale"],
+                "storico_id": r["storico_id"],
+                "timestamp": r["valid_from"].isoformat() if r["valid_from"] else None,
+                "tipo_operazione": self._OP_LABELS.get(r["tipo_operazione"], str(r["tipo_operazione"])),
+                "user_modifica": r["user_insert"],
+                "snapshot": r["snapshot"],
+                "audit": r["audit"],  # {"summary": "...", "diff": [...]}
             }
-            for row in rows
+            for r in rows
         ]
         return events, total_count
 

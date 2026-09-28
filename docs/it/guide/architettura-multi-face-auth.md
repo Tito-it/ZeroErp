@@ -574,10 +574,20 @@ e' coerente.
 origine. Il refresh non cambia identita — se un user vuole loggare con altra
 veste, deve fare nuovo login sul namespace corrispondente.
 
-**Impatto sul logout:** il logout invalida il refresh token della veste corrente
-(via `token_blacklist` SimpleJWT). Le altre identita dello stesso `auth_user`
-restano loggate nei rispettivi canali (se hanno JWT attivi in altre sessioni
-browser/device).
+Dal 2026-09-28 il refresh non viaggia mai nel corpo JSON: sta nel cookie
+HttpOnly `zeroerp_refresh` (`SameSite=Strict`, `Path=/api/v1/`, durata del
+refresh), scritto da login, refresh, cambio password e cambio emittente
+attivo; l'endpoint di refresh pretende anche l'header anti-CSRF
+`X-Requested-With: XMLHttpRequest`. L'access token (10 minuti) resta nel
+corpo e il frontend lo tiene solo in memoria. Contratto completo in
+[api_multi_veste_token.md](../backend/core/manual/api_multi_veste_token.md#cookie-di-refresh).
+Il cookie ha un nome e un path unici: nello stesso browser ne esiste uno solo,
+e un login su un altro canale lo sostituisce.
+
+**Impatto sul logout:** il logout revoca la sessione del refresh presentato nel
+cookie (tutti i token col suo `sid`, via `token_blacklist` SimpleJWT) e
+cancella il cookie. Le altre identita dello stesso `auth_user` restano loggate
+nei rispettivi canali (se hanno JWT attivi in altre sessioni browser/device).
 
 ---
 

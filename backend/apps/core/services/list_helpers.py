@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Collection
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import order_dir_ammessa
 from apps.core.services.error_manager import ErrorManager
 
@@ -113,7 +114,7 @@ def validate_enum_param(
 
 
 # Scopo: Valida i parametri di paginazione page-based (page >= 1,
-#        1 <= page_size <= 200) e ritorna l'offset calcolato `(page-1)*page_size`.
+#        1 <= page_size <= MAX_LIMIT) e ritorna l'offset calcolato `(page-1)*page_size`.
 #        `error_code`/`function_name` parametrici. Speculare a `validate_order_params`.
 #        NB: convenzione PAGE-based; per le liste offset-based esiste già
 #        `parse_list_params` (apps/core/api/payload_validators.py).
@@ -134,10 +135,10 @@ def validate_pagination(
         log_to_db=True,
     )
     ErrorManager.require(
-        1 <= page_size <= 200,
+        1 <= page_size <= MAX_LIMIT,
         code=error_code,
         message="Parametri paginazione non validi.",
-        detail="page_size deve essere compreso tra 1 e 200",
+        detail=f"page_size deve essere compreso tra 1 e {MAX_LIMIT}",
         context={"page_size": page_size},
         function_name=function_name,
         log_to_db=True,

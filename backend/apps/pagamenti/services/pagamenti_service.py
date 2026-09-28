@@ -27,6 +27,7 @@ from typing import Any
 
 from django.db import transaction
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_translator import ErrorTranslator
 from apps.core.services.fan_out import run_fan_out
@@ -385,7 +386,7 @@ def list_distinte(
     order_by: str | None = None,
     order_dir: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
 ) -> dict[str, Any]:
     order_by, order_dir = validate_order_params(
         order_by or "data_contabile",
@@ -1193,7 +1194,7 @@ def list_coda_righe(
     order_by: str | None = None,
     order_dir: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
 ) -> dict[str, Any]:
     chiave = (coda or "TUTTE").upper()
     ErrorManager.require(
@@ -1255,7 +1256,7 @@ def list_rate_fuori_capienza(
     order_by: str | None = None,
     order_dir: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
 ) -> dict[str, Any]:
     # Fail-fast sul vocabolario chiuso: un motivo inventato darebbe una lista
     # vuota, che su due soli valori possibili e' indistinguibile da «non c'e'

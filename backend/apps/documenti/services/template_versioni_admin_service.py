@@ -284,7 +284,6 @@ class TemplateVersioniAdminService:
                 message="Solo versioni in stato BOZZA possono essere eliminate.",
                 detail=f"stato_corrente={existing['stato']!r}",
             )
-            raise  # unreachable
 
         try:
             deleted = self._repo.delete_versione(versione_id)
@@ -424,7 +423,6 @@ class TemplateVersioniAdminService:
                 message="Solo versioni in stato BOZZA possono essere pubblicate.",
                 detail=f"stato_corrente={existing['stato']!r}",
             )
-            raise  # unreachable
 
         self._v.validate_allowed_keys(
             payload,
@@ -476,7 +474,6 @@ class TemplateVersioniAdminService:
                 message="Versione non modificabile: stato non BOZZA.",
                 detail=f"stato_corrente={versione['stato']!r}",
             )
-            raise  # unreachable
 
     # Scopo: Compone il dict da passare al repository per create.
     #        Campi obbligatori: titolo, html_template, render_engine_id.
@@ -582,7 +579,6 @@ class TemplateVersioniAdminService:
                     code=E_VALIDATION,
                     message="context_schema deve essere un oggetto JSON.",
                 )
-                raise  # unreachable
             if cs is not None:
                 data["context_schema"] = cs
         if "meta" in payload:
@@ -601,7 +597,6 @@ class TemplateVersioniAdminService:
                 message=f"Valore '{field}' non valido.",
                 detail=f"ammessi={sorted(whitelist)!r} ricevuto={value!r}",
             )
-            raise  # unreachable
 
 
 def _coerce_non_negative_number(value: Any, *, field: str) -> int | float:
@@ -635,4 +630,3 @@ def _raise_invalid_margin(field: str, value: Any) -> None:
         message=f"Margine '{field}' non valido.",
         detail=f"atteso numero non negativo, ricevuto {value!r}",
     )
-    raise  # unreachable

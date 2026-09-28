@@ -25,6 +25,7 @@ from uuid import UUID
 
 from django.db import DatabaseError, transaction
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.diagnostica_best_effort import diagnostica_best_effort
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_order_params
@@ -1005,10 +1006,10 @@ def fn_list_commessa_attivita(
     # proposito piu' righe di una pagina, e la sua misura la governa
     # `build_export_response` col `count` esatto.
     ErrorManager.require(
-        max_rows is not None or 1 <= int(limit) <= 200,
+        max_rows is not None or 1 <= int(limit) <= MAX_LIMIT,
         code="E_COMMESSA_VALIDATION",
         message="Parametri non validi.",
-        detail="limit deve essere compreso tra 1 e 200",
+        detail=f"limit deve essere compreso tra 1 e {MAX_LIMIT}",
         context={"commessa_id": commessa_id, "limit": limit},
         function_name="vendite.commesse_service.fn_list_commessa_attivita",
         log_to_db=True,
@@ -1537,7 +1538,7 @@ def _assert_annullabile(
 # repository): questo risponde 400 e DICE il limite, quello clampa in silenzio
 # — due regole diverse, e la seconda esiste solo perche' un chiamante interno
 # non possa chiedere tutto il log di una commessa grande.
-_REGISTRO_MAX_LIMIT = 200
+_REGISTRO_MAX_LIMIT = MAX_LIMIT
 
 
 # Scopo: Il REGISTRO di una commessa — gli eventi scritti dal database sulle sue

@@ -9,6 +9,7 @@
 // domini gemelli) — regola del 2, nessuna implementazione nuova.
 
 import api from '../../../core/api'
+import { makeRigheListaApi } from '../../_shared/righe/righeListaApi'
 import { makeComponentiBomApi } from '../../../core/api/componentiBom'
 
 const BASE = '/vendite/ordini'
@@ -105,6 +106,11 @@ export function getOrdinePerPratica(praticaId) {
 }
 
 // --- Righe ---
+
+// La LISTA configurabile delle righe (pagina + export, `…/righe/lista/`):
+// factory condivisa coi documenti gemelli. `listRighe` qui sotto resta la
+// lettura COMPLETA (dialog, stampe).
+export const { listRigheLista, exportRigheLista } = makeRigheListaApi(BASE)
 
 export function listRighe(ordineId) {
   return api.get(`${BASE}/${ordineId}/righe/`)

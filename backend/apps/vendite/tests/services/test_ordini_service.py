@@ -61,28 +61,21 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
     def test_conferma_senza_righe(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.list_righe.return_value = []
+        # Contano solo le righe ATTIVE (guard DB, Regola 2 rev 2026-07-16):
+        # il filtro sta nel conteggio del BB (`count_righe`, presidiato in
+        # tests/db/test_righe_documento_lista), qui arriva gia' zero.
+        repo.count_righe.return_value = 0
         with self.assertRaises(ServiceError) as cm:
             ordini_service.conferma(7)
         self.assertEqual(cm.exception.code, "E_ORD_NESSUNA_RIGA")
-
-    @patch(_REPO)
-    def test_conferma_solo_righe_disattivate(self, repo_cls) -> None:
-        # Allineamento al guard DB (Regola 2 rev 2026-07-16): le righe
-        # disattivate non contano — sole righe attivo=False -> rifiuto.
-        repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "DRAFT"
-        repo.list_righe.return_value = [{"id": 1, "attivo": False}]
-        with self.assertRaises(ServiceError) as cm:
-            ordini_service.conferma(7)
-        self.assertEqual(cm.exception.code, "E_ORD_NESSUNA_RIGA")
+        repo.count_righe.assert_called_once_with(7)
 
     @patch(_COMPLETA_STEP)
     @patch(_REPO)
     def test_conferma_ok_deriva_stato(self, repo_cls, _mock_step) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.list_righe.return_value = [{"id": 1, "attivo": True}]
+        repo.count_righe.return_value = 1
         repo.get_stato_id_by_codice.return_value = 2
         out = ordini_service.conferma(7)
         self.assertEqual(out["stato"], "CONFERMATO")
@@ -159,7 +152,7 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         # `can_conferma` non e' piu' un flag.
         repo = repo_cls.return_value
         repo.get_ordine.return_value = {"id": 7, "stato_codice_interno": "DRAFT"}
-        repo.list_righe.return_value = [{"id": 1}]
+        repo.count_righe.return_value = 1
         repo.get_capabilities.return_value = {
             "available_actions": [{"key": "conferma", "target_state": "CONFERMATO"}],
             "can_edit_testata": True,
@@ -203,7 +196,7 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         # in bozza CON righe non si cancella, si annulla.
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.list_righe.return_value = [{"id": 1}]
+        repo.count_righe.return_value = 1
         with self.assertRaises(ServiceError) as cm:
             ordini_service.elimina_ordine(7)
         self.assertEqual(cm.exception.code, "E_ORD_STATO_TRANSIZIONE")
@@ -215,7 +208,7 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         # abbandono auto-save).
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.list_righe.return_value = []
+        repo.count_righe.return_value = 0
         repo.delete_ordine.return_value = True
         out = ordini_service.elimina_ordine(7)
         self.assertTrue(out["deleted"])
@@ -702,7 +695,7 @@ class OrdiniStepPraticaTests(SimpleTestCase):
     def test_conferma_completa_step_conferma_ordine(self, ord_cls, MockPrat, mock_step) -> None:
         repo = ord_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.list_righe.return_value = [{"id": 1, "attivo": True}]
+        repo.count_righe.return_value = 1
         repo.get_stato_id_by_codice.return_value = 2
         MockPrat.return_value.get_pratica_id_by_sorgente.return_value = 290
 
@@ -719,7 +712,7 @@ class OrdiniStepPraticaTests(SimpleTestCase):
     def test_conferma_senza_pratica_noop(self, ord_cls, MockPrat, mock_step) -> None:
         repo = ord_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.list_righe.return_value = [{"id": 1, "attivo": True}]
+        repo.count_righe.return_value = 1
         repo.get_stato_id_by_codice.return_value = 2
         MockPrat.return_value.get_pratica_id_by_sorgente.return_value = None
 

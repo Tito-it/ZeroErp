@@ -807,34 +807,6 @@ class PreventivoDetailRow(TypedDict):
     user_update: str | None
 
 
-class PreventivoRigaRow(TypedDict):
-    id: int
-    preventivo_id: int
-    articolo_id: str
-    codice_articolo: str
-    descrizione_articolo: str
-    descrizione: str | None
-    quantita: str | None
-    qta_operativa: str | None
-    uom_operativa_id: int | None
-    codice_uom: str | None
-    factor_to_base: str | None
-    prezzo_unitario: str | None
-    sconto_percentuale: str | None
-    iva_id: int | None
-    codice_iva: str | None
-    aliquota_iva: str | None
-    ordine: int | None
-    attivo: bool
-    importo_riga: str | None
-    importo_iva_riga: str | None
-    meta: dict[str, Any]
-    is_composito_caso_a: bool
-    # Data di consegna richiesta dal cliente (Blocco A del brief modifiche
-    # certe): sul preventivo c'e' solo la richiesta, la conferma nasce sull'ordine.
-    data_consegna_richiesta_cliente: str | None
-
-
 class PreventivoRigaComponenteRow(TypedDict):
     id: int
     riga_preventivo_id: int

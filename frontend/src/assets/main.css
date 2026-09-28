@@ -1478,9 +1478,15 @@ a {
  * tab (es. drawer offerta tab "Revisioni", drawer pratica chiusa tutte le tab).
  * `.p-tab` e' l'unica API in uso (Tabs/Tab): il selettore gemello della
  * vecchia API v3 e' stato rimosso con la migrazione a `Tabs`. */
+/* ⭐ Il pulsante che APRE una riga (2026-09-28, brief-db-liste-righe-documento):
+ * sotto i 1024px le colonne che non entrano si ritirano nella riga di
+ * espansione, e un documento non modificabile e' proprio quello che si apre per
+ * leggerlo. Senza questa riga, su tablet, le colonne ritirate di un ordine
+ * confermato non si leggerebbero da nessuna parte. */
 .app-readonly .app-page-filters,
 .app-readonly .p-paginator,
 .app-readonly .p-datatable-thead,
+.app-readonly .p-datatable-row-toggle-button,
 .app-readonly .p-tab {
   pointer-events: auto;
   opacity: 1;

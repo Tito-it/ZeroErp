@@ -11,12 +11,17 @@ from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Any
 
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.db._helpers import order_dir_ammessa
 from apps.core.db.dbops_repository import DbopsRepository
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.fan_out import FanOutRunLogger, run_fan_out
 from apps.core.services.service_errors import E_VALIDATION_INPUT
-from apps.vendite.db.pipeline_repository import SdiPayloadRow, VenditePipelineRepository
+from apps.vendite.db.pipeline_repository import (
+    LOTTO_LISTE_PAGINA_MAX,
+    SdiPayloadRow,
+    VenditePipelineRepository,
+)
 from apps.vendite.services._fatturazione_job_helpers import JOB_TYPES_FATTURAZIONE_APP
 from apps.vendite.services.lotto_segnalazioni_service import LottoSegnalazioniService
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner
@@ -491,7 +496,7 @@ def fn_list_lotto_segnalazioni(
     solo_attive: bool = True,
     solo_job_corrente: bool = False,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
     order_by: str | None = None,
     order_dir: str = "desc",
     max_rows: int | None = None,
@@ -507,7 +512,7 @@ def fn_list_lotto_segnalazioni(
     )
     # ⚠️ L'export non ha una pagina da validare: salta la paginazione.
     ErrorManager.require(
-        bool(max_rows) or (page >= 1 and 1 <= page_size <= 500),
+        bool(max_rows) or (page >= 1 and 1 <= page_size <= LOTTO_LISTE_PAGINA_MAX),
         code="E_PIPELINE_VALIDATION",
         message="Parametri pipeline non validi.",
         detail=f"page={page} page_size={page_size} fuori dai limiti ammessi",
@@ -687,11 +692,11 @@ def esiti_fatturazione(
         )
     ]
 
-    # (b) Giri del BATCH schedulato. limit=200 sui JOBNAME DISTINTI (il summary
+    # (b) Giri del BATCH schedulato. Una pagina piena (`MAX_LIMIT`) di JOBNAME DISTINTI (il summary
     # e' un GROUP BY jobname) gia' ristretti al prefisso di fatturazione: le
     # corsie sono 2, il cap e' largo per costruzione.
     summary, _ = MaintenanceRepository().list_job_summary(
-        limit=200,
+        limit=MAX_LIMIT,
         jobname_prefix=_JOBNAME_PREFISSO_FATTURAZIONE,
         meta_month_equals=(
             ("competenza", competenza_mese.replace(day=1).isoformat())
@@ -1002,10 +1007,10 @@ def fn_get_lotto_task_runs(
         log_to_db=True,
     )
     ErrorManager.require(
-        bool(max_rows) or 1 <= int(page_size) <= 500,
+        bool(max_rows) or 1 <= int(page_size) <= LOTTO_LISTE_PAGINA_MAX,
         code="E_PIPELINE_VALIDATION",
         message="Parametri pipeline non validi.",
-        detail="page_size deve essere compreso tra 1 e 500",
+        detail=f"page_size deve essere compreso tra 1 e {LOTTO_LISTE_PAGINA_MAX}",
         context={"lotto_id": lotto_id, "page_size": page_size},
         function_name="vendite.pipeline_service.fn_get_lotto_task_runs",
         log_to_db=True,

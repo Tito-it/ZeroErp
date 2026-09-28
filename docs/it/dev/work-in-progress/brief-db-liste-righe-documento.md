@@ -1370,3 +1370,265 @@ Tid del 2026-09-28): `check_i18n_keys`, che gira come **pre-commit** su CSV e
 doc auto-gen, segnala **due** chiavi, `vendite.contratti.escludi_blocco.figlio_di_bundle`
 e `vendite.contratti.col_prezzo_forzato`. «Le chiavi i18n alla fine» (Tid)
 vuol dire quindi: **prima del commit** di CSV e doc.
+
+## 9. Lavoro BE/FE (`dev/backend-tid`, dal 2026-09-28)
+
+| Lotto | Cosa | Stato |
+| --- | --- | --- |
+| **A** | BE liste 97-100: repository sulle viste, lista paginata + export, presidi | ✅ 2026-09-28 (§9.1) |
+| **B** | FE L2: preventivo, ordine, DDT, reso su `DrawerTabLista` | ✅ 2026-09-28 (§9.2); ⏳ al team DB: tre correzioni di seed (§9.3) e l'ordine delle colonne (§9.4) |
+| **C** | BE + FE: BoM (101) e fattura (102) | ⏳ |
+| **D** | BE + FE: contratto (103) | ⏳ |
+| **E** | policy `E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI`, 15 righe nei drawer, date della versione CHIUSA, doc §6 | ⏳ |
+
+### 9.1 Lotto A — BE delle liste 97-100 (2026-09-28)
+
+**Decisione di Tid: la lista su un percorso suo.** `GET …/righe/` **resta** la
+lettura completa (dialog di evasione e ri-consegna, stampe, script, smoke) e
+la stessa view serve il `POST` di creazione riga. Il cancello del perimetro
+emittente (`lista_codice`) scatta su ogni metodo della view che lo dichiara:
+su `…/righe/` avrebbe rifiutato con 422 la creazione di una riga a chi vede più
+emittenti. La lista nasce su `GET …/righe/lista/` (+ `export/`). ⇒ Il §4
+(«i due dialog passano a una lettura esplicita») **non serve più**: i dialog
+continuano a leggere `…/righe/`.
+
+| Dove | Cosa |
+| --- | --- |
+| `vendite/db/_righe_repo_mixin.py` | **BB `RigheDocumentoRepositoryMixin`**: `list_righe` (completa), `list_righe_pagina` (lista), `get_riga`, tutte sulla vista e sulle sole righe attive; `COLONNE_RIGHE_COMMERCIALI` / `RICERCA_RIGHE_COMMERCIALI`, le colonne gemelle di 97-99 dichiarate una volta |
+| `preventivi`, `ordini`, `ddt`, `resi` `_repository.py` | il mixin; **ritirate le quattro query Python** (402 righe): le tre proiezioni a mano di preventivo, ordine e DDT e le due `get_riga` che la vista ora copre (D-8.6, richiesta §8.11.3 punto 1) |
+| `vendite/types.py` | ritirato `PreventivoRigaRow`: non lo usava più nessuno, e descriveva chiavi che la query non restituiva da tempo (`codice_articolo`, `importo_iva_riga`) |
+| i quattro `_service.py` | `list_righe_pagina`, con «leggi prima la testata» |
+| `vendite/api/righe_lista_views.py` | **factory `build_righe_lista_views`**: pagina ed export; `lista_codice` come letterale nelle sottoclassi di dominio (è la forma che il presidio legge); `lista_emittente_param = emittente_fiscale_id` |
+| URL dei quattro documenti | `…/righe/lista/` e `…/righe/lista/export/` |
+| presidi | `_RICERCHE` (+4), `test_liste_configurabili_seed` (+4, con un risolutore che porta anche le colonne DESC del mixin), `gen_seed_lista.py` (+4, e ora legge `{**ALTRA, …}`) |
+| doc | `api_righe_documento.md` (nuova, BB condiviso) e un rimando nelle pagine di preventivi, ordini, DDT e resi; catalogo BB backend |
+
+⚠️ **Due cambi di comportamento, voluti:**
+
+- `get_riga` filtra `attivo`, come le altre due letture. ⚠️ *Rettifica del
+  2026-09-28 (verifica critica):* l'eliminazione di una riga è un `DELETE`
+  fisico sui quattro documenti, quindi una riga eliminata non si trovava
+  neanche prima; il filtro conta solo per una riga con `attivo = false`, che
+  il modello ammette ma che oggi nessun flusso produce;
+- `get_riga` del reso legge la vista, che passa da `vendite.resi` (in RLS):
+  prima leggeva `resi_righe`, che la RLS non ce l'ha.
+
+**Prove:** suite `vendite` 2146 test (2 test riallineati: sostituivano la
+connessione del modulo del repository, ora la query nasce nel mixin); 9 test
+nuovi (`test_righe_documento_lista.py`), con mutazione (tolto il filtro `attivo`
+dalla riga singola → rosso su tutti e quattro); presidi core verdi salvo i rossi
+**attesi** di D-8.1 (`test_ricerca_full_seed` per 101-103,
+`test_lista_proiezione_campo_sorgente` per 103); `--verifica-ordinamento` delle
+quattro liste allineato in tutte e tre le direzioni, e sull'intero catalogo
+nessun esito cambiato per le altre liste; **117 query** sul DB vero (quattro
+documenti × ogni colonna della whitelist × tre versi, con ricerca attiva) senza
+errori.
+
+🔴 **Difetto latente trovato, fuori da questo lotto: le righe di magazzino.**
+`magazzino/api/views.py` `_Righe` dichiara `lista_codice` sulla view che serve
+anche il `POST` di creazione riga, e **non** dichiara `lista_emittente_param`.
+Per chi vede più emittenti (il super admin su «Tutti») sia la lista sia la
+creazione di una riga di inventario o rettifica rispondono
+`E_UI_LISTA_EMITTENTE_DA_SCEGLIERE`, a drawer aperto. Stessa forma della
+distinta (`pagamenti.distinta_righe`) da verificare. Da decidere con Tid:
+correzione sullo stampo di questo lotto (lista su percorso suo + parametro
+emittente), in un giro a parte.
+
+### 9.2 Lotto B — FE delle liste 97-100 (2026-09-28)
+
+| Dove | Cosa |
+| --- | --- |
+| `core/components/RigheMasterDetailTable.vue` | **monta `useDrawerTabLista` + `<DrawerTabLista>`**: colonne dal catalogo, ritiro nella riga espandibile, personalizzazione, ricerca, export, «Nuova riga» fra le azioni della lista; padre composto documento + emittente. Sparisce lo slot `#columns`: gli slot si inoltrano per nome (`#cell-<codice>`). Il menu azioni in `app-escape` (azioni di dominio su documenti in sola lettura) |
+| `vendite/_shared/righe/` | `makeRigheListaApi` (pagina + export su `…/righe/lista/`) e `createRigheListaStore` (padre composto, nessun ordinamento di partenza) |
+| i quattro `*RigheTable.vue` | restano solo le celle che il catalogo non sa rendere: il prezzo col badge d'approvazione (preventivo), «senza prezzo» su prezzo e importo (DDT, un template su due colonne), quota accreditata e stato della ri-consegna (reso). Il valore dentro uno slot lo rende `<CellaConfigurabile>`, cioe' il formato del catalogo |
+| i quattro drawer | passano `emittente_fiscale_id` del dettaglio |
+| `assets/main.css` | ⭐ il pulsante che **apre una riga** resta attivo in `.app-readonly`, come paginatore e ricerca: su tablet le colonne ritirate di un documento confermato non si leggerebbero altrimenti |
+| `CellaConfigurabile` + `locale_formatters` | ⭐ formato nuovo **`currency_eur_6`** (prezzo unitario a 6 decimali, decisione di Tid); ⭐ **`percent_2` = valore GIA' in percentuale** a video E nell'export (decisione di Tid): l'export lo leggeva come frazione, e uno sconto del 10 sarebbe uscito «1000,00%». Nessuna lista lo usava ancora |
+| i18n | `common.righe_non_lette` (spostata da `magazzino.documenti_interni`: stesso testo, stesso significato; il drawer di magazzino la usa) |
+| `scripts/datatable.baseline.json` | `RigheMasterDetailTable` esce dagli «standard»: non monta piu' una `DataTable` |
+| doc | `frontend-standards` §«Regola zero»: le righe di un documento non sono piu' un'eccezione; catalogo BB (voce riscritta + le due factory) |
+
+⭐ **Due semplificazioni del modello**: lo slot IVA («descrizione, altrimenti
+codice») c'era tre volte ed era codice morto — `config.iva.descrizione` e'
+`NOT NULL`; la cella «data di consegna» dell'ordine fondeva confermata e
+richiesta, ora sono due colonne (decisione di Tid sul seed).
+
+Prove: vitest 59 file / 470 test, `npm run lint`, `npm run guards`, `vite
+build`, `check_i18n_keys` verdi. ⚠️ **Non provato a video**: il collaudo
+in-app (tablet compreso) e' di Tid.
+
+### 9.3 ⏳ Richiesta al team DB — tre correzioni di seed (2026-09-28)
+
+Nate dal lotto B, leggendo il seed contro le tabelle che sostituisce e contro
+le decisioni di Tid sui formati. `lista_colonna.csv`, solo dato:
+
+| Liste | Colonna | Oggi | Deve essere | Perche' |
+| --- | --- | --- | --- | --- |
+| 100 | `gia_accreditato` | `tipo_dato = boolean`, `formato = yesno` | `numeric`, `number` | e' la QUANTITA' accreditata (la vista la somma), non un sì/no: a video lo slot la rende giusta, ma l'export uscirebbe «Sì/No» |
+| 97, 98, 99, 102 | `sconto_percentuale` | `formato` vuoto | `percent_2` | lo sconto e' in percentuale (10 = 10%); senza formato a video esce «10» invece di «10,00 %» |
+| 97, 98, 99, 102 e 103 | `prezzo_unitario` (97-99, 102), `prezzo_finale`, `prezzo_forzato`, `prezzo_listino` (103) | `currency_eur` (2 decimali) | `currency_eur_6` | prezzo UNITARIO dei listini a 6 decimali (decisione di Tid): a 2 decimali la lista nasconderebbe la precisione che il documento ha |
+
+⚠️ Il formato `currency_eur_6` esiste in frontend ed export da questo lotto;
+il presidio `test_ogni_formato_del_seed_e_reso_dal_frontend` lo riconosce.
+
+### 9.4 ⏳ Richiesta al team DB — l'ordine delle colonne e la larghezza della UdM (Tid, 2026-09-28)
+
+**Rilievo di Tid dopo la prova a video:** «le liste vanno bene, non mi piace
+l'ordine con cui i campi sono esposti: l'importo dopo il prezzo; la colonna
+unità di misura può essere leggermente più lunga».
+
+La causa: il seed ha messo le colonne nell'ordine delle **priorità di ritiro**
+(§3.2), non nell'ordine di **lettura**. Sono due cose diverse: la priorità dice
+cosa esce per primo su uno schermo stretto, `ordine_default` dove sta la
+colonna. ✅ **Decisione di Tid: l'ordine di una fattura** — la UdM accanto
+alla quantità, poi prezzo → sconto → importo, nell'ordine del calcolo.
+
+⚠️ **Le priorità del §3.2 NON cambiano**: cambia solo la posizione.
+
+**`lista_colonna.csv` — `ordine_default`** (e la stessa sequenza in
+`lista_preset_colonna.ordine` dei preset di sistema 97, 98, 99, 102):
+
+| Lista | Ordine nuovo |
+| --- | --- |
+| 97 `vendite.preventivo_righe` | `articolo_codice` 10, `descrizione` 20, `qta_operativa` 30, `uom_codice` 40, `prezzo_unitario` 50, `sconto_percentuale` 60, `importo_riga` 70, `iva` 80, `data_consegna` 90, `azioni` 999 |
+| 98 `vendite.ordine_righe` | come la 97, poi `data_consegna` (confermata) 90, `data_consegna_richiesta_cliente` 95, `azioni` 999 |
+| 99 `vendite.ddt_righe` | come la 97 senza la data: … `importo_riga` 70, `iva` 80, `azioni` 999 |
+| 102 `vendite.fattura_righe` | `riga_nr` 10, `articolo_codice` 15, `descrizione` 20, `quantita` 30, `uom_codice` 40, `prezzo_unitario` 50, `sconto_percentuale` 60, `importo_riga` 70, `iva` 80, `riga_rettificata` 100 |
+
+La 100 (reso) e la 103 (contratto) non hanno un importo: l'ordine resta.
+
+**`larghezza_default` di `uom_codice`: da 80 a 100** su 97, 98, 99, 100, 102,
+103 (colonne gemelle: la stessa larghezza ovunque).
+
+⚠️ Tocca solo il **preset di sistema**: chi ha già salvato una sua
+personalizzazione della lista la tiene com'è (può ripristinare il preset da
+«Personalizza colonne»). Nessuna ricaduta su BE e FE: l'ordine e la larghezza
+li legge `<ListaConfigurabile>` dal catalogo.
+
+### 9.5 Verifica critica dei lotti A e B (2026-09-28)
+
+**Corretto nello stesso giro:**
+
+| Dove | Difetto | Correzione |
+| --- | --- | --- |
+| `_righe_repo_mixin.py` + i quattro `list_righe_pagina` dei service | il tetto della pagina scritto **cinque volte** come `200` (`_MAX_LIMIT_LISTA` nel mixin, `max_limit: int = 200` in ogni service), accanto alla fonte unica `LIST_MAX_LIMIT` di `core/db/_helpers` | tutti sulla costante (oggi `MAX_LIMIT` di `core/api/constants`, vedi sotto) |
+| le otto view `…/righe/lista/` (+ `export/`) | **nessun test di view**: il BB SQL aveva i suoi, la factory no. Un nome sbagliato del parametro emittente, o il kwarg del documento, sarebbero passati verdi | `tests/api/test_righe_lista_api.py` (5 test × 4 documenti): kwarg e parametri al service, envelope, tetto alzato solo dall'export, cancello con la lista del documento e l'emittente, **nessun** cancello su `…/righe/`. Mutazione: `_EMITTENTE_PARAM` sbagliato → 8 rossi su 8. ⚠️ Azzera la cache del throttle a ogni documento: le view sono `is_search_endpoint`, e senza le ultime richieste rispondevano 429 |
+
+Prove: suite `vendite` 2160 test verdi (26 skip), `ruff` pulito; presidi core
+verdi salvo il rosso **atteso** di `test_ricerca_full_seed` (101-103, D-8.1).
+
+**✅ Fatto su via di Tid (stesso giorno):**
+
+1. **Il conteggio delle righe, che era scritto in tre forme**, ha una sede:
+   `count_righe(doc)` nel BB, **sulla tabella** (`_righe_tabella`) e non sulla
+   vista — quella del reso chiama tre funzioni per riga. Ritirati
+   `count_righe` di DDT e reso, `count_righe_attive` del preventivo e i
+   `len(repo.list_righe(...))` di `get_ordine`, `elimina_ordine`, `conferma`
+   (che rifiltrava in Python `attivo`, gia' filtrato), `elimina_ddt` ed
+   `elimina_preventivo`. La regola «le righe disattivate non contano» della
+   conferma dell'ordine vive ora nel conteggio, e la presidia
+   `test_conteggio_sulla_tabella_solo_righe_attive` (mutazione: tolto il
+   filtro `attivo` → 4 rossi); `test_conferma_solo_righe_disattivate` del
+   service, che provava il filtro Python, e' confluito nel test «senza righe».
+   ⚠️ Fuori: `count_righe_attive` del **contratto**, che non usa il BB (lotto D).
+2. **Codice FE senza consumatori, ritirato:** `loadRighe` degli store
+   preventivi e DDT e `listRighe` di `preventiviApi` / `ddtApi`. Restano
+   quelli di ordine e reso (dialog di evasione e ri-consegna), e i commenti
+   ora lo dicono.
+
+Prove: `vendite` + `documenti` 2433 test verdi (32 skip), `ruff` pulito;
+vitest 60 file / 479 test, `npm run lint`, `npm run guards`, `vite build`
+verdi.
+
+**✅ La pagina che non c'e' piu' (core, via di Tid, 2026-09-28).** Eliminata
+l'unica riga di una pagina oltre la prima, la lista restava su una pagina
+vuota. Due meta':
+
+- **frontend**: `useListaStoreCore.fetchList` rilegge **una volta**
+  dall'ultima pagina reale, o da capo se il totale e' 0. Vale per ogni lista
+  sul core (standard, `DrawerTabLista`, righe dei documenti). Spec: 5 test
+  nuovi, mutazione → 3 rossi;
+- **backend**: `fetch_paged_with_total` ha ora `fallback_count_sql` e `offset`
+  **obbligatori** (erano facoltativi: oltre l'ultima pagina il totale usciva
+  0). Sistemate le tre chiamate che non li passavano:
+  `DbopsRepository.list_error_logs`, `ProcessiRepository.list_processi` e
+  `list_run_processo`; riallineato `test_i_filtri_stanno_nei_params`, che ora
+  prova anche il conteggio.
+
+Prove: backend 5558 test, verdi salvo il rosso atteso D-8.1, su tre
+esecuzioni consecutive (in una quarta, precedente, erano comparsi 8 errori in
+`test_approvazioni_prezzo_service` e `test_sessioni_view`, verdi da soli e
+non piu' riprodotti: traceback non catturato); vitest 484, lint, guards,
+build verdi.
+
+✅ **Il residuo, chiuso (via di Tid, stesso giorno).**
+
+- **backend**: il BB non chiede piu' un conteggio scritto a mano — se il
+  chiamante non ne ha uno, **rilegge la stessa query con `LIMIT 1 OFFSET 0`**,
+  la cui prima riga porta il totale (verifica la forma a ogni chiamata,
+  non solo quando serve). Portate sul BB **25 funzioni** che leggevano
+  `COUNT(*) OVER ()` a mano: anagrafiche (clienti, emittenti ×2, fornitori,
+  indirizzi, soggetti), vendite (famiglie, registri, righe listino), core
+  (email ×4, dbops ×4, maintenance ×2, audit permessi, lookup comuni),
+  amm_software (operatori, audit), e la ricerca soggetti (paginata da una
+  funzione a DB: rilettura locale, stessa regola). Prova sul DB di sviluppo
+  per tutte: totale a pagina 1 = totale oltre la fine, nessun errore; test
+  del BB `test_fetch_paged_with_total.py` (unitari + uno su DB vero);
+  riallineati i test che sostituivano la `connection` del repository;
+- **frontend**: il rientro scende in `useListaEmptyStateFetch`, cosi' copre
+  anche gli 11 store che non passano dal core (le code, i page-based). Spec
+  nuova, 2 test.
+
+✅ **Il tetto e il default di pagina (via di Tid: default 25).**
+
+- una sede: `apps.core.api.constants` — `MAX_LIMIT` (200), `DEFAULT_LIMIT`
+  (**25**, prima 50 li' e 25 in `parse_list_params`). Ritirato
+  `LIST_MAX_LIMIT`; `amm_software/constants` ri-esporta;
+- BB `limiti_pagina(limit, offset, tetto=)`: sostituisce **41** coppie
+  `safe_limit`/`safe_offset`;
+- i `200` letterali (firme, validazioni, messaggi, commenti) e i default `50`
+  delle view (pagamenti, dashboard, tracciamento, note, config CRUD,
+  amm_software) sulle costanti; le descrizioni OpenAPI generate dalle
+  costanti. Tracciamento: due liste partivano da 100 sotto una doc che
+  diceva 50 — ora tutte `DEFAULT_LIMIT`;
+- ⚠️ **cambio di comportamento voluto**: una chiamata API senza `limit` /
+  `page_size` risponde 25 righe dove prima ne rispondeva 50. Le liste a video
+  mandano sempre il loro numero; restano a 100 dichiarato giornale pratica,
+  registro commessa e segnalazioni di lotto;
+- 🔴 **difetto trovato nel giro**: i due autocomplete dei conti bancari
+  leggevano `limit` con `int()` e **senza tetto** (`?limit=1000000` = tabella
+  intera). Ora `parse_list_params`;
+- presidio `test_paginazione_fonte_unica.py`: il tetto come numero ovunque,
+  il default come numero nelle view, eccezioni con motivo e senza orfane.
+  ⚠️ Le firme interne dei repository hanno ancora default propri (50, 100):
+  il contratto col client lo fa la view, che li scavalca sempre.
+
+Prove: backend 5566 test verdi salvo D-8.1; con i test su DB reale accesi
+5806, rossi i soli noti (D-8.1: `contratto_righe`; lotto E:
+`E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI`); `ruff` pulito; frontend
+vitest, lint, guards, build verdi.
+
+### 9.6 Seconda verifica critica dei lotti A, B e della paginazione (2026-09-28)
+
+**Corretto nello stesso giro:**
+
+| Dove | Difetto | Correzione |
+| --- | --- | --- |
+| `RigheMasterDetailTable.vue` (export) | 🔴 l'export delle righe mandava i soli filtri (`paramsFiltro`), **senza l'emittente**: chi vede più emittenti leggeva la lista e riceveva `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE` premendo «Esporta», sui quattro documenti | BB `paramsExport()` in `useListaStoreCore` (filtri + emittente del padre composto, una sede) + spec |
+| `useDrawerTabLista` | un tab-lista seguiva la ricerca universale e F5 della pagina: un drawer sotto KeepAlive si ritrovava le righe filtrate dal termine cercato altrove | `searchTableOptions.incorporata = true` di default (scavalcabile) |
+| `RigheMasterDetailTable.vue` | `#actions` non inoltrava `compact`; `SLOT_PROPRI` non escludeva gli slot che il BB riempie (`actions`, `filtri-sempre`) | `:force-compact="compact"`; `SLOT_PROPRI` completo |
+| `DdtRigheTable`, `OrdiniRigheTable`, `PreventiviRigheTable` | `tableRef` + `defineExpose({ loadRighe })` senza chiamanti, con un commento falso («il drawer parent chiama loadRighe») | ritirati (resta sul reso, che lo usa) |
+| `CellaConfigurabile` `percent_2` | a video fino a 3 decimali, nell'export sempre 2 | `maximumFractionDigits: 2` |
+| `pipeline_repository` / `pipeline_service` | il tetto di pagina `500` delle liste del drawer lotto scritto 4 volte, invisibile al presidio | `LOTTO_LISTE_PAGINA_MAX`, col motivo: è il contratto delle due fn DB (`LEAST(…, 500)`), non `MAX_LIMIT` |
+| `soggetti_repository.list_soggetti` | conteggio di ripiego con `params[2:]`: si disallinea in silenzio al primo parametro in più dello scope | tolto: il BB rilegge la stessa query |
+| `processi_service` (×2), `commesse_repository` (registro), `views_approvazioni_prezzo` | clamp scritti a mano accanto a `limiti_pagina` | sul BB |
+| `amm_software` `list_operatori` / `list_audit_log` | 🔴 clamp solo in alto nella view: `?limit=-5` o `?offset=-1` arrivavano a DB e rispondevano **500** (preesistente) | clamp nel repository con `limiti_pagina`; la view non lo ripete |
+| doc | §9.1 e `api_righe_documento.md` dichiaravano un cambio di comportamento inesistente («una riga eliminata non si trova più»: l'eliminazione è un `DELETE` fisico, non si trovava neanche prima); `massimo 200` letterale; `LIST_MAX_LIMIT` nel catalogo BB; «finché non passano a L2» in frontend-standards | riscritti |
+| test | `test_lista_cancello_…` non guardava lo status; nessun test sul `model_permission` delle otto view; il test DESC provava una sola delle due date dell'ordine; etichetta sbagliata di un'eccezione del presidio di paginazione | status 200, `test_lista_ed_export_col_permesso_del_documento`, tutte le `_righe_colonne_desc`, etichetta |
+
+**⏳ Da decidere con Tid:**
+
+1. **Regola del 2 — `list_righe_pagina` dei quattro service** è la stessa funzione quattro volte (cambiano repository e lettura della testata). Proposta: un helper accanto a `_righe_bozza_guard`, e un test solo che provi «leggi prima la testata» (oggi **nessun** test lo prova: togliere la lettura della testata da un service lascia la suite verde, e un documento fuori perimetro diventa una lista vuota invece di un 404).
+2. **UX della riga in modifica**: la vecchia `DataTable` evidenziava la riga aperta e non mostrava hover sui documenti non modificabili; `ListaConfigurabile` ha `selectionMode='single'` fisso. Serve una prop?
+3. **Default propri nelle firme interne** (`limit: int = 50/100` in ~25 repository e service, `tracciamento_service` a 100 sotto una view a 25): la view li scavalca sempre, ma sono due default per la stessa lista. Portarli a `DEFAULT_LIMIT` o toglierli.
+4. `fetch_paged_with_total` in modalità rilettura riceve `offset=` a parte: si potrebbe ricavarlo da `params[-1]`, così non può divergere dal valore nella query.

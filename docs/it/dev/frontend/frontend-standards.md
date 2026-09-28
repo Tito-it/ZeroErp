@@ -280,10 +280,18 @@ nessun blocco.
 
 | Caso | Cosa si usa |
 | --- | --- |
-| **Righe di un documento** dentro il suo master (righe ordine, componenti BoM…) | `RigheMasterDetailTable`, **non** il BB |
 | **Dettaglio espanso di un risultato** della ricerca universale | `SearchDetailTable` (`core/components/details/`), **non** il BB |
 | **Matrice slot/override** (la popolazione la decide il catalogo, l'operatore imposta l'override sulla riga) | `MatriceOverride`, **non** il BB |
 | Tabella di **anteprima** dentro un dialog, non paginata e non configurabile | `DataTable` grezza, con il motivo scritto in un commento sopra l'import |
+
+⛔ **Le righe di un documento NON sono un'eccezione, dal 2026-09-28** (decisione
+di Tid, brief-db-liste-righe-documento). Fino a quel giorno lo erano, e su tablet
+le 9-10 colonne di un preventivo uscivano in uno scroll orizzontale che col
+touch non si usa. Un documento ha un numero arbitrario di righe con molti
+attributi: e' una lista. `RigheMasterDetailTable` monta `<DrawerTabLista>` con
+la macchina del form `useFormInline`; chi ha ancora una `DataTable` di righe
+(BoM, fattura, contratto: lotti C e D) sta nel registro del debito, non fra le
+eccezioni.
 
 ⛔ **«È dentro un drawer» NON è un'eccezione, ed è l'errore che si fa più
 spesso.** Una lista su un tab di drawer — un'entità con endpoint suo,
@@ -1634,7 +1642,8 @@ Primo caso: `ContrattoRigheDrawer.vue` (righe contratto pricing v5).
 è ritrovata scritta in dieci posti (verifica critica del brief
 `brief-db-liste-righe-documento`, §5 L1). La macchina è il BB
 `useFormInline`; la lista è `useDrawerTabLista` + `<DrawerTabLista>`
-(o `RigheMasterDetailTable` per le righe di vendita, finché non passano a L2).
+(per le righe di vendita, `RigheMasterDetailTable`, che dal 2026-09-28 monta
+gli stessi due BB).
 
 1. Montare la lista e la macchina dai BB qui sopra
 2. Scrivere i campi del form di riga
@@ -3320,26 +3329,49 @@ ed etichetta** (l'icona ha sempre label o tooltip accanto). Quindi:
 
 ### Autenticazione JWT
 
-| Meccanismo      | Dove              | Descrizione                               |
-| --------------- | ----------------- | ----------------------------------------- |
-| Route guard     | `router/index.js` | Tutte le rotte protette di default        |
-| Token refresh   | `core/api.js`     | Interceptor su 401, retry automatico      |
-| Accodamento     | `core/api.js`     | Richieste durante refresh accodate        |
-| Protezione loop | `core/api.js`     | Chiamate a `/token/` escluse dal refresh  |
-| Redirect        | `LoginView`       | Rotta originale salvata in `?redirect=`   |
-| Logout          | `stores/auth.js`  | `clearTokens()` pulisce tutta la sessione |
+⛔ **Nessun token in `localStorage`** (dal 2026-09-28, [brief sicurezza](../work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md) §2).
+Il **refresh** sta in un cookie `HttpOnly` che il JavaScript non vede: lo
+scrivono e lo leggono il backend e il browser. L'**access** (10 minuti) vive solo
+in memoria, in `core/sessione.js`. Al ricaricamento della pagina l'access non
+c'è mai: la sessione si ritrova rinnovando dal cookie.
+
+| Meccanismo            | Dove                                   | Descrizione                                                                           |
+| --------------------- | -------------------------------------- | ------------------------------------------------------------------------------------- |
+| Access in memoria     | `core/sessione.js`                     | Unica sede dell'access; reattivo (`accessTokenRef`)                                   |
+| Route guard           | `router/index.js`                      | Rotte protette di default; `auth.ripristinaSessione()` prima di ogni rotta            |
+| Rinnovo               | `core/api.js` `rinnovaAccess`          | Corpo vuoto + header `X-Requested-With`; il cookie lo porta il browser                |
+| Una scheda alla volta | `core/sessione.js` `rinnovaCoordinato` | Lock del browser + `BroadcastChannel`: rinnova una scheda, le altre ricevono l'access |
+| Accodamento           | `core/sessione.js`                     | Chiamate concorrenti della stessa scheda aspettano la stessa promise                  |
+| Protezione loop       | `core/api.js`                          | Chiamate a `/token/` escluse dal rinnovo                                              |
+| Redirect              | `LoginView`                            | Rotta originale salvata in `?redirect=`                                               |
+| Logout                | `stores/auth.js`                       | Backend cancella il cookie; `clearTokens()` pulisce; le altre schede escono           |
+
+⭐ **Più schede.** Ogni rinnovo ruota il refresh e mette in blacklist il
+precedente: due schede che rinnovano insieme presenterebbero lo stesso cookie,
+e la seconda verrebbe buttata fuori. Il rinnovo gira quindi dentro un lock
+(`navigator.locks`): una scheda alla volta, e il cookie (condiviso) è già
+quello ruotato da chi è uscito dal lock. L'access nuovo si annuncia sul canale
+`zeroerp-sessione`. Gli altri due eventi — **logout** (tutte le schede escono)
+e **sessione nuova** (login o cambio emittente in un'altra scheda: questa
+riparte dal boot) — li gestisce lo store `auth`. ⛔ Nessun altro modulo chiama
+l'endpoint di refresh: passa da `rinnovaAccess`, altrimenti il coordinamento ha
+un buco.
 
 ### Regole di sicurezza
 
-- Mai accedere a `localStorage` direttamente — usare `useAuthStore()`
+- Mai accedere a `localStorage` direttamente — passa da `core/storage.js`; e
+  ⛔ mai un token lì dentro
 - Mai `window.location` per redirect — usare il router. ⭐ **Una sola eccezione
-  dichiarata, e non è un redirect**: `cambiaEmittenteAttivo` in `stores/auth.js`
-  fa `window.location.assign('/')` per **ripartire dal boot**. Cambiare emittente
-  cambia ciò che si vede ovunque, e l'applicazione tiene stato in cache fuori
-  dagli store (KeepAlive delle viste, cache di modulo dei lookup): solo un
-  ricaricamento completo garantisce che non restino a video dati dell'emittente
-  precedente. Un altro caso con la stessa esigenza passa dalla stessa azione
-  dello store, non scrive un secondo `window.location`
+  dichiarata, e non è un redirect**: l'azione `ripartiDalBoot` di
+  `stores/auth.js` fa `window.location.assign(...)` per **ripartire dal boot**.
+  La usano due casi con la stessa esigenza: `cambiaEmittenteAttivo` (cambiare
+  emittente cambia ciò che si vede ovunque) e l'apertura di una **sessione
+  nuova in un'altra scheda** (login o cambio emittente: il cookie ora è di
+  un'altra sessione). L'applicazione tiene stato in cache fuori dagli store
+  (KeepAlive delle viste, cache di modulo dei lookup): solo un ricaricamento
+  completo garantisce che non restino a video dati della sessione precedente.
+  Un terzo caso passa dalla stessa azione, non scrive un secondo
+  `window.location`
 - Mai esporre dati sensibili in log, template o attributi HTML
 - Mai costruire URL con interpolazione da input utente — usare parametri Axios
 
@@ -4134,7 +4166,7 @@ export const useMyStore = defineStore('my-store', () => {
 | Quando serve `clearUserState()` esplicito | Quando basta lo snapshot |
 | --- | --- |
 | Lo state contiene Map / Set / Date / function (non JSON-serializable) | State con primitives, oggetti/array piani |
-| Lo store legge da localStorage all'init (snapshot fotografa già i dati utente) | State puro in-memory |
+| Lo store legge da localStorage all'init (snapshot fotografa già i dati utente); per `auth` vale per l'access in memoria di `core/sessione`, che lo snapshot non azzera | State puro in-memory |
 | Servono side-effect aggiuntivi (chiudere BroadcastChannel, abortire fetch in volo) | Nessun side-effect |
 
 ### Pattern composable user-scoped (cache module-level)

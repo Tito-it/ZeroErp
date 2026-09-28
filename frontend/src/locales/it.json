@@ -1,5 +1,6 @@
 {
   "common": {
+    "righe_non_lette": "Non sono riuscito a leggere le righe del documento.",
     "invito_non_spedito": "Invito creato, ma l'email non è partita: la persona non ha ricevuto il link. Controlla l'account email e invia di nuovo l'invito.",
     "invito_non_spedito_info": "Il link d'invito è stato creato, ma l'email non è partita: la persona non l'ha ricevuto. Controlla l'account email di sistema e reinvia l'invito.",
     "filtri": "Filtri",
@@ -4802,7 +4803,6 @@
       "sezione_righe": "Righe",
       "testata_salvata": "Testata salvata",
       "righe_congelate": "Le righe si scrivono solo in bozza: riporta il documento in bozza per modificarle.",
-      "righe_non_lette": "Non sono riuscito a leggere le righe del documento.",
       "movimenti": "Movimenti",
       "conferma_transizione": "Procedere con «{azione}» su questo documento?",
       "stato_cambiato": "Stato del documento aggiornato.",

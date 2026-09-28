@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 from django.db import connection
+from apps.core.db._helpers import rows_to_list
 
 # Firma fn_get_parameter_full estesa (2026-05-15): aggiunto in coda
 # p_categoria_cliente_id (smallint) per gating soglie commerciali per
@@ -159,9 +160,7 @@ class ParameterRepository:
                 sql,
                 [django_user_id, group_ids, emittente_fiscale_id, categoria_cliente_id],
             )
-            columns = [col.name for col in cursor.description]
-            rows = cursor.fetchall()
-        return [dict(zip(columns, row, strict=True)) for row in rows]
+            return rows_to_list(cursor)
 
     # Scopo: CTE-based upsert generico per config.parameter_overrides. Il classico
     #        ON CONFLICT ON CONSTRAINT non funziona: PostgreSQL tratta NULL != NULL

@@ -27,10 +27,22 @@ Indice test eseguiti:
 
 import math
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from apps.core.db.permissions_audit_repository import PermissionsAuditRepository
+
+# ⚠️ Dal 2026-09-28 la pagina passa da `fetch_paged_with_total`: si sostituisce
+#    la `connection` del BB, e il cursore porta i NOMI delle colonne, come il
+#    DB vero (il BB legge le righe per nome).
+_CONN = "apps.core.db._helpers.connection"
+_DESCRIZIONE = [
+    SimpleNamespace(name=c) for c in (
+        "tabella", "valid_from", "tipo_operazione", "user_insert",
+        "snapshot", "tx_id", "total_count",
+    )
+]
 
 
 def _mock_request(
@@ -58,10 +70,11 @@ class PermissionsAuditRepositoryTests(TestCase):
         self.repo = PermissionsAuditRepository()
 
     # Scopo: Senza UO, le tabelle reparto non compaiono nella query.
-    @patch("apps.core.db.permissions_audit_repository.connection")
+    @patch(_CONN)
     def test_dept_tables_excluded_without_uo(self, mock_conn):
         ts = datetime(2026, 2, 28, 10, 30, 0, tzinfo=timezone.utc)
         mock_cursor = MagicMock()
+        mock_cursor.description = _DESCRIZIONE
         mock_cursor.fetchall.return_value = [
             ("user_override_aree", ts, 2, "admin", {"livello": "TUTTO"}, "tx-1", 1),
         ]
@@ -83,9 +96,10 @@ class PermissionsAuditRepositoryTests(TestCase):
         self.assertEqual(len(result["events"]), 1)
 
     # Scopo: Query vuota restituisce risultato vuoto.
-    @patch("apps.core.db.permissions_audit_repository.connection")
+    @patch(_CONN)
     def test_empty_audit_returns_empty_list(self, mock_conn):
         mock_cursor = MagicMock()
+        mock_cursor.description = _DESCRIZIONE
         mock_cursor.fetchall.return_value = []
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
@@ -100,10 +114,11 @@ class PermissionsAuditRepositoryTests(TestCase):
         self.assertEqual(result["total_pages"], 0)
 
     # Scopo: Verifica mapping tipo_operazione e struttura evento.
-    @patch("apps.core.db.permissions_audit_repository.connection")
+    @patch(_CONN)
     def test_events_mapped_correctly(self, mock_conn):
         ts = datetime(2026, 2, 28, 10, 30, 0, tzinfo=timezone.utc)
         mock_cursor = MagicMock()
+        mock_cursor.description = _DESCRIZIONE
         mock_cursor.fetchall.return_value = [
             ("user_override_aree", ts, 1, "setup", {"livello": "TUTTO"}, "tx-a", 3),
             ("identita_digitali", ts, 2, "admin", {"ruolo_applicativo": "OPERATORE"}, "tx-b", 3),
@@ -131,9 +146,10 @@ class PermissionsAuditRepositoryTests(TestCase):
         self.assertEqual(result["events"][2]["tipo_operazione"], "ELIMINAZIONE")
 
     # Scopo: Filtro data_da viene aggiunto alla query.
-    @patch("apps.core.db.permissions_audit_repository.connection")
+    @patch(_CONN)
     def test_filter_data_da(self, mock_conn):
         mock_cursor = MagicMock()
+        mock_cursor.description = _DESCRIZIONE
         mock_cursor.fetchall.return_value = []
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
@@ -151,9 +167,10 @@ class PermissionsAuditRepositoryTests(TestCase):
     # Scopo: `data_a` e' un giorno e lo include tutto: `[da, a + 1 giorno)`.
     # Il vecchio `valid_from <= a::timestamptz` si fermava alla mezzanotte
     # d'inizio e perdeva gli eventi del giorno indicato (F-4).
-    @patch("apps.core.db.permissions_audit_repository.connection")
+    @patch(_CONN)
     def test_filter_data_a_include_il_giorno(self, mock_conn):
         mock_cursor = MagicMock()
+        mock_cursor.description = _DESCRIZIONE
         mock_cursor.fetchall.return_value = []
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
@@ -170,9 +187,10 @@ class PermissionsAuditRepositoryTests(TestCase):
         self.assertIn("2026-01-31", params)
 
     # Scopo: Filtro tabella riduce le sub-query UNION.
-    @patch("apps.core.db.permissions_audit_repository.connection")
+    @patch(_CONN)
     def test_filter_tabella(self, mock_conn):
         mock_cursor = MagicMock()
+        mock_cursor.description = _DESCRIZIONE
         mock_cursor.fetchall.return_value = []
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
@@ -192,10 +210,11 @@ class PermissionsAuditRepositoryTests(TestCase):
         self.assertNotIn("profili_reparto", sql)
 
     # Scopo: Paginazione page/page_size applicata correttamente.
-    @patch("apps.core.db.permissions_audit_repository.connection")
+    @patch(_CONN)
     def test_pagination(self, mock_conn):
         ts = datetime(2026, 2, 28, 10, 0, 0, tzinfo=timezone.utc)
         mock_cursor = MagicMock()
+        mock_cursor.description = _DESCRIZIONE
         mock_cursor.fetchall.return_value = [
             ("user_override_aree", ts, 1, "admin", {}, "tx-1", 25),
         ]
@@ -224,9 +243,10 @@ class PermissionsAuditRepositoryOggettiTests(TestCase):
         self.repo = PermissionsAuditRepository()
 
     # Scopo: Senza filtro tabella, la query include user_override_oggetti nel UNION ALL.
-    @patch("apps.core.db.permissions_audit_repository.connection")
+    @patch(_CONN)
     def test_override_oggetti_incluso_senza_filtro(self, mock_conn):
         mock_cursor = MagicMock()
+        mock_cursor.description = _DESCRIZIONE
         mock_cursor.fetchall.return_value = []
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
@@ -237,9 +257,10 @@ class PermissionsAuditRepositoryOggettiTests(TestCase):
         self.assertIn("user_override_oggetti", sql)
 
     # Scopo: Filtro tabella=user_override_oggetti esclude tutte le altre tabelle.
-    @patch("apps.core.db.permissions_audit_repository.connection")
+    @patch(_CONN)
     def test_filtro_tabella_override_oggetti(self, mock_conn):
         mock_cursor = MagicMock()
+        mock_cursor.description = _DESCRIZIONE
         mock_cursor.fetchall.return_value = []
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
@@ -268,7 +289,7 @@ class ApiPermessiAuditViewTests(TestCase):
     # Scopo: ADMIN puo' vedere audit di un altro utente.
     @patch("apps.core.api.views.PermissionResolver")
     @patch("apps.core.api.views.get_user_model")
-    @patch("apps.core.db.permissions_audit_repository.connection")
+    @patch(_CONN)
     def test_admin_can_view_other_user(self, mock_conn, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
 
@@ -280,6 +301,7 @@ class ApiPermessiAuditViewTests(TestCase):
         mock_get_user.return_value.objects.get.return_value = target
 
         mock_cursor = MagicMock()
+        mock_cursor.description = _DESCRIZIONE
         mock_cursor.fetchall.return_value = []
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
@@ -293,7 +315,7 @@ class ApiPermessiAuditViewTests(TestCase):
     # Scopo: OPERATIVO puo' vedere il proprio audit.
     @patch("apps.core.api.views.PermissionResolver")
     @patch("apps.core.api.views.get_user_model")
-    @patch("apps.core.db.permissions_audit_repository.connection")
+    @patch(_CONN)
     def test_operativo_can_view_self(self, mock_conn, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
 
@@ -305,6 +327,7 @@ class ApiPermessiAuditViewTests(TestCase):
         mock_get_user.return_value.objects.get.return_value = target
 
         mock_cursor = MagicMock()
+        mock_cursor.description = _DESCRIZIONE
         mock_cursor.fetchall.return_value = []
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
@@ -356,7 +379,7 @@ class ApiPermessiAuditViewTests(TestCase):
     # `ValueError`): dava un OFFSET negativo, cioe' un errore del DB (F-4).
     @patch("apps.core.api.views.PermissionResolver")
     @patch("apps.core.api.views.get_user_model")
-    @patch("apps.core.db.permissions_audit_repository.connection")
+    @patch(_CONN)
     def test_page_zero_rifiutata(self, mock_conn, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
 
@@ -374,7 +397,7 @@ class ApiPermessiAuditViewTests(TestCase):
     # Scopo: page_size viene limitato a 200 anche se il client passa un valore piu' alto.
     @patch("apps.core.api.views.PermissionResolver")
     @patch("apps.core.api.views.get_user_model")
-    @patch("apps.core.db.permissions_audit_repository.connection")
+    @patch(_CONN)
     def test_page_size_capped_at_200(self, mock_conn, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
 
@@ -386,6 +409,7 @@ class ApiPermessiAuditViewTests(TestCase):
         mock_get_user.return_value.objects.get.return_value = target
 
         mock_cursor = MagicMock()
+        mock_cursor.description = _DESCRIZIONE
         mock_cursor.fetchall.return_value = []
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)

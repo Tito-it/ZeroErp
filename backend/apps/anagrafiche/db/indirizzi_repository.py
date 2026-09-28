@@ -16,7 +16,7 @@ from apps.core.db._helpers import (
     colonne_identita,
     dynamic_update,
     sql_order_clause,
-    extract_paginated,
+    fetch_paged_with_total,
     row_to_dict,
     rows_to_list,
 )
@@ -85,9 +85,7 @@ class IndirizziRepository:
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [*params, limit, offset])
-            return extract_paginated(cursor)
+        return fetch_paged_with_total(sql, [*params, limit, offset], offset=offset)
 
     # Scopo: Dettaglio singolo indirizzo per form edit.
     def get_indirizzo_dettaglio(self, indirizzo_dettaglio_id: int) -> dict[str, Any] | None:
