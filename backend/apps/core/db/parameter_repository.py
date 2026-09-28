@@ -161,7 +161,7 @@ class ParameterRepository:
             )
             columns = [col.name for col in cursor.description]
             rows = cursor.fetchall()
-        return [dict(zip(columns, row)) for row in rows]
+        return [dict(zip(columns, row, strict=True)) for row in rows]
 
     # Scopo: CTE-based upsert generico per config.parameter_overrides. Il classico
     #        ON CONFLICT ON CONSTRAINT non funziona: PostgreSQL tratta NULL != NULL

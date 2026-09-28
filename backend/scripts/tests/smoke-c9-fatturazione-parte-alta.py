@@ -448,7 +448,7 @@ else:
 
 # --- 5) PDF su disco, agganciato alla fattura NUMERATA ------------------
 print("== 5) VERIFICA PDF")
-for sid, fid, lotto, stato, tent, doc_id in [(r[0], r[1], r[2], r[3], r[4], r[5]) for r in stampe]:
+for _sid, fid, _lotto, _stato, _tent, doc_id in [(r[0], r[1], r[2], r[3], r[4], r[5]) for r in stampe]:
     if doc_id is None:
         check(f"doc fattura {fid}", False, "documento_id NULL")
         continue

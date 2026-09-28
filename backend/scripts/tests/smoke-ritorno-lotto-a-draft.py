@@ -122,7 +122,7 @@ with transaction.atomic():
         t = dict(zip(
             ["articolo_id", "istanza_utility_id", "billing_account_id", "uom_id",
              "valuta_id", "tipo_doc_fiscale_id", "emittente_sr_id", "utility_id"],
-            row,
+            row, strict=True,
         ))
 
         # Competenza ISOLATA nel futuro: la selezione del lotto non può

@@ -18,10 +18,11 @@ from django.utils.crypto import salted_hmac
 # ⭐ La chiave dell'HMAC e' del BACKEND e non arriva mai al DB (§13.3): con
 # un hash semplice una password digitata come username si ricaverebbe dal
 # digest per forza bruta, perche' le password umane hanno poca entropia.
-# `salted_hmac` la deriva da SECRET_KEY con un sale proprio, come fa
-# `crypto_service` per la sua: nessuna variabile d'ambiente in piu'.
-# Cambiare SECRET_KEY (o il sale) azzera i contatori dei nomi inesistenti:
-# e' stato che dura minuti, non si perde niente.
+# `salted_hmac` la deriva da SECRET_KEY con un sale proprio: nessuna variabile
+# d'ambiente in piu'. A differenza di `crypto_service` (chiavi proprie dal
+# 2026-09-28) qui la derivazione va bene: cambiare SECRET_KEY (o il sale)
+# azzera i contatori dei nomi inesistenti, stato che dura minuti, non si perde
+# niente.
 _SALE = "zeroerp.login.nome_tentato"
 
 # Quanti caratteri esadecimali dell'impronta vanno nei log: abbastanza per

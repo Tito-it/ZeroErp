@@ -122,7 +122,7 @@ class UiAdminRepository:
                 """
             )
             cols = [c[0] for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
 
     # Scopo: Lista TUTTE le definizioni (incluse disattivate) con campi
     #        completi per la pagina tecnica Fase 2. Ordinate per
@@ -134,7 +134,7 @@ class UiAdminRepository:
                 + " ORDER BY attivo DESC, codice, id"
             )
             cols = [c[0] for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
 
     # Scopo: Conta TUTTE le definizioni (incluse disattivate), con lo stesso
     #        perimetro di `list_definizioni_admin` ma senza passare dalle righe.
@@ -171,7 +171,7 @@ class UiAdminRepository:
             if not row:
                 return None
             cols = [c[0] for c in cursor.description]
-            return dict(zip(cols, row))
+            return dict(zip(cols, row, strict=True))
 
     # Scopo: Restituisce la definizione per id (anche disattivate, campi
     #        completi inclusi vista_sql/note/audit). Usato dal service
@@ -190,7 +190,7 @@ class UiAdminRepository:
             if not row:
                 return None
             cols = [c[0] for c in cursor.description]
-            return dict(zip(cols, row))
+            return dict(zip(cols, row, strict=True))
 
     # Scopo: INSERT lista_definizione. Il trigger
     #        trgfn_ui_lista_definizione_a10_valida_vista_sql verifica
@@ -349,7 +349,7 @@ class UiAdminRepository:
                 [lista_id],
             )
             cols = [c[0] for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
 
     # Scopo: Lista TUTTE le colonne di una lista (incluse disattivate)
     #        con campi completi per la pagina tecnica Fase 2. Stesso
@@ -368,7 +368,7 @@ class UiAdminRepository:
                 [lista_id],
             )
             cols = [c[0] for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
 
     # Scopo: Conta le colonne di una lista con lo STESSO perimetro di
     #        `list_colonne_by_lista_admin` (stessa tabella, stesso WHERE),
@@ -402,7 +402,7 @@ class UiAdminRepository:
             if not row:
                 return None
             cols = [c[0] for c in cursor.description]
-            return dict(zip(cols, row))
+            return dict(zip(cols, row, strict=True))
 
     # Scopo: INSERT lista_colonna. Il trigger valida_campo_sorgente
     #        verifica esistenza dell'attributo nella vista_sql della
@@ -589,7 +589,7 @@ class UiAdminRepository:
             cursor.execute(sql, [lista_id])
             cols = [c[0] for c in cursor.description]
             return [
-                self._normalize_preset_jsonb(dict(zip(cols, row)))
+                self._normalize_preset_jsonb(dict(zip(cols, row, strict=True)))
                 for row in cursor.fetchall()
             ]
 
@@ -622,7 +622,7 @@ class UiAdminRepository:
             if not row:
                 return None
             cols = [c[0] for c in cursor.description]
-            return self._normalize_preset_jsonb(dict(zip(cols, row)))
+            return self._normalize_preset_jsonb(dict(zip(cols, row, strict=True)))
 
     # Scopo: Crea preset (testata). I campi `lista_id`/`ambito`/refs sono
     #        obbligatori e validati dal service; FK + CHECK ambito_refs
@@ -749,7 +749,7 @@ class UiAdminRepository:
                 [preset_id],
             )
             cols = [c[0] for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
 
     # Scopo: REPLACE atomico della composizione di un preset. Cancella
     #        tutte le righe esistenti e re-inserisce quelle del payload
@@ -827,7 +827,7 @@ class UiAdminRepository:
                 [lista_id],
             )
             cols = [c[0] for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
 
     # Scopo: Conta i permessi di una lista con lo STESSO perimetro di
     #        `list_permessi_by_lista`, senza passare dalle righe.

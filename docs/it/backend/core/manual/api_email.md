@@ -109,7 +109,7 @@ Risposta:
 ```
 
 > **Nota sicurezza**: la password SMTP non e' mai esposta nelle API. E' salvata
-> crittografata con Fernet (chiave derivata da `SECRET_KEY`).
+> crittografata con Fernet (chiavi `DJANGO_FIELD_ENCRYPTION_KEYS`, separate dalla `SECRET_KEY`).
 
 ### Crea account
 
@@ -623,7 +623,7 @@ Per ogni email in coda, usa l'`email_account_id` originale (non risolve da zero)
 
 ## Sicurezza
 
-- Password SMTP crittografata con Fernet (chiave derivata da `SECRET_KEY`) — mai in chiaro in DB o API
+- Password SMTP crittografata con Fernet (chiavi `DJANGO_FIELD_ENCRYPTION_KEYS`, separate dalla `SECRET_KEY`) — mai in chiaro in DB o API
 - Guard su password NULL: `decrypt()` e `test_connection` gestiscono account senza password configurata
 - Ownership check su tutte le operazioni outbox e allegati (fail-closed se nessun outbox padre)
 - Path traversal guard su download allegati (`normpath` + `startswith`)

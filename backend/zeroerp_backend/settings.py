@@ -58,11 +58,45 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
-# ⛔ Nessun default: la chiave firma JWT e sessioni e da essa deriva la chiave
-#    Fernet (`crypto_service`). Un ripiego costante e' una chiave PUBBLICA —
-#    sta nel repo — e il backend partirebbe lo stesso senza dirlo.
-#    Generarla: python -c "import secrets; print(secrets.token_urlsafe(64))"
+# ⛔ Nessun default: la chiave firma JWT e sessioni. Un ripiego costante e' una
+#    chiave PUBBLICA — sta nel repo — e il backend partirebbe lo stesso senza
+#    dirlo. Generarla: python -c "import secrets; print(secrets.token_urlsafe(64))"
 SECRET_KEY = env("DJANGO_SECRET_KEY", required=True)
+
+
+# Scopo: Legge `DJANGO_FIELD_ENCRYPTION_KEYS` (chiavi Fernet separate da
+#        virgola) e rifiuta l'avvio se una non e' una chiave Fernet valida o se
+#        compare due volte. Il messaggio nomina la POSIZIONE, mai la chiave.
+def parse_chiavi_cifratura(valore: str) -> list[str]:
+    from cryptography.fernet import Fernet
+
+    chiavi = [c.strip() for c in valore.split(",") if c.strip()]
+    if not chiavi:
+        raise ImproperlyConfigured("Missing env var: DJANGO_FIELD_ENCRYPTION_KEYS")
+    for posizione, chiave in enumerate(chiavi, start=1):
+        try:
+            Fernet(chiave)
+        except ValueError:
+            raise ImproperlyConfigured(
+                f"DJANGO_FIELD_ENCRYPTION_KEYS: la chiave in posizione {posizione} "
+                "non e' una chiave Fernet (32 byte in base64 url-safe)"
+            ) from None
+    if len(set(chiavi)) != len(chiavi):
+        raise ImproperlyConfigured("DJANGO_FIELD_ENCRYPTION_KEYS: una chiave compare due volte")
+    return chiavi
+
+
+# ⛔ Chiavi di cifratura dei campi salvati nel DB (`crypto_service`: password
+#    SMTP; domani i segreti TOTP). SEPARATE dalla SECRET_KEY: fino al
+#    2026-09-28 la chiave Fernet ne era derivata, e ruotare la SECRET_KEY
+#    avrebbe reso illeggibile ogni dato cifrato — cioe' non la si sarebbe
+#    ruotata mai (brief-be-fe-sicurezza-header-token-mfa §3.5).
+# ⭐ Piu' chiavi, separate da virgola: si cifra con la PRIMA, si decifra con
+#    tutte. Ruotare = mettere una chiave nuova in testa, lanciare
+#    `manage.py ricifra_campi_cifrati`, poi togliere la vecchia.
+#    Nessun default, per la stessa ragione della SECRET_KEY.
+#    Generarla: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+FIELD_ENCRYPTION_KEYS = parse_chiavi_cifratura(env("DJANGO_FIELD_ENCRYPTION_KEYS", ""))
 
 
 # SECURITY WARNING: don't run with debug turned on in production!

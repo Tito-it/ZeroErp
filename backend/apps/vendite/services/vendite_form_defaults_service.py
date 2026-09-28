@@ -90,7 +90,7 @@ def _require_positive_int(value: Any, *, field: str, function_name: str) -> int:
             detail=f"Valore ricevuto: {value!r}",
             function_name=function_name,
         )
-        raise AssertionError("unreachable")  # pragma: no cover
+        raise AssertionError("unreachable")  # pragma: no cover  # noqa: B904 — riga morta: raise_error ha gia' sollevato, il `from` non porterebbe niente
     ErrorManager.require(
         as_int > 0,
         code=E_VENDITE_VALIDATION,

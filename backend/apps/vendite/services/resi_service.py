@@ -942,7 +942,7 @@ def _parse_data_iso(value: Any, *, op: str) -> date | None:
             detail=f"data={value!r}",
             context={"op": f"{_FN}.{op}"},
         )
-        raise AssertionError("unreachable")  # pragma: no cover
+        raise AssertionError("unreachable")  # pragma: no cover  # noqa: B904 — riga morta: raise_error ha gia' sollevato, il `from` non porterebbe niente
 
 
 # Scopo: Valida il body `righe` della ri-spedizione parziale. Contratto:

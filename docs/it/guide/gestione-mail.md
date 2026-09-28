@@ -362,7 +362,7 @@ usa l'account SMTP originale (quello con cui l'email era stata preparata).
 ## Sicurezza
 
 * **Filtro nel database** su bozze e registro invii: l'ambito e l'azienda non sono più solo una regola applicativa — vedi [Ambito e visibilità](#ambito-e-visibilita)
-* **Password SMTP crittografata** con Fernet (chiave derivata da `SECRET_KEY`) — mai in chiaro in DB o API
+* **Password SMTP crittografata** con Fernet (chiavi `DJANGO_FIELD_ENCRYPTION_KEYS`, separate dalla `SECRET_KEY`) — mai in chiaro in DB o API
 * **Ownership check** su tutte le operazioni outbox e allegati — fail-closed se nessun outbox padre
 * **Path traversal guard** su download allegati
 * **Whitelist colonne** aggiornabili nei metodi UPDATE del repository

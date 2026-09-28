@@ -6,8 +6,10 @@
 > **Tipo:** quattro lavori indipendenti, raccolti qui perché nascono dalla stessa revisione
 > di sicurezza del 2026-09-26. Si possono fare in qualunque ordine; l'ordine consigliato è in §5.
 >
-> **Stato:** 📝 da fare. Decisioni di Tid del 2026-09-26: §1 *«facciamo dopo»*, §2–§4
-> *«più avanti»*. Questo brief le tiene pronte.
+> **Stato:** 🔵 in corso dal 2026-09-28. Decisioni di Tid del 2026-09-26: §1 *«facciamo dopo»*,
+> §2–§4 *«più avanti»*; il 2026-09-28 Tid ha dato il via allo sviluppo. ✅ §3.5 consegnata a
+> codice il 2026-09-28 e migrata su `backend-dev` lo stesso giorno (§3.5 «Fatto»). ✅ §4 ruff `B`
+> accesa il 2026-09-28 (§4 «Fatto»).
 >
 > **Contesto:** [Sicurezza e qualità statica](../sicurezza-e-qualita-statica.md), sezione
 > «Aperto». Registro del debito: [migliorie generali](migliorie-generali-BE-FE-da-test-valutazione.md),
@@ -59,9 +61,13 @@ Proposta:
 * Si parte con un valore **breve** (`300` secondi), si verifica, poi si sale (un anno).
 * `SECURE_HSTS_INCLUDE_SUBDOMAINS` e `SECURE_HSTS_PRELOAD` **spenti**: il preload è di fatto
   irreversibile e riguarda il dominio intero, non ZeroErp.
-* ❓ **Decisione di Tid:** sulla macchina di sviluppo, si passa a un certificato valido (per
-  esempio `tailscale cert` per il nome `*.ts.net`) e si accende HSTS anche lì, oppure la macchina
-  di sviluppo resta con `DJANGO_SECURE_HSTS_SECONDS=0` dichiarato?
+* ✅ **Decisione di Tid (2026-09-28):** la macchina di sviluppo resta con il certificato
+  auto-firmato e `DJANGO_SECURE_HSTS_SECONDS=0` **dichiarato** nel suo ambiente. In CI il
+  valore di produzione, per `check --deploy`. Un certificato valido (`tailscale cert`) resta
+  possibile più avanti, senza toccare il codice.
+* Nota: secondo la RFC 6797 §8.1 il browser **ignora** l'header HSTS ricevuto su una
+  connessione con errori di certificato; il rischio descritto sopra vale quando l'auto-firmato è
+  stato reso fidato nel sistema operativo. Con `0` dichiarato non si pone.
 
 ### 1.4 Redirect HTTPS — il caso `/health`
 
@@ -240,6 +246,41 @@ Proposta, **prima** del TOTP:
 * un comando di gestione per la ri-cifratura, e la migrazione dei dati cifrati di oggi (password
   SMTP) dalla chiave derivata alla chiave nuova.
 
+✅ **Fatto il 2026-09-28** (BE, `dev/backend-tid`):
+
+* `settings.py`: `FIELD_ENCRYPTION_KEYS` da `DJANGO_FIELD_ENCRYPTION_KEYS`, obbligatoria, senza
+  ripiego; il backend non parte con una chiave non Fernet o ripetuta
+  (`parse_chiavi_cifratura`, il messaggio nomina la posizione, mai la chiave);
+* `crypto_service`: `MultiFernet` sulle chiavi, `ricifra`, e `CAMPI_CIFRATI`, l'elenco delle
+  colonne cifrate che la rotazione percorre (oggi `config.email_account.smtp_password_encrypted`;
+  `auth_totp_device.secret_encrypted` entra col TOTP, insieme al codice che la scrive);
+* `manage.py ricifra_campi_cifrati [--dry-run] [--anche-chiave-da-secret-key]`: tutto o niente;
+  l'opzione è la migrazione una-tantum dalla chiave derivata. La derivazione vive solo lì;
+* test: `test_crypto_service` (14), `test_ricifra_campi_cifrati_db` (4, sul DB vero);
+* CI: chiave segnaposto in `ci-validate.yaml` e nello smoke del container di `ci.yaml`;
+* doc: `.env.example`, `configurazione-django.md`, `sicurezza-e-qualita-statica.md`
+  § «Le chiavi dei dati cifrati» (la procedura di rotazione), catalogo BB, manuali email.
+
+✅ **Migrazione su `backend-dev` fatta il 2026-09-28**: chiave aggiunta ai due file, una password
+SMTP ri-cifrata (verificata con la sola chiave nuova), Gunicorn e timer ripartiti, login
+provato; `.env.systemd` portato a `600` (era `644`). Nel farlo il comando è stato lanciato da
+`backend/` con il percorso dalla radice («File o directory non esistente»), e il riavvio
+successivo ha lasciato il backend fermo per qualche minuto: la doc della procedura ora lo dice.
+
+Per **ogni altra macchina con dati** (nell'ordine; la `SECRET_KEY` NON si cambia prima; comandi
+dalla radice del repo):
+
+1. `backend/scripts/chiave-cifratura-aggiungi.sh` (genera la chiave e la scrive in
+   `backend/env.sh` e `backend/.env.systemd`);
+2. `backend/scripts/chiave-cifratura-ricifra.sh --migrazione` (dry-run, conferma, scrittura);
+3. riavviare il servizio (`sudo systemctl restart zeroerp-gunicorn`); i timer rileggono
+   `.env.systemd` da soli;
+4. solo ora, se si vuole, ruotare la `SECRET_KEY` (voce «Rotazione dei segreti» di
+   `sicurezza-e-qualita-statica.md`).
+
+⚠️ Per il team DB (§3.3 punto 3): anche `auth_totp_device.md` dice «chiave derivata da
+`Django SECRET_KEY`»; da riscrivere con il resto del manuale. `email_account.md` è già allineato.
+
 ---
 
 ## 4. ruff `B` (bugbear)
@@ -257,6 +298,33 @@ Rilievi al 2026-09-26 (`ruff check --select B --statistics .`), come fatto datat
 
 Da fare nello stesso giro: `select` in `ruff.toml` più la voce di commento con le decisioni, e la
 riga della tabella «famiglie accese» nel documento tecnico.
+
+✅ **Fatto il 2026-09-28.** Misurati quel giorno **74** rilievi (50 `B905`, 11 `B007`, 7 `B904`,
+6 `B023`), sanati tutti, poi `B` accesa: il cancello nasce a zero. Le decisioni, una per famiglia,
+sono nel commento di `ruff.toml`; in breve:
+
+* `B905`: tutti `strict=True`, nessuna troncatura voluta. ⚠️ La correzione automatica di ruff
+  mette `strict=False`, che conserva il difetto: non va usata;
+* `B023`: nessun difetto (lambda invocate subito), variabili legate come argomenti di default;
+* `B007`: rinominate `_x`, più due cose vere — codice morto in `test_ui_action_e_canale_campi`
+  (il sorgente «senza docstring» calcolato e mai letto) e `check_i18n_keys.py` che non diceva
+  dove sta un'intestazione di colonna senza traduzione;
+* `B904`: ⚠️ **diverso da quanto proposto sopra**. Sui 7 rilievi di oggi solo 4 sono
+  `AssertionError("unreachable")` (marcati `noqa` sul punto); 3 sono traduzioni d'errore vere
+  (`views.py` ×2, `payload_validators.py`), ora `from None`. Quindi la regola **resta accesa**
+  invece di finire in `ignore`.
+
+Emerse nel giro, **non** fatte (decisione di Tid):
+
+1. **Regola del 2 su `row_to_dict` / `rows_to_list`** (`core/db/_helpers.py`): 32 conversioni
+   riga→dizionario riscritte a mano fuori dai test (`amm_software`, `ui_admin`, `auth`,
+   `portale`, `session_audit`, `parameter`, `lookup`, `config_crud`, `pratiche`,
+   `approvazioni_prezzo`, `send_pending_emails`). Il BB c'è: le copie andrebbero ritirate. Non
+   sono tutte identiche (alcune leggono `fetchone` dopo altra logica, una normalizza il JSONB),
+   quindi è un giro a sé, dominio per dominio.
+2. **`ErrorManager.raise_error` dichiarata `-> NoReturn`**: oggi ritorna `None`, ed è per questo
+   che dopo ogni chiamata serve una riga `raise AssertionError("unreachable")` (19 nel codice
+   applicativo). Con `NoReturn` il type checker sa che non si torna, e quelle righe si tolgono.
 
 ---
 
@@ -277,7 +345,7 @@ riga della tabella «famiglie accese» nel documento tecnico.
 
 | # | Domanda | § |
 | --- | --- | --- |
-| 1 | Certificato valido e HSTS acceso anche sulla macchina di sviluppo, o HSTS a 0 dichiarato? | 1.3 |
+| 1 | ✅ HSTS a `0` dichiarato sulla macchina di sviluppo (Tid, 2026-09-28) | 1.3 |
 | 2 | Più schede aperte: coordinamento `BroadcastChannel` o tolleranza sul refresh ruotato? | 2.4 |
 | 3 | Obbligo del secondo fattore: per credenziale, per ruolo, o entrambi? | 3.3 |
 | 4 | Dipendenze TOTP e QR: librerie o codice nostro? | 3.4 |

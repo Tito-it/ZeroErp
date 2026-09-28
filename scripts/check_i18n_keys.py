@@ -404,6 +404,8 @@ def main():
         print("    la colonna ripiega sull'etichetta italiana del seed, in silenzio.")
         for k, dove in colonne_rotte[:20]:
             print(f"    {k}")
+            for d in sorted(dove)[:2]:
+                print(f"       {d}")
         if len(colonne_rotte) > 20:
             print(f"    ... e altre {len(colonne_rotte) - 20}")
     else:

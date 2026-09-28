@@ -20,7 +20,7 @@ FOOTER = f"\n---\n{INCLUDE_CORE}\n"
 #INCLUDE_PERSONAL = '{% include-markdown "./signature.md" ignore missing %}'
 #FOOTER = f"\n---\n{INCLUDE_CORE}\n\n{INCLUDE_PERSONAL}\n"
 
-for dirpath, dirnames, filenames in os.walk(DOCS_ROOT):
+for dirpath, _dirnames, filenames in os.walk(DOCS_ROOT):
     # Salta completamente qualsiasi cartella "manual"
     if 'manual' in dirpath.replace('\\', '/').split('/'):
         continue

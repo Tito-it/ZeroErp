@@ -402,7 +402,7 @@ class LookupRepository:
             if not row:
                 return None
             cols = [c.name for c in cursor.description]
-            return dict(zip(cols, row))
+            return dict(zip(cols, row, strict=True))
 
     # Scopo: Ricerca comuni per autocomplete (ILIKE su descrizione).
     # Restituisce id, descrizione, provincia sigla.

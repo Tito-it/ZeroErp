@@ -74,7 +74,7 @@ class PortaleRepository:
             if not row:
                 return None
             cols = [c.name for c in cursor.description or []]
-            return dict(zip(cols, row))
+            return dict(zip(cols, row, strict=True))
 
     # Scopo: Risolve soggetto_ruolo_id + dati anagrafici di un fornitore.
     # Simmetrico a get_cliente_info per il ruolo FO.
@@ -99,7 +99,7 @@ class PortaleRepository:
             if not row:
                 return None
             cols = [c.name for c in cursor.description or []]
-            return dict(zip(cols, row))
+            return dict(zip(cols, row, strict=True))
 
     # Scopo: Verifica se esiste gia' un'identita attiva con un certo
     # ruolo_applicativo legata a un dato soggetto_ruolo_id. Usato dal service
@@ -126,7 +126,7 @@ class PortaleRepository:
             if not row:
                 return None
             cols = [c.name for c in cursor.description or []]
-            return dict(zip(cols, row))
+            return dict(zip(cols, row, strict=True))
 
     # Scopo: La credenziale di un'email, senza distinguere maiuscole e
     # minuscole. La regola vive nel DB (`script.fn_get_auth_user_id_for_email`,

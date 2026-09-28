@@ -111,7 +111,7 @@ def qp_int_strict(raw: str | None, name: str, default: int) -> int:
     try:
         return int(raw.strip())
     except (ValueError, AttributeError):
-        raise ValueError(f"{name}_invalid")
+        raise ValueError(f"{name}_invalid") from None
 
 
 # Scopo: Parametro intero OPZIONALE da query string: None se assente o vuoto;

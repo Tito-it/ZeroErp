@@ -151,7 +151,7 @@ class SessionAuditRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [auth_user_id, auth_user_id])
             columns = [col[0] for col in cursor.description]
-            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+            return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
 
     # Scopo: La lista del pannello «altre sessioni attive» (`core.sessioni_attive`):
     #        paginata, ordinata sulla whitelist e con la ricerca libera del

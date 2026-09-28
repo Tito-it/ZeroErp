@@ -68,13 +68,13 @@ def row_to_dict(cursor) -> dict[str, Any] | None:
     if row is None:
         return None
     cols = [c.name for c in cursor.description]
-    return dict(zip(cols, row))
+    return dict(zip(cols, row, strict=True))
 
 
 def rows_to_list(cursor) -> list[dict[str, Any]]:
     """Converte tutte le righe (fetchall) in lista di dict."""
     cols = [c.name for c in cursor.description]
-    return [dict(zip(cols, row)) for row in cursor.fetchall()]
+    return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
 
 
 def coerce_jsonb_dict(value: Any) -> dict[str, Any]:

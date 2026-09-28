@@ -80,7 +80,7 @@ def _riga(cur, sql: str, params: list) -> dict:
     colonne = [c[0] for c in cur.description]
     valori = cur.fetchone()
     assert valori is not None, f"nessuna riga: {sql}"
-    return dict(zip(colonne, valori))
+    return dict(zip(colonne, valori, strict=True))
 
 
 # Scopo: jsonb letto dal driver (dict, o testo se il driver non decodifica).

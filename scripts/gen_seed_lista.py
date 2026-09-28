@@ -702,7 +702,7 @@ def righe_db(conn, id_lista: int) -> dict[str, dict[tuple, dict]]:
             f"SELECT {', '.join(CAMPI_PRESET)} FROM ui.lista_preset WHERE lista_id = %s "  # noqa: S608 — colonne dalla costante CAMPI_PRESET, id_lista come parametro
             "ORDER BY id", CAMPI_PRESET),
         "lista_preset_colonna.csv": (
-            "SELECT pc.preset_id, pc.colonna_id, pc.ordine, pc.visibile, pc.fissata "
+            f"SELECT {', '.join(f'pc.{c}' for c in CAMPI_PC)} "  # noqa: S608 — colonne dalla costante CAMPI_PC, id_lista come parametro
             "FROM ui.lista_preset_colonna pc JOIN ui.lista_preset p ON p.id = pc.preset_id "
             "WHERE p.lista_id = %s ORDER BY pc.preset_id, pc.ordine", CAMPI_PC),
     }
@@ -711,7 +711,7 @@ def righe_db(conn, id_lista: int) -> dict[str, dict[tuple, dict]]:
         pk = CSV_SEED[nome_csv]["pk"]
         with conn.cursor() as cur:
             cur.execute(sql, (id_lista,))
-            righe = [dict(zip(campi, [cella(v, nullo) for v in r])) for r in cur.fetchall()]
+            righe = [dict(zip(campi, [cella(v, nullo) for v in r], strict=True)) for r in cur.fetchall()]
         fuori[nome_csv] = {tuple(r[c] for c in pk): r for r in righe}
     return fuori
 
@@ -818,7 +818,7 @@ def genera(codice, descrizione, schema, vista, cols_vista, cols_vue, dizionario,
     id_col = id_col_base - 1
     usati: set[str] = set()
 
-    for pos, (voce, proposto) in enumerate(zip(dati, proposte), start=1):
+    for pos, (voce, proposto) in enumerate(zip(dati, proposte, strict=True), start=1):
         id_col += 1
         campo = voce["campo"]
         calcolata = campo is None

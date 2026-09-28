@@ -783,7 +783,7 @@ def _get_riga_pending(
         function_name=function_name,
     )
     assert row is not None
-    riga = dict(zip(cols, row))
+    riga = dict(zip(cols, row, strict=True))
 
     ErrorManager.require(
         riga["stato_approvazione_prezzo"] == _STATO_RIGA_PENDING,
@@ -954,4 +954,4 @@ def _get_user(auth_user_id: int):
             detail=f"auth_user_id={auth_user_id}",
             function_name=f"{_FN}._get_user",
         )
-        raise AssertionError("unreachable")  # pragma: no cover
+        raise AssertionError("unreachable")  # pragma: no cover  # noqa: B904 — riga morta: raise_error ha gia' sollevato, il `from` non porterebbe niente

@@ -189,7 +189,7 @@ class ApiPermessiEffettivi(DomainAPIView):
                 code="E_CORE_VALIDATION",
                 message="Utente non trovato.",
                 detail=f"Nessun utente con id={user_id}.",
-            )
+            ) from None
 
         # Risolvi i campi nativi multi-face (Fase 7).
         # `is_active` arriva da `auth_user.is_active`; e' la dimensione
@@ -329,7 +329,7 @@ class ApiPermessiAudit(DomainAPIView):
                 code="E_CORE_VALIDATION",
                 message="Utente non trovato.",
                 detail=f"Nessun utente con id={user_id}.",
-            )
+            ) from None
 
         # Scopo: Parse query params.
         data_da = optional_iso_date(

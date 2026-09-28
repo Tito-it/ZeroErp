@@ -205,7 +205,7 @@ class AuthRepository:
             if not row:
                 return None
             cols = [c.name for c in cursor.description or []]
-            return dict(zip(cols, row))
+            return dict(zip(cols, row, strict=True))
 
     # Scopo: Ritorna i dettagli di una singola identita digitale per
     # l'auth_user specificato. Post modello 1:N: /me/ (§8.3.6) usa questo
@@ -237,7 +237,7 @@ class AuthRepository:
             if not row:
                 return None
             cols = [c.name for c in cursor.description or []]
-            return dict(zip(cols, row))
+            return dict(zip(cols, row, strict=True))
 
     # Scopo: Le vesti di una credenziale per un ruolo, attive o spente, in
     # ordine di id. Serve all'invito, che lavora su una veste SPENTA (regola
@@ -260,7 +260,7 @@ class AuthRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [auth_user_id, ruolo_applicativo])
             cols = [c.name for c in cursor.description or []]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
 
     # Scopo: Nome, cognome e username di una credenziale (stringhe, mai None),
     # per le variabili delle email d'invito. None se la credenziale non esiste.

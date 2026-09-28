@@ -138,7 +138,8 @@ fanno, non i valori.
 
 | Variabile | Obbligatoria | Cosa decide |
 | --- | --- | --- |
-| `DJANGO_SECRET_KEY` | ✅ | firma JWT e sessioni; ne deriva la chiave Fernet (`crypto_service`). Nessun ripiego. Si genera con `python -c "import secrets; print(secrets.token_urlsafe(64))"` |
+| `DJANGO_SECRET_KEY` | ✅ | firma JWT e sessioni. Nessun ripiego. Si genera con `python -c "import secrets; print(secrets.token_urlsafe(64))"` |
+| `DJANGO_FIELD_ENCRYPTION_KEYS` | ✅ | chiavi Fernet dei segreti cifrati nel DB (`crypto_service`: password SMTP), **separate** dalla `SECRET_KEY`. Più chiavi separate da virgola: cifra la prima, decifrano tutte. Nessun ripiego; il backend non parte con una chiave non Fernet o ripetuta. Si genera con `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Rotazione: [sicurezza](../sicurezza-e-qualita-statica.md#le-chiavi-dei-dati-cifrati) |
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD` | ✅ | connessione PostgreSQL. `DB_USER` è **`zeroerp_app`**, mai un ruolo owner o `BYPASSRLS`: vedi [Provisioning ruoli DB](provisioning-db-roles.md) |
 | `DB_HOST`, `DB_PORT`, `CONN_MAX_AGE` | | host (su `backend-dev`: `dbdev`), porta, riuso della connessione in secondi (`0` con pgbouncer in transaction mode) |
 | `DJANGO_TRUSTED_PROXY_COUNT` | ✅ | quanti proxy fidati stanno davanti al backend (Nginx = `1`). Decide di quale `X-Forwarded-For` fidarsi: sbagliato è un difetto **muto** in tutti e due i versi. Si aggiorna se la catena cambia |
@@ -160,6 +161,7 @@ Un esempio per `backend-dev` (i segreti restano segnaposto):
 ```bash
 # backend/env.sh — stesso elenco, senza `export`, in backend/.env.systemd
 export DJANGO_SECRET_KEY="<generata>"
+export DJANGO_FIELD_ENCRYPTION_KEYS="<generata>"
 export DJANGO_DEBUG=0
 export DJANGO_API_DOCS_ENABLED=1
 export DJANGO_ALLOWED_HOSTS="backend-dev,backend-dev.tailXXXX.ts.net,localhost,127.0.0.1,192.168.X.8,<ts-backend>"

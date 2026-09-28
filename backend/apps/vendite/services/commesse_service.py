@@ -252,11 +252,17 @@ def pr_run_commesse_push(
                 #    quella "semplificazione" il gate vedeva un `entity_type`
                 #    invece di due.
                 #
-                # ⚠️ La lambda non ha argomenti di default e non ne ha bisogno:
-                #    il telaio la invoca SUBITO, prima che il giro successivo
-                #    rileghi `commessa_id`.
-                diagnostica_best_effort(
-                    lambda: repo.log_event(
+                # ⭐ Le variabili del ciclo si LEGANO come argomenti di default
+                #    (ruff B023, dal 2026-09-28). Il telaio oggi invoca la
+                #    funzione subito, ma una funzione che legge la variabile del
+                #    ciclo e' giusta solo finche' nessuno la rimanda: legata,
+                #    lo e' per costruzione, qualunque cosa faccia il telaio.
+                def _diario(
+                    commessa_id: int = commessa_id,
+                    tipo_doc_mancante_qui: bool = tipo_doc_mancante_qui,
+                    errore: str = errore,
+                ) -> None:
+                    repo.log_event(
                         entity_type="COMMESSA",
                         entity_id=commessa_id,
                         event_code="EMITTIBILITA_FALLITA",
@@ -266,7 +272,10 @@ def pr_run_commesse_push(
                             "tipo_doc_mancante": tipo_doc_mancante_qui,
                             "errore": errore,
                         },
-                    ),
+                    )
+
+                diagnostica_best_effort(
+                    _diario,
                     contesto={"commessa_id": commessa_id},
                     function_name="vendite.commesse_service.pr_run_commesse_push",
                 )
