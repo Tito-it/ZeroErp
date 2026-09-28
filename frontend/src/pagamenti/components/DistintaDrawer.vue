@@ -31,9 +31,9 @@
 //    un documento»; ma le righe contabili hanno endpoint propri, una macchina
 //    a stati propria e una coda propria: sono un'entita' con vita propria,
 //    cioe' la PRIMA domanda del criterio in tre domande (piano PrimeVue 5
-//    §Gruppo B), come i titoli IVA il 02/09. 🔵 Debito dichiarato che RESTA:
-//    la macchina a stati del master-detail (form sotto la lista) e' scritta
-//    qui invece di passare da `RigheMasterDetailTable` (28/08).
+//    §Gruppo B), come i titoli IVA il 02/09. ⭐ La macchina del master-detail
+//    (form sotto la lista) e' il BB `useFormInline` dal 2026-09-28:
+//    il debito dichiarato il 28/08 e' chiuso (brief-db-liste-righe-documento L1).
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
@@ -59,6 +59,7 @@ import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useFormInline } from '../../core/composables/useFormInline'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { DRAWER_WIDTH, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
@@ -100,9 +101,17 @@ const { tag, isCurrent, invalidate } = useFetchVersion()
 
 const dettaglio = ref(null)
 const loading = ref(false)
-// `null` = elenco · `'create'` · `'edit'` (pattern master-detail inline).
-const formMode = ref(null)
-const rigaInModifica = ref(null)
+// ⭐ Il form di riga sotto la lista: la macchina e' il BB (regola del 2).
+//    Il click apre la MODIFICA solo se il contenuto si lavora: su una distinta
+//    validata o chiusa aprirebbe un form che il database rifiuta.
+//    ⚠️ `modificabile` e' dichiarata piu' sotto: il getter e' letto al click,
+//    non adesso.
+const {
+  formAperto, rigaInModifica, apriRiga, chiudiForm, azioneNuovaRiga,
+} = useFormInline({
+  padre: () => (props.visible ? props.distintaId : null),
+  puoModificare: () => modificabile.value,
+})
 const abbinaVisible = ref(false)
 const rigaDaAbbinare = ref(null)
 // Il MODO del dialogo di abbinamento: «abbina» o «abbina e registra» (la
@@ -300,18 +309,13 @@ const azioniRighe = computed(() => [
     label: t('pagamenti.rate.righe_da_rate'),
     icon: MANAGE_ICONS.RIGHE_DA_RATE,
     hideWhenReadonly: true,
-    visible: modificabile.value && formMode.value === null,
+    visible: modificabile.value && !formAperto.value,
     command: () => { righeDaRateVisible.value = true },
   },
-  {
-    key: 'nuova-riga',
-    kind: 'primary',
+  azioneNuovaRiga({
     label: t('pagamenti.righe.nuova'),
-    icon: MANAGE_ICONS.ADD,
-    hideWhenReadonly: true,
-    visible: modificabile.value && formMode.value === null,
-    command: () => { rigaInModifica.value = null; formMode.value = 'create' },
-  },
+    visible: () => modificabile.value,
+  }),
 ])
 
 const {
@@ -395,8 +399,7 @@ async function loadDetail() {
 //    su una riga (stato, abbinamento, eliminazione) cambia sia la pagina sia i
 //    totali della testata. Ricaricarne una sola lascerebbe l'altra ferma.
 function ricarica() {
-  formMode.value = null
-  rigaInModifica.value = null
+  chiudiForm()
   reloadAll()
   emit('cambiata')
 }
@@ -417,26 +420,14 @@ function onCambiaStato(codice, descrizione, terminale) {
   })
 }
 
-// ⚠️ Il click sulla riga apre la MODIFICA solo se il contenuto si lavora: su
-//    una distinta validata o chiusa aprirebbe un form che il database rifiuta.
-// ⭐ La firma e' quella del BB: arriva la RIGA, non l'evento PrimeVue.
-function onRigaClick(riga) {
-  if (!modificabile.value) return
-  rigaInModifica.value = riga
-  formMode.value = 'edit'
-}
-
 // ⚠️ Il CARICAMENTO non sta qui: lo fa il watch dello scaffolding della lista
 //    (`useDrawerTabLista`, `fetchExtra`), che ricarica testata e righe insieme
-//    al cambio di distinta. Qui restano il reset del form all'apertura e la
-//    pulizia alla chiusura — due cose che la lista non conosce.
+//    al cambio di distinta; il form lo chiude il BB del master-detail. Qui
+//    resta la pulizia alla chiusura.
 watch(
   () => [props.visible, props.distintaId],
   ([vis]) => {
-    if (vis && props.distintaId) {
-      formMode.value = null
-      rigaInModifica.value = null
-    } else if (!vis) {
+    if (!vis) {
       // ⚠️ Si azzera alla CHIUSURA: senza, riaprendo su un'altra distinta si
       //    vedrebbe per un istante quella di prima — e su documenti di denaro
       //    un lampo del documento sbagliato non e' un dettaglio estetico.
@@ -654,7 +645,7 @@ watch(
           :perimetro-bloccato="perimetroBloccato"
           @page="onPage"
           @sort="onSort"
-          @row-click="onRigaClick"
+          @row-click="apriRiga"
           @config-loaded="onConfigLoaded"
         >
           <!-- ⭐ «Mostra scartate (N)» (FE-3): il BB `FiltroToggle` col conteggio
@@ -727,18 +718,18 @@ watch(
         <!-- Master-detail inline: il form vive SOTTO la lista, mai in un drawer
              annidato (pattern di progetto). -->
         <DistintaRigaForm
-          v-if="formMode"
+          v-if="formAperto"
           :contabile-id="distintaId"
           :riga="rigaInModifica"
           @salvata="ricarica"
-          @annulla="formMode = null; rigaInModifica = null"
+          @annulla="chiudiForm"
         />
       </template>
     </div>
 
     <!-- ⚠️ In form mode il footer sparisce: il form ha gia' Annulla/Salva, e un
          «Chiudi» in fondo spingerebbe il form sotto il fold. -->
-    <FormFooter v-if="!formMode" close-only @cancel="onClose" />
+    <FormFooter v-if="!formAperto" close-only @cancel="onClose" />
 
     <!-- ⭐ Un dialogo, due modi: «abbina» sotto una distinta aperta, «abbina e
          registra» (la tardiva) sotto una registrata. Il modo lo decide il

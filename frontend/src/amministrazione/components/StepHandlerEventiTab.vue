@@ -52,12 +52,12 @@ function esitoLabel(v) {
 
 const form = reactive({ evento: 'COMPLETATO', esito_richiesto: null, handler_id: null, sequenza: 0, attivo: true })
 watch(
-  [() => coll.formMode.value, () => coll.rowInForm.value?.id],
+  [() => coll.formMode.value, () => coll.rigaInModifica.value?.id],
   () => {
     if (coll.formMode.value === 'create') {
       Object.assign(form, { evento: 'COMPLETATO', esito_richiesto: null, handler_id: null, sequenza: 0, attivo: true })
     } else if (coll.formMode.value === 'edit') {
-      const r = coll.rowInForm.value
+      const r = coll.rigaInModifica.value
       Object.assign(form, {
         evento: r?.evento ?? 'COMPLETATO',
         esito_richiesto: r?.esito_richiesto ?? null,

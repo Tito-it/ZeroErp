@@ -60,14 +60,14 @@ function risorseTransform(res) {
 
 const form = reactive({ unita_organizzativa_id: null, risorsa_umana_id: null, attivo: true })
 watch(
-  [() => coll.formMode.value, () => coll.rowInForm.value?.id],
+  [() => coll.formMode.value, () => coll.rigaInModifica.value?.id],
   () => {
     if (coll.formMode.value === 'create') {
       form.unita_organizzativa_id = null
       form.risorsa_umana_id = null
       form.attivo = true
     } else if (coll.formMode.value === 'edit') {
-      const r = coll.rowInForm.value
+      const r = coll.rigaInModifica.value
       form.unita_organizzativa_id = r?.unita_organizzativa_id ?? null
       form.risorsa_umana_id = r?.risorsa_umana_id ?? null
       form.attivo = r?.attivo ?? true

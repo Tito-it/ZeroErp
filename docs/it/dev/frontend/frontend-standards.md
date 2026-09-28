@@ -1620,7 +1620,7 @@ form dettaglio sotto — tutto nello stesso drawer, zero drawer annidati.
 8. **UoM**: filtrate per articolo via `listArticoloUom(articoloId)`, pre-seleziona la UoM base. Placeholder "Seleziona prima l'articolo" se nessun articolo scelto
 9. **Salva/Annulla**: sempre in basso dopo il form. Salva crea o aggiorna, chiude form, emette `changed`. Annulla chiude form e deseleziona riga
 10. **Elimina**: icona cestino sulla riga (`@click.stop` per non triggerare selezione). Se stavo editando quella riga, chiude il form
-11. **`formMode`**: ref con 3 stati: `null` (nessun form), `'create'`, `'edit'`. Governa visibilita' e comportamento
+11. **`formMode`**: 3 stati, `null` (nessun form), `'create'`, `'edit'`. Governa visibilita' e comportamento. ⛔ **Non si scrive a mano**: la macchina del form e' il BB `useFormInline` (2026-09-28, regola del 2 — era in dieci sedi, unificate con l'ok di Tid), che da' anche «Nuova riga» spenta a form aperto (`azioneNuovaRiga`), il click che apre solo se le righe si scrivono (`apriRiga`) e la **chiusura del form al cambio di documento**
 12. **Pulsante Chiudi del drawer (obbligatorio)**: in fondo al drawer, in modalita' lista, deve essere presente un `<FormFooter close-only>` con la sola voce "Chiudi". Quando si entra in form mode (Nuovo/Modifica riga), **il footer scompare** (`v-if="!formMode"`): il form ha gia' Annulla/Salva, e il footer del drawer duplicherebbe l'azione e spingerebbe il form sotto il fold. Vale per qualunque drawer di sub-entita' con lista (BoM, righe contratto, indirizzi, contatti, conti, ecc.). La X in alto resta come escape rapido (semantica diversa: dismiss vs completion). Vedi sezione "Componente `FormFooter`"
 
 ### Riferimento implementativo
@@ -1629,8 +1629,15 @@ Primo caso: `ContrattoRigheDrawer.vue` (righe contratto pricing v5).
 
 ### Come applicare a una nuova sub-entita'
 
-1. Copiare la struttura di `ContrattoRigheDrawer.vue` come base
-2. Adattare le colonne DataTable e i campi del form
+⛔ **Non si copia un drawer esistente.** Fino al 2026-09-28 questo passo diceva
+«copiare la struttura di `ContrattoRigheDrawer.vue`», e la macchina del form si
+è ritrovata scritta in dieci posti (verifica critica del brief
+`brief-db-liste-righe-documento`, §5 L1). La macchina è il BB
+`useFormInline`; la lista è `useDrawerTabLista` + `<DrawerTabLista>`
+(o `RigheMasterDetailTable` per le righe di vendita, finché non passano a L2).
+
+1. Montare la lista e la macchina dai BB qui sopra
+2. Scrivere i campi del form di riga
 3. Passare le props contesto dal parent (numero/codice, cliente, stato, date)
 4. Collegare le API CRUD (add/update/delete) allo store o direttamente
 5. Mantenere `data-key="id"` + paginazione a 10 + `PageActionsBar` + `@click.stop` sul cestino

@@ -23,8 +23,18 @@
 > - ✅ **contratto nello STESSO brief** (Tid): riga 7, lotto L4, §7; il
 >   2026-09-28 decise anche le colonne calcolate (dall'endpoint righe) e le
 >   priorità della lista 7;
-> - ⏸ **lavoro non ancora avviato**, per indicazione di Tid: né il seed né L1
->   partono finché Tid non dà il via;
+> - ✅ **L1 chiuso il 2026-09-28** (`dev/backend-tid`, non committato, via
+>   di Tid): la macchina del master-detail è il BB `useRigheMasterDetail`
+>   (dal giorno stesso **`useFormInline`**, vedi sotto),
+>   usato da `RigheMasterDetailTable`, `DistintaDrawer` e
+>   `DocumentoInternoDrawer`. ⚠️ **In forma diversa da quella scritta qui
+>   sotto**: vedi §5 L1, «Com'è andato». Seed e L2-L4 restano fermi sulle
+>   decisioni del §8.9;
+> - ✅ **verifica critica di L1 (2026-09-28)**: la stessa macchina esisteva già
+>   in due BB di dominio e in sette drawer. **Unificata lo stesso giorno** (ok
+>   Tid, nome scelto dall'agente): il BB si chiama ora **`useFormInline`**, ed
+>   è la sede unica. Fuori, col loro lotto, `ContrattoRigheDrawer` (L4) e la
+>   BoM (L3). §5 L1, «Verifica critica»;
 > - 🔍 **verifica critica della parte DB il 2026-09-28: §8, da leggere per
 >   primo.** Smentisce «Nessun DDL» (fattura, contratto, BoM) e l'ordine
 >   «seed prima, BE dopo» (arma quattro presidi in CI); sette decisioni per Tid
@@ -210,6 +220,137 @@ Nello stesso lotto passano sul BB **`DistintaDrawer` e
 `DocumentoInternoDrawer`**, le cui liste esistono già: così il BB nasce con due
 consumatori veri e le due copie della macchina si ritirano insieme (regola del
 2: le copie si ritirano nello STESSO giro).
+
+#### ✅ Com'è andato (2026-09-28) — e perché la forma è cambiata
+
+⚠️ **Il BB è un composable, `core/composables/useRigheMasterDetail.js`, non
+il componente descritto sopra.** Il piano metteva `useDrawerTabLista` dentro
+`RigheMasterDetailTable`; leggendo i due drawer da migrare non regge:
+
+- lo **stato del form serve al drawer**, in punti che il componente-lista non
+  raggiunge: le azioni della barra si spengono a form aperto («Nuova riga»,
+  «Righe da rate» della distinta), il `FormFooter` della testata sparisce in
+  form mode (regola 12 del pattern), la ricarica dopo un gesto chiude il form;
+- la **lista la monta il drawer**: gli slot dei filtri scritti dal drawer usano
+  `searchText` e `applyFilters` (il «Mostra scartate» della distinta), che
+  `useDrawerTabLista` restituisce a chi lo chiama. Chiamato dentro il
+  componente, andrebbero ritrasportati fuori.
+
+⇒ La parte davvero comune alle tre copie era la **macchina**, e quella è il BB:
+`useRigheMasterDetail({ padre, puoModificare })` → `formMode`,
+`rigaInModifica`, `formAperto`, `nuovaRiga`, `apriRiga`, `chiudiForm`,
+`risincronizza`, `azioneNuovaRiga`. I drawer continuano a montare
+`useDrawerTabLista` + `<DrawerTabLista>` come prima.
+
+| File | Cosa |
+| --- | --- |
+| `core/composables/useRigheMasterDetail.js` + `.spec.js` | il BB (6 test; il cambio di padre provato per mutazione: tolto il `watch`, rosso il test 6) |
+| `core/components/RigheMasterDetailTable.vue` | la macchina dal BB; la `DataTable` **resta** fino a L2 (le vendite non hanno ancora il seed) |
+| `pagamenti/components/DistintaDrawer.vue`, `magazzino/components/DocumentoInternoDrawer.vue` | la macchina dal BB; debito del 28/08 chiuso nei commenti di testa |
+| catalogo BB FE, `frontend-standards` §«Pattern Master-Detail inline» regola 11 | la voce nuova; `formMode` non si scrive più a mano |
+
+⭐ **Un difetto chiuso strada facendo.** `RigheMasterDetailTable` non chiudeva
+il form al cambio di documento: il drawer non si smonta, cambia la prop, e il
+form restava aperto sulla riga del documento precedente, pronto a salvare sul
+padre nuovo. I due drawer lo facevano a mano; ora è una regola del BB (il
+`padre`), per tutti e tre.
+
+⭐ **Un comportamento reso uniforme.** «Nuovo» di `RigheMasterDetailTable`
+restava a video col form aperto (un secondo clic buttava via la riga in
+scrittura); i due drawer lo spegnevano. Ora si spegne ovunque
+(`azioneNuovaRiga`).
+
+Prove: vitest 58 file / 467 test, `npm run lint`, `npm run guards`,
+`vite build` verdi.
+
+#### 🔴 Verifica critica di L1 (2026-09-28) — il BB non è la sede unica
+
+⚠️ **Errore mio, da dichiarare.** Prima di estrarre ho cercato nel catalogo e
+nelle tre copie delle righe di documento, non in tutto il codice. La stessa
+macchina (`formMode` null/crea/modifica + la riga + apri/chiudi) era **già** un
+building block, due volte:
+
+| Sede | Tipo | Consumatori | Differenze dal BB nuovo |
+| --- | --- | --- | --- |
+| `amministrazione/composables/useEditableCollection.js` | BB, **non a catalogo** | `useStepFigliCollection`, `useArchiCollection` (6 tab dell'editor definizioni) | aggiunge salva/elimina/attivo; nomi inglesi (`startCreate`, `rowInForm`) |
+| `anagrafiche/composables/useSoggettoRuoloCollection.js` | BB a catalogo | contatti, conti bancari, titoli IVA | aggiunge caricamento soggetto/ruolo e salvataggio; ⚠️ vocabolario diverso: `'new'` invece di `'create'`, `editId` invece della riga |
+| `core/composables/useRigheMasterDetail.js` | BB (L1) | le righe di documento | solo la macchina, più chiusura al cambio di padre e «Nuova riga» |
+
+E a mano, sette volte: `core/components/NoteDrawer.vue`,
+`vendite/components/ContrattoRigheDrawer.vue`, `vendite/components/VersioneDrawer.vue`,
+`vendite/offerte/components/OffertaEccezioniDrawer.vue`,
+`anagrafiche/components/IndirizziSoggettoDrawer.vue`,
+`catalogo/components/ArticoloUomDrawer.vue`,
+`amministrazione/views/DefinizioneEditorView.vue`. Più `ArticoloBomDrawer`, che
+dice la stessa cosa con altri nomi (`adding`, `isFormOpen`): il criterio è il
+significato, non il testo.
+
+📌 *Fatto datato (2026-09-28), non motivo*: il conto dice **dove** mettere le
+mani. La ragione per unificare è la regola del 2: il difetto chiuso qui (form
+aperto al cambio di documento) vive ancora, o non vive, in ciascuna copia a
+seconda di chi l'ha scritta.
+
+⭐ **La causa**: `frontend-standards` §«Come applicare a una nuova
+sub-entita'» diceva «copiare la struttura di `ContrattoRigheDrawer.vue`». Lo
+standard prescriveva la duplicazione. Corretto nello stesso giro.
+
+**Proposta (tocca amministrazione, anagrafiche, vendite, catalogo e core) —
+✅ approvata da Tid il 2026-09-28 e FATTA lo stesso giorno (sotto):**
+
+1. `useRigheMasterDetail` resta la **sola macchina** (è in `core`, gli altri
+   due sono in un dominio). Il nome forse è da allargare, perché non serve
+   solo alle righe di documento (per esempio `useFormInline`): lo decide Tid;
+2. `useEditableCollection` e `useSoggettoRuoloCollection` la **usano** invece
+   di riscriverla, e tengono solo ciò che aggiungono (salvataggio,
+   eliminazione, caricamento). `useSoggettoRuoloCollection` si allinea al
+   vocabolario `'create'`, con i suoi tre drawer;
+3. i sette drawer a mano (e la BoM) passano alla macchina. Quelli di vendita
+   insieme a L2-L4, gli altri in un giro loro;
+4. `useEditableCollection`, se resta, entra nel catalogo.
+
+#### ✅ L'unificazione (2026-09-28)
+
+**Nome: `useFormInline`** (scelto dall'agente su mandato di Tid): riprende il
+nome del pattern («master-detail inline») e non lega il BB alle righe di un
+documento, che sono uno solo dei suoi usi.
+
+| Dove | Cosa |
+| --- | --- |
+| `core/composables/useFormInline.js` + `.spec.js` | il BB rinominato; `azioneNuovaRiga` accetta `command` (il verbo del contenitore che all'apertura fa anche altro) |
+| `amministrazione/composables/useEditableCollection.js` | la macchina dal BB, restituita per intero. I sei tab e `CollectionEditorPanel` passano ai nomi del BB (`rigaInModifica`, `nuovaRiga`, `chiudiForm`): due nomi per la stessa cosa sarebbero la copia che si voleva togliere |
+| `anagrafiche/composables/useSoggettoRuoloCollection.js` | la macchina dal BB; `startNew`/`startEdit`/`cancelForm` restano, perché sono verbi della collezione (errori, popolamento, fotografia) che la chiamano; `'new'` → `'create'` (e `ContiBancariDrawer`, che lo leggeva); `editId` ritirato; padre = il proprietario a drawer aperto |
+| `NoteDrawer`, `ArticoloUomDrawer`, `VersioneDrawer`, `OffertaEccezioniDrawer`, `DefinizioneEditorView` | la macchina dal BB; `'new'` → `'create'` dove c'era; la selezione evidenziata è la riga in modifica |
+| `IndirizziSoggettoDrawer` | `'new'`/`'replace'` → `'create'`/`'edit'`: «cambia» è la modifica di un indirizzo esistente, la **sostituzione** è il verbo di salvataggio del dominio e resta suo |
+
+⭐ **Due comportamenti resi uniformi dal BB**, e sono correzioni:
+
+- **«Nuovo» sparisce a form aperto** ovunque. `VersioneDrawer` e
+  `OffertaEccezioniDrawer` lo tenevano attivo durante la **modifica** di una
+  riga (lo spegnevano solo in creazione): un clic buttava via la modifica in
+  corso. `ArticoloUomDrawer` lo teneva a video disabilitato;
+- **il cambio di padre chiude il form** anche in `DefinizioneEditorView`
+  (un'altra definizione) e in `useSoggettoRuoloCollection` (un altro
+  proprietario sotto lo stesso drawer).
+
+⛔ **Un difetto introdotto e chiuso nello stesso giro**, da sapere per i
+prossimi: `hideWhenReadonly` legge il readonly **iniettato**.
+`OffertaEccezioniDrawer` ha un readonly **locale** più stretto («offerta non in
+BOZZA») e non lo fornisce ai figli: col solo `hideWhenReadonly`, «Nuovo»
+sarebbe ricomparso su un'offerta emessa. Si passa anche in `visible`; la regola
+è scritta nella voce di catalogo.
+
+**Fuori, con il loro lotto:** `ContrattoRigheDrawer` (L4) e `ArticoloBomDrawer`
+(L3), dove cambia comunque tutta la lista.
+
+Prove: vitest 58 file / 467 test, `npm run lint`, `npm run guards`,
+`vite build` verdi.
+
+**Cosa cambia per L2.** Il componente `RigheMasterDetailTable` passa a
+`<DrawerTabLista>` quando i documenti di vendita hanno il seed; le props
+`codice`/`store` e gli slot `cell-{codice}` del piano restano validi, ma il
+componente riceve i valori di `useDrawerTabLista` dal chiamante (come fa
+`DrawerTabLista` stesso) invece di chiamarlo da sé. Si decide lì, con i
+quattro consumatori davanti.
 
 ### L2 — vendite 1-4 (dopo seed e BE)
 

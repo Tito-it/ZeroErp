@@ -40,16 +40,16 @@ const coll = useStepFigliCollection({
 
 const form = reactive({ canale_id: null, attivo: true })
 // Ri-popola il form su qualsiasi apertura/cambio riga (anche edit→edit su una
-// riga diversa: rowInForm.id cambia pur restando in 'edit').
+// riga diversa: rigaInModifica.id cambia pur restando in 'edit').
 watch(
-  [() => coll.formMode.value, () => coll.rowInForm.value?.id],
+  [() => coll.formMode.value, () => coll.rigaInModifica.value?.id],
   () => {
     if (coll.formMode.value === 'create') {
       form.canale_id = null
       form.attivo = true
     } else if (coll.formMode.value === 'edit') {
-      form.canale_id = coll.rowInForm.value?.canale_id ?? null
-      form.attivo = coll.rowInForm.value?.attivo ?? true
+      form.canale_id = coll.rigaInModifica.value?.canale_id ?? null
+      form.attivo = coll.rigaInModifica.value?.attivo ?? true
     }
   },
 )

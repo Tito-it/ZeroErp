@@ -2,7 +2,8 @@
 //        card dentro un drawer (contatti, conti bancari). Centralizza la
 //        macchina a stati duplicata bit-per-bit fra ContattiSoggettoDrawer e
 //        ContiBancariDrawer (B4 2026-06-05, regola del 2): resolver API
-//        soggetto/ruolo, caricamento con split fonte, stato form null/new/edit,
+//        soggetto/ruolo, caricamento con split fonte, verbi del form (la macchina
+//        null/create/edit e' il BB core `useFormInline`),
 //        e i 5 handler start-new/start-edit/cancel/save/delete con
 //        execute()+emit('saved')+reload.
 //
@@ -50,6 +51,7 @@
 import { computed, ref, watch } from 'vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
+import { useFormInline } from '../../core/composables/useFormInline'
 import { sortByFonte } from '../../core/utils/string'
 
 export function useSoggettoRuoloCollection(config) {
@@ -82,14 +84,22 @@ export function useSoggettoRuoloCollection(config) {
   const list = ref([])
   const listLoading = ref(false)
 
-  // Modalita' form: null = lista, 'new' = aggiungi, 'edit' = modifica
-  const formMode = ref(null)
-  const editId = ref(null)
+  // ⭐ La macchina del form (null = lista, 'create' = aggiungi, 'edit' =
+  //    modifica) e' il BB core `useFormInline` (sede unica, ok Tid
+  //    2026-09-28). Qui restano i VERBI della collezione — startNew,
+  //    startEdit, cancelForm — che la chiamano e aggiungono il loro mestiere:
+  //    errori, popolamento, fotografia.
+  //    ⚠️ Fino a quel giorno il valore di «aggiungi» era 'new', l'unico nel
+  //    progetto: allineato a 'create' insieme ai drawer che lo leggevano.
+  //    ⭐ Il padre e' il proprietario, a drawer aperto: un altro soggetto sotto
+  //    lo stesso drawer chiude il form.
+  const form = useFormInline({ padre: () => (visible() ? ownerId() : null) })
+  const { formMode, formAperto, rigaInModifica } = form
   const formErrors = ref([])
 
   // Fotografia del form inline: vive solo a form aperto.
   const fotografia = useDrawerFormPreserve(computed(formDaConfrontare), {
-    visibile: () => visible() && formMode.value !== null,
+    visibile: () => visible() && formAperto.value,
   })
 
   // Scopo: Azzera gli errori client E quelli del server. `campiErrati` si
@@ -138,8 +148,7 @@ export function useSoggettoRuoloCollection(config) {
   // === Azioni ===
 
   function startNew() {
-    formMode.value = 'new'
-    editId.value = null
+    form.nuovaRiga()
     resetErrori()
     resetForm()
     onAfterStartNew?.()
@@ -147,8 +156,7 @@ export function useSoggettoRuoloCollection(config) {
   }
 
   function startEdit(item) {
-    formMode.value = 'edit'
-    editId.value = item.id
+    form.apriRiga(item)
     resetErrori()
     populateForm(item)
     onAfterStartEdit?.(item)
@@ -156,8 +164,7 @@ export function useSoggettoRuoloCollection(config) {
   }
 
   function cancelForm() {
-    formMode.value = null
-    editId.value = null
+    form.chiudiForm()
     resetErrori()
     resetForm()
   }
@@ -166,9 +173,10 @@ export function useSoggettoRuoloCollection(config) {
     formErrors.value = validateForm()
     if (formErrors.value.length > 0) return
 
-    if (formMode.value === 'edit' && editId.value) {
+    const editId = rigaInModifica.value?.id
+    if (formMode.value === 'edit' && editId) {
       const result = await execute(
-        () => apiFor('update')(ownerId(), editId.value, buildUpdatePayload()),
+        () => apiFor('update')(ownerId(), editId, buildUpdatePayload()),
         { successMessage: messages.saved },
       )
       if (result === null) return
@@ -185,8 +193,7 @@ export function useSoggettoRuoloCollection(config) {
       if (result === null) return
     }
 
-    formMode.value = null
-    editId.value = null
+    form.chiudiForm()
     resetErrori()
     resetForm()
     await loadList()
@@ -218,8 +225,7 @@ export function useSoggettoRuoloCollection(config) {
     () => visible(),
     (val) => {
       if (!val) return
-      formMode.value = null
-      editId.value = null
+      form.chiudiForm()
       resetErrori()
       resetForm()
       loadList()
@@ -231,7 +237,6 @@ export function useSoggettoRuoloCollection(config) {
     listLoading,
     saving,
     formMode,
-    editId,
     formErrors,
     campiErrati,
     loadList,

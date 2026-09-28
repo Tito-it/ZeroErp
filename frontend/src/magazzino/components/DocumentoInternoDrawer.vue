@@ -27,10 +27,10 @@
 //
 // ⭐ LE RIGHE SONO UNA LISTA STANDARD (`useDrawerTabLista` + `<DrawerTabLista>`,
 //    liste 71 e 74): pagine, ricarica, colonne, export. Il form di riga vive
-//    SOTTO la lista, mai in un drawer annidato. 🔵 Debito dichiarato che
-//    RESTA, lo stesso di `DistintaDrawer`: la macchina a stati del
-//    master-detail (`formMode`) e' scritta qui invece di passare da
-//    `RigheMasterDetailTable`.
+//    SOTTO la lista, mai in un drawer annidato. ⭐ La macchina del
+//    master-detail e' il BB `useFormInline` dal 2026-09-28, lo stesso
+//    di `DistintaDrawer` e `RigheMasterDetailTable`: il debito dichiarato qui
+//    e' chiuso (brief-db-liste-righe-documento L1).
 import { computed, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DatePicker from 'primevue/datepicker'
@@ -58,6 +58,7 @@ import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { useNotify } from '../../core/composables/useNotify'
 import { READONLY_KEY, useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useFormInline } from '../../core/composables/useFormInline'
 import { DATE_FORMAT, DRAWER_WIDTH, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { displayDate, parseIsoDate, toDateString } from '../../core/utils/date'
@@ -98,9 +99,16 @@ const { tag, isCurrent, invalidate } = useFetchVersion()
 
 const detail = ref(null)
 const loading = ref(false)
-// `null` = elenco · `'create'` · `'edit'` (pattern master-detail inline).
-const formMode = ref(null)
-const rigaInModifica = ref(null)
+// ⭐ Il form di riga sotto la lista: la macchina e' il BB (regola del 2). Il
+//    click apre la MODIFICA solo se le righe si scrivono.
+//    ⚠️ `isReadonly` e' dichiarata piu' sotto: il getter e' letto al click,
+//    non adesso.
+const {
+  formAperto, rigaInModifica, apriRiga, chiudiForm, azioneNuovaRiga,
+} = useFormInline({
+  padre: () => (props.visible ? props.documentoId : null),
+  puoModificare: () => !isReadonly.value,
+})
 const pianoVisible = ref(false)
 
 // ── il readonly, calcolato qui e propagato ────────────────────────
@@ -285,15 +293,7 @@ const drawerActions = computed(() => {
 //    (`extraActions`): ha una CONDIZIONE (solo in DRAFT, non mentre il form e'
 //    aperto) che l'azione standard «Nuovo» non sa.
 const azioniRighe = computed(() => [
-  {
-    key: 'nuova-riga',
-    kind: 'primary',
-    label: t('magazzino.documenti_interni.riga.nuova'),
-    icon: MANAGE_ICONS.ADD,
-    hideWhenReadonly: true,
-    visible: formMode.value === null,
-    command: () => { rigaInModifica.value = null; formMode.value = 'create' },
-  },
+  azioneNuovaRiga({ label: t('magazzino.documenti_interni.riga.nuova') }),
 ])
 
 const {
@@ -348,13 +348,6 @@ function onEliminaRiga(riga) {
   })
 }
 
-// Il click sulla riga apre la MODIFICA solo se le righe si scrivono.
-function onRigaClick(riga) {
-  if (isReadonly.value) return
-  rigaInModifica.value = riga
-  formMode.value = 'edit'
-}
-
 // ── caricamento ───────────────────────────────────────────────────
 async function loadDetail() {
   if (!props.documentoId) return
@@ -378,20 +371,18 @@ async function loadDetail() {
 //        documenti (che mostra `righe_count`) si ricarica da sola: il verbo
 //        dello store ha emesso l'evento della famiglia.
 function ricarica() {
-  formMode.value = null
-  rigaInModifica.value = null
+  chiudiForm()
   reloadAll()
 }
 
 // ⚠️ Il CARICAMENTO non sta qui: lo fa il watch dello scaffolding della lista
-//    (`fetchExtra`) al cambio di documento. Qui restano il reset del form
-//    all'apertura e la pulizia alla chiusura.
+//    (`fetchExtra`) al cambio di documento, e il form lo chiude il BB del
+//    master-detail. Qui restano il reset del piano all'apertura e la pulizia
+//    alla chiusura.
 watch(
   () => [props.visible, props.documentoId],
   ([vis]) => {
     if (vis && props.documentoId) {
-      formMode.value = null
-      rigaInModifica.value = null
       pianoVisible.value = false
     } else if (!vis) {
       detail.value = null
@@ -494,7 +485,7 @@ const suVisibile = gestoreVisibile(emit, onChiudi)
              form di riga chiuso: in form mode il Salva della riga e' l'unico
              a video, e «Chiudi» spingerebbe il form sotto il fold. -->
         <FormFooter
-          v-if="!formMode"
+          v-if="!formAperto"
           :loading="salvando"
           :disabled="!canSaveTestata"
           :cancel-label="t('common.close')"
@@ -547,7 +538,7 @@ const suVisibile = gestoreVisibile(emit, onChiudi)
           :perimetro-bloccato="perimetroBloccato"
           @page="onPage"
           @sort="onSort"
-          @row-click="onRigaClick"
+          @row-click="apriRiga"
           @config-loaded="onConfigLoaded"
         >
           <!-- La ricerca: le colonne le decide il catalogo della famiglia
@@ -576,12 +567,12 @@ const suVisibile = gestoreVisibile(emit, onChiudi)
 
         <!-- Master-detail inline: il form vive SOTTO la lista. -->
         <DocumentoInternoRigaForm
-          v-if="formMode"
+          v-if="formAperto"
           :famiglia="famiglia"
           :documento="detail"
           :riga="rigaInModifica"
           @salvata="ricarica"
-          @annulla="formMode = null; rigaInModifica = null"
+          @annulla="chiudiForm"
         />
       </template>
     </div>

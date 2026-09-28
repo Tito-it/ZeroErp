@@ -8,6 +8,7 @@ import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useFormInline } from '../../core/composables/useFormInline'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useIndirizzoSoggettoForm } from '../composables/useIndirizzoSoggettoForm'
@@ -68,10 +69,15 @@ const indirizziList = ref([])
 const listLoading = ref(false)
 const matriceCompleta = ref([])
 
-// Modalita' form: null = lista, 'new' = aggiungi, 'replace' = cambia
-const formMode = ref(null)
-// ID dell'indirizzo soggetto da sostituire (in mode 'replace')
-const replaceId = ref(null)
+// Modalita' form: null = lista, 'create' = aggiungi, 'edit' = cambia. La
+// macchina e' il BB core `useFormInline` (sede unica, ok Tid 2026-09-28).
+// ⭐ «Cambia» e' lo stato 'edit' della macchina: il form si apre su un
+//    indirizzo esistente. Che il salvataggio lo SOSTITUISCA (replace, o
+//    cancella + crea sul ruolo) e' il verbo del dominio, e resta qui. Fino a
+//    quel giorno gli stati erano 'new'/'replace'.
+const { formMode, formAperto, rigaInModifica, nuovaRiga, apriRiga, chiudiForm } = useFormInline()
+// L'indirizzo soggetto da sostituire (in modifica).
+const replaceId = computed(() => rigaInModifica.value?.id ?? null)
 const replaceLabel = ref('')
 const comuneInitialItem = ref(null)
 
@@ -83,7 +89,7 @@ const {
   fissa: fissaInline,
   modificato: modificatoInline,
   chiudiConConferma: chiudiInlineConConferma,
-} = useDrawerFormPreserve(formIndirizzo, { visibile: () => props.visible && formMode.value !== null })
+} = useDrawerFormPreserve(formIndirizzo, { visibile: () => props.visible && formAperto.value })
 
 // Scopo: Carica indirizzi. In context 'ruolo' l'API ritorna indirizzi_ruolo + indirizzi_soggetto
 //        con campo 'fonte'. In context 'soggetto' ritorna lista piatta.
@@ -158,8 +164,7 @@ const tipiMancanti = computed(() =>
 // Carica dati quando drawer si apre
 watch(() => props.visible, async (val) => {
   if (!val) return
-  formMode.value = null
-  replaceId.value = null
+  chiudiForm()
   indirizzo.reset()
   // In context ruolo la matrice non serve (il trigger DB valida i tipi ammessi)
   if (isRuolo.value) {
@@ -178,7 +183,7 @@ const addressNotFound = computed(() =>
 // === Azioni ===
 
 async function onStartNew() {
-  formMode.value = 'new'
+  nuovaRiga()
   comuneInitialItem.value = null
   indirizzo.reset()
   if (isRuolo.value) {
@@ -194,8 +199,7 @@ async function onStartNew() {
 }
 
 async function onStartReplace(ind) {
-  formMode.value = 'replace'
-  replaceId.value = ind.id
+  apriRiga(ind)
   replaceLabel.value = ind.tipo_indirizzo_descrizione
   indirizzo.reset()
   // La matrice per il replace ha solo il tipo da sostituire
@@ -240,12 +244,11 @@ async function onStartReplace(ind) {
       })
     })
   }
-  if (formMode.value === 'replace' && replaceId.value === ind.id) fissaInline()
+  if (formMode.value === 'edit' && replaceId.value === ind.id) fissaInline()
 }
 
 function onCancelForm() {
-  formMode.value = null
-  replaceId.value = null
+  chiudiForm()
   comuneInitialItem.value = null
   indirizzo.reset()
 }
@@ -256,7 +259,7 @@ async function onSaveForm() {
 
   let success = true
 
-  if (isRuolo.value && formMode.value === 'replace' && replaceId.value) {
+  if (isRuolo.value && formMode.value === 'edit' && replaceId.value) {
     // Context ruolo + replace: DELETE vecchio + CREATE nuovo (stessa transazione lato server non garantita,
     // ma il tipo resta lo stesso quindi il vincolo UNIQUE non e' violato dopo il delete).
     const payload = payloads[0]
@@ -293,7 +296,7 @@ async function onSaveForm() {
       { successMessage: t('indirizzi.indirizzo_creato') }
     )
     if (result === null) success = false
-  } else if (formMode.value === 'replace') {
+  } else if (formMode.value === 'edit') {
     const payload = payloads[0]
     if (indirizzo.existingDettaglioId.value) {
       payload.indirizzo_dettaglio_id = indirizzo.existingDettaglioId.value
@@ -314,8 +317,7 @@ async function onSaveForm() {
   }
 
   if (success) {
-    formMode.value = null
-    replaceId.value = null
+    chiudiForm()
     indirizzo.reset()
     await loadIndirizzi()
     emit('saved')
@@ -450,7 +452,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
       <!-- Form (aggiungi o cambia) -->
       <template v-if="formMode">
         <div class="app-drawer-section">
-          <h4>{{ formMode === 'replace'
+          <h4>{{ formMode === 'edit'
             ? t('anagrafiche.indirizzo_soggetto.cambia_indirizzo') + ': ' + replaceLabel
             : t('anagrafiche.indirizzo_soggetto.nuovo_indirizzo')
           }}</h4>
