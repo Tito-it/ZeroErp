@@ -1049,6 +1049,7 @@ const drawerActions = computed(() => {
               <Divider />
               <PreventiviRigheTable
                 :preventivo-id="effectivePreventivoId"
+                :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
                 :billing-account-id="form.billing_account_id"
                 :is-modificabile="canEditRighe && !isReadonly"
                 @changed="loadDetail()"

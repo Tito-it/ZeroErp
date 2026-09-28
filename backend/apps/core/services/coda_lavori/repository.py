@@ -26,7 +26,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
-    LIST_MAX_LIMIT,
+    limiti_pagina,
     conta_con_perimetro,
     corsa_conclusa,
     fetch_paged_with_total,
@@ -628,8 +628,7 @@ class CodaLavoriRepository:
         if not includi_archiviate:
             conditions.append("NOT archiviato")
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-        safe_limit = max(1, min(int(limit), LIST_MAX_LIMIT))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
         # Whitelist prima dell'SQL: l'ordinamento finisce interpolato nel testo.
         # BB `sql_order_clause` RIGIDO — sort_by o sort_dir fuori lista sono
         # `ValueError`, mai il default.

@@ -11,6 +11,7 @@ import math
 
 from django.db import DatabaseError
 
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.db.dbops_repository import LOOKUP_ORDER_COLONNE, DbopsRepository
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_order_params
@@ -47,7 +48,7 @@ def fn_list_lookup_codici(
     attivo_only: bool = True,
     includi_obsoleti: bool = True,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
 ) -> dict[str, object]:
     ErrorManager.require(
         page >= 1,
@@ -59,10 +60,10 @@ def fn_list_lookup_codici(
         log_to_db=True,
     )
     ErrorManager.require(
-        1 <= page_size <= 200,
+        1 <= page_size <= MAX_LIMIT,
         code="E_CORE_VALIDATION",
         message="Parametri paginazione non validi.",
-        detail="page_size deve essere compreso tra 1 e 200",
+        detail=f"page_size deve essere compreso tra 1 e {MAX_LIMIT}",
         context={"page_size": page_size},
         function_name="core.lookup_service.fn_list_lookup_codici",
         log_to_db=True,

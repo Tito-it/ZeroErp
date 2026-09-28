@@ -152,7 +152,9 @@ class ResiRigheGiaAccreditatoTests(TestCase):
     #    tabella di base, nessuna aggregazione, nessuna chiamata a funzione.
     #    Il lato DB (la fn e la coerenza con la sede unica del predicato) e'
     #    presidiato dal pgTAP `test-vw-resi-righe-dettaglio-v1`.
-    @patch("apps.vendite.db.resi_repository.connection")
+    # ⚠️ La query nasce nel BB `RigheDocumentoRepositoryMixin` (2026-09-28):
+    #    la connessione si sostituisce la', non nel modulo del repository.
+    @patch("apps.vendite.db._righe_repo_mixin.connection")
     def test_list_righe_legge_la_vista_e_non_ricostruisce(self, mock_conn) -> None:
         cursor = MagicMock()
         cursor.description = []

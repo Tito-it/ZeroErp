@@ -36,6 +36,8 @@ from apps.ui.api.export_helpers import build_export_response, parse_export_forma
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.api._list_filters_helpers import extract_doc_list_filters
 from apps.vendite.services import resi_service
+from apps.vendite.api.righe_lista_views import build_righe_lista_views
+from apps.vendite.db.resi_repository import ResiRepository
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.vendite.api._schema_da_contratto import schema_da_contratto
 
@@ -825,3 +827,28 @@ class ApiResoRigaDetail(DomainAPIView):
         return success_response(
             resi_service.elimina_riga(int(reso_id), int(riga_id)),
         )
+
+
+# ── Righe: la lista configurabile `vendite.reso_righe` ──
+# Pagina ed export dal factory condiviso `build_righe_lista_views`
+# (brief-db-liste-righe-documento, lotto A). La closure legge il global di
+# modulo a call-time: i patch dei test sul service restano validi.
+# ⚠️ `GET …/righe/` resta la lettura COMPLETA: la lista e' su `…/righe/lista/`.
+_ResoRigheLista, _ResoRigheListaExport = build_righe_lista_views(
+    schema_prefix="Reso",
+    operation="vendite_resi",
+    url_kwarg="reso_id",
+    model_permission=('vendite', 'reso'),
+    pagina_call=lambda documento_id, **kw: resi_service.list_righe_pagina(documento_id, **kw),
+    colonne_ordinabili=ResiRepository.righe_colonne_ordinabili(),
+)
+
+
+# ⭐ Il cancello di perimetro come LETTERALE nel corpo della classe: e' la
+#    forma che `test_perimetro_emittente_copertura` legge (vedi la factory).
+class ApiResoRigheListaView(_ResoRigheLista):
+    lista_codice = "vendite.reso_righe"
+
+
+class ApiResoRigheListaExportView(_ResoRigheListaExport):
+    lista_codice = "vendite.reso_righe"

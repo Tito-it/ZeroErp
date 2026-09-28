@@ -34,7 +34,6 @@ def guard_user_authenticated(
             code=E_VALIDATION,
             message="Utente non autenticato.",
         )
-        raise  # unreachable, per type checker
 
 
 # Scopo: Risolve la whitelist degli emittenti autorizzati per l'utente.
@@ -64,7 +63,6 @@ def guard_emittente_in_scope(
             message="emittente_fiscale_id non valido o non accessibile.",
             detail=f"emittente_fiscale_id={emittente_fiscale_id}",
         )
-        raise  # unreachable
 
 
 # Scopo: Composizione end-to-end auth + resolve scope + verifica id. Comodo

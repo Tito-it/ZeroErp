@@ -16,6 +16,7 @@ from typing import Any, Callable
 
 from django.db import IntegrityError, connection, transaction
 
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.db.partitioned_note_repository import (
     ANCHOR_TIPI_AMMESSI,
     POSIZIONI_AMMESSE,
@@ -207,7 +208,7 @@ class PartitionedNoteService:
         target_riga_id: int | None = None,
         include_invisible: bool = True,
         page: int = 1,
-        page_size: int = 50,
+        page_size: int = DEFAULT_LIMIT,
     ) -> tuple[list[dict[str, Any]], int]:
         self._validator.guard_positive_int(target_id, field="target_id")
         if target_riga_id is not None:
@@ -218,7 +219,7 @@ class PartitionedNoteService:
             target_riga_id=target_riga_id,
             include_invisible=include_invisible,
             page=max(1, page),
-            page_size=min(200, max(1, page_size)),
+            page_size=min(MAX_LIMIT, max(1, page_size)),
         )
 
     # Scopo: Restituisce una singola nota per id + target_id. Solleva

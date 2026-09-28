@@ -17,7 +17,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import jsonb_out
+from apps.core.db._helpers import jsonb_out, row_to_dict
 from apps.core.db.config_metadata_repository import ConfigMetadataRepository
 from apps.core.db.tabelle_gestibili_repository import TabelleGestibiliRepository
 
@@ -36,10 +36,8 @@ class ConfigCrudRepository:
         sql = f"SELECT {col_list} FROM {schema}.{table} WHERE id = %s"  # noqa: S608
         with connection.cursor() as cursor:
             cursor.execute(sql, [record_id])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            return dict(zip(cols, row, strict=True))
+            # Le colonne della SELECT sono `cols`: il BB le rilegge dal cursore.
+            return row_to_dict(cursor)
 
     # Scopo: Scrive una riga col verbo del pannello: `record_id` None = nuova,
     # altrimenti modifica per id. Ritorna la riga scritta (senza audit).

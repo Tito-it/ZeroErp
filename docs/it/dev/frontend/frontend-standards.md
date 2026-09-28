@@ -280,10 +280,18 @@ nessun blocco.
 
 | Caso | Cosa si usa |
 | --- | --- |
-| **Righe di un documento** dentro il suo master (righe ordine, componenti BoM…) | `RigheMasterDetailTable`, **non** il BB |
 | **Dettaglio espanso di un risultato** della ricerca universale | `SearchDetailTable` (`core/components/details/`), **non** il BB |
 | **Matrice slot/override** (la popolazione la decide il catalogo, l'operatore imposta l'override sulla riga) | `MatriceOverride`, **non** il BB |
 | Tabella di **anteprima** dentro un dialog, non paginata e non configurabile | `DataTable` grezza, con il motivo scritto in un commento sopra l'import |
+
+⛔ **Le righe di un documento NON sono un'eccezione, dal 2026-09-28** (decisione
+di Tid, brief-db-liste-righe-documento). Fino a quel giorno lo erano, e su tablet
+le 9-10 colonne di un preventivo uscivano in uno scroll orizzontale che col
+touch non si usa. Un documento ha un numero arbitrario di righe con molti
+attributi: e' una lista. `RigheMasterDetailTable` monta `<DrawerTabLista>` con
+la macchina del form `useFormInline`; chi ha ancora una `DataTable` di righe
+(BoM, fattura, contratto: lotti C e D) sta nel registro del debito, non fra le
+eccezioni.
 
 ⛔ **«È dentro un drawer» NON è un'eccezione, ed è l'errore che si fa più
 spesso.** Una lista su un tab di drawer — un'entità con endpoint suo,
@@ -1634,7 +1642,8 @@ Primo caso: `ContrattoRigheDrawer.vue` (righe contratto pricing v5).
 è ritrovata scritta in dieci posti (verifica critica del brief
 `brief-db-liste-righe-documento`, §5 L1). La macchina è il BB
 `useFormInline`; la lista è `useDrawerTabLista` + `<DrawerTabLista>`
-(o `RigheMasterDetailTable` per le righe di vendita, finché non passano a L2).
+(per le righe di vendita, `RigheMasterDetailTable`, che dal 2026-09-28 monta
+gli stessi due BB).
 
 1. Montare la lista e la macchina dai BB qui sopra
 2. Scrivere i campi del form di riga

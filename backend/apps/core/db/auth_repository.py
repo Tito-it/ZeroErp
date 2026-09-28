@@ -23,7 +23,7 @@ from typing import Any
 from django.contrib.auth.hashers import is_password_usable
 from django.db import connection
 
-from apps.core.db._helpers import fetchone_scalar, jsonb_out
+from apps.core.db._helpers import fetchone_scalar, jsonb_out, row_to_dict, rows_to_list
 
 
 class AuthRepository:
@@ -201,11 +201,7 @@ class AuthRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [auth_user_id, list(ruoli_applicativi)])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c.name for c in cursor.description or []]
-            return dict(zip(cols, row, strict=True))
+            return row_to_dict(cursor)
 
     # Scopo: Ritorna i dettagli di una singola identita digitale per
     # l'auth_user specificato. Post modello 1:N: /me/ (§8.3.6) usa questo
@@ -233,11 +229,7 @@ class AuthRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [identita_id, auth_user_id])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c.name for c in cursor.description or []]
-            return dict(zip(cols, row, strict=True))
+            return row_to_dict(cursor)
 
     # Scopo: Le vesti di una credenziale per un ruolo, attive o spente, in
     # ordine di id. Serve all'invito, che lavora su una veste SPENTA (regola
@@ -259,8 +251,7 @@ class AuthRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [auth_user_id, ruolo_applicativo])
-            cols = [c.name for c in cursor.description or []]
-            return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Nome, cognome e username di una credenziale (stringhe, mai None),
     # per le variabili delle email d'invito. None se la credenziale non esiste.

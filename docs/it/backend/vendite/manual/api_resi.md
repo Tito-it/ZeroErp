@@ -58,6 +58,7 @@ export via `ListaExportService`, scope emittente RLS + filtro applicativo).
 
 ### Righe
 
+- Lista configurabile delle righe `GET /<id>/righe/lista/` (+ `export/`): BB condiviso, vedi [api_righe_documento.md](api_righe_documento.md).
 - `GET/POST /<id>/righe/`, `PATCH/DELETE /<id>/righe/<riga_id>/` — scrittura
   solo DRAFT. Articolo/UoM/factor sono **snapshot** dalla riga DDT sorgente.
 - ⭐ **`gia_accreditato`** (2026-08-18) — quanti pezzi della riga sono già stati

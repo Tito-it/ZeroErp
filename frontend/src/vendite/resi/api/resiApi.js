@@ -9,6 +9,7 @@
 // flip DDT) — nessun cambia-stato generico.
 
 import api from '../../../core/api'
+import { makeRigheListaApi } from '../../_shared/righe/righeListaApi'
 import { generateIdempotencyKey } from '../../../core/utils/idempotency'
 
 const BASE = '/vendite/resi'
@@ -93,6 +94,11 @@ export function riapriRiconsegna(id, { righe = null } = {}) {
 }
 
 // --- Righe (solo testata DRAFT) ---
+
+// La LISTA configurabile delle righe (pagina + export, `…/righe/lista/`):
+// factory condivisa coi documenti gemelli. `listRighe` qui sotto resta la
+// lettura COMPLETA (dialog, stampe).
+export const { listRigheLista, exportRigheLista } = makeRigheListaApi(BASE)
 
 export function listRighe(resoId) {
   return api.get(`${BASE}/${resoId}/righe/`)

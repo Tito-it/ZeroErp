@@ -85,7 +85,7 @@ class OperatoriListView(AdminAPIView):
             is_super_admin=is_super_admin,
             unita_organizzativa_id=optional_int({"v": qp.get("unita_organizzativa_id")}, "v"),
             is_active=is_active,
-            limit=min(optional_int({"v": qp.get("limit")}, "v") or DEFAULT_LIMIT, MAX_LIMIT),
+            limit=optional_int({"v": qp.get("limit")}, "v") or DEFAULT_LIMIT,  # clamp nel repository
             offset=optional_int({"v": qp.get("offset")}, "v") or 0,
             order_by=qp.get("order_by") or None,
             order_dir=qp.get("order_dir") or None,
@@ -678,7 +678,7 @@ class AuditLogView(AdminAPIView):
             tabella=qp.get("tabella") or None,
             order_by=qp.get("order_by") or None,
             order_dir=qp.get("order_dir") or None,
-            limit=min(optional_int({"v": qp.get("limit")}, "v") or 50, 200),
+            limit=optional_int({"v": qp.get("limit")}, "v") or DEFAULT_LIMIT,  # clamp nel repository
             offset=optional_int({"v": qp.get("offset")}, "v") or 0,
         )
         return success_response({"count": total_count, "results": events})

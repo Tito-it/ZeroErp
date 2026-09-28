@@ -16,6 +16,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    limiti_pagina,
     RicercaFull,
     add_ricerca_full_condition,
     sql_order_clause,
@@ -127,8 +128,7 @@ class PromoArticoliRepository:
             default=_ORDER_COLS["valido_dal"],
             tiebreak="p.id",
         )
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
 
         conditions: list[str] = []
         params: list[Any] = []

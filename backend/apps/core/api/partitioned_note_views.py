@@ -18,6 +18,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serial
 from rest_framework import serializers
 from rest_framework.request import Request
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import corpo_oggetto, qp_bool, qp_int_strict, qp_str
@@ -154,7 +155,7 @@ def make_note_views(
             )
             include_invisible = qp_bool(qp.get("include_invisible"), default=True)
             page = qp_int_strict(qp.get("page"), "page", default=1)
-            page_size = qp_int_strict(qp.get("page_size"), "page_size", default=50)
+            page_size = qp_int_strict(qp.get("page_size"), "page_size", default=DEFAULT_LIMIT)
 
             svc = service_factory()
             results, total = svc.list_note(

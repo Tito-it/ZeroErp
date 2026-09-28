@@ -37,6 +37,8 @@ from apps.vendite.api.indirizzi_documento_views import (
 )
 from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import ordini_service
+from apps.vendite.api.righe_lista_views import build_righe_lista_views
+from apps.vendite.db.ordini_repository import OrdiniRepository
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.vendite.api._componenti_schema import (
     COMPONENTE_PATCH_REQUEST,
@@ -581,3 +583,28 @@ class ApiOrdineGeneraDdt(DomainAPIView):
                 int(ordine_id), _parse_righe_evasione(payload),
             )
         return handle_post_json(request, handler=_handler)
+
+
+# ── Righe: la lista configurabile `vendite.ordine_righe` ──
+# Pagina ed export dal factory condiviso `build_righe_lista_views`
+# (brief-db-liste-righe-documento, lotto A). La closure legge il global di
+# modulo a call-time: i patch dei test sul service restano validi.
+# ⚠️ `GET …/righe/` resta la lettura COMPLETA: la lista e' su `…/righe/lista/`.
+_OrdineRigheLista, _OrdineRigheListaExport = build_righe_lista_views(
+    schema_prefix="Ordine",
+    operation="vendite_ordini",
+    url_kwarg="ordine_id",
+    model_permission=('vendite', 'ordine'),
+    pagina_call=lambda documento_id, **kw: ordini_service.list_righe_pagina(documento_id, **kw),
+    colonne_ordinabili=OrdiniRepository.righe_colonne_ordinabili(),
+)
+
+
+# ⭐ Il cancello di perimetro come LETTERALE nel corpo della classe: e' la
+#    forma che `test_perimetro_emittente_copertura` legge (vedi la factory).
+class ApiOrdineRigheListaView(_OrdineRigheLista):
+    lista_codice = "vendite.ordine_righe"
+
+
+class ApiOrdineRigheListaExportView(_OrdineRigheListaExport):
+    lista_codice = "vendite.ordine_righe"

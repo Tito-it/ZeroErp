@@ -37,6 +37,7 @@ Indice test eseguiti:
 import json
 from datetime import datetime
 from unittest import TestCase
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from apps.core.services.service_errors import ServiceError
@@ -558,9 +559,16 @@ class SessionAuditRepositoryTests(TestCase):
         from apps.core.db.session_audit_repository import SessionAuditRepository
 
         mock_cursor = MagicMock()
+        # Colonne come quelle di psycopg (`.name`): le legge `row_to_dict`/`rows_to_list`.
         mock_cursor.description = [
-            ("jti",), ("ultimo_evento",), ("ip_address",),
-            ("user_agent",), ("data_inizio",), ("data_ultimo_evento",),
+            SimpleNamespace(name=c) for c in (
+                "jti",
+                "ultimo_evento",
+                "ip_address",
+                "user_agent",
+                "data_inizio",
+                "data_ultimo_evento",
+            )
         ]
         mock_cursor.fetchall.return_value = [
             ("sid-1", "LOGIN", "10.0.0.1", "Firefox/100",

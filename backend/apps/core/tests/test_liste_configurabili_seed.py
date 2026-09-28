@@ -314,6 +314,29 @@ def _da_costante(modulo: str, costante: str):
     return risolvi
 
 
+# Scopo: risolutore per le RIGHE di un documento di vendita, che ordinano
+#        tramite il BB `RigheDocumentoRepositoryMixin` (brief-db-liste-righe-
+#        documento, lotto A, 2026-09-28): whitelist e colonne DESC sono
+#        attributi della CLASSE del repository, e la chiamata a
+#        `sql_order_clause` sta nel mixin, non nel modulo.
+# ⛔ Per questo porta con se' `colonne_desc`: senza, il test 10 cercherebbe
+#    il sito di chiamata nel modulo del repository, non lo troverebbe, e
+#    salterebbe la lista — verde per sottrazione su quattro liste con date.
+def _da_righe_documento(modulo: str, classe: str):
+    def _classe():
+        import importlib
+
+        return getattr(importlib.import_module(modulo), classe)
+
+    def risolvi() -> set[str]:
+        return set(_classe().righe_colonne_ordinabili())
+
+    risolvi.colonne_desc = lambda: {
+        f"{classe}._righe_colonne_desc": set(_classe()._righe_colonne_desc),
+    }
+    return risolvi
+
+
 # Sentinella per le liste montate con `:paginata="false"` (2026-09-02).
 # ⭐ Non hanno una whitelist di ordinamento lato backend perche' NON ordinano
 #    lato backend: l'ordine lo calcola PrimeVue nel browser, sulle righe gia'
@@ -497,6 +520,16 @@ _LISTE: tuple[tuple[str, object], ...] = (
      _da_costante("apps.magazzino.db.magazzino_repository", "DOCUMENTI_SORT_COLUMNS")),
     ("magazzino.rettifiche",
      _da_costante("apps.magazzino.db.magazzino_repository", "DOCUMENTI_SORT_COLUMNS")),
+    # Righe dei documenti di vendita (2026-09-28, brief-db-liste-righe-documento
+    # lotto A): whitelist sulla classe del repository, via il mixin.
+    ("vendite.preventivo_righe",
+     _da_righe_documento("apps.vendite.db.preventivi_repository", "PreventiviRepository")),
+    ("vendite.ordine_righe",
+     _da_righe_documento("apps.vendite.db.ordini_repository", "OrdiniRepository")),
+    ("vendite.ddt_righe",
+     _da_righe_documento("apps.vendite.db.ddt_repository", "DdtRepository")),
+    ("vendite.reso_righe",
+     _da_righe_documento("apps.vendite.db.resi_repository", "ResiRepository")),
     ("magazzino.inventario_righe",
      _da_costante("apps.magazzino.db.magazzino_repository", "INVENTARIO_RIGHE_SORT_COLUMNS")),
     ("magazzino.rettifica_righe",
@@ -719,6 +752,10 @@ def _colonne_desc_dichiarate(whitelist_fn) -> dict[str, set[str]] | None:
     import importlib
     from pathlib import Path
 
+    # Il risolutore che le colonne DESC le dichiara da se' (righe di documento).
+    diretto = getattr(whitelist_fn, "colonne_desc", None)
+    if diretto is not None:
+        return diretto()
     modulo = getattr(whitelist_fn, "modulo", None)
     costante = getattr(whitelist_fn, "costante", None)
     if not modulo or not costante:

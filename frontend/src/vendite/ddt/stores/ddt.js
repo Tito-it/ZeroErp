@@ -27,7 +27,6 @@ import {
   getDdt,
   getRiepilogoIva,
   listDdt,
-  listRighe,
   pushDdtACommessa,
   updateDdt,
   updateRiga,
@@ -128,11 +127,6 @@ export const useDdtStore = defineStore('vendite-ddt', () => {
 
   // --- Righe ---
 
-  async function loadRighe(ddtId) {
-    const res = await listRighe(ddtId)
-    return res.data.data
-  }
-
   async function addRiga(ddtId, payload) {
     const res = await createRiga(ddtId, payload)
     emitDataChanged(TAB_ENTITIES.DDT, ddtId)
@@ -162,7 +156,7 @@ export const useDdtStore = defineStore('vendite-ddt', () => {
     // riepilogo IVA
     loadRiepilogoIva,
     // righe
-    loadRighe, addRiga, aggiornaRiga, eliminaRiga,
+    addRiga, aggiornaRiga, eliminaRiga,
   }
 }, {
   userScoped: true,

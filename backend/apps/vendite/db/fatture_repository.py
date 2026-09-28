@@ -26,7 +26,9 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
+    limiti_pagina,
     RicercaFull,
     add_ricerca_full_condition,
     sql_order_clause,
@@ -106,7 +108,7 @@ class FattureRepository:
         offset: int,
         order_by: str = "data",
         order_dir: str = "desc",
-        max_limit: int = 200,
+        max_limit: int = MAX_LIMIT,
     ) -> tuple[list[dict[str, Any]], int]:
         # NULL = valore MINIMO (lo mette `sql_order_clause`): `numero` è NULL su
         # tutte le fatture non ancora numerate, e i default PostgreSQL le
@@ -120,8 +122,7 @@ class FattureRepository:
         )
         # La pagina si ferma al cap; l'export chiede di più per poter RILEVARE
         # il superamento invece di troncare in silenzio.
-        safe_limit = max(1, min(int(limit), max_limit))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset, tetto=max_limit)
 
         conditions: list[str] = []
         params: list[Any] = []

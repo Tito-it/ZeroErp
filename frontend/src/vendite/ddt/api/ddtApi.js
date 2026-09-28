@@ -15,6 +15,7 @@
 // (documenti/api/documentiPerSorgente.js), non da qui.
 
 import api from '../../../core/api'
+import { makeRigheListaApi } from '../../_shared/righe/righeListaApi'
 import { makeComponentiBomApi } from '../../../core/api/componentiBom'
 
 const BASE = '/vendite/ddt'
@@ -101,9 +102,11 @@ export function getRiepilogoIva(ddtId) {
 
 // --- Righe ---
 
-export function listRighe(ddtId) {
-  return api.get(`${BASE}/${ddtId}/righe/`)
-}
+// La LISTA configurabile delle righe (pagina + export, `…/righe/lista/`):
+// factory condivisa coi documenti gemelli. ⚠️ Nessuna lettura COMPLETA delle
+// righe qui: il FE non ne ha consumatori (a differenza di ordine e reso, per
+// i dialog di evasione e ri-consegna). `GET …/righe/` resta lato backend.
+export const { listRigheLista, exportRigheLista } = makeRigheListaApi(BASE)
 
 export function createRiga(ddtId, payload) {
   return api.post(`${BASE}/${ddtId}/righe/`, payload)

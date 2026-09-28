@@ -22,7 +22,7 @@ from apps.core.db._helpers import (
     sql_order_clause,
     sql_order_direction,
     sql_tiebreak_direction,
-    extract_paginated,
+    fetch_paged_with_total,
     jsonb_out,
     row_to_dict,
 )
@@ -199,9 +199,7 @@ class EmittentiFiscaliRepository:
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params.extend([limit, offset])
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return extract_paginated(cursor)
+        return fetch_paged_with_total(sql, params, offset=offset)
 
     # Scopo: Dettaglio completo di un emittente fiscale con dati soggetto e valuta.
     def get_emittente(self, emittente_id: int) -> dict[str, Any] | None:
@@ -434,9 +432,7 @@ class EmittentiFiscaliBillingAccountRepository:
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params.extend([limit, offset])
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            rows, total = extract_paginated(cursor)
+        rows, total = fetch_paged_with_total(sql, params, offset=offset)
         # ⚠️ `jsonb_out` e non il valore grezzo: fuori dall'ORM psycopg 3
         #    consegna i jsonb come `str`, e un array servito come stringa
         #    arriverebbe al client come `"[{\"famiglia\": ...}]"` — che nel

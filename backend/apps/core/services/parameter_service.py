@@ -86,7 +86,6 @@ class ParameterService:
                 message=f"Parametro '{code}' non convertibile a intero.",
                 detail=f"Valore attuale: '{value}'",
             )
-            raise  # unreachable, per type checker
 
     # Scopo: Risolve un singolo parametro e lo converte a Decimal.
     #        Utile per parametri numerici non-id (percentuali, soglie, limiti).
@@ -114,7 +113,6 @@ class ParameterService:
                 message=f"Parametro '{code}' non convertibile a decimale.",
                 detail=f"Valore attuale: '{value}'",
             )
-            raise  # unreachable, per type checker
 
     # Scopo: Risolve N parametri in un colpo con override utente.
     #        Restituisce dizionario {code: valore}. I parametri non trovati

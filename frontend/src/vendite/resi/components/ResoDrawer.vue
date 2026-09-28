@@ -308,6 +308,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
         <ResoRigheTable
           ref="righeTableRef"
           :reso-id="props.resoId"
+          :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
           :ddt-origine-id="detail?.ddt_origine_id ?? null"
           :is-modificabile="canEditRighe && !isReadonly"
           :readonly="isReadonlyPuro"

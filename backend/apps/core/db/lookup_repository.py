@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from apps.core.db._helpers import rows_to_list, pattern_contiene
+from apps.core.db._helpers import fetch_paged_with_total, pattern_contiene, row_to_dict, rows_to_list
 
 from typing import Any, ClassVar
 
@@ -398,11 +398,7 @@ class LookupRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [schema_tabella, nome_tabella, nome_colonna])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c.name for c in cursor.description]
-            return dict(zip(cols, row, strict=True))
+            return row_to_dict(cursor)
 
     # Scopo: Ricerca comuni per autocomplete (ILIKE su descrizione).
     # Restituisce id, descrizione, provincia sigla.
@@ -427,21 +423,11 @@ class LookupRepository:
              ORDER BY c.descrizione, c.id
              LIMIT %s OFFSET %s
         """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [search_pattern, search_pattern, limit, offset])
-            rows = cursor.fetchall()
-            if not rows:
-                return [], 0
-            cols = [c.name for c in cursor.description]
-
-        # Scopo: estrae total_count dalla window function e mappa i risultati.
-        tc_idx = cols.index("total_count")
-        total_count = rows[0][tc_idx]
-        id_idx = cols.index("id")
-        desc_idx = cols.index("descrizione")
-        prov_idx = cols.index("provincia_sigla")
+        rows, total_count = fetch_paged_with_total(
+            sql, [search_pattern, search_pattern, limit, offset], offset=offset,
+        )
         results = [
-            {"id": r[id_idx], "descrizione": r[desc_idx], "provincia_sigla": r[prov_idx]}
+            {"id": r["id"], "descrizione": r["descrizione"], "provincia_sigla": r["provincia_sigla"]}
             for r in rows
         ]
         return results, total_count

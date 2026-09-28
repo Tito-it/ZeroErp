@@ -15,6 +15,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    limiti_pagina,
     RicercaFull,
     add_ricerca_full_condition,
     fetch_paged_with_total,
@@ -122,8 +123,7 @@ class UtilitiesTipiRuoloRepository:
             default=_ORDER_COLS["utility_descrizione"],
             tiebreak="utr.id",
         )
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -297,8 +297,7 @@ class UtilitiesTipiRuoloRepository:
         limit: int = 25,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=USAGE_ORDER_COLS,

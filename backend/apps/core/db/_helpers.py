@@ -12,11 +12,9 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
 
-# Cap standard del page size delle liste API (fonte unica: repo clampano e le
-# view lo dichiarano — mai lo stesso 200 ripetuto inline in più file).
-LIST_MAX_LIMIT = 200
 
 logger = logging.getLogger(__name__)
 
@@ -808,13 +806,27 @@ def conta_con_perimetro(
         return int(fetchone_scalar(cursor))
 
 
+# Scopo: limite e offset di una pagina, riportati nei limiti: il limite fra 1 e
+#        `tetto`, l'offset non negativo. Ritorna `(limite, offset)`.
+# ⭐ Regola del 2 (2026-09-28): la coppia `safe_limit = max(1, min(int(limit),
+#    200))` / `safe_offset = max(0, int(offset))` era scritta 41 volte, e il
+#    tetto come numero in ognuna. `tetto` e' diverso da `MAX_LIMIT` solo per
+#    l'export, che ha il suo.
+def limiti_pagina(limit: Any, offset: Any, *, tetto: int = MAX_LIMIT) -> tuple[int, int]:
+    return max(1, min(int(limit), tetto)), max(0, int(offset))
+
+
+# `LIMIT %s OFFSET %s` in coda alla query: la forma che il ripiego sa rileggere.
+_CODA_LIMIT_OFFSET = re.compile(r"LIMIT\s+%s\s+OFFSET\s+%s\s*;?\s*$", re.IGNORECASE)
+
+
 def fetch_paged_with_total(
     data_sql: str,
     params: list[Any] | dict[str, Any],
     *,
+    offset: int,
     fallback_count_sql: str | None = None,
     fallback_params: list[Any] | dict[str, Any] | None = None,
-    offset: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:
     """Esegue una query paginata in UNA valutazione (COUNT(*) OVER()).
 
@@ -823,23 +835,50 @@ def fetch_paged_with_total(
     `params` posizionali (lista) o con nome (dict, `%(nome)s`): quello che
     accetta `cursor.execute`.
 
-    Fallback pagina-oltre-l'ultima: con `offset > 0` e 0 righe la window
-    function non puo' dire il totale — se `fallback_count_sql` e' fornita
-    viene eseguita SOLO in quel caso (raro), cosi' il chiamante non dichiara
-    "0 risultati" a un utente rimasto su una pagina stantia di una lista che
-    si e' accorciata sotto di lui (es. code di lavoro che si auto-svuotano).
-    Senza fallback il totale e' 0 (comportamento dei siti storici).
+    Pagina oltre l'ultima: con `offset > 0` e 0 righe la window function non
+    puo' dire il totale (non c'e' una riga che lo porti). Solo in quel caso
+    (raro: una riga eliminata, una coda che si svuota sotto l'operatore) il
+    totale si chiede di nuovo, in uno dei due modi:
+
+    - `fallback_count_sql` + `fallback_params`, se il chiamante ne ha uno piu'
+      leggero (stesso FROM/WHERE, senza le colonne calcolate);
+    - altrimenti **la stessa query con `LIMIT 1 OFFSET 0`**: la prima riga
+      porta la `COUNT(*) OVER ()` di tutto il risultato. Nessun FROM/WHERE da
+      ricopiare, quindi nessuna seconda copia che diverga. Richiede che la
+      query finisca con `LIMIT %s OFFSET %s` e che i due siano gli ultimi
+      parametri posizionali; con i parametri con nome il conteggio va dato.
+
+    ⛔ Fino al 2026-09-28 il ripiego era facoltativo e ~25 liste non lo
+    avevano: oltre l'ultima pagina il totale usciva 0, e il frontend
+    (`useListaStoreCore`, che ora arretra da solo) non sapeva dove tornare.
+    `offset` e' obbligatorio per lo stesso motivo: senza, il ripiego non
+    scatta mai.
 
     Regola del 2 (2026-07-18): unifica il pattern COUNT-OVER inline dei
-    repository core con la variante fallback nata per le code resi.
+    repository con la variante fallback nata per le code resi.
     """
+    rilettura = None
+    if fallback_count_sql is None:
+        # ⛔ Si verifica SEMPRE, non solo quando serve: una query che non sa
+        #    rileggersi deve rompersi al primo test, non al primo operatore
+        #    rimasto su una pagina stantia.
+        if not isinstance(params, list) or not _CODA_LIMIT_OFFSET.search(data_sql):
+            raise ValueError(
+                "fetch_paged_with_total: senza `fallback_count_sql` la query deve "
+                "finire con `LIMIT %s OFFSET %s` e avere parametri posizionali"
+            )
+        rilettura = (data_sql, [*params[:-2], 1, 0])
     with connection.cursor() as cursor:
         cursor.execute(data_sql, params)
         results, total_count = extract_paginated(cursor)
-        if not results and offset > 0 and fallback_count_sql is not None:
-            cursor.execute(fallback_count_sql, fallback_params or [])
-            row = cursor.fetchone()
-            total_count = row[0] if row else 0
+        if not results and offset > 0:
+            if rilettura is not None:
+                cursor.execute(*rilettura)
+                _, total_count = extract_paginated(cursor)
+            else:
+                cursor.execute(fallback_count_sql, fallback_params or [])
+                row = cursor.fetchone()
+                total_count = row[0] if row else 0
     return results, total_count
 
 
@@ -896,7 +935,7 @@ def query_paged_view(
     params: list[Any],
     limit: int,
     offset: int,
-    max_limit: int = 200,
+    max_limit: int = MAX_LIMIT,
 ) -> tuple[list[tuple], int]:
     """Query paginata su vista/union costosa in UNA valutazione, con CLAMP.
 
@@ -916,8 +955,7 @@ def query_paged_view(
     Promozione a BB core (regola del 2, 2026-07-18) da
     `VenditeRepository._query_paged_view` (estratto 2026-07-07, ok Tid).
     """
-    safe_limit = max(1, min(int(limit), max_limit))
-    safe_offset = max(0, int(offset))
+    safe_limit, safe_offset = limiti_pagina(limit, offset, tetto=max_limit)
     # MATERIALIZED esplicito: la CTE e' referenziata due volte (righe +
     # count del clamp) e deve essere valutata una volta sola.
     sql = f"""

@@ -53,9 +53,13 @@ def _setup_conn(mock_conn, mock_cur):
 
 
 class TestListIndirizziDettaglio(TestCase):
-    """Test IndirizziRepository.list_indirizzi_dettaglio()."""
+    """Test IndirizziRepository.list_indirizzi_dettaglio().
 
-    @patch("apps.anagrafiche.db.indirizzi_repository.connection")
+    ⚠️ Dal 2026-09-28 la pagina passa da `fetch_paged_with_total`: si
+    sostituisce la `connection` del BB, non quella del repository.
+    """
+
+    @patch("apps.core.db._helpers.connection")
     def test_list_indirizzi_dettaglio(self, mock_conn):
         """Lista con risultati e total_count dalla window function."""
         cols = [
@@ -80,7 +84,7 @@ class TestListIndirizziDettaglio(TestCase):
         self.assertEqual(results[0]["indirizzo_normalizzato"], "Via Roma 1")
         self.assertNotIn("total_count", results[0])
 
-    @patch("apps.anagrafiche.db.indirizzi_repository.connection")
+    @patch("apps.core.db._helpers.connection")
     def test_list_indirizzi_dettaglio_empty(self, mock_conn):
         """Nessun risultato."""
         mc = _mock_cursor()
@@ -92,7 +96,7 @@ class TestListIndirizziDettaglio(TestCase):
         self.assertEqual(results, [])
         self.assertEqual(total, 0)
 
-    @patch("apps.anagrafiche.db.indirizzi_repository.connection")
+    @patch("apps.core.db._helpers.connection")
     def test_list_indirizzi_with_search(self, mock_conn):
         """Verifica che il parametro search sia passato come ILIKE pattern."""
         cols = [

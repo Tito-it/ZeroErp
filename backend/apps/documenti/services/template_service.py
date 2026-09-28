@@ -117,7 +117,6 @@ class TemplateService:
                 message=f"Stato versione non valido: '{stato}'.",
                 detail=f"ammessi={sorted(_STATI_VERSIONE_VALIDI)!r}",
             )
-            raise  # unreachable, per type checker
         rows, total = self._repo.list_versioni(
             template_id, attivo=attivo, stato=stato, search=search,
             order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
@@ -214,7 +213,6 @@ class TemplateService:
                 message="Errore lettura asset documentale dallo storage.",
                 detail=f"asset_id={asset_id}",
             )
-            raise  # unreachable, per type checker
 
         return {
             "asset_id": asset_id,

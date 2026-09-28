@@ -19,7 +19,7 @@ from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
     sql_order_clause,
-    extract_paginated,
+    fetch_paged_with_total,
     row_to_dict,
     rows_to_list,
 )
@@ -334,9 +334,7 @@ class ClientiRepository:
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params.extend([limit, offset])
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return extract_paginated(cursor)
+        return fetch_paged_with_total(sql, params, offset=offset)
 
     # Scopo: Lista utility ammesse per creazione manuale (richiede_pdp = false, attivo).
     def list_utilities_manuali(self) -> list[dict[str, Any]]:

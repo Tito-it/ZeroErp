@@ -286,7 +286,8 @@ La response espone `commesse_ids` (commesse toccate dal push), oltre a
 
 | Metodo / Path | Scopo |
 | --- | --- |
-| `GET /<id>/righe/` | Lista righe attive (decodifiche articolo/uom/iva + `importo_riga` + `is_composito_caso_a`) |
+| `GET /<id>/righe/` | TUTTE le righe attive, nell'ordine del documento, dalla vista `vw_ordini_righe_dettaglio` (decodifiche, `importo_riga`, evaso e residuo, `is_composito_caso_a`) |
+| `GET /<id>/righe/lista/` (+ `export/`) | La lista configurabile, BB condiviso: [api_righe_documento.md](api_righe_documento.md) |
 | `POST /<id>/righe/` | Aggiunge una riga (solo DRAFT). `riga_nr` autoassegnato. Pricing auto-fill via `PricingService` se prezzo assente e articolo non composito; per articolo composito init componenti BoM con override prezzi opzionali (`componenti_overrides`, vedi sotto) |
 | `PATCH /<id>/righe/<riga_id>/` | Aggiorna riga (solo DRAFT). `request.data` |
 | `DELETE /<id>/righe/<riga_id>/` | Hard-delete riga (solo DRAFT) |

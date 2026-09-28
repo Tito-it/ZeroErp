@@ -37,5 +37,3 @@ def get_ai_provider() -> AIProvider:
         message=f"Provider AI non riconosciuto: {provider_name}",
         detail=f"Valori ammessi: anthropic, mistral, mock. Ricevuto: {provider_name}",
     )
-    # Unreachable — raise_error solleva sempre eccezione
-    raise AssertionError("unreachable")

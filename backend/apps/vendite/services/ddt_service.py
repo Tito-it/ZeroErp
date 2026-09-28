@@ -31,6 +31,7 @@ from typing import Any, NamedTuple
 
 from django.db import transaction
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._righe_bozza_guard import richiedi_righe_in_bozza
 from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
@@ -145,7 +146,7 @@ def list_ddt_rows(
     offset: int,
     order_by: str = "data",
     order_dir: str = "desc",
-    max_limit: int = 200,
+    max_limit: int = MAX_LIMIT,
 ) -> tuple[list[Any], int]:
     repo = DdtRepository()
     return repo.list_ddt(
@@ -217,6 +218,27 @@ def list_righe(ddt_id: int) -> list[dict[str, Any]]:
     repo = DdtRepository()
     _get_testata_or_raise(repo, ddt_id, op="list_righe")
     return repo.list_righe(ddt_id)
+
+
+# Scopo: Una PAGINA delle righe del DDT, per la lista configurabile
+#        (`GET …/righe/lista/`): ricerca, ordinamento e pagina. Legge prima la
+#        testata come `list_righe`. Ritorna `(righe, totale)`.
+def list_righe_pagina(
+    ddt_id: int,
+    *,
+    search: str | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    limit: int,
+    offset: int = 0,
+    max_limit: int = MAX_LIMIT,
+) -> tuple[list[dict[str, Any]], int]:
+    repo = DdtRepository()
+    _get_testata_or_raise(repo, ddt_id, op="list_righe_pagina")
+    return repo.list_righe_pagina(
+        ddt_id, search=search, order_by=order_by, order_dir=order_dir,
+        limit=limit, offset=offset, max_limit=max_limit,
+    )
 
 
 # ── Indirizzi documento (BB condiviso _indirizzi_documento_helpers) ──
@@ -423,7 +445,7 @@ def aggiorna_ddt(ddt_id: int, payload: dict[str, Any]) -> dict[str, Any]:
 def elimina_ddt(ddt_id: int) -> dict[str, Any]:
     repo = DdtRepository()
     _assert_stato(repo, ddt_id, _STATI_MODIFICABILI, op="elimina_ddt")
-    righe_count = len(repo.list_righe(ddt_id))
+    righe_count = repo.count_righe(ddt_id)
     ErrorManager.require(
         righe_count == 0,
         code="E_DDT_STATO_TRANSIZIONE",

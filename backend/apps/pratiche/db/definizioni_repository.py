@@ -15,6 +15,7 @@ from typing import Any, NamedTuple
 
 from django.db import connection
 
+from apps.core.db._helpers import rows_to_list
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, sql_set_clause
 
 # Campi "core" di uno step editabili in Slice 2 anello 3 — UNICA fonte di verità
@@ -157,8 +158,7 @@ class DefinizioniRepository:
     def _rows(self, sql: str, params: dict[str, Any]) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
-            cols = [c[0] for c in cursor.description]
-            return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: elenco edizioni per (tipo [, emittente]) con drift. Preset =
     # emittente_fiscale_id NULL; il drift e' valorizzato solo per le edizioni

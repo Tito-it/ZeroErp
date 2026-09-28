@@ -364,7 +364,6 @@ def _raise_or_return_violazione_l2(
         retryable=True,
         function_name=function_name,
     )
-    raise AssertionError("unreachable")  # pragma: no cover
 
 
 # Tolleranza confronto prezzi: il resolver ritorna Decimal a 10 decimali

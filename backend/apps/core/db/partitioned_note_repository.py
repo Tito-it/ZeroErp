@@ -16,6 +16,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import fetchone_scalar, row_to_dict, rows_to_list
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, sql_set_clause
 
@@ -219,7 +220,7 @@ class PartitionedNoteRepository:
         target_riga_id: int | None = None,
         include_invisible: bool = True,
         page: int = 1,
-        page_size: int = 50,
+        page_size: int = DEFAULT_LIMIT,
     ) -> tuple[list[dict[str, Any]], int]:
         offset = max(0, (page - 1) * page_size)
         where = ["n.target_tipo = %s", "n.target_id = %s"]

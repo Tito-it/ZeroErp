@@ -12,7 +12,7 @@ import { defineStore } from 'pinia'
 import {
   listPreventivi, getPreventivo, createPreventivo, updatePreventivo, deletePreventivo,
   cambiaStatoPreventivo, emettiPreventivo, creaRevisione,
-  listRighe, createRiga, updateRiga, deleteRiga, getRiepilogoIva,
+  createRiga, updateRiga, deleteRiga, getRiepilogoIva,
   pushCommessa, getSmistamento, generaPratica, generaOrdineFromPreventivo,
 } from '../api/preventiviApi'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
@@ -125,12 +125,6 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
 
   // --- Righe ---
 
-  // Scopo: Carica righe del preventivo.
-  async function loadRighe(preventivoId) {
-    const res = await listRighe(preventivoId)
-    return res.data.data
-  }
-
   // Scopo: Aggiunge riga al preventivo.
   async function addRiga(preventivoId, payload) {
     const res = await createRiga(preventivoId, payload)
@@ -206,7 +200,7 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     ...lista,
     fetchDetail, create, update, elimina,
     cambiaStato, emetti, nuovaRevisione,
-    loadRighe, addRiga, aggiornaRiga, eliminaRiga, loadRiepilogoIva,
+    addRiga, aggiornaRiga, eliminaRiga, loadRiepilogoIva,
     inviaACommessa, generaOrdine, loadSmistamento,
     creaPratica,
   }

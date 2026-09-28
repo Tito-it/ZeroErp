@@ -41,7 +41,6 @@ def get_storage() -> DocumentStorage:
         message=f"Provider storage documenti non supportato: '{provider}'.",
         detail="Provider attesi v1: filesystem.",
     )
-    raise  # unreachable, per type checker
 
 
 # Scopo: Risolve la root del filesystem provider.
@@ -56,5 +55,4 @@ def _resolve_filesystem_root() -> Path:
             message="DOCUMENTI_STORAGE_ROOT non configurato.",
             detail="Verificare settings.py o env var DOCUMENTI_STORAGE_ROOT.",
         )
-        raise  # unreachable, per type checker
     return Path(raw)

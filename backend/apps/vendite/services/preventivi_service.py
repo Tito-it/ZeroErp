@@ -19,6 +19,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import DatabaseError, transaction
 
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
 from apps.anagrafiche.db.istanze_utility_repository import IstanzeUtilityRepository
 from apps.core.services.error_manager import ErrorManager
@@ -168,7 +169,7 @@ def list_preventivi_rows(
     offset: int,
     order_by: str = "data",
     order_dir: str = "desc",
-    max_limit: int = 200,
+    max_limit: int = MAX_LIMIT,
 ) -> tuple[list[Any], int]:
     repo = PreventiviRepository()
     return repo.list_preventivi(
@@ -199,12 +200,12 @@ def list_preventivi(
     solo_ultima_revisione: bool = True,
     auth_user_id: int | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
     order_by: str = "data",
     order_dir: str = "desc",
 ) -> dict[str, object]:
     ErrorManager.require(
-        page >= 1 and 1 <= page_size <= 200,
+        page >= 1 and 1 <= page_size <= MAX_LIMIT,
         code="E_PREV_VALIDAZIONE",
         message="Parametri paginazione non validi.",
         function_name=f"{_FN}.list_preventivi",
@@ -283,7 +284,7 @@ def get_preventivo(preventivo_id: int) -> dict[str, object]:
     capabilities = repo.get_capabilities(preventivo_id)
     # Summary leggero: una COUNT sulle righe attive (no scan dell'elenco
     # completo). Le righe vere passano dall'endpoint /righe/ autonomo.
-    righe_count = repo.count_righe_attive(preventivo_id)
+    righe_count = repo.count_righe(preventivo_id)
     return {
         **testata,
         "capabilities": capabilities,
@@ -298,6 +299,27 @@ def list_righe(preventivo_id: int) -> list[dict[str, Any]]:
     repo = PreventiviRepository()
     _get_testata_or_raise(repo, preventivo_id, op="list_righe")
     return repo.list_righe(preventivo_id)
+
+
+# Scopo: Una PAGINA delle righe del preventivo, per la lista configurabile
+#        (`GET …/righe/lista/`): ricerca, ordinamento e pagina. Legge prima la
+#        testata come `list_righe`. Ritorna `(righe, totale)`.
+def list_righe_pagina(
+    preventivo_id: int,
+    *,
+    search: str | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    limit: int,
+    offset: int = 0,
+    max_limit: int = MAX_LIMIT,
+) -> tuple[list[dict[str, Any]], int]:
+    repo = PreventiviRepository()
+    _get_testata_or_raise(repo, preventivo_id, op="list_righe_pagina")
+    return repo.list_righe_pagina(
+        preventivo_id, search=search, order_by=order_by, order_dir=order_dir,
+        limit=limit, offset=offset, max_limit=max_limit,
+    )
 
 
 # Scopo: Righe MERCE smistabili a ordine (natura destinazione_tipo='ORDINE' non
@@ -503,7 +525,7 @@ def elimina_preventivo(preventivo_id: int) -> dict[str, Any]:
         detail=f"stato={testata['stato_codice_interno']}",
         function_name=f"{_FN}.elimina_preventivo",
     )
-    righe_count = len(repo.list_righe(preventivo_id))
+    righe_count = repo.count_righe(preventivo_id)
     ErrorManager.require(
         righe_count == 0,
         code="E_PREV_STATO_NON_MODIFICABILE",

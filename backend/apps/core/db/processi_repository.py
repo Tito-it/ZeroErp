@@ -256,6 +256,7 @@ class ProcessiRepository:
         #    nella SELECT, cioe' PRIMA delle condizioni del WHERE. L'ordine dei
         #    segnaposto e' posizionale, e sbagliarlo non da' errore di sintassi
         #    — da' un filtro applicato al valore sbagliato.
+        where_params = params
         params = [*_params_vuole_identita(), *params]
         data_sql = f"""
             SELECT p.id,
@@ -290,7 +291,15 @@ class ProcessiRepository:
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
-        return fetch_paged_with_total(data_sql, params + [limit, offset])
+        return fetch_paged_with_total(
+            data_sql, params + [limit, offset],
+            # Stesso FROM/WHERE della pagina, senza il mirror della SELECT.
+            fallback_count_sql=(
+                f"SELECT COUNT(*) FROM dbops.processi p WHERE {' AND '.join(conditions)}"  # noqa: S608
+            ),
+            fallback_params=where_params,
+            offset=offset,
+        )
 
     # Scopo: I contratti di liveness dei processi chiesti, per codice. Chi non e'
     #        a catalogo NON compare nel dict — e' contratto: «non lo conosco» e
@@ -402,4 +411,11 @@ class ProcessiRepository:
              ORDER BY j.started_at DESC, j.id DESC
              LIMIT %s OFFSET %s
         """
-        return fetch_paged_with_total(data_sql, [codice, limit, offset])
+        return fetch_paged_with_total(
+            data_sql, [codice, limit, offset],
+            fallback_count_sql=(
+                "SELECT COUNT(*) FROM maintenance.job_run_log j WHERE j.processo_codice = %s"
+            ),
+            fallback_params=[codice],
+            offset=offset,
+        )

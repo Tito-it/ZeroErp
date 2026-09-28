@@ -290,6 +290,18 @@ export function useListaStoreCore({
     return { ...params, ...paramsOrdinamento(f, { orderDirDefault }) }
   }
 
+  // Scopo: i parametri dell'EXPORT della lista: quelli della videata
+  //        (`paramsFiltro`) piu' l'emittente del padre composto.
+  // ⛔ L'emittente NON e' un filtro, e `paramsFiltro` non lo porta per
+  //    costruzione; ma l'export e' un verbo della lista e passa dallo stesso
+  //    cancello di perimetro. Con i soli filtri, chi vede piu' emittenti
+  //    leggeva la lista e riceveva 422 all'export (righe dei documenti di
+  //    vendita, verifica critica del 2026-09-28). Una sede, perche' il
+  //    prossimo padre composto con export non ripeta il difetto.
+  function paramsExport() {
+    return { ...paramsFiltro(), ...paramsEmittente() }
+  }
+
   const {
     items, totalRecords, loading, hasSearched, sospesa: fetchSospesa,
     // `ricercaFull` (la lista cerca?) e `ricercaMinCaratteri` (da quanti
@@ -331,6 +343,8 @@ export function useListaStoreCore({
   async function fetchList(opzioni) {
     if (!padreCompleto()) return false
     try {
+      // La pagina che non c'e' piu' la gestisce il BB di stato
+      // (`useListaEmptyStateFetch`, `offsetDiRientro`), per ogni lista.
       const esito = await fetchListBase(opzioni)
       erroreCaricamento.value = false
       return esito
@@ -363,7 +377,7 @@ export function useListaStoreCore({
     fetchSospesa,
     erroreCaricamento,
     fetchList, svuota, reset,
-    paramsFiltro,
+    paramsFiltro, paramsExport,
     // Il padre composto: la lista aspetta una parte che manca? E l'emittente
     // in query, per i verbi della stessa view che non sono la lista.
     attesaPadre, paramsEmittente,

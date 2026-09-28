@@ -519,7 +519,7 @@ const suVisibile = gestoreVisibile(emit, onChiudi)
           :closable="false"
           size="small"
         >
-          {{ t('magazzino.documenti_interni.righe_non_lette') }}
+          {{ t('common.righe_non_lette') }}
         </Message>
 
         <DrawerTabLista

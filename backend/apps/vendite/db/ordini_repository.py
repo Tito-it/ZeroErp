@@ -19,7 +19,9 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
+    limiti_pagina,
     RicercaFull,
     add_ricerca_full_condition,
     sql_order_clause,
@@ -32,6 +34,11 @@ from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynam
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
 from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
+from apps.vendite.db._righe_repo_mixin import (
+    COLONNE_RIGHE_COMMERCIALI,
+    RICERCA_RIGHE_COMMERCIALI,
+    RigheDocumentoRepositoryMixin,
+)
 
 
 # Scopo: Whitelist colonne ORDER BY per la lista ordini (SQL injection safe).
@@ -72,7 +79,20 @@ _ORDER_COLS_ORDINI: dict[str, str] = {
 }
 
 
+# Le righe del documento come lista configurabile `vendite.ordine_righe` (BB
+# `RigheDocumentoRepositoryMixin`, brief-db-liste-righe-documento lotto A).
+# Le colonne gemelle sono dichiarate una volta nel BB; qui solo cio' che e'
+# di questo documento. `test_ricerca_full_seed` legge `_RICERCA_RIGHE`.
+_RICERCA_RIGHE = RicercaFull("vendite.ordine_righe", RICERCA_RIGHE_COMMERCIALI)
+_ORDER_COLS_RIGHE: dict[str, str] = {
+    **COLONNE_RIGHE_COMMERCIALI,
+    "data_consegna_confermata": "data_consegna_confermata",
+    "data_consegna_richiesta_cliente": "data_consegna_richiesta_cliente",
+}
+
+
 class OrdiniRepository(
+    RigheDocumentoRepositoryMixin,
     ComponentiRepositoryMixin,
     RiepilogoIvaRepositoryMixin,
     IndirizziDocumentoRepositoryMixin,
@@ -87,6 +107,16 @@ class OrdiniRepository(
     lettura del riepilogo IVA (vista derivata on-the-fly dalle righe attive,
     nessun trigger: a differenza dei preventivi non espone `id` tecnico).
     """
+
+    # Righe (BB `RigheDocumentoRepositoryMixin`): vista, chiave, ordine del
+    # documento, whitelist e ricerca della lista `vendite.ordine_righe`.
+    _righe_vista = "vendite.vw_ordini_righe_dettaglio"
+    _righe_tabella = "vendite.ordini_righe"
+    _righe_fk_documento = "ordine_id"
+    _righe_ordine_documento = "riga_nr"
+    _righe_ordinamento = _ORDER_COLS_RIGHE
+    _righe_ricerca = _RICERCA_RIGHE
+    _righe_colonne_desc = ("data_consegna_confermata", "data_consegna_richiesta_cliente")
 
     # Configurazione mixin componenti (tabella + FK riga padre).
     _componenti_table_name = "vendite.ordini_righe_componenti"
@@ -129,7 +159,7 @@ class OrdiniRepository(
         offset: int,
         order_by: str = "data",
         order_dir: str = "desc",
-        max_limit: int = 200,
+        max_limit: int = MAX_LIMIT,
     ) -> tuple[list[dict[str, Any]], int]:
         ordinamento = sql_order_clause(
             order_by, order_dir,
@@ -145,10 +175,9 @@ class OrdiniRepository(
             #    DDT il 2026-09-02).
             default_desc=True,
         )
-        # `max_limit`: lista cap 200 (gia' via parse_list_params), export fino a
+        # `max_limit`: lista cap `MAX_LIMIT` (gia' via parse_list_params), export fino a
         # EXPORT_MAX_ROWS+1 per non troncare in silenzio (guard su COUNT reale).
-        safe_limit = max(1, min(int(limit), max_limit))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset, tetto=max_limit)
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -285,126 +314,6 @@ class OrdiniRepository(
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Righe
     # ══════════════════════════════════════════════════════════
-
-    # Scopo: Righe attive dell'ordine con decodifiche articolo/uom/iva e flag
-    #        `is_composito_caso_a` (per il chevron expander FE). Importo riga
-    #        calcolato (quantita * prezzo * (1 - sconto%)). Espone anche
-    #        l'avanzamento evasione per riga (fulfillment multi-DDT): qta evasa
-    #        e residuo in UNITA' OPERATIVA (fulfillment.qta_evasa e' in base;
-    #        quantita = qta_operativa * factor_to_base, ROUND 6 come
-    #        trgfn_qta_from_operativa). Alimenta il pannello "Genera DDT".
-    def list_righe(self, ordine_id: int) -> list[dict[str, Any]]:
-        sql = """
-            SELECT
-                r.id,
-                r.ordine_id,
-                r.riga_nr,
-                r.attivo,
-                r.articolo_id,
-                a.codice                AS articolo_codice,
-                a.descrizione           AS articolo_descrizione,
-                r.descrizione,
-                r.quantita,
-                r.qta_operativa,
-                r.factor_to_base,
-                r.uom_operativa_id,
-                um.codice               AS uom_codice,
-                r.prezzo_unitario,
-                r.sconto_percentuale,
-                r.iva_id,
-                iva.codice              AS iva_codice,
-                iva.descrizione         AS iva_descrizione,
-                iva.aliquota_iva        AS iva_aliquota,
-                ROUND(
-                    (r.quantita * COALESCE(r.prezzo_unitario, 0::numeric)) *
-                    (1::numeric - COALESCE(r.sconto_percentuale, 0::numeric) / 100::numeric),
-                    2
-                ) AS importo_riga,
-                ROUND(
-                    COALESCE(ful.qta_evasa_base, 0::numeric)
-                    / NULLIF(r.factor_to_base, 0::numeric),
-                    6
-                ) AS qta_evasa_operativa,
-                ROUND(
-                    GREATEST(
-                        r.quantita - COALESCE(ful.qta_evasa_base, 0::numeric),
-                        0::numeric
-                    ) / NULLIF(r.factor_to_base, 0::numeric),
-                    6
-                ) AS qta_residua_operativa,
-                r.meta,
-                r.data_insert,
-                r.data_update,
-                -- Le due date di consegna (brief-db-modifiche-certe-ciclo-vendita-
-                -- e-articolo, Blocco A): la RICHIESTA e' del cliente, la
-                -- CONFERMATA e' la nostra promessa (D-16: non marcato = nostro).
-                -- Proiezione ESPLICITA: una colonna che nessuno nomina non
-                -- esiste per il frontend.
-                r.data_consegna_richiesta_cliente,
-                r.data_consegna_confermata,
-                EXISTS (
-                    SELECT 1
-                      FROM vendite.ordini_righe_componenti rc
-                     WHERE rc.riga_ordine_id = r.id
-                       AND rc.attivo IS TRUE
-                ) AS is_composito_caso_a
-              FROM vendite.ordini_righe r
-              LEFT JOIN catalogo.articoli a    ON a.id   = r.articolo_id
-              LEFT JOIN catalogo.unita_misura um ON um.id = r.uom_operativa_id
-              LEFT JOIN config.iva iva         ON iva.id = r.iva_id
-              LEFT JOIN LATERAL (
-                  SELECT SUM(f.qta_evasa) AS qta_evasa_base
-                    FROM vendite.ordini_righe_fulfillment f
-                   WHERE f.ordine_riga_id = r.id
-              ) ful ON TRUE
-             WHERE r.ordine_id = %s
-               AND r.attivo IS TRUE
-             ORDER BY r.riga_nr, r.id
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [ordine_id])
-            return rows_to_list(cursor)
-
-    # Scopo: Carica una singola riga via lookup mirato per id (stessa proiezione
-    #        di list_righe senza caricare l'intero elenco). Usato da aggiorna_riga.
-    def get_riga(self, riga_id: int) -> dict[str, Any] | None:
-        sql = """
-            SELECT
-                r.id,
-                r.ordine_id,
-                r.riga_nr,
-                r.attivo,
-                r.articolo_id,
-                a.codice                AS articolo_codice,
-                a.descrizione           AS articolo_descrizione,
-                r.descrizione,
-                r.quantita,
-                r.qta_operativa,
-                r.factor_to_base,
-                r.uom_operativa_id,
-                um.codice               AS uom_codice,
-                r.prezzo_unitario,
-                r.sconto_percentuale,
-                r.iva_id,
-                iva.codice              AS iva_codice,
-                r.meta,
-                r.data_consegna_richiesta_cliente,
-                r.data_consegna_confermata,
-                EXISTS (
-                    SELECT 1
-                      FROM vendite.ordini_righe_componenti rc
-                     WHERE rc.riga_ordine_id = r.id
-                       AND rc.attivo IS TRUE
-                ) AS is_composito_caso_a
-              FROM vendite.ordini_righe r
-              LEFT JOIN catalogo.articoli a    ON a.id   = r.articolo_id
-              LEFT JOIN catalogo.unita_misura um ON um.id = r.uom_operativa_id
-              LEFT JOIN config.iva iva         ON iva.id = r.iva_id
-             WHERE r.id = %s
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [riga_id])
-            return row_to_dict(cursor)
 
     # Scopo: Load atomico di un componente con scope completo (componente →
     #        riga → ordine) in un'unica query JOIN, per i guard del service.

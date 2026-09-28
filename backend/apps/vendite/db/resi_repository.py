@@ -22,9 +22,12 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
+    limiti_pagina,
     RicercaFull,
     add_ricerca_full_condition,
+    colonne_identita,
     sql_order_clause,
     call_jsonb_fn,
     fetch_paged_with_total,
@@ -34,6 +37,7 @@ from apps.core.db._helpers import (
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.vendite.db._coda_documento_filtro import lettura_coda_per_documento
+from apps.vendite.db._righe_repo_mixin import RigheDocumentoRepositoryMixin
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 
 # Scopo: Whitelist colonne ORDER BY per la lista resi (SQL injection safe). Le
@@ -137,8 +141,33 @@ _CODA_META: dict[str, dict[str, Any]] = {
 }
 
 
-class ResiRepository:
+# Le righe del reso come lista configurabile `vendite.reso_righe` (BB
+# `RigheDocumentoRepositoryMixin`, brief-db-liste-righe-documento lotto A):
+# le colonne ordinabili e ricercabili del catalogo (lista 100), che la vista
+# espone con lo stesso nome. `test_ricerca_full_seed` legge `_RICERCA_RIGHE`.
+_RICERCA_RIGHE = RicercaFull("vendite.reso_righe", ("articolo_codice", "descrizione", "motivo"))
+_ORDER_COLS_RIGHE: dict[str, str] = colonne_identita(
+    "articolo_codice", "descrizione", "qta_operativa", "stato_riconsegna",
+    "tipo_reso_descrizione", "uom_codice", "gia_accreditato", "motivo",
+)
+
+
+class ResiRepository(RigheDocumentoRepositoryMixin):
     """Repository resi di vendita (motore resi su DDT)."""
+
+    # Righe (BB `RigheDocumentoRepositoryMixin`) dalla vista canonica
+    # `vw_resi_righe_dettaglio` (changeSet `20260825-25`): decodifiche, copertura
+    # ri-consegna, `gia_accreditato` e `annullo_blocco_codice`.
+    # ⛔ Il perimetro non e' a carico del repository: la vista passa da
+    #    `vendite.resi` (RLS `rls_resi_ef_whitelist`), perche' `resi_righe`
+    #    non ce l'ha. Dal 2026-09-28 anche la riga singola legge la vista:
+    #    prima leggeva la tabella, cioe' fuori dalla RLS.
+    _righe_vista = "vendite.vw_resi_righe_dettaglio"
+    _righe_tabella = "vendite.resi_righe"
+    _righe_fk_documento = "reso_id"
+    _righe_ordine_documento = "riga_nr"
+    _righe_ordinamento = _ORDER_COLS_RIGHE
+    _righe_ricerca = _RICERCA_RIGHE
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Testata (via vista canonica vw_resi_lista)
@@ -169,7 +198,7 @@ class ResiRepository:
         offset: int,
         order_by: str = "data",
         order_dir: str = "desc",
-        max_limit: int = 200,
+        max_limit: int = MAX_LIMIT,
     ) -> tuple[list[dict[str, Any]], int]:
         ordinamento = sql_order_clause(
             order_by, order_dir,
@@ -185,10 +214,9 @@ class ResiRepository:
             #    DDT il 2026-09-02).
             default_desc=True,
         )
-        # `max_limit`: lista cap 200 (gia' via parse_list_params), export fino a
+        # `max_limit`: lista cap `MAX_LIMIT` (gia' via parse_list_params), export fino a
         # EXPORT_MAX_ROWS+1 per non troncare in silenzio (guard su COUNT reale).
-        safe_limit = max(1, min(int(limit), max_limit))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset, tetto=max_limit)
 
         conditions: list[str] = []
         params: list[Any] = []
@@ -311,84 +339,6 @@ class ResiRepository:
             return row[0] if row else None
 
     # ══════════════════════════════════════════════════════════
-    #  LETTURE — Righe
-    # ══════════════════════════════════════════════════════════
-
-    # Scopo: Conteggio righe attive del reso (per `righe_count` del detail).
-    def count_righe(self, reso_id: int) -> int:
-        sql = (
-            "SELECT COUNT(*) FROM vendite.resi_righe "
-            "WHERE reso_id = %s AND attivo IS TRUE"
-        )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [reso_id])
-            row = cursor.fetchone()
-            return int(row[0]) if row else 0
-
-    # Scopo: Righe attive del reso, lette dalla vista canonica
-    #        `vendite.vw_resi_righe_dettaglio` (changeSet `20260825-25`).
-    #        Porta le decodifiche articolo/uom/tipo reso, la copertura
-    #        ri-consegna (`qta_riconsegnata`/`qta_rinunciata`/`qta_residua`/
-    #        `stato_riconsegna`), `gia_accreditato` e — dal 2026-08-25 —
-    #        `annullo_blocco_codice`, il motivo per cui l'annullo dell'accredito
-    #        NON e' ammesso (`NULL` = ammesso).
-    #
-    # ⭐ QUI C'ERANO CINQUANTA RIGHE DI SQL, ed erano una vista scritta in
-    #    Python: nessun filtro dinamico, solo `reso_id` e `attivo`. Le righe del
-    #    reso erano l'UNICO dettaglio documento senza una sede a DB — ed e' il
-    #    motivo per cui il motivo di blocco dell'annullo poteva arrivare sulla
-    #    coda accrediti e non sulla superficie dove il pulsante vive davvero.
-    #    Verificato prima dello scambio: `EXCEPT` nei due versi fra la vecchia
-    #    query e la vista, su tutti i resi -> **0 differenze**, 17 righe.
-    #
-    # ⚠️ Il filtro `attivo` resta QUI, e la vista non lo incorpora: `attivo` e'
-    #    una colonna, non un filtro nascosto. Una vista «dettaglio» che
-    #    nascondesse righe di nascosto darebbe un conteggio diverso da quello
-    #    della tabella senza dirlo (presidiato dal pgTAP 5 della vista).
-    # ⛔ Il perimetro non e' a carico di questo metodo: la vista passa da
-    #    `vendite.resi` (che ha la RLS `rls_resi_ef_whitelist`) perche'
-    #    `vendite.resi_righe` non ce l'ha. Che il service autorizzi prima non
-    #    basta — un oggetto di database dev'essere sicuro da solo.
-    def list_righe(self, reso_id: int) -> list[dict[str, Any]]:
-        sql = """
-            SELECT *
-              FROM vendite.vw_resi_righe_dettaglio
-             WHERE reso_id = %s
-               AND attivo IS TRUE
-             ORDER BY riga_nr, id
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [reso_id])
-            return rows_to_list(cursor)
-
-    # Scopo: Carica una singola riga reso per id (proiezione lean per i guard
-    #        del service: appartenenza al reso + snapshot corrente).
-    def get_riga(self, riga_id: int) -> dict[str, Any] | None:
-        sql = """
-            SELECT
-                rr.id,
-                rr.reso_id,
-                rr.riga_nr,
-                rr.attivo,
-                rr.ddt_riga_id,
-                rr.ordine_riga_id,
-                rr.articolo_id,
-                rr.descrizione,
-                rr.quantita,
-                rr.qta_operativa,
-                rr.factor_to_base,
-                rr.uom_operativa_id,
-                rr.tipo_reso_id,
-                rr.motivo,
-                rr.meta
-              FROM vendite.resi_righe rr
-             WHERE rr.id = %s
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [riga_id])
-            return row_to_dict(cursor)
-
-    # ══════════════════════════════════════════════════════════
     #  LETTURE — Righe DDT per il pannello "crea reso" (dominio sorgente)
     # ══════════════════════════════════════════════════════════
 
@@ -473,7 +423,7 @@ class ResiRepository:
         offset: int,
         order_by: str = "data",
         order_dir: str = "desc",
-        max_limit: int = 200,
+        max_limit: int = MAX_LIMIT,
     ) -> tuple[list[dict[str, Any]], int]:
         # La condizione etichetta vive QUI, non nel builder condiviso: la
         # colonna esiste solo su questa vista, e il builder deve restare
@@ -527,7 +477,7 @@ class ResiRepository:
         offset: int,
         order_by: str = "data",
         order_dir: str = "desc",
-        max_limit: int = 200,
+        max_limit: int = MAX_LIMIT,
     ) -> tuple[list[dict[str, Any]], int]:
         return self._list_coda(
             "vendite.vw_resi_da_riconsegnare",
@@ -572,9 +522,9 @@ class ResiRepository:
         offset: int,
         order_by: str = "data",
         order_dir: str = "desc",
-        max_limit: int = 200,
+        max_limit: int = MAX_LIMIT,
     ) -> tuple[list[dict[str, Any]], int]:
-        # `max_limit` distingue le due chiamate: la lista pagina (cap 200,
+        # `max_limit` distingue le due chiamate: la lista pagina (cap `MAX_LIMIT`,
         # il paginator manda al piu' 100), l'export chiede fino a
         # EXPORT_MAX_ROWS+1 per intercettare l'overflow SENZA troncare in
         # silenzio (il guard di build_export_response usa la COUNT reale).
@@ -589,8 +539,7 @@ class ResiRepository:
         # righe di uno stesso reso e `v.resi_riga_id ASC` le tiene nel loro
         # ordine naturale DENTRO il reso. Ribaltarle farebbe leggere le righe
         # di un reso al contrario ordinando la lista per un'altra colonna.
-        safe_limit = max(1, min(int(limit), max_limit))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset, tetto=max_limit)
 
         conditions: list[str] = []
         params: list[Any] = []

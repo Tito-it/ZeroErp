@@ -38,7 +38,7 @@ from apps.core.db._helpers import (
     add_ricerca_full_condition,
     sql_order_clause,
     sql_lateral_primo_motivo,
-    extract_paginated,
+    fetch_paged_with_total,
     jsonb_out,
     row_to_dict,
     rows_to_list,
@@ -299,9 +299,7 @@ class RegistriRepository:
              LIMIT %s OFFSET %s
         """
         params.extend([limit, offset])
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            righe, totale = extract_paginated(cursor)
+        righe, totale = fetch_paged_with_total(sql, params, offset=offset)
         return _decodifica_jsonb(righe), totale
 
     # Scopo: il dettaglio di un registro, con lo scope applicato.

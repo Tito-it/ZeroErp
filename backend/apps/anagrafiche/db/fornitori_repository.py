@@ -21,7 +21,7 @@ from apps.core.db.sql_write_helpers import (
 from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
-    extract_paginated,
+    fetch_paged_with_total,
     row_to_dict,
     sql_order_clause,
 )
@@ -187,9 +187,7 @@ class FornitoriRepository:
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params.extend([limit, offset])
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return extract_paginated(cursor)
+        return fetch_paged_with_total(sql, params, offset=offset)
 
     # Scopo: Dettaglio completo di un fornitore con dati soggetto e FK descrizioni.
     def get_fornitore(self, fornitore_id: int) -> dict[str, Any] | None:

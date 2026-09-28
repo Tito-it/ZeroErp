@@ -45,6 +45,8 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventivoRigaPreviewComponenti,
     ApiPreventivoRigaSuggerisciPrezzo,
     ApiPreventivoRigheList,
+    ApiPreventivoRigheListaExportView,
+    ApiPreventivoRigheListaView,
     ApiPreventivoStato,
     ApiPreventivoStatoDaPratica,
     ApiPreventivoCompletaSmistamento,
@@ -151,6 +153,12 @@ urlpatterns = [
         ApiPreventivoRigheList.as_view(),
         name="vendite-preventivi-righe-list",
     ),
+    # Righe: la LISTA configurabile (pagina + export). `…/righe/` sopra resta
+    # la lettura completa e la creazione (brief-db-liste-righe-documento).
+    path("<int:preventivo_id>/righe/lista/", ApiPreventivoRigheListaView.as_view(),
+         name="vendite-preventivi-righe-lista"),
+    path("<int:preventivo_id>/righe/lista/export/", ApiPreventivoRigheListaExportView.as_view(),
+         name="vendite-preventivi-righe-lista-export"),
     # Righe: aggiornamento + eliminazione
     path(
         "<int:preventivo_id>/righe/<int:riga_id>/",

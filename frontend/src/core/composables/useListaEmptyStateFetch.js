@@ -178,6 +178,40 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
   // l'oggetto Event come primo argomento: `silent` risulta `undefined`, cioè
   // falsy, e il comportamento resta quello di sempre.
   async function fetchList({ silent = false } = {}) {
+    let esito = await leggiPagina({ silent })
+    const rientro = esito ? offsetDiRientro() : null
+    if (rientro !== null) {
+      filters.value.offset = rientro
+      esito = await leggiPagina({ silent })
+    }
+    return esito
+  }
+
+  // Scopo: la pagina chiesta non esiste piu' (la lista si e' accorciata sotto
+  //        l'operatore: ha eliminato l'unica riga dell'ultima pagina, o l'ha
+  //        fatto un altro, o una coda si e' svuotata). Ritorna l'offset da cui
+  //        rileggere, o `null` se la pagina a video e' buona.
+  // ⭐ Si torna all'ULTIMA pagina reale, non alla prima: chi ha appena
+  //    cancellato in fondo alla lista vuole restare in fondo. Il totale e'
+  //    vero anche oltre la fine: lo garantisce il backend
+  //    (`fetch_paged_with_total`, dal 2026-09-28).
+  // ⚠️ Totale 0 con offset > 0: si rilegge da capo, che e' comunque la
+  //    risposta giusta (la lista e' davvero vuota, o l'endpoint non sa contare
+  //    oltre la fine).
+  // ⚠️ Legge `limit`/`offset` dei FILTRI: e' il contratto di chi usa questo BB
+  //    — anche gli endpoint a `page`/`page_size` li tengono cosi' e li
+  //    convertono in `buildParams`. Una lista senza `offset` non arretra.
+  // ⛔ Una rilettura sola, mai un ciclo: la seconda risposta si scrive com'e'.
+  function offsetDiRientro() {
+    const { offset, limit } = filters.value
+    if (!(offset > 0) || items.value.length > 0) return null
+    const totale = totalRecords.value
+    if (!(totale > 0) || !(limit > 0)) return 0
+    const ultima = Math.floor((totale - 1) / limit) * limit
+    return ultima < offset ? ultima : null
+  }
+
+  async function leggiPagina({ silent = false } = {}) {
     if (sospesa.value) return false
     const f = filters.value
     const searchTerm = termineRicerca(f)

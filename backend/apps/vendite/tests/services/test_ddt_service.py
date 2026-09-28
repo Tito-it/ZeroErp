@@ -320,7 +320,7 @@ class DdtEliminaTests(SimpleTestCase):
     def test_elimina_ddt_con_righe_rifiutato(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.list_righe.return_value = [{"id": 1}]
+        repo.count_righe.return_value = 1
         with self.assertRaises(ServiceError) as cm:
             ddt_service.elimina_ddt(7)
         self.assertEqual(cm.exception.code, "E_DDT_STATO_TRANSIZIONE")
@@ -330,7 +330,7 @@ class DdtEliminaTests(SimpleTestCase):
     def test_elimina_ddt_bozza_orfana_ok(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.list_righe.return_value = []
+        repo.count_righe.return_value = 0
         repo.delete_ddt.return_value = True
         out = ddt_service.elimina_ddt(7)
         self.assertTrue(out["deleted"])

@@ -18,6 +18,7 @@ from datetime import date
 from drf_spectacular.utils import OpenApiParameter, inline_serializer
 from rest_framework import serializers
 
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.openapi_params import descrizione_order_by
 
 AREA = "magazzino"
@@ -44,7 +45,7 @@ def params_lista(colonne: dict[str, str], nota: str) -> list[OpenApiParameter]:
         ),
         OpenApiParameter(
             name="limit", type=int, location=OpenApiParameter.QUERY, required=False,
-            description="Righe per pagina (default 25, max 200).",
+            description=f"Righe per pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
         ),
         OpenApiParameter(
             name="offset", type=int, location=OpenApiParameter.QUERY, required=False,

@@ -59,6 +59,7 @@ Convenzioni identiche ad api_ordini.md (envelope, lista configurabile
   `{stato_codice}` (matrice `config.transizioni_stati_ddt`).
 - Push `POST /api/v1/vendite/ddt/<id>/push/` — push singolo a commessa
   (sorgente `DDT_VENDITA`, fatturazione differita).
+- Lista configurabile delle righe `GET /<id>/righe/lista/` (+ `export/`): BB condiviso, vedi [api_righe_documento.md](api_righe_documento.md).
 - Righe `GET/POST /<id>/righe/`, `PATCH/DELETE /<id>/righe/<riga_id>/` — solo
   DRAFT; `prezzo_unitario`/`iva_id` nullable (DDT anche solo di trasporto).
   ⭐ **Il DDT è l'unico documento dove il prezzo mancante non è un errore**:

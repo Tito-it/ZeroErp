@@ -36,6 +36,8 @@ from apps.vendite.api.views_ordini import (
     ApiOrdineRigaDetail,
     ApiOrdineRigaPreviewComponenti,
     ApiOrdineRighe,
+    ApiOrdineRigheListaExportView,
+    ApiOrdineRigheListaView,
     ApiOrdiniExportView,
     ApiOrdiniList,
 )
@@ -97,6 +99,12 @@ urlpatterns = [
     # Righe
     path("<int:ordine_id>/righe/", ApiOrdineRighe.as_view(),
          name="vendite-ordine-righe-list"),
+    # Righe: la LISTA configurabile (pagina + export). `…/righe/` sopra resta
+    # la lettura completa e la creazione (brief-db-liste-righe-documento).
+    path("<int:ordine_id>/righe/lista/", ApiOrdineRigheListaView.as_view(),
+         name="vendite-ordine-righe-lista"),
+    path("<int:ordine_id>/righe/lista/export/", ApiOrdineRigheListaExportView.as_view(),
+         name="vendite-ordine-righe-lista-export"),
     path("<int:ordine_id>/righe/preview-componenti/",
          ApiOrdineRigaPreviewComponenti.as_view(),
          name="vendite-ordine-righe-preview-componenti"),

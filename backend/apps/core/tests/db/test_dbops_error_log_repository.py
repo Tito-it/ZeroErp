@@ -96,14 +96,23 @@ class ErrorLogRepositoryComposizioneTests(SimpleTestCase):
             area="vendite", codice="E_X", tx_id="123e4567-e89b-12d3-a456-426614174000",
             data_da="2026-09-01", data_a="2026-09-19", limit=25, offset=50,
         )
-        sql, params = cursor.execute.call_args.args
-        self.assertNotIn("vendite", sql)
-        self.assertNotIn("E_X", sql)
-        self.assertEqual(params, [
+        filtri = [
             "vendite", "vendite", None, None, "E_X", "E_X",
             "123e4567-e89b-12d3-a456-426614174000", "123e4567-e89b-12d3-a456-426614174000",
-            "2026-09-01", "2026-09-01", "2026-09-19", "2026-09-19", 25, 50,
-        ])
+            "2026-09-01", "2026-09-01", "2026-09-19", "2026-09-19",
+        ]
+        # La PAGINA e' la prima execute.
+        sql, params = cursor.execute.call_args_list[0].args
+        self.assertNotIn("vendite", sql)
+        self.assertNotIn("E_X", sql)
+        self.assertEqual(params, [*filtri, 25, 50])
+        # ⭐ Offset 50 e pagina vuota: il totale lo dice il conteggio di ripiego
+        #    (2026-09-28), con lo stesso WHERE e senza LIMIT/OFFSET. Senza, oltre
+        #    l'ultima pagina il totale usciva 0 e la lista non sapeva tornare.
+        sql_conto, params_conto = cursor.execute.call_args_list[1].args
+        self.assertIn("SELECT COUNT(*) FROM dbops.error_log e", sql_conto)
+        self.assertNotIn("LIMIT", sql_conto)
+        self.assertEqual(params_conto, filtri)
         # La whitelist e' chiavata sui campi FISICI del catalogo.
         self.assertEqual(
             set(ERROR_LOG_SORT_COLUMNS),

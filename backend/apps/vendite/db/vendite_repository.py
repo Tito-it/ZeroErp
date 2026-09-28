@@ -17,8 +17,9 @@ from typing import Any
 
 from django.db import DatabaseError, connection, transaction
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
-    LIST_MAX_LIMIT,
+    limiti_pagina,
     RicercaFull,
     add_ricerca_full_condition,
     call_jsonb_fn,
@@ -89,7 +90,7 @@ logger = logging.getLogger(__name__)
 # identificativo fiscale e stati. Prima ne erano ordinabili 3 su 11, cioe' la
 # lista sarebbe nata con cinque colonne di nucleo rotte.
 # Il tetto delle righe esportabili delle liste del DRAWER LOTTO (documenti del
-# lotto e documenti presi in carico). Il tetto di PAGINA (`LIST_MAX_LIMIT`, 200)
+# lotto e documenti presi in carico). Il tetto di PAGINA (`MAX_LIMIT`)
 # resta dov'e': sono due limiti diversi per due usi diversi, e confonderli
 # significa o una pagina enorme o un file troncato.
 #
@@ -1069,17 +1070,16 @@ class VenditeRepository:
         order_dir: str | None = None,
         limit: int,
         offset: int,
-        max_limit: int = LIST_MAX_LIMIT,
+        max_limit: int = MAX_LIMIT,
         solo_recuperi_mese: bool = False,
         includi_annullati: bool = False,
     ) -> tuple[list[LottoListRow], int]:
-        # Il cap standard (LIST_MAX_LIMIT, fonte unica in core/db/_helpers)
+        # Il cap standard (MAX_LIMIT, fonte unica in core/db/_helpers)
         # protegge la lista a video; l'export lo alza esplicitamente (fino a
         # EXPORT_MAX_ROWS + 1, per poter *rilevare* il superamento del limite
         # invece di troncare in silenzio). Resta un cap passato dal chiamante:
         # nessun percorso senza tetto.
-        safe_limit = max(1, min(int(limit), max_limit))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset, tetto=max_limit)
 
         where_clause, params = self._lotti_where(
             competenza_mese=competenza_mese,
@@ -3498,13 +3498,12 @@ class VenditeRepository:
         max_rows: int | None = None,
     ) -> tuple[list[LottoFattureRow], int]:
         # ⚠️ DUE TETTI, e la differenza e' voluta: la PAGINA si ferma a
-        # `LIST_MAX_LIMIT` (200), l'EXPORT salta la paginazione e arriva al tetto
+        # `MAX_LIMIT`, l'EXPORT salta la paginazione e arriva al tetto
         # dell'esportazione. Senza `max_rows` un file di 3.000 righe uscirebbe
         # troncato a 200 senza dirlo — e un export troncato in silenzio somiglia
         # in tutto a un export completo.
-        tetto = _LOTTO_EXPORT_MAX_ROWS if max_rows else LIST_MAX_LIMIT
-        safe_limit = max(1, min(int(max_rows or limit), tetto))
-        safe_offset = max(0, int(offset))
+        tetto = _LOTTO_EXPORT_MAX_ROWS if max_rows else MAX_LIMIT
+        safe_limit, safe_offset = limiti_pagina(max_rows or limit, offset, tetto=tetto)
 
         # Ordinamento: solo valori dalla whitelist entrano nella query — BB
         # `sql_order_clause` (NULL come valore minimo; tiebreak `fattura_id`
@@ -3820,10 +3819,9 @@ class VenditeRepository:
         max_rows: int | None = None,
     ) -> tuple[list[LottoGruppoRow], int]:
         # Due tetti, come sulle fatture del lotto: la PAGINA si ferma a
-        # `LIST_MAX_LIMIT`, l'EXPORT salta la paginazione e arriva al suo.
-        tetto = _LOTTO_EXPORT_MAX_ROWS if max_rows else LIST_MAX_LIMIT
-        safe_limit = max(1, min(int(max_rows or limit), tetto))
-        safe_offset = max(0, int(offset))
+        # `MAX_LIMIT`, l'EXPORT salta la paginazione e arriva al suo.
+        tetto = _LOTTO_EXPORT_MAX_ROWS if max_rows else MAX_LIMIT
+        safe_limit, safe_offset = limiti_pagina(max_rows or limit, offset, tetto=tetto)
 
         lotto_conditions: list[str] = ["l.id = %s"]
         params: list[Any] = [lotto_id]
@@ -5371,8 +5369,7 @@ class VenditeRepository:
         con_conteggi: bool = True,
         con_entita_display: bool = True,
     ) -> tuple[list[dict[str, Any]], int, int, int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
         # ⭐ L'ORDINE DI DEFAULT E' IL TEMPO, dal piu' recente
         #    (`GIORNALE_ORDINE_DEFAULT`, dal 2026-09-27: e' il preset della lista
         #    a catalogo, la stessa per i tre lettori). La gravita' resta a un

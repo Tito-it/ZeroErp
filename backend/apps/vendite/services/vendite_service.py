@@ -15,6 +15,7 @@ from datetime import date
 from decimal import Decimal
 
 
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.payload_validators import paginated_envelope
 from apps.core.services.payload_helpers import translate_db_errors
 from apps.core.services.capability_blob import capabilities_o_vuoto
@@ -204,7 +205,7 @@ def fn_list_lotti(
     order_by: str | None = None,
     order_dir: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
     solo_recuperi_mese: bool = False,
     includi_annullati: bool = False,
 ) -> dict[str, object]:
@@ -446,7 +447,7 @@ def fn_list_lotto_fatture(
     sort_by: str = "fattura_id",
     sort_dir: str = "asc",
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
     max_rows: int | None = None,
 ) -> dict[str, object]:
     # ⭐ L'helper condiviso, non un `if` scritto qui: l'export SALTA la
@@ -499,7 +500,7 @@ def fn_list_lotto_gruppi(
     order_by: str | None = None,
     order_dir: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
     max_rows: int | None = None,
 ) -> dict[str, object]:
     # ⚠️ Il vocabolario del DOCUMENTO, non quello comune: questa lista legge
@@ -656,7 +657,7 @@ def fn_dash_aperto_documenti(
     order_by: str | None = None,
     order_dir: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
     # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
     # in una volta, paginazione saltata. Assente = lista paginata di sempre.
     max_rows: int | None = None,
@@ -1073,7 +1074,7 @@ def fn_dash_competenza_attivita(
     order_by: str | None = None,
     order_dir: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
 ) -> dict[str, object]:
     _validate_enum(
         stadio,
@@ -1127,7 +1128,7 @@ def fn_dash_competenza_commesse(
     order_by: str | None = None,
     order_dir: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
     # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
     # in una volta, paginazione saltata. Assente = lista paginata di sempre.
     max_rows: int | None = None,
@@ -1278,7 +1279,7 @@ def fn_dash_competenza_residui(
     order_by: str | None = None,
     order_dir: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
     # Export (BB `build_dash_export_response`), come le liste sorelle.
     max_rows: int | None = None,
 ) -> dict[str, object]:
@@ -1384,7 +1385,7 @@ def fn_dash_competenza_gruppi(
     order_by: str | None = None,
     order_dir: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
     # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
     # in una volta, paginazione saltata. Assente = lista paginata di sempre.
     max_rows: int | None = None,
@@ -1573,7 +1574,7 @@ def fn_dash_backlog_documenti(
     order_by: str | None = None,
     order_dir: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
     # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
     # in una volta, paginazione saltata. Assente = lista paginata di sempre.
     max_rows: int | None = None,
@@ -1636,7 +1637,7 @@ def fn_dash_competenza_errori(
     order_by: str | None = None,
     order_dir: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
     # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
     # in una volta, paginazione saltata. Assente = lista paginata di sempre.
     max_rows: int | None = None,
@@ -2299,7 +2300,7 @@ def fn_fondi_fattura_da_decidere(
     order_by: str | None = None,
     order_dir: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
     # Export: valorizzato = perimetro intero in una volta, paginazione saltata
     # (BB `_paging_o_export`). Assente = la lista paginata di sempre.
     max_rows: int | None = None,
@@ -2521,7 +2522,7 @@ def list_fatture_rows(
     offset: int,
     order_by: str = "data",
     order_dir: str = "desc",
-    max_limit: int = 200,
+    max_limit: int = MAX_LIMIT,
 ) -> tuple[list[object], int]:
     return FattureRepository().list_fatture(
         stato_codice=stato_codice,

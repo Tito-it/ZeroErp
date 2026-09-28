@@ -472,10 +472,19 @@ niente da toccare. *`filterDefaults` risponde a due domande — «cosa mando» e
 
 ### Paginazione
 
-| Parametro   | Default | Max |
-| ----------- | ------- | --- |
-| `page`      | 1       | —   |
-| `page_size` | 50      | 200 |
+| Parametro                | Default                | Max                 |
+| ------------------------ | ---------------------- | ------------------- |
+| `page`                   | 1                      | —                   |
+| `page_size` / `limit`    | `DEFAULT_LIMIT` (25)   | `MAX_LIMIT` (200)   |
+
+⭐ **Una sede sola: `apps.core.api.constants`** (2026-09-28). Il default e'
+quello che l'operatore vede a video (`ui.lista_preset.pagina_dimensione`,
+`PAGINATION.DEFAULT_ROWS`), cosi' una chiamata senza `limit` risponde come la
+lista. Nei repository il clamp e' il BB `limiti_pagina(limit, offset,
+tetto=MAX_LIMIT)`. ⛔ Mai il numero scritto a mano, nemmeno nella descrizione
+OpenAPI (`f"... (default {DEFAULT_LIMIT}, max {MAX_LIMIT})"`): lo presidia
+`apps/core/tests/test_paginazione_fonte_unica.py`, con le eccezioni dichiarate
+(liste di eventi a 100, autocomplete, batch).
 
 Risposta paginata:
 
@@ -514,7 +523,14 @@ dalle righe che ritorna:
 * **paginato** → `COUNT(*) OVER ()` nella stessa query, tramite il building
   block `fetch_paged_with_total` (`apps/core/db/_helpers.py`), che fa pagina e
   totale in **una** valutazione e ha il fallback per il rientro su una pagina
-  stantia;
+  stantia. ⭐ Dal 2026-09-28 il ripiego c'e' **sempre**: se il chiamante non
+  passa un `fallback_count_sql` suo, il BB rilegge la stessa query con
+  `LIMIT 1 OFFSET 0` (serve che finisca con `LIMIT %s OFFSET %s` e abbia
+  parametri posizionali, e lo verifica a ogni chiamata). `offset` e'
+  obbligatorio. ⛔ Una `COUNT(*) OVER ()` letta a mano (`extract_paginated`,
+  `rows[0][n]`) oltre l'ultima pagina dice totale 0, e la lista a video non sa
+  tornare indietro (`useListaEmptyStateFetch` arretra da solo, ma solo su un
+  totale vero): si passa dal BB;
 * **non paginato** → una `SELECT count(*)` **sua**, con lo **stesso perimetro**
   della lista.
 

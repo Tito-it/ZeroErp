@@ -14,6 +14,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    limiti_pagina,
     RicercaFull,
     add_ricerca_full_condition,
     row_to_dict,
@@ -117,8 +118,7 @@ class TipiRuoloTipiIndirizzoRepository:
             default=_ORDER_COLS["tipo_ruolo_descrizione"],
             tiebreak="trti.id",
         )
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
 
         conditions: list[str] = []
         params: list[Any] = []

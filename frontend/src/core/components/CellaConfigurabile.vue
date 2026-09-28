@@ -62,10 +62,19 @@ function formatValue(value, formato, tipoDato, data = null) {
       return displayTimestamp(value)
     case 'currency_eur':
       return formatCurrency(value)
+    // Il prezzo UNITARIO a 6 decimali dei listini (2026-09-28, righe dei
+    // documenti di vendita): l'importo resta `currency_eur`. Gemello
+    // dell'export: `locale_formatters.format_number`.
+    case 'currency_eur_6':
+      return formatCurrency(value, { minimumFractionDigits: 6, maximumFractionDigits: 6 })
     case 'number':
       return formatNumber(value)
+    // ⭐ Il valore e' GIA' in percentuale (10 = 10%), come lo salva il modello
+    //    (`sconto_percentuale`). E' questa la sede del significato: l'export
+    //    (`locale_formatters`) lo leggeva come frazione fino al 2026-09-28 —
+    //    lo stesso formato diceva due cose (decisione di Tid: vale questa).
     case 'percent_2':
-      return formatNumber(value, { minimumFractionDigits: 2 }) + ' %'
+      return formatNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' %'
     default:
       return String(value)
   }

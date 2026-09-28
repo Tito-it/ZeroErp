@@ -26,6 +26,7 @@ def _parse_jsonb_field(row: dict[str, Any], field: str) -> None:
 
 from apps.core.services.email_constants import AMBITO_SISTEMA
 from apps.core.db._helpers import (
+    fetch_paged_with_total,
     RicercaFull,
     add_ricerca_full_condition,
     fetchone_scalar,
@@ -148,15 +149,7 @@ class EmailRepository:
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params.extend([limit, offset])
-
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            rows = rows_to_list(cursor)
-
-        total = rows[0]["total_count"] if rows else 0
-        for r in rows:
-            r.pop("total_count", None)
-        return rows, total
+        return fetch_paged_with_total(sql, params, offset=offset)
 
     # Scopo: Dettaglio singolo account per ID con password crittografata (uso interno service).
     def get_account_with_password(self, account_id: int) -> dict[str, Any] | None:
@@ -365,14 +358,8 @@ class EmailRepository:
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params.extend([limit, offset])
-
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            rows = rows_to_list(cursor)
-
-        total = rows[0]["total_count"] if rows else 0
+        rows, total = fetch_paged_with_total(sql, params, offset=offset)
         for r in rows:
-            r.pop("total_count", None)
             _parse_jsonb_field(r, "variabili_disponibili")
         return rows, total
 
@@ -694,15 +681,7 @@ class EmailRepository:
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params.extend([limit, offset])
-
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            rows = rows_to_list(cursor)
-
-        total = rows[0]["total_count"] if rows else 0
-        for r in rows:
-            r.pop("total_count", None)
-        return rows, total
+        return fetch_paged_with_total(sql, params, offset=offset)
 
     # Scopo: Aggiorna email_log_id dopo invio da outbox.
     def update_log_outbox_link(self, log_id: int, email_outbox_id: int) -> None:
@@ -843,15 +822,7 @@ class EmailRepository:
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params.extend([limit, offset])
-
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            rows = rows_to_list(cursor)
-
-        total = rows[0]["total_count"] if rows else 0
-        for r in rows:
-            r.pop("total_count", None)
-        return rows, total
+        return fetch_paged_with_total(sql, params, offset=offset)
 
     _OUTBOX_UPDATE_COLS = frozenset({
         "oggetto", "corpo_html", "corpo_testo", "destinatario", "destinatari_cc",

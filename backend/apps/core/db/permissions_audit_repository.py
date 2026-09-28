@@ -11,7 +11,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from django.db import connection
+from apps.core.api.constants import DEFAULT_LIMIT
+from apps.core.db._helpers import fetch_paged_with_total
 
 
 # Sub-query "indiretta" per filtrare profili_accesso_aree/_azioni storici per
@@ -92,7 +93,7 @@ class PermissionsAuditRepository:
         data_a: str | None = None,
         tabella: str | None = None,
         page: int = 1,
-        page_size: int = 50,
+        page_size: int = DEFAULT_LIMIT,
     ) -> dict[str, Any]:
         unions: list[str] = []
         params: list[Any] = []
@@ -154,24 +155,19 @@ class PermissionsAuditRepository:
         sql += "LIMIT %s OFFSET %s"
         params.extend([page_size, offset])
 
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            rows = cursor.fetchall()
-
-        if not rows:
-            return self._empty_result(page, page_size)
-
-        total_count = rows[0][6]
+        # ⚠️ Pagina oltre l'ultima: il totale vero arriva comunque (BB), e
+        #    l'envelope lo dice invece di dichiarare «nessun evento».
+        rows, total_count = fetch_paged_with_total(sql, params, offset=offset)
         events = [
             {
-                "tabella": row[0],
-                "timestamp": row[1].isoformat() if row[1] else None,
-                "tipo_operazione": self._OP_LABELS.get(row[2], str(row[2])),
-                "user_modifica": row[3],
-                "snapshot": row[4],
-                "tx_id": row[5],
+                "tabella": r["tabella"],
+                "timestamp": r["valid_from"].isoformat() if r["valid_from"] else None,
+                "tipo_operazione": self._OP_LABELS.get(r["tipo_operazione"], str(r["tipo_operazione"])),
+                "user_modifica": r["user_insert"],
+                "snapshot": r["snapshot"],
+                "tx_id": r["tx_id"],
             }
-            for row in rows
+            for r in rows
         ]
 
         return {

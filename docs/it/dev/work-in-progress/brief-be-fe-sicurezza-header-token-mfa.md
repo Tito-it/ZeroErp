@@ -412,17 +412,44 @@ sono nel commento di `ruff.toml`; in breve:
   (`views.py` ×2, `payload_validators.py`), ora `from None`. Quindi la regola **resta accesa**
   invece di finire in `ignore`.
 
-Emerse nel giro, **non** fatte (decisione di Tid):
+Emerse nel giro, rimandate il 2026-09-28 e ✅ **fatte lo stesso giorno** (richiesta di Tid):
 
-1. **Regola del 2 su `row_to_dict` / `rows_to_list`** (`core/db/_helpers.py`): 32 conversioni
-   riga→dizionario riscritte a mano fuori dai test (`amm_software`, `ui_admin`, `auth`,
+1. ✅ **Regola del 2 su `row_to_dict` / `rows_to_list`** (`core/db/_helpers.py`): ritirate le 32
+   conversioni riga→dizionario scritte a mano in 12 file (`amm_software`, `ui_admin`, `auth`,
    `portale`, `session_audit`, `parameter`, `lookup`, `config_crud`, `pratiche`,
-   `approvazioni_prezzo`, `send_pending_emails`). Il BB c'è: le copie andrebbero ritirate. Non
-   sono tutte identiche (alcune leggono `fetchone` dopo altra logica, una normalizza il JSONB),
-   quindi è un giro a sé, dominio per dominio.
-2. **`ErrorManager.raise_error` dichiarata `-> NoReturn`**: oggi ritorna `None`, ed è per questo
-   che dopo ogni chiamata serve una riga `raise AssertionError("unreachable")` (19 nel codice
-   applicativo). Con `NoReturn` il type checker sa che non si torna, e quelle righe si tolgono.
+   `approvazioni_prezzo`, `send_pending_emails`). Le due forme ricorrenti sono diventate le
+   chiamate ai BB; le varianti a mano (conteggio `total_count` da togliere, JSONB normalizzato,
+   `require` fra lettura e conversione, guardia su `cursor.description`) conservano il loro
+   passo in più. ⚠️ Una sola resta fuori, ed è un'altra operazione: `vendite_repository` (fondi
+   da decidere) mappa tuple già estratte da `_query_paged_view`, con `strict=False` dichiarato
+   per la colonna in coda. Due test avevano un `description` finto fatto di tuple (senza
+   `.name`, che psycopg ha): ora `SimpleNamespace(name=...)`. Provato anche sul DB vero
+   (`ZEROERP_TEST_DB_E2E=1`, suite intera).
+2. ✅ **`ErrorManager.raise_error` dichiarata `-> NoReturn`**, e con lei
+   `listini_service._translate_integrity_error` (chiude con `map_integrity_error`, già
+   `NoReturn`). Tolte le **21** righe `raise AssertionError("unreachable"/"irraggiungibile")`
+   (le 19 contate più una dentro `ErrorManager` stesso e una in `plafond_fattura_service`). Due
+   `ErrorManager.require(False, ...)` — un «solleva sempre» mascherato da controllo — sono ora
+   `raise_error`, quello nell'`except` con `cause=exc`. Presidio: `test_error_manager` (ogni
+   ramo solleva; `NoReturn` dichiarato sulle tre funzioni).
+   Stessa operazione sull'altra forma della riga, il `raise` nudo (`raise  # unreachable, per
+   type checker`): 66 nel codice applicativo, classificati per la chiamata che li precede.
+   ✅ Tolti i **57** che seguono `ErrorManager.raise_error` (`documenti` 53, `parameter_service`
+   2, `amm_software_repository` 1, `pipeline_runner` 1): dipendevano solo da `raise_error`, già
+   `NoReturn`. ⚠️ Il primo conteggio li aveva mancati perché cercava solo la forma
+   `AssertionError(...)`: una ricerca per **testo** vede una forma, quella per **significato**
+   («riga dopo una chiamata che solleva sempre») le vede tutte.
+   ⏳ **Restano, un giro a sé**:
+   * 9 `raise` nudi dopo traduttori d'errore **locali** non dichiarati `NoReturn`:
+     `_raise_known_db_error` (`pratiche_service` ×6, `definizioni_service` ×1) e
+     `_translate_nota_integrity_error` (`catalogo_service` ×2). Si tolgono dichiarando
+     `NoReturn` il traduttore, dopo averne provato che solleva su ogni ramo;
+   * 4 `ErrorManager.require(False, ...)`, lo stesso «solleva sempre» mascherato da controllo
+     convertito sopra: `soggetti_service` ×2, `amm_software_service` ×1, `auth_helpers` ×1 →
+     `raise_error` (con `cause=exc` se dentro un `except`).
+
+   Non c'è un type checker in CI: `NoReturn` oggi lo legge l'editor, e un test come
+   `test_error_manager` ne prova la verità.
 
 ---
 

@@ -32,6 +32,7 @@ from typing import Any
 
 from django.db import transaction
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
 from apps.core.services.fan_out import FanOutRunLogger, run_fan_out
@@ -159,7 +160,7 @@ def list_resi_rows(
     offset: int,
     order_by: str = "data",
     order_dir: str = "desc",
-    max_limit: int = 200,
+    max_limit: int = MAX_LIMIT,
 ) -> tuple[list[Any], int]:
     repo = ResiRepository()
     return repo.list_resi(
@@ -229,6 +230,27 @@ def list_righe(reso_id: int) -> list[dict[str, Any]]:
     return repo.list_righe(reso_id)
 
 
+# Scopo: Una PAGINA delle righe del reso, per la lista configurabile
+#        (`GET …/righe/lista/`): ricerca, ordinamento e pagina. Legge prima la
+#        testata come `list_righe`. Ritorna `(righe, totale)`.
+def list_righe_pagina(
+    reso_id: int,
+    *,
+    search: str | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    limit: int,
+    offset: int = 0,
+    max_limit: int = MAX_LIMIT,
+) -> tuple[list[dict[str, Any]], int]:
+    repo = ResiRepository()
+    _get_testata_or_raise(repo, reso_id, op="list_righe_pagina")
+    return repo.list_righe_pagina(
+        reso_id, search=search, order_by=order_by, order_dir=order_dir,
+        limit=limit, offset=offset, max_limit=max_limit,
+    )
+
+
 # Scopo: Righe del DDT sorgente con gia'-reso/residuo rendibile (pannello FE
 #        "crea reso da DDT" nel drawer DDT). Solo lettura: il guard over-return
 #        resta il trigger DB a20 (E_RESO_QTA_SUPERA_CONSEGNATO).
@@ -294,7 +316,7 @@ def list_da_accreditare(
     offset: int,
     order_by: str = "data",
     order_dir: str = "desc",
-    max_limit: int = 200,
+    max_limit: int = MAX_LIMIT,
 ) -> tuple[list[Any], int]:
     _valida_filtro_documento(
         ddt_id=ddt_id,
@@ -345,7 +367,7 @@ def list_da_riconsegnare(
     offset: int,
     order_by: str = "data",
     order_dir: str = "desc",
-    max_limit: int = 200,
+    max_limit: int = MAX_LIMIT,
 ) -> tuple[list[Any], int]:
     _valida_filtro_documento(
         ddt_id=ddt_id,
@@ -942,7 +964,6 @@ def _parse_data_iso(value: Any, *, op: str) -> date | None:
             detail=f"data={value!r}",
             context={"op": f"{_FN}.{op}"},
         )
-        raise AssertionError("unreachable")  # pragma: no cover  # noqa: B904 — riga morta: raise_error ha gia' sollevato, il `from` non porterebbe niente
 
 
 # Scopo: Valida il body `righe` della ri-spedizione parziale. Contratto:

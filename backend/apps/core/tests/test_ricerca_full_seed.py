@@ -184,6 +184,12 @@ _RICERCHE: tuple[tuple[str, object], ...] = (
     ("config.comuni", _da_costante("apps.anagrafiche.db.geo_repository", "_RICERCA_COMUNI")),
     ("config.codici_postali", _da_costante("apps.anagrafiche.db.geo_repository", "_RICERCA_CODICI_POSTALI")),
     ("config.toponomastica", _da_costante("apps.anagrafiche.db.geo_repository", "_RICERCA_TOPONOMASTICA")),
+    # Righe dei documenti di vendita (2026-09-28, brief-db-liste-righe-documento
+    # lotto A): la dichiarazione passata al BB dal mixin `RigheDocumentoRepositoryMixin`.
+    ("vendite.preventivo_righe", _da_costante(_V + "preventivi_repository", "_RICERCA_RIGHE")),
+    ("vendite.ordine_righe", _da_costante(_V + "ordini_repository", "_RICERCA_RIGHE")),
+    ("vendite.ddt_righe", _da_costante(_V + "ddt_repository", "_RICERCA_RIGHE")),
+    ("vendite.reso_righe", _da_costante(_V + "resi_repository", "_RICERCA_RIGHE")),
 )
 
 # Liste con colonne `ricercabile_full = t` la cui ricerca e' ancora scritta a

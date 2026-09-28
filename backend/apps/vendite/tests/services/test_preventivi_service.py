@@ -341,7 +341,7 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo.get_preventivo.return_value = {
             "id": 1, "stato_codice_interno": "DRAFT",
         }
-        self.mock_repo.list_righe.return_value = []
+        self.mock_repo.count_righe.return_value = 0
         self.mock_repo.list_pratiche.return_value = []
         self.mock_repo.delete_preventivo.return_value = True
 
@@ -379,7 +379,7 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo.get_preventivo.return_value = {
             "id": 1, "stato_codice_interno": "DRAFT",
         }
-        self.mock_repo.list_righe.return_value = [{"id": 10}]
+        self.mock_repo.count_righe.return_value = 1
         with self.assertRaises(ServiceError) as ctx:
             elimina_preventivo(1)
         self.assertEqual(ctx.exception.code, "E_PREV_STATO_NON_MODIFICABILE")
@@ -674,7 +674,7 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo.get_preventivo.return_value = {
             "id": 1, "stato_codice_interno": "DRAFT",
         }
-        self.mock_repo.list_righe.return_value = []
+        self.mock_repo.count_righe.return_value = 0
         self.mock_repo.list_pratiche.return_value = [{"id": 50}]
         with self.assertRaises(ServiceError) as ctx:
             elimina_preventivo(1)
@@ -1781,7 +1781,7 @@ class TestPreventiviService(unittest.TestCase):
             "billing_account_id": 10, "utility_id": 3,
         }
         # righe_count da una COUNT sulle righe attive, senza caricare l'elenco.
-        self.mock_repo.count_righe_attive.return_value = 2
+        self.mock_repo.count_righe.return_value = 2
         self.mock_repo.list_indirizzi.return_value = []
         self.mock_repo.get_capabilities.return_value = {
             "stato_codice": "ACCETTATO",
@@ -2458,7 +2458,7 @@ class TestPreventiviService(unittest.TestCase):
             "billing_account_id": 10, "utility_id": 3,
         }
         self.mock_repo.list_indirizzi.return_value = []
-        self.mock_repo.count_righe_attive.return_value = 5
+        self.mock_repo.count_righe.return_value = 5
         blob = self._blob_draft_prezzi_non_autorizzati()
         self.mock_repo.get_capabilities.return_value = blob
 
@@ -2485,7 +2485,7 @@ class TestPreventiviService(unittest.TestCase):
             "billing_account_id": 10, "utility_id": 3,
         }
         self.mock_repo.list_indirizzi.return_value = []
-        self.mock_repo.count_righe_attive.return_value = 5
+        self.mock_repo.count_righe.return_value = 5
         self.mock_repo.get_capabilities.return_value = self._blob_draft_prezzi_non_autorizzati()
 
         out = get_preventivo(42)
@@ -2827,7 +2827,9 @@ class TestCoerceMetaToDict(unittest.TestCase):
 class TestPreventiviRepository(unittest.TestCase):
     # Scopo: Verifica che la lettura righe escluda le righe soft-delete
     #        (`attivo=false`), evitando che la UI mostri righe gia' eliminate.
-    @patch("apps.vendite.db.preventivi_repository.connection")
+    # ⚠️ La query nasce nel BB `RigheDocumentoRepositoryMixin` (2026-09-28):
+    #    la connessione si sostituisce la', non nel modulo del repository.
+    @patch("apps.vendite.db._righe_repo_mixin.connection")
     def test_repository_list_righe_filtra_solo_attive(self, mock_connection):
         from apps.vendite.db.preventivi_repository import PreventiviRepository
 

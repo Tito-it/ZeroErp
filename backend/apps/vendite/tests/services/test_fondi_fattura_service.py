@@ -41,6 +41,7 @@ from apps.core.tests.db_e2e import richiedi_db_provvisto
 from apps.vendite.db.vendite_repository import FONDI_DA_DECIDERE_MOTIVI
 from apps.vendite.services import vendite_service
 from apps.vendite.services.vendite_service import fn_fondi_fattura_da_decidere
+from apps.core.api.constants import DEFAULT_LIMIT
 
 # Riga del ramo NON_PIU_CAPIENTE: e' l'unico dei quattro motivi in cui le
 # colonne dell'ATTO sono valorizzate — negli altri tre l'atto non esiste ancora.
@@ -67,7 +68,7 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
         data = fn_fondi_fattura_da_decidere(motivo="NON_PIU_CAPIENTE")
         self.assertEqual(data["count"], 1)
         self.assertEqual(data["page"], 1)
-        self.assertEqual(data["page_size"], 50)
+        self.assertEqual(data["page_size"], DEFAULT_LIMIT)
         self.assertEqual(data["total_pages"], 1)
         self.assertEqual(data["results"], [_ROW_NON_PIU_CAPIENTE])
         self.assertEqual(mock_repo.call_args.kwargs["motivo"], "NON_PIU_CAPIENTE")

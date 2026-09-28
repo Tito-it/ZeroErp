@@ -3,7 +3,6 @@
   "_regola": ".codex/AGENTS.md §«Regola zero della lista»",
   "standard": {
     "core/components/ListaConfigurabile.vue": "E' IL building block della regola zero: la DataTable la monta lui, per tutte le liste.",
-    "core/components/RigheMasterDetailTable.vue": "Eccezione NOMINATA dalla regola zero: le righe di un documento dentro il suo master.",
     "core/components/details/SearchDetailTable.vue": "Eccezione NOMINATA dalla regola zero: l'altra meta' del master-detail (dettaglio espandibile)."
   },
   "grezze": [

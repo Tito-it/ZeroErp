@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: `ErrorManager.raise_error` solleva SEMPRE ed e' dichiarato `NoReturn`
+#        (dal 2026-09-28): e' la premessa per cui dopo una chiamata non si
+#        scrive piu' una riga `raise AssertionError("unreachable")`.
+# Note: se un giorno `raise_error` potesse tornare, il codice che lo chiama
+#       proseguirebbe in silenzio oltre un errore: qui ogni ramo si prova.
+# ------------------------------------------------------------
+
+"""
+Indice test eseguiti:
+1) RaiseErrorTests.test_solleva_service_error_col_codice
+2) RaiseErrorTests.test_con_cause_la_concatena
+3) RaiseErrorTests.test_con_log_to_db_solleva_dopo_aver_scritto
+4) RaiseErrorTests.test_dichiarato_noreturn
+5) RaiseErrorTests.test_i_traduttori_che_lo_usano_per_ultimi_sono_noreturn
+"""
+
+import typing
+from unittest.mock import patch
+
+from django.test import SimpleTestCase
+
+from apps.core.services.error_manager import ErrorManager
+from apps.core.services.service_errors import ServiceError
+
+
+class RaiseErrorTests(SimpleTestCase):
+
+    def test_solleva_service_error_col_codice(self):
+        with self.assertRaises(ServiceError) as ctx:
+            ErrorManager.raise_error(code="E_PROVA", message="m")
+        self.assertEqual(ctx.exception.code, "E_PROVA")
+
+    def test_con_cause_la_concatena(self):
+        causa = ValueError("origine")
+        with self.assertRaises(ServiceError) as ctx:
+            ErrorManager.raise_error(code="E_PROVA", message="m", cause=causa)
+        self.assertIs(ctx.exception.__cause__, causa)
+
+    # Il ramo che scrive sul diario tecnico solleva anche lui, dopo la scrittura.
+    @patch.object(ErrorManager, "log_error_only")
+    def test_con_log_to_db_solleva_dopo_aver_scritto(self, mock_log):
+        with self.assertRaises(ServiceError):
+            ErrorManager.raise_error(code="E_PROVA", message="m", log_to_db=True)
+        mock_log.assert_called_once()
+
+    def test_dichiarato_noreturn(self):
+        self.assertIs(typing.get_type_hints(ErrorManager.raise_error)["return"], typing.NoReturn)
+
+    # Chi chiude con `raise_error`/`map_integrity_error` e non ha altro dopo
+    # dichiara lo stesso contratto: i chiamanti non scrivono l'«irraggiungibile».
+    def test_i_traduttori_che_lo_usano_per_ultimi_sono_noreturn(self):
+        from apps.core.services.payload_helpers import map_integrity_error
+        from apps.vendite.services.listini_service import _translate_integrity_error
+
+        for funzione in (map_integrity_error, _translate_integrity_error):
+            with self.subTest(funzione=funzione.__name__):
+                self.assertIs(typing.get_type_hints(funzione)["return"], typing.NoReturn)

@@ -10,6 +10,7 @@ from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.endpoint_helpers import get_risorsa_umana_id, handle_post_json
@@ -55,7 +56,7 @@ class ApiPraticheList(DomainAPIView):
             OpenApiParameter(name="solo_interne", type=bool, required=False, description="Lente contesto: solo pratiche interne, senza soggetto (esclusiva con ruolo/istanza)."),
             OpenApiParameter(name="priorita_id", type=int, required=False, description="Filtro priorita' pratica."),
             OpenApiParameter(name="risorsa_umana_id", type=int, required=False, description="Filtro operatore assegnato."),
-            OpenApiParameter(name="limit", type=int, required=False, description="Righe per pagina (default 50, max 200)."),
+            OpenApiParameter(name="limit", type=int, required=False, description=f"Righe per pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT})."),
             OpenApiParameter(name="offset", type=int, required=False, description="Offset paginazione (default 0)."),
         ],
         responses={200: inline_serializer(
@@ -78,7 +79,7 @@ class ApiPraticheList(DomainAPIView):
             message="emittente_fiscale_id obbligatorio",
         )
 
-        p = parse_list_params(qp, default_order="data_insert", default_limit=50)
+        p = parse_list_params(qp, default_order="data_insert")
         stato = qp_str(qp.get("stato"))
         tipo_prestazione_id = optional_int({"v": qp.get("tipo_prestazione_id")}, "v")
         soggetto_id = qp_str(qp.get("soggetto_id"))
@@ -288,7 +289,7 @@ class ApiPraticaGiornale(DomainAPIView):
     model_permission = ("pratiche", "pratica")
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="limit", type=int, required=False, description="Righe per pagina (default 100, max 200)."),
+            OpenApiParameter(name="limit", type=int, required=False, description=f"Righe per pagina (default 100, max {MAX_LIMIT})."),
             OpenApiParameter(name="offset", type=int, required=False, description="Offset paginazione (default 0)."),
         ],
         responses={200: inline_serializer(
@@ -364,7 +365,7 @@ class ApiPraticaFlussiList(DomainAPIView):
                     "perimetro per chi ha piu' emittenti nello scope. Non filtra."
                 ),
             ),
-            OpenApiParameter(name="limit", type=int, required=False, description="Righe per pagina (default 25, max 200)."),
+            OpenApiParameter(name="limit", type=int, required=False, description=f"Righe per pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT})."),
             OpenApiParameter(name="offset", type=int, required=False),
             OpenApiParameter(
                 name="order_by", type=str, required=False,

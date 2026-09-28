@@ -37,7 +37,10 @@ class ErrorManager:
         function_name: str = "django_service",
         log_to_db: bool = False,
         cause: Exception | None = None,
-    ) -> None:
+    ) -> NoReturn:
+        # ⭐ `NoReturn` (dal 2026-09-28): solleva SEMPRE, su ogni ramo. Dopo una
+        #    chiamata non serve una riga «irraggiungibile»: il type checker e
+        #    l'editor lo sanno, e `test_error_manager` lo prova.
         if log_to_db:
             ErrorManager.log_error_only(
                 code=code,
@@ -186,7 +189,6 @@ class ErrorManager:
             log_to_db=log_to_db and not gia_scritto_dal_database,
             function_name=function_name,
         )
-        raise AssertionError("unreachable: raise_error alza sempre")
 
     # Scopo: Registra un errore tecnico su DB in best-effort senza interrompere il flusso chiamante.
     #

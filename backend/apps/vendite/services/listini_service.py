@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, NoReturn
 from uuid import UUID
 
 from django.db import DatabaseError, IntegrityError, transaction
@@ -453,7 +453,7 @@ def _get_riga_or_raise(
 #        E_VENDITE_PROMO_OVERLAP / E_VENDITE_CONTRATTO_OVERLAP), temporal FK
 #        coerenza BoM (PG18) → E_LISTINO_RIGA_COMP_BOM_INCOERENTE (400,
 #        sostituisce guard 6 trigger rimosso con migration 20260514-13).
-def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entity: str) -> None:
+def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entity: str) -> NoReturn:
     map_integrity_error(
         exc,
         unique_constraints={
@@ -2072,7 +2072,6 @@ def fn_save_bundle(
         _translate_integrity_error(
             exc, function_name=function_name, entity="bundle",
         )
-        raise AssertionError("unreachable")  # pragma: no cover  # noqa: B904 — riga morta: raise_error ha gia' sollevato, il `from` non porterebbe niente
     except DatabaseError as exc:
         # P0001 dai trigger DB su `listini_righe_componenti`
         # (immutabilita' versione ATTIVA/CHIUSA, guard coerenza BoM).

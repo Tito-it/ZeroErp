@@ -22,7 +22,9 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
+    limiti_pagina,
     RicercaFull,
     add_ricerca_full_condition,
     sql_order_clause,
@@ -348,7 +350,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         offset: int = 0,
         order_by: str = "data",
         order_dir: str = "desc",
-        max_limit: int = 200,
+        max_limit: int = MAX_LIMIT,
     ) -> tuple[list[dict[str, Any]], int]:
         ordinamento = sql_order_clause(
             order_by, order_dir,
@@ -364,10 +366,9 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             #    DDT il 2026-09-02).
             default_desc=True,
         )
-        # `max_limit`: lista cap 200 (gia' via parse_list_params), export fino a
+        # `max_limit`: lista cap `MAX_LIMIT` (gia' via parse_list_params), export fino a
         # EXPORT_MAX_ROWS+1 per non troncare in silenzio (guard su COUNT reale).
-        safe_limit = max(1, min(int(limit), max_limit))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset, tetto=max_limit)
 
         conditions: list[str] = []
         params: list[Any] = []

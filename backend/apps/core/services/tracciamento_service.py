@@ -8,6 +8,7 @@
 
 # Service layer: valida parametri, delega ai repository, restituisce dict paginati.
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.api.payload_validators import paginated_envelope
 from apps.core.db.dbops_repository import ERROR_LOG_SORT_COLUMNS, DbopsRepository
 from apps.core.db.maintenance_repository import MaintenanceRepository
@@ -39,7 +40,7 @@ def fn_list_audit_logs(
     date_to: str | None = None,
     search: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
 ) -> dict:
     fn = "core.tracciamento_service.fn_list_audit_logs"
     offset = _validate_pagination(page, page_size, fn)
@@ -139,7 +140,7 @@ def fn_list_domini_task(
     attivo_only: bool = True,
     search: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
 ) -> dict:
     fn = "core.tracciamento_service.fn_list_domini_task"
     offset = _validate_pagination(page, page_size, fn)
@@ -201,7 +202,7 @@ def fn_list_job_runs(
     date_to: str | None = None,
     search: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
 ) -> dict:
     fn = "core.tracciamento_service.fn_list_job_runs"
     offset = _validate_pagination(page, page_size, fn)
@@ -217,7 +218,7 @@ def fn_list_job_runs(
 def fn_list_job_summary(
     *,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = DEFAULT_LIMIT,
 ) -> dict:
     fn = "core.tracciamento_service.fn_list_job_summary"
     offset = _validate_pagination(page, page_size, fn)

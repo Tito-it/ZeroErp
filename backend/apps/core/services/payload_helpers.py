@@ -424,7 +424,6 @@ class PayloadValidator:
                 context={key: raw, "field": key},
                 **em,
             )
-            raise AssertionError("unreachable")  # pragma: no cover
         ErrorManager.require(
             value > 0,
             code=self._code,
@@ -472,7 +471,6 @@ class PayloadValidator:
                 context={key: value, "field": key},
                 **em,
             )
-            raise AssertionError("unreachable")  # pragma: no cover
         ErrorManager.require(
             min_val <= normalized <= max_val,
             code=self._code,
@@ -509,7 +507,6 @@ class PayloadValidator:
             context={key: value, "field": key},
             **self._em_kwargs(log_to_db=log_to_db, function_name=function_name),
         )
-        raise AssertionError("unreachable")  # pragma: no cover
 
     # =================================================================
     # Estrazione UUID
@@ -540,7 +537,6 @@ class PayloadValidator:
                     cause=exc,
                     **em,
                 )
-                raise AssertionError("unreachable") from exc  # pragma: no cover
         ErrorManager.raise_error(
             code=self._code,
             message=message or f"Campo '{field}' deve essere un UUID (stringa o oggetto).",
@@ -548,7 +544,6 @@ class PayloadValidator:
             context={"field": field, "type": type(value).__name__},
             **em,
         )
-        raise AssertionError("unreachable")  # pragma: no cover
 
     # Scopo: Estrae un UUID obbligatorio dal payload. Accetta stringa ISO o
     #        oggetto uuid.UUID; normalizza a stringa lower-case canonica.
@@ -687,7 +682,6 @@ class PayloadValidator:
                 cause=exc,
                 **em,
             )
-            raise AssertionError("unreachable") from exc  # pragma: no cover
         ErrorManager.require(
             valore.is_finite(),
             code=self._code,
@@ -971,7 +965,6 @@ class PayloadValidator:
                     cause=exc,
                     **em,
                 )
-                raise AssertionError("unreachable") from exc  # pragma: no cover
         ErrorManager.raise_error(
             code=self._code,
             message=message or f"Campo '{field}' deve essere una data o stringa ISO.",
@@ -979,7 +972,6 @@ class PayloadValidator:
             context={"field": field, "type": type(value).__name__},
             **em,
         )
-        raise AssertionError("unreachable")  # pragma: no cover
 
     # Scopo: Estrae una data obbligatoria dal payload. Rifiuta None esplicito
     #        e chiave assente.
@@ -1001,7 +993,6 @@ class PayloadValidator:
                 context={"field": key},
                 **em,
             )
-            raise AssertionError("unreachable")  # pragma: no cover
         return self._coerce_date(payload[key], field=key, message=message, em=em)
 
     # Scopo: Estrae una data opzionale. Ritorna None se chiave assente o
@@ -1122,7 +1113,6 @@ class PayloadValidator:
                     cause=exc,
                     **em,
                 )
-                raise AssertionError("unreachable") from exc  # pragma: no cover
             if isinstance(parsed, dict):
                 return parsed
         ErrorManager.raise_error(
@@ -1131,7 +1121,6 @@ class PayloadValidator:
             context={f"{key}_type": type(raw).__name__, "field": key},
             **em,
         )
-        raise AssertionError("unreachable")  # pragma: no cover
 
 
 # =================================================================

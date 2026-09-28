@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 from django.db import connection, transaction
 from django.utils.timezone import now
 
-from apps.core.db._helpers import resolve_config_id_by_codice_interno
+from apps.core.db._helpers import resolve_config_id_by_codice_interno, row_to_dict
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.testata_guard import testata_o_not_found
@@ -773,17 +773,15 @@ def _get_riga_pending(
     """  # noqa: S608 - whitelist interna
     with connection.cursor() as cursor:
         cursor.execute(sql, [riga_id])
-        cols = [c[0] for c in cursor.description]
-        row = cursor.fetchone()
+        riga = row_to_dict(cursor)
     ErrorManager.require(
-        row is not None,
+        riga is not None,
         code=cfg["error_code_not_found"],
         message=cfg["error_message_not_found"],
         detail=f"riga_id={riga_id}",
         function_name=function_name,
     )
-    assert row is not None
-    riga = dict(zip(cols, row, strict=True))
+    assert riga is not None
 
     ErrorManager.require(
         riga["stato_approvazione_prezzo"] == _STATO_RIGA_PENDING,
@@ -954,4 +952,3 @@ def _get_user(auth_user_id: int):
             detail=f"auth_user_id={auth_user_id}",
             function_name=f"{_FN}._get_user",
         )
-        raise AssertionError("unreachable")  # pragma: no cover  # noqa: B904 — riga morta: raise_error ha gia' sollevato, il `from` non porterebbe niente

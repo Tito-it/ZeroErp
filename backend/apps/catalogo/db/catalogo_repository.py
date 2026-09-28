@@ -14,6 +14,7 @@ from uuid import UUID
 from django.db import connection
 
 from apps.core.db._helpers import (
+    limiti_pagina,
     pattern_contiene,
     RicercaFull,
     add_ricerca_full_condition,
@@ -261,8 +262,7 @@ class CatalogoRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[dict[str, Any]], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
         # ORDER BY dal BB (NULLS espliciti + tiebreak allineato). ⚠️ Fino al
         # 2026-09-26 qui c'era `ARTICOLI_ORDER_COLUMNS[order_by]`: KeyError
         # fuori whitelist, mentre le tre liste UoM ripiegavano sul default.
@@ -543,8 +543,7 @@ class CatalogoRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[dict[str, Any]], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=UOM_TIPI_ORDER_COLUMNS, default="ut.descrizione", tiebreak="ut.id",
@@ -625,8 +624,7 @@ class CatalogoRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[dict[str, Any]], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=UOM_ORDER_COLUMNS, default="u.codice", tiebreak="u.id",
@@ -717,8 +715,7 @@ class CatalogoRepository:
         limit: int = 25, offset: int = 0,
         order_by: str | None = "uom_from_codice", order_dir: str | None = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
         # ⚠️ Fino al 2026-09-26 la direzione si confrontava con `.upper()` e
         #    nelle sorelle con `.lower()`: ora la legge il BB per tutte.
         ordinamento = sql_order_clause(
