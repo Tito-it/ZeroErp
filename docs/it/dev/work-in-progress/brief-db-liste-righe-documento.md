@@ -37,8 +37,10 @@
 >   BoM (L3). §5 L1, «Verifica critica»;
 > - 🔍 **verifica critica della parte DB il 2026-09-28: §8, da leggere per
 >   primo.** Smentisce «Nessun DDL» (fattura, contratto, BoM) e l'ordine
->   «seed prima, BE dopo» (arma quattro presidi in CI); sette decisioni per Tid
->   in §8.9.
+>   «seed prima, BE dopo» (arma quattro presidi in CI);
+> - ✅ **le sette decisioni di §8.9 sono PRESE da Tid lo stesso giorno**; il
+>   lavoro DB che ne esce, in ordine, è in **§8.10**. ⏸ Sviluppo **non avviato**
+>   («aggiorna il brief ma non iniziare lo sviluppo», Tid, 2026-09-28).
 
 ---
 
@@ -105,6 +107,8 @@ Come le liste righe già a catalogo (37, 69, 71, 74):
 - `perimetro_emittente = t`, `multi_emittente = f` per 1-5 e 7: il documento
   appartiene a un emittente, e il drawer lo passa alla lista
   (`emittenteEsplicito`). Sulla 6 (BoM, catalogo) `perimetro_emittente = f`;
+  ⚠️ **superato da D-8.2 (Tid, 2026-09-28): anche la 6 è `t`**, come
+  `catalogo.articoli`;
 - preset di sistema con `pagina_dimensione = 10` (`PAGINATION.COMPACT_ROWS`: è
   una lista dentro un drawer, com'è oggi).
 
@@ -152,6 +156,9 @@ comportano allo stesso modo sullo stesso schermo.
 
 **BoM (6):** `componente_codice` identificatore · `componente_descrizione`
 95 · `coeff_qta` 90 · `valido_al` 60 · `esposto_in_fattura` 40 · `azioni`.
+⚠️ **Integrata dalla D-8.5 (Tid, 2026-09-28): `valido_dal` 65.** Il codice del
+componente non identifica la riga (dopo «Duplica versione» compare due volte);
+la data di inizio sì. Ordine di partenza: `valido_dal` DESC, come oggi.
 ⚠️ Le colonne di validità (`valido_dal`/`valido_al`) si ordinano con
 `COALESCE(col, 'infinity')` e partono DESC (regola delle date di validità).
 
@@ -413,12 +420,18 @@ video; il resto si ritira per primo):
 | `descrizione` | informazione | 95 |
 | `qta_operativa` | informazione | 90 |
 | `prezzo_finale` | informazione | 85 |
-| `prezzo_unitario` | informazione | 70 |
+| `prezzo_forzato` | informazione | 70 |
 | `uom_codice` | informazione | 60 |
 | `tipo_erogazione` | informazione | 45 |
 | `prezzo_listino` | informazione | 35 |
 | `origine` | informazione | 30 |
 | `azioni` | azione | — |
+
+⚠️ **Riga 70 corretta dalla D-8.4 (Tid, 2026-09-28):** era `prezzo_unitario`,
+che nella sorgente della lista non esiste. Diventa `prezzo_forzato`, etichetta
+«Prezzo forzato», `campo_sorgente` = `override_prezzo` della funzione: il
+prezzo scritto a mano sull'eccezione, vuoto sulle righe che lo prendono dal
+listino. Stessa priorità.
 
 ## 8. Verifica critica della parte DB (2026-09-28)
 
@@ -451,6 +464,13 @@ far tornare verdi:
 Raccomandazione: **B**, che è la regola già scritta; più l'esenzione BoM
 chiesta al BE nello stesso merge (o D-8.2 risolta in `t`).
 
+✅ **Deciso da Tid il 2026-09-28: né A né B.** Il seed si scrive **acceso**
+(`attivo = t`) e va per la sua strada; il rosso momentaneo dei presidi Django
+fino all'arrivo del BE è **accettato** («non fa niente se momentaneamente va in
+errore»). ⇒ Nel brief va scritto, nella richiesta al BE, quali quattro test
+tornano verdi col suo lavoro (tabella sopra), perché chi vede il rosso sappia
+che è atteso e da dove si chiude.
+
 ### 8.2 🟠 BoM globale: coerente col modello, incoerente col catalogo
 
 `catalogo.articoli_componenti` non ha emittente, quindi `perimetro_emittente = f`
@@ -462,7 +482,13 @@ emittente. Una delle due letture è sbagliata:
   tipo delle sei geografiche corrette il 2026-09-27;
 - o `t` ha una ragione che il seed non dice, e la BoM la eredita.
 
-Se `f`: la BoM va aggiunta all'elenco di
+✅ **Deciso da Tid il 2026-09-28: la distinta è PER AZIENDA**
+(`perimetro_emittente = t`, `multi_emittente = f`), come la sua lista madre
+`catalogo.articoli`. ⇒ Nessun elenco pgTAP da toccare, nessuna esenzione da
+chiedere al BE, e l'eccezione BoM di §8.1 cade. Le quattro liste di catalogo
+restano come sono.
+
+~~Se `f`~~ (non più applicabile): la BoM andava aggiunta all'elenco di
 `db/pgtap/ui/test-lista-definizione-perimetro-emittente-v1.sql` test 6 (ordine
 alfabetico, con la riga di motivo), e al BE si chiede la ragione «catalogo
 globale» in `_ESENZIONI`. Gli altri due elenchi (`multi_emittente`, soglia 1)
@@ -494,6 +520,28 @@ tabella del §3.2 non costruibile così com'è:
   `iva_descrizione` ma `formatIvaLabel` su `iva_codice`/aliquota, con ripiego
   su `iva_natura`: il `campo_sorgente` della colonna `iva` va scelto.
 
+✅ **Deciso da Tid il 2026-09-28 (D-8.3), al posto del «non ordinabile»:
+i componenti del kit diventano il DETTAGLIO della riga padre.**
+
+- **La lista = le sole righe di livello 0** (`NORMALE`, `PARTE_PLAFOND`,
+  `KIT_PADRE`). I `KIT_COMPONENTE` escono dalla lista ed entrano nella riga
+  padre come `componenti jsonb` (stessa forma di
+  `fn_contratto_righe_preview`), che il FE apre nella riga di espansione — come
+  le righe composite del preventivo;
+- ⇒ ordinamento e paginazione lavorano sul padre: il kit **si muove intero** e
+  non si spezza fra due pagine; il `count` conta le righe di livello 0;
+- **DDL**: una vista nuova **sopra** `vw_fattura_righe_esposte` (nessun calcolo
+  rifatto: quella resta la sede unica della rappresentazione), con
+  `security_invoker`, che espone la chiave di riga stabile (anche per il
+  `KIT_PADRE`) e aggrega i componenti. Nome da fissare nel changeSet;
+- **ordinabile**: sì, sulle colonne della lista. Ordine di partenza
+  `ordinamento, riga_nr, <chiave>`;
+- ⚠️ **limite dichiarato**: le due `PARTE_PLAFOND` sono righe vere (due
+  `DettaglioLinee`) e restano due righe; ordinando per importo possono
+  separarsi, per `riga_nr` restano vicine (stesso numero). Accettato;
+- **ricerca**: `ricercabile_full` su codice e descrizione articolo (vale anche
+  per BoM e contratto, oggi filtrati in locale).
+
 ### 8.4 🔴 Contratto (7): due grane, e tre colonne che vivono solo in una
 
 Il drawer di oggi ha **due forme**, e la lista 7 le mescola:
@@ -516,6 +564,18 @@ Il drawer di oggi ha **due forme**, e la lista 7 le mescola:
 - le azioni cambiano per `origine` (DA_LISTINO → sovrascrivi/escludi;
   AGGIUNTA → modifica/elimina): oggi le decide il FE. Per §12.5 delle linee
   guida SQL è una **capability di riga**, e va emessa dalla funzione.
+
+✅ **Deciso da Tid il 2026-09-28 (D-8.4): la lista 7 legge SEMPRE
+`fn_contratto_righe_preview`, per le due forme.** La funzione cambia forma e
+aggiunge:
+
+1. una **chiave di riga stabile** (il FE smette di sintetizzare `_row_key`);
+2. la **capability di riga** (§12.5 linee guida SQL): DA_LISTINO →
+   sovrascrivi prezzo / escludi; OVERRIDE e ESCLUSIONE → modifica / ripristina;
+   AGGIUNTA → modifica / elimina. Elenco esatto dei verbi da fissare leggendo
+   il drawer di oggi, nel changeSet;
+3. la colonna prezzo di lista = `override_prezzo`, etichetta «Prezzo forzato»
+   (§7).
 
 ⇒ **DDL per L4**: chiave di riga stabile emessa dal DB, capability di riga,
 e la colonna prezzo da decidere (`override_prezzo` o via). Cambia un
@@ -545,6 +605,19 @@ Due punti di seed:
   nell'`ordinamento_default` del preset, o il controllo `default_rotti` del
   generatore non ha nulla da confrontare.
 
+✅ **Deciso da Tid il 2026-09-28 (D-8.5): una sede sola, la vista.**
+
+- **DDL**: `CREATE OR REPLACE VIEW` di `vw_articoli_componenti_dettaglio` con
+  `esposto_in_fattura` e `determina_qta_padre` **in coda** (dalla doc auto-gen,
+  non dagli YAML);
+- **seed**: definizione 6 con `vista_sql = catalogo.vw_articoli_componenti_dettaglio`
+  → il trigger `a10_valida_campo_sorgente` controlla le colonne al migrate;
+  `valido_dal` 65 in lista (§3.2); preset con
+  `ordinamento_default = [{"col":"valido_dal","dir":"desc"}]`;
+- **richiesta al BE**: `catalogo_bom_repository` legge la vista e ritira
+  `COMPONENTE_DETAIL_COLUMNS` (la capability di chiusura resta solo a DB),
+  nello stesso giro.
+
 ### 8.6 🟡 Preventivo (1): una vista che nessuno legge
 
 `vendite.vw_preventivi_righe_dettaglio` è la proiezione che il repository
@@ -555,6 +628,29 @@ La vista ha anche un `ORDER BY` nel corpo. Lettori: il solo
 `db/pgtap/rls/test-rls-preventivi-satelliti.sql`.
 Stessa scelta della BoM (D-8.6): o la vista diventa la sorgente, o si ritira
 insieme al commento che la cita.
+
+✅ **Deciso da Tid il 2026-09-28 (D-8.6), ESTESO a ordini e DDT: per le
+righe di un documento la sede è una vista DB, e il repository la legge.**
+
+| Lista | Vista | Lavoro DB |
+| --- | --- | --- |
+| 1 preventivo | `vendite.vw_preventivi_righe_dettaglio` (esiste, stantìa) | `CREATE OR REPLACE` con le quattro colonne in coda, **senza** l'`ORDER BY` nel corpo, `security_invoker` ri-specificato |
+| 2 ordine | nuova, `vendite.vw_ordini_righe_dettaglio` | dalla query di `ordini_repository.list_righe`: evaso/residuo da `ordini_righe_fulfillment`, flag componenti, le due date di consegna |
+| 3 DDT | nuova, `vendite.vw_ddt_righe_dettaglio` | dalla query di `ddt_repository.list_righe`, con `importo_riga` NULL se manca il prezzo (V-2/DEC-6 del DDT) |
+| 4 reso | `vendite.vw_resi_righe_dettaglio` (esiste, letta con `SELECT *`) | nessun DDL: solo `vista_sql` nel seed, per coerenza |
+
+- le quattro definizioni hanno `vista_sql` valorizzata → il trigger
+  `a10_valida_campo_sorgente` controlla il seed al migrate, e il cancello
+  Django di §8.1 non le riguarda più (resta sulle liste 5 e 7);
+- le viste nuove nascono con `security_invoker`, e il perimetro RLS delle
+  tabelle righe resta quello delle tabelle (pgTAP RLS da estendere alle due
+  viste nuove, come `test-rls-preventivi-satelliti` fa per la prima);
+- ⛔ **nessun `ORDER BY` nelle viste**: l'ordine lo dà la whitelist del BE;
+- **richiesta al BE**, stesso giro: `list_righe`/`get_riga` dei tre repository
+  leggono la vista e le proiezioni Python si ritirano (regola del 2: le copie
+  si ritirano insieme all'estrazione). ⚠️ `ordini_repository.get_riga` oggi ha
+  una proiezione più corta di `list_righe` (niente evaso): leggendo la vista
+  diventano la stessa.
 
 ### 8.7 🟡 Il seed, voce per voce
 
@@ -593,14 +689,82 @@ stesso significato su tre documenti, e il DDT ha già **deciso** un ramo diverso
 (NULL, non zero). Candidata a una funzione `IMMUTABLE` unica (D-8.8); se si
 estrae, le copie si ritirano nello stesso giro.
 
+✅ **Deciso da Tid il 2026-09-28 (D-8.8): in QUESTO cantiere.** Le viste
+righe della D-8.6 si scrivono adesso: farle nascere con la formula copiata per
+poi toglierla sarebbe lavoro doppio.
+
+- **una funzione** `IMMUTABLE`, `PARALLEL SAFE`, sui **valori**
+  (quantità, prezzo, sconto) e non su un id di riga: nessuna lettura, quindi
+  nessuna RLS da attraversare. Restituisce l'imponibile **a precisione piena**;
+  `importo_riga` = `round(…, 2)` nella vista, `imponibile_riga_full` = il
+  valore pieno, come oggi;
+- **semantica** = quella già scritta nelle viste IVA: prezzo NULL o quantità
+  NULL → NULL, **mai zero** (V-2/DEC-6 del DDT); sconto NULL → zero;
+- **sede**: `script`, non `vendite` — le righe di `acquisti` avranno la stessa
+  formula (PROJECT_CONTEXT: ogni decisione su `vendite` è presa anche per
+  `acquisti`). Nome da fissare nel changeSet, cercando prima nel catalogo BB e
+  negli schemi `script`/`dbops` che non esista già;
+- **le cinque copie si ritirano nello stesso giro**: le tre viste righe
+  (D-8.6) nascono chiamandola, e le due `vw_ordini_righe_iva_base` /
+  `vw_ddt_righe_iva_base` passano a chiamarla con `CREATE OR REPLACE`
+  (colonne e ordine invariati, `security_invoker` ri-specificato);
+- **pgTAP**: la funzione si prova sui valori, un caso per ramo (prezzo NULL,
+  quantità NULL, sconto NULL, sconto 100); il riepilogo IVA si ricontrolla coi
+  pgTAP che già leggono le due viste IVA (censimento dei chiamanti prima del
+  changeSet).
+
 ### 8.9 Decisioni per Tid
 
 | # | Domanda | Raccomandazione |
 | --- | --- | --- |
-| D-8.1 | Seed e BE: giro unico (A) o seed spento (B)? | B |
-| D-8.2 | BoM `perimetro_emittente`: `f` (e le 4 liste catalogo sono un debito) o `t`? | `f`, con il debito catalogo registrato |
-| D-8.3 | Fattura: ordine fisso e nessuna colonna ordinabile? | sì |
-| D-8.4 | Contratto: grana = `fn_contratto_righe_preview` per le due forme, con chiave e capability di riga dal DB? | sì |
-| D-8.5 | BoM: vista al pari e `vista_sql` valorizzata? | sì |
-| D-8.6 | `vw_preventivi_righe_dettaglio`: sorgente o ritiro? | sorgente, come D-8.5 |
-| D-8.8 | `importo_riga` in una funzione: in questo cantiere o a parte? | a parte, registrato |
+| D-8.1 | Seed e BE: giro unico (A) o seed spento (B)? | ✅ **Tid, 28-09: seed acceso, rosso temporaneo accettato** |
+| D-8.2 | BoM `perimetro_emittente`: `f` (e le 4 liste catalogo sono un debito) o `t`? | ✅ **Tid, 28-09: `t`, per azienda** |
+| D-8.3 | Fattura: ordine fisso e nessuna colonna ordinabile? | ✅ **Tid, 28-09: no — componenti nel dettaglio del padre, lista ordinabile sul livello 0** |
+| D-8.4 | Contratto: grana = `fn_contratto_righe_preview` per le due forme, con chiave e capability di riga dal DB? | ✅ **Tid, 28-09: sì, colonna «Prezzo forzato»** |
+| D-8.5 | BoM: vista al pari e `vista_sql` valorizzata? | ✅ **Tid, 28-09: sì, più `valido_dal` 65** |
+| D-8.6 | `vw_preventivi_righe_dettaglio`: sorgente o ritiro? | ✅ **Tid, 28-09: sorgente, esteso a ordini e DDT (e `vista_sql` sul reso)** |
+| D-8.8 | `importo_riga` in una funzione: in questo cantiere o a parte? | ✅ **Tid, 28-09: in questo cantiere** |
+
+### 8.10 Il lavoro DB che ne esce, in ordine (non avviato)
+
+> Riepilogo delle decisioni D-8.1 → D-8.8. ⏸ **Nessun changeSet scritto**: lo
+> sviluppo parte al via di Tid. Ogni passo con la regola di casa: DDL e corpi
+> dalla doc auto-gen, un changeSet per file, prova su SQL estratto in
+> `BEGIN/ROLLBACK`, pgTAP lanciati da Tid.
+
+**Blocco 1 — per L2 (liste 1-4) e la BoM (6)**
+
+1. `20_code`: la funzione dell'importo di riga in `script` (D-8.8) + pgTAP sui
+   valori;
+2. `20_code`: `vw_preventivi_righe_dettaglio` al pari, `vw_ordini_righe_dettaglio`
+   e `vw_ddt_righe_dettaglio` nuove, tutte sulla funzione (D-8.6);
+3. `20_code`: le due `vw_*_righe_iva_base` sulla funzione (D-8.8);
+4. `20_code`: `vw_articoli_componenti_dettaglio` al pari (D-8.5);
+5. pgTAP: RLS delle due viste nuove; forma delle viste (colonne che il seed
+   nomina);
+6. `80_data`: seed delle liste 1-4 e 6 nei quattro CSV di `ui` (una tabella,
+   un CSV), `vista_sql` valorizzata, **acceso** (D-8.1), BoM per azienda
+   (D-8.2), `valido_dal` 65 e `ordinamento_default` sulla BoM. Prima
+   dell'append: upsert dell'intero CSV in `ROLLBACK` con timeout (le due specie
+   di mina, §11.2 linee guida SQL), e resync delle sequenze di
+   `90_end/20260602-17` incluso nella prova.
+
+**Blocco 2 — per L3 (fattura, 5)**
+
+7. `20_code`: vista di lista sopra `vw_fattura_righe_esposte` — livello 0,
+   chiave stabile, `componenti jsonb` (D-8.3) + pgTAP (un kit con due IVA, una
+   riga spezzata dal plafond, costruiti, non trovati);
+8. `80_data`: seed della lista 5 sulla vista nuova.
+
+**Blocco 3 — per L4 (contratto, 7)**
+
+9. `20_code`: `fn_contratto_righe_preview` con chiave di riga e capability di
+   riga (D-8.4) — cambia il `RETURNS TABLE`: DROP + CREATE, censimento dei
+   pgTAP e dei chiamanti prima;
+10. `80_data`: seed della lista 7 con `prezzo_forzato`.
+
+**Richieste al BE che nascono qui** (vanno nel §4 quando si scrive il blocco):
+repository righe di preventivo, ordine, DDT e BoM sulle viste, con ritiro delle
+proiezioni Python nello stesso giro; registri dei presidi Django (§8.1) per le
+liste 5 e 7, che restano senza `vista_sql`; lettura della capability di riga
+del contratto al posto della logica nel drawer.
