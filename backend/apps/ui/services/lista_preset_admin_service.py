@@ -228,7 +228,6 @@ class ListaPresetAdminService:
                 message="Campi immutabili presenti in payload update.",
                 detail=f"campi non aggiornabili={intersect!r}",
             )
-            raise  # pragma: no cover
 
         self._v.validate_allowed_keys(
             payload,
@@ -326,7 +325,6 @@ class ListaPresetAdminService:
                     message="Colonna duplicata nella composizione preset.",
                     detail=f"colonne[{idx}] colonna_id={row['colonna_id']} ripetuta",
                 )
-                raise  # pragma: no cover
             seen_colonne.add(row["colonna_id"])
             normalized.append(row)
 

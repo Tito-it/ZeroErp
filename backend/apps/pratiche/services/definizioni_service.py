@@ -40,7 +40,6 @@ def _mapped_db_errors(function_name: str) -> Iterator[None]:
         yield
     except DatabaseError as exc:
         _raise_known_db_error(exc, function_name=function_name)
-        raise  # irraggiungibile: _raise_known_db_error solleva sempre
 
 
 # Scopo: elenco edizioni per (tipo [, emittente]) con drift annidato. Il drift e'

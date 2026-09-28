@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../../stores/auth'
 import { CANALE_LOGIN } from '../constants'
+import { FRASE_MOTIVO_USCITA } from '../sessione'
 // ChannelSelector importato ma non montato: l'UI attuale e' per soli
 // operatori interni (canale ADMIN forzato). Importazione conservata per
 // riuso futuro (pagine dedicate portale/shop).
@@ -76,14 +77,14 @@ function resolveLoginError(err) {
   return t('auth.access_denied')
 }
 
-// Pre-popolazione errorMessage in base a `reason` query (es. session_expired
-// passato da api.js → redirectToLogin quando il refresh fallisce o da router
-// guard quando i token sono scaduti). Mantiene UX coerente: l'utente vede
-// subito perche' e' tornato sul login.
+// Pre-popolazione errorMessage in base a `reason` query: il motivo per cui
+// l'applicazione ha riportato al login (`MOTIVO_USCITA` in `core/sessione`:
+// rinnovo fallito, logout da un'altra scheda). Mantiene UX coerente: l'utente
+// vede subito perche' e' tornato sul login. Motivo sconosciuto: nessuna frase.
 onMounted(() => {
-  const reason = route.query.reason
-  if (reason === 'session_expired') {
-    errorMessage.value = t('auth.session_expired')
+  const chiave = FRASE_MOTIVO_USCITA[route.query.reason]
+  if (chiave) {
+    errorMessage.value = t(chiave)
   }
 })
 

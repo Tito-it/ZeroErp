@@ -211,14 +211,17 @@ non in Nginx: sono versionati e li verifica `check --deploy`.
   si sale a `31536000`. ⛔ Con HSTS acceso e un certificato non valido il browser rifiuta il sito
   senza «procedi comunque», fino alla scadenza.
 * **Redirect** acceso di default con `DEBUG=0`. Chi chiama Gunicorn diretto in HTTP riceve un
-  301, salvo: `/health` (esente); gli smoke bash, che si dichiarano HTTPS come Nginx includendo
+  301, salvo: `/health` (esente); gli smoke bash, che si dichiarano HTTPS come Nginx (e, come Nginx,
+  dichiarano la provenienza `X-Forwarded-For` che il login pretende) includendo
   `backend/scripts/tests/_smoke_https.sh` (presidio: `apps/core/tests/api/test_https_header.py`);
   i test Django, per cui lo spegne il runner.
 * Dopo aver cambiato una delle due variabili serve `sudo systemctl restart zeroerp-gunicorn`: un
   `kill -HUP` non rilegge `.env.systemd`.
 
 La **CSP** invece sta in Nginx, perché la pagina HTML non la serve Django:
-[configurazione Django](backend/configurazione-django.md), sezione Nginx.
+[configurazione Django](backend/configurazione-django.md), sezione Nginx. ✅ Applicata su
+`backend-dev` dal 2026-09-28, con `Referrer-Policy` e `Permissions-Policy`, dopo un giro di
+collaudo in `Report-Only`.
 
 A mano, con l'ambiente della macchina caricato:
 
@@ -387,7 +390,7 @@ Qui l'elenco di ciò che, in tema sicurezza, oggi **non** c'è.
 | Cosa | Stato |
 | --- | --- |
 | **Rotazione dei segreti** rimasti nella storia del repo (`backend/.env`, e la chiave che era commentata in `settings.py`) | non urgente, decisione di Tid del 2026-09-26: il repo è privato. La chiave di cifratura è separata dal 2026-09-28 (brief §3.5): la `SECRET_KEY` si può ruotare dopo la migrazione dei dati cifrati, sezione [Le chiavi dei dati cifrati](#le-chiavi-dei-dati-cifrati) |
-| **CSP** e header di pagina (`Referrer-Policy`, `Permissions-Policy`) in Nginx | politica scritta nel vhost documentato, da applicare a `backend-dev` come `Report-Only`, collaudare a video e poi rendere applicata — brief [sicurezza: header, token, MFA](work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md) §1.5, registro voce D3-c. HSTS e redirect chiusi il 2026-09-28 (sopra, «HSTS e redirect HTTPS») |
+| **CSP** e header di pagina (`Referrer-Policy`, `Permissions-Policy`) in Nginx | ✅ applicata su `backend-dev` il 2026-09-28 dopo il collaudo in `Report-Only` — brief [sicurezza: header, token, MFA](work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md) §1.6, registro voce D3-c. In produzione va la politica senza le due eccezioni di Vite, scritta accanto nel vhost documentato |
 | `npm audit` in CI, Dependabot | da decidere — registro, voce D1-f |
 | Token JWT fuori da `localStorage` | ✅ fatto il 2026-09-28 (brief §2): refresh in cookie `HttpOnly`/`SameSite=Strict` (BB `apps/core/api/refresh_cookie.py`), access di 10 minuti solo in memoria (`frontend/src/core/sessione.js`), rinnovo coordinato fra schede. Resta il collaudo a video su `backend-dev` |
 | Autenticazione a due fattori | stesso brief, §3 |

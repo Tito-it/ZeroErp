@@ -247,17 +247,19 @@ server {
     # ⚠️ Nessuna `location` qui sotto ha un proprio `add_header`: se una ne
     #    aggiungesse uno, perderebbe TUTTI questi (regola di ereditarieta' di
     #    Nginx) e andrebbero ripetuti li'.
-    # Passi: `-Report-Only` per un giro di collaudo a video su tutte le aree
-    # (le violazioni compaiono nella console del browser), poi si toglie
-    # `-Report-Only` e la politica diventa applicata.
+    # ✅ APPLICATA su backend-dev dal 2026-09-28, dopo un giro in `-Report-Only`
+    # (collaudo a video: anteprime PDF ed email, gestione documenti con upload e
+    # download, console pulita; violazione provocata con `fetch` esterno
+    # segnalata, poi bloccata). Una macchina nuova rifa' lo stesso giro:
+    # `Content-Security-Policy-Report-Only`, console, poi si toglie `-Report-Only`.
     #
     # SVILUPPO (Vite): l'HMR inietta script e apre un websocket sulla porta
     # della pagina, quindi rispetto alla produzione servono
     # `script-src 'unsafe-inline'` e `connect-src wss:`. ⛔ Le due politiche
     # differiscono SOLO in quei due punti: chi ne cambia una cambia l'altra.
-    add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' wss:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' wss:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
     # PRODUZIONE (build statica), al posto della riga sopra:
-    # add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+    # add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
     #
     # Perche' ogni voce: `style-src 'unsafe-inline'` per gli <style> che
     # PrimeVue inietta a runtime; `frame-src blob:` per l'anteprima PDF

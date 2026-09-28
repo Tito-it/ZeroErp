@@ -3344,6 +3344,7 @@ c'è mai: la sessione si ritrova rinnovando dal cookie.
 | Accodamento           | `core/sessione.js`                     | Chiamate concorrenti della stessa scheda aspettano la stessa promise                  |
 | Protezione loop       | `core/api.js`                          | Chiamate a `/token/` escluse dal rinnovo                                              |
 | Redirect              | `LoginView`                            | Rotta originale salvata in `?redirect=`                                               |
+| Motivo del ritorno    | `core/sessione.js` `MOTIVO_USCITA`     | `?reason=`: sessione scaduta o logout da un'altra scheda, ognuno con la sua frase     |
 | Logout                | `stores/auth.js`                       | Backend cancella il cookie; `clearTokens()` pulisce; le altre schede escono           |
 
 ⭐ **Più schede.** Ogni rinnovo ruota il refresh e mette in blacklist il

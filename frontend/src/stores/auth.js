@@ -5,6 +5,7 @@ import { DOMAINS } from '../core/navigation'
 import { local, STORAGE_KEYS, ritiraTokenDalLocalStorage } from '../core/storage'
 import {
   EVENTO_SESSIONE,
+  MOTIVO_USCITA,
   accessValido,
   annunciaAlleAltreSchede,
   azzeraAccess,
@@ -199,7 +200,9 @@ export const useAuthStore = defineStore('auth', () => {
   // solo). Registrato una volta: lo store si crea una volta per pagina.
   suEventoAltraScheda(evento => {
     if (evento.tipo === EVENTO_SESSIONE.LOGOUT) {
-      redirectToLogin()
+      // La sessione non è scaduta: l'ha chiusa l'operatore da un'altra scheda,
+      // e il login lo dice (prima: «sessione scaduta», rilievo di Tid).
+      redirectToLogin(MOTIVO_USCITA.USCITA_ALTRA_SCHEDA)
     } else if (evento.tipo === EVENTO_SESSIONE.SESSIONE_NUOVA) {
       // Si resta sulla pagina corrente: il boot rifà il giro del guard con la
       // sessione nuova (e porta al login o alla home del suo namespace).

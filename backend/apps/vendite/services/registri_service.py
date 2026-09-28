@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, NoReturn
 
 from django.db import IntegrityError, transaction
 
@@ -306,7 +306,6 @@ class RegistriService:
                 )
         except IntegrityError as exc:
             self._traduci(exc, dati)
-            raise  # pragma: no cover — _traduci solleva sempre
         return self.get_registro(registro_id, [emittente_soggetto_ruolo_id])
 
     def update_registro(
@@ -324,7 +323,6 @@ class RegistriService:
                 )
         except IntegrityError as exc:
             self._traduci(exc, dati)
-            raise  # pragma: no cover — _traduci solleva sempre
         # ⚠️ `toccate == 0` NON e' un errore da solo, e ha due cause diverse: il
         #    registro non esiste / e' fuori perimetro, oppure il payload non
         #    conteneva nessuna colonna scrivibile. A distinguerle e' la
@@ -359,7 +357,7 @@ class RegistriService:
         return self.get_registro(registro_id, emittenti_sr_ids)
 
     # Scopo: la traduzione dei vincoli DB, in una sede sola per i due verbi.
-    def _traduci(self, exc: IntegrityError, dati: dict[str, Any]) -> None:
+    def _traduci(self, exc: IntegrityError, dati: dict[str, Any]) -> NoReturn:
         map_integrity_error(
             exc,
             unique_constraints=_UNIQUE_CONSTRAINTS,

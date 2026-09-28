@@ -4,6 +4,7 @@ import { useNavigationStore } from '../stores/navigation'
 import { useTabsStore } from '../stores/tabs'
 import { DOMAINS, findMenuItem, isMenuItemAllowed, resolveTabLabel, resolveTabIcon } from '../core/navigation'
 import { FE_NAMESPACE, STATUS_ICONS, resolveRuoloFeConfig } from '../core/constants'
+import { MOTIVO_USCITA, sessioneDichiarataChiusa } from '../core/sessione'
 import i18n from '../core/i18n'
 import { chiudiTuttiIDrawer } from '../core/composables/useDrawerChiusuraGlobale'
 import { CODE } from '../pagamenti/vocabolari'
@@ -627,8 +628,9 @@ router.beforeEach(async (to) => {
   // Rotte pubbliche (login, reset, attivazione)
   if (to.meta.public) {
     // ⛔ «Sei già dentro, torna alla home» NON vale quando è l'applicazione
-    //    stessa a dichiarare la sessione morta (`reason=session_expired`, che
-    //    mandano l'interceptor 401 e questo guard). Un access in memoria può
+    //    stessa a dichiarare la sessione morta (`reason=` con un motivo di
+    //    `MOTIVO_USCITA`: lo mandano l'interceptor 401, il logout di un'altra
+    //    scheda e questo guard). Un access in memoria può
     //    essere non scaduto e già rifiutato dal server (sessione revocata),
     //    quindi il rimbalzo scattava e il login diventava irraggiungibile —
     //    l'operatore restava su una home che rispondeva 401 a ogni gesto e ne
@@ -638,7 +640,7 @@ router.beforeEach(async (to) => {
     //    impedisce che una sessione creduta viva per qualunque ALTRA ragione
     //    ci rimandi indietro. Chi ha una sessione viva e digita /login
     //    continua a essere riportato alla home.
-    const sessioneDichiarataMorta = to.query.reason === 'session_expired'
+    const sessioneDichiarataMorta = sessioneDichiarataChiusa(to.query.reason)
     // ⭐ Dal 2026-09-28 l'access sta solo in memoria: al ricaricamento non c'è
     //    mai, e se la sessione è viva lo si sa solo chiedendolo al backend
     //    (rinnovo dal cookie HttpOnly). Si chiede solo per il login: le altre
@@ -658,10 +660,10 @@ router.beforeEach(async (to) => {
   // rinnova dal cookie del refresh: al ricaricamento della pagina, o dopo i
   // 10 minuti dell'access, è qui che la sessione si ritrova. Se il rinnovo
   // fallisce (cookie assente, scaduto, revocato) si va al login con
-  // reason=session_expired. Sostituisce il vecchio «refresh proattivo», che
+  // reason=session_expired (`MOTIVO_USCITA.SESSIONE_SCADUTA`). Sostituisce il vecchio «refresh proattivo», che
   // guardava la scadenza del refresh in localStorage.
   if (!(await auth.ripristinaSessione())) {
-    const query = { reason: 'session_expired' }
+    const query = { reason: MOTIVO_USCITA.SESSIONE_SCADUTA }
     if (to.fullPath !== '/') query.redirect = to.fullPath
     return { name: 'login', query }
   }

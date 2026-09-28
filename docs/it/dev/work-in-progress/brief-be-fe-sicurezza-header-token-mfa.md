@@ -9,20 +9,22 @@
 > **Stato:** 🔵 in corso dal 2026-09-28. Decisioni di Tid del 2026-09-26: §1 *«facciamo dopo»*,
 > §2–§4 *«più avanti»*; il 2026-09-28 Tid ha dato il via allo sviluppo. ✅ §3.5 consegnata a
 > codice il 2026-09-28 e migrata su `backend-dev` lo stesso giorno (§3.5 «Fatto»). ✅ §4 ruff `B`
-> accesa il 2026-09-28 (§4 «Fatto»). 🟡 §1: HSTS e redirect fatti il 2026-09-28, CSP scritta nel
-> vhost documentato e da applicare in Nginx (§1.6 «Fatto»). ✅ §2 token fuori da `localStorage` fatto il
-> 2026-09-28, resta il collaudo a video (§2.5 «Fatto»).
+> accesa il 2026-09-28 (§4 «Fatto»). ✅ §1 chiusa il 2026-09-28: HSTS e redirect in Django, CSP
+> applicata in Nginx dopo il collaudo in `Report-Only` (§1.6 «Fatto»). ✅ §2 token fuori da
+> `localStorage` fatto il 2026-09-28, smoke verdi, collaudo a video chiuso il 2026-09-29 (§2.5).
 > **Commit:** §3.5 e §4 in `077ade022`; §1 (HSTS/redirect), §2 e la revisione del cantiere in
 > `2356ed65c` (2026-09-28, `dev/backend-tid`).
 >
 > ⏳ **Cosa manca per chiudere il brief** (in ordine):
-> 1. riavviare il backend su `backend-dev` (`sudo systemctl restart zeroerp-gunicorn`: rilegge
->    `.env.systemd`, dove c'è `DJANGO_SECURE_HSTS_SECONDS=0`) — senza, il frontend nuovo e il
->    backend vecchio non si parlano sul rinnovo;
-> 2. eseguire i tre smoke del refresh (`smoke-test-core`, `-audit-logging`, `-jwt-audit-guc`);
-> 3. collaudo a video di §2 (§2.5, ultima voce);
-> 4. CSP in Nginx come `Report-Only`, collaudo a video, poi applicata (§1.6);
-> 5. §3 TOTP, dopo le decisioni 3 e 4 di §6 e la richiesta al DB (§3.3).
+> 1. ✅ backend riavviato su `backend-dev` col codice nuovo (2026-09-28);
+> 2. ✅ tre smoke del refresh verdi (2026-09-28), dopo la correzione della provenienza negli
+>    smoke (§2.5);
+> 3. ✅ collaudo a video di §2 (2026-09-29, §2.5);
+> 4. ✅ CSP applicata in Nginx (2026-09-28, §1.6);
+> 5. ✅ frase dopo un logout da un'altra scheda (2026-09-29); resta da decidere, prima della
+>    produzione, la scheda rimasta con il frontend di una versione precedente (§2.5);
+> 6. §3 TOTP, dopo il lavoro DB di [brief-db-secondo-fattore-totp.md](brief-db-secondo-fattore-totp.md);
+>    decisioni 3 e 4 di §6 e D-T1 → D-T3 prese il 2026-09-28.
 >
 > **Contesto:** [Sicurezza e qualità statica](../sicurezza-e-qualita-statica.md), sezione
 > «Aperto». Registro del debito: [migliorie generali](migliorie-generali-BE-FE-da-test-valutazione.md),
@@ -164,11 +166,13 @@ add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
 * Emerso nel giro, fuori perimetro: `smoke-test-pratiche.sh` aveva un errore di sintassi (una
   virgoletta non chiusa nel riepilogo finale), quindi non partiva: corretto.
 
-⏳ **CSP: scritta, non ancora applicata.** La politica (sviluppo con Vite e produzione, una
-accanto all'altra), `Referrer-Policy` e `Permissions-Policy` sono nel vhost documentato in
-`configurazione-django.md`. Restano, a mano su `backend-dev` (sudo): copiarle nel vhost come
-`Content-Security-Policy-Report-Only`, `nginx -t && systemctl reload nginx`, collaudo a video su
-tutte le aree guardando la console, poi togliere `-Report-Only`. Chiusa quella, §1 è chiusa.
+✅ **CSP applicata il 2026-09-28** su `backend-dev`, con `Referrer-Policy` e `Permissions-Policy`
+(la politica di sviluppo, con le due eccezioni di Vite; quella di produzione è accanto nel vhost
+documentato). Passi: script con backup e `nginx -t`, prima `Content-Security-Policy-Report-Only`;
+collaudo a video di Tid (anteprime PDF ed email, gestione documenti con upload e download, websocket
+di Vite): console senza violazioni. Prova che la console le mostri: un `fetch` verso un sito esterno,
+segnalato in `Report-Only` («bloccherebbero … connect-src») e poi, applicata, bloccato. Il vhost
+documentato in `configurazione-django.md` è allineato. **§1 è chiusa**; D3-c chiusa nel registro.
 
 ---
 
@@ -254,10 +258,36 @@ password, che stanno altrove).
 * **Smoke**: `smoke-test-core`, `-audit-logging`, `-jwt-audit-guc` leggono il refresh dal
   `Set-Cookie` col BB `backend/scripts/tests/_smoke_refresh.sh`. ⚠️ Non ancora eseguiti contro il
   backend vero: va riavviato col codice nuovo.
+  ⚠️ **Emerso al primo lancio (2026-09-28):** il login di **ogni** smoke rispondeva 500
+  `E_AUTH_CHIAMATA_NON_VALIDA` «provenienza assente». Il freno sulla credenziale (dal 2026-09-25)
+  pretende `X-Forwarded-For`, che Nginx aggiunge e lo smoke, diretto su Gunicorn, no. Corretto nel
+  BB `_smoke_https.sh`, che ora dichiara anche la provenienza `127.0.0.1`; presidio
+  `test_il_bb_dichiara_una_provenienza_che_il_login_accetta` (esegue il BB, rosso senza la
+  correzione).
 * **Doc**: api.md § «Il refresh token viaggia nel cookie», frontend-standards § Sicurezza, i due
   cataloghi BB, le pagine `backend/core/manual/` dei cinque endpoint, `sicurezza-e-qualita-statica.md`.
 * ⏳ **Resta il collaudo a video** (sopra, ultima voce): ricarica, due schede oltre i 10 minuti,
   logout da una scheda, cambio emittente con due schede aperte.
+  🟡 **Collaudo del 2026-09-28/29, prima parte — superata.** Due dispositivi (Firefox su PC,
+  tablet Android), fermi oltre i 10 minuti: alla prima richiesta l'access scaduto dà 401, il
+  frontend rinnova da solo (200) e ripete; nessuna uscita (PC 00:18 e 00:28, tablet 00:31). Anche
+  la ricarica della pagina rinnova all'avvio.
+  ⚠️ **Emerso nel giro:** il tablet usciva con «sessione scaduta» a ogni scadenza, con il rinnovo
+  rifiutato 403. Non era il codice nuovo: la scheda era aperta da prima della modifica e girava il
+  frontend **vecchio**, che il refresh lo mandava nel corpo e senza l'header anti-CSRF. Il ritorno
+  al login non ricarica il codice (è una schermata della stessa app): è bastata una ricarica
+  completa. Per distinguere la prossima volta «client vecchio» da «header riscritto lungo la
+  strada», `richiedi_header_anti_csrf` scrive nel log `security.refresh_senza_header_anti_csrf`
+  col valore ricevuto (troncato) e lo user agent.
+  ❓ **Da decidere:** una scheda con il frontend di una versione precedente non si ripara da sola
+  (esce a ogni scadenza finché non la si ricarica). In produzione, a ogni rilascio, serve un
+  avviso «versione nuova, ricarica» o una ricarica automatica.
+  🟡 **Seconda parte**, con due schede **nello stesso browser** (è lì che lavora il
+  coordinamento; due dispositivi sono due sessioni, e il logout dal tablet ha lasciato il PC
+  collegato, come deve): ✅ logout da una scheda → esce anche l'altra (2026-09-29). Sull'altra
+  compareva «sessione scaduta», frase imprecisa: corretta il 2026-09-29 (revisione, ultima voce).
+  ✅ cambio emittente con due schede aperte → l'altra riparte col nuovo emittente (2026-09-29).
+  ✅ **Collaudo a video del §2 chiuso.**
 
 ✅ **Revisione critica del cantiere** (2026-09-28, nello stesso commit `2356ed65c`):
 
@@ -275,8 +305,13 @@ password, che stanno altrove).
   frontend; `test_nome_cookie_e_header_uguali_nei_tre_linguaggi` li confronta.
 * Test aggiunti: `test_auth_views` fino al n. 30 (GUC dai claim verificati, token veri per E-8, il
   BB del POST con refresh), `test_https_header` n. 11, `sessione.spec.js` n. 9.
-* ⚠️ Lasciato, da decidere: dopo un logout fatto in un'altra scheda questa arriva al login con
-  la frase «sessione scaduta» (serve un motivo nuovo e le sue traduzioni).
+* ✅ ~~Lasciato, da decidere: dopo un logout fatto in un'altra scheda questa arriva al login con
+  la frase «sessione scaduta».~~ **Fatto il 2026-09-29** (frase scelta da Tid): «Ti sei scollegato
+  da un'altra scheda». I motivi di ritorno al login sono diventati `MOTIVO_USCITA` in
+  `core/sessione.js`, sede unica per interceptor, store, guard del router e `LoginView`: il guard
+  che non rimbalza alla home una sessione dichiarata chiusa riconosce ogni motivo, non la sola
+  stringa `session_expired`. Test: `sessione.spec.js` n. 10-11, `stores/auth.spec.js` n. 1 (rosso
+  senza la correzione).
 
 ---
 
@@ -304,9 +339,16 @@ attuale (standard delle guide): chiesto al team DB in §3.3.
 
 ### 3.3 Richiesta al team DB
 
+➡️ **Scritta il 2026-09-28:** [brief-db-secondo-fattore-totp.md](brief-db-secondo-fattore-totp.md),
+con tre decisioni per Tid (D-T1 → D-T3). I punti sotto restano come origine.
+
 1. **Dove sta l'obbligo del secondo fattore.** Proposta: colonna `totp_obbligatorio` su
-   `config.credenziali`, come dice la nota di D-10. ❓ Da decidere con Tid se l'obbligo è per
-   credenziale, per ruolo (per esempio sempre per il super admin) o entrambi.
+   `config.credenziali`, come dice la nota di D-10. ✅ **Decisione di Tid (2026-09-28):
+   entrambi.** Il flag sulla credenziale lo accende l'amministratore sul singolo utente; in più
+   l'obbligo scatta **da solo** per gli account privilegiati (per esempio il super admin, chi
+   gestisce utenti e permessi), e cade quando quei permessi si perdono. Obbligo effettivo = flag
+   **oppure** regola. Quali permessi rendono «privilegiato» un account, e dove si calcola la
+   regola, si definisce nel brief DB.
 2. **Funzioni di scrittura** del device (registra, conferma, disabilita, consuma un codice di
    recupero, anti-replay) sul modello di `config.credenziali`: niente RLS (si legge prima del
    login, quando un perimetro non c'è ancora), **all'app solo `SELECT`**, ogni scrittura da una
@@ -324,7 +366,11 @@ attuale (standard delle guide): chiesto al team DB in §3.3.
   primo codice; codici di recupero mostrati una volta.
 * **Middleware** che obbliga al setup chi ha l'obbligo e non ha un device attivo, sul modello di
   `PasswordChangeRequiredMiddleware`.
-* ❓ **Dipendenze — ok di Tid richiesto** (regola: nessuna dipendenza nuova senza conferma):
+* ✅ **Dipendenze — decisione di Tid (2026-09-28): librerie esistenti.** Quali, fra le
+  alternative sotto, si sceglie nel lavoro; ogni libreria nuova si nomina a Tid prima di
+  aggiungerla. ✅ **Scelte e approvate da Tid (2026-09-28): `pyotp` per il TOTP, `segno` per il
+  QR code, generato nel backend come SVG** (il frontend non aggiunge librerie npm). Si
+  aggiungono a `requirements` quando parte il lavoro BE, dopo il DB. Le alternative valutate:
   * TOTP: `pyotp`, oppure RFC 6238 scritta sulla libreria standard (`hmac`, `hashlib`,
     `struct`: una trentina di righe, più i test con i vettori della RFC);
   * QR code: generato nel backend (`qrcode`, SVG) o nel frontend (una libreria npm).
@@ -439,14 +485,21 @@ Emerse nel giro, rimandate il 2026-09-28 e ✅ **fatte lo stesso giorno** (richi
    `NoReturn`. ⚠️ Il primo conteggio li aveva mancati perché cercava solo la forma
    `AssertionError(...)`: una ricerca per **testo** vede una forma, quella per **significato**
    («riga dopo una chiamata che solleva sempre») le vede tutte.
-   ⏳ **Restano, un giro a sé**:
-   * 9 `raise` nudi dopo traduttori d'errore **locali** non dichiarati `NoReturn`:
-     `_raise_known_db_error` (`pratiche_service` ×6, `definizioni_service` ×1) e
-     `_translate_nota_integrity_error` (`catalogo_service` ×2). Si tolgono dichiarando
-     `NoReturn` il traduttore, dopo averne provato che solleva su ogni ramo;
-   * 4 `ErrorManager.require(False, ...)`, lo stesso «solleva sempre» mascherato da controllo
-     convertito sopra: `soggetti_service` ×2, `amm_software_service` ×1, `auth_helpers` ×1 →
-     `raise_error` (con `cause=exc` se dentro un `except`).
+   ✅ **Il giro a sé, fatto il 2026-09-28** (richiesta di Tid):
+   * 9 `raise` nudi dopo traduttori d'errore **locali**, tolti dichiarando `NoReturn` il
+     traduttore dopo averne verificato che solleva su ogni ramo: `_raise_known_db_error`
+     (`pratiche_service` ×6, `definizioni_service` ×1; il ramo «non riconosciuto» chiude con
+     `raise exc`) e `_translate_nota_integrity_error` (`catalogo_service` ×2);
+   * 4 `ErrorManager.require(False, ...)` → `raise_error`: `soggetti_service` ×2,
+     `amm_software_service` e `auth_helpers` (questi due dentro un `except`, con `cause=exc`);
+   * ⚠️ **una terza forma**, fuori dai conteggi sopra: `raise  # pragma: no cover`, 10 punti.
+     Seguono `raise_error` (`lista_preset_admin_service` ×2, `lista_colonna_admin_service` ×1),
+     `map_integrity_error` (`partitioned_note_service` ×2) e i due `_traduci` di `vendite`
+     (`famiglie_service` ×2, `registri_service` ×2), ora `NoReturn`: chiudono entrambi con
+     `map_integrity_error`. Tolta anche la riga dall'esempio d'uso nel commento di
+     `map_integrity_error`, che insegnava la forma;
+   * presidio: `test_error_manager` n. 5 controlla `NoReturn` anche sui quattro traduttori
+     nuovi. Nel codice applicativo non restano né `raise` di comodo né `require(False)`.
 
    Non c'è un type checker in CI: `NoReturn` oggi lo legge l'editor, e un test come
    `test_error_manager` ne prova la verità.
@@ -472,5 +525,5 @@ Emerse nel giro, rimandate il 2026-09-28 e ✅ **fatte lo stesso giorno** (richi
 | --- | --- | --- |
 | 1 | ✅ HSTS a `0` dichiarato sulla macchina di sviluppo (Tid, 2026-09-28) | 1.3 |
 | 2 | ✅ Più schede: coordinamento fra schede (strada A), access a 10 minuti (Tid, 2026-09-28) | 2.4 |
-| 3 | Obbligo del secondo fattore: per credenziale, per ruolo, o entrambi? | 3.3 |
-| 4 | Dipendenze TOTP e QR: librerie o codice nostro? | 3.4 |
+| 3 | ✅ Obbligo del secondo fattore: **entrambi** — flag sulla credenziale più regola automatica per gli account privilegiati (Tid, 2026-09-28) | 3.3 |
+| 4 | ✅ Dipendenze TOTP e QR: librerie esistenti (Tid, 2026-09-28) | 3.4 |

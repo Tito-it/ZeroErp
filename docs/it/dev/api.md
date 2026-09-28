@@ -2175,7 +2175,10 @@ accendere un cancello, non nella peggiore.
 * ⛔ Uno smoke bash nuovo, subito dopo `BASE_URL=`, include
   `source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"`: parla con Gunicorn
   diretto in HTTP, e fuori da `DEBUG` Django redirige in HTTPS (301). Il file si
-  dichiara HTTPS come Nginx. Presidio: `apps/core/tests/api/test_https_header.py`.
+  dichiara HTTPS come Nginx, e come Nginx dichiara la **provenienza**
+  (`X-Forwarded-For: 127.0.0.1`): senza, il login risponde
+  `E_AUTH_CHIAMATA_NON_VALIDA` (freno sulla credenziale, fail-closed). Presidio:
+  `apps/core/tests/api/test_https_header.py`.
   I test Django non ne hanno bisogno: il redirect lo spegne il runner.
 * Uno smoke bash che usa il refresh token (refresh, logout) include anche
   `_smoke_refresh.sh`: il refresh non è più nel corpo del login ma nel cookie

@@ -766,6 +766,7 @@
     },
     "login_error": "Credenziali non valide",
     "session_expired": "Sessione scaduta — accedi di nuovo",
+    "logout_other_tab": "Ti sei scollegato da un'altra scheda",
     "account_disabled": "Account disabilitato — contattare l'amministratore",
     "account_not_active": "Account non ancora attivo",
     "account_expired": "Account scaduto — contattare l'amministratore",

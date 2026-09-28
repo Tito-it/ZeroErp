@@ -1226,7 +1226,7 @@ def _translate_componente_integrity_error(exc: IntegrityError, *, function_name:
 
 
 # Scopo: Traduce IntegrityError su note catalogo in errore applicativo uniforme.
-def _translate_nota_integrity_error(exc: IntegrityError, *, function_name: str) -> None:
+def _translate_nota_integrity_error(exc: IntegrityError, *, function_name: str) -> NoReturn:
     ErrorManager.raise_error(
         code="E_CATALOGO_VALIDATION",
         message="Violazione vincoli nota.",
@@ -1764,7 +1764,6 @@ def fn_create_nota_articolo(articolo_id: UUID | str, payload: dict[str, Any]) ->
         nota_id = repository.create_nota("ARTICOLI", articolo_id, data)
     except IntegrityError as exc:
         _translate_nota_integrity_error(exc, function_name=function_name)
-        raise  # unreachable, per type checker
     result = repository.get_nota_articolo(articolo_id, nota_id)
     assert result is not None
     return result
@@ -1785,7 +1784,6 @@ def fn_create_nota_componente(componente_id: UUID | str, payload: dict[str, Any]
         nota_id = repository.create_nota("ARTICOLI_COMPONENTI", componente_id, data)
     except IntegrityError as exc:
         _translate_nota_integrity_error(exc, function_name=function_name)
-        raise  # unreachable, per type checker
     result = repository.get_nota_componente(nota_id)
     assert result is not None
     return result

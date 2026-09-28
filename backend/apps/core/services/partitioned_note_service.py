@@ -279,7 +279,6 @@ class PartitionedNoteService:
                 fallback_message="Errore creazione nota.",
                 context={"target_id": target_id},
             )
-            raise  # pragma: no cover
 
         return self.get_nota(note_id=new_id, target_id=target_id)
 
@@ -312,7 +311,6 @@ class PartitionedNoteService:
                 fallback_message="Errore aggiornamento nota.",
                 context={"note_id": note_id, "target_id": target_id},
             )
-            raise  # pragma: no cover
 
         ErrorManager.require(
             updated,
