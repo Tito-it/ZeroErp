@@ -538,6 +538,12 @@ a {
   padding-bottom: 0.25rem;
   border-bottom: 1px solid var(--app-drawer-section-border);
 }
+/* Titolo di sezione SENZA la linea: quando la sezione segue gia' un
+   separatore (il `<Divider>` che chiude la testata di un documento), la linea
+   del titolo sarebbe una seconda riga orizzontale a pochi pixel dalla prima. */
+.app-drawer-section--senza-bordo {
+  border-bottom: none;
+}
 .app-drawer-section h4 {
   margin: 0;
   font-size: 0.9rem;
@@ -960,6 +966,19 @@ a {
 .app-datatable .p-paginator .p-paginator-current {
   font-size: 0.8rem;
   padding: 0 0.25rem;
+}
+
+/* Tablet e schermo stretto: via il salto pagina (JumpToPageDropdown). Doppia
+ * la navigazione ◀ 1 2 3 ▶ che resta, e il `1/N` accanto dice gia' dove si e'.
+ * ⭐ Nascosto in CSS e non tolto dal `paginatorTemplate`: il template vive in
+ *    due sedi (ListaConfigurabile + useSearchTable) e non conosce il device.
+ * ⭐ `(hover: none)` prende il tablet anche in orizzontale (>= 1024px), che
+ *    la sola soglia `BREAKPOINTS.TABLET` lascerebbe fuori: stessa condizione
+ *    del kebab azioni riga (vedi `.app-row-actions-*` piu' giu'). */
+@media (hover: none), (max-width: 1023.98px) {
+  .app-datatable .p-paginator .p-paginator-jtp-dropdown {
+    display: none;
+  }
 }
 
 .app-datatable .p-datatable-tbody > tr:hover {

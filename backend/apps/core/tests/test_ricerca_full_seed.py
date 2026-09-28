@@ -190,6 +190,10 @@ _RICERCHE: tuple[tuple[str, object], ...] = (
     ("vendite.ordine_righe", _da_costante(_V + "ordini_repository", "_RICERCA_RIGHE")),
     ("vendite.ddt_righe", _da_costante(_V + "ddt_repository", "_RICERCA_RIGHE")),
     ("vendite.reso_righe", _da_costante(_V + "resi_repository", "_RICERCA_RIGHE")),
+    # La distinta base (2026-09-28, lotto C): lista 101 dentro il drawer BoM.
+    ("catalogo.articolo_componenti", _da_costante("apps.catalogo.db.catalogo_bom_repository", "_RICERCA_COMPONENTI")),
+    # Le righe di una fattura (2026-09-28, lotto C): lista 102 sulla vista di lista.
+    ("vendite.fattura_righe", _da_costante(_V + "fatture_repository", "_RICERCA_RIGHE_FATTURA")),
 )
 
 # Liste con colonne `ricercabile_full = t` la cui ricerca e' ancora scritta a

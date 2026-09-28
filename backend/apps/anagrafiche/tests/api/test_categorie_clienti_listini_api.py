@@ -50,12 +50,6 @@ class _BaseApiTest(JwtMockedApiTest):
         #    codice. Il difetto non e' del test che fallisce — e' di quello
         #    che non pulisce, e si vede solo in suite completa.
         cache.clear()
-        self._req_log_patcher = patch(
-            "apps.core.middleware.request_log_middleware.RequestLogMiddleware._insert_log",
-            return_value=None,
-        )
-        self._req_log_patcher.start()
-        self.addCleanup(self._req_log_patcher.stop)
 
 
 class TestGet(_BaseApiTest):

@@ -58,11 +58,13 @@ service `get_fattura_dettaglio` (`apps.vendite.services.vendite_service`).
     },
     "righe": [
       {
-        "id": 41, "tipo_riga": "NORMALE", "livello": 0, "riga_nr": 1,
+        "riga_key": "R:41", "fatture_righe_id": 41, "tipo_riga": "NORMALE",
+        "riga_nr": 1, "ordinamento": 1,
         "articolo_codice": "ART-001", "descrizione": "Canone mensile",
         "uom_codice": "kWh", "quantita": "10.00", "prezzo_unitario": "100.00",
         "sconto_percentuale": null, "iva_codice": "22", "iva_aliquota": "22.00",
-        "iva_natura": null, "importo_riga": "1000.00"
+        "iva_natura": null, "importo_riga": "1000.00",
+        "componenti": null, "componenti_numero": 0
       }
     ],
     "riepilogo_iva": [
@@ -152,10 +154,20 @@ Nessuna modifica applicativa è stata necessaria: il percorso operatore legge gl
 - Nessun ricalcolo: il riepilogo IVA arriva da `vendite.fatture_riepiloghi_iva`,
   tabella **reale** già aggregata e arrotondata dalla pipeline (a differenza
   degli ordini, che lo derivano da una vista on-the-fly).
-- Le righe arrivano da `vw_fattura_righe_esposte` e **non** dalla tabella: la
-  vista è la rappresentazione unica del documento e risolve i **kit** (una riga
-  `KIT_PADRE` col totale, sotto i soli componenti con `kit_esposto_in_fattura`).
-  ⚠️ `id` è **NULL** sulle righe `KIT_PADRE`: non usarlo come chiave.
+- Le righe arrivano da `vw_fattura_righe_lista` (dal 2026-09-28, lotto C del
+  brief-db-liste-righe-documento), la **stessa vista** della lista a video
+  (`GET fatture/<id>/righe/lista/`, [api_righe_documento.md](api_righe_documento.md)):
+  il primo livello di `vw_fattura_righe_esposte`, la rappresentazione unica del
+  documento che risolve i **kit** — una riga `KIT_PADRE` col totale, con i soli
+  componenti esposti **dentro** di lei (`componenti`, jsonb). Ordine del
+  documento: `ordinamento, riga_nr, riga_key`.
+  ⚠️ La chiave è `riga_key`: `fatture_righe_id` è **NULL** sul padre di un kit,
+  che in tabella non esiste. La chiave vera di un componente è il suo
+  `fatture_righe_id` dentro `componenti`.
+  ⚠️ **Il PDF non legge ancora questa forma**: il contesto di stampa resta alla
+  versione 1 (righe piatte con `tipo_riga`/`livello`, da
+  `VenditeRepository.list_fattura_righe`) finché non c'è il legame fra versione
+  del template e versione del contesto (brief §9.8).
 - Nessun verbo di modifica su questo path: la fattura è prodotta dalla pipeline
   e oltre la soglia di congelamento le righe sono congelate a DB
   (`trgfn_fattura_satellite_guard_congelamento`, `E_FATTURA_RIGA_CONGELATA`).

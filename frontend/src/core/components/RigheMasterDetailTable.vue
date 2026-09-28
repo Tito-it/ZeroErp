@@ -221,7 +221,10 @@ defineExpose({ loadRighe: () => reloadAll() })
 
 <template>
   <div>
-    <div class="app-drawer-section">
+    <!-- Senza la linea del titolo: nei quattro drawer la sezione righe segue il
+         `<Divider>` che chiude la testata, e le due linee si leggevano come
+         una doppia riga (rilievo di Tid, 2026-09-28). -->
+    <div class="app-drawer-section app-drawer-section--senza-bordo">
       <h4>{{ t(titleKey) }}</h4>
     </div>
 

@@ -29,6 +29,11 @@ const props = defineProps({
   istanzaUtilityId: { type: [Number, null], default: null },
   tipoRuoloCodice: { type: String, default: TIPO_RUOLO.CLIENTE },
   readonly: { type: Boolean, default: false },
+  // La linea in fondo alla sezione. `false` dove il drawer la fa seguire da un
+  // `<Divider>` (preventivo, ordine, DDT, prima delle righe): le due linee
+  // attaccate si leggevano come una doppia riga (rilievo di Tid, 2026-09-28).
+  // Offerta e contratto non hanno il Divider: li' la linea e' il separatore.
+  bordo: { type: Boolean, default: true },
 })
 const emit = defineEmits(['changed', 'state'])
 
@@ -81,7 +86,12 @@ async function onChanged() {
 </script>
 
 <template>
-  <div v-if="docId && tipoDefault" class="app-drawer-section">
+  <!-- ⚠️ La sezione avvolge anche il contenuto, quindi la linea di
+       `app-drawer-section` cade SOTTO gli indirizzi: vedi la prop `bordo`. -->
+  <div
+    v-if="docId && tipoDefault"
+    class="app-drawer-section"
+    :class="{ 'app-drawer-section--senza-bordo': !bordo }">
     <h4>{{ t('vendite.indirizzi.titolo') }}</h4>
 
     <div class="indirizzi-section-row">

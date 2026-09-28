@@ -20,12 +20,18 @@ Indice test eseguiti:
 
 from django.apps import apps
 from django.conf import settings
-from django.test import Client, SimpleTestCase, override_settings
+from django.test import Client, override_settings
+
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 
-class SuperficiePubblicaTests(SimpleTestCase):
+# ⚠️ Base `JwtMockedApiTest` anche se qui non c'e' nessun token: le chiamate
+#    `/api/*` passano dai middleware che scrivono sul DB (lingua, log), e la
+#    base li spegne. Il client resta anonimo, e nessun mock tocca l'auth.
+class SuperficiePubblicaTests(JwtMockedApiTest):
     # Scopo: Prepara il client anonimo (nessun token: e' il punto del test).
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     # Scopo: `/admin/` e la sua login non devono esistere: erano una form di

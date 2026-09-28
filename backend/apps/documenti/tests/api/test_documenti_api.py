@@ -94,12 +94,6 @@ class DocumentiApiSmokeTests(JwtMockedApiTest):
         super().setUp()
         cache.clear()
         self.client = Client()
-        # Silenzia il middleware di log (non rilevante allo smoke API).
-        request_log_patcher = patch(
-            "apps.core.middleware.request_log_middleware.RequestLogMiddleware._insert_log"
-        )
-        request_log_patcher.start()
-        self.addCleanup(request_log_patcher.stop)
 
     # 0. JWT assente -> 401.
     def test_list_templates_requires_jwt(self) -> None:
@@ -254,11 +248,6 @@ class DocumentiApiWriteTests(JwtMockedApiTest):
         super().setUp()
         cache.clear()
         self.client = Client()
-        request_log_patcher = patch(
-            "apps.core.middleware.request_log_middleware.RequestLogMiddleware._insert_log"
-        )
-        request_log_patcher.start()
-        self.addCleanup(request_log_patcher.stop)
 
     _CREATE_PAYLOAD = {
         "tipo_documento_output_id": 1,
@@ -373,11 +362,6 @@ class DocumentiApiVersioniWriteTests(JwtMockedApiTest):
         super().setUp()
         cache.clear()
         self.client = Client()
-        request_log_patcher = patch(
-            "apps.core.middleware.request_log_middleware.RequestLogMiddleware._insert_log"
-        )
-        request_log_patcher.start()
-        self.addCleanup(request_log_patcher.stop)
 
     _CREATE_VERSIONE_PAYLOAD = {
         "titolo": "v1 standard",
@@ -484,11 +468,6 @@ class DocumentiAssetApiTests(JwtMockedApiTest):
         super().setUp()
         cache.clear()
         self.client = Client()
-        request_log_patcher = patch(
-            "apps.core.middleware.request_log_middleware.RequestLogMiddleware._insert_log"
-        )
-        request_log_patcher.start()
-        self.addCleanup(request_log_patcher.stop)
 
     _ASSET_DETAIL = {
         "id": 50,

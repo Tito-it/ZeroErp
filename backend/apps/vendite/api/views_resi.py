@@ -36,7 +36,7 @@ from apps.ui.api.export_helpers import build_export_response, parse_export_forma
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.api._list_filters_helpers import extract_doc_list_filters
 from apps.vendite.services import resi_service
-from apps.vendite.api.righe_lista_views import build_righe_lista_views
+from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
 from apps.vendite.db.resi_repository import ResiRepository
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.vendite.api._schema_da_contratto import schema_da_contratto
@@ -830,13 +830,15 @@ class ApiResoRigaDetail(DomainAPIView):
 
 
 # ── Righe: la lista configurabile `vendite.reso_righe` ──
-# Pagina ed export dal factory condiviso `build_righe_lista_views`
+# Pagina ed export dal factory condiviso `build_lista_figlia_views`
 # (brief-db-liste-righe-documento, lotto A). La closure legge il global di
 # modulo a call-time: i patch dei test sul service restano validi.
 # ⚠️ `GET …/righe/` resta la lettura COMPLETA: la lista e' su `…/righe/lista/`.
-_ResoRigheLista, _ResoRigheListaExport = build_righe_lista_views(
-    schema_prefix="Reso",
-    operation="vendite_resi",
+_ResoRigheLista, _ResoRigheListaExport = build_lista_figlia_views(
+    schema_prefix="ResoRighe",
+    operation_id="vendite_resi_righe_lista",
+    area_funzionale="vendite",
+    lista_emittente_param=EMITTENTE_DOCUMENTO_PARAM,
     url_kwarg="reso_id",
     model_permission=('vendite', 'reso'),
     pagina_call=lambda documento_id, **kw: resi_service.list_righe_pagina(documento_id, **kw),

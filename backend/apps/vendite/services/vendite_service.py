@@ -13,6 +13,7 @@ import math
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
@@ -1839,6 +1840,47 @@ def get_documento_passaggi(
 
 _FN_FATTURA_DETTAGLIO = "vendite.vendite_service.get_fattura_dettaglio"
 _FN_FATTURA_GIORNALE = "vendite.vendite_service.get_fattura_giornale"
+_FN_FATTURA_RIGHE = "vendite.vendite_service.list_fattura_righe_pagina"
+
+
+# Scopo: IL CANCELLO di ogni lettura di una fattura: id valido, poi la testata
+#        letta con lo scope applicativo (`auth_user_id`, sommato alla RLS).
+#        Ritorna la testata; inesistente e fuori scope danno la STESSA
+#        risposta, un 404: distinguerli confermerebbe l'esistenza di una
+#        fattura di un altro emittente (api.md §Scope emittente).
+# ⭐ Regola del 2 (2026-09-28, lotto C del brief-db-liste-righe-documento):
+#    dettaglio e giornale lo scrivevano ciascuno per intero, e la lista delle
+#    righe sarebbe stata la terza copia.
+# ⛔ I satelliti (righe, giornale, rettifiche) si leggono DOPO: `vendite.
+#    fatture` ha la RLS, alcuni satelliti no.
+def _testata_fattura_o_404(
+    repository: VenditeRepository,
+    fattura_id: int,
+    *,
+    auth_user_id: int | None,
+    function_name: str,
+) -> dict[str, Any]:
+    ErrorManager.require(
+        bool(fattura_id and fattura_id > 0),
+        code="E_VENDITE_VALIDATION",
+        message="Parametri non validi.",
+        detail="fattura_id obbligatorio e > 0",
+        context={"fattura_id": fattura_id},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    testata = repository.get_fattura_testata(fattura_id, auth_user_id=auth_user_id)
+    if testata is None:
+        ErrorManager.raise_error(
+            code="E_FATTURA_NON_TROVATA",
+            message="Fattura non trovata.",
+            detail=f"Nessuna fattura accessibile con id={fattura_id}",
+            context={"fattura_id": fattura_id},
+            function_name=function_name,
+            log_to_db=True,
+        )
+    assert testata is not None
+    return testata
 
 
 # Scopo: Documento fattura completo per la consultazione a video: testata
@@ -1881,32 +1923,13 @@ def get_fattura_dettaglio(
     fattura_id: int,
     auth_user_id: int | None = None,
 ) -> dict[str, object]:
-    ErrorManager.require(
-        bool(fattura_id and fattura_id > 0),
-        code="E_VENDITE_VALIDATION",
-        message="Parametri non validi.",
-        detail="fattura_id obbligatorio e > 0",
-        context={"fattura_id": fattura_id},
-        function_name=_FN_FATTURA_DETTAGLIO,
-        log_to_db=True,
-    )
     repository = VenditeRepository()
 
-    # 1. IL CANCELLO. Scope applicativo (auth_user_id) sommato alla RLS.
-    testata = repository.get_fattura_testata(fattura_id, auth_user_id=auth_user_id)
-    if testata is None:
-        # Inesistente e fuori scope danno la STESSA risposta: un 404 che
-        # distinguesse i due casi confermerebbe l'esistenza di una fattura di
-        # un altro emittente (api.md §Scope emittente).
-        ErrorManager.raise_error(
-            code="E_FATTURA_NON_TROVATA",
-            message="Fattura non trovata.",
-            detail=f"Nessuna fattura accessibile con id={fattura_id}",
-            context={"fattura_id": fattura_id},
-            function_name=_FN_FATTURA_DETTAGLIO,
-            log_to_db=True,
-        )
-    assert testata is not None
+    # 1. IL CANCELLO (`_testata_fattura_o_404`).
+    testata = _testata_fattura_o_404(
+        repository, fattura_id,
+        auth_user_id=auth_user_id, function_name=_FN_FATTURA_DETTAGLIO,
+    )
 
     # 2. Solo ORA i satelliti: la testata ha gia' autorizzato l'accesso.
     #    Il conteggio note passa dal service del BB note (`count_per_target`,
@@ -1917,7 +1940,12 @@ def get_fattura_dettaglio(
     #    sub-drawer note si aggiorna da solo.
     return {
         "fattura": dict(testata),
-        "righe": repository.list_fattura_righe(fattura_id),
+        # ⭐ Le righe dalla STESSA vista della lista a video
+        #    (`vw_fattura_righe_lista`, lettura completa): primo livello, e i
+        #    componenti esposti di un kit dentro il padre (`componenti`). Una
+        #    sede sola per «quali righe ha questa fattura» (lotto C, 2026-09-28).
+        #    Oggi le legge il drawer delle note, per il selettore di riga.
+        "righe": FattureRepository().list_righe(fattura_id),
         "riepilogo_iva": repository.list_fattura_riepilogo_iva(fattura_id),
         "scadenze": repository.list_fattura_scadenze(fattura_id),
         # Legame documentale della nota di credito, nei due versi (B7). ⚠️ Sta
@@ -2003,6 +2031,31 @@ def _envelope_giornale(
     return envelope
 
 
+# Scopo: UNA PAGINA delle righe di una fattura, per la lista configurabile
+#        `vendite.fattura_righe` (brief-db-liste-righe-documento, lotto C).
+#        «Leggi prima la testata»: fuori scope e' un 404, non una lista vuota
+#        (la vista e' `security_invoker` e risponderebbe zero righe).
+def list_fattura_righe_pagina(
+    fattura_id: int,
+    *,
+    auth_user_id: int | None = None,
+    search: str | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    limit: int,
+    offset: int = 0,
+    max_limit: int = MAX_LIMIT,
+) -> tuple[list[dict[str, Any]], int]:
+    _testata_fattura_o_404(
+        VenditeRepository(), fattura_id,
+        auth_user_id=auth_user_id, function_name=_FN_FATTURA_RIGHE,
+    )
+    return FattureRepository().list_righe_pagina(
+        fattura_id, search=search, order_by=order_by, order_dir=order_dir,
+        limit=limit, offset=offset, max_limit=max_limit,
+    )
+
+
 # Scopo: IL GIORNALE DI UNA FATTURA — «cosa e' successo a questo documento, in
 #        ordine di tempo». Sola lettura, elenco paginato dalla vista cucita
 #        `script.vw_giornale_entita` (Passo A del filone osservabilita').
@@ -2036,34 +2089,17 @@ def get_fattura_giornale(
     includi_ritirate: bool = False,
     auth_user_id: int | None = None,
 ) -> dict[str, object]:
-    ErrorManager.require(
-        bool(fattura_id and fattura_id > 0),
-        code="E_VENDITE_VALIDATION",
-        message="Parametri non validi.",
-        detail="fattura_id obbligatorio e > 0",
-        context={"fattura_id": fattura_id},
-        function_name=_FN_FATTURA_GIORNALE,
-        log_to_db=True,
-    )
     _valida_lettura_giornale(
         limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
         function_name=_FN_FATTURA_GIORNALE,
     )
     repository = VenditeRepository()
 
-    # 1. IL CANCELLO — vedi sopra. Inesistente e fuori scope danno la stessa
-    #    risposta: distinguerli confermerebbe l'esistenza di una fattura di un
-    #    altro emittente.
-    testata = repository.get_fattura_testata(fattura_id, auth_user_id=auth_user_id)
-    if testata is None:
-        ErrorManager.raise_error(
-            code="E_FATTURA_NON_TROVATA",
-            message="Fattura non trovata.",
-            detail=f"Nessuna fattura accessibile con id={fattura_id}",
-            context={"fattura_id": fattura_id},
-            function_name=_FN_FATTURA_GIORNALE,
-            log_to_db=True,
-        )
+    # 1. IL CANCELLO (`_testata_fattura_o_404`).
+    _testata_fattura_o_404(
+        repository, fattura_id,
+        auth_user_id=auth_user_id, function_name=_FN_FATTURA_GIORNALE,
+    )
 
     # 2. Solo ORA il giornale: la testata ha gia' autorizzato l'accesso.
     # ⭐ LE RITIRATE SI NASCONDONO (decisione di Tid, 2026-08-24): una

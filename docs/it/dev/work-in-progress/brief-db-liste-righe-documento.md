@@ -1304,6 +1304,9 @@ ATTIVE. Due buchi, entrambi ammessi dallo schema:
 
 #### 8.15.4 La regola delle 15 righe nei drawer (Tid, 2026-09-28 sera)
 
+> ⛔ **RITIRATA il 2026-09-28 sera (§9.7):** il 15 non è fra le opzioni del
+> paginatore e il selettore restava vuoto. Nei drawer si torna a **10**.
+
 Censimento dal frontend (`DrawerTabLista` / `useDrawerTabLista`, 2026-09-28):
 **25 liste** montate **solo** dentro un drawer → preset di sistema a **15**
 (`lista_preset.csv`, 18 righe esistenti + le 7 nuove): 19, 37, 54, 61, 62, 64,
@@ -1377,9 +1380,9 @@ vuol dire quindi: **prima del commit** di CSV e doc.
 | --- | --- | --- |
 | **A** | BE liste 97-100: repository sulle viste, lista paginata + export, presidi | ✅ 2026-09-28 (§9.1) |
 | **B** | FE L2: preventivo, ordine, DDT, reso su `DrawerTabLista` | ✅ 2026-09-28 (§9.2); ⏳ al team DB: tre correzioni di seed (§9.3) e l'ordine delle colonne (§9.4) |
-| **C** | BE + FE: BoM (101) e fattura (102) | ⏳ |
+| **C** | BE + FE: BoM (101) e fattura (102) | ✅ 2026-09-28 (§9.8); ⏳ **decisione di Tid**: il contesto di stampa della fattura (§9.8.4) |
 | **D** | BE + FE: contratto (103) | ⏳ |
-| **E** | policy `E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI`, 15 righe nei drawer, date della versione CHIUSA, doc §6 | ⏳ |
+| **E** | policy `E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI`, ~~15~~ **10** righe nei drawer (§9.7), date della versione CHIUSA, doc §6 | ⏳ |
 
 ### 9.1 Lotto A — BE delle liste 97-100 (2026-09-28)
 
@@ -1632,3 +1635,157 @@ vitest, lint, guards, build verdi.
 2. **UX della riga in modifica**: la vecchia `DataTable` evidenziava la riga aperta e non mostrava hover sui documenti non modificabili; `ListaConfigurabile` ha `selectionMode='single'` fisso. Serve una prop?
 3. **Default propri nelle firme interne** (`limit: int = 50/100` in ~25 repository e service, `tracciamento_service` a 100 sotto una view a 25): la view li scavalca sempre, ma sono due default per la stessa lista. Portarli a `DEFAULT_LIMIT` o toglierli.
 4. `fetch_paged_with_total` in modalità rilettura riceve `offset=` a parte: si potrebbe ricavarlo da `params[-1]`, così non può divergere dal valore nella query.
+
+### 9.7 ⏳ Richiesta al team DB — le liste nei drawer tornano a 10 righe (Tid, 2026-09-28 sera)
+
+**Rilievo di Tid, a video:** nelle liste dentro un drawer il selettore «righe
+per pagina» è **vuoto**. La causa è nel modello, non nella resa: il
+paginatore offre solo le misure di `PAGINATION.ROWS_OPTIONS` (10, 25, 50, 100,
+`frontend/src/core/constants.js`), e il **15** della regola del §8.15.4 non è
+fra queste. PrimeVue non trova il valore corrente fra le opzioni e mostra il
+campo vuoto, senza errore.
+
+✅ **Decisione di Tid: nei drawer si torna a 10** (`PAGINATION.COMPACT_ROWS`,
+la misura che il §3.1 aveva già scelto per le liste righe). La regola delle
+«15 righe nei drawer» del §8.15.4 è **ritirata**.
+
+**`lista_preset.csv`, solo dato:** `pagina_dimensione` da **15** a **10** sui
+27 preset di sistema che il §8.15.4 aveva portato a 15 — liste 19, 37, 54, 61,
+62, 64, 65, 69, 71, 74, 81, 82, 84, 85, 86, 88, 89, 90, 97-103. Chi ha già
+salvato una sua personalizzazione la tiene (può ripristinare il preset).
+
+⭐ **Proposta di presidio, da decidere con Tid:** oggi niente impedisce a un
+preset di dichiarare una misura che il paginatore non offre, e l'errore si vede
+solo a video. Un `CHECK (pagina_dimensione IN (10, 25, 50, 100))` su
+`ui.lista_preset` lo rifiuterebbe al migrate. ⚠️ Le opzioni vivrebbero allora
+in due sedi (il `CHECK` e `PAGINATION.ROWS_OPTIONS`): serve anche un presidio
+che le confronti, o l'elenco va letto dal catalogo invece che dalla costante.
+
+**Lato FE** (`dev/backend-tid`, fatto nello stesso giro): `frontend-standards`
+§«Righe per pagina default» dice «10 nei drawer e nei dialog». Nessun codice
+FE da toccare: il 15 esisteva solo nel seed.
+
+### 9.8 Lotto C — BoM (101) e fattura (102) (2026-09-28)
+
+**Decisione di Tid (2026-09-28): le personalizzazioni delle stampe vivono nel
+TEMPLATE, i dati nella vista.** Ogni azienda ha le sue idee sulla fattura
+stampata, e il motore documentale le accoglie già (template per emittente,
+versionati, Jinja, contesto preparato dal backend). La lettura delle righe
+resta una sola, perché è un fatto fiscale: video, PDF e domani XML SDI
+raccontano lo stesso documento (R17). Ordine concordato: BoM, lista della
+fattura, poi il contesto di stampa.
+
+#### 9.8.1 BoM (101)
+
+| Dove | Cosa |
+| --- | --- |
+| `catalogo/db/catalogo_bom_repository.py` | le tre letture sulla vista `vw_articoli_componenti_dettaglio` (D-8.5); **ritirata `COMPONENTE_DETAIL_COLUMNS`**, la copia Python di proiezione e capability con il commento «aggiornare ENTRAMBI»; nuova `list_componenti_pagina` (ricerca, whitelist `COMPONENTI_SORT_COLUMNS`, `valido_al` come «in vigore al»: `valido_al IS NULL OR valido_al >= data`) |
+| `catalogo_service.fn_list_componenti_pagina` | «leggi prima l'articolo» (404, non lista vuota) |
+| `catalogo/api/views.py`, `urls.py` | `GET articoli/<id>/componenti/lista/` + `export/`, su un **percorso suo** come il lotto A (il cancello di perimetro non tocca il POST di `…/componenti/`); nessun `lista_emittente_param`: la distinta è «per azienda» (D-8.2) |
+| presidi | `_RICERCHE`, `test_liste_configurabili_seed`, `gen_seed_lista.py` (+1) |
+| test | `tests/db/test_componenti_lista.py` (10; mutazione: il filtro senza `IS NULL` → rosso), `tests/api/test_componenti_lista_api.py` (7) |
+| FE `catalogo/components/ArticoloBomDrawer.vue` | su `DrawerTabLista` + `useFormInline`: il click apre la riga **in sola lettura** (il modo `edit` del BB), «Nuovo» e «Duplica versione» aprono il modo `create`; «Chiudi riga» e «Duplica» restano azioni di riga dalla capability della vista. Ritirati la `DataTable` grezza, i filtri locali, il ricaricamento F5 fatto a mano (i tab-lista sono `incorporata`) |
+| FE `catalogo/stores/articoloComponenti.js`, `api/catalogo.js` | store per istanza; il filtro `valido_al` nasce a oggi, `null` = «tutte le versioni» (il segno resta spento: non restringe) |
+
+⚠️ **Limite dichiarato:** il default «oggi» del filtro si calcola quando lo
+store nasce, come il floor delle altre liste (`movimenti`): il BB dei filtri
+congela i default. Il vecchio drawer lo ricalcolava a ogni apertura. Un drawer
+aperto a cavallo della mezzanotte parte dalla data di ieri finché la pagina non
+si ricarica. Dargli una sede (default «calcolati» nel BB) è un giro a parte.
+
+Prova sul DB di sviluppo (fatto datato): 42 query della pagina (ogni colonna
+della whitelist × tre versi × con e senza data, ricerca attiva) senza errori;
+la vista porta `puo_chiudersi`, `esposto_in_fattura`, `determina_qta_padre`.
+
+#### 9.8.2 Fattura (102)
+
+| Dove | Cosa |
+| --- | --- |
+| `vendite/db/_righe_repo_mixin.py` | **il BB in due livelli**: `RigheListaMixin` (lettura completa + pagina, per qualunque vista delle righe di UN documento) e `RigheDocumentoRepositoryMixin` (+ riga singola e conteggio, che chiedono `id` e `attivo`). Attributi nuovi con default che lasciano i quattro documenti com'erano: `_righe_chiave`, `_righe_solo_attive`, `_righe_ordine_documento_extra` |
+| `vendite/db/fatture_repository.py` | `FattureRepository(RigheListaMixin)` su `vw_fattura_righe_lista`: chiave `riga_key`, niente `attivo`, ordine `ordinamento, riga_nr` |
+| `vendite_service` | **`_testata_fattura_o_404`**: il cancello (id + testata con lo scope) era scritto per intero in dettaglio e giornale, la lista sarebbe stata la terza copia (regola del 2, stesso file); `list_fattura_righe_pagina`; **`dettaglio.righe` dalla stessa vista** (lettura completa) |
+| `righe_lista_views.build_righe_lista_views` | opzione `con_scope`: passa `auth_user_id` al service (la fattura legge la testata con lo scope, come dettaglio e giornale) |
+| `fatture_views.py`, `urls_fatture.py` | `GET fatture/<id>/righe/lista/` + `export/`, `lista_emittente_param` dalla factory |
+| presidi | `_RICERCHE`, `test_liste_configurabili_seed`, `gen_seed_lista.py` (+1) |
+| test | `tests/db/test_righe_fattura_lista.py` (6), `tests/api/test_fattura_righe_lista_api.py` (6, compreso «fuori scope = 404 senza leggere le righe»: la richiesta §9.6 punto 1, per la fattura); `test_fattura_dettaglio_service` riallineato |
+| FE `vendite/components/FatturaDrawer.vue` | la sezione righe su `DrawerTabLista` (`data-key="riga_key"`, emittente del documento come lasciapassare), i componenti del kit nella riga espandibile, la cella «Rettifica riga» col numero parlante; `ExportDialog` |
+| FE `vendite/components/FatturaNoteDrawer.vue` | il selettore «nota di riga» appiattisce le righe vere (primo livello con `fatture_righe_id` + componenti); il padre di un kit, che in tabella non c'è, resta fuori come prima |
+| FE `vendite/stores/fatturaRighe.js`, `api/fatture.js` | stesse factory dei quattro documenti gemelli |
+
+Prova sul DB di sviluppo, come operatore (GUC `app.ruolo_applicativo` +
+`app.current_user_id`, in transazione annullata; fatto datato): fattura 835,
+30 query della pagina senza errori, 4 righe di primo livello, 4 chiavi
+distinte, 3 padri di kit coi componenti annidati, pagina da 2 con totale 4.
+⚠️ Senza contesto operatore la RLS risponde **zero** righe: non è un dato.
+
+⚠️ **Da sapere per la resa a video:**
+- la colonna «Rettifica riga» nasce visibile nel preset (seed): su una fattura
+  ordinaria è una colonna di trattini, a priorità 20 (la prima a ritirarsi).
+  La vecchia tabella la mostrava solo se almeno una riga aveva il legame;
+- la riga espandibile ha il pulsante su **ogni** riga (è l'unica espansione di
+  `ListaConfigurabile`, la stessa delle colonne ritirate): sulle righe che non
+  sono un kit si apre vuota se nessuna colonna è ritirata;
+- sconto e IVA seguono il formato del catalogo: lo sconto resta «10» e non
+  «10,00 %» finché il team DB non applica il §9.3.
+
+#### 9.8.3 Prove
+
+Backend: suite completa 5596 test, verdi salvo il rosso **atteso** di
+`test_ricerca_full_seed` per la sola lista 103 (lotto D). `ruff` pulito.
+Frontend: vitest 61 file / 487 test, `npm run lint`, `npm run guards`,
+`vite build` verdi; registro delle `DataTable` grezze da 33 a 31.
+⚠️ **Non provato a video**: il collaudo in-app è di Tid.
+`check_i18n_keys` segnala 5 chiavi `vendite.ddt.azione_reason.*` emesse da
+`script.fn_check_ddt_merce`, del lotto 3 di magazzino: non di questo giro.
+
+#### 9.8.4 ⏳ Il contesto di stampa della fattura — da decidere con Tid
+
+Letto il template pubblicato a DB (template 77 «Fattura», versione 3; le
+versioni stanno nei **dati**, non nel repo): scorre `righe` **piatte** e
+riconosce un componente da `tipo_riga == "KIT_COMPONENTE"`.
+
+🔴 **Il rischio che ferma il passo:** il motore **non lega** la versione di un
+template alla versione del contesto che legge. `context_version` è scritto
+nel `_meta` ma nessuno lo controlla, e `context_schema` delle versioni è `{}`.
+Se il contesto passasse alla forma della lista (righe di primo livello con i
+componenti dentro), la versione 3 continuerebbe a stampare **senza errore**,
+ma senza i componenti dei kit: un documento fiscale incompleto, e nessun segnale.
+Con le personalizzazioni per azienda il caso diventa la norma: ogni
+installazione ha le sue versioni, scritte sul contesto di quando sono nate.
+
+**Proposta:**
+1. **il contratto fra template e contesto**: una versione dichiara la versione
+   di contesto che legge (`context_schema.context_version`), e il motore
+   **rifiuta** di stampare se non coincide con quella del builder — un errore
+   parlante, mai un PDF a metà. Le versioni esistenti senza dichiarazione
+   valgono «1». Vale per tutti i documenti, non solo la fattura;
+2. poi il **contesto v2 della fattura** sulla lettura completa di
+   `vw_fattura_righe_lista`, e la **versione 4 del template** che scorre
+   `riga.componenti`. La ristampa fedele dei documenti già emessi non cambia
+   (contesto congelato e versione fissata);
+3. solo allora si ritira `VenditeRepository.list_fattura_righe`, oggi l'ultima
+   proiezione Python delle stesse righe.
+
+Fino ad allora il PDF legge `list_fattura_righe` (contesto v1): è l'eccezione
+dichiarata in `ApiFatturaDetail` e in testa al `FatturaDrawer`.
+
+
+### 9.9 Verifica critica del lotto C (2026-09-28/29)
+
+**Corretto:**
+
+| Dove | Difetto | Correzione |
+| --- | --- | --- |
+| `ArticoloBomDrawer.vue` | 🔴 `parseDate` locale con `new Date('YYYY-MM-DD')`, cioè mezzanotte **UTC**: in un fuso negativo data minima e default di «Chiudi riga» e «Duplica» cadevano il giorno prima. Ed era una copia del BB `parseIsoDate` | BB `parseIsoDate` |
+| `ArticoloBomDrawer.vue` | lo switch in sola lettura ricopiato per i quattro flag | un `v-for` su `FLAG_COMPONENTE`, chiavi i18n letterali |
+| `vendite_service.py` | `list_fattura_righe_pagina` inserita dentro il blocco di commento del giornale | spostata sopra |
+| `catalogo/api/views.py` | ⭐ **regola del 2 fra domini** (ok Tid 2026-09-29): le due view della distinta rifacevano a mano la coppia pagina + export della factory delle righe di vendita | factory portata in `apps/ui/api/lista_figlia_views.py` (`build_lista_figlia_views`: area, emittente opzionale, filtri propri della lista); la usano i cinque documenti e la distinta, la copia `vendite/api/righe_lista_views.py` è ritirata |
+| locales | 5 chiavi `vendite.ddt.azione_reason.*` emesse da `script.fn_check_ddt_merce` (lotto 3 di magazzino) e assenti: il motivo del pulsante spento spariva | tradotte in it/en; `check_i18n_keys` pulito |
+| `JwtMockedApiTest` | due middleware scrivevano sul DB da una `SimpleTestCase` (il log delle richieste e la lingua `myapp.user_language`): nessun rosso, perché catturano l'errore, ma **1664** righe di traceback `DatabaseOperationForbidden` a suite, e 156 s invece di 31 | i due mock nella base, accanto a `_set_gucs`; ritirate le 15 copie locali del mock del log; `SuperficiePubblicaTests` passa alla base |
+| test del cancello delle liste figlie (distinta, fattura, quattro documenti) | l'export chiamato **senza** la coda UI finta andava al DB e rispondeva **500**, e il test non guardava lo stato: il cancello giusto davanti a una view rotta passava verde | helper `apps/ui/tests/_coda_export.py` (`coda_export_finta`): ora anche l'export deve rispondere 200. ⚠️ Le altre ~11 code export finte dei test di export restano scritte a mano, con colonne proprie |
+
+⚠️ **Resta, dichiarata**: `CatalogoBomRepository.list_componenti_pagina` fa la
+stessa lettura paginata di `RigheListaMixin.list_righe_pagina` (vista, ricerca,
+whitelist, spareggio, `fetch_paged_with_total`), più il filtro `valido_al`.
+Seconda copia anche questa, ma il mixin sta in `vendite/db`: portarlo in una
+sede comune è un'estrazione fra domini a sé, da concordare.

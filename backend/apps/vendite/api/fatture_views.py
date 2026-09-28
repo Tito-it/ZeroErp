@@ -45,6 +45,9 @@ from apps.vendite.services.vendite_service import (
     list_fatture_rows,
 )
 from apps.core.api.openapi_params import param_ricerca_full
+from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
+from apps.vendite.db.fatture_repository import FattureRepository
+from apps.vendite.services import vendite_service
 
 
 class ApiFatturaDetail(DomainAPIView):
@@ -55,6 +58,12 @@ class ApiFatturaDetail(DomainAPIView):
     stessi quattro lettori che alimentano il contesto del PDF, cosi' video e
     stampa mostrano lo stesso documento per costruzione — piu' i `contatori`
     dei badge (note), che il drawer mostra senza una seconda chiamata.
+
+    ⚠️ Eccezione aperta dal 2026-09-28 (brief-db-liste-righe-documento §9.8):
+    le `righe` vengono gia' dalla vista della lista (`vw_fattura_righe_lista`),
+    il PDF ancora da `VenditeRepository.list_fattura_righe` (contesto v1).
+    Stesse righe, due proiezioni, finche' il contesto di stampa non passa
+    alla forma della lista.
 
     Fattura inesistente **o fuori scope emittente** → 404 identico: un errore
     che distinguesse i due casi confermerebbe l'esistenza di una fattura altrui.
@@ -318,3 +327,34 @@ class ApiFattureExportView(DomainAPIView):
             filtri_applicati=applicati,
             fmt=fmt,
         )
+
+
+# ── Righe: la lista configurabile `vendite.fattura_righe` (lista 102) ──
+# Pagina ed export dal factory condiviso `build_lista_figlia_views`
+# (brief-db-liste-righe-documento, lotto C). La closure legge il global di
+# modulo a call-time: i patch dei test sul service restano validi.
+# ⭐ `con_scope=True`: la testata si legge con lo scope dell'operatore, come
+#    il dettaglio e il giornale della fattura.
+# ⚠️ Sola lettura: niente `…/righe/` completa esposta a parte — la lettura
+#    completa arriva col dettaglio (`righe`), dalla stessa vista.
+_FatturaRigheLista, _FatturaRigheListaExport = build_lista_figlia_views(
+    schema_prefix="FatturaRighe",
+    operation_id="vendite_fatture_righe_lista",
+    area_funzionale="vendite",
+    lista_emittente_param=EMITTENTE_DOCUMENTO_PARAM,
+    url_kwarg="fattura_id",
+    model_permission=("vendite", "fattura"),
+    pagina_call=lambda documento_id, **kw: vendite_service.list_fattura_righe_pagina(documento_id, **kw),
+    colonne_ordinabili=FattureRepository.righe_colonne_ordinabili(),
+    con_scope=True,
+)
+
+
+# ⭐ Il cancello di perimetro come LETTERALE nel corpo della classe: e' la
+#    forma che `test_perimetro_emittente_copertura` legge (vedi la factory).
+class ApiFatturaRigheListaView(_FatturaRigheLista):
+    lista_codice = "vendite.fattura_righe"
+
+
+class ApiFatturaRigheListaExportView(_FatturaRigheListaExport):
+    lista_codice = "vendite.fattura_righe"

@@ -530,6 +530,12 @@ _LISTE: tuple[tuple[str, object], ...] = (
      _da_righe_documento("apps.vendite.db.ddt_repository", "DdtRepository")),
     ("vendite.reso_righe",
      _da_righe_documento("apps.vendite.db.resi_repository", "ResiRepository")),
+    # La distinta base (2026-09-28, lotto C): lista 101 sulla vista della BoM.
+    ("catalogo.articolo_componenti",
+     _da_costante("apps.catalogo.db.catalogo_bom_repository", "COMPONENTI_SORT_COLUMNS")),
+    # Le righe di una fattura (2026-09-28, lotto C): lista 102.
+    ("vendite.fattura_righe",
+     _da_costante("apps.vendite.db.fatture_repository", "_ORDER_COLS_RIGHE_FATTURA")),
     ("magazzino.inventario_righe",
      _da_costante("apps.magazzino.db.magazzino_repository", "INVENTARIO_RIGHE_SORT_COLUMNS")),
     ("magazzino.rettifica_righe",

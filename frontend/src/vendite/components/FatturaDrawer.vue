@@ -13,6 +13,9 @@
 //        (emissione, numerazione, ristampa massiva) restano nel cockpit.
 //        I dati arrivano dagli STESSI lettori che alimentano il contesto del
 //        PDF: ciò che si vede qui è ciò che finisce nel documento fiscale.
+//        ⚠️ Eccezione aperta dal 2026-09-28: le righe vengono dalla vista della
+//        lista (`vw_fattura_righe_lista`), il PDF ancora dalla lettura piatta
+//        (brief-db-liste-righe-documento §9.8).
 //        Brief: docs/it/dev/work-done/brief-be-fe-drawer-fattura.md
 //
 // ⛔ NESSUN cancello ne' etichetta di perimetro emittente qui, ed e' una
@@ -36,8 +39,6 @@ import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'
 import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
@@ -45,6 +46,9 @@ import NaturaDocTag from '../../core/components/NaturaDocTag.vue'
 import PuntoEstensione from '../../core/components/PuntoEstensione.vue'
 import { PUNTI_ESTENSIONE, precaricaPunto } from '../../core/estensioni'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
+import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
+import ExportDialog from '../../core/components/ExportDialog.vue'
+import InputText from 'primevue/inputtext'
 import FormFooter from '../../core/components/FormFooter.vue'
 import RiepilogoIvaTable from '../../core/components/RiepilogoIvaTable.vue'
 import ScadenzeSintesi from '../../core/components/ScadenzeSintesi.vue'
@@ -55,6 +59,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
+import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useDocumentiPerSorgenteStore } from '../../documenti/stores/documentiPerSorgente'
@@ -68,10 +73,11 @@ import {
 } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { displayDate } from '../../core/utils/date'
-import { formatCurrency, formatIvaLabel, formatNumber } from '../../core/utils/format'
+import { formatCurrency, formatNumber } from '../../core/utils/format'
 import { statoDocFiscaleSeverity } from '../../core/utils/severity'
 import { downloadBlob } from '../../core/utils/download'
-import { getFatturaDettaglio } from '../api/fatture'
+import { exportRigheLista, getFatturaDettaglio } from '../api/fatture'
+import { useFatturaRigheStore } from '../stores/fatturaRighe'
 import GiornaleEntitaTab from '../_shared/giornale/GiornaleEntitaTab.vue'
 import { useFatturaGiornaleStore } from '../stores/giornaleEntita'
 import { gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
@@ -118,7 +124,38 @@ const noteDrawer = ref(false)
 const tabAttiva = ref('documento')
 
 const fattura = computed(() => dettaglio.value?.fattura ?? null)
+// ⭐ Le righe COMPLETE del documento (dal dettaglio, vista `vw_fattura_righe_
+//    lista`): le legge il drawer delle note per il selettore di riga. La
+//    lista a video e' un'altra lettura della STESSA vista, paginata (sotto).
 const righe = computed(() => dettaglio.value?.righe ?? [])
+
+// ⭐ LE RIGHE A VIDEO SONO UNA LISTA STANDARD (brief-db-liste-righe-documento,
+//    lotto C, 2026-09-28): `vendite.fattura_righe`, colonne dal catalogo con
+//    ritiro nella riga espandibile, ricerca, export. Sola lettura: nessun form.
+//    Prima era una `DataTable` grezza, che su tablet scorreva in orizzontale.
+// ⭐ Il padre e' COMPOSTO: la fattura e il suo emittente (la PK). L'emittente
+//    scioglie il cancello di perimetro della lista per chi vede piu'
+//    emittenti — il documento lo dichiara, non lo si chiede all'operatore
+//    (resta vero il «nessun cancello a video» scritto in testa).
+// ⚠️ La fattura porta l'id SOLO a drawer aperto: il `null` alla chiusura
+//    azzera la lista, o le righe della fattura precedente lampeggerebbero
+//    sotto la prossima.
+const righeStore = useFatturaRigheStore()
+const {
+  searchText: righeSearch, onPage: onRighePage, onSort: onRigheSort,
+  paginatorProps: righePaginator, tablePage: righePage, listaRef: righeListaRef,
+  dirty: righeDirty, onConfigLoaded: onRigheConfigLoaded, pageActions: righeActions,
+  perimetroBloccato: righePerimetroBloccato,
+  exportDialogVisible: righeExportVisible, exportLoading: righeExportLoading,
+  onExportConfirm: onRigheExportConfirm,
+} = useDrawerTabLista(righeStore, {
+  parentId: {
+    documentoId: () => (props.visible ? props.fatturaId : null),
+    emittenteId: () => fattura.value?.emittente_fiscale_pk ?? null,
+  },
+  exportFn: (params) => exportRigheLista(props.fatturaId, params),
+  getExportParams: (formato) => ({ formato, ...righeStore.paramsExport() }),
+})
 const riepilogoIva = computed(() => dettaglio.value?.riepilogo_iva ?? [])
 const scadenze = computed(() => dettaglio.value?.scadenze ?? [])
 
@@ -201,7 +238,6 @@ const blocchiCollegati = computed(() => {
     { verso: 'rettificata_da', labelKey: 'vendite.fatture.rettificata_da', documenti: r.rettificata_da ?? [] },
   ].filter((b) => b.documenti.length)
 })
-const haLegameRiga = computed(() => righe.value.some((r) => r.riga_rettificata_id))
 
 // Scopo: il documento collegato in una stringa sola, scritto come
 //        `numeroDisplay` scrive il documento corrente — così i due si leggono
@@ -320,15 +356,6 @@ const utilityLabel = computed(() => {
   const f = fattura.value ?? {}
   return f.utility_descrizione || f.utility_codice || null
 })
-
-// Scopo: sconto riga — percentuale formattata it-IT solo se > 0, '—'
-//        altrimenti. NB: dal BE i numeric arrivano come STRINGA ("0.00" è
-//        truthy): il confronto va fatto sul numero, mai sulla stringa.
-function scontoLabel(row) {
-  const v = Number(row.sconto_percentuale)
-  if (!Number.isFinite(v) || v === 0) return '—'
-  return `${formatNumber(row.sconto_percentuale, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`
-}
 
 // ------------------------------------------------------------------ azioni
 // Nessun verbo di modifica: consultazione, stampa, archivio PDF e note. La
@@ -569,85 +596,68 @@ const suVisibile = gestoreVisibile(emit, onClose)
             </div>
           </div>
 
-          <!-- Righe. Fonte: vw_fattura_righe_esposte (kit già risolti). -->
-          <div class="app-drawer-section"><h4>{{ t('vendite.fatture.sez_righe') }}</h4></div>
-          <!-- Niente `data-key`: le righe KIT_PADRE sono sintetiche della
-               vista e hanno `id` NULL — usarlo come chiave produrrebbe
-               duplicati. Si lascia il fallback per indice di PrimeVue. -->
-          <DataTable
-            :value="righe"
-            class="app-datatable app-datatable--inner"
-            striped-rows
-            size="small"
+          <!-- Righe: la lista `vendite.fattura_righe`. Il padre di un kit porta
+               i suoi componenti esposti (`componenti`), che si leggono nella
+               riga espandibile: paginazione e ordinamento spostano il kit
+               intero. La chiave e' `riga_key` (il padre non ha un id). -->
+          <div class="app-drawer-section app-drawer-section--senza-bordo">
+            <h4>{{ t('vendite.fatture.sez_righe') }}</h4>
+          </div>
+          <Message v-if="righeStore.erroreCaricamento" severity="warn" :closable="false" size="small">
+            {{ t('common.righe_non_lette') }}
+          </Message>
+          <DrawerTabLista
+            ref="righeListaRef"
+            codice="vendite.fattura_righe"
+            :store="righeStore"
+            :emittente-esplicito="fattura.emittente_fiscale_pk ?? null"
+            :rows="righeStore.items"
+            :total="righeStore.totalRecords"
+            :loading="righeStore.loading"
+            :paginator-options="righePaginator"
+            :page="righePage"
+            :sort-field="righePaginator.sortField"
+            :sort-order="righePaginator.sortOrder"
+            :page-actions="righeActions"
+            :dirty="righeDirty"
+            :perimetro-bloccato="righePerimetroBloccato"
+            data-key="riga_key"
+            @page="onRighePage"
+            @sort="onRigheSort"
+            @config-loaded="onRigheConfigLoaded"
           >
-            <Column field="riga_nr" :header="t('vendite.fatture.col_riga')" style="width: 60px;" />
-            <Column field="descrizione" :header="t('vendite.fatture.col_descrizione')">
-              <template #body="{ data }">
-                <!-- `livello` è il contratto della vista: 0 = riga di primo
-                     livello (NORMALE o KIT_PADRE), 1 = componente di kit, che
-                     va rientrato sotto il padre. -->
-                <span :class="{ 'app-fattura-componente': data.livello === 1 }">
-                  <span v-if="data.articolo_codice" class="app-fattura-articolo">
-                    {{ data.articolo_codice }}
-                  </span>
-                  {{ data.descrizione || data.articolo_descrizione || '—' }}
-                </span>
-              </template>
-            </Column>
-            <Column field="quantita" :header="t('vendite.fatture.col_qta')" style="width: 80px;">
-              <template #body="{ data }">
-                <!-- Quantità NULL sui KIT_PADRE (la vista non le somma): '—',
-                     mai un finto zero. max 6 decimali = precisione colonna. -->
-                {{ formatNumber(data.quantita, { placeholder: '—', minimumFractionDigits: 0, maximumFractionDigits: 6 }) }}
-              </template>
-            </Column>
-            <Column field="uom_codice" :header="t('vendite.fatture.col_uom')" style="width: 70px;" />
-            <Column field="prezzo_unitario" :header="t('vendite.fatture.col_prezzo')" style="width: 110px;">
-              <template #body="{ data }">
-                {{ formatCurrency(data.prezzo_unitario, { placeholder: '—', minimumFractionDigits: 2, maximumFractionDigits: 6 }) }}
-              </template>
-            </Column>
-            <Column field="sconto_percentuale" :header="t('vendite.fatture.col_sconto')" style="width: 80px;">
-              <template #body="{ data }">{{ scontoLabel(data) }}</template>
-            </Column>
-            <Column field="iva_codice" :header="t('vendite.fatture.col_iva')" style="width: 80px;">
-              <template #body="{ data }">
-                <!-- BB formatIvaLabel: aliquota > 0 → "22%", esente → codice
-                     IVA parlante; fallback natura di riga (snapshot). -->
-                {{ formatIvaLabel(data, { placeholder: data.iva_natura || '—' }) }}
-              </template>
-            </Column>
-            <!-- La riga gemella: è ciò che rende verificabile l'importo della
-                 rettifica senza aprire l'altro documento. Colonna presente solo
-                 se almeno una riga ha il legame — su una fattura ordinaria
-                 sarebbe una colonna di trattini. -->
-            <Column
-              v-if="haLegameRiga"
-              field="riga_rettificata_id"
-              :header="t('vendite.fatture.col_rettifica_riga')"
-              style="width: 130px;"
-            >
-              <template #body="{ data }">
-                <span v-if="data.riga_rettificata_id">
-                  {{ t('vendite.fatture.rettifica_riga_valore', {
-                       numero: data.riga_rettificata_fattura_numero ?? '—',
-                       riga: data.riga_rettificata_nr ?? '—',
-                     }) }}
-                </span>
-                <span v-else>—</span>
-              </template>
-            </Column>
-            <Column field="importo_riga" :header="t('vendite.fatture.col_imponibile')" style="width: 110px;">
-              <template #body="{ data }">
-                {{ formatCurrency(data.importo_riga, { placeholder: '—' }) }}
-              </template>
-            </Column>
-            <template #empty>
-              <div class="app-empty-state">
-                <i :class="STATUS_ICONS.VUOTO" /><p>{{ t('vendite.fatture.nessuna_riga') }}</p>
-              </div>
+            <template #filtri-sempre>
+              <InputText v-model="righeSearch" class="app-filter-w-lg" :placeholder="t('common.search')" />
             </template>
-          </DataTable>
+            <!-- La riga gemella di una nota di credito: il documento parlante
+                 e la riga. E' cio' che rende verificabile l'importo della
+                 rettifica senza aprire l'altro documento. -->
+            <template #cell-riga_rettificata="{ data }">
+              <span v-if="data.riga_rettificata_id">
+                {{ t('vendite.fatture.rettifica_riga_valore', {
+                     numero: data.riga_rettificata_documento ?? '—',
+                     riga: data.riga_rettificata_nr ?? '—',
+                   }) }}
+              </span>
+              <span v-else>—</span>
+            </template>
+            <template #row-expansion="{ data }">
+              <ul v-if="data.componenti?.length" class="app-fattura-componenti">
+                <li v-for="c in data.componenti" :key="c.fatture_righe_id">
+                  <span v-if="c.articolo_codice" class="app-fattura-articolo">{{ c.articolo_codice }}</span>
+                  {{ c.descrizione || '—' }}
+                  <!-- Quantita' al massimo alla precisione della colonna (6). -->
+                  <span class="app-text-muted">
+                    · {{ formatNumber(c.quantita, { placeholder: '—', minimumFractionDigits: 0, maximumFractionDigits: 6 }) }}
+                    {{ c.uom_codice || '' }}
+                  </span>
+                </li>
+              </ul>
+            </template>
+            <template #empty>
+              <span v-if="!righeStore.erroreCaricamento">{{ t('vendite.fatture.nessuna_riga') }}</span>
+            </template>
+          </DrawerTabLista>
 
           <!-- Riepilogo IVA: BB condiviso con preventivi/ordini/DDT (titolo,
                label esenti con natura, footer di quadratura, totale documento).
@@ -700,6 +710,12 @@ const suVisibile = gestoreVisibile(emit, onClose)
       <FormFooter close-only @cancel="onClose" />
     </div>
 
+    <ExportDialog
+      v-model:visible="righeExportVisible"
+      :loading="righeExportLoading"
+      @export="onRigheExportConfirm"
+    />
+
     <!-- Archivio PDF generati + allegati (motore documentale, sorgente
          FATTURA). Niente `allow-allegati` hardcoded: l'append è una capability
          governata dagli stati (`pdf_allow_allegati`), non una decisione del
@@ -730,7 +746,8 @@ const suVisibile = gestoreVisibile(emit, onClose)
   color: var(--app-text-muted);
   margin-right: 0.4rem;
 }
-.app-fattura-componente {
+.app-fattura-componenti {
+  margin: 0;
   padding-left: 1.2rem;
 }
 </style>

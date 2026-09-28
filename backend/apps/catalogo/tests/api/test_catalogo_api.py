@@ -70,11 +70,6 @@ class CatalogoApiTests(JwtMockedApiTest):
         super().setUp()
         cache.clear()
         self.client = Client()
-        request_log_patcher = patch(
-            "apps.core.middleware.request_log_middleware.RequestLogMiddleware._insert_log"
-        )
-        request_log_patcher.start()
-        self.addCleanup(request_log_patcher.stop)
 
     # Scopo: Lista articoli base -> 200 con envelope paginato.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))

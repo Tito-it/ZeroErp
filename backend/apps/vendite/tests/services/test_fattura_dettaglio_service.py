@@ -63,11 +63,17 @@ class FatturaDettaglioServiceTests(TestCase):
         self.addCleanup(patcher.stop)
         self.note_svc = note_svc_cls.return_value
         self.note_svc.count_per_target.return_value = 0
+        # ⭐ Le righe vengono dalla vista di LISTA (`FattureRepository.
+        #    list_righe`, lotto C del brief-db-liste-righe-documento), non piu'
+        #    dalla query del `VenditeRepository`.
+        patcher = patch("apps.vendite.services.vendite_service.FattureRepository")
+        self.righe_repo = patcher.start().return_value
+        self.addCleanup(patcher.stop)
+        self.righe_repo.list_righe.return_value = list(_RIGHE)
 
     def _repo(self, mock_repo_cls, *, testata=_TESTATA):
         repo = mock_repo_cls.return_value
         repo.get_fattura_testata.return_value = dict(testata) if testata else None
-        repo.list_fattura_righe.return_value = list(_RIGHE)
         repo.list_fattura_riepilogo_iva.return_value = list(_RIEPILOGO)
         repo.list_fattura_scadenze.return_value = list(_SCADENZE)
         repo.get_giornale_errore_vivo.return_value = None
@@ -125,7 +131,7 @@ class FatturaDettaglioServiceTests(TestCase):
         with self.assertRaises(ServiceError):
             get_fattura_dettaglio(fattura_id=7, auth_user_id=42)
 
-        repo.list_fattura_righe.assert_not_called()
+        self.righe_repo.list_righe.assert_not_called()
         repo.list_fattura_riepilogo_iva.assert_not_called()
         repo.list_fattura_scadenze.assert_not_called()
         # ⚠️ E il legame documentale meno che mai (B7): `vendite.fatture` ha la
@@ -171,7 +177,7 @@ class FatturaDettaglioServiceTests(TestCase):
     @patch("apps.vendite.services.vendite_service.VenditeRepository")
     def test_documento_vuoto_non_e_un_errore(self, mock_repo_cls):
         repo = self._repo(mock_repo_cls)
-        repo.list_fattura_righe.return_value = []
+        self.righe_repo.list_righe.return_value = []
         repo.list_fattura_riepilogo_iva.return_value = []
         repo.list_fattura_scadenze.return_value = []
 

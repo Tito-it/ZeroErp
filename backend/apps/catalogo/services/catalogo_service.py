@@ -36,6 +36,7 @@ from apps.catalogo.db.catalogo_uom_repository import (
     UOM_OPERATIVA_WRITE_COLUMNS,
     CatalogoUomRepository,
 )
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import resolve_config_id_by_codice_interno
 from apps.core.db.lock_columns_repository import LockColumnsRepository
 from apps.core.services.error_manager import ErrorManager
@@ -1637,6 +1638,30 @@ def fn_list_componenti(articolo_id: UUID | str) -> dict[str, object]:
     _get_articolo_base(articolo_id)
     repository = CatalogoBomRepository()
     return collezione_completa(repository.list_componenti(articolo_id))
+
+
+# Scopo: UNA PAGINA della distinta dell'articolo, per la lista configurabile
+#        `catalogo.articolo_componenti` (brief-db-liste-righe-documento,
+#        lotto C). «Leggi prima la testata»: un articolo inesistente e' un 404,
+#        non una lista vuota. `valido_al` = il filtro «in vigore al» (None:
+#        tutte le versioni); il resto e' il contratto della lista.
+def fn_list_componenti_pagina(
+    articolo_id: UUID | str,
+    *,
+    valido_al: date | None = None,
+    search: str | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    limit: int,
+    offset: int = 0,
+    max_limit: int = MAX_LIMIT,
+) -> tuple[list[dict[str, Any]], int]:
+    _get_articolo_base(articolo_id)
+    return CatalogoBomRepository().list_componenti_pagina(
+        articolo_id, valido_al=valido_al, search=search,
+        order_by=order_by, order_dir=order_dir,
+        limit=limit, offset=offset, max_limit=max_limit,
+    )
 
 
 # Scopo: Crea un componente BoM per l'articolo e restituisce la riga arricchita.

@@ -24,6 +24,8 @@ from apps.vendite.api.fatture_views import (
     ApiFatturaGiornale,
     ApiFattureExportView,
     ApiFattureList,
+    ApiFatturaRigheListaExportView,
+    ApiFatturaRigheListaView,
 )
 from apps.vendite.api.lineage_views import ApiFatturaPassaggi
 from apps.vendite.api.note_views import ApiFatturaNoteDetail, ApiFatturaNoteList
@@ -68,6 +70,14 @@ urlpatterns = [
     # `export/` deve precedere qualunque pattern che possa catturarla.
     path("", ApiFattureList.as_view(), name="vendite-fatture-list"),
     path("export/", ApiFattureExportView.as_view(), name="vendite-fatture-export"),
+    # Le righe come lista configurabile `vendite.fattura_righe` (lotto C del
+    # brief-db-liste-righe-documento): PRIMA del dettaglio, come `passaggi/`.
+    # `…/righe/lista/` come sui quattro documenti gemelli: la lettura completa
+    # arriva col dettaglio, dalla stessa vista.
+    path("<int:fattura_id>/righe/lista/", ApiFatturaRigheListaView.as_view(),
+         name="vendite-fattura-righe-lista"),
+    path("<int:fattura_id>/righe/lista/export/", ApiFatturaRigheListaExportView.as_view(),
+         name="vendite-fattura-righe-lista-export"),
     # Giornale (la storia del documento): come `passaggi/`, PRIMA del dettaglio.
     # ⛔ Da non confondere con `passaggi/`: quello dice con quali altri documenti
     # la fattura e' legata, questo cosa le e' successo.

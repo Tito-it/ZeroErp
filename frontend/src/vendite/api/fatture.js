@@ -7,6 +7,7 @@
 // (`/vendite/fatture/<id>/documenti/…`, BB `PdfDocumentiSorgenteDialog`) e le
 // azioni di processo dal cockpit fatturazione.
 import api from '../../core/api'
+import { makeRigheListaApi } from '../_shared/righe/righeListaApi'
 
 const BASE = '/vendite/fatture'
 
@@ -50,3 +51,8 @@ export function listFatture(params = {}) {
 export function exportFatture(params = {}) {
   return api.get(`${BASE}/export/`, { params, responseType: 'blob' })
 }
+
+// Le righe come LISTA CONFIGURABILE `vendite.fattura_righe` (lista 102,
+// brief-db-liste-righe-documento lotto C): pagina ed export, stessa factory dei
+// quattro documenti gemelli. Sola lettura: niente POST sulle righe.
+export const { listRigheLista, exportRigheLista } = makeRigheListaApi(BASE)

@@ -3,6 +3,8 @@ from django.urls import path
 from apps.catalogo.api.views import (
     ApiArticoloComponenteDetail,
     ApiArticoloComponentiList,
+    ApiArticoloComponentiLista,
+    ApiArticoloComponentiListaExport,
     ApiArticoliFormDefaults,
     ApiArticoloDisattiva,
     ApiArticoloRiattiva,
@@ -32,6 +34,10 @@ urlpatterns = [
     path("articoli/<uuid:articolo_id>/uom/lookup/", ApiArticoloUomLookup.as_view(), name="catalogo-articolo-uom-lookup"),
     path("articoli/<uuid:articolo_id>/uom/<int:uom_op_id>/", ApiArticoloUomDetail.as_view(), name="catalogo-articolo-uom-detail"),
     path("articoli/<uuid:articolo_id>/uom/", ApiArticoloUomList.as_view(), name="catalogo-articolo-uom-list"),
+    # La distinta come lista configurabile (lotto C): PRIMA di `<uuid:comp_id>/`,
+    # anche se `lista/` non e' un uuid — le rotte letterali in testa.
+    path("articoli/<uuid:articolo_id>/componenti/lista/", ApiArticoloComponentiLista.as_view(), name="catalogo-articolo-componenti-lista"),
+    path("articoli/<uuid:articolo_id>/componenti/lista/export/", ApiArticoloComponentiListaExport.as_view(), name="catalogo-articolo-componenti-lista-export"),
     path("articoli/<uuid:articolo_id>/componenti/<uuid:comp_id>/note/", ApiComponenteNoteList.as_view(), name="catalogo-componente-note-list"),
     path("articoli/<uuid:articolo_id>/componenti/<uuid:comp_id>/", ApiArticoloComponenteDetail.as_view(), name="catalogo-articolo-componente-detail"),
     path("articoli/<uuid:articolo_id>/componenti/", ApiArticoloComponentiList.as_view(), name="catalogo-articolo-componenti-list"),

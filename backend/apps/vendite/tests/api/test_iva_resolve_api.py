@@ -42,12 +42,6 @@ class _BaseApiTest(JwtMockedApiTest):
         super().setUp()
         cache.clear()
         self.client = Client()
-        self._req_log_patcher = patch(
-            "apps.core.middleware.request_log_middleware.RequestLogMiddleware._insert_log",
-            return_value=None,
-        )
-        self._req_log_patcher.start()
-        self.addCleanup(self._req_log_patcher.stop)
 
     def _payload(self, **overrides):
         # ⭐ Il client manda le COORDINATE del documento e nient'altro: il

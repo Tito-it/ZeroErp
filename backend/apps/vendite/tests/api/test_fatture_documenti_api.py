@@ -42,13 +42,6 @@ class TestFattureDocumentiApi(JwtMockedApiTest):
     def setUp(self) -> None:
         super().setUp()
         self.client = Client()
-        # Patch request_log middleware: SimpleTestCase non ammette DB queries.
-        self._req_log_patcher = patch(
-            "apps.core.middleware.request_log_middleware.RequestLogMiddleware._insert_log",
-            return_value=None,
-        )
-        self._req_log_patcher.start()
-        self.addCleanup(self._req_log_patcher.stop)
 
     # 0. Senza JWT: 401.
     def test_genera_richiede_jwt(self) -> None:

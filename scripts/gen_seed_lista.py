@@ -179,6 +179,11 @@ WHITELIST_BE: dict[str, tuple] = {
     "vendite.ordine_righe": ("apps/vendite/db/ordini_repository.py", "_ORDER_COLS_RIGHE"),
     "vendite.ddt_righe": ("apps/vendite/db/ddt_repository.py", "_ORDER_COLS_RIGHE"),
     "vendite.reso_righe": ("apps/vendite/db/resi_repository.py", "_ORDER_COLS_RIGHE"),
+    # La distinta base (2026-09-28, lotto C).
+    "catalogo.articolo_componenti": ("apps/catalogo/db/catalogo_bom_repository.py",
+                                     "COMPONENTI_SORT_COLUMNS"),
+    # Le righe di una fattura (2026-09-28, lotto C).
+    "vendite.fattura_righe": ("apps/vendite/db/fatture_repository.py", "_ORDER_COLS_RIGHE_FATTURA"),
     "magazzino.inventario_righe": ("apps/magazzino/db/magazzino_repository.py",
                                    "INVENTARIO_RIGHE_SORT_COLUMNS"),
     "magazzino.rettifica_righe": ("apps/magazzino/db/magazzino_repository.py",
