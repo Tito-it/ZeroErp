@@ -23,7 +23,7 @@
 > - ✅ **contratto nello STESSO brief** (Tid): riga 7, lotto L4, §7; il
 >   2026-09-28 decise anche le colonne calcolate (dall'endpoint righe) e le
 >   priorità della lista 7;
-> - ✅ **L1 chiuso il 2026-09-28** (`dev/backend-tid`, non committato, via
+> - ✅ **L1 chiuso il 2026-09-28** (`dev/backend-tid`, commit `a5bed4f2a`, PR #1723 in `Tito-dev`; via
 >   di Tid): la macchina del master-detail è il BB `useRigheMasterDetail`
 >   (dal giorno stesso **`useFormInline`**, vedi sotto),
 >   usato da `RigheMasterDetailTable`, `DistintaDrawer` e
