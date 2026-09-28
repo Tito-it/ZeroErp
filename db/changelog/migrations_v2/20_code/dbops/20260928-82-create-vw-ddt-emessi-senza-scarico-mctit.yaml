@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-13 — Il presidio: una bolla emessa che muove merce e non ha scaricato niente
+#   dbops.vw_ddt_emessi_senza_scarico (+ riga in 80_data/sql/dbops/presidi.csv)
+#   Brief: brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 4 (P-13)
+#
+# -- PERCHE' --------------------------------------------------------------------------------------
+#   La porta del registro (20260928-71) fa si' che una bolla che muove merce
+#   diventi EMESSO solo dal verbo, che scarica nella stessa transazione. Il
+#   presidio dice se la porta tiene: una riga qui e' una bolla uscita senza la
+#   sua merce — una giacenza che mente. DEVE restare vuota.
+#
+# -- IL PERIMETRO DELLA VISTA ---------------------------------------------------------------------
+#   Bolle in uno stato che presuppone lo scarico (EMESSO, SPEDITO, CONSEGNATO,
+#   RESO), CON un magazzino, che muovono merce (vendite.fn_ddt_muove_merce), e
+#   senza nessuna uscita a registro da uno dei loro prelievi.
+#   ⚠️ «Con un magazzino» e' una condizione del modello, non un filtro sui dati
+#   di oggi: una bolla senza magazzino non puo' essere uscita dal verbo (la
+#   check della merce lo pretende), quindi e' nata prima del Lotto 3 — il suo
+#   debito e' un altro, e non e' il difetto che questa vista cerca.
+#
+# -- LETTURA --------------------------------------------------------------------------------------
+#   security_invoker: da una sessione applicativa vede cio' che l'operatore
+#   vede; il digest conta da proprietario con dbops.fn_conta_presidio
+#   (perimetro DEFINER in presidi.csv), come gli altri presidi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260928-82-create-vw-ddt-emessi-senza-scarico-mctit.yaml
+
+  - changeSet:
+      id: 20260928-82-create-vw-ddt-emessi-senza-scarico
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Presidio dbops.vw_ddt_emessi_senza_scarico: le bolle emesse (o oltre) che muovono merce, con
+        un magazzino, e senza nessuna uscita a registro dai loro prelievi. DEVE restare vuota: e' la
+        porta del registro che non ha tenuto. Brief: brief-db-magazzino-lotto-3-scarico-da-ddt,
+        sezione 4 (P-13).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_ddt_muove_merce';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_ddt_emessi_senza_scarico
+              WITH (security_invoker = true) AS
+              SELECT d.id                 AS ddt_id,
+                     d.numero,
+                     d.data,
+                     d.emittente_fiscale_id,
+                     d.magazzino_id,
+                     s.codice_interno     AS stato_codice_interno
+                FROM vendite.ddt d
+                JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id
+               WHERE s.codice_interno IN ('EMESSO', 'SPEDITO', 'CONSEGNATO', 'RESO')
+                 AND d.magazzino_id IS NOT NULL
+                 AND vendite.fn_ddt_muove_merce(d)
+                 AND NOT EXISTS (
+                         SELECT 1
+                           FROM vendite.ddt_righe dr
+                           JOIN vendite.ddt_righe_prelievi p ON p.ddt_riga_id = dr.id
+                           JOIN magazzino.movimenti m        ON m.sorgente_riga = p.id
+                           JOIN config.sorgenti so           ON so.id = m.sorgente_tipo_id
+                                                            AND so.codice_interno = 'DDT_VENDITA_PRELIEVO'
+                          WHERE dr.ddt_id = d.id
+                            AND m.qta < 0
+                            AND m.storno_di_movimento_id IS NULL);
+
+              COMMENT ON VIEW dbops.vw_ddt_emessi_senza_scarico IS
+                  'Presidio, DEVE restare vuota. Una riga e'' una bolla in uno stato che presuppone '
+                  'lo scarico (EMESSO, SPEDITO, CONSEGNATO, RESO), con un magazzino, che muove merce '
+                  '(vendite.fn_ddt_muove_merce), senza nessuna uscita a registro da uno dei suoi '
+                  'prelievi (sorgente DDT_VENDITA_PRELIEVO, quantita'' negativa, non uno storno). E'' '
+                  'la porta del registro che non ha tenuto: una bolla uscita senza la sua merce, '
+                  'cioe'' una giacenza che mente. Il rimedio non e'' scrivere il movimento a mano: '
+                  'e'' capire da dove e'' passata l''emissione. Le bolle senza magazzino sono nate '
+                  'prima del Lotto 3 e non sono questo difetto. security_invoker; il digest conta da '
+                  'proprietario (fn_conta_presidio, perimetro DEFINER). Brief: '
+                  'brief-db-magazzino-lotto-3-scarico-da-ddt (P-13).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_ddt_emessi_senza_scarico;

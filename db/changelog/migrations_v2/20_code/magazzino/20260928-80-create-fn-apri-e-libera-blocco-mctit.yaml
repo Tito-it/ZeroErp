@@ -1,0 +1,225 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-11 — Il blocco manuale diventa un ATTO: due verbi
+#   magazzino.fn_apri_blocco(...), magazzino.fn_libera_blocco(p_blocco_id, p_nota)
+#   Brief: brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 3 (D-L3-j, Tid 28-09);
+#          carico/scarico §7-bis (M-3: il blocco e' un vincolo, si libera con un atto)
+#
+# -- PERCHE' --------------------------------------------------------------------------------------
+#   Il blocco manuale ferma lo scarico di un ALTRO (M-3): e' la decisione di una
+#   persona, e deve avere un autore, un momento e un perche', in apertura e in
+#   chiusura. Oggi l'app scrive magazzino.movimenti_attesi da se', sotto RLS: da
+#   qui la scrivono solo questi due verbi, e l'app la perde (sola lettura, 90_end
+#   20260928-83 e il loop dei grant).
+#
+# -- IL PERMESSO: un'azione PROPRIA, blocca_merce (D-L3-j) ----------------------------------------
+#   Non registra_magazzino: un blocco e' una PROMESSA, non un fatto sulla merce
+#   (D-L2-d), e chi puo' registrare un inventario non e' per forza chi puo'
+#   riservare merce a un cliente.
+#
+# -- LA FORMA DEL BLOCCO --------------------------------------------------------------------------
+#   Un atteso in USCITA, senza sorgente: causale SCARICO_VEN (il verso e' nella
+#   quantita', M-1: si scrive -qta), stato APERTA, per chi (soggetto_ruolo_id) o
+#   perche' (nota) — lo pretende chk_mag_movimenti_attesi_per_chi. La posizione
+#   (articolo gestito, lotto, seriale, ubicazione) la giudica la STESSA check
+#   della primitiva: un blocco su merce che il registro non saprebbe muovere
+#   sarebbe una promessa impossibile.
+#   La liberazione: CHIUSA con data_chiusura (chk_mag_movimenti_attesi_chiusura),
+#   e in meta chi l'ha liberato, quando e perche'. Non si cancella mai (la
+#   tabella e' gia' senza DELETE dal Lotto 2).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20260928-80-create-fn-apri-e-libera-blocco-mctit.yaml
+
+  - changeSet:
+      id: 20260928-80-create-fn-apri-e-libera-blocco
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I due verbi del blocco manuale (D-L3-j): magazzino.fn_apri_blocco (atteso in uscita
+        APERTA, per chi o perche', posizione controllata come dalla primitiva) e
+        magazzino.fn_libera_blocco (CHIUSA con data, e in meta chi, quando e perche'). Azione
+        blocca_merce, DEFINER, perimetro dal magazzino. Brief:
+        brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 3 (D-L3-j).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname, p.proname) IN (('script', 'fn_guard_azione'),
+                                                ('script', 'fn_scope_ef_whitelist_via_magazzino'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_apri_blocco(
+                  p_magazzino_id      magazzino.movimenti_attesi.magazzino_id%TYPE,
+                  p_articolo_id       magazzino.movimenti_attesi.articolo_id%TYPE,
+                  p_qta               magazzino.movimenti_attesi.qta%TYPE,
+                  p_soggetto_ruolo_id magazzino.movimenti_attesi.soggetto_ruolo_id%TYPE,
+                  p_nota              magazzino.movimenti_attesi.nota%TYPE,
+                  p_lotto_id          magazzino.movimenti_attesi.lotto_id%TYPE DEFAULT NULL,
+                  p_asset_id          magazzino.movimenti_attesi.asset_id%TYPE DEFAULT NULL,
+                  p_ubicazione_id     magazzino.movimenti_attesi.ubicazione_id%TYPE DEFAULT NULL)
+               RETURNS magazzino.movimenti_attesi.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- Scopo: aprire un blocco manuale — riservare p_qta pezzi (POSITIVA:
+              --   il verso lo mette il verbo) per qualcuno o per un motivo (D-L3-j).
+              -- Ritorna: l'id dell'atteso aperto.
+              DECLARE
+                  v_utente    config.user_override_azioni.auth_user_id%TYPE;
+                  v_causale   magazzino.causali.id%TYPE;
+                  v_motivi    jsonb;
+                  v_id        magazzino.movimenti_attesi.id%TYPE;
+              BEGIN
+                  -- 0. Il permesso, prima di ogni altra cosa.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_azione(v_utente, 'blocca_merce');
+
+                  IF p_magazzino_id IS NULL OR p_magazzino_id <= 0
+                     OR p_articolo_id IS NULL
+                     OR p_qta IS NULL OR p_qta <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_apri_blocco',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'magazzino e articolo obbligatori, quantita'' positiva',
+                                             'p_magazzino_id', p_magazzino_id, 'p_qta', p_qta),
+                          NULL::uuid, 'magazzino.fn_apri_blocco',
+                          'p_magazzino_id (maggiore di zero), p_articolo_id (obbligatorio), p_qta (maggiore di zero: il verso lo mette il verbo)');
+                  END IF;
+
+                  -- Il magazzino, nel perimetro di chi agisce (DEFINER: il predicato della policy).
+                  IF NOT EXISTS (SELECT 1 FROM magazzino.magazzini m
+                                  WHERE m.id = p_magazzino_id AND m.attivo
+                                    AND script.fn_scope_ef_whitelist_via_magazzino(v_utente, m.id)) THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_apri_blocco',
+                          'E_MAG_MAGAZZINO_NON_VALIDO',
+                          jsonb_build_object('detail', 'magazzino inesistente, spento o fuori perimetro',
+                                             'magazzino_id', p_magazzino_id),
+                          NULL::uuid, p_magazzino_id::text);
+                  END IF;
+
+                  -- La posizione, come la giudicherebbe la primitiva.
+                  v_motivi := script.fn_check_riga_magazzino(p_magazzino_id, p_articolo_id,
+                                                             p_lotto_id, p_asset_id, p_ubicazione_id);
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'magazzino', 'magazzino.fn_apri_blocco', v_motivi, NULL, NULL::uuid,
+                      jsonb_build_object('magazzino_id', p_magazzino_id, 'articolo_id', p_articolo_id));
+
+                  SELECT c.id INTO v_causale
+                    FROM magazzino.causali c
+                   WHERE c.codice_interno = 'SCARICO_VEN' AND c.attivo;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_apri_blocco',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('config', 'magazzino.causali.SCARICO_VEN'),
+                          NULL::uuid, VARIADIC ARRAY['causale di magazzino SCARICO_VEN (magazzino.causali, attiva)']);
+                  END IF;
+
+                  INSERT INTO magazzino.movimenti_attesi
+                         (articolo_id, magazzino_id, qta, causale_id, stato,
+                          soggetto_ruolo_id, nota, lotto_id, asset_id, ubicazione_id, meta)
+                  VALUES (p_articolo_id, p_magazzino_id, -p_qta, v_causale, 'APERTA',
+                          p_soggetto_ruolo_id, NULLIF(btrim(p_nota), ''), p_lotto_id, p_asset_id, p_ubicazione_id,
+                          jsonb_build_object('aperto_da', v_utente))
+                  RETURNING id INTO v_id;
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_apri_blocco(bigint, uuid, numeric, bigint, text, bigint, bigint, bigint) IS
+                  'VERBO: apre un blocco manuale (D-L3-j) — un atteso in uscita (SCARICO_VEN, qta '
+                  '= -p_qta: la quantita'' si passa POSITIVA), APERTA, senza sorgente, per chi '
+                  '(p_soggetto_ruolo_id) o perche'' (p_nota): lo pretende il CHECK per_chi. Prima '
+                  'riga script.fn_guard_azione(utente, ''blocca_merce''). SECURITY DEFINER: il '
+                  'magazzino deve essere attivo e nel perimetro di chi agisce '
+                  '(E_MAG_MAGAZZINO_NON_VALIDO), la posizione la giudica script.fn_check_riga_magazzino '
+                  'come per la primitiva. In meta aperto_da. Il blocco ferma gli scarichi degli '
+                  'altri (M-3) finche'' non lo libera magazzino.fn_libera_blocco. Brief: '
+                  'brief-db-magazzino-lotto-3-scarico-da-ddt.';
+
+              CREATE OR REPLACE FUNCTION magazzino.fn_libera_blocco(
+                  p_blocco_id magazzino.movimenti_attesi.id%TYPE,
+                  p_nota      magazzino.movimenti_attesi.nota%TYPE)
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- Scopo: liberare un blocco manuale con un atto — chi, quando, perche'
+              --   (M-3: «si libera esplicitamente, non si consuma da se'»).
+              DECLARE
+                  v_utente config.user_override_azioni.auth_user_id%TYPE;
+                  v_stato  magazzino.movimenti_attesi.stato%TYPE;
+              BEGIN
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_azione(v_utente, 'blocca_merce');
+
+                  IF p_blocco_id IS NULL OR p_blocco_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_libera_blocco',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'blocco obbligatorio e maggiore di zero',
+                                             'p_blocco_id', p_blocco_id),
+                          NULL::uuid, 'magazzino.fn_libera_blocco', 'p_blocco_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- Il blocco, FOR UPDATE, nel perimetro; solo i blocchi manuali (senza sorgente).
+                  SELECT a.stato INTO v_stato
+                    FROM magazzino.movimenti_attesi a
+                   WHERE a.id = p_blocco_id
+                     AND a.sorgente_tipo_id IS NULL
+                     AND script.fn_scope_ef_whitelist_via_magazzino(v_utente, a.magazzino_id)
+                     FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_libera_blocco',
+                          'E_MAG_BLOCCO_NON_TROVATO',
+                          jsonb_build_object('blocco_id', p_blocco_id),
+                          NULL::uuid, p_blocco_id::text);
+                  END IF;
+                  IF v_stato <> 'APERTA' THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_libera_blocco',
+                          'E_MAG_BLOCCO_GIA_CHIUSO',
+                          jsonb_build_object('blocco_id', p_blocco_id, 'stato', v_stato),
+                          NULL::uuid, p_blocco_id::text);
+                  END IF;
+
+                  UPDATE magazzino.movimenti_attesi a
+                     SET stato          = 'CHIUSA',
+                         data_chiusura  = now(),
+                         meta           = a.meta || jsonb_build_object(
+                                              'liberato_da',      v_utente,
+                                              'liberato_il',      now(),
+                                              'nota_liberazione', NULLIF(btrim(p_nota), ''))
+                   WHERE a.id = p_blocco_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_libera_blocco(bigint, text) IS
+                  'VERBO: libera un blocco manuale (M-3: si libera con un atto, non si consuma da '
+                  'se''). Prima riga script.fn_guard_azione(utente, ''blocca_merce''). SECURITY '
+                  'DEFINER, blocco nel perimetro del suo magazzino e SENZA sorgente (i blocchi '
+                  'manuali): altrimenti E_MAG_BLOCCO_NON_TROVATO; gia'' CHIUSA -> '
+                  'E_MAG_BLOCCO_GIA_CHIUSO. Porta lo stato a CHIUSA con data_chiusura e scrive in '
+                  'meta liberato_da, liberato_il, nota_liberazione. Non cancella mai. Brief: '
+                  'brief-db-magazzino-lotto-3-scarico-da-ddt.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS magazzino.fn_libera_blocco(bigint, text);
+              DROP FUNCTION IF EXISTS magazzino.fn_apri_blocco(bigint, uuid, numeric, bigint, text, bigint, bigint, bigint);

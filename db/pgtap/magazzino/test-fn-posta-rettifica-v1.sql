@@ -26,7 +26,11 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_
 -- Rev 2026-09-24 (brief-db-magazzino-verbi-con-permesso §3.2): fn_posta_inventario e
 --   fn_posta_rettifica sono VERBI e applicano registra_magazzino (script.fn_guard_azione);
 --   l'operatore di fixture e' tecnico e non ha azioni: il permesso si costruisce qui.
-DO $az$ BEGIN PERFORM dbops.fn_pgtap_concedi_azione((SELECT auth_user_id FROM _mondo), 'registra_magazzino'); END $az$;
+DO $az$ BEGIN
+    PERFORM dbops.fn_pgtap_concedi_azione((SELECT auth_user_id FROM _mondo), 'registra_magazzino');
+    -- Rev 2026-09-28 (Lotto 3, D-L3-j): il blocco del test 3 si apre col verbo.
+    PERFORM dbops.fn_pgtap_concedi_azione((SELECT auth_user_id FROM _mondo), 'blocca_merce');
+END $az$;
 
 CREATE TEMP TABLE _fix (mag bigint, art uuid);
 DO $fix$
@@ -64,8 +68,8 @@ SELECT is(
     '2) testata POSTED, giacenza 11');
 
 -- 3) sotto un blocco altrui
-INSERT INTO magazzino.movimenti_attesi (articolo_id, magazzino_id, qta, causale_id, stato, nota)
-SELECT art, mag, -20, (SELECT id FROM magazzino.causali WHERE codice_interno = 'SCARICO_VEN'), 'APERTA', 'blocco' FROM _fix;
+-- Rev 2026-09-28: l'app non scrive piu' movimenti_attesi, il blocco lo apre il verbo.
+DO $b$ BEGIN PERFORM magazzino.fn_apri_blocco((SELECT mag FROM _fix), (SELECT art FROM _fix), 20, NULL, 'blocco'); END $b$;
 CREATE TEMP TABLE _ret2 AS SELECT NULL::bigint AS id;
 DO $r$ DECLARE v_id bigint; BEGIN
     INSERT INTO magazzino.rettifiche (magazzino_id) SELECT mag FROM _fix RETURNING id INTO v_id;

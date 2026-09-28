@@ -152,16 +152,21 @@ SELECT ok(
 );
 
 -- =========================================================
--- 12) Trigger registrati sulla tabella (13 attesi)
+-- 12) Trigger registrati sulla tabella (14 attesi)
 --     +2 da modello unificato 20260513: prezzo_obbligatorio + guard_obbligatorio
+--     +1 dal 2026-09-28 (brief-db-magazzino-lotto-3-scarico-da-ddt): il block_deact
+--        che ci_apply genera per vendite.ddt_righe_prelievi, figlia via
+--        ddt_riga_componente_id — un componente con dei prelievi non si spegne.
+--     ⚠️ E' un numero esatto: sale a ogni figlia nuova con FK verso i componenti,
+--        e va aggiornato guardando QUALE trigger e' arrivato.
 -- =========================================================
 SELECT is(
     (SELECT COUNT(DISTINCT trigger_name)::integer
        FROM information_schema.triggers
       WHERE event_object_schema = 'vendite'
         AND event_object_table  = 'ddt_righe_componenti'),
-    13,
-    '12) 13 trigger registrati su ddt_righe_componenti'
+    14,
+    '12) 14 trigger registrati su ddt_righe_componenti'
 );
 
 -- =========================================================

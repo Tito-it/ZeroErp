@@ -1,0 +1,126 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-12 — La postura del Lotto 3: che cosa l'app esegue, e che cosa non puo' piu' scrivere
+#   Brief: brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 4 (P-12);
+#          D-L3-e, D-L3-j; linee-guida-sql §11.8 (le TRE sedi)
+#
+# -- COSA ----------------------------------------------------------------------------------------
+#   * magazzino.movimenti_attesi passa in SOLA LETTURA per l'app (D-L3-j): la
+#     scrivono i verbi fn_apri_blocco / fn_libera_blocco. Era gia' senza DELETE
+#     (Lotto 2); ora anche senza INSERT e UPDATE.
+#   * RISERVATE (EXECUTE revocato a PUBLIC e all'app): magazzino.fn_posta_ddt e
+#     magazzino.fn_storna_movimenti_sorgente — le operazioni interne, a cui si
+#     arriva solo dai verbi.
+#   * I VERBI restano la strada dell'app (si ridice, idempotente):
+#     vendite.fn_cambia_stato_ddt, magazzino.fn_posta_trasferimento,
+#     magazzino.fn_apri_blocco, magazzino.fn_libera_blocco.
+#
+# -- LE TRE SEDI (linee-guida-sql §11.8) ----------------------------------------------------------
+#   Questo forward agisce SUBITO su dev. La postura la tengono stabile gli
+#   elenchi del loop 90_end/ci_apply/20260205-41 (v_tabelle_sola_lettura_app,
+#   v_fn_riservate) e il blocco «POSTURA DICHIARATA» di
+#   scripts/sql/provision_db_roles.sql, che in CI gira DOPO ci_apply. Il pgTAP
+#   che le tiene allineate e' db/pgtap/magazzino/test-blocco-manuale-e-porta-lotto3-v1.sql.
+#   ⚠️ movimenti_attesi esce da v_tabelle_senza_delete ed entra in
+#   v_tabelle_sola_lettura_app: una voce, non due.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260928-83-postura-lotto3-magazzino-mctit.yaml
+
+  - changeSet:
+      id: 20260928-83-postura-lotto3-magazzino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Postura del Lotto 3: movimenti_attesi in sola lettura per l'app (la scrivono i verbi del
+        blocco); fn_posta_ddt e fn_storna_movimenti_sorgente riservate (a PUBLIC e all'app); EXECUTE
+        all'app sui verbi. Resa stabile dal loop 20260205-41 e dal provisioning. Brief:
+        brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 4 (P-12).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "6"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname, p.proname) IN (('vendite', 'fn_cambia_stato_ddt'),
+                                                ('magazzino', 'fn_posta_ddt'),
+                                                ('magazzino', 'fn_storna_movimenti_sorgente'),
+                                                ('magazzino', 'fn_posta_trasferimento'),
+                                                ('magazzino', 'fn_apri_blocco'),
+                                                ('magazzino', 'fn_libera_blocco'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $porta$
+              DECLARE
+                  v_fn record;
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: skip postura del Lotto 3.';
+                      RETURN;
+                  END IF;
+
+                  -- I blocchi li scrivono i verbi: l'app legge.
+                  REVOKE INSERT, UPDATE, DELETE ON TABLE magazzino.movimenti_attesi FROM zeroerp_app;
+
+                  -- Le operazioni interne: riservate. A PUBLIC e all'app insieme (=X).
+                  FOR v_fn IN
+                      SELECT p.oid::regprocedure AS firma
+                        FROM pg_catalog.pg_proc p
+                        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                       WHERE n.nspname = 'magazzino'
+                         AND p.proname IN ('fn_posta_ddt', 'fn_storna_movimenti_sorgente')
+                         AND p.prokind = 'f'
+                  LOOP
+                      EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC, zeroerp_app', v_fn.firma);
+                  END LOOP;
+
+                  -- I verbi: la strada dell'app.
+                  FOR v_fn IN
+                      SELECT p.oid::regprocedure AS firma
+                        FROM pg_catalog.pg_proc p
+                        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                       WHERE (n.nspname, p.proname) IN (('vendite', 'fn_cambia_stato_ddt'),
+                                                        ('magazzino', 'fn_posta_trasferimento'),
+                                                        ('magazzino', 'fn_apri_blocco'),
+                                                        ('magazzino', 'fn_libera_blocco'))
+                         AND p.prokind = 'f'
+                  LOOP
+                      EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO zeroerp_app', v_fn.firma);
+                  END LOOP;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Riapre la postura del Lotto 2. ⚠️ Senza togliere le voci dal loop 20260205-41
+              -- e dal provisioning, la passata ci_apply successiva la richiude.
+              DO $porta$
+              DECLARE
+                  v_fn record;
+              BEGIN
+                  GRANT INSERT, UPDATE ON TABLE magazzino.movimenti_attesi TO zeroerp_app;
+                  FOR v_fn IN
+                      SELECT p.oid::regprocedure AS firma
+                        FROM pg_catalog.pg_proc p
+                        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                       WHERE n.nspname = 'magazzino'
+                         AND p.proname IN ('fn_posta_ddt', 'fn_storna_movimenti_sorgente')
+                  LOOP
+                      EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO zeroerp_app', v_fn.firma);
+                  END LOOP;
+              END
+              $porta$;

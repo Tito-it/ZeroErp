@@ -154,7 +154,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    26,
+    29,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -204,7 +204,13 @@ SELECT is(
     --   chiede a script.fn_check_esclusione_articolo_contratto (20260928-29), la
     --   stessa funzione con cui fn_contratto_righe_preview spegne «Escludi», e ne
     --   solleva il primo motivo (brief-db-liste-righe-documento §8.13).
-    'le ventisei funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-09-28 (Lotto 3 di magazzino): da 26 a 29. Tre siti NUOVI nati
+    --   sull'helper (brief-db-magazzino-lotto-3-scarico-da-ddt):
+    --   vendite.fn_cambia_stato_ddt (20260928-75, primo motivo di
+    --   script.fn_check_ddt_merce all'emissione), magazzino.fn_posta_trasferimento
+    --   (20260928-79, di script.fn_check_documento_interno_registrabile) e
+    --   magazzino.fn_apri_blocco (20260928-80, di script.fn_check_riga_magazzino).
+    'le ventinove funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la

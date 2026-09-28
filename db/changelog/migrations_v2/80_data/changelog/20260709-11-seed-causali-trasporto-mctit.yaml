@@ -40,6 +40,12 @@ databaseChangeLog:
                 schemaName: config
                 tableName: causali_trasporto
                 columnName: fatturabile
+            # 2026-09-28 (brief-db-magazzino-lotto-3-scarico-da-ddt, D-L3-g): la
+            # colonna arriva da 00_schema/config/20260928-60, che gira prima di 80_data.
+            - columnExists:
+                schemaName: config
+                tableName: causali_trasporto
+                columnName: causale_magazzino
       changes:
         - loadUpdateData:
             relativeToChangelogFile: true
@@ -48,7 +54,11 @@ databaseChangeLog:
             schemaName: config
             separator: ","
             encoding: UTF-8
-            nullValue: ""
+            # 2026-09-28: il token NULL, non la cella vuota. Con "" Liquibase scrive
+            # la stringa vuota su una colonna STRING (linee-guida-sql §11.7), e
+            # causale_magazzino = '' viola la FK verso magazzino.causali: e' cosi'
+            # che il primo apply del Lotto 3 si e' fermato qui.
+            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: id, type: STRING }
@@ -71,3 +81,8 @@ databaseChangeLog:
                   type: STRING
                   defaultValue: "NOW()"
               - column: { name: user_update, type: STRING }
+              # 2026-09-28 (D-L3-g): con quale causale di magazzino si muove la merce
+              # di una bolla con questa causale (cella vuota = NULL = non muove).
+              # FK verso magazzino.causali(codice_interno): quel mirror (20251001-51)
+              # gira prima di questo nell'includeAll.
+              - column: { name: causale_magazzino, type: STRING }

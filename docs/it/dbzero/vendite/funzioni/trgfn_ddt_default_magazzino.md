@@ -1,0 +1,36 @@
+# ⚙️ Funzione `trgfn_ddt_default_magazzino`
+
+```sql
+CREATE FUNCTION trgfn_ddt_default_magazzino()
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_default_magazzino()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+-- Scopo: una bolla nata senza magazzino prende il predefinito del suo
+--   emittente (D-L3-h). Solo se manca: chi lo sceglie vince.
+DECLARE
+    v_magazzino_id magazzino.magazzini.id%TYPE;
+BEGIN
+    IF NEW.magazzino_id IS NULL AND NEW.emittente_fiscale_id IS NOT NULL THEN
+        SELECT m.id INTO v_magazzino_id
+          FROM magazzino.magazzini m
+         WHERE m.emittente_fiscale_id = NEW.emittente_fiscale_id
+           AND m.predefinito
+           AND m.attivo;
+        NEW.magazzino_id := v_magazzino_id;   -- NULL se non c'e' un predefinito
+    END IF;
+    RETURN NEW;
+END;
+$function$
+
+COMMENT ON FUNCTION vendite.trgfn_ddt_default_magazzino()
+IS 'BEFORE INSERT su vendite.ddt: se magazzino_id manca, prende il magazzino predefinito e attivo dell''emittente della bolla (uno solo per emittente, uq_mag_magazzini_predefinito_emittente) — D-L3-h. Nessun predefinito: resta NULL, e se la bolla muove merce lo chiede la check dell''emissione. Gira dopo il default dell''emittente (ordine alfabetico dei trigger). Brief: brief-db-magazzino-lotto-3-scarico-da-ddt.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

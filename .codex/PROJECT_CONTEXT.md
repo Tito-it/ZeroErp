@@ -270,7 +270,19 @@ quando un cantiere tocca le loro scritture, senza data. ✅ **Primo caso chiuso 
 `20260924-38` → `-42`): `fn_posta_inventario` e `fn_posta_rettifica` applicano
 `registra_magazzino`, l'app non esegue più la primitiva del registro. Il limite è
 scritto: il modello protegge da un backend che **sbaglia**, non da uno
-**manomesso** (l'identità la dichiara il backend). ✅ **Secondo caso, il pannello di configurazione, chiuso il 2026-09-28** (D-3,
+**manomesso** (l'identità la dichiara il backend).
+
+✅ **Il Lotto 3 di magazzino — la merce esce con la bolla — e' applicato lato DB
+il 2026-09-28** (`work-in-progress/brief-db-magazzino-lotto-3-scarico-da-ddt.md`,
+`20260928-60` → `-83`, pgTAP verdi col runner). Undici decisioni di Tid: il
+magazzino sulla **testata** della bolla, i **prelievi** in tabella figlia come
+sorgente del movimento, il verbo `vendite.fn_cambia_stato_ddt` (azione
+`emetti_ddt`) con la **porta del registro** sui soli passaggi che muovono merce,
+la bolla di trasferimento che carica l'arrivo al `CONSEGNATO`, il trasferimento
+interno (`fn_posta_trasferimento`), i verbi del blocco manuale (azione
+`blocca_merce`, `movimenti_attesi` in sola lettura per l'app). ⏳ Restano le
+richieste a BE/FE (brief §6: senza R-1 il backend non emette una bolla che muove
+merce), la CI da zero e il **Lotto 3-bis** (carico da reso cliente). ✅ **Secondo caso, il pannello di configurazione, chiuso il 2026-09-28** (D-3,
 `work-done/brief-db-pannello-config-verbo-generico.md`): scrive col verbo
 generico `config.fn_pannello_scrivi` sull'oggetto di ogni tabella, la lista è
 `config.tabelle_gestibili` (niente più `REL_CONSENTITE` nel BE né

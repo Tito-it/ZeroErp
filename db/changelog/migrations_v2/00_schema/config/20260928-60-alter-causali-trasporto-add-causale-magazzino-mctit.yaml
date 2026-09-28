@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-4 — Quale causale di trasporto muove merce, e con quale causale di magazzino
+#   config.causali_trasporto.causale_magazzino (FK -> magazzino.causali.codice_interno)
+#   Brief: brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 3 (D-L3-g)
+#
+# -- PERCHE' --------------------------------------------------------------------------------------
+#   Le otto causali di trasporto non sono tutte vendite: VENDITA, OMAGGIO e
+#   CAMPIONATURA fanno uscire merce che non torna; TRASFERIMENTO la sposta fra
+#   due depositi; CONTO_VISIONE, RIPARAZIONE e CONTO_LAVORO la fanno uscire ma
+#   resta NOSTRA (merce presso terzi: decisione a se', fuori dal lotto); RESO e'
+#   la bolla verso un fornitore (Lotto 4). La colonna dice, per ciascuna, con
+#   quale causale di magazzino si muove — NULL = la bolla non muove merce.
+#   Il TRASFERIMENTO si riconosce dalla sua causale (TRASF_OUT): nessuno cerca
+#   il codice della causale di trasporto a mano (linee-guida-sql §6d).
+#
+# -- PERCHE' IL codice_interno E NON L'id ---------------------------------------------------------
+#   Il valore lo scrive un CSV di seed (80_data/sql/config/causali_trasporto.csv),
+#   e un seed referenzia un catalogo per chiave naturale stabile, mai per id
+#   (linee-guida-sql §6b). magazzino.causali.codice_interno e' UNIQUE
+#   (uq_mag_causali_codice_interno) e immutabile: una FK vera, non un testo.
+#   Il seed delle causali di magazzino (80_data 20251001-51) viene prima di
+#   quello delle causali di trasporto (20260709-11) nell'includeAll: su un
+#   database da zero la FK trova la riga.
+#
+# -- ON DELETE / ON UPDATE ------------------------------------------------------------------------
+#   NO ACTION su entrambi: il codice_interno non cambia (lock), e una causale di
+#   magazzino citata da una causale di trasporto non si cancella.
+#
+# -- FUORI, DICHIARATO ----------------------------------------------------------------------------
+#   Nessun indice sulla FK: config.causali_trasporto ha otto righe. La riga in
+#   dbops.fk_index_policy (consentito = false) sta nel CSV principale.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260928-60-alter-causali-trasporto-add-causale-magazzino-mctit.yaml
+
+  - changeSet:
+      id: 20260928-60-alter-causali-trasporto-add-causale-magazzino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.causali_trasporto.causale_magazzino: con quale causale di magazzino si muove la
+        merce di una bolla con questa causale di trasporto (NULL = non muove merce). FK verso
+        magazzino.causali(codice_interno), chiave naturale perche' la scrive il CSV di seed.
+        Brief: brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 3 (D-L3-g).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: causali_trasporto
+            - tableExists:
+                schemaName: magazzino
+                tableName: causali
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: causali_trasporto
+                    columnName: causale_magazzino
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.causali_trasporto
+                  ADD COLUMN causale_magazzino VARCHAR(50);
+
+              ALTER TABLE config.causali_trasporto
+                  ADD CONSTRAINT fk_causali_trasporto_causale_magazzino
+                      FOREIGN KEY (causale_magazzino)
+                      REFERENCES magazzino.causali (codice_interno)
+                      ON UPDATE NO ACTION
+                      ON DELETE NO ACTION;
+
+              COMMENT ON COLUMN config.causali_trasporto.causale_magazzino IS
+                  'Con quale causale di magazzino si muove la merce di una bolla con questa '
+                  'causale di trasporto: SCARICO_VEN per le uscite che non tornano (vendita, '
+                  'omaggio, campionatura), TRASF_OUT per il trasferimento fra depositi (la '
+                  'gemella TRASF_IN la scrive l''arrivo). NULL = la bolla NON muove merce: '
+                  'conto visione, riparazione, conto lavoro (merce presso terzi, decisione a '
+                  'se'') e reso a fornitore (Lotto 4). La leggono vendite.fn_ddt_causale_magazzino '
+                  'e, attraverso di lei, la check della merce, il verbo della bolla e la porta '
+                  'del registro. Chiave naturale (codice_interno) e non id: la scrive il CSV di '
+                  'seed (linee-guida-sql §6b). Brief: brief-db-magazzino-lotto-3-scarico-da-ddt '
+                  '(D-L3-g).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.causali_trasporto DROP CONSTRAINT IF EXISTS fk_causali_trasporto_causale_magazzino;
+              ALTER TABLE config.causali_trasporto DROP COLUMN IF EXISTS causale_magazzino;

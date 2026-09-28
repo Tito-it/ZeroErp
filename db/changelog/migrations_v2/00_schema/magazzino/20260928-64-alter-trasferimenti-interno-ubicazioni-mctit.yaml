@@ -1,0 +1,121 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-4 — Il trasferimento INTERNO impara le ubicazioni
+#   magazzino.trasferimenti (via chk_mag_trasferimenti_da_a_distinti)
+#   magazzino.trasferimenti_righe (+ ubicazione_id_da, ubicazione_id_a)
+#   Brief: brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 4 (P-4);
+#          decisione D-L2-g di Tid (2026-09-17), brief del Lotto 2 §3
+#
+# -- PERCHE' --------------------------------------------------------------------------------------
+#   D-L2-g: magazzino.trasferimenti e' il trasferimento INTERNO — dentro lo
+#   stesso magazzino (fra ubicazioni) o fra magazzini dello stesso emittente,
+#   senza trasporto. Il trasferimento con trasporto e' la bolla TRASFERIMENTO.
+#   Per fare quel mestiere il documento deve (1) ammettere lo stesso magazzino
+#   in partenza e in arrivo e (2) dire, per riga, da quale ubicazione a quale.
+#
+# -- IL CHECK DI TESTATA SE NE VA, E LA REGOLA SCENDE ALLA RIGA -----------------------------------
+#   «Magazzini diversi OPPURE ubicazioni diverse» guarda testata e righe
+#   insieme: un CHECK non lo sa esprimere. Si divide:
+#   * sulla riga, chk_mag_trasferimenti_righe_ubicazioni_distinte: se entrambe
+#     le ubicazioni ci sono, sono diverse (da U1 a U1 non e' uno spostamento);
+#   * «stesso magazzino => due ubicazioni diverse» e' un motivo di
+#     script.fn_check_documento_interno_registrabile (20260928-77,
+#     E_MAG_TRASFERIMENTO_STESSA_POSIZIONE): la riga si scrive in bozza per
+#     gradi, la regola vale alla registrazione.
+#   Obbligatoria o vietata, ciascuna ubicazione, secondo usa_ubicazioni del
+#   SUO magazzino (D-L2-m): lo dice script.fn_check_riga_magazzino, come per
+#   ogni movimento.
+#
+# -- FK ------------------------------------------------------------------------------------------
+#   NO ACTION verso magazzino.ubicazioni. Le righe in dbops.fk_index_policy
+#   stanno nel CSV principale (consentito = false).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20260928-64-alter-trasferimenti-interno-ubicazioni-mctit.yaml
+
+  - changeSet:
+      id: 20260928-64-alter-trasferimenti-interno-ubicazioni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Trasferimento INTERNO (D-L2-g): via chk_mag_trasferimenti_da_a_distinti (lo stesso
+        magazzino e' ammesso, fra due ubicazioni); trasferimenti_righe prende ubicazione_id_da e
+        ubicazione_id_a, con il CHECK che le vuole diverse quando ci sono entrambe. La regola
+        «stesso magazzino => ubicazioni diverse» e' un motivo della check di registrazione. Brief:
+        brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 4 (P-4).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: magazzino
+                tableName: ubicazioni
+            - not:
+                - columnExists:
+                    schemaName: magazzino
+                    tableName: trasferimenti_righe
+                    columnName: ubicazione_id_da
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE magazzino.trasferimenti
+                  DROP CONSTRAINT IF EXISTS chk_mag_trasferimenti_da_a_distinti;
+
+              ALTER TABLE magazzino.trasferimenti_righe
+                  ADD COLUMN ubicazione_id_da BIGINT,
+                  ADD COLUMN ubicazione_id_a  BIGINT;
+
+              ALTER TABLE magazzino.trasferimenti_righe
+                  ADD CONSTRAINT fk_mag_trasferimenti_righe_ubicazione_da
+                      FOREIGN KEY (ubicazione_id_da)
+                      REFERENCES magazzino.ubicazioni (id)
+                      ON UPDATE CASCADE ON DELETE NO ACTION,
+                  ADD CONSTRAINT fk_mag_trasferimenti_righe_ubicazione_a
+                      FOREIGN KEY (ubicazione_id_a)
+                      REFERENCES magazzino.ubicazioni (id)
+                      ON UPDATE CASCADE ON DELETE NO ACTION,
+                  ADD CONSTRAINT chk_mag_trasferimenti_righe_ubicazioni_distinte
+                      CHECK (ubicazione_id_da IS NULL OR ubicazione_id_a IS NULL
+                             OR ubicazione_id_da <> ubicazione_id_a);
+
+              COMMENT ON TABLE magazzino.trasferimenti IS
+                  'Il trasferimento INTERNO di merce (D-L2-g): dentro lo stesso magazzino, fra '
+                  'due ubicazioni, oppure fra due magazzini dello stesso emittente, senza '
+                  'trasporto. Il trasferimento con trasporto e'' la bolla con causale '
+                  'TRASFERIMENTO (vendite.ddt). Stessa famiglia di inventari e rettifiche: '
+                  'DRAFT -> CONFIRM -> POSTED, CANCEL; POSTED lo scrive solo '
+                  'magazzino.fn_posta_trasferimento. Dal 2026-09-28 lo stesso magazzino in '
+                  'partenza e in arrivo e'' ammesso (via chk_mag_trasferimenti_da_a_distinti): '
+                  'allora ogni riga deve andare da un''ubicazione a un''altra, motivo della '
+                  'check di registrazione.';
+              COMMENT ON COLUMN magazzino.trasferimenti_righe.ubicazione_id_da IS
+                  'Ubicazione di PARTENZA nel magazzino di origine: obbligatoria o vietata '
+                  'secondo il suo usa_ubicazioni (D-L2-m, script.fn_check_riga_magazzino).';
+              COMMENT ON COLUMN magazzino.trasferimenti_righe.ubicazione_id_a IS
+                  'Ubicazione di ARRIVO nel magazzino di destinazione: obbligatoria o vietata '
+                  'secondo il suo usa_ubicazioni. Diversa dalla partenza quando ci sono '
+                  'entrambe (CHECK).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE magazzino.trasferimenti_righe
+                  DROP CONSTRAINT IF EXISTS chk_mag_trasferimenti_righe_ubicazioni_distinte,
+                  DROP CONSTRAINT IF EXISTS fk_mag_trasferimenti_righe_ubicazione_a,
+                  DROP CONSTRAINT IF EXISTS fk_mag_trasferimenti_righe_ubicazione_da,
+                  DROP COLUMN IF EXISTS ubicazione_id_a,
+                  DROP COLUMN IF EXISTS ubicazione_id_da;
+              ALTER TABLE magazzino.trasferimenti
+                  ADD CONSTRAINT chk_mag_trasferimenti_da_a_distinti
+                      CHECK (magazzino_id_from <> magazzino_id_to);

@@ -104,6 +104,16 @@
 #   difesa sta nel suo corpo (20_code/dbops/20260926-11). Forward su dev
 #   `90_end/20260926-12`; terza sede il blocco del provisioning; pgTAP
 #   `db/pgtap/dbops/test-sec-functions-owner-riservato-v1.sql`.
+#
+# ── ⭐ IL LOTTO 3 DI MAGAZZINO (dal 2026-09-28) ─────────────────────────────
+#   Brief: brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 4 (P-12)
+#   `magazzino.movimenti_attesi` passa da `v_tabelle_senza_delete` a
+#   `v_tabelle_sola_lettura_app`: i blocchi li aprono e li liberano i verbi
+#   fn_apri_blocco / fn_libera_blocco (D-L3-j). In `v_fn_riservate` le due
+#   operazioni interne, `magazzino.fn_posta_ddt` e
+#   `magazzino.fn_storna_movimenti_sorgente`: ci si arriva solo dai verbi.
+#   Forward su dev `90_end/20260928-83`; terza sede il blocco del provisioning;
+#   pgTAP `db/pgtap/magazzino/test-blocco-manuale-e-porta-lotto3-v1.sql`.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -156,7 +166,11 @@ databaseChangeLog:
                   'dbops.fn_audit_begin',
                   'dbops.fn_audit_end',
                   'magazzino.fn_scrivi_movimento',
-                  'magazzino.fn_ricalcola_valore_giacenza'
+                  'magazzino.fn_ricalcola_valore_giacenza',
+                  -- ⭐ Dal 2026-09-28 (Lotto 3): le operazioni interne della bolla e lo
+                  --   storno; l'app ci arriva solo da vendite.fn_cambia_stato_ddt.
+                  'magazzino.fn_posta_ddt',
+                  'magazzino.fn_storna_movimenti_sorgente'
                 ];
                 -- ⭐ Schemi SENZA DELETE per l'applicazione: le shadow di storico le
                 --   scrive il trigger (INSERT della versione, UPDATE che chiude la
@@ -196,14 +210,17 @@ databaseChangeLog:
                   --   il proprietario delle DEFINER di postgres. Lo scrive solo il
                   --   migratore; la sync ha la sua guardia nel corpo
                   --   (brief-db-registro-owner-e-sync-riservati-al-migratore §2.2).
-                  'dbops.sec_functions_owner'
+                  'dbops.sec_functions_owner',
+                  -- ⭐ Dal 2026-09-28 (Lotto 3, D-L3-j): i blocchi di magazzino li
+                  --   aprono e li liberano i verbi fn_apri_blocco / fn_libera_blocco.
+                  'magazzino.movimenti_attesi'
                 ];
                 -- ⭐ Tabelle SENZA DELETE per l'applicazione (la forma per tabella
                 --   di v_schemi_senza_delete): un blocco di magazzino si chiude
                 --   (APERTA -> CHIUSA, D-L1-b), non si cancella.
-                v_tabelle_senza_delete text[] := ARRAY[
-                  'magazzino.movimenti_attesi'
-                ];
+                --   ⚠️ Dal 2026-09-28 l'elenco e' VUOTO: movimenti_attesi e' passata in
+                --   sola lettura (Lotto 3, D-L3-j). La lista resta, per la prossima.
+                v_tabelle_senza_delete text[] := ARRAY[]::text[];
                 v_schemas text[] := ARRAY[
                   'acquisti',
                   'anagrafiche',
