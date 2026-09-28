@@ -12,6 +12,17 @@
 > accesa il 2026-09-28 (§4 «Fatto»). 🟡 §1: HSTS e redirect fatti il 2026-09-28, CSP scritta nel
 > vhost documentato e da applicare in Nginx (§1.6 «Fatto»). ✅ §2 token fuori da `localStorage` fatto il
 > 2026-09-28, resta il collaudo a video (§2.5 «Fatto»).
+> **Commit:** §3.5 e §4 in `077ade022`; §1 (HSTS/redirect), §2 e la revisione del cantiere in
+> `2356ed65c` (2026-09-28, `dev/backend-tid`).
+>
+> ⏳ **Cosa manca per chiudere il brief** (in ordine):
+> 1. riavviare il backend su `backend-dev` (`sudo systemctl restart zeroerp-gunicorn`: rilegge
+>    `.env.systemd`, dove c'è `DJANGO_SECURE_HSTS_SECONDS=0`) — senza, il frontend nuovo e il
+>    backend vecchio non si parlano sul rinnovo;
+> 2. eseguire i tre smoke del refresh (`smoke-test-core`, `-audit-logging`, `-jwt-audit-guc`);
+> 3. collaudo a video di §2 (§2.5, ultima voce);
+> 4. CSP in Nginx come `Report-Only`, collaudo a video, poi applicata (§1.6);
+> 5. §3 TOTP, dopo le decisioni 3 e 4 di §6 e la richiesta al DB (§3.3).
 >
 > **Contesto:** [Sicurezza e qualità statica](../sicurezza-e-qualita-statica.md), sezione
 > «Aperto». Registro del debito: [migliorie generali](migliorie-generali-BE-FE-da-test-valutazione.md),
@@ -247,6 +258,25 @@ password, che stanno altrove).
   cataloghi BB, le pagine `backend/core/manual/` dei cinque endpoint, `sicurezza-e-qualita-statica.md`.
 * ⏳ **Resta il collaudo a video** (sopra, ultima voce): ricarica, due schede oltre i 10 minuti,
   logout da una scheda, cambio emittente con due schede aperte.
+
+✅ **Revisione critica del cantiere** (2026-09-28, nello stesso commit `2356ed65c`):
+
+* **E-8 chiuso** (analisi difetti doc API core, ok Tid): la veste del refresh si legge da claim con
+  la **firma verificata**. La funzione del logout è diventata il BB `claims_refresh_firmati` di
+  `refresh_cookie.py` (regola del 2), copia ritirata. Refresh illeggibile o firmato da altri → 401;
+  refresh nostro di un altro canale → 403 come prima. Audit e GUC del refresh nascono dagli stessi
+  claim verificati: prima si rileggeva il token tre volte alla cieca.
+* **Regola del 2, ok Tid**: `handle_post_json_con_refresh` (cambio password e cambio emittente
+  scrivevano il cookie «solo se 200» con lo stesso schema a mano) e `parse_intero_non_negativo` in
+  `settings.py` (`DJANGO_TRUSTED_PROXY_COUNT` e HSTS).
+* **Fragile**: un rinnovo che risponde senza access ora è un rinnovo fallito (prima le richieste
+  ripartivano con `Bearer undefined`); la conversione dei claim interi è una sola.
+* **Valori in tre linguaggi**: nome del cookie e header anti-CSRF stanno in Python, in bash e nel
+  frontend; `test_nome_cookie_e_header_uguali_nei_tre_linguaggi` li confronta.
+* Test aggiunti: `test_auth_views` fino al n. 30 (GUC dai claim verificati, token veri per E-8, il
+  BB del POST con refresh), `test_https_header` n. 11, `sessione.spec.js` n. 9.
+* ⚠️ Lasciato, da decidere: dopo un logout fatto in un'altra scheda questa arriva al login con
+  la frase «sessione scaduta» (serve un motivo nuovo e le sue traduzioni).
 
 ---
 
