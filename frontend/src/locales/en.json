@@ -4024,6 +4024,12 @@
       "annulla_reason": {
         "con_accrediti": "The return has a registered credit: undo the credit on the line first, then the return."
       },
+      "azione_reason": {
+        "magazzino_mancante": "The return does not say which warehouse the goods come back to: choose it on the header, then confirm.",
+        "rientri_incompleti": "Return line {0}: {1} pieces given out of {2}. Specify which lots or serials come back, and where.",
+        "merce_non_ricollocabile": "A return line cannot come back into the chosen warehouse: open the line's inbound entries to see what is missing.",
+        "rientro_oltre_uscito": "Return line {0}: {1} pieces would come back from a lot or serial that shipped only {2}. Check the other returns on the same delivery note too."
+      },
       "stato_info": {
         "confermato": "The return is confirmed: the goods are back and the stock movements are recorded.",
         "annullato": "The return is cancelled: the inbound movement was reversed and this state is final."

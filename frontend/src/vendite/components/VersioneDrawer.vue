@@ -557,8 +557,8 @@ const suVisibile = gestoreVisibile(emit, chiudi)
           <AttivoTag :active="data.attivo" />
         </template>
 
-        <template #actions="{ data, compact }">
-          <RowActionsMenu :row="data" :actions="buildRigaActions(data)" :force-compact="compact" />
+        <template #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRigaActions(data)" />
         </template>
       </ListaConfigurabile>
 

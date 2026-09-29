@@ -73,12 +73,9 @@ class FornitoriService:
     def resolve_filtri_export_label(
         self,
         *,
-        search: str | None = None,
         stato_fornitore_id: int | None = None,
     ) -> dict[str, Any]:
         out: dict[str, Any] = {}
-        if search:
-            out["Ricerca"] = search
         if stato_fornitore_id is not None:
             desc = self._repo.get_stato_fornitore_descrizione(
                 stato_fornitore_id,

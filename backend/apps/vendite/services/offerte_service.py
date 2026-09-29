@@ -419,7 +419,6 @@ class OfferteService:
     def resolve_filtri_export_label(
         self,
         *,
-        search: str | None = None,
         stato_codice_interno: str | None = None,
         billing_account_id: int | None = None,
         utility_id: int | None = None,
@@ -429,8 +428,6 @@ class OfferteService:
         solo_ultima_revisione: bool = True,
     ) -> dict[str, Any]:
         out: dict[str, Any] = {}
-        if search:
-            out["Ricerca"] = search
         if stato_codice_interno:
             out["Stato"] = stato_codice_interno
         if billing_account_id is not None:

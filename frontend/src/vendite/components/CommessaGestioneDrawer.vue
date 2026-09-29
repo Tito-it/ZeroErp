@@ -1115,8 +1115,8 @@ const suVisibile = gestoreVisibile(emit, onChiudi)
                fattura) che non modificano nulla. Nasconderla in readonly
                toglierebbe la sola strada per arrivare al documento proprio a
                chi sta ispezionando. -->
-          <template #actions="{ data, compact }">
-            <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+          <template #actions="{ data }">
+            <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
           </template>
         </ListaConfigurabile>
 

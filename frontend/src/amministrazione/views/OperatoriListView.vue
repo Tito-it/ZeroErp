@@ -228,8 +228,8 @@ function buildRowActions(data) {
         />
       </template>
 
-      <template v-if="!isReadonly" #actions="{ data, compact }">
-        <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+      <template v-if="!isReadonly" #actions="{ data }">
+        <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
       </template>
     </ListaConfigurabile>
     </template>

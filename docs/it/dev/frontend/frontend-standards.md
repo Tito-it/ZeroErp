@@ -938,12 +938,29 @@ function buildRowActions(data) {
 
 <template>
   <ListaConfigurabile codice="dominio.entita" …>
-    <template #actions="{ data, compact }">
-      <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+    <template #actions="{ data }">
+      <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
     </template>
   </ListaConfigurabile>
 </template>
 ```
+
+⭐ **Il kebab sotto spazio stretto arriva da sé** (2026-09-29): quando il
+packing responsive della lista ritira la colonna azioni a kebab ne conta la
+larghezza compatta (56px), e la cella azioni di `ListaConfigurabile`
+(`CellaAzioniRiga`, BB `useAzioniRigaCompatte`) consegna quella decisione a
+`RowActionsMenu` via provide/inject. Fino a quel giorno il caller doveva girare
+lo scope `compact` a `:force-compact`: quattordici liste non lo facevano — anche
+l'esempio qui sopra lo ometteva nel commento del BB — e su desktop rendevano i
+pulsanti inline, più larghi del conto; la differenza usciva come **scrollbar
+orizzontale**, senza errori (righe della distinta contabile). Lo scope
+`compact` resta, per chi nella cella rende altro; `:force-compact` passato a
+mano vince sempre. ⛔ **Dentro la cella azioni non si scrive
+`:force-compact="compact"`**: le 40 copie che lo facevano sono state ritirate
+nello stesso giro (regola del 2) — ripeterlo è una seconda sede della stessa
+decisione. ⚠️ Fuori da una `ListaConfigurabile` (DataTable grezza,
+tabelle di dashboard) non c'è provider: lì, se serve, `:force-compact` si passa
+esplicito.
 
 Nelle sole eccezioni con `DataTable` grezza (§«Regola zero della lista») la
 stessa chiamata sta dentro

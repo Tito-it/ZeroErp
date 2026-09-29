@@ -169,7 +169,6 @@ def list_ddt_rows(
 #        export (DEF-1). Gemello resolve_filtri_export_label ordini.
 def resolve_filtri_export_label(
     *,
-    search: str | None = None,
     stato_codice: str | None = None,
     billing_account_id: int | None = None,
     utility_id: int | None = None,
@@ -177,8 +176,6 @@ def resolve_filtri_export_label(
     data_al: date | None = None,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    if search:
-        out["Ricerca"] = search
     if stato_codice:
         out["Stato"] = stato_codice
     if billing_account_id is not None:

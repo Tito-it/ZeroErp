@@ -38,6 +38,7 @@ from django.urls import resolve
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.ui.tests._coda_export import coda_export_finta
+from apps.core.tests.ricerca_catalogo_fakes import catalogo_ricerca_finto
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _GUARD = "apps.core.services.perimetro_emittente.guard_lista_per_codice"
@@ -139,6 +140,8 @@ class TestRigheListaApi(JwtMockedApiTest):
     @patch(_RENDER)
     @patch(_UI_REPO)
     @patch(_UI_SVC)
+    # La soglia della ricerca e' del catalogo (DB): qui e' un contorno finto.
+    @catalogo_ricerca_finto(())
     def test_export_csv_alza_il_tetto(
         self, mock_ui_svc, mock_ui_repo, mock_render_cls, _auth,
     ) -> None:

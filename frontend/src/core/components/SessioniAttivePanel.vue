@@ -255,8 +255,8 @@ onMounted(() => { store.fetchList() })
         </template>
         <!-- ⛔ Lo slot del kebab si chiama `#actions`: col nome sbagliato la
              colonna non viene resa affatto, e senza errori. -->
-        <template #actions="{ data, compact }">
-          <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+        <template #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </template>
       </ListaConfigurabile>
     </template>

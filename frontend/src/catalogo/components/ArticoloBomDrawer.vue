@@ -532,8 +532,8 @@ const suVisibile = gestoreVisibile(emit, chiudi)
         <template #empty>
           <span v-if="!store.erroreCaricamento">{{ t('catalogo.nessun_componente') }}</span>
         </template>
-        <template v-if="!isReadonly" #actions="{ data, compact }">
-          <RowActionsMenu :row="data" :actions="buildRigaActions(data)" :force-compact="compact" />
+        <template v-if="!isReadonly" #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRigaActions(data)" />
         </template>
       </DrawerTabLista>
 

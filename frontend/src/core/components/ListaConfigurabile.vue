@@ -55,6 +55,7 @@
 //       <Tag :value="data.stato_descrizione" :severity="statoClienteSeverity(data.stato_codice)" />
 //     </template>
 //     <template #actions="{ data }">
+//       <!-- il kebab sotto spazio stretto arriva da se' (`CellaAzioniRiga`) -->
 //       <RowActionsMenu :row="data" :actions="buildActions(data)" />
 //     </template>
 //   </ListaConfigurabile>
@@ -99,6 +100,7 @@ import {
   DEFAULT_COL_WIDTH,
   DEFAULT_ACTIONS_INLINE_COUNT,
 } from '../composables/useResponsiveColumns'
+import CellaAzioniRiga from './CellaAzioniRiga.vue'
 import CellaConfigurabile, { testoCella } from './CellaConfigurabile.vue'
 import ListaColonneModal from './ListaColonneModal.vue'
 
@@ -901,8 +903,14 @@ defineExpose({
         :exportable="false"
         class="app-col-actions"
       >
+        <!-- ⭐ `CellaAzioniRiga` consegna `actionsCompact` a `RowActionsMenu`
+             da se' (`useAzioniRigaCompatte`): il caller non deve piu' girare
+             lo scope `compact`, e dimenticarlo non da' piu' la scrollbar.
+             Lo scope resta, per i caller che rendono altro. -->
         <template #body="{ data }">
-          <slot name="actions" :data="data" :compact="actionsCompact" />
+          <CellaAzioniRiga :compact="actionsCompact">
+            <slot name="actions" :data="data" :compact="actionsCompact" />
+          </CellaAzioniRiga>
         </template>
       </Column>
 

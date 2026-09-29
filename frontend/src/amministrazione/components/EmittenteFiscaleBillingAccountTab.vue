@@ -288,9 +288,8 @@ function buildRowActions(data) {
     <!-- v-if sul TEMPLATE dello slot: senza slot `actions` ne' il BB ne'
          <ListaConfigurabile> montano la colonna, come la <Column v-if>
          pre-conversione. -->
-    <template v-if="!isReadonly" #actions="{ data, compact }">
-      <RowActionsMenu :row="data" :actions="buildRowActions(data)"
-        :force-compact="compact" />
+    <template v-if="!isReadonly" #actions="{ data }">
+      <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
     </template>
 
     <template #empty>

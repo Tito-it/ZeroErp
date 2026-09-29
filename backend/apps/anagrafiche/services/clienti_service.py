@@ -89,13 +89,10 @@ class ClientiService:
     def resolve_filtri_export_label(
         self,
         *,
-        search: str | None = None,
         utility_id: int | None = None,
         stato_cliente_id: int | None = None,
     ) -> dict[str, Any]:
         out: dict[str, Any] = {}
-        if search:
-            out["Ricerca"] = search
         if utility_id is not None:
             desc = self._repo.get_utility_descrizione(utility_id)
             out["Utility"] = desc or f"id={utility_id}"

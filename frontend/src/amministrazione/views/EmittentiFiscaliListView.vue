@@ -167,9 +167,8 @@ function buildRowActions(data) {
       <!-- v-if sul TEMPLATE dello slot, non sul menu: senza slot `actions` la
            BB non monta proprio la colonna (haAzioni), come la <Column v-if>
            pre-conversione. Il v-if interno lascerebbe una colonna vuota. -->
-      <template v-if="!isReadonly" #actions="{ data, compact }">
-        <RowActionsMenu :row="data" :actions="buildRowActions(data)"
-          :force-compact="compact" />
+      <template v-if="!isReadonly" #actions="{ data }">
+        <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
       </template>
     </ListaConfigurabile>
     </template>

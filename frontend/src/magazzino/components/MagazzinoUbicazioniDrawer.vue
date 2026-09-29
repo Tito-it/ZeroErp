@@ -19,6 +19,7 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Drawer from 'primevue/drawer'
+import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 
 import AttivoTag from '../../core/components/AttivoTag.vue'
@@ -30,6 +31,8 @@ import FormFooter from '../../core/components/FormFooter.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useAzioniAttivo } from '../../core/composables/useAzioniAttivo'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
@@ -50,6 +53,10 @@ const { t } = useI18n()
 const store = useUbicazioniStore()
 const isReadonly = useInjectReadonly()
 
+// Contenuto deferito a fine animazione: senza, la lista si monta durante lo
+// slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
+
 const ubicazioneDrawerVisible = ref(false)
 const ubicazioneSelezionataId = ref(null)
 
@@ -57,7 +64,7 @@ const ubicazioneSelezionataId = ref(null)
 //    al BB di chiamare `store.reset()`, o la lista del magazzino precedente
 //    lampeggerebbe sotto il prossimo.
 const {
-  onPage, onSort, applyFilters, paginatorProps, tablePage,
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
   exportDialogVisible, exportLoading, onExportConfirm, reloadAll,
 } = useDrawerTabLista(store, {
@@ -88,12 +95,15 @@ function onUbicazioneSaved() {
 const { azioniAttivo } = useAzioniAttivo(store, { prefisso: 'magazzino.ubicazioni', onDone: onUbicazioneSaved })
 
 const onClose = useDrawerClose(emit)
+// X, ESC e clic fuori escono come il «Chiudi»: lo STESSO `onClose`.
+const suVisibile = gestoreVisibile(emit, onClose)
 </script>
 
 <template>
   <Drawer
-    :visible="visible" @update:visible="emit('update:visible', $event)"
-    position="right" :style="{ width: DRAWER_WIDTH.WIDE }">
+    :visible="visible" @update:visible="suVisibile"
+    position="right" :style="{ width: DRAWER_WIDTH.WIDE }"
+    @after-show="onAfterShow">
     <template #header>
       <DrawerTitle
         :action="magazzinoCodice"
@@ -101,7 +111,7 @@ const onClose = useDrawerClose(emit)
         :icon="MANAGE_ICONS.UBICAZIONI" />
     </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <Message v-if="!usaUbicazioni" severity="warn" :closable="false" class="mt-05">
         {{ t('magazzino.ubicazioni.magazzino_non_le_usa') }}
       </Message>
@@ -125,6 +135,16 @@ const onClose = useDrawerClose(emit)
         @row-click="apriUbicazione($event.id)"
         @config-loaded="onConfigLoaded"
       >
+        <!-- La ricerca: le colonne le decide il catalogo (`ricerca_full`),
+             il placeholder non le elenca; l'export porta la stessa `search`
+             (`paramsFiltro`). -->
+        <template #filtri-sempre>
+          <InputText
+            v-model="searchText"
+            class="app-filter-w-lg"
+            :placeholder="t('common.search')"
+          />
+        </template>
         <template #filtri>
           <FiltroToggle
             v-model="mostraNonAttive"
@@ -135,8 +155,8 @@ const onClose = useDrawerClose(emit)
         <template #cell-attivo="{ data }">
           <AttivoTag :active="data.attivo" />
         </template>
-        <template #actions="{ data, compact }">
-          <RowActionsMenu :row="data" :actions="azioniAttivo(data)" :force-compact="compact" />
+        <template #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="azioniAttivo(data)" />
         </template>
       </DrawerTabLista>
 

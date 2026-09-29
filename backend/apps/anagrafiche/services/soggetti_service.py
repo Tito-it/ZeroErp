@@ -106,12 +106,9 @@ class SoggettiService:
     def resolve_filtri_export_label(
         self,
         *,
-        search: str | None = None,
         tipo_soggetto_dettaglio_id: int | None = None,
     ) -> dict[str, Any]:
         out: dict[str, Any] = {}
-        if search:
-            out["Ricerca"] = search
         if tipo_soggetto_dettaglio_id is not None:
             desc = self._repo.get_tipo_soggetto_dettaglio_descrizione(
                 tipo_soggetto_dettaglio_id,

@@ -233,7 +233,6 @@ def list_preventivi(
 #        Gemello di ContrattiService.resolve_filtri_export_label.
 def resolve_filtri_export_label(
     *,
-    search: str | None = None,
     stato_codice: str | None = None,
     billing_account_id: int | None = None,
     utility_id: int | None = None,
@@ -242,8 +241,6 @@ def resolve_filtri_export_label(
     solo_ultima_revisione: bool = True,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    if search:
-        out["Ricerca"] = search
     if stato_codice:
         out["Stato"] = stato_codice
     if billing_account_id is not None:

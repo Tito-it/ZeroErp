@@ -240,8 +240,8 @@ const suVisibile = gestoreVisibile(emit, onClose)
         <template v-for="c in CELLE_CONTRATTO" :key="c" #[`cell-${c}`]="{ data }">
           <ContrattoCella :colonna="c" :data="data" />
         </template>
-        <template #actions="{ data, compact }">
-          <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+        <template #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </template>
       </DrawerTabLista>
 

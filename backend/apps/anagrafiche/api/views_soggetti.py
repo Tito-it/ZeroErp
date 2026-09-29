@@ -497,7 +497,6 @@ class SoggettiExportView(DomainAPIView):
             order_dir=p["order_dir"],
         )
         filtri_applicati = svc.resolve_filtri_export_label(
-            search=p["search"],
             tipo_soggetto_dettaglio_id=tipo_id,
         )
         return build_export_response(

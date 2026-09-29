@@ -206,7 +206,6 @@ class FornitoriExportView(DomainAPIView):
             order_dir=p["order_dir"],
         )
         filtri_applicati = svc.resolve_filtri_export_label(
-            search=p["search"],
             stato_fornitore_id=stato_id,
         )
         return build_export_response(

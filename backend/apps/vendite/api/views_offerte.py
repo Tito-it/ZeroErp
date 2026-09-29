@@ -274,7 +274,6 @@ class ApiOfferteExportView(DomainAPIView):
             auth_user_id=get_scope_user_id(request),
         )
         filtri_applicati = svc.resolve_filtri_export_label(
-            search=p["search"],
             stato_codice_interno=stato_codice_interno,
             billing_account_id=billing_account_id,
             utility_id=utility_id,
