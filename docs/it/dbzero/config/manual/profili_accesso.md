@@ -40,6 +40,34 @@ solo a un reparto):
 | `codice` | Identificativo univoco del profilo (es. `REPARTO_AMM`, `CLIENTE_PORTALE_STANDARD`, `AD_HOC_UTENTE_42`). |
 | `descrizione` | Descrizione leggibile a UI e documentazione. |
 | `attivo` | Soft flag. Se `false`, il profilo non viene applicato nella risoluzione dei permessi. |
+| `richiede_secondo_fattore` | Chi ha questo profilo deve usare il **secondo fattore** (dal 29-09-2026). Vedi sotto. |
+
+---
+
+### Il profilo privilegiato e il secondo fattore
+(29-09-2026)
+
+Alcuni profili danno poteri che vanno protetti più di una password: gestire
+utenti e permessi, per esempio. Chi amministra i profili li **segna** con
+`richiede_secondo_fattore`, e chi riceve quel profilo deve entrare con il codice
+del telefono oltre alla password.
+
+* ⭐ **L'obbligo segue i binding**: chi riceve il profilo ha l'obbligo, chi lo
+  perde non l'ha più. Nessun segno da ricordare sulle singole persone.
+* ⛔ **Il profilo `SUPER_ADMIN` ha il segno sempre**, e non si può spegnere: lo
+  impedisce un vincolo sulla tabella
+  (`chk_profili_accesso_super_admin_secondo_fattore`).
+* Il segno vale **su tutte le porte**: la persona ha una password sola, e il
+  secondo fattore protegge quella, anche quando entra dal portale.
+* L'altra ragione per l'obbligo è un segno sulla **credenziale** della singola
+  persona ([config.credenziali](/dbzero/config/tabelle/credenziali)). La
+  risposta che mette insieme le due è una sola:
+  [fn_totp_obbligatorio](/dbzero/script/funzioni/fn_totp_obbligatorio).
+
+Perché un segno e non una regola che deduce il privilegio dalle aree e dai
+livelli: **quali poteri contano è una scelta di chi amministra**, non un fatto
+del modello, e un elenco di aree scritto in una funzione diventa vecchio alla
+prima area nuova (decisione D-T1 di Tid, brief-db-secondo-fattore-totp).
 
 ---
 

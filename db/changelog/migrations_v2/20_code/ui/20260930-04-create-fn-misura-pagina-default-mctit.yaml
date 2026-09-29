@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# M-4 — LA MISURA DI DEFAULT DI UN USO: ui.fn_misura_pagina_default(p_uso)
+#   Brief: brief-db-misure-pagina-catalogo, sezione 2 (regole 3, 4, 6);
+#   decisione di Tid del 2026-09-29: anche i default nel catalogo.
+#
+#   La chiedono il resolver delle liste (il ripiego PAGINA, al posto del 25
+#   scritto cinque volte) e ui.fn_get_misure_pagina (i due default per
+#   l'applicazione): nasce gia' estratta.
+#
+# ⚠️ Un default che MANCA non e' un NULL: e' un catalogo rotto, e un NULL
+#   tornerebbe al frontend come «nessuna misura» — lo stesso selettore vuoto
+#   da cui il cantiere e' partito. Solleva E_UI_MISURA_PAGINA_DEFAULT_MANCANTE
+#   (TECNICO: rimedia chi governa il CSV). Uso fuori vocabolario:
+#   E_UI_MISURA_PAGINA_DEFAULT_MANCANTE anche lui, con l'uso nella frase.
+#   plpgsql (solleva), STABLE, INVOKER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20260930-04-create-fn-misura-pagina-default-mctit.yaml
+
+  - changeSet:
+      id: 20260930-04-create-fn-misura-pagina-default
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.fn_misura_pagina_default(p_uso) -> integer: la misura di default per un uso (COMPATTA,
+        PAGINA) dal catalogo ui.misure_pagina. Se manca solleva E_UI_MISURA_PAGINA_DEFAULT_MANCANTE,
+        mai NULL. Brief: brief-db-misure-pagina-catalogo §2.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            { schemaName: ui, tableName: misure_pagina }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.fn_misura_pagina_default(
+                  p_uso ui.misure_pagina.uso_default%TYPE
+              )
+              RETURNS integer
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              -- Scopo: la misura «righe per pagina» di default per un uso.
+              --   Mai NULL: un default che manca e' un catalogo rotto.
+              DECLARE
+                  v_misura ui.misure_pagina.misura%TYPE;
+              BEGIN
+                  SELECT m.misura
+                    INTO v_misura
+                    FROM ui.misure_pagina m
+                   WHERE m.uso_default = p_uso;
+
+                  IF v_misura IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'ui.fn_misura_pagina_default', 'E_UI_MISURA_PAGINA_DEFAULT_MANCANTE',
+                          jsonb_build_object('uso_default', p_uso),
+                          NULL::uuid,
+                          VARIADIC ARRAY[COALESCE(p_uso, 'NULL')]);
+                  END IF;
+
+                  RETURN v_misura;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.fn_misura_pagina_default(character varying) IS
+                  'La misura «righe per pagina» di default per un uso (COMPATTA: drawer e dialog; PAGINA: pagine e ripiego del resolver delle liste), dal catalogo ui.misure_pagina. Mai NULL: se il catalogo non ha quel default (o l''uso e'' fuori vocabolario) solleva E_UI_MISURA_PAGINA_DEFAULT_MANCANTE (TECNICO). La chiedono ui.fn_resolve_lista_config e ui.fn_get_misure_pagina. STABLE, INVOKER. Brief: brief-db-misure-pagina-catalogo §2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS ui.fn_misura_pagina_default(character varying);

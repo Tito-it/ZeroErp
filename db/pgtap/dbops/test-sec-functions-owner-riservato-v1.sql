@@ -5,6 +5,8 @@
 --
 -- Brief: brief-db-registro-owner-e-sync-riservati-al-migratore.md §3
 -- ChangeSet: 20_code/dbops/20260926-11 (la guardia nel corpo della sync)
+--            20_code/dbops/20260929-08/-09 (la domanda passa nel BB
+--            dbops.fn_sessione_del_migratore, brief-db-secondo-fattore-totp)
 --            90_end/20260926-12 (il registro in sola lettura, forward su dev)
 --            90_end/ci_apply/20260205-41 (voce in v_tabelle_sola_lettura_app)
 --            scripts/sql/provision_db_roles.sql (la stessa voce: e' l'ULTIMA
@@ -48,7 +50,9 @@
 --          rifiuto su un registro vuoto
 --   STRUTTURA
 --   12   : la guardia legge session_user e NON pg_has_role(current_user…)
---          (commenti tolti) — pinna la trappola 1 del brief
+--          (commenti tolti) — pinna la trappola 1 del brief. Dal 2026-09-29
+--          la domanda sta in dbops.fn_sessione_del_migratore (20260929-08/-09):
+--          la sync la chiama, il BB legge session_user
 --   13   : la copia di servizio del giro non è rimasta (hasnt_function)
 --
 -- Read-only: tutto dentro BEGIN;/ROLLBACK;. Nessuna riga scritta.
@@ -125,12 +129,18 @@ SELECT cmp_ok((SELECT count(*) FROM dbops.sec_functions_owner), '>', 0::bigint,
 --    su current_user sarebbe sempre aperta. Commenti `--` tolti prima di
 --    cercare: il corpo SPIEGA la trappola, e un presidio sul testo non deve
 --    accendersi sulla prosa.
+-- ⭐ Dal 2026-09-29 (20260929-08/-09, regola del 2) la domanda sta nel BB
+--    dbops.fn_sessione_del_migratore, che la sync chiama: il presidio segue la
+--    domanda dove e' andata — la sync chiede al BB, e il BB legge session_user.
 SELECT ok(
-    (SELECT regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'pg_has_role\(\s*session_user'
-        AND regexp_replace(p.prosrc, '--[^\n]*', '', 'g') !~ 'pg_has_role\(\s*current_user'
-       FROM pg_catalog.pg_proc p
-      WHERE p.oid = 'dbops.fn_sync_functions_owner()'::regprocedure),
-    '12. la guardia legge session_user, non pg_has_role(current_user…) — trappola 1');
+    (SELECT regexp_replace(s.prosrc, '--[^\n]*', '', 'g') ~ 'dbops\.fn_sessione_del_migratore\(\s*\)'
+        AND regexp_replace(s.prosrc, '--[^\n]*', '', 'g') !~ 'pg_has_role\(\s*current_user'
+        AND regexp_replace(b.prosrc, '--[^\n]*', '', 'g') ~ 'pg_has_role\(\s*session_user'
+        AND regexp_replace(b.prosrc, '--[^\n]*', '', 'g') !~ 'pg_has_role\(\s*current_user'
+       FROM pg_catalog.pg_proc s, pg_catalog.pg_proc b
+      WHERE s.oid = 'dbops.fn_sync_functions_owner()'::regprocedure
+        AND b.oid = 'dbops.fn_sessione_del_migratore()'::regprocedure),
+    '12. la guardia chiede a fn_sessione_del_migratore, che legge session_user e non current_user — trappola 1');
 
 SELECT hasnt_function('dbops', 'fn_sync_functions_owner_boot',
     '13. la copia di servizio del giro 20260926-11 non è rimasta');

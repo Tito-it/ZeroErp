@@ -1,0 +1,141 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-12 — DISABILITARE CANCELLA: script.fn_totp_disabilita_device(p_auth_user_id, p_motivo)
+#   Brief: brief-db-secondo-fattore-totp, sezione 3 e D-T3; decisione di Tid del
+#   2026-09-29 sul caso senza via d'uscita.
+#
+# ── ⭐ COSA FA ───────────────────────────────────────────────────────
+#   Cancella la riga: segreto e codici di recupero spariscono (D-T3: non resta
+#   un segreto per tenere uno storico). Chi ha l'obbligo viene riportato al
+#   setup dal middleware del backend al prossimo accesso.
+#
+# ── ⭐ TRE ATTORI ────────────────────────────────────────────────────
+#   1. l'UTENTE STESSO (chi agisce = la credenziale): motivo facoltativo;
+#   2. la SESSIONE DEL MIGRATORE (dbops.fn_sessione_del_migratore): il caso
+#      senza via d'uscita — l'unico super admin perde telefono e codici, e
+#      nessuno puo' disabilitargli il device. Decisione di Tid del 2026-09-29:
+#      lo sblocco lo fa chi amministra il database, dal server, non un comando
+#      dell'applicazione. L'app (zeroerp_app) non raggiunge mai questo ramo:
+#      non e' membro del proprietario di dbops. ⚠️ Il brief nominava la GUC di
+#      `system_process_context`: quel gateway non esiste piu' dal 2026-09-05
+#      (backend/apps/core/services/system_context.py);
+#   3. un SUPER_ADMIN (script.fn_guard_super_admin).
+#   Quando agisce un ALTRO (2 e 3) il motivo e' obbligatorio:
+#   E_TOTP_MOTIVO_OBBLIGATORIO, gemello di E_CREDENZIALE_MOTIVO_OBBLIGATORIO.
+#
+# ── ⚠️ IL MOTIVO NON SI SCRIVE QUI ──────────────────────────────────
+#   D-T3: la traccia (chi, quando, perche') sta nell'audit degli eventi di
+#   autenticazione che il backend gia' scrive. Il DB pretende il motivo perche'
+#   chi chiama non possa dimenticarlo, e lo mette nel contesto dell'errore se
+#   la cancellazione fallisce. ⚠️ Nel ramo del migratore il backend non c'e':
+#   la traccia di quell'intervento e' una domanda aperta per Tid (brief §9).
+#
+# SECURITY DEFINER del PROPRIETARIO, search_path bloccato. Device assente ->
+# E_TOTP_DEVICE_ASSENTE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260929-22-create-fn-totp-disabilita-device-mctit.yaml
+
+  - changeSet:
+      id: 20260929-22-create-fn-totp-disabilita-device
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_totp_disabilita_device(p_auth_user_id, p_motivo): cancella il device del secondo
+        fattore (D-T3). Chi agisce: l'utente stesso, la sessione del migratore (il caso senza via
+        d'uscita, decisione di Tid del 2026-09-29) o un SUPER_ADMIN; quando agisce un altro il
+        motivo e' obbligatorio. SECURITY DEFINER del proprietario. Brief:
+        brief-db-secondo-fattore-totp §3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: config, tableName: auth_totp_device }
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'dbops' AND p.proname = 'fn_sessione_del_migratore';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_totp_disabilita_device(
+                  p_auth_user_id integer,
+                  -- Esplicito: il motivo non si scrive in nessuna colonna (D-T3).
+                  p_motivo       text
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: cancellare il device del secondo fattore di una credenziale:
+              --   l'utente stesso, oppure un altro (migratore o SUPER_ADMIN) con
+              --   un motivo.
+              DECLARE
+                  v_utente    integer;
+                  v_device_id config.auth_totp_device.id%TYPE;
+              BEGIN
+                  -- Prima riga: chi agisce. Se non e' la credenziale stessa deve
+                  -- essere la sessione del migratore o un SUPER_ADMIN, con un motivo.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  IF v_utente IS DISTINCT FROM p_auth_user_id THEN
+                      IF NOT dbops.fn_sessione_del_migratore() THEN
+                          PERFORM script.fn_guard_super_admin(v_utente);
+                      END IF;
+
+                      IF p_motivo IS NULL OR btrim(p_motivo) = '' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'script.fn_totp_disabilita_device', 'E_TOTP_MOTIVO_OBBLIGATORIO',
+                              jsonb_build_object('campo', 'motivo', 'auth_user_id', p_auth_user_id),
+                              NULL::uuid,
+                              VARIADIC ARRAY[]::text[]);
+                      END IF;
+                  END IF;
+
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_disabilita_device', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_auth_user_id', 'valore', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_totp_disabilita_device',
+                                         'credenziale assente o non valida']);
+                  END IF;
+
+                  DELETE FROM config.auth_totp_device d
+                   WHERE d.auth_user_id = p_auth_user_id
+                  RETURNING d.id INTO v_device_id;
+
+                  IF v_device_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_disabilita_device', 'E_TOTP_DEVICE_ASSENTE',
+                          jsonb_build_object('auth_user_id', p_auth_user_id,
+                                             'chi_agisce',   v_utente,
+                                             'motivo',       btrim(p_motivo)),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_totp_disabilita_device(integer, text) IS
+                  'Disabilita il secondo fattore (TOTP) di una credenziale CANCELLANDO il device: segreto e codici spariscono (D-T3). Chi agisce: la credenziale stessa (motivo facoltativo); oppure un ALTRO, con motivo obbligatorio (E_TOTP_MOTIVO_OBBLIGATORIO): la sessione del migratore (dbops.fn_sessione_del_migratore: il caso senza via d''uscita, l''unico super admin senza telefono e codici; decisione di Tid del 2026-09-29, lo sblocco si fa dal server, l''app non raggiunge questo ramo) o un SUPER_ADMIN (script.fn_guard_super_admin, se no E_PERMESSO_NEGATO). Il motivo non si scrive qui: la traccia e'' l''audit degli eventi di autenticazione del backend (D-T3). Device assente -> E_TOTP_DEVICE_ASSENTE. Chi ha l''obbligo torna al setup al prossimo accesso (middleware del backend). SECURITY DEFINER del PROPRIETARIO, search_path bloccato. Brief: brief-db-secondo-fattore-totp §3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_totp_disabilita_device(integer, text);

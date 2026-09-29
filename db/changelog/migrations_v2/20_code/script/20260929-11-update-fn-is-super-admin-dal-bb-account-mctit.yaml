@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# fn_is_super_admin: IL RAMO ELSE CHIEDE AL BUILDING BLOCK
+#   Brief: brief-db-secondo-fattore-totp, sezioni 2.2-2.3.
+#
+# ── ⭐ REGOLA DEL 2: SI RITIRA LA COPIA NELLO STESSO GIRO ─────────────
+#   Il ramo ELSE («la credenziale ha un binding SUPER_ADMIN attivo?») passa in
+#   script.fn_is_super_admin_account (20260929-10), perche' lo chiede anche
+#   script.fn_totp_obbligatorio. Qui resta il cancello della veste, che e'
+#   solo di questa funzione. Firma, volatilita', linguaggio e risultato
+#   invariati: nessun chiamante cambia (16 funzioni, nessuna policy, censite il
+#   2026-09-29).
+#
+# ── ⚠️ INLINEABILE COME PRIMA ────────────────────────────────────────
+#   Due LANGUAGE sql STABLE senza SET, una dentro l'altra: il planner le apre
+#   entrambe. Corpo dalla doc auto-gen (20260421-03); COMMENT ripreso e
+#   completato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260929-11-update-fn-is-super-admin-dal-bb-account-mctit.yaml
+
+  - changeSet:
+      id: 20260929-11-update-fn-is-super-admin-dal-bb-account
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_is_super_admin: il ramo ELSE chiede a script.fn_is_super_admin_account
+        (20260929-10), estratta alla seconda occorrenza; resta qui il solo cancello della veste.
+        Firma, volatilita' e risultato invariati. Brief: brief-db-secondo-fattore-totp §2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_is_super_admin_account';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_is_super_admin(p_auth_user_id integer)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- =========================================================
+                  -- Scopo:
+                  --   Verifica SUPER_ADMIN context-aware.
+                  --
+                  -- Logica (post PR-B 21-04-2026, SSO multi-veste):
+                  --   1. Se GUC app.ruolo_applicativo e' popolata ed e'
+                  --      diversa da OPERATORE -> false (bypass non si
+                  --      attiva in contesto portale/shop/api_client).
+                  --   2. Altrimenti (GUC non popolata o ='OPERATORE'):
+                  --      la credenziale ha un binding SUPER_ADMIN attivo,
+                  --      domanda di script.fn_is_super_admin_account
+                  --      (rev 2026-09-29, regola del 2: la chiede anche
+                  --      l'obbligo del secondo fattore).
+                  --
+                  -- Fail-soft GUC: current_setting(..., true) ritorna
+                  -- NULL se non settata; NULLIF normalizza '' -> NULL.
+                  -- Chiamate legacy (test/psql senza GUC) funzionano come
+                  -- prima: l'invariante "un user con OPERATORE+SUPER_ADMIN
+                  -- e' super admin a livello account" resta per l'uso
+                  -- fuori request HTTP.
+                  -- =========================================================
+                  SELECT CASE
+                      WHEN NULLIF(current_setting('app.ruolo_applicativo', true), '') IS NOT NULL
+                           AND NULLIF(current_setting('app.ruolo_applicativo', true), '') <> 'OPERATORE'
+                          THEN false
+                      ELSE script.fn_is_super_admin_account(p_auth_user_id)
+                  END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_is_super_admin(integer) IS
+                  'SUPER_ADMIN check context-aware (post PR-B 21-04-2026). Se GUC app.ruolo_applicativo e'' popolata e diversa da OPERATORE ritorna false (fail-closed su contesti portale/shop). Altrimenti risponde script.fn_is_super_admin_account: EXISTS identita OPERATORE attiva con binding SUPER_ADMIN attivo (rev 2026-09-29, regola del 2: quella domanda la fa anche l''obbligo del secondo fattore, senza il cancello della veste). STABLE, inlineable, fail-soft su GUC mancante (chiamate test/psql OK).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente (ramo ELSE scritto sul posto) e' 20260421-03,
+              -- nella doc auto-gen alla revisione prima di questa. Non si
+              -- riscrive un corpo stantio.
+              SELECT 1;

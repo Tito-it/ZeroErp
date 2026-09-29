@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-13 — LA PORTA DEL DEVICE TOTP
+#   Brief: brief-db-secondo-fattore-totp, sezione 3 («stessa postura di
+#   config.credenziali»). Modello: brief-db-permesso-nel-verbo-di-scrittura,
+#   D-1 — una scrittura = un verbo.
+#
+# ── ⭐ COSA FA ───────────────────────────────────────────────────────
+#   A zeroerp_app SOLO SELECT su config.auth_totp_device: scrivono soltanto i
+#   verbi DEFINER del proprietario (script.fn_totp_registra_device,
+#   _conferma_device, _registra_uso, _consuma_recovery, _rigenera_recovery,
+#   _disabilita_device). Fino a oggi l'app aveva SELECT, INSERT, UPDATE e
+#   DELETE (letto il 2026-09-29): anti-replay e monouso sarebbero stati una
+#   disciplina del backend, non un fatto.
+#
+# ── ⚠️ PERCHE' IL SELECT RESTA ──────────────────────────────────────
+#   script.fn_get_totp_device e' INVOKER: legge con i privilegi dell'app, come
+#   fn_get_deve_cambiare_password su config.credenziali. Il segreto e' cifrato
+#   e lo decifra il backend.
+#
+# ── 🔴 TRE SEDI, COME OGNI POSTURA PIU' STRETTA (linee-guida §11.8) ──
+#   · QUESTO changeSet, che agisce subito su dev;
+#   · l'elenco v_tabelle_sola_lettura_app del loop 90_end/ci_apply/20260205-41;
+#   · il blocco «POSTURA DICHIARATA» di scripts/sql/provision_db_roles.sql.
+#   Le tiene allineate db/pgtap/config/test-totp-porta-v1.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260929-24-revoke-app-scrittura-auth-totp-device-mctit.yaml
+
+  - changeSet:
+      id: 20260929-24-revoke-app-scrittura-auth-totp-device
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La porta del device TOTP: a zeroerp_app SELECT soltanto su config.auth_totp_device (REVOKE
+        INSERT, UPDATE, DELETE: scrivono solo i verbi DEFINER script.fn_totp_*). Postura resa
+        stabile dal loop 20260205-41 e dal provisioning. Brief: brief-db-secondo-fattore-totp §3.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: auth_totp_device
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $porta$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: skip porta del device TOTP.';
+                      RETURN;
+                  END IF;
+
+                  -- Il device del secondo fattore: l'applicazione legge, scrivono i verbi.
+                  GRANT  SELECT                 ON TABLE config.auth_totp_device TO   zeroerp_app;
+                  REVOKE INSERT, UPDATE, DELETE ON TABLE config.auth_totp_device FROM zeroerp_app;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Senza togliere la voce dal loop 20260205-41 e dal provisioning la
+              -- passata ci_apply successiva richiude la porta.
+              GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE config.auth_totp_device TO zeroerp_app;

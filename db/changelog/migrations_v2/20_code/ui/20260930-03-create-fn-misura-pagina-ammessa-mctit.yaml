@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# M-3 — «QUESTA MISURA E' NEL CATALOGO?»: ui.fn_misura_pagina_ammessa(p_misura)
+#   Brief: brief-db-misure-pagina-catalogo, sezione 2 (regole 2 e 3).
+#
+#   La chiedono il guard (ui.fn_guard_misura_pagina, per rifiutare una
+#   scrittura) e il resolver delle liste (per non rispondere una misura che il
+#   paginatore non offre): nasce gia' estratta. NULL -> false.
+#   LANGUAGE sql, STABLE, INVOKER, niente SET: inlineabile nel resolver.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20260930-03-create-fn-misura-pagina-ammessa-mctit.yaml
+
+  - changeSet:
+      id: 20260930-03-create-fn-misura-pagina-ammessa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.fn_misura_pagina_ammessa(p_misura) -> boolean: la misura e' nel catalogo ui.misure_pagina.
+        La chiedono il guard delle scritture e il resolver delle liste. NULL -> false. Brief:
+        brief-db-misure-pagina-catalogo §2.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            { schemaName: ui, tableName: misure_pagina }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.fn_misura_pagina_ammessa(
+                  p_misura ui.misure_pagina.misura%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- Scopo: dire se una misura «righe per pagina» e' nel catalogo.
+                  SELECT EXISTS (SELECT 1 FROM ui.misure_pagina m WHERE m.misura = p_misura);
+              $function$;
+
+              COMMENT ON FUNCTION ui.fn_misura_pagina_ammessa(integer) IS
+                  'La misura «righe per pagina» e'' nel catalogo ui.misure_pagina? NULL -> false. La chiedono ui.fn_guard_misura_pagina (per rifiutare una scrittura) e ui.fn_resolve_lista_config (per non rispondere una misura che il paginatore non offre). STABLE, INVOKER, inlineabile. Brief: brief-db-misure-pagina-catalogo §2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS ui.fn_misura_pagina_ammessa(integer);

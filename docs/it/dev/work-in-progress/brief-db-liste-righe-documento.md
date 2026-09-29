@@ -1379,8 +1379,8 @@ vuol dire quindi: **prima del commit** di CSV e doc.
 | Lotto | Cosa | Stato |
 | --- | --- | --- |
 | **A** | BE liste 97-100: repository sulle viste, lista paginata + export, presidi | ✅ 2026-09-28 (§9.1) |
-| **B** | FE L2: preventivo, ordine, DDT, reso su `DrawerTabLista` | ✅ 2026-09-28 (§9.2); ⏳ al team DB: tre correzioni di seed (§9.3) e l'ordine delle colonne (§9.4) |
-| **C** | BE + FE: BoM (101) e fattura (102) | ✅ 2026-09-28 (§9.8); ⏳ **decisione di Tid**: il contesto di stampa della fattura (§9.8.4) |
+| **B** | FE L2: preventivo, ordine, DDT, reso su `DrawerTabLista` | ✅ 2026-09-28 (§9.2); ✅ seed §9.3 e §9.4 migrati il 2026-09-29 (verificati sul DB) |
+| **C** | BE + FE: BoM (101) e fattura (102) | ✅ 2026-09-28 (§9.8); ✅ decisa il 2026-09-29 la stampa (§9.8.4): prosegue in `brief-db-documenti-versione-contesto-template.md` |
 | **D** | BE + FE: contratto (103) | ⏳ |
 | **E** | policy `E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI`, ~~15~~ **10** righe nei drawer (§9.7), date della versione CHIUSA, doc §6 | ⏳ |
 
@@ -1460,7 +1460,11 @@ Prove: vitest 59 file / 470 test, `npm run lint`, `npm run guards`, `vite
 build`, `check_i18n_keys` verdi. ⚠️ **Non provato a video**: il collaudo
 in-app (tablet compreso) e' di Tid.
 
-### 9.3 ⏳ Richiesta al team DB — tre correzioni di seed (2026-09-28)
+### 9.3 ✅ Richiesta al team DB — tre correzioni di seed (2026-09-28)
+
+> ✅ **Scritto dal team DB il 2026-09-29** (`lista_colonna.csv`, solo dato, mirror
+> `runOnChange` esistente): 1046 `numeric`/`number`; `percent_2` su 1017, 1027, 1037,
+> 1063; `currency_eur_6` su 1015, 1025, 1035, 1060, 1069, 1070, 1073. ✅ Migrato il 2026-09-29.
 
 Nate dal lotto B, leggendo il seed contro le tabelle che sostituisce e contro
 le decisioni di Tid sui formati. `lista_colonna.csv`, solo dato:
@@ -1474,7 +1478,12 @@ le decisioni di Tid sui formati. `lista_colonna.csv`, solo dato:
 ⚠️ Il formato `currency_eur_6` esiste in frontend ed export da questo lotto;
 il presidio `test_ogni_formato_del_seed_e_reso_dal_frontend` lo riconosce.
 
-### 9.4 ⏳ Richiesta al team DB — l'ordine delle colonne e la larghezza della UdM (Tid, 2026-09-28)
+### 9.4 ✅ Richiesta al team DB — l'ordine delle colonne e la larghezza della UdM (Tid, 2026-09-28)
+
+> ✅ **Scritto dal team DB il 2026-09-29**: `ordine_default` in `lista_colonna.csv` e
+> `ordine` in `lista_preset_colonna.csv` (preset 97, 98, 99, 102) come da tabella;
+> `larghezza_default` 100 su 1016, 1026, 1036, 1045, 1061, 1071. Nessun pgTAP né test
+> Django fissa questi valori (grep del 2026-09-29). ✅ Migrato il 2026-09-29 (verificato sul DB).
 
 **Rilievo di Tid dopo la prova a video:** «le liste vanno bene, non mi piace
 l'ordine con cui i campi sono esposti: l'importo dopo il prezzo; la colonna
@@ -1636,7 +1645,11 @@ vitest, lint, guards, build verdi.
 3. **Default propri nelle firme interne** (`limit: int = 50/100` in ~25 repository e service, `tracciamento_service` a 100 sotto una view a 25): la view li scavalca sempre, ma sono due default per la stessa lista. Portarli a `DEFAULT_LIMIT` o toglierli.
 4. `fetch_paged_with_total` in modalità rilettura riceve `offset=` a parte: si potrebbe ricavarlo da `params[-1]`, così non può divergere dal valore nella query.
 
-### 9.7 ⏳ Richiesta al team DB — le liste nei drawer tornano a 10 righe (Tid, 2026-09-28 sera)
+### 9.7 ✅ Richiesta al team DB — le liste nei drawer tornano a 10 righe (Tid, 2026-09-28 sera)
+
+> ✅ **Scritto dal team DB il 2026-09-29**: in `lista_preset.csv` i preset a 15 erano
+> **25** (le 25 liste del censimento §8.15.4, non 27), tutti a 10. ✅ Migrato il 2026-09-29: nessun preset resta a 15.
+> ✅ **Il presidio sulle misure del paginatore: decisa da Tid il 2026-09-29 la strada 3** (sotto).
 
 **Rilievo di Tid, a video:** nelle liste dentro un drawer il selettore «righe
 per pagina» è **vuoto**. La causa è nel modello, non nella resa: il
@@ -1660,6 +1673,21 @@ solo a video. Un `CHECK (pagina_dimensione IN (10, 25, 50, 100))` su
 `ui.lista_preset` lo rifiuterebbe al migrate. ⚠️ Le opzioni vivrebbero allora
 in due sedi (il `CHECK` e `PAGINATION.ROWS_OPTIONS`): serve anche un presidio
 che le confronti, o l'elenco va letto dal catalogo invece che dalla costante.
+
+✅ **Decisione di Tid (2026-09-29): strada 3 — l'elenco delle misure vive in UNA sede, il
+database, e il frontend lo legge da lì.** Scartate: (1) nessun presidio — l'errore resta
+silenzioso; (2) `CHECK` + test di confronto — due sedi sorvegliate, ma pur sempre due.
+Il lavoro, da impostare: DB — il catalogo delle misure ammesse e il vincolo di
+`ui.lista_preset.pagina_dimensione` (e delle personalizzazioni degli utenti) verso di lui;
+BE — le misure (e i default) serviti a tutta l'applicazione (vedi sotto); FE — il paginatore le prende da
+lì e `PAGINATION.ROWS_OPTIONS` si ritira nello stesso giro (regola del 2). ✅ **Lato DB applicato il
+2026-09-30 (pgTAP verdi)**, prosegue in [brief-db-misure-pagina-catalogo.md](brief-db-misure-pagina-catalogo.md).
+✅ **E anche la misura di DEFAULT sta nel catalogo** (Tid, 2026-09-29): «compatta» (10: drawer e
+dialog) e «pagina» (25) sono dati del catalogo, non regole scritte nel frontend — la costante
+`PAGINATION.COMPACT_ROWS` si ritira insieme a `ROWS_OPTIONS`. ⚠️ Le due costanti sono usate in
+28 punti del frontend (2026-09-29), non tutti liste configurabili (tabelle grezze, dialog):
+l'elenco va servito per TUTTA l'applicazione, non dentro la configurazione di una lista, o le
+tabelle grezze resterebbero sulla costante — cioè due sedi.
 
 **Lato FE** (`dev/backend-tid`, fatto nello stesso giro): `frontend-standards`
 §«Righe per pagina default» dice «10 nei drawer e nei dialog». Nessun codice
@@ -1738,7 +1766,14 @@ Frontend: vitest 61 file / 487 test, `npm run lint`, `npm run guards`,
 `check_i18n_keys` segnala 5 chiavi `vendite.ddt.azione_reason.*` emesse da
 `script.fn_check_ddt_merce`, del lotto 3 di magazzino: non di questo giro.
 
-#### 9.8.4 ⏳ Il contesto di stampa della fattura — da decidere con Tid
+#### 9.8.4 ✅ Il contesto di stampa della fattura — deciso da Tid il 2026-09-29
+
+> ✅ **Decisione di Tid (2026-09-29): si fa tutto, per TUTTI i documenti, appena possibile.**
+> Il lavoro esce da questo brief e prosegue in
+> [brief-db-documenti-versione-contesto-template.md](brief-db-documenti-versione-contesto-template.md).
+> ⚠️ Una correzione alla proposta qui sotto (punto 1): «le versioni senza dichiarazione valgono
+> 1» renderebbe non stampabili i documenti i cui builder sono già alla forma 2 (cinque su sei):
+> la forma di ogni versione esistente va stabilita leggendola (§4 e D-C1 del brief nuovo).
 
 Letto il template pubblicato a DB (template 77 «Fattura», versione 3; le
 versioni stanno nei **dati**, non nel repo): scorre `righe` **piatte** e

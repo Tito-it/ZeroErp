@@ -46,6 +46,9 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+-- Contesto applicativo (preambolo, guardrail_pgtap_preambolo): il builder del
+-- mondo lo riapre poi sul suo operatore.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
 SET CONSTRAINTS ALL IMMEDIATE;
 

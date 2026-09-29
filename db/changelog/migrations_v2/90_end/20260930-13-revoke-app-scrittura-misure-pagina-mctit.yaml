@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# M-13 — LA PORTA DEL CATALOGO DELLE MISURE
+#   Brief: brief-db-misure-pagina-catalogo, sezione 2 (regola 5).
+#
+#   ui.misure_pagina la possiede il CSV (mirror 80_data/20260930-02): all'app
+#   solo SELECT, come config.aree_funzionali (D-P9). Le misure si cambiano nel
+#   CSV, non da un pannello.
+#
+# ── 🔴 TRE SEDI (linee-guida §11.8) ─────────────────────────────────
+#   · QUESTO changeSet (subito su dev);
+#   · v_tabelle_sola_lettura_app del loop 90_end/ci_apply/20260205-41;
+#   · il blocco «POSTURA DICHIARATA» di scripts/sql/provision_db_roles.sql.
+#   Le tiene allineate db/pgtap/ui/test-misure-pagina-v1.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260930-13-revoke-app-scrittura-misure-pagina-mctit.yaml
+
+  - changeSet:
+      id: 20260930-13-revoke-app-scrittura-misure-pagina
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La porta di ui.misure_pagina: a zeroerp_app SELECT soltanto (la scrive il mirror del CSV).
+        Postura resa stabile dal loop 20260205-41 e dal provisioning. Brief:
+        brief-db-misure-pagina-catalogo §2.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: ui
+            tableName: misure_pagina
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $porta$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: skip porta del catalogo delle misure.';
+                      RETURN;
+                  END IF;
+
+                  GRANT  SELECT                 ON TABLE ui.misure_pagina TO   zeroerp_app;
+                  REVOKE INSERT, UPDATE, DELETE ON TABLE ui.misure_pagina FROM zeroerp_app;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Senza togliere la voce dal loop 20260205-41 e dal provisioning la
+              -- passata ci_apply successiva richiude la porta.
+              GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE ui.misure_pagina TO zeroerp_app;

@@ -31,7 +31,7 @@ Risponde alle domande:
 | Colonna | Ruolo |
 |---------|-------|
 | `auth_user_id` | Riferimento all'utente Django (`auth_user.id`). |
-| `evento` | Tipo evento: `LOGIN`, `REFRESH`, `LOGOUT`, `SCADENZA`, `REVOCA`. Validato da CHECK. |
+| `evento` | Tipo evento: `LOGIN`, `REFRESH`, `LOGOUT`, `SCADENZA`, `REVOCA` (le sessioni, le scrive il backend); `TOTP_DISABILITATO` (dal 29-09-2026: il secondo fattore della persona disattivato **dal server** da chi amministra il database — lo scrive `script.fn_totp_disabilita_device`, senza `jti`, con da dove, chi e perché nel `dettaglio`). Validato da CHECK. |
 | `jti` | JWT ID (`jti` claim) -- identifica univocamente il token coinvolto. |
 | `ip_address` | IP del client al momento dell'evento. |
 | `user_agent` | User-Agent HTTP del client. |

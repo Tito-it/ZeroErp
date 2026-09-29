@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# M-9 — IL TRIGGER DELLE PREFERENZE
+#   Brief: brief-db-misure-pagina-catalogo, sezione 2 (regola 2).
+#
+#   BEFORE INSERT OR UPDATE OF configurazione: la misura sta dentro
+#   configurazione, e il guard non serve quando cambia altro (il preset di
+#   base, l'«ignora novita'»). Fase a10 (guard). Le preferenze non hanno seed:
+#   il trigger nasce qui, non in 90_end come quello dei preset.
+#   ⚠️ Le preferenze GIA' salvate non si ricontrollano: una misura fuori
+#   catalogo in una preferenza vecchia la ignora il resolver (20260930-10), e
+#   il guard la rifiuta alla prossima scrittura.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20260930-09-create-trigger-ui-lista-preferenza-utente-guard-pagina-dimensione-mctit.yaml
+
+  - changeSet:
+      id: 20260930-09-create-trigger-ui-lista-preferenza-utente-guard-pagina-dimensione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Trigger trg_ui_lista_preferenza_utente_a10_guard_pagina_ins_upd (BEFORE INSERT OR
+        UPDATE OF configurazione): la misura salvata nella preferenza deve stare nel catalogo. Brief:
+        brief-db-misure-pagina-catalogo §2.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'ui'
+                     AND p.proname = 'trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid = 'ui.lista_preferenza_utente'::regclass
+                     AND t.tgname = 'trg_ui_lista_preferenza_utente_a10_guard_pagina_ins_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_ui_lista_preferenza_utente_a10_guard_pagina_ins_upd
+                  BEFORE INSERT OR UPDATE OF configurazione ON ui.lista_preferenza_utente
+                  FOR EACH ROW
+                  EXECUTE FUNCTION ui.trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ui_lista_preferenza_utente_a10_guard_pagina_ins_upd
+                  ON ui.lista_preferenza_utente;

@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# M-6 — IL RIFIUTO DI UNA MISURA FUORI CATALOGO: ui.fn_guard_misura_pagina(p_valore jsonb)
+#   Brief: brief-db-misure-pagina-catalogo, sezione 2 (regole 1 e 2).
+#
+#   Lo chiamano i due trigger che proteggono le sedi di una misura: il preset
+#   (ui.lista_preset.pagina_dimensione, dove c'e' anche la FK come rete) e la
+#   preferenza utente (il jsonb, dove una FK non arriva). Un rifiuto parlante,
+#   E_UI_MISURA_PAGINA_NON_AMMESSA, con il valore e l'elenco delle misure
+#   ammesse nella frase: al posto del 23503 grezzo della FK e del selettore
+#   vuoto. campo = pagina_dimensione.
+#
+# ── ⚠️ PERCHE' RICEVE UN jsonb ──────────────────────────────────────
+#   Nella preferenza la misura sta in un jsonb e puo' non essere un numero
+#   intero ("25", 12.5, true). Il guard riceve il valore COM'E' SCRITTO, cosi'
+#   il rifiuto — di un numero fuori elenco come di un valore che numero non
+#   e' — parte da un punto solo. Il preset gli passa to_jsonb(colonna).
+#   NULL (o il null jsonb) passa: vuol dire «il default».
+#   plpgsql, INVOKER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20260930-06-create-fn-guard-misura-pagina-mctit.yaml
+
+  - changeSet:
+      id: 20260930-06-create-fn-guard-misura-pagina
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.fn_guard_misura_pagina(p_valore jsonb): solleva E_UI_MISURA_PAGINA_NON_AMMESSA se il valore
+        non e' un numero intero del catalogo ui.misure_pagina (NULL e null jsonb passano: e' il
+        default). Lo chiamano i trigger di preset e preferenza utente. Brief:
+        brief-db-misure-pagina-catalogo §2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'fn_misura_pagina_ammessa';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.fn_guard_misura_pagina(p_valore jsonb)
+              RETURNS void
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: rifiutare un valore «righe per pagina» che non e' una misura
+              --   del catalogo. NULL e null jsonb passano: sono il default.
+              DECLARE
+                  -- Esplicito: il testo del valore com'e' scritto, per la frase.
+                  v_testo text := p_valore #>> '{}';
+              BEGIN
+                  IF p_valore IS NULL OR jsonb_typeof(p_valore) = 'null' THEN
+                      RETURN;
+                  END IF;
+
+                  -- ⚠️ CASE e non AND: il cast a integer di un valore non intero
+                  --    solleverebbe 22P02 invece del codice di catalogo. Fra parentesi:
+                  --    senza, PL/pgSQL chiude la condizione dell'IF al THEN del CASE.
+                  IF (CASE WHEN jsonb_typeof(p_valore) <> 'number'         THEN true
+                           WHEN v_testo !~ '^[0-9]{1,9}$'                  THEN true
+                           ELSE NOT ui.fn_misura_pagina_ammessa(v_testo::integer) END) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'ui.fn_guard_misura_pagina', 'E_UI_MISURA_PAGINA_NON_AMMESSA',
+                          jsonb_build_object('campo', 'pagina_dimensione', 'valore', p_valore),
+                          NULL::uuid,
+                          VARIADIC ARRAY[v_testo,
+                                         (SELECT string_agg(m.misura::text, ', ' ORDER BY m.misura)
+                                            FROM ui.misure_pagina m)]);
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.fn_guard_misura_pagina(jsonb) IS
+                  'Rifiuta un valore «righe per pagina» che non e'' un numero intero del catalogo ui.misure_pagina: E_UI_MISURA_PAGINA_NON_AMMESSA (DATO_ERRATO), con il valore e l''elenco delle misure ammesse nella frase, campo = pagina_dimensione. NULL e null jsonb passano (sono il default). Riceve il valore com''e'' scritto (jsonb): nella preferenza utente puo'' non essere un numero, e il rifiuto parte da un punto solo; il preset gli passa to_jsonb(pagina_dimensione). Lo chiamano i trigger di ui.lista_preset (dove la FK resta come rete) e di ui.lista_preferenza_utente. INVOKER. Brief: brief-db-misure-pagina-catalogo §2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS ui.fn_guard_misura_pagina(jsonb);

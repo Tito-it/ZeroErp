@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Stato della CREDENZIALE (1:1 con django.auth_user): la password e' una e vale per tutte le porte, e qui sta cio' che le appartiene. La riga nasce alla prima scrittura; la sua ASSENZA vale «nessun tentativo, non bloccata, nessun obbligo di cambio password». Nessuno la legge o scrive fuori dal DB: lo fanno le funzioni di script (fn_check_blocco_login, fn_registra_tentativo_login, fn_azzera_tentativi_credenziale, fn_blocca_credenziale, fn_sblocca_credenziale, fn_get/fn_imposta_deve_cambiare_password). All'app solo SELECT. Niente storico (cambierebbe a ogni password sbagliata), niente RLS (nessuno scope, letta prima del login). Brief: brief-db-blocco-login-per-credenziale.
+> Stato della CREDENZIALE (1:1 con django.auth_user): la password e' una e vale per tutte le porte, e qui sta cio' che le appartiene. La riga nasce alla prima scrittura; la sua ASSENZA vale «nessun tentativo, non bloccata, nessun obbligo di cambio password, nessun obbligo di secondo fattore». Nessuno la legge o scrive fuori dal DB: lo fanno le funzioni di script (fn_check_blocco_login, fn_registra_tentativo_login, fn_azzera_tentativi_credenziale, fn_blocca_credenziale, fn_sblocca_credenziale, fn_get/fn_imposta_deve_cambiare_password, fn_totp_obbligatorio, fn_imposta_totp_obbligatorio). All'app solo SELECT. Niente storico (cambierebbe a ogni password sbagliata), niente RLS (nessuno scope, letta prima del login). Brief: brief-db-blocco-login-per-credenziale, brief-db-secondo-fattore-totp.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -20,6 +20,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| totp_obbligatorio | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
