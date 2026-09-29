@@ -246,7 +246,6 @@ class ClientiExportView(DomainAPIView):
             order_dir=p["order_dir"],
         )
         filtri_applicati = svc.resolve_filtri_export_label(
-            search=p["search"],
             utility_id=utility_id,
             stato_cliente_id=stato_id,
         )

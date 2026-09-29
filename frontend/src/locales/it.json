@@ -4024,6 +4024,12 @@
       "annulla_reason": {
         "con_accrediti": "Il reso ha un accredito registrato: annulla prima l'accredito sulla riga, poi il reso."
       },
+      "azione_reason": {
+        "magazzino_mancante": "Il reso non indica il magazzino in cui rientra la merce: sceglilo sulla testata, poi conferma.",
+        "rientri_incompleti": "Riga {0} del reso: indicati {1} pezzi su {2}. Indica quali lotti o seriali rientrano, e dove.",
+        "merce_non_ricollocabile": "Una riga del reso non può rientrare nel magazzino scelto: apri i rientri della riga per vedere cosa manca.",
+        "rientro_oltre_uscito": "Riga {0} del reso: rientrerebbero {1} pezzi di un lotto o seriale da cui ne erano usciti {2}. Controlla anche gli altri resi della bolla."
+      },
       "stato_info": {
         "confermato": "Il reso è confermato: la merce è rientrata e i movimenti di magazzino sono registrati.",
         "annullato": "Il reso è annullato: il rientro è stato stornato e lo stato è definitivo."

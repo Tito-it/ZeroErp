@@ -214,16 +214,16 @@ class TestResolveFiltriExportLabel(TestCase):
 
     @patch(FORN_REPO)
     def test_resolve_filtri_export_label_completo(self, mock_repo):
-        """Mapping completo: search + stato_fornitore_id."""
+        """Mapping completo (la ricerca la dichiara `filtri_export_con_ricerca`): stato_fornitore_id."""
         repo = mock_repo.return_value
         repo.get_stato_fornitore_descrizione.return_value = "Attivo"
 
         from apps.anagrafiche.services.fornitori_service import FornitoriService
         result = FornitoriService().resolve_filtri_export_label(
-            search="rossi", stato_fornitore_id=3,
+            stato_fornitore_id=3,
         )
 
-        self.assertEqual(result, {"Ricerca": "rossi", "Stato": "Attivo"})
+        self.assertEqual(result, {"Stato": "Attivo"})
         repo.get_stato_fornitore_descrizione.assert_called_once_with(3)
 
     @patch(FORN_REPO)

@@ -153,7 +153,6 @@ class ApiContrattiExportView(DomainAPIView):
             max_limit=EXPORT_MAX_ROWS + 1,
         )
         filtri_applicati = svc.resolve_filtri_export_label(
-            search=p["search"],
             ambito=ambito,
             stato_doc_contratto_id=stato_id,
             utility_id=utility_id,

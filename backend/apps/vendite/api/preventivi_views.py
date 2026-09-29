@@ -259,7 +259,6 @@ class ApiPreventiviExportView(DomainAPIView):
             max_limit=EXPORT_MAX_ROWS + 1,
         )
         filtri_applicati = preventivi_service.resolve_filtri_export_label(
-            search=search,
             stato_codice=stato_codice,
             billing_account_id=billing_account_id,
             utility_id=utility_id,

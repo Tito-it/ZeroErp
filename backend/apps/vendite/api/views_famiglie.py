@@ -199,9 +199,10 @@ class ApiFamiglieExport(AdminAPIView):
             # ⚠️ Solo i filtri DAVVERO applicati: `filtri` porta `None` per
             #    quelli non passati, e un metadato «attivo: None» dentro il file
             #    dice a chi lo rilegge che un filtro c'era, quando non c'era.
+            #    La ricerca libera la dichiara il BB (`filtri_export_con_ricerca`).
             filtri_applicati={
                 k: v
-                for k, v in {"search": p["search"], **filtri}.items()
+                for k, v in filtri.items()
                 if v is not None and v != ""
             },
             fmt=fmt,

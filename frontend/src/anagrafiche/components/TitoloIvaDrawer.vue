@@ -702,9 +702,8 @@ const suVisibile = gestoreVisibile(emit, chiudi)
                tipo): non ha un `campo_sorgente` e il catalogo la dichiara
                calcolata. -->
           <template #cell-oggetto="{ data }">{{ descriviAmbito(data) }}</template>
-          <template #actions="{ data, compact }">
-            <RowActionsMenu :row="data" :actions="azioniRigaAmbito(data)"
-              :force-compact="compact" />
+          <template #actions="{ data }">
+            <RowActionsMenu :row="data" :actions="azioniRigaAmbito(data)" />
           </template>
         </DrawerTabLista>
 
@@ -785,9 +784,8 @@ const suVisibile = gestoreVisibile(emit, chiudi)
                ⛔ Il motivo arriva dalla vista, e lo produce la STESSA check che
                la madre interroga per rifiutare: tooltip e rifiuto non possono
                divergere. -->
-          <template #actions="{ data, compact }">
-            <RowActionsMenu :row="data" :actions="azioniRigaMovimento(data)"
-              :force-compact="compact" />
+          <template #actions="{ data }">
+            <RowActionsMenu :row="data" :actions="azioniRigaMovimento(data)" />
           </template>
         </DrawerTabLista>
       </template>

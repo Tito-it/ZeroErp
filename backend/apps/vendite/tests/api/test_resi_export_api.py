@@ -22,6 +22,7 @@ from unittest.mock import Mock, patch
 from django.test import Client
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
+from apps.core.tests.ricerca_catalogo_fakes import catalogo_ricerca_finto
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _SVC = "apps.vendite.services.resi_service"
@@ -121,6 +122,8 @@ class TestResiCodeExportApi(JwtMockedApiTest):
     @patch(_UI_REPO)
     @patch(_UI_SVC)
     @patch(f"{_SVC}.list_da_accreditare")
+    # La soglia della ricerca e' del catalogo (DB): qui e' un contorno finto.
+    @catalogo_ricerca_finto(())
     def test_export_accreditare_csv_envelope_ok(
         self, mock_coda, mock_ui_svc, mock_ui_repo, mock_render_cls,
         _scope, _auth,
@@ -208,6 +211,8 @@ class TestResiListaExportApi(JwtMockedApiTest):
     @patch(_UI_REPO)
     @patch(_UI_SVC)
     @patch(f"{_SVC}.list_resi_rows")
+    # La soglia della ricerca e' del catalogo (DB): qui e' un contorno finto.
+    @catalogo_ricerca_finto(())
     def test_export_csv_envelope_ok(
         self, mock_list, mock_ui_svc, mock_ui_repo, mock_render_cls,
         _scope, _auth,

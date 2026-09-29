@@ -365,8 +365,8 @@ onMounted(() => store.fetchList())
         <AttivoTag :active="data.attivo" />
       </template>
 
-      <template #actions="{ data, compact }">
-        <RowActionsMenu :row="data" :actions="buildListinoActions(data)" :force-compact="compact" />
+      <template #actions="{ data }">
+        <RowActionsMenu :row="data" :actions="buildListinoActions(data)" />
       </template>
 
       <template #row-expansion="{ data: listino }">

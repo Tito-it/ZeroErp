@@ -556,8 +556,8 @@ defineExpose({ reload })
             :severity="statoRiconsegnaSeverity(data.stato_riconsegna)" />
         </template>
 
-        <template #actions="{ data, compact }">
-          <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+        <template #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </template>
 
         <!-- Empty-state onesto: mostrato solo dopo il primo fetch riuscito

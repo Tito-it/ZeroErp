@@ -480,18 +480,6 @@ const suVisibile = gestoreVisibile(emit, onChiudi)
             </div>
           </div>
         </div>
-        <!-- Il Salva della testata: `FormFooter` nasconde da se' il pulsante
-             in readonly (inject), e sta FUORI dal pannello protect. ⚠️ Solo a
-             form di riga chiuso: in form mode il Salva della riga e' l'unico
-             a video, e «Chiudi» spingerebbe il form sotto il fold. -->
-        <FormFooter
-          v-if="!formAperto"
-          :loading="salvando"
-          :disabled="!canSaveTestata"
-          :cancel-label="t('common.close')"
-          @save="onSalvaTestata"
-          @cancel="onChiudi"
-        />
 
         <!-- ══ Le righe ══ -->
         <div class="app-drawer-section">
@@ -573,6 +561,20 @@ const suVisibile = gestoreVisibile(emit, onChiudi)
           :riga="rigaInModifica"
           @salvata="ricarica"
           @annulla="chiudiForm"
+        />
+
+        <!-- Il Salva della testata: IN FONDO, dopo la lista (standard
+             master-detail, punto 12). `FormFooter` nasconde da se' il pulsante
+             in readonly (inject), e sta FUORI dal pannello protect. ⚠️ Solo a
+             form di riga chiuso: in form mode il Salva della riga e' l'unico
+             a video, e «Chiudi» spingerebbe il form sotto il fold. -->
+        <FormFooter
+          v-if="!formAperto"
+          :loading="salvando"
+          :disabled="!canSaveTestata"
+          :cancel-label="t('common.close')"
+          @save="onSalvaTestata"
+          @cancel="onChiudi"
         />
       </template>
     </div>

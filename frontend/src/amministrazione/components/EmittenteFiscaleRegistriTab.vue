@@ -256,11 +256,10 @@ function motivoForma(data) {
       </template>
       <!-- v-if sul TEMPLATE dello slot: senza slot `actions` la colonna non si
            monta affatto, che è il comportamento voluto in sola lettura. -->
-      <template v-if="!isReadonly" #actions="{ data, compact }">
+      <template v-if="!isReadonly" #actions="{ data }">
         <RowActionsMenu
           :row="data"
           :actions="buildRowActions(data)"
-          :force-compact="compact"
         />
       </template>
 

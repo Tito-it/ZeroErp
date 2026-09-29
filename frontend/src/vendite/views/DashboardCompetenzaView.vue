@@ -2759,8 +2759,8 @@ onActivated(() => {
                        tutte le altre. Vuota dove il documento esiste già
                        (D-9) — una previsione su un documento nato non ha senso. -->
 
-                  <template #actions="{ data, compact }">
-                    <RowActionsMenu :row="data" :actions="buildGruppoRowActions(data)" :force-compact="compact" />
+                  <template #actions="{ data }">
+                    <RowActionsMenu :row="data" :actions="buildGruppoRowActions(data)" />
                   </template>
                 </ListaConfigurabile>
                 <!-- Empty-state ONESTO (regola del BB usePagedDashFetch): «nessun
@@ -2941,8 +2941,8 @@ onActivated(() => {
 
                   <!-- Azioni riga (Fase A cockpit): Approva (solo DA_APPROVARE,
                        l'intera commessa) + Apri commessa (drawer col dettaglio). -->
-                  <template #actions="{ data, compact }">
-                    <RowActionsMenu :row="data" :actions="buildCommessaRowActions(data)" :force-compact="compact" />
+                  <template #actions="{ data }">
+                    <RowActionsMenu :row="data" :actions="buildCommessaRowActions(data)" />
                   </template>
                 </ListaConfigurabile>
                 <div v-else class="app-empty-state">

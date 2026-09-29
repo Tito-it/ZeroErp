@@ -183,15 +183,12 @@ def list_resi_rows(
 #        delle code), niente utility. Gemello ddt_service.resolve_filtri_export_label.
 def resolve_filtri_export_label(
     *,
-    search: str | None = None,
     stato_codice: str | None = None,
     billing_account_id: int | None = None,
     data_da: date | None = None,
     data_al: date | None = None,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    if search:
-        out["Ricerca"] = search
     if stato_codice:
         out["Stato"] = stato_codice
     if billing_account_id is not None:
@@ -396,7 +393,6 @@ def list_da_riconsegnare(
 #        (auto-limitate a CONFERMATO dalla vista) ne' utility.
 def resolve_filtri_coda_export_label(
     *,
-    search: str | None = None,
     billing_account_id: int | None = None,
     data_da: date | None = None,
     data_al: date | None = None,
@@ -405,8 +401,6 @@ def resolve_filtri_coda_export_label(
     ordine_id: int | None = None,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    if search:
-        out["Ricerca"] = search
     if billing_account_id is not None:
         out["Cliente BA (id)"] = billing_account_id
     if data_da is not None:

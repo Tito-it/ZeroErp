@@ -497,16 +497,16 @@ class TestResolveFiltriExportLabel(TestCase):
 
     @patch(SOGG_REPO)
     def test_resolve_filtri_export_label_completo(self, mock_repo):
-        """Mapping completo: search + tipo_soggetto_dettaglio_id."""
+        """Mapping completo (la ricerca la dichiara `filtri_export_con_ricerca`): tipo_soggetto_dettaglio_id."""
         repo = mock_repo.return_value
         repo.get_tipo_soggetto_dettaglio_descrizione.return_value = "Persona Fisica"
 
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         result = SoggettiService().resolve_filtri_export_label(
-            search="mario", tipo_soggetto_dettaglio_id=3,
+            tipo_soggetto_dettaglio_id=3,
         )
 
-        self.assertEqual(result, {"Ricerca": "mario", "Tipo": "Persona Fisica"})
+        self.assertEqual(result, {"Tipo": "Persona Fisica"})
         repo.get_tipo_soggetto_dettaglio_descrizione.assert_called_once_with(3)
 
     @patch(SOGG_REPO)

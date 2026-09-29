@@ -273,9 +273,9 @@ defineExpose({ loadRighe: () => reloadAll() })
            ⚠️ Qui NON si riapre nulla di distruttivo: «elimina» ha gia'
            `visible: props.isModificabile`, quindi su un documento in protect e'
            filtrata via da `RowActionsMenu` prima di arrivare a video. -->
-      <template v-if="haColonnaAzioni" #actions="{ data, compact }">
+      <template v-if="haColonnaAzioni" #actions="{ data }">
         <span class="app-escape">
-          <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </span>
       </template>
     </DrawerTabLista>

@@ -244,8 +244,8 @@ onMounted(() => {
           <Tag :value="data.stato_descrizione" :severity="statoClienteSeverity(data.stato_codice_interno)" />
         </template>
 
-        <template #actions="{ data, compact }">
-          <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+        <template #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </template>
       </ListaConfigurabile>
     </template>

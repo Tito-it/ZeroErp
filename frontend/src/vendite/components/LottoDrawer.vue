@@ -1382,10 +1382,10 @@ const suVisibile = gestoreVisibile(emit, onClose)
                      🔴 Col nome sbagliato la condizione e' falsa e la colonna
                      non viene resa affatto: nessun kebab, e nessun errore da
                      nessuna parte.
-                     ⚠️ `compact` va accettato: e' il flag con cui il BB
-                     comprime le azioni quando lo spazio si stringe. -->
-                <template #actions="{ data, compact }">
-                  <RowActionsMenu :row="data" :actions="buildFatturaActions(data)" :force-compact="compact" />
+                     Il kebab sotto spazio stretto arriva da se'
+                     (`CellaAzioniRiga`): lo scope `compact` non va girato. -->
+                <template #actions="{ data }">
+                  <RowActionsMenu :row="data" :actions="buildFatturaActions(data)" />
                 </template>
                 <!-- Empty-state TRADOTTO: senza lo slot il BB lascia il default
                      PrimeVue, che e' in inglese. -->
@@ -1482,8 +1482,8 @@ const suVisibile = gestoreVisibile(emit, onClose)
                 </template>
                 <!-- ⛔ `actions`, non `cell-azioni`: col nome sbagliato la
                      colonna non viene resa affatto e non fallisce niente. -->
-                <template #actions="{ data, compact }">
-                  <RowActionsMenu :row="data" :actions="buildGruppoRowActions(data)" :force-compact="compact" />
+                <template #actions="{ data }">
+                  <RowActionsMenu :row="data" :actions="buildGruppoRowActions(data)" />
                 </template>
                 <!-- ⚠️ Empty-state ONESTO, e la frase è cambiata col modello:
                      zero righe non vuol più dire «giro di massa, qui non si può
@@ -1696,11 +1696,10 @@ const suVisibile = gestoreVisibile(emit, onClose)
                   </template>
                   <!-- ⛔ `actions`, non `cell-azioni`: col nome sbagliato la
                        colonna non viene resa affatto e non fallisce niente. -->
-                  <template #actions="{ data, compact }">
+                  <template #actions="{ data }">
                     <RowActionsMenu
                       :row="data"
                       :actions="buildSegnalazioneRowActions(data)"
-                      :force-compact="compact"
                     />
                   </template>
                   <template #empty>

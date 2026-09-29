@@ -316,9 +316,8 @@ class ApiFattureExportView(DomainAPIView):
             max_limit=EXPORT_MAX_ROWS + 1,
             **filtri,
         )
+        # La ricerca libera la dichiara il BB (`filtri_export_con_ricerca`).
         applicati = {k: str(v) for k, v in filtri.items() if v is not None}
-        if p["search"]:
-            applicati["search"] = p["search"]
         return build_export_response(
             request,
             lista_codice=_LISTA_CODICE_FATTURE,

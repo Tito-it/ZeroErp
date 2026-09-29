@@ -18,12 +18,25 @@ from typing import Any
 from django.http import HttpResponse
 from rest_framework.request import Request
 
+# ⚠️ Il MODULO, non il nome: `soglia_ricerca` si legge a ogni chiamata da
+#    `_helpers`, cosi' il fake di progetto (`catalogo_ricerca_finto`) la
+#    sostituisce anche qui.
+from apps.core.db import _helpers as db_helpers
 from apps.core.services.error_manager import ErrorManager
 from apps.ui.db.ui_repository import UiRepository
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS, ListaExportService
 from apps.ui.services.ui_service import UiService
 
 _FORMATI_AMMESSI = ("csv", "xlsx")
+
+# La ricerca libera nel file si dichiara con UNA chiave sola, qui.
+_CHIAVE_RICERCA = "Ricerca"
+# ⚠️ Le chiavi con cui le view la dichiaravano da se' fino al 2026-09-29:
+#    tolte dal dict del caller, o la ricerca comparirebbe due volte. `search`
+#    resta nei dict dei filtri di magazzino e dei cruscotti, che sono gli
+#    argomenti della QUERY riusati come metadato: li' non si toglie, lo
+#    ignora il BB.
+_CHIAVI_RICERCA_DEL_CALLER = ("search", _CHIAVE_RICERCA)
 
 
 # Scopo: Estrae e valida il query param `?formato=csv|xlsx`. Da chiamare in
@@ -40,13 +53,46 @@ def parse_export_format(request: Request) -> str:
     return fmt
 
 
+# Scopo: I filtri che il file dichiara: quelli del caller PIU' la ricerca
+#        libera, che si legge dalla richiesta e non dal caller.
+# ⭐ PERCHE' QUI (2026-09-29, regola del 2, ok Tid): la dichiaravano le view,
+#    ciascuna a modo suo — `"Ricerca"` nei `resolve_filtri_export_label`,
+#    `"search"` in magazzino e fatture — e chi se ne dimenticava (righe della
+#    distinta, righe di inventario e rettifica) consegnava un file filtrato
+#    con `# Filtri applicati: {}`: un sottoinsieme che si presenta come
+#    l'insieme, senza nessun errore (rilievo in-app di Tid).
+# ⭐ Si dichiara SOLO se ha filtrato davvero: dopo lo `strip`, alla soglia
+#    della lista (`soglia_ricerca`, la stessa di `add_ricerca_full_condition`).
+#    Un termine di due caratteri non filtra, e scriverlo nel file mentirebbe.
+# ⚠️ Invariante su cui poggia (verificato il 2026-09-29 su tutte le view
+#    export): una lista con colonne `ricercabile_full` applica `search` anche
+#    nell'export; una senza non le mostra la casella, e il frontend non lo
+#    manda. Un export che ignorasse una ricerca applicata a video sarebbe un
+#    difetto suo — il file non sarebbe la lista che l'operatore vede.
+def filtri_export_con_ricerca(
+    request: Request,
+    *,
+    lista_codice: str,
+    filtri_applicati: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    filtri = {
+        k: v for k, v in (filtri_applicati or {}).items()
+        if k not in _CHIAVI_RICERCA_DEL_CALLER
+    }
+    termine = (request.query_params.get("search") or "").strip()
+    if termine and len(termine) >= db_helpers.soglia_ricerca(lista_codice):
+        filtri = {_CHIAVE_RICERCA: termine, **filtri}
+    return filtri or None
+
+
 # Scopo: Coda invariante dell'export. Riceve le righe gia' fetchate dal
 #        repository del dominio (chiamato con `limit=EXPORT_MAX_ROWS + 1` per
 #        intercettare l'overflow) e produce la HttpResponse col file.
 #        Passi: guard limite -> colonne coerenti con la DataTable a video
 #        (config runtime: preferenza+preset+permessi) -> render -> response
 #        con Content-Disposition. NB: `filtri_applicati` viene incluso come
-#        metadato nel file (DEF-1 §6).
+#        metadato nel file (DEF-1 §6), con la ricerca libera aggiunta QUI
+#        (`filtri_export_con_ricerca`): il caller dichiara solo i suoi filtri.
 def build_export_response(
     request: Request,
     *,
@@ -72,7 +118,9 @@ def build_export_response(
         lista_codice=lista_codice,
         colonne=colonne,
         righe=results,
-        filtri_applicati=filtri_applicati,
+        filtri_applicati=filtri_export_con_ricerca(
+            request, lista_codice=lista_codice, filtri_applicati=filtri_applicati,
+        ),
         formato=fmt,
     )
 

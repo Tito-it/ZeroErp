@@ -220,12 +220,11 @@ onMounted(() => emit('lista-pronta', listaRef.value))
          rilancia step, rendi definitive, ristampa, annulla, riporta in
          lavorazione. Le voci proposte dipendono dallo stato della riga; il
          verdetto vero (e il motivo di un rifiuto) arriva dal DB al click. -->
-    <template #actions="{ data, compact }">
+    <template #actions="{ data }">
       <RowActionsMenu
         :row="data"
         :actions="buildRowActions(data)"
         :disabled="azioniDisabled"
-        :force-compact="compact"
       />
     </template>
 

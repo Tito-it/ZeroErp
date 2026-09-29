@@ -27,6 +27,7 @@ from django.urls import reverse
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.core.tests.ricerca_catalogo_fakes import catalogo_ricerca_finto
 
 _AUTH = patch(
     "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate",
@@ -148,6 +149,8 @@ class ExportApiTests(_Base):
     @patch("apps.ui.api.export_helpers.UiRepository")
     @patch("apps.ui.api.export_helpers.UiService")
     @patch(f"{_SVC}.list_magazzini")
+    # La soglia della ricerca e' del catalogo (DB): qui e' un contorno finto.
+    @catalogo_ricerca_finto(())
     def test_export_chiede_il_dataset_non_la_pagina(self, mock_list, mock_ui_svc, mock_ui_repo, mock_render, _auth):
         mock_list.return_value = {"results": [{"codice": "A"}], "count": 1}
         mock_ui_svc.return_value.get_lista_config.return_value = {

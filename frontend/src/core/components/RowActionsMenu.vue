@@ -56,6 +56,7 @@ import Menu from 'primevue/menu'
 import Button from 'primevue/button'
 import { MANAGE_ICONS } from '../constants'
 import { menuItemClass } from '../utils/rowActions'
+import { useInjectAzioniRigaCompatte } from '../composables/useAzioniRigaCompatte'
 import { useAuthStore } from '../../stores/auth'
 
 const props = defineProps({
@@ -68,8 +69,15 @@ const props = defineProps({
   // stretto: comprimere le azioni recupera larghezza prima di ritirare colonne).
   // Lo switch di default resta CSS-first (touch / <1024px); questo prop lo
   // sovrascrive via classi modificatrici (vedi .app-row-actions-*--* in main.css).
+  // ⭐ Dentro la cella azioni di `ListaConfigurabile` NON serve passarlo: la
+  //    decisione del packing arriva da se' (`useAzioniRigaCompatte`). Passato
+  //    `true` vince comunque.
   forceCompact: { type: Boolean, default: false },
 })
+
+// Kebab forzato: dal caller, o dalla cella azioni della lista che mi contiene.
+const azioniCompatteLista = useInjectAzioniRigaCompatte()
+const compatto = computed(() => props.forceCompact || azioniCompatteLista?.value === true)
 
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -186,7 +194,7 @@ function toggle(event) {
   <!-- Desktop: bottoni inline icon-only con tooltip. -->
   <span
     class="app-row-actions-inline"
-    :class="{ 'app-row-actions-inline--off': forceCompact }"
+    :class="{ 'app-row-actions-inline--off': compatto }"
   >
     <Button
       v-for="a in visibleActions"
@@ -206,7 +214,7 @@ function toggle(event) {
   <!-- Tablet / touch: kebab menu. -->
   <span
     class="app-row-actions-compact"
-    :class="{ 'app-row-actions-compact--on': forceCompact }"
+    :class="{ 'app-row-actions-compact--on': compatto }"
   >
     <Button
       :icon="MANAGE_ICONS.KEBAB"

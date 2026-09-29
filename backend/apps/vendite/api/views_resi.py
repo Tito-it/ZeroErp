@@ -251,7 +251,6 @@ class ApiResiExport(DomainAPIView):
             **f,
         )
         filtri_applicati = resi_service.resolve_filtri_export_label(
-            search=p["search"],
             stato_codice=f["stato_codice"],
             billing_account_id=f["billing_account_id"],
             data_da=f["data_da"],
@@ -385,7 +384,6 @@ class ApiResiDaAccreditareExport(DomainAPIView):
             **f,
         )
         filtri_applicati = resi_service.resolve_filtri_coda_export_label(
-            search=p["search"],
             billing_account_id=f["billing_account_id"],
             data_da=f["data_da"],
             data_al=f["data_al"],
@@ -514,7 +512,6 @@ class ApiResiDaRiconsegnareExport(DomainAPIView):
             **f,
         )
         filtri_applicati = resi_service.resolve_filtri_coda_export_label(
-            search=p["search"],
             billing_account_id=f["billing_account_id"],
             data_da=f["data_da"],
             data_al=f["data_al"],

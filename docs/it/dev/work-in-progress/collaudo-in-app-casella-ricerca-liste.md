@@ -25,17 +25,17 @@
 Per ognuna: la casella c'è; un termine di **tre** caratteri preso da una riga a
 video la trova; con due caratteri la lista **non** cambia.
 
-| ✓ | Dove | Lista |
-| --- | --- | --- |
-| ☐ | Magazzino → drawer di un inventario, tab righe | `magazzino.inventario_righe` |
-| ☐ | Magazzino → drawer di una rettifica, tab righe | `magazzino.rettifica_righe` |
-| ☐ | Magazzino → inventario → dialog del piano | `magazzino.inventario_piano` |
-| ☐ | Magazzino → Movimenti | `magazzino.movimenti` |
-| ☐ | Pagamenti → Distinte | `pagamenti.distinte` |
-| ☐ | Pagamenti → drawer di una distinta, righe (anche l'**export**: il file porta la stessa ricerca) | `pagamenti.distinta_righe` |
-| ☐ | Pagamenti → Coda del riconciliatore | `pagamenti.righe` |
-| ☐ | Pagamenti → Rate fuori capienza | `pagamenti.rate_fuori_capienza` |
-| ☐ | Pagamenti → Eccedenze | `pagamenti.eccedenze` |
+| ✓   | Dove                                                                                            | Lista                           |
+| --- | ----------------------------------------------------------------------------------------------- | ------------------------------- |
+| X   | Magazzino → drawer di un inventario, tab righe                                                  | `magazzino.inventario_righe`    |
+| X   | Magazzino → drawer di una rettifica, tab righe                                                  | `magazzino.rettifica_righe`     |
+| X   | Magazzino → inventario → dialog del piano                                                       | `magazzino.inventario_piano`    |
+| X   | Magazzino → Movimenti                                                                           | `magazzino.movimenti`           |
+| X   | Pagamenti → Distinte                                                                            | `pagamenti.distinte`            |
+| X   | Pagamenti → drawer di una distinta, righe (anche l'**export**: il file porta la stessa ricerca) | `pagamenti.distinta_righe`      |
+| ☐   | Pagamenti → Coda del riconciliatore                                                             | `pagamenti.righe`               |
+| X   | Pagamenti → Rate fuori capienza                                                                 | `pagamenti.rate_fuori_capienza` |
+| X   | Pagamenti → Eccedenze                                                                           | `pagamenti.eccedenze`           |
 
 **Se la casella manca**: la configurazione ha `ricerca_full: false` per
 quell'operatore (`GET /ui/liste/<codice>/config`). Controllare le colonne

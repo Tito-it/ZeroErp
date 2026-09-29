@@ -243,7 +243,6 @@ class ApiOrdiniExportView(DomainAPIView):
             **f,
         )
         filtri_applicati = ordini_service.resolve_filtri_export_label(
-            search=p["search"],
             stato_codice=f["stato_codice"],
             billing_account_id=f["billing_account_id"],
             utility_id=f["utility_id"],

@@ -665,7 +665,6 @@ class ContrattiService:
     def resolve_filtri_export_label(
         self,
         *,
-        search: str | None = None,
         ambito: str | None = None,
         stato_doc_contratto_id: int | None = None,
         utility_id: int | None = None,
@@ -676,8 +675,6 @@ class ContrattiService:
         scadenza_mese: str | None = None,
     ) -> dict[str, Any]:
         out: dict[str, Any] = {}
-        if search:
-            out["Ricerca"] = search
         if ambito:
             out["Ambito"] = ambito
         if stato_doc_contratto_id is not None:

@@ -323,11 +323,10 @@ defineExpose({ load })
         </span>
       </template>
 
-      <template v-if="buildRowActions" #actions="{ data, compact }">
+      <template v-if="buildRowActions" #actions="{ data }">
         <RowActionsMenu
           :row="data"
           :actions="buildRowActions(data)"
-          :force-compact="compact"
         />
       </template>
 
