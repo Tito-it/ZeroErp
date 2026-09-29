@@ -10,7 +10,7 @@
 #        funzioni per creare/gestire pratiche legate ai propri eventi.
 # ------------------------------------------------------------
 
-from typing import Any
+from typing import Any, NoReturn
 
 from django.db import DatabaseError, IntegrityError, transaction
 
@@ -226,7 +226,7 @@ def require_completamento_operatore_ammesso(
 # Scopo: Traduce i DatabaseError dei guard workflow v2 in ServiceError parlante
 # (codice del catalogo DB + policy registrata). Errori non riconosciuti
 # ripropagano al middleware (mapping E_DATABASE generico).
-def _raise_known_db_error(exc: DatabaseError, *, function_name: str) -> None:
+def _raise_known_db_error(exc: DatabaseError, *, function_name: str) -> NoReturn:
     msg = str(exc)
     # ⭐ UNA lettura sola (BB `diagnostica_db`). ⚠️ E questo e' il QUINTO punto in
     #    cui un errore del database diventa un errore dell'applicazione: i primi
@@ -410,7 +410,6 @@ def crea_pratica(
         # solleva DEFINIZIONE_NON_TROVATA → ServiceError parlante invece di E_DATABASE
         # generico (rende effettivo il marker, altrimenti morto su questo percorso).
         _raise_known_db_error(exc, function_name="pratiche_service.crea_pratica")
-        raise  # irraggiungibile, per il type checker
 
 
 # Scopo: Aggiorna i campi modificabili di una pratica.
@@ -599,7 +598,6 @@ def crea_flusso(
         # Guard ripetibilita' (D3, trg_flussi_a10_guard_ripetibilita_ins) →
         # PRATICHE_FLUSSO_NON_RIPETIBILE parlante; altri errori al middleware.
         _raise_known_db_error(exc, function_name="pratiche_service.crea_flusso")
-        raise  # irraggiungibile, per il type checker
 
 
 # Scopo: Assegna un flusso esistente a un operatore e/o a un reparto.
@@ -693,7 +691,6 @@ def avvia_flusso(flusso_id: int, *, user: str | None = None) -> dict[str, Any] |
         # Guard pratica terminale (CHIUSA/ANNULLATA) → PRATICHE_TERMINALE_FLUSSO_
         # NON_MODIFICABILE parlante; altri errori (handler, ecc.) al middleware.
         _raise_known_db_error(exc, function_name="pratiche_service.avvia_flusso")
-        raise  # irraggiungibile, per il type checker
 
 
 # Scopo: corpo del completamento (transizione COMPLETATO + azioni di dominio),
@@ -1162,7 +1159,6 @@ def sospendi_pratica(
     except DatabaseError as exc:
         # Guard data futura (trg a10) -> E_SOSPENSIONE_DATA_FUTURA parlante.
         _raise_known_db_error(exc, function_name="pratiche_service.sospendi_pratica")
-        raise  # irraggiungibile, per il type checker
 
 
 # Scopo: Riattiva una pratica sospesa.
@@ -1209,7 +1205,6 @@ def riattiva_pratica(pratica_id: int, *, data_fine: str | None = None) -> None:
         )
     except DatabaseError as exc:
         _raise_known_db_error(exc, function_name="pratiche_service.riattiva_pratica")
-        raise  # irraggiungibile, per il type checker
 
 
 # Scopo: Verifica che il flusso esista e appartenga alla pratica indicata.
@@ -1442,7 +1437,6 @@ def prendi_in_carico(flusso_id: int, risorsa_umana_id: int) -> bool:
         # mancante (A/D) o operatore fuori reparto (B) → ServiceError parlante
         # invece di E_DATABASE generico. Altri errori al middleware.
         _raise_known_db_error(exc, function_name="pratiche_service.prendi_in_carico")
-        raise  # irraggiungibile, per il type checker
 
 
 # Scopo: Lista operatori (risorse umane attive) di un reparto, per il picker di

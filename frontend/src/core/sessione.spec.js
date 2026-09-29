@@ -20,9 +20,13 @@ Indice test eseguiti:
 7) LOGOUT e SESSIONE_NUOVA di un'altra scheda arrivano agli iscritti
 8) accessValido: assente, scaduto e valido
 9) rinnovo che risponde senza access → rifiuta, niente `Bearer undefined`
+10) ogni motivo di uscita ha la sua frase, in italiano e in inglese
+11) sessioneDichiarataChiusa: vero per ogni motivo noto, falso per gli altri
 */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import it_ from '../locales/it.json'
+import en from '../locales/en.json'
 
 // Un JWT con la sola `exp` che serve a `isJwtExpired` (firma non verificata).
 function jwt(secondiDaOra) {
@@ -158,5 +162,34 @@ describe('accessValido', () => {
     expect(sessione.accessValido()).toBe(false)
     sessione.impostaAccess(jwt(600), { annuncia: false })
     expect(sessione.accessValido()).toBe(true)
+  })
+})
+
+// Una chiave `a.b` nel file di traduzioni.
+function frase(traduzioni, chiave) {
+  return chiave.split('.').reduce((nodo, parte) => nodo?.[parte], traduzioni)
+}
+
+describe('motivi di uscita', () => {
+  it('10) ogni motivo di uscita ha la sua frase, in italiano e in inglese', () => {
+    const motivi = Object.values(sessione.MOTIVO_USCITA)
+    expect(motivi.length).toBeGreaterThan(1)
+    for (const motivo of motivi) {
+      const chiave = sessione.FRASE_MOTIVO_USCITA[motivo]
+      expect(chiave, motivo).toBeTruthy()
+      expect(frase(it_, chiave), `it: ${chiave}`).toEqual(expect.any(String))
+      expect(frase(en, chiave), `en: ${chiave}`).toEqual(expect.any(String))
+    }
+    // Due motivi diversi, due frasi diverse: è il senso del motivo nuovo.
+    const frasi = motivi.map(m => frase(it_, sessione.FRASE_MOTIVO_USCITA[m]))
+    expect(new Set(frasi).size).toBe(motivi.length)
+  })
+
+  it('11) sessioneDichiarataChiusa: vero per ogni motivo noto, falso per gli altri', () => {
+    for (const motivo of Object.values(sessione.MOTIVO_USCITA)) {
+      expect(sessione.sessioneDichiarataChiusa(motivo), motivo).toBe(true)
+    }
+    expect(sessione.sessioneDichiarataChiusa(undefined)).toBe(false)
+    expect(sessione.sessioneDichiarataChiusa('qualunque')).toBe(false)
   })
 })

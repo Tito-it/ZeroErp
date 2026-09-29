@@ -766,6 +766,7 @@
     },
     "login_error": "Credenziali non valide",
     "session_expired": "Sessione scaduta — accedi di nuovo",
+    "logout_other_tab": "Ti sei scollegato da un'altra scheda",
     "account_disabled": "Account disabilitato — contattare l'amministratore",
     "account_not_active": "Account non ancora attivo",
     "account_expired": "Account scaduto — contattare l'amministratore",
@@ -2756,7 +2757,12 @@
         "causale_mancante": "Manca la causale di trasporto: obbligatoria per emettere il DDT.",
         "prezzo_non_risolvibile": "Una o più righe non hanno un prezzo risolvibile (proprio o ereditato dall'ordine) con causale fatturabile.",
         "iva_mancante": "Una o più righe hanno un prezzo ma nessuna aliquota IVA. L'aliquota non si sceglie sul documento: si imposta sull'articolo, e la riga la riprende. In alternativa togli il prezzo, se la merce non si valorizza.",
-        "componenti_non_valorizzati": "Componenti del documento non ancora valorizzati."
+        "componenti_non_valorizzati": "Componenti del documento non ancora valorizzati.",
+        "magazzino_mancante": "La bolla non indica il magazzino di partenza: senza, la merce non si può scaricare.",
+        "magazzino_arrivo_mancante": "La bolla di trasferimento non indica il magazzino di arrivo.",
+        "prelievi_incompleti": "Una o più righe non hanno prelievi che ne coprano la quantità: completa i prelievi prima di emettere.",
+        "merce_non_prelevabile": "Un prelievo indicato non è ammesso dal magazzino (lotto, seriale o ubicazione non validi per l'articolo): aprilo dai prelievi della riga.",
+        "merce_non_disponibile": "La merce da spedire non è disponibile a magazzino in quantità sufficiente."
       }
     },
     "famiglie_documento": {

@@ -1189,7 +1189,6 @@ def vincolo_violato(exc: Exception, nomi: Iterable[str]) -> str | None:
 #                    fallback_message="Violazione vincolo DB su categoria cliente.",
 #                    context={"codice": data.get("codice")},
 #                )
-#                raise  # pragma: no cover — map_integrity_error solleva sempre
 def map_integrity_error(
     exc: IntegrityError,
     *,

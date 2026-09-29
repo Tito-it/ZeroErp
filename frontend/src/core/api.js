@@ -2,7 +2,7 @@ import axios from 'axios'
 import { routerApp } from './routerApp'
 import { local, STORAGE_KEYS } from './storage'
 import { resolveCanaleLogin } from './constants'
-import { azzeraAccess, getAccessToken, rinnovaCoordinato } from './sessione'
+import { MOTIVO_USCITA, azzeraAccess, getAccessToken, rinnovaCoordinato } from './sessione'
 import i18n from './i18n'
 
 const api = axios.create({
@@ -128,8 +128,9 @@ api.interceptors.response.use(
 //    memoria: meglio una sessione mezza chiusa che un'eccezione dentro un
 //    interceptor, che si mangerebbe anche il redirect.
 // Esportata: la usa anche lo store `auth` quando un'altra scheda chiude la
-// sessione (logout), per arrivare al login per la stessa strada.
-export async function redirectToLogin() {
+// sessione (logout), per arrivare al login per la stessa strada, col suo
+// motivo (`MOTIVO_USCITA` in `core/sessione`).
+export async function redirectToLogin(motivo = MOTIVO_USCITA.SESSIONE_SCADUTA) {
   try {
     const { useAuthStore } = await import('../stores/auth')
     useAuthStore().clearTokens()
@@ -139,9 +140,9 @@ export async function redirectToLogin() {
   // NB: LOGIN_CHANNEL non viene rimosso — conserva la preferenza utente
   // per il prossimo login manuale (stesso pattern di `clearTokens`).
   // Usa il router per evitare page reload; preserva la rotta per redirect post-login.
-  // `reason=session_expired` viene letto da LoginView per mostrare un messaggio
-  // esplicito invece di una pagina muta (UX: l'utente capisce che e' caduta
-  // la sessione e non sta avendo un bug).
+  // `reason=<motivo>` viene letto da LoginView per mostrare un messaggio
+  // esplicito invece di una pagina muta (UX: l'utente capisce perché è
+  // uscito e non pensa a un bug).
   const rottaCorrente = routerApp().currentRoute?.value
   // ⚠️ Se si e' gia' sul login non si spinge una seconda navigazione: con piu'
   //    chiamate in volo che prendono 401 insieme, ognuna passerebbe di qui e
@@ -151,7 +152,7 @@ export async function redirectToLogin() {
   if (rottaCorrente?.name === 'login') return
 
   const currentPath = rottaCorrente?.fullPath
-  const query = { reason: 'session_expired' }
+  const query = { reason: motivo }
   if (currentPath && currentPath !== '/login') {
     query.redirect = currentPath
   }

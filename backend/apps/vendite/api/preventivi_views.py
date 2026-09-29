@@ -33,7 +33,7 @@ from apps.vendite.api.indirizzi_documento_views import (
 )
 from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import preventivi_service
-from apps.vendite.api.righe_lista_views import build_righe_lista_views
+from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
 from apps.vendite.db.preventivi_repository import PreventiviRepository
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.vendite.api._schema_da_contratto import schema_da_contratto
@@ -1179,13 +1179,15 @@ class ApiPreventivoGeneraPratica(DomainAPIView):
 
 
 # ── Righe: la lista configurabile `vendite.preventivo_righe` ──
-# Pagina ed export dal factory condiviso `build_righe_lista_views`
+# Pagina ed export dal factory condiviso `build_lista_figlia_views`
 # (brief-db-liste-righe-documento, lotto A). La closure legge il global di
 # modulo a call-time: i patch dei test sul service restano validi.
 # ⚠️ `GET …/righe/` resta la lettura COMPLETA: la lista e' su `…/righe/lista/`.
-_PreventivoRigheLista, _PreventivoRigheListaExport = build_righe_lista_views(
-    schema_prefix="Preventivo",
-    operation="vendite_preventivi",
+_PreventivoRigheLista, _PreventivoRigheListaExport = build_lista_figlia_views(
+    schema_prefix="PreventivoRighe",
+    operation_id="vendite_preventivi_righe_lista",
+    area_funzionale="vendite",
+    lista_emittente_param=EMITTENTE_DOCUMENTO_PARAM,
     url_kwarg="preventivo_id",
     model_permission=('vendite', 'preventivo'),
     pagina_call=lambda documento_id, **kw: preventivi_service.list_righe_pagina(documento_id, **kw),

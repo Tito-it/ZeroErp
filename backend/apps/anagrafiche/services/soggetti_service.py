@@ -813,8 +813,8 @@ class SoggettiService:
                 if tipo_codice:
                     tipo_indirizzo_id = self._repo.resolve_tipo_indirizzo_id(tipo_codice)
             if tipo_indirizzo_id is None:
-                ErrorManager.require(False, code=E_ANAG_VALIDAZIONE,
-                                     message="Tipo indirizzo non risolto per indirizzo inline.")
+                ErrorManager.raise_error(code=E_ANAG_VALIDAZIONE,
+                                         message="Tipo indirizzo non risolto per indirizzo inline.")
 
             # Risolvi indirizzo: libero o normalizzato (stradario → dettaglio)
             indirizzo_libero = optional_str(ind, "indirizzo_libero")
@@ -926,8 +926,8 @@ class SoggettiService:
             codice_catastale_comune=codice_catastale,
         )
         if errors:
-            ErrorManager.require(False, code=E_ANAG_VALIDAZIONE,
-                                 message=" ".join(errors))
+            ErrorManager.raise_error(code=E_ANAG_VALIDAZIONE,
+                                     message=" ".join(errors))
 
     # Scopo: Guard leggero — verifica che il soggetto esista (SELECT 1).
     def _require_soggetto_exists(self, soggetto_id: str) -> None:

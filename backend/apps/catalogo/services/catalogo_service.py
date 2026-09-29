@@ -36,6 +36,7 @@ from apps.catalogo.db.catalogo_uom_repository import (
     UOM_OPERATIVA_WRITE_COLUMNS,
     CatalogoUomRepository,
 )
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import resolve_config_id_by_codice_interno
 from apps.core.db.lock_columns_repository import LockColumnsRepository
 from apps.core.services.error_manager import ErrorManager
@@ -1225,7 +1226,7 @@ def _translate_componente_integrity_error(exc: IntegrityError, *, function_name:
 
 
 # Scopo: Traduce IntegrityError su note catalogo in errore applicativo uniforme.
-def _translate_nota_integrity_error(exc: IntegrityError, *, function_name: str) -> None:
+def _translate_nota_integrity_error(exc: IntegrityError, *, function_name: str) -> NoReturn:
     ErrorManager.raise_error(
         code="E_CATALOGO_VALIDATION",
         message="Violazione vincoli nota.",
@@ -1639,6 +1640,30 @@ def fn_list_componenti(articolo_id: UUID | str) -> dict[str, object]:
     return collezione_completa(repository.list_componenti(articolo_id))
 
 
+# Scopo: UNA PAGINA della distinta dell'articolo, per la lista configurabile
+#        `catalogo.articolo_componenti` (brief-db-liste-righe-documento,
+#        lotto C). «Leggi prima la testata»: un articolo inesistente e' un 404,
+#        non una lista vuota. `valido_al` = il filtro «in vigore al» (None:
+#        tutte le versioni); il resto e' il contratto della lista.
+def fn_list_componenti_pagina(
+    articolo_id: UUID | str,
+    *,
+    valido_al: date | None = None,
+    search: str | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    limit: int,
+    offset: int = 0,
+    max_limit: int = MAX_LIMIT,
+) -> tuple[list[dict[str, Any]], int]:
+    _get_articolo_base(articolo_id)
+    return CatalogoBomRepository().list_componenti_pagina(
+        articolo_id, valido_al=valido_al, search=search,
+        order_by=order_by, order_dir=order_dir,
+        limit=limit, offset=offset, max_limit=max_limit,
+    )
+
+
 # Scopo: Crea un componente BoM per l'articolo e restituisce la riga arricchita.
 def fn_create_componente(articolo_id: UUID | str, payload: dict[str, Any]) -> dict[str, object]:
     function_name = "catalogo.catalogo_service.fn_create_componente"
@@ -1739,7 +1764,6 @@ def fn_create_nota_articolo(articolo_id: UUID | str, payload: dict[str, Any]) ->
         nota_id = repository.create_nota("ARTICOLI", articolo_id, data)
     except IntegrityError as exc:
         _translate_nota_integrity_error(exc, function_name=function_name)
-        raise  # unreachable, per type checker
     result = repository.get_nota_articolo(articolo_id, nota_id)
     assert result is not None
     return result
@@ -1760,7 +1784,6 @@ def fn_create_nota_componente(componente_id: UUID | str, payload: dict[str, Any]
         nota_id = repository.create_nota("ARTICOLI_COMPONENTI", componente_id, data)
     except IntegrityError as exc:
         _translate_nota_integrity_error(exc, function_name=function_name)
-        raise  # unreachable, per type checker
     result = repository.get_nota_componente(nota_id)
     assert result is not None
     return result

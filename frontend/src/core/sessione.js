@@ -52,6 +52,31 @@ export const EVENTO_SESSIONE = Object.freeze({
   SESSIONE_NUOVA: 'sessione_nuova'
 })
 
+// Perché la scheda torna al login: viaggia nella rotta (`?reason=`) e lo
+// leggono il guard del router (una sessione dichiarata chiusa non rimbalza
+// alla home) e `LoginView` (la frase). ⭐ Sede unica: un motivo nuovo si
+// aggiunge QUI, con la sua chiave i18n in `FRASE_MOTIVO_USCITA`, e vale
+// ovunque. I valori restano quelli già in uso nelle URL.
+export const MOTIVO_USCITA = Object.freeze({
+  // Il rinnovo è fallito: cookie assente, scaduto o revocato.
+  SESSIONE_SCADUTA: 'session_expired',
+  // Il logout l'ha fatto un'altra scheda dello stesso browser (dal
+  // 2026-09-29: prima diceva «sessione scaduta», e non era vero).
+  USCITA_ALTRA_SCHEDA: 'logout_other_tab'
+})
+
+// Chiave i18n della frase di ogni motivo (`LoginView`).
+export const FRASE_MOTIVO_USCITA = Object.freeze({
+  [MOTIVO_USCITA.SESSIONE_SCADUTA]: 'auth.session_expired',
+  [MOTIVO_USCITA.USCITA_ALTRA_SCHEDA]: 'auth.logout_other_tab'
+})
+
+// Scopo: true se il motivo della rotta dice che è l'applicazione stessa ad
+//        aver chiuso la sessione (qualunque motivo noto).
+export function sessioneDichiarataChiusa(motivo) {
+  return Object.values(MOTIVO_USCITA).includes(motivo)
+}
+
 // Reattivo: lo store `auth` ne deriva `isAuthenticated`.
 const accessToken = ref(null)
 let canale = null

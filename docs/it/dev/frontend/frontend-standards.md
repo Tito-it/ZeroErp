@@ -335,8 +335,8 @@ abbassata nello stesso giro.
 > `DataTable` a mano: quella decisione la prende la regola zero.
 
 - **Paginazione SOPRA** la tabella (`paginatorPosition: 'top'`)
-- **Righe per pagina default**: 25 su desktop, 10 sotto `BREAKPOINTS.TABLET`; gestito centralmente da `useSearchTable`. Le liste che nascono esplicitamente a 10 restano eccezioni e non vengono rialzate a 25 — e dal 2026-09-18 si dichiarano con l'opzione `limit` di `useListaStoreCore`/`createListaStore` (`limit: PAGINATION.COMPACT_ROWS`), non riscrivendo lo store a mano. Il caso che l'ha fatta nascere: la **lista dentro un dialog**, che è alta dieci righe (vedi §`AppDialog`, «Dialog con una lista dentro»).
-- **Indicatore pagina**: `1/5` con JumpToPageDropdown per salto diretto
+- **Righe per pagina default**: 25 su desktop, 10 sotto `BREAKPOINTS.TABLET`; gestito centralmente da `useSearchTable`. Le liste che nascono esplicitamente a 10 restano eccezioni e non vengono rialzate a 25 — e dal 2026-09-18 si dichiarano con l'opzione `limit` di `useListaStoreCore`/`createListaStore` (`limit: PAGINATION.COMPACT_ROWS`), non riscrivendo lo store a mano. Il caso che l'ha fatta nascere: la **lista dentro un dialog**, che è alta dieci righe (vedi §`AppDialog`, «Dialog con una lista dentro»). ⭐ **Dentro un drawer o un dialog la lista parte da 10** (`PAGINATION.COMPACT_ROWS`, decisione di Tid del 2026-09-28): lo dichiara il preset di sistema della lista (`ui.lista_preset.pagina_dimensione`). ⛔ La misura deve essere una di `PAGINATION.ROWS_OPTIONS`: un valore fuori elenco (il 15 provato lo stesso giorno) lascia **vuoto** il selettore del paginatore, senza errore.
+- **Indicatore pagina**: `1/5` con JumpToPageDropdown per salto diretto. ⭐ Su **tablet e schermo stretto** (`(hover: none), (max-width: 1023.98px)`) il JumpToPageDropdown è **nascosto** via CSS in `main.css` (2026-09-28): doppia la navigazione ◀ 1 2 3 ▶, e `1/5` resta visibile
 - **Font compatto** sul paginator (`0.8rem`)
 - **Azioni pagina/lista**: building block `PageActionsBar` — refresh, nuovo e azioni utility/secondarie con comportamento responsive unico
 - **Click riga** → apre drawer in edit (modifica = interazione principale)
@@ -3344,6 +3344,7 @@ c'è mai: la sessione si ritrova rinnovando dal cookie.
 | Accodamento           | `core/sessione.js`                     | Chiamate concorrenti della stessa scheda aspettano la stessa promise                  |
 | Protezione loop       | `core/api.js`                          | Chiamate a `/token/` escluse dal rinnovo                                              |
 | Redirect              | `LoginView`                            | Rotta originale salvata in `?redirect=`                                               |
+| Motivo del ritorno    | `core/sessione.js` `MOTIVO_USCITA`     | `?reason=`: sessione scaduta o logout da un'altra scheda, ognuno con la sua frase     |
 | Logout                | `stores/auth.js`                       | Backend cancella il cookie; `clearTokens()` pulisce; le altre schede escono           |
 
 ⭐ **Più schede.** Ogni rinnovo ruota il refresh e mette in blacklist il

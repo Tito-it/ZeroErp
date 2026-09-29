@@ -349,8 +349,8 @@ perché no. Proposta pronta in
 nell'elenco a cricchetto del passo `check --deploy` e si tolgono a §1 chiusa.
 🟡 **2026-09-28: metà chiusa.** HSTS e redirect sono in `settings.py`, e
 `W004`/`W008` sono **tolti** dal cricchetto (restano `W005`/`W021`, sottodomini e
-preload spenti per scelta). Resta la **CSP**: scritta nel vhost documentato,
-da applicare in Nginx su `backend-dev` e collaudare a video (brief §1.6 «Fatto»).
+preload spenti per scelta). ✅ **Chiusa il 2026-09-28** anche la **CSP**: applicata
+in Nginx su `backend-dev` dopo il collaudo a video in `Report-Only` (brief §1.6).
 
 ### D9 — La suite è larga e poco profonda, e il livello profondo nessuno lo lancia — D9-b chiuso l'11-09 (§9), resta D9-a
 
@@ -537,11 +537,11 @@ D3-c, D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di l
       (sicurezza)» di `ci-validate.yaml` gira `--tag security` con un cricchetto
       (accettati solo W004/W008, cioè D3-c). Metà drf-spectacular: registro a
       zero lo stesso giorno; resta solo la decisione sulla CI (sopra).
-* [ ] **D3-c** — `SECURE_HSTS_SECONDS` / `SECURE_SSL_REDIRECT` (con chi gestisce
+* [x] **D3-c** — `SECURE_HSTS_SECONDS` / `SECURE_SSL_REDIRECT` (con chi gestisce
       nginx) e **decidere** sulla CSP.
       Proposta pronta: [brief sicurezza](brief-be-fe-sicurezza-header-token-mfa.md) §1.
       🟡 2026-09-28: HSTS e redirect fatti, W004/W008 tolti dal cricchetto;
-      resta la CSP da applicare in Nginx e collaudare a video.
+      ✅ 2026-09-28: CSP applicata in Nginx dopo il collaudo a video. Chiusa.
 * [x] **D4** — ✅ 2026-09-09: `hint` a video, filtro sui codici tecnici, sei
       `ui_action` dichiarate servite dal default.
 
@@ -651,7 +651,7 @@ D3-c, D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di l
 | #   | Cosa                                               | Perché sta qui                                                                                      |
 | --- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | 1   | **D1-f** — `npm audit` nel job                     | Registro a **zero** dal 13-09, e il lato backend (`pip-audit`) c'è dal 26-09                        |
-| 2   | **D3-c** — CSP (HSTS e redirect fatti il 28-09)    | Scritta nel vhost documentato (brief sicurezza §1.6); resta da applicare in Nginx e collaudare      |
+| 2   | ~~**D3-c** — CSP~~ ✅ chiusa il 28-09               | Applicata in Nginx dopo il collaudo a video (brief sicurezza §1.6)                                  |
 | 3   | **D2-b** — type checker                            | Una decisione: sì (e come) o no (e si toglie la riga da `PROJECT_CONTEXT.md`)                       |
 | 4   | **D10-bis** — le letture cross-dominio con lo skip | Lettura, non conteggio                                                                              |
 

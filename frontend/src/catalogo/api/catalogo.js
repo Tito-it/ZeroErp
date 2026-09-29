@@ -92,6 +92,18 @@ export function listArticoloComponenti(articoloId) {
   return api.get(`${BASE}/articoli/${articoloId}/componenti/`)
 }
 
+// La distinta come LISTA CONFIGURABILE `catalogo.articolo_componenti`
+// (brief-db-liste-righe-documento, lotto C): pagina ed export. ⚠️ Su
+// `…/componenti/lista/` e NON `…/componenti/`: quella resta la lettura completa
+// (il riepilogo nel drawer dell'articolo) e la creazione di un componente.
+export function listArticoloComponentiLista(articoloId, params = {}) {
+  return api.get(`${BASE}/articoli/${articoloId}/componenti/lista/`, { params })
+}
+
+export function exportArticoloComponentiLista(articoloId, params = {}) {
+  return api.get(`${BASE}/articoli/${articoloId}/componenti/lista/export/`, { params, responseType: 'blob' })
+}
+
 export function createArticoloComponente(articoloId, payload) {
   return api.post(`${BASE}/articoli/${articoloId}/componenti/`, payload)
 }

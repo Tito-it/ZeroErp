@@ -691,7 +691,8 @@ const drawerActions = computed(() => {
           :soggetto-ruolo-id="detail?.destinatario_soggetto_ruolo_id ?? null"
           :istanza-utility-id="detail?.istanza_utility_id ?? null"
           :readonly="!(canEditTestataEffective && !isReadonly)"
-          @state="(s) => { indirizzoObbligatorioMancante = s.obbligatorioMancante }" />
+          @state="(s) => { indirizzoObbligatorioMancante = s.obbligatorioMancante }"
+          :bordo="false" />
 
         <Divider />
         <DdtRigheTable

@@ -148,7 +148,7 @@ def valida_nuova_password(
     try:
         validate_password(new_password, user=user)
     except DjangoValidationError as exc:
-        ErrorManager.require(False, code=code, message=" ".join(exc.messages))
+        ErrorManager.raise_error(code=code, message=" ".join(exc.messages), cause=exc)
 
 
 # Scopo: Applica nuova password, spegne il cambio password obbligatorio,

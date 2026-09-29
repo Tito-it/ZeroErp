@@ -32,6 +32,7 @@ from apps.catalogo.services.catalogo_service import (
     fn_get_articolo,
     fn_get_unita_misura,
     fn_list_componenti,
+    fn_list_componenti_pagina,
     fn_list_articoli,
     fn_list_note_articolo,
     fn_list_uom_operative,
@@ -68,6 +69,8 @@ from apps.core.api.payload_validators import (
 from apps.core.api.search_validators import require_min_search_length
 from apps.core.api.success_responses import success_response
 from apps.core.api.openapi_params import param_ricerca_full
+from apps.catalogo.db.catalogo_bom_repository import COMPONENTI_SORT_COLUMNS
+from apps.ui.api.lista_figlia_views import build_lista_figlia_views
 
 
 # Scopo: Definisce in un solo punto i campi write articolo per schema API.
@@ -470,6 +473,57 @@ class ApiArticoloComponentiList(DomainAPIView):
     # Scopo: Aggiunge un componente BoM all'articolo.
     def post(self, request: Request, articolo_id: UUID) -> JsonResponse:
         return handle_post_json(request, handler=lambda payload: fn_create_componente(articolo_id, payload))
+
+
+# ── La distinta come lista configurabile `catalogo.articolo_componenti` ──
+# (brief-db-liste-righe-documento, lotto C, 2026-09-28). Pagina ed export dal
+# factory condiviso `build_lista_figlia_views` (regola del 2 fra domini: e'
+# la stessa coppia delle righe dei documenti di vendita).
+# ⭐ SU UN PERCORSO SUO, `…/componenti/lista/`, e non su `…/componenti/`: il
+#    cancello di perimetro (`lista_codice`) scatta su ogni metodo della view
+#    che lo dichiara, e `…/componenti/` serve anche il POST di creazione.
+#    `GET …/componenti/` resta la lettura completa.
+# ⚠️ Nessun `lista_emittente_param`: la distinta non ha un emittente suo (e'
+#    «per azienda», D-8.2, come `catalogo.articoli`), quindi chi vede piu'
+#    emittenti lo sceglie come per la lista degli articoli.
+
+
+# Scopo: il filtro proprio della distinta, «in vigore al» (None: tutte le
+#        versioni). Lo leggono pagina ed export dalla stessa funzione.
+def _filtri_componenti(qp) -> dict[str, object]:
+    return {"valido_al": qp_iso_date_optional(qp.get("valido_al"), "valido_al")}
+
+
+_ComponentiLista, _ComponentiListaExport = build_lista_figlia_views(
+    schema_prefix="CatalogoArticoloComponenti",
+    operation_id="catalogo_articoli_componenti_lista",
+    area_funzionale="catalogo",
+    url_kwarg="articolo_id",
+    model_permission=("catalogo", "articolo"),
+    pagina_call=lambda articolo_id, **kw: fn_list_componenti_pagina(articolo_id, **kw),
+    colonne_ordinabili=COMPONENTI_SORT_COLUMNS,
+    ordine_assente="valido_dal DESC.",
+    filtri=_filtri_componenti,
+    parametri_filtri=[
+        OpenApiParameter(
+            name="valido_al", type=str, required=False,
+            description=(
+                "Data (YYYY-MM-DD): solo le righe in vigore a quella data o dopo "
+                "(senza fine, o con fine da quel giorno). Assente: tutte le versioni."
+            ),
+        ),
+    ],
+)
+
+
+# ⭐ Il cancello di perimetro come LETTERALE nel corpo della classe: e' la
+#    forma che `test_perimetro_emittente_copertura` legge (vedi la factory).
+class ApiArticoloComponentiLista(_ComponentiLista):
+    lista_codice = "catalogo.articolo_componenti"
+
+
+class ApiArticoloComponentiListaExport(_ComponentiListaExport):
+    lista_codice = "catalogo.articolo_componenti"
 
 
 class ApiArticoloComponenteDetail(DomainAPIView):

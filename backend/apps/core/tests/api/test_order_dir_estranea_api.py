@@ -67,12 +67,6 @@ class TestOrderDirEstraneaApi(JwtMockedApiTest):
         # La cache del throttle e' condivisa dalla suite: senza, un budget
         # consumato altrove risponderebbe 429 invece del codice atteso.
         cache.clear()
-        patcher = patch(
-            "apps.core.middleware.request_log_middleware.RequestLogMiddleware._insert_log",
-            return_value=None,
-        )
-        patcher.start()
-        self.addCleanup(patcher.stop)
 
     # 1. Percorso A: nessuna validazione a monte, il 400 lo da' la catena
     #    BB -> middleware. Prima era 200 con la lista in ASC.

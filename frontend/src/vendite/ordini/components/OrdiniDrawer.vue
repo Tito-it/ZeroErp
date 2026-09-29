@@ -680,7 +680,8 @@ const drawerActions = computed(() => {
           :doc-id="effectiveOrdineId"
           :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
           :istanza-utility-id="detail?.istanza_utility_id ?? null"
-          :readonly="!(canEditTestataEffective && !isReadonly)" />
+          :readonly="!(canEditTestataEffective && !isReadonly)"
+          :bordo="false" />
 
         <Divider />
         <OrdiniRigheTable

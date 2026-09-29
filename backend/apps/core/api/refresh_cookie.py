@@ -28,6 +28,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -47,6 +48,8 @@ REFRESH_COOKIE_SAMESITE = "Strict"
 
 # L'header che il frontend manda sul refresh, e che un altro sito non puo'
 # mandare. Il valore e' quello che le librerie mettono per convenzione.
+logger = logging.getLogger("security")
+
 ANTI_CSRF_HEADER = "X-Requested-With"
 ANTI_CSRF_VALORE = "XMLHttpRequest"
 
@@ -86,7 +89,17 @@ def leggi_refresh_cookie(request: HttpRequest) -> str | None:
 # Scopo: Rifiuta con 403 `E_PERMISSION_DENIED` una richiesta autenticata dal
 #        solo cookie che non porta l'header anti-CSRF (vedi le note in testa).
 def richiedi_header_anti_csrf(request: HttpRequest) -> None:
-    if request.headers.get(ANTI_CSRF_HEADER) != ANTI_CSRF_VALORE:
+    ricevuto = request.headers.get(ANTI_CSRF_HEADER)
+    if ricevuto != ANTI_CSRF_VALORE:
+        # Il valore ricevuto (non e' un segreto) distingue i due casi che la
+        # risposta confonde: header ASSENTE (client vecchio, o un altro sito)
+        # e header CAMBIATO lungo la strada (browser o proxy che lo
+        # riscrivono). Troncato: lo scrive il client.
+        logger.warning(
+            "security.refresh_senza_header_anti_csrf ricevuto=%r user_agent=%r",
+            ricevuto[:80] if ricevuto else ricevuto,
+            (request.headers.get("User-Agent") or "")[:120],
+        )
         raise ServiceError(
             code="E_PERMISSION_DENIED",
             message="Richiesta non ammessa.",

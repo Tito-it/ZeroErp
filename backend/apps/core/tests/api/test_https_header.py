@@ -7,7 +7,7 @@
 #        HTTP, non su `/health` e non su chi arriva da Nginx; l'header HSTS
 #        porta il valore scelto e niente sottodomini/preload; la variabile
 #        d'ambiente non ha ripiego fuori da DEBUG; ogni smoke bash si dichiara
-#        HTTPS.
+#        HTTPS e dichiara una provenienza che `get_client_ip` accetta.
 # Note: il runner spegne `SECURE_SSL_REDIRECT` per tutta la suite
 #       (`test_runner.py`): qui lo si riaccende apposta.
 # ------------------------------------------------------------
@@ -25,14 +25,19 @@ Indice test eseguiti:
 9) HstsSettingsTests.test_valori_validi
 10) SmokeBashTests.test_ogni_smoke_si_dichiara_https
 11) HstsSettingsTests.test_intero_non_negativo_nomina_variabile_e_valore
+12) SmokeBashTests.test_il_bb_dichiara_una_provenienza_che_il_login_accetta
 """
 
+import os
 import re
+import subprocess
 from pathlib import Path
 
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
-from django.test import Client, SimpleTestCase, override_settings
+from django.test import Client, RequestFactory, SimpleTestCase, override_settings
+
+from apps.core.services.request_context import get_client_ip
 
 from zeroerp_backend.settings import parse_hsts_seconds, parse_intero_non_negativo
 
@@ -140,3 +145,29 @@ class SmokeBashTests(SimpleTestCase):
                 self.assertNotIn("command curl", testo)
         # Il test non deve passare a vuoto se la cartella si sposta.
         self.assertGreater(controllati, 0)
+
+    # Scopo: gli header che il BB manda davvero (eseguito in bash, con `curl`
+    #        intercettato) passano la regola VERA della provenienza per 1 e 2
+    #        proxy fidati: senza, il login risponde `E_AUTH_CHIAMATA_NON_VALIDA`
+    #        e ogni smoke si ferma al passo 0 (successo fino al 2026-09-28).
+    def test_il_bb_dichiara_una_provenienza_che_il_login_accetta(self):
+        bb = Path(settings.BASE_DIR) / "scripts" / "tests" / "_smoke_https.sh"
+        # `command` ridefinito stampa gli argomenti invece di lanciare curl.
+        programma = f'command() {{ shift; printf "%s\\n" "$@"; }}; source "{bb}"; curl http://x/'
+        for proxy_fidati in (1, 2):
+            with self.subTest(proxy_fidati=proxy_fidati):
+                uscita = subprocess.run(
+                    ["bash", "-c", programma],
+                    env={**os.environ, "DJANGO_TRUSTED_PROXY_COUNT": str(proxy_fidati)},
+                    capture_output=True, text=True, check=True,
+                ).stdout.splitlines()
+                header = dict(
+                    uscita[i + 1].split(": ", 1)
+                    for i, arg in enumerate(uscita) if arg == "-H"
+                )
+                self.assertEqual(header.get("X-Forwarded-Proto"), "https")
+                richiesta = RequestFactory().get(
+                    "/", HTTP_X_FORWARDED_FOR=header.get("X-Forwarded-For", ""),
+                )
+                with override_settings(TRUSTED_PROXY_COUNT=proxy_fidati):
+                    self.assertEqual(get_client_ip(richiesta), "127.0.0.1")

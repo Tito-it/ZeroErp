@@ -247,7 +247,6 @@ class ListaColonnaAdminService:
                 message="Campo immutabile presente in payload update.",
                 detail="lista_id non aggiornabile",
             )
-            raise  # pragma: no cover
 
         self._v.validate_allowed_keys(
             payload,

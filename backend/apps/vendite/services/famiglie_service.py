@@ -20,7 +20,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, NoReturn
 
 from django.db import IntegrityError, transaction
 
@@ -155,7 +155,6 @@ class FamiglieDocumentoService:
                 esito = self.repo.crea_famiglia(dati)
         except IntegrityError as exc:
             self._traduci(exc, dati, in_modifica=False)
-            raise  # pragma: no cover — _traduci solleva sempre
         famiglia = self.get_famiglia(esito["famiglia_id"])
         # ⭐ Quanti registri ha provveduto la madre: e' meta' del lavoro che la
         #    creazione ha appena fatto, e la maschera deve poterlo dire.
@@ -181,7 +180,6 @@ class FamiglieDocumentoService:
                 toccate = self.repo.update_famiglia(famiglia_id, dati)
         except IntegrityError as exc:
             self._traduci(exc, dati, in_modifica=True)
-            raise  # pragma: no cover — _traduci solleva sempre
         # ⚠️ `toccate == 0` ha due cause — la famiglia non esiste, oppure il
         #    payload non portava nessuna colonna scrivibile — e a distinguerle
         #    e' la rilettura, che nel primo caso solleva 404 ed e' anche cio'
@@ -204,7 +202,7 @@ class FamiglieDocumentoService:
     # Scopo: la traduzione dei vincoli DB, in una sede sola per i due verbi.
     def _traduci(
         self, exc: IntegrityError, dati: dict[str, Any], *, in_modifica: bool,
-    ) -> None:
+    ) -> NoReturn:
         # ⭐ IL DUPLICATO DELLA TABELLA SI NOMINA, e per questo sta fuori dalla
         #    mappa generica. L'indice e' PARZIALE (`WHERE attivo`), quindi la
         #    riga che blocca c'e' ed e' attiva: un «duplicato» nudo manderebbe

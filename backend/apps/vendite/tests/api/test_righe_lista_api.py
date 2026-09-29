@@ -4,7 +4,7 @@
 # Doc: Python
 # Scopo: Smoke test HTTP delle view della LISTA delle righe dei quattro
 #        documenti di vendita (`GET …/righe/lista/` e `…/righe/lista/export/`),
-#        nate dalla factory `build_righe_lista_views`
+#        nate dalla factory `build_lista_figlia_views` (apps/ui/api)
 #        (brief-db-liste-righe-documento, lotto A). Mock di service, cancello
 #        e UI: nessun accesso DB (CI-compatible).
 # ------------------------------------------------------------
@@ -37,6 +37,7 @@ from django.urls import resolve
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.ui.tests._coda_export import coda_export_finta
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _GUARD = "apps.core.services.perimetro_emittente.guard_lista_per_codice"
@@ -121,15 +122,14 @@ class TestRigheListaApi(JwtMockedApiTest):
                 self._throttle_azzerato()
                 with self.subTest(base=base, export=bool(suffisso)), \
                         patch(_GUARD) as guard, \
-                        patch(f"{svc}.list_righe_pagina", return_value=([], 0)):
+                        patch(f"{svc}.list_righe_pagina", return_value=([], 0)), \
+                        coda_export_finta():
                     resp = self.client.get(
                         f"{base}7/righe/lista/{suffisso}?emittente_fiscale_id=3",
                     )
-                    # La pagina deve anche rispondere: un cancello giusto
-                    # davanti a una view rotta non prova niente. L'export qui
-                    # non ha la UI mockata: il suo 200 lo prova il test dedicato.
-                    if not suffisso:
-                        self.assertEqual(resp.status_code, 200)
+                    # Pagina ed export devono anche rispondere: un cancello
+                    # giusto davanti a una view rotta non prova niente.
+                    self.assertEqual(resp.status_code, 200)
                     guard.assert_called_once()
                     kwargs = guard.call_args.kwargs
                     self.assertEqual(kwargs["lista_codice"], lista)

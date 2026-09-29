@@ -39,7 +39,7 @@ from apps.vendite.api.indirizzi_documento_views import (
 )
 from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import ddt_service
-from apps.vendite.api.righe_lista_views import build_righe_lista_views
+from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
 from apps.vendite.db.ddt_repository import DdtRepository
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.vendite.api._componenti_schema import (
@@ -478,13 +478,15 @@ class ApiDdtRigaComponenteDetail(DomainAPIView):
 
 
 # ── Righe: la lista configurabile `vendite.ddt_righe` ──
-# Pagina ed export dal factory condiviso `build_righe_lista_views`
+# Pagina ed export dal factory condiviso `build_lista_figlia_views`
 # (brief-db-liste-righe-documento, lotto A). La closure legge il global di
 # modulo a call-time: i patch dei test sul service restano validi.
 # ⚠️ `GET …/righe/` resta la lettura COMPLETA: la lista e' su `…/righe/lista/`.
-_DdtRigheLista, _DdtRigheListaExport = build_righe_lista_views(
-    schema_prefix="Ddt",
-    operation="vendite_ddt",
+_DdtRigheLista, _DdtRigheListaExport = build_lista_figlia_views(
+    schema_prefix="DdtRighe",
+    operation_id="vendite_ddt_righe_lista",
+    area_funzionale="vendite",
+    lista_emittente_param=EMITTENTE_DOCUMENTO_PARAM,
     url_kwarg="ddt_id",
     model_permission=('vendite', 'ddt'),
     pagina_call=lambda documento_id, **kw: ddt_service.list_righe_pagina(documento_id, **kw),

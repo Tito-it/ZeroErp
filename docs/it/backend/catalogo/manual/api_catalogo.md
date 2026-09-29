@@ -525,6 +525,30 @@ chiudibile finche' `valido_al IS NULL`):
 Su righe non chiudibili i 3 campi data sono `null` (autodocumentante: il
 FE non puo' aprire dialog su `null`).
 
+### 4.1-bis La distinta come lista configurabile (lotto C, 2026-09-28)
+
+| | |
+|---|---|
+| **Metodo** | `GET` |
+| **URL** | `/api/v1/catalogo/articoli/{articolo_id}/componenti/lista/` (+ `export/?formato=csv\|xlsx`) |
+| **Lista a catalogo** | `catalogo.articolo_componenti` (lista 101) |
+| **Sorgente** | `catalogo.vw_articoli_componenti_dettaglio` — la stessa di §4.1, sede unica della capability di chiusura |
+
+Envelope paginato standard. Parametri (facoltativi): `valido_al` (data
+`YYYY-MM-DD`: le righe **in vigore a quella data o dopo** — senza fine, o con la
+fine da quel giorno; assente = tutte le versioni; malformata = `400`),
+`search` (codice e descrizione del componente, dal catalogo), `order_by` /
+`order_dir` (whitelist `COMPONENTI_SORT_COLUMNS`; assente: `valido_dal` DESC;
+`valido_al` vuoto si ordina come «infinito»; le date partono DESC), `limit` /
+`offset`.
+
+⭐ **Percorso suo** e non `…/componenti/`: il cancello di perimetro emittente
+(`lista_codice`) scatta su ogni metodo della view che lo dichiara, e
+`…/componenti/` serve anche la creazione (§4.2). La distinta è «per azienda»
+(D-8.2): nessun `emittente_fiscale_id` in query, chi vede più emittenti lo
+sceglie come per la lista degli articoli. `GET …/componenti/` (§4.1) resta la
+lettura completa (il riepilogo nel drawer dell'articolo).
+
 ### 4.2 Crea componente
 
 | | |

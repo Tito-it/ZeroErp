@@ -766,6 +766,7 @@
     },
     "login_error": "Invalid credentials",
     "session_expired": "Session expired — please sign in again",
+    "logout_other_tab": "You signed out in another tab",
     "account_disabled": "Account disabled — contact the administrator",
     "account_not_active": "Account not yet active",
     "account_expired": "Account expired — contact the administrator",
@@ -2756,7 +2757,12 @@
         "causale_mancante": "Transport reason is missing: required to issue the DDT.",
         "prezzo_non_risolvibile": "One or more rows have no resolvable price (own or inherited from the order) with an invoiceable reason.",
         "iva_mancante": "One or more rows have a price but no VAT rate. The rate is not chosen on the document: set it on the item, and the row picks it up. Otherwise remove the price, if the goods are not valued.",
-        "componenti_non_valorizzati": "Document components not yet valued."
+        "componenti_non_valorizzati": "Document components not yet valued.",
+        "magazzino_mancante": "The delivery note has no departure warehouse: without it the goods cannot be unloaded.",
+        "magazzino_arrivo_mancante": "The transfer delivery note has no arrival warehouse.",
+        "prelievi_incompleti": "One or more lines have picks that do not cover their quantity: complete the picks before issuing.",
+        "merce_non_prelevabile": "A pick is not accepted by the warehouse (lot, serial or location not valid for the item): open it from the line picks.",
+        "merce_non_disponibile": "The goods to ship are not available in stock in sufficient quantity."
       }
     },
     "famiglie_documento": {

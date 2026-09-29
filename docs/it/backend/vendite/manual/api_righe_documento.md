@@ -4,9 +4,9 @@
 
 Le righe di un documento di vendita come **lista configurabile**: una pagina
 con ricerca e ordinamento, e il suo export. Endpoint identici sui documenti,
-generati dal factory condiviso `build_righe_lista_views`
-(`apps/vendite/api/righe_lista_views.py`) sopra il mixin repository
-`RigheDocumentoRepositoryMixin` (`apps/vendite/db/_righe_repo_mixin.py`).
+generati dal factory condiviso `build_lista_figlia_views`
+(`apps/ui/api/lista_figlia_views.py`, lo stesso della distinta del catalogo) sopra il mixin repository
+`RigheListaMixin` / `RigheDocumentoRepositoryMixin` (`apps/vendite/db/_righe_repo_mixin.py`).
 
 Design-of-record:
 [brief-db-liste-righe-documento.md](../../../dev/work-in-progress/brief-db-liste-righe-documento.md).
@@ -17,6 +17,27 @@ Design-of-record:
 | Ordine | `/api/v1/vendite/ordini/<id>/righe/lista/` | `vendite.ordine_righe` | `vw_ordini_righe_dettaglio` | `riga_nr` |
 | DDT | `/api/v1/vendite/ddt/<id>/righe/lista/` | `vendite.ddt_righe` | `vw_ddt_righe_dettaglio` | `riga_nr` |
 | Reso | `/api/v1/vendite/resi/<id>/righe/lista/` | `vendite.reso_righe` | `vw_resi_righe_dettaglio` | `riga_nr` |
+| Fattura (sola lettura) | `/api/v1/vendite/fatture/<id>/righe/lista/` | `vendite.fattura_righe` | `vw_fattura_righe_lista` | `ordinamento, riga_nr` |
+
+### La fattura, e cosa cambia (lotto C, 2026-09-28)
+
+- **Nessuna scrittura** e nessun `…/righe/` completo esposto a parte: la
+  lettura completa arriva col dettaglio (`GET fatture/<id>/` → `righe`), dalla
+  **stessa vista** della lista;
+- **Solo il primo livello**: la riga normale, la parte di plafond, il padre di
+  un kit. I componenti esposti di un kit stanno **dentro** il padre
+  (`componenti`, jsonb: `fatture_righe_id`, `riga_nr`, `articolo_codice`,
+  `descrizione`, `quantita`, `uom_codice`; `componenti_numero`). Paginazione e
+  ordinamento spostano il kit intero;
+- **La chiave è `riga_key`**, non `id`: `R:<id>` per le righe vere,
+  `K:<fattura>:<md5>` per il padre di un kit, che in tabella non c'è. Spareggio
+  di ogni ordinamento: `riga_nr`, poi `riga_key`;
+- **Nessun filtro `attivo`**: le righe di una fattura non si disattivano;
+- **Lo scope dell'operatore** entra nel cancello di testata (`auth_user_id`,
+  come dettaglio e giornale): fattura inesistente o fuori scope → `404
+  E_FATTURA_NON_TROVATA`, mai una lista vuota;
+- il legame riga-riga di una nota di credito porta il numero **parlante** della
+  fattura rettificata (`riga_rettificata_documento`) e `riga_rettificata_nr`.
 
 ## Endpoint
 

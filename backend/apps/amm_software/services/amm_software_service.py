@@ -197,8 +197,8 @@ class AmmSoftwareService:
         if soggetto_id:
             try:
                 uuid_mod.UUID(soggetto_id)
-            except (ValueError, AttributeError):
-                ErrorManager.require(False, code=E_AMM_VALIDAZIONE, message="UUID soggetto non valido.", context={"field": "soggetto_id"})
+            except (ValueError, AttributeError) as exc:
+                ErrorManager.raise_error(code=E_AMM_VALIDAZIONE, message="UUID soggetto non valido.", context={"field": "soggetto_id"}, cause=exc)
 
         # Guard qualifica_id numerico
         try:
