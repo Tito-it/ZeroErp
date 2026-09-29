@@ -4,7 +4,7 @@
 --
 -- Test: le righe di un documento si aggiungono, modificano e tolgono SOLO
 --   finche' il documento e' in bozza — il building block
---   vendite.trgfn_doc_righe_lock_fuori_bozza e i suoi tre adottanti
+--   vendite.trgfn_doc_righe_lock_fuori_bozza e i suoi quattro adottanti (il reso dal 2026-09-29)
 --   (ddt_righe, ordini_righe sul solo DELETE, contratti_righe).
 --   changeSet 20260922-01 … -06.
 -- ------------------------------------------------------------
@@ -41,7 +41,7 @@
 --
 -- Indice test (1..21)
 --   1) Forma: il BB esiste, plpgsql, non SECURITY DEFINER
---   2) Forma: i tre trigger sono montati in fascia _a05_ con gli argomenti giusti
+--   2) Forma: i quattro trigger sono montati in fascia _a05_ con gli argomenti giusti
 --   3) Forma: la copia dei contratti (funzione e trigger) non esiste piu'
 --   4) Forma: trgfn_dlt_block_ordrig_ddtrig non nomina piu' il codice ritirato
 --   5) Catalogo: i due codici nuovi con la classe giusta, il vecchio ritirato
@@ -82,6 +82,11 @@ SELECT is(
   'plpgsql/invoker',
   '1) vendite.trgfn_doc_righe_lock_fuori_bozza esiste, plpgsql, non SECURITY DEFINER');
 
+-- ⭐ 2026-09-29: il quarto adottante, vendite.resi_righe (tre porte, tipo RESO),
+--   da 20260929-01 (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-h): dal
+--   Lotto 3-bis la conferma del reso carica la merce, e una riga cambiata dopo
+--   farebbe divergere reso e registro. Il comportamento e' provato in
+--   magazzino/test-reso-carico-v1 (test 25).
 -- ⚠️ La fascia e' parte del contratto: con _a10_ il nome verrebbe DOPO
 --   block_ddt_dlt e i block_deact, e l'operatore leggerebbe un rimedio che
 --   non e' il rimedio (test 9).
@@ -93,8 +98,9 @@ SELECT is(
     WHERE NOT t.tgisinternal AND p.proname = 'trgfn_doc_righe_lock_fuori_bozza'),
   $atteso$vendite.contratti_righe:trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'contratto_id')
 vendite.ddt_righe:trg_ddt_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'ddt_id')
-vendite.ordini_righe:trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE', 'ordine_id')$atteso$,
-  '2) I tre adottanti sono montati in fascia _a05_ con gli argomenti giusti');
+vendite.ordini_righe:trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE', 'ordine_id')
+vendite.resi_righe:trg_resi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('RESO', 'reso_id')$atteso$,
+  '2) I quattro adottanti sono montati in fascia _a05_ con gli argomenti giusti');
 
 SELECT is(
   (SELECT count(*)::int

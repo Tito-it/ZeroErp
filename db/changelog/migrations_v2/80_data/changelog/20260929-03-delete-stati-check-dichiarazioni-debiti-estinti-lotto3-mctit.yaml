@@ -1,0 +1,62 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Due debiti del presidio C1 pagati dal Lotto 3 di magazzino
+#   dbops.stati_check_dichiarazioni: via le righe ESENTE
+#     magazzino.movimenti_attesi.stato = CHIUSA
+#     magazzino.trasferimenti.stato_trasferimento = POSTED
+#   Brief: brief-db-magazzino-lotto-3-scarico-da-ddt (P-10, P-11);
+#          brief-db-presidio-stati-mai-scritti §4
+#
+# -- PERCHE' ----------------------------------------------------------------------------------------
+#   Le due righe esentavano due valori del CHECK che nessuno scriveva: «la
+#   madre non e' ancora scritta». Il Lotto 3 le ha scritte (applicato il
+#   28-09): magazzino.fn_libera_blocco porta il blocco a CHIUSA (20260928-80),
+#   magazzino.fn_posta_trasferimento porta il trasferimento a POSTED
+#   (20260928-79). Il runner di Tid (29-09) lo ha visto:
+#   dbops/test-stati-check-scrittori-v1, test 3, due righe DEBITO_ESTINTO.
+#   ⚠️ Restano ESENTE, e sono giuste: trasferimenti CANCEL e CONFIRM — nessuno
+#   dei verbi del Lotto 3 li scrive.
+#
+# -- LA FORMA (intestazione del mirror 20260921-19) -----------------------------------------------
+#   loadUpdateData non cancella: pagare un debito e' togliere la riga dal CSV
+#   E cancellarla qui, forward-only. Su un database ricostruito da zero il
+#   mirror carica il CSV gia' senza le due righe e questo DELETE non trova
+#   niente; su dbdev le toglie. Chiave naturale (tabella, colonna, valore), mai
+#   l'id.
+#   ⛔ Mancato al Lotto 3: scrivendo due scrittori nuovi di uno stato si
+#   censisce anche questo registro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260929-03-delete-stati-check-dichiarazioni-debiti-estinti-lotto3-mctit.yaml
+
+  - changeSet:
+      id: 20260929-03-delete-stati-check-dichiarazioni-debiti-estinti-lotto3
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Presidio C1: via da dbops.stati_check_dichiarazioni le esenzioni di
+        movimenti_attesi.stato = CHIUSA e trasferimenti.stato_trasferimento = POSTED, pagate dal
+        Lotto 3 di magazzino (fn_libera_blocco, fn_posta_trasferimento). Tolte anche dal CSV.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: stati_check_dichiarazioni
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM dbops.stati_check_dichiarazioni d
+               WHERE (d.schema_tabella, d.nome_tabella, d.colonna, d.valore) IN (
+                         ('magazzino', 'movimenti_attesi', 'stato',               'CHIUSA'),
+                         ('magazzino', 'trasferimenti',    'stato_trasferimento', 'POSTED'));

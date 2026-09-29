@@ -282,7 +282,7 @@ la bolla di trasferimento che carica l'arrivo al `CONSEGNATO`, il trasferimento
 interno (`fn_posta_trasferimento`), i verbi del blocco manuale (azione
 `blocca_merce`, `movimenti_attesi` in sola lettura per l'app). ⏳ Restano le
 richieste a BE/FE (brief §6: senza R-1 il backend non emette una bolla che muove
-merce), la CI da zero e il **Lotto 3-bis** (carico da reso cliente). ✅ **Secondo caso, il pannello di configurazione, chiuso il 2026-09-28** (D-3,
+merce), la CI da zero e il **Lotto 3-bis** (carico da reso cliente, `work-in-progress/brief-db-magazzino-lotto-3-bis-carico-da-reso.md`), ✅ **applicato lato DB il 2026-09-29** (`20260928-84 → -98`, `20260929-01 → -04`, pgTAP verdi col runner): la conferma del reso è un verbo (azione `conferma_reso`) che fa rientrare la merce dai **rientri**, che puntano al prelievo d'origine, al costo dell'uscita; l'annullo storna; le righe del reso si toccano solo in bozza. Del 3-bis restano le richieste a BE/FE (R-1…R-5). ✅ **Secondo caso, il pannello di configurazione, chiuso il 2026-09-28** (D-3,
 `work-done/brief-db-pannello-config-verbo-generico.md`): scrive col verbo
 generico `config.fn_pannello_scrivi` sull'oggetto di ogni tabella, la lista è
 `config.tabelle_gestibili` (niente più `REL_CONSENTITE` nel BE né

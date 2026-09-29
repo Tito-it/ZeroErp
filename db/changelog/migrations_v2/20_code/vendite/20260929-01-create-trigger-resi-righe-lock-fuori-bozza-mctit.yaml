@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D-3b-h — Le righe di un reso si toccano solo in bozza
+#   vendite.resi_righe: trg_resi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt
+#   sul BB vendite.trgfn_doc_righe_lock_fuori_bozza('RESO', 'reso_id')
+#   Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso, sezione 3 (D-3b-h, Tid 2026-09-29: A)
+#
+# -- PERCHE' ------------------------------------------------------------------------------------------
+#   Fino a oggi resi_righe non aveva un guard di stato: dopo la conferma una riga
+#   si poteva ancora spegnere, cambiare di quantita' o togliere. Lo impediva solo
+#   il backend (resi_service: «righe editabili solo con testata DRAFT —
+#   enforcement BE»). Dal Lotto 3-bis la conferma CARICA la merce dai rientri:
+#   una riga cambiata dopo farebbe dire al reso una cosa e al registro un'altra.
+#   Un reso confermato e' un fatto, come una bolla emessa: si corregge
+#   annullandolo (la merce riesce, 20260928-96) e facendone uno nuovo.
+#
+# -- LA FORMA ----------------------------------------------------------------------------------------
+#   Nessun codice nuovo: il BB delle righe dei documenti, gia' adottato da
+#   ddt_righe e contratti_righe (tre porte), con il tipo RESO che il lettore
+#   DEFINER script.fn_get_stato_testata_documento conosce da 20260928-86. Stesso
+#   rifiuto (E_RIGA_DOC_NON_BOZZA), stessa frase. Fascia a05: il rifiuto di
+#   stato parla prima dei guard a10/a20 (tetto sul consegnato, origine).
+#   ⚠️ Testata assente = cascata dal reso: il BB passa.
+#
+# -- CENSIMENTO (2026-09-29) --------------------------------------------------------------------------
+#   Nessuna funzione DB scrive resi_righe dopo la conferma (letto sui corpi
+#   auto-generati). Un solo pgTAP lo faceva di proposito:
+#   vendite/test-vw-resi-righe-effettive-v1, test 9, riscritto nello stesso giro
+#   (la riga si spegne in bozza, poi il reso si conferma).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260929-01-create-trigger-resi-righe-lock-fuori-bozza-mctit.yaml
+
+  - changeSet:
+      id: 20260929-01-create-trigger-resi-righe-lock-fuori-bozza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.resi_righe: le righe di un reso si toccano solo in bozza, col BB
+        vendite.trgfn_doc_righe_lock_fuori_bozza('RESO', 'reso_id') (E_RIGA_DOC_NON_BOZZA). Dal
+        Lotto 3-bis la conferma carica la merce: una riga cambiata dopo farebbe divergere reso e
+        registro. Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso (D-3b-h).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_doc_righe_lock_fuori_bozza';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_trigger
+                   WHERE tgrelid = 'vendite.resi_righe'::regclass
+                     AND tgname = 'trg_resi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt'
+                     AND NOT tgisinternal;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_resi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt
+                BEFORE INSERT OR UPDATE OR DELETE ON vendite.resi_righe
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('RESO', 'reso_id');
+
+              COMMENT ON TRIGGER trg_resi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt ON vendite.resi_righe IS
+                  'Le righe di un reso si aggiungono, modificano e tolgono solo finche'' il reso e'' in bozza '
+                  '(BB vendite.trgfn_doc_righe_lock_fuori_bozza, tipo RESO, E_RIGA_DOC_NON_BOZZA). Dal Lotto '
+                  '3-bis la conferma carica la merce dai rientri: una riga cambiata dopo farebbe dire al reso '
+                  'una cosa e al registro un''altra. Un reso confermato si corregge annullandolo (la merce '
+                  'riesce) e facendone uno nuovo. D-3b-h, brief-db-magazzino-lotto-3-bis-carico-da-reso.';
+
+              COMMENT ON FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza()
+              IS 'Building block (2026-09-22): le righe di un documento si aggiungono, modificano e tolgono SOLO finche'' il documento e'' in bozza. BEFORE INSERT OR UPDATE OR DELETE FOR EACH ROW, TG_ARGV = [0] tipo documento per script.fn_get_stato_testata_documento (DDT | ORDINE | CONTRATTO | RESO), [1] colonna FK della riga verso la testata, [2] (opz.) codice_interno dello stato bozza, default DRAFT. Rifiuta con E_RIGA_DOC_NON_BOZZA (CONFLITTO_STATO; valori: etichetta, stato, verbo). ⛔ Lo stato si legge dal lettore SECURITY DEFINER perche'' testate e righe hanno RLS: un guard invoker non distinguerebbe «non c''e''» da «non la vedo». Testata assente = cascade dalla testata o FK che parlera'': passa. Su UPDATE guarda anche la testata di provenienza se la riga cambia padre. ⭐ Fascia _a05_: il rifiuto di stato parla PRIMA dei guard _a10_ sui legami (fulfillment, figli), o l''operatore legge un rimedio che non e'' il rimedio. Nasce da D7 di brief-db-partita-merce-per-documento (una riga di DDT gia'' instradata a fatturazione poteva essere disattivata) e ritira nello stesso giro le due copie che la regola aveva a DB: vendite.trgfn_contratti_righe_lock_post_attivazione (droppata) e il ramo 1 di vendite.trgfn_dlt_block_ordrig_ddtrig. Adottanti: vendite.ddt_righe (tre porte), vendite.ordini_righe (solo DELETE: INSERT/UPDATE restano aperti di proposito, data_consegna_confermata cambia dopo la conferma), vendite.contratti_righe (tre porte). Montaggio errato: E_DOC_RIGHE_LOCK_MONTAGGIO (TECNICO). rev 2026-09-29 (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-h): quarto adottante, vendite.resi_righe (tre porte, tipo RESO, colonna reso_id): dal Lotto 3-bis la conferma del reso carica la merce, e una riga cambiata dopo farebbe divergere reso e registro.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_resi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt ON vendite.resi_righe;

@@ -11,8 +11,21 @@ CREATE FUNCTION fn_annulla_reso(p_reso_id bigint)
 CREATE OR REPLACE FUNCTION vendite.fn_annulla_reso(p_reso_id bigint)
  RETURNS void
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
+-- ⭐ rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
+--   VERBO del modello «una scrittura = un verbo». SECURITY DEFINER con
+--   search_path bloccato (ogni nome qui dentro e' qualificato), testata presa
+--   FOR UPDATE con il predicato della policy nella WHERE (fuori perimetro:
+--   E_RESO_NOT_FOUND, no-leak, come prima sotto RLS), permesso 'conferma_reso'
+--   (script.fn_guard_azione) prima di qualunque scrittura. Lo stato si scrive
+--   aprendo la porta del registro (GUC zeroerp.reso_cambio_stato, Regola 2 di
+--   vendite.trgfn_resi_guard_transizione).
 DECLARE
+    v_utente            config.user_override_azioni.auth_user_id%TYPE;
+    v_reso              vendite.resi%ROWTYPE;
+    v_muove             boolean;   -- calcolato, nessuna colonna
     v_stato            config.stati_doc_reso.codice_interno%TYPE;
     v_stato_ann_id     config.stati_doc_reso.id%TYPE;
     v_ddt_uid          vendite.resi.sorgente_uid%TYPE;
@@ -22,7 +35,10 @@ DECLARE
     v_stato_cons_id    config.stati_doc_ddt.id%TYPE;
     v_tutto_reso       boolean;
     v_ord              RECORD;
+    v_sorgente_id      config.sorgenti.id%TYPE;
+    v_rientri          bigint[];   -- array di resi_righe_rientri.id: %TYPE non vale per un array
 BEGIN
+    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
     IF p_reso_id IS NULL OR p_reso_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite','fn_annulla_reso','E_VALIDAZIONE',
@@ -30,11 +46,12 @@ BEGIN
             NULL::uuid, 'p_reso_id deve essere > 0');
     END IF;
 
-    SELECT sdr.codice_interno, r.sorgente_uid
-      INTO v_stato, v_ddt_uid
+    -- La testata, FOR UPDATE, nel perimetro (predicato della policy: DEFINER).
+    SELECT r.* INTO v_reso
       FROM vendite.resi r
-      JOIN config.stati_doc_reso sdr ON sdr.id = r.stato_doc_reso_id
-     WHERE r.id = p_reso_id;
+     WHERE r.id = p_reso_id
+       AND script.fn_scope_ef_whitelist_via_reso(v_utente, r.id)
+       FOR UPDATE;
 
     IF NOT FOUND THEN
         PERFORM script.fn_log_and_raise_error(
@@ -42,6 +59,15 @@ BEGIN
             jsonb_build_object('reso_id', p_reso_id),
             NULL::uuid, p_reso_id::text);
     END IF;
+
+    SELECT sdr.codice_interno INTO v_stato
+      FROM config.stati_doc_reso sdr
+     WHERE sdr.id = v_reso.stato_doc_reso_id;
+    v_ddt_uid := v_reso.sorgente_uid;
+
+    -- Il permesso, prima di scrivere qualunque cosa (D-2). Su OGNI annullo,
+    -- anche di un reso che non muove merce (D-3b-f).
+    PERFORM script.fn_guard_azione(v_utente, 'conferma_reso');
 
     IF v_stato NOT IN ('DRAFT','CONFERMATO') THEN
         PERFORM script.fn_log_and_raise_error(
@@ -115,12 +141,19 @@ BEGIN
             NULL::uuid, p_reso_id::text);
     END IF;
 
-    -- Transizione -> ANNULLATO.
+    -- La merce che era rientrata (rev 2026-09-28): letta PRIMA di cambiare
+    -- lo stato, sulla riga del reso com'e'.
+    v_muove := vendite.fn_reso_muove_merce(v_reso);
+
+    -- Transizione -> ANNULLATO. La porta del registro si apre per QUESTO
+    -- reso (rev 2026-09-28).
     SELECT id INTO v_stato_ann_id FROM config.stati_doc_reso
      WHERE codice_interno = 'ANNULLATO' AND attivo IS TRUE;
+    PERFORM set_config('zeroerp.reso_cambio_stato', p_reso_id::text, true);
     UPDATE vendite.resi
        SET stato_doc_reso_id = v_stato_ann_id
      WHERE id = p_reso_id;
+    PERFORM set_config('zeroerp.reso_cambio_stato', '', true);
 
     -- Storno effetti solo se era CONFERMATO.
     IF v_stato = 'CONFERMATO' THEN
@@ -175,12 +208,29 @@ BEGIN
                  WHERE id = v_ddt_id;
             END IF;
         END IF;
+
+        -- Lo storno dei carichi (rev 2026-09-28, M-8): la merce riesce con
+        -- una riga opposta, al costo del carico. Se nel frattempo e' gia'
+        -- uscita di nuovo, la primitiva rifiuta l'uscita dello storno: il
+        -- registro non va sotto zero per un annullo.
+        IF v_muove THEN
+            SELECT s.id INTO v_sorgente_id
+              FROM config.sorgenti s
+             WHERE s.codice_interno = 'RESO_VENDITA_RIENTRO';
+            SELECT COALESCE(array_agg(x.id), '{}'::bigint[]) INTO v_rientri
+              FROM vendite.resi_righe_rientri x
+              JOIN vendite.resi_righe rr ON rr.id = x.resi_riga_id
+             WHERE rr.reso_id = p_reso_id;
+            IF v_sorgente_id IS NOT NULL THEN
+                PERFORM 1 FROM magazzino.fn_storna_movimenti_sorgente(v_sorgente_id, v_rientri);
+            END IF;
+        END IF;
     END IF;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_annulla_reso(p_reso_id bigint)
-IS 'Madre annullo reso con storno: -> ANNULLATO, ri-proiezione stato ordine, ri-flip DDT RESO->CONSEGNATO se non piu totale. Simmetrica a fn_conferma_reso. brief S2/S5. ⛔ DUE guardie di RIFIUTO, gemelle fra loro e tutte e due prima di qualunque scrittura: E_RESO_ANNULLO_CON_RICONSEGNE (la merce e'' gia'' ripartita) e - dal 2026-08-19 - E_RESO_ANNULLO_CON_ACCREDITO (esiste almeno una riga di ponte in vendite.resi_righe_accrediti). ⚠️ Senza la seconda un reso accreditato si annullava lasciando VIVE le rettifiche a quantita'' negativa in vendite.commesse_attivita, e il primo giro di fatturazione emetteva una nota di credito per un reso annullato: i due lister (fn_list_emittibili_lane, fn_emit_attivita_fatturabili_da_commessa) non nominano mai il reso e non riparano a valle. Il predicato e'' l''ESISTENZA del ponte, non lo stato delle rettifiche: se l''accredito e'' ormai troppo tardi per essere disfatto lo dice la sua madre con E_ACCREDITO_ANNULLO_NON_AMMESSO, e ricalcolare qui «tutte NON_EMESSA» sarebbe una seconda copia della stessa regola. ⛔ Si RIFIUTA e non si cascata: vendite.fn_annulla_accredito_riga_reso pretende un motivo obbligatorio che una cascata automatica dovrebbe inventarsi, e se una sola rettifica non e'' piu'' NON_EMESSA l''annullo del reso non deve avvenire affatto - non avvenire a meta''. ⭐⚠️ VINCOLO RECIPROCO su TRE posti (C-3), con script.fn_check_rinuncia_reversibile e vendite.fn_annulla_accredito_riga_reso: la guardia si auto-ripara perche'' l''annullo dell''accredito CANCELLA le righe di ponte - se un giorno diventasse un soft-delete i tre posti si cambiano INSIEME. rev 2026-07-13. rev 2026-07-17 (step 2b): il ri-flip conta solo i resi CONFERMATI. rev 2026-07-17 (step 2): il ri-flip legge l helper unico vw_resi_righe_effettive. rev 2026-08-19: guardia accredito (brief-design-note-credito-resi; segnalazione BE del 2026-08-19).';
+IS 'Madre annullo reso con storno: -> ANNULLATO, ri-proiezione stato ordine, ri-flip DDT RESO->CONSEGNATO se non piu totale. Simmetrica a fn_conferma_reso. brief S2/S5. ⛔ DUE guardie di RIFIUTO, gemelle fra loro e tutte e due prima di qualunque scrittura: E_RESO_ANNULLO_CON_RICONSEGNE (la merce e'' gia'' ripartita) e - dal 2026-08-19 - E_RESO_ANNULLO_CON_ACCREDITO (esiste almeno una riga di ponte in vendite.resi_righe_accrediti). ⚠️ Senza la seconda un reso accreditato si annullava lasciando VIVE le rettifiche a quantita'' negativa in vendite.commesse_attivita, e il primo giro di fatturazione emetteva una nota di credito per un reso annullato: i due lister (fn_list_emittibili_lane, fn_emit_attivita_fatturabili_da_commessa) non nominano mai il reso e non riparano a valle. Il predicato e'' l''ESISTENZA del ponte, non lo stato delle rettifiche: se l''accredito e'' ormai troppo tardi per essere disfatto lo dice la sua madre con E_ACCREDITO_ANNULLO_NON_AMMESSO, e ricalcolare qui «tutte NON_EMESSA» sarebbe una seconda copia della stessa regola. ⛔ Si RIFIUTA e non si cascata: vendite.fn_annulla_accredito_riga_reso pretende un motivo obbligatorio che una cascata automatica dovrebbe inventarsi, e se una sola rettifica non e'' piu'' NON_EMESSA l''annullo del reso non deve avvenire affatto - non avvenire a meta''. ⭐⚠️ VINCOLO RECIPROCO su TRE posti (C-3), con script.fn_check_rinuncia_reversibile e vendite.fn_annulla_accredito_riga_reso: la guardia si auto-ripara perche'' l''annullo dell''accredito CANCELLA le righe di ponte - se un giorno diventasse un soft-delete i tre posti si cambiano INSIEME. rev 2026-07-13. rev 2026-07-17 (step 2b): il ri-flip conta solo i resi CONFERMATI. rev 2026-07-17 (step 2): il ri-flip legge l helper unico vw_resi_righe_effettive. rev 2026-08-19: guardia accredito (brief-design-note-credito-resi; segnalazione BE del 2026-08-19). ⭐ rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f, M-8): VERBO. SECURITY DEFINER con search_path bloccato; testata FOR UPDATE nel perimetro (fuori perimetro E_RESO_NOT_FOUND); permesso conferma_reso su OGNI annullo (script.fn_guard_azione). Lo stato si scrive con la porta del registro aperta (GUC zeroerp.reso_cambio_stato); annullando un reso CONFERMATO che aveva fatto rientrare merce, i suoi carichi si stornano (magazzino.fn_storna_movimenti_sorgente sui rientri, sorgente RESO_VENDITA_RIENTRO) al costo del carico — se la merce e'' gia'' uscita di nuovo, la primitiva rifiuta. Le due guardie di rifiuto (ri-consegne, accrediti) restano prima di ogni scrittura. La firma non cambia (RETURNS void).';
 ```
 
 ---

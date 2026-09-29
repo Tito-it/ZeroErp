@@ -114,6 +114,14 @@
 #   `magazzino.fn_storna_movimenti_sorgente`: ci si arriva solo dai verbi.
 #   Forward su dev `90_end/20260928-83`; terza sede il blocco del provisioning;
 #   pgTAP `db/pgtap/magazzino/test-blocco-manuale-e-porta-lotto3-v1.sql`.
+#
+# ── ⭐ IL LOTTO 3-BIS DI MAGAZZINO (dal 2026-09-28) ─────────────────────────
+#   Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso, sezione 4 (P-11)
+#   In `v_fn_riservate` il posting del reso, `magazzino.fn_posta_reso`: ci si
+#   arriva solo dal verbo vendite.fn_conferma_reso (DEFINER). I due verbi del
+#   reso (fn_conferma_reso, fn_annulla_reso) restano concessi all'app come
+#   ogni funzione. Forward su dev `90_end/20260928-98`; terza sede il blocco
+#   del provisioning; pgTAP `db/pgtap/magazzino/test-reso-carico-v1.sql`.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -170,7 +178,10 @@ databaseChangeLog:
                   -- ⭐ Dal 2026-09-28 (Lotto 3): le operazioni interne della bolla e lo
                   --   storno; l'app ci arriva solo da vendite.fn_cambia_stato_ddt.
                   'magazzino.fn_posta_ddt',
-                  'magazzino.fn_storna_movimenti_sorgente'
+                  'magazzino.fn_storna_movimenti_sorgente',
+                  -- ⭐ Dal 2026-09-28 (Lotto 3-bis): il posting del reso; l'app ci
+                  --   arriva solo da vendite.fn_conferma_reso.
+                  'magazzino.fn_posta_reso'
                 ];
                 -- ⭐ Schemi SENZA DELETE per l'applicazione: le shadow di storico le
                 --   scrive il trigger (INSERT della versione, UPDATE che chiude la

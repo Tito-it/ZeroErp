@@ -25,7 +25,8 @@
 > * la CI da zero (`ci_apply` + suite), che scrive la sua baseline;
 > * la vista di lettura della merce in viaggio (P-13.2), che nasce con il suo
 >   lettore;
-> * il Lotto **3-bis**, il carico da reso cliente (D-L3-i).
+> * ~~il Lotto **3-bis**, il carico da reso cliente (D-L3-i)~~ — ✅ lato DB
+>   applicato e verde il 29-09 ([brief del 3-bis](brief-db-magazzino-lotto-3-bis-carico-da-reso.md)).
 >
 > *Decisioni:* 🟢 **tutte e undici prese da Tid** (26 e 28-09). Il 26-09 (§3): il magazzino sta sulla **testata** della bolla
 > (D-L3-a), il dettaglio fisico sta in una **tabella figlia dei prelievi**
@@ -37,7 +38,7 @@
 > l'azione `blocca_merce` (D-L3-j), il ritiro di `ddt_righe.lotto`/`seriale`
 > (D-L3-k), la mappatura **causale di trasporto → causale di magazzino** con la
 > merce presso terzi fuori (D-L3-g), il **reso del cliente in un 3-bis** subito
-> dopo (D-L3-i). ⛔ Nessun changeSet scritto, niente applicato.
+> dopo (D-L3-i).
 >
 > **Perimetro:** tutto ciò che fa **uscire** la merce dal registro, o la sposta,
 > attraverso un documento: la bolla di vendita (e le altre causali di trasporto
@@ -554,7 +555,7 @@ molti più pgTAP: il censimento dei test sui DDT va fatto prima di scrivere.
 
 | Cosa | Dove | Perché non qui |
 | --- | --- | --- |
-| il **carico da reso cliente** | 3-bis, subito dopo (D-L3-i) | il reso non sa dove né quando rientra la merce |
+| il **carico da reso cliente** | 3-bis, subito dopo (D-L3-i): [brief-db-magazzino-lotto-3-bis-carico-da-reso](brief-db-magazzino-lotto-3-bis-carico-da-reso.md) | il reso non sa dove né quando rientra la merce |
 | la **merce presso terzi** (conto visione, riparazione, conto lavoro) | decisione a sé (D-L3-g) | è una domanda di proprietà |
 | gli **eventi asset** | lotto suo (D-L2-l) | un documento in più |
 | la **ricezione acquisti** e il reso a fornitore | Lotto 4 | documento nuovo, e la seconda occorrenza dei prelievi |
@@ -596,4 +597,6 @@ molti più pgTAP: il censimento dei test sui DDT va fatto prima di scrivere.
 | 2026-09-28 (notte) | 🔴 **Primo apply di Tid fermo in `80_data`** su `20260709-11` (mirror delle causali di trasporto): la cella vuota di `causale_magazzino` e' entrata come stringa `''`, non come `NULL` — il mirror aveva `nullValue: ""`, che su una colonna `STRING` non vale — e la FK verso `magazzino.causali` l'ha rifiutata. ⚠️ La prova pre-apply (§4-ter) **non poteva vederlo**: simulava il seed leggendo il CSV in Python, dove la cella vuota diventava `NULL`; il loader vero non lo fa. E' la trappola di linee-guida-sql §11.7. **Corretto**: token `NULL` nelle quattro celle e `nullValue: "NULL"` nel mirror, come `sorgenti.csv`. Applicati a quel punto `20260928-60 → -82`; restano il mirror e `90_end/20260928-83`, al prossimo migrate |
 | 2026-09-28 (notte) | 🔴 **Runner di Tid:** `vendite/test-ddt-righe-componenti-v1` test 12, trigger su `ddt_righe_componenti` 14 invece di 13. E' il `block_deact` che `ci_apply` genera per `vendite.ddt_righe_prelievi`, figlia via `ddt_riga_componente_id`: voluto (un componente con prelievi non si spegne). Aggiornato il numero esatto, con la ragione accanto. Censiti gli altri pgTAP che guardano i trigger delle tabelle padre dei prelievi e dei magazzini: nessun altro li **conta** — cercano per funzione o per nome |
 | 2026-09-28 (notte) | ✅ **Applicato e verde** (Tid): `20260928-60 → -83` `EXECUTED`, mirror `20260709-11` `RERAN` col token `NULL`, suite pgTAP verde col runner come app. Verificati sul catalogo la mappatura delle causali di trasporto (`NULL` veri su conto visione, reso, riparazione e conto lavoro) e la postura (niente `INSERT` su `movimenti_attesi`, niente `EXECUTE` su `fn_posta_ddt`). Il lato DB del Lotto 3 e' consegnato; restano le richieste a BE/FE (§6) e la CI da zero |
+| 2026-09-29 | 📝 **Debito documentale chiuso** col giro del 3-bis: `magazzino/manual/movimenti_attesi` (i verbi del blocco, l'app in sola lettura) e `magazzino/manual/magazzini` (il predefinito unico per emittente e il default della bolla) |
+| 2026-09-29 | 🔴 **Due registri non censiti dal Lotto 3**, visti dal runner di Tid durante il 3-bis: `vendite.ddt_righe_prelievi` non era in `dbops.storico_scope_policy` (riga 123 aggiunta al CSV), e le esenzioni `movimenti_attesi.stato = CHIUSA` e `trasferimenti.stato_trasferimento = POSTED` di `dbops.stati_check_dichiarazioni` erano diventate debiti estinti (`fn_libera_blocco`, `fn_posta_trasferimento`): tolte dal CSV e da `80_data/changelog/20260929-03`. Dettaglio nel [brief del 3-bis](brief-db-magazzino-lotto-3-bis-carico-da-reso.md) |
 
