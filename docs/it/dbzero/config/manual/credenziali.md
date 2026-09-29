@@ -10,6 +10,8 @@
 >
 > **Il cambio password obbligatorio:** [fn_get_deve_cambiare_password](/dbzero/script/funzioni/fn_get_deve_cambiare_password) · [fn_imposta_deve_cambiare_password](/dbzero/script/funzioni/fn_imposta_deve_cambiare_password)
 >
+> **Il secondo fattore:** [fn_totp_obbligatorio](/dbzero/script/funzioni/fn_totp_obbligatorio) · [fn_imposta_totp_obbligatorio](/dbzero/script/funzioni/fn_imposta_totp_obbligatorio) · il dispositivo: [config.auth_totp_device](/dbzero/config/tabelle/auth_totp_device)
+>
 > **Le vesti:** [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali)
 
 ---
@@ -24,7 +26,11 @@ non alla singola porta:
 
 * quanti tentativi sbagliati di fila ha subito, e quando l'ultimo;
 * se un amministratore l'ha **bloccata**, chi, quando e perché;
-* se al prossimo accesso deve **cambiare la password**.
+* se al prossimo accesso deve **cambiare la password**;
+* se un amministratore le ha imposto il **secondo fattore** (dal 29-09-2026).
+  È una delle due ragioni per cui una persona deve usarlo: l'altra è avere un
+  profilo privilegiato. Chi deve usarlo, e perché, lo dice una funzione sola,
+  [fn_totp_obbligatorio](/dbzero/script/funzioni/fn_totp_obbligatorio).
 
 Fino al 2026-09-25 queste informazioni stavano su `anagrafiche.identita_digitali`,
 cioè su una riga **per porta**: lo stato di una cosa sola era sparso su più righe,
@@ -61,6 +67,14 @@ l'attesa, quanti secondi al massimo) sono parametri: `login_max_tentativi_fallit
 | Accesso riuscito da una macchina | azzerati | tolto **solo** su quella macchina | resta | resta |
 | Reset della password riuscito | azzerati | tolto su **tutte** | ⛔ **resta** | a cura del cambio password |
 | Sblocco dell'amministratore | restano | restano | tolto | resta |
+| Codice del secondo fattore sbagliato | **+1**, come una password sbagliata | **+1** su quella macchina | resta | resta |
+
+⭐ **Un codice del secondo fattore sbagliato vale come una password sbagliata**
+(decisione di Tid del 28-09-2026). Chi sbaglia il codice la password ce l'ha già:
+è proprio il caso da frenare, e sei cifre sono solo un milione di combinazioni.
+Lo registra il backend, che è chi verifica il codice. E per la stessa ragione un
+accesso è «riuscito» — e azzera gli errori — solo quando è passato anche il
+secondo fattore, non dopo la sola password.
 
 ⚠️ **Il reset non toglie il blocco dell'amministratore.** Il reset dimostra che la
 persona possiede l'email; non annulla la decisione di chi ha bloccato.
@@ -105,5 +119,9 @@ conoscono il significato dell'assenza. L'applicazione può leggere la tabella, m
   `tentativi_falliti`, `bloccato_fino_a`, `deve_cambiare_password` e
   `totp_obbligatorio` escono da `identita_digitali` (`20260925-25`). Brief:
   brief-db-blocco-login-per-credenziale.
+* 2026-09-29 — `totp_obbligatorio` **arriva** sulla credenziale (`20260929-05`):
+  era uscito da `identita_digitali` il 25-09 senza una sede nuova. Lo scrive un
+  SUPER_ADMIN con [fn_imposta_totp_obbligatorio](/dbzero/script/funzioni/fn_imposta_totp_obbligatorio).
+  Brief: brief-db-secondo-fattore-totp.
 
 {% include-markdown "signature-core.md" %}

@@ -17,7 +17,7 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 16,16,tipi_ruolo_tipi_indirizzo_default,Vista standard matrice ruoli / indirizzi,sistema,,,t,25,"[{""col"":""tipo_ruolo_descrizione"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
 17,17,pratiche_default,Vista standard pratiche,sistema,,,t,10,"[{""col"":""data_apertura"",""dir"":""desc""}]",t,2026-07-31 00:00:00,mctit
 18,18,emittenti_fiscali_default,Vista standard emittenti fiscali,sistema,,,t,25,"[{""col"":""ragione_sociale_completa"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
-19,19,emittente_billing_account_default,Vista standard billing account emittente,sistema,,,t,15,"[{""col"":""billing_account_codice"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
+19,19,emittente_billing_account_default,Vista standard billing account emittente,sistema,,,t,10,"[{""col"":""billing_account_codice"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
 20,20,uom_tipi_default,Vista standard tipi di unita di misura,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
 21,21,unita_misura_default,Vista standard unita di misura,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
 22,22,conversioni_uom_default,Vista standard conversioni UoM,sistema,,,t,25,"[{""col"":""valido_al"",""dir"":""desc""}]",t,2026-07-31 00:00:00,mctit
@@ -35,7 +35,7 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 34,34,coda_lavori_default,Vista standard coda lavori,sistema,,,t,25,"[{""col"":""data_insert"",""dir"":""desc""}]",t,2026-08-02 00:00:00,mctit
 35,35,coda_stampa_default,Vista standard coda stampa,sistema,,,t,25,"[{""col"":""data_insert"",""dir"":""desc""}]",t,2026-08-02 00:00:00,mctit
 36,36,approvazioni_prezzo_default,Vista standard approvazioni prezzo,sistema,,,t,25,"[{""col"":""data_insert"",""dir"":""desc""}]",t,2026-08-02 00:00:00,mctit
-37,37,listini_righe_default,Vista standard righe versione listino,sistema,,,t,15,"[{""col"":""articolo_descrizione"",""dir"":""asc""}]",t,2026-08-03 00:00:00,mctit
+37,37,listini_righe_default,Vista standard righe versione listino,sistema,,,t,10,"[{""col"":""articolo_descrizione"",""dir"":""asc""}]",t,2026-08-03 00:00:00,mctit
 38,38,commesse_attivita_default,Vista standard attivita commessa,sistema,,,t,25,,t,2026-08-03 00:00:00,mctit
 39,39,dash_aperto_documenti_default,Vista standard situazione aperta,sistema,,,t,25,"[{""col"":""anzianita_giorni"",""dir"":""desc""}]",t,2026-08-03 00:00:00,mctit
 40,40,dash_backlog_documenti_default,Vista standard backlog,sistema,,,t,25,"[{""col"":""anzianita_giorni"",""dir"":""desc""}]",t,2026-08-03 00:00:00,mctit
@@ -52,53 +52,53 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 51,51,righe_default,Vista standard righe contabili da lavorare,sistema,,,t,25,"[{""col"":""data_pagamento"",""dir"":""desc""}]",t,2026-08-25 00:00:00,mctit
 52,52,rate_fuori_capienza_default,Vista standard rate fuori capienza,sistema,,,t,25,"[{""col"":""data_scadenza"",""dir"":""desc""}]",t,2026-08-25 00:00:00,mctit
 53,53,eccedenze_default,Vista standard eccedenze da sistemare,sistema,,,t,25,"[{""col"":""eccedenza_cliente"",""dir"":""desc""}]",t,2026-08-25 00:00:00,mctit
-54,54,registri_numerazione_default,Vista standard registri di numerazione,sistema,,,t,15,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-09-01 00:00:00,mctit
+54,54,registri_numerazione_default,Vista standard registri di numerazione,sistema,,,t,10,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-09-01 00:00:00,mctit
 55,55,famiglie_documento_default,Vista standard famiglie di documento,sistema,,,t,25,"[{""col"":""codice_interno"",""dir"":""asc""}]",t,2026-09-01 00:00:00,mctit
 56,56,lista_definizione_default,Vista standard definizioni di lista,sistema,,,t,,,t,2026-09-02 00:00:00,mctit
 57,57,lista_colonna_default,Vista standard catalogo colonne,sistema,,,t,,,t,2026-09-02 00:00:00,mctit
 58,58,lista_preset_default,Vista standard preset,sistema,,,t,,,t,2026-09-02 00:00:00,mctit
 59,59,lista_colonna_permesso_default,Vista standard permessi colonna,sistema,,,t,,,t,2026-09-02 00:00:00,mctit
 60,60,canali_incasso_default,Vista standard canali di incasso,sistema,,,t,25,,t,2026-09-02 00:00:00,mctit
-61,61,sistemazioni_fattura_default,Vista standard atti di sistemazione,sistema,,,t,15,,t,2026-09-02 00:00:00,mctit
-62,62,soggetto_titoli_iva_default,Vista standard titoli IVA soggetto,sistema,,,t,15,,t,2026-09-02 00:00:00,mctit
+61,61,sistemazioni_fattura_default,Vista standard atti di sistemazione,sistema,,,t,10,,t,2026-09-02 00:00:00,mctit
+62,62,soggetto_titoli_iva_default,Vista standard titoli IVA soggetto,sistema,,,t,10,,t,2026-09-02 00:00:00,mctit
 63,63,titoli_iva_sfondati_default,Vista standard titoli IVA sfondati,sistema,,,t,25,,t,2026-09-02 00:00:00,mctit
-64,64,titolo_iva_ambiti_default,Vista standard ambiti del titolo,sistema,,,t,15,,t,2026-09-02 00:00:00,mctit
-65,65,titolo_iva_movimenti_default,Vista standard registro movimenti,sistema,,,t,15,,t,2026-09-02 00:00:00,mctit
+64,64,titolo_iva_ambiti_default,Vista standard ambiti del titolo,sistema,,,t,10,,t,2026-09-02 00:00:00,mctit
+65,65,titolo_iva_movimenti_default,Vista standard registro movimenti,sistema,,,t,10,,t,2026-09-02 00:00:00,mctit
 66,66,processi_default,Vista standard processi automatici,sistema,,,t,25,"[{""col"":""canale"",""dir"":""asc""}]",t,2026-09-05 00:00:00,mctit
 67,67,lotto_gruppi_default,Vista standard documenti presi in carico,sistema,,,t,25,,t,2026-09-06 00:00:00,mctit
 68,68,rate_default,Vista standard rate da incassare,sistema,,,t,10,"[{""col"":""data_scadenza"",""dir"":""asc""}]",t,2026-09-17 00:00:00,mctit
-69,69,distinta_righe_default,Vista standard righe di una distinta,sistema,,,t,15,,t,2026-09-18 00:00:00,mctit
+69,69,distinta_righe_default,Vista standard righe di una distinta,sistema,,,t,10,,t,2026-09-18 00:00:00,mctit
 70,70,inventari_default,Vista standard inventari di magazzino,sistema,,,t,25,,t,2026-09-18 00:00:00,mctit
-71,71,inventario_righe_default,Vista standard righe di un inventario,sistema,,,t,15,,t,2026-09-18 00:00:00,mctit
+71,71,inventario_righe_default,Vista standard righe di un inventario,sistema,,,t,10,,t,2026-09-18 00:00:00,mctit
 72,72,inventario_piano_default,Vista standard piano di un inventario,sistema,,,t,10,,t,2026-09-18 00:00:00,mctit
 73,73,rettifiche_default,Vista standard rettifiche di magazzino,sistema,,,t,25,,t,2026-09-18 00:00:00,mctit
-74,74,rettifica_righe_default,Vista standard righe di una rettifica,sistema,,,t,15,,t,2026-09-18 00:00:00,mctit
+74,74,rettifica_righe_default,Vista standard righe di una rettifica,sistema,,,t,10,,t,2026-09-18 00:00:00,mctit
 75,75,disponibilita_default,Vista standard disponibilita' per articolo e magazzino,sistema,,,t,25,,t,2026-09-18 00:00:00,mctit
 76,76,disponibilita_articoli_default,Vista standard disponibilita' per articolo,sistema,,,t,25,,t,2026-09-18 00:00:00,mctit
 77,77,movimenti_default,Vista standard registro dei movimenti di magazzino,sistema,,,t,25,,t,2026-09-18 00:00:00,mctit
 78,78,error_log_default,Vista standard registro degli errori tecnici,sistema,,,t,25,"[{""col"":""occurred_at"",""dir"":""desc""}]",t,2026-09-19 00:00:00,mctit
 79,79,giornale_default,Vista standard giornale degli eventi,sistema,,,t,25,"[{""col"":""quando"",""dir"":""desc""}]",t,2026-09-19 00:00:00,mctit
 80,80,magazzini_default,Vista standard magazzini,sistema,,,t,25,,t,2026-09-21 00:00:00,mctit
-81,81,ubicazioni_default,Vista standard ubicazioni di un magazzino,sistema,,,t,15,,t,2026-09-21 00:00:00,mctit
-82,82,lotti_default,Vista standard lotti di un articolo,sistema,,,t,15,"[{""col"":""data_arrivo"",""dir"":""desc""}]",t,2026-09-21 00:00:00,mctit
+81,81,ubicazioni_default,Vista standard ubicazioni di un magazzino,sistema,,,t,10,,t,2026-09-21 00:00:00,mctit
+82,82,lotti_default,Vista standard lotti di un articolo,sistema,,,t,10,"[{""col"":""data_arrivo"",""dir"":""desc""}]",t,2026-09-21 00:00:00,mctit
 83,83,sessioni_attive_default,Vista standard sessioni attive,sistema,,,t,25,"[{""col"":""data_ultimo_evento"",""dir"":""desc""}]",t,2026-09-27 00:00:00,mctit
-84,84,documenti_sorgente_default,Vista standard documenti generati di una sorgente,sistema,,,t,15,"[{""col"":""generato_at"",""dir"":""desc""}]",t,2026-09-27 00:00:00,mctit
-85,85,flussi_default,Vista standard flussi di una pratica,sistema,,,t,15,"[{""col"":""sequenza"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
-86,86,utilities_tipi_ruolo_usage_default,Vista standard emittenti che usano la matrice,sistema,,,t,15,"[{""col"":""emittente_descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
+84,84,documenti_sorgente_default,Vista standard documenti generati di una sorgente,sistema,,,t,10,"[{""col"":""generato_at"",""dir"":""desc""}]",t,2026-09-27 00:00:00,mctit
+85,85,flussi_default,Vista standard flussi di una pratica,sistema,,,t,10,"[{""col"":""sequenza"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
+86,86,utilities_tipi_ruolo_usage_default,Vista standard emittenti che usano la matrice,sistema,,,t,10,"[{""col"":""emittente_descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
 87,87,reparti_default,Vista standard reparti,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
-88,88,template_versioni_default,Vista standard versioni di un template,sistema,,,t,15,"[{""col"":""versione"",""dir"":""desc""}]",t,2026-09-27 00:00:00,mctit
-89,89,preventivo_revisioni_default,Vista standard revisioni di un preventivo,sistema,,,t,15,"[{""col"":""rev"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
-90,90,offerta_revisioni_default,Vista standard revisioni di un'offerta commerciale,sistema,,,t,15,"[{""col"":""revisione_numero"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
+88,88,template_versioni_default,Vista standard versioni di un template,sistema,,,t,10,"[{""col"":""versione"",""dir"":""desc""}]",t,2026-09-27 00:00:00,mctit
+89,89,preventivo_revisioni_default,Vista standard revisioni di un preventivo,sistema,,,t,10,"[{""col"":""rev"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
+90,90,offerta_revisioni_default,Vista standard revisioni di un'offerta commerciale,sistema,,,t,10,"[{""col"":""revisione_numero"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
 91,91,regioni_default,Vista standard regioni,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
 92,92,province_default,Vista standard province,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
 93,93,stati_default,Vista standard stati,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
 94,94,comuni_default,Vista standard comuni,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
 95,95,codici_postali_default,Vista standard codici postali,sistema,,,t,25,"[{""col"":""comune_descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
 96,96,toponomastica_default,Vista standard toponomastica,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
-97,97,preventivo_righe_default,Vista standard righe di un preventivo,sistema,,,t,15,,t,2026-09-28 00:00:00,mctit
-98,98,ordine_righe_default,Vista standard righe di un ordine,sistema,,,t,15,,t,2026-09-28 00:00:00,mctit
-99,99,ddt_righe_default,Vista standard righe di un DDT,sistema,,,t,15,,t,2026-09-28 00:00:00,mctit
-100,100,reso_righe_default,Vista standard righe di un reso,sistema,,,t,15,,t,2026-09-28 00:00:00,mctit
-101,101,articolo_componenti_default,Vista standard distinta base,sistema,,,t,15,"[{""col"":""valido_dal"",""dir"":""desc""}]",t,2026-09-28 00:00:00,mctit
-102,102,fattura_righe_default,Vista standard righe di una fattura,sistema,,,t,15,,t,2026-09-28 00:00:00,mctit
-103,103,contratto_righe_default,Vista standard righe di un contratto,sistema,,,t,15,,t,2026-09-28 00:00:00,mctit
+97,97,preventivo_righe_default,Vista standard righe di un preventivo,sistema,,,t,10,,t,2026-09-28 00:00:00,mctit
+98,98,ordine_righe_default,Vista standard righe di un ordine,sistema,,,t,10,,t,2026-09-28 00:00:00,mctit
+99,99,ddt_righe_default,Vista standard righe di un DDT,sistema,,,t,10,,t,2026-09-28 00:00:00,mctit
+100,100,reso_righe_default,Vista standard righe di un reso,sistema,,,t,10,,t,2026-09-28 00:00:00,mctit
+101,101,articolo_componenti_default,Vista standard distinta base,sistema,,,t,10,"[{""col"":""valido_dal"",""dir"":""desc""}]",t,2026-09-28 00:00:00,mctit
+102,102,fattura_righe_default,Vista standard righe di una fattura,sistema,,,t,10,,t,2026-09-28 00:00:00,mctit
+103,103,contratto_righe_default,Vista standard righe di un contratto,sistema,,,t,10,,t,2026-09-28 00:00:00,mctit

@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CHECK — LA FORMA DI UN NUOVO MAZZO DI CODICI DI RECUPERO:
+#   script.fn_check_totp_recovery_hash(p_hash jsonb) -> boolean
+#   Brief: brief-db-secondo-fattore-totp, sezione 3.
+#
+# ── ⭐ PERCHE' UNA FUNZIONE ──────────────────────────────────────────
+#   Due verbi ricevono un mazzo nuovo — fn_totp_registra_device (20260929-17)
+#   e fn_totp_rigenera_recovery (-21) — e devono rifiutarlo per le stesse
+#   ragioni: nasce gia' estratta (regola del 2 dentro lo stesso giro).
+#
+# ── ⭐ LA FORMA ──────────────────────────────────────────────────────
+#   un array jsonb, con ALMENO un elemento, di stringhe non vuote, senza
+#   doppioni. I doppioni contano: il consumo toglie l'hash con l'operatore
+#   jsonb `-`, che li toglierebbe tutti insieme, e due codici uguali non sono
+#   due codici.
+#   ⚠️ Un mazzo VUOTO e' uno stato legittimo della riga (tutti i codici usati),
+#   non un mazzo nuovo legittimo: per questo e' un check dei verbi e non un
+#   CHECK della tabella, che vuole solo l'array (chk_auth_totp_device_recovery_array).
+#   Il formato dell'hash lo decide il backend: qui solo «testo non vuoto».
+#
+# fn_check_*: risponde, non solleva (linee-guida-sql §5). LANGUAGE sql,
+# IMMUTABLE. NULL in ingresso -> false.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260929-16-create-fn-check-totp-recovery-hash-mctit.yaml
+
+  - changeSet:
+      id: 20260929-16-create-fn-check-totp-recovery-hash
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_check_totp_recovery_hash(p_hash): true se il mazzo nuovo di codici di recupero e'
+        un array jsonb non vuoto di stringhe non vuote senza doppioni. La chiedono
+        fn_totp_registra_device e fn_totp_rigenera_recovery. IMMUTABLE, non solleva. Brief:
+        brief-db-secondo-fattore-totp §3.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_check_totp_recovery_hash';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_totp_recovery_hash(p_hash jsonb)
+              RETURNS boolean
+              LANGUAGE sql
+              IMMUTABLE
+              AS $function$
+                  -- Scopo: dire se un mazzo NUOVO di codici di recupero ha la
+                  --   forma giusta. NULL -> false.
+                  -- ⚠️ CASE e non AND: l'AND non garantisce l'ordine, e
+                  --    jsonb_array_length / jsonb_array_elements su uno scalare
+                  --    sollevano invece di rispondere false.
+                  SELECT CASE
+                      WHEN jsonb_typeof(p_hash) IS DISTINCT FROM 'array' THEN false
+                      WHEN jsonb_array_length(p_hash) = 0 THEN false
+                      WHEN EXISTS (
+                               SELECT 1
+                                 FROM jsonb_array_elements(p_hash) e(v)
+                                WHERE jsonb_typeof(e.v) <> 'string'
+                                   OR btrim(e.v #>> '{}') = '') THEN false
+                      ELSE (SELECT count(DISTINCT e.v) FROM jsonb_array_elements(p_hash) e(v))
+                           = jsonb_array_length(p_hash)
+                  END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_totp_recovery_hash(jsonb) IS
+                  'Un mazzo NUOVO di codici di recupero del secondo fattore ha la forma giusta? true se e'' un array jsonb con almeno un elemento, tutti stringhe non vuote (gli hash calcolati dal backend: il formato e'' suo), senza doppioni (il consumo toglie l''hash con l''operatore jsonb -, che li toglierebbe tutti). Un mazzo vuoto e'' uno stato legittimo della riga (codici finiti), non un mazzo nuovo: e'' un check dei verbi, non un CHECK della tabella. La chiedono script.fn_totp_registra_device e script.fn_totp_rigenera_recovery. NULL -> false. Non solleva (fn_check_*). IMMUTABLE. Brief: brief-db-secondo-fattore-totp §3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_totp_recovery_hash(jsonb);

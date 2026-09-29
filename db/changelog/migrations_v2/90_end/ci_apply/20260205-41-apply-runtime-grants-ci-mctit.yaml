@@ -122,6 +122,21 @@
 #   reso (fn_conferma_reso, fn_annulla_reso) restano concessi all'app come
 #   ogni funzione. Forward su dev `90_end/20260928-98`; terza sede il blocco
 #   del provisioning; pgTAP `db/pgtap/magazzino/test-reso-carico-v1.sql`.
+#
+# ── ⭐ IL DEVICE DEL SECONDO FATTORE (dal 2026-09-29) ───────────────────────
+#   Brief: brief-db-secondo-fattore-totp, sezione 3
+#   `config.auth_totp_device` entra in `v_tabelle_sola_lettura_app`: anti-replay
+#   sul passo e monouso dei codici di recupero li fanno rispettare i verbi
+#   DEFINER script.fn_totp_*. Il SELECT resta per fn_get_totp_device (INVOKER).
+#   Forward su dev `90_end/20260929-24`; terza sede il blocco del provisioning;
+#   pgTAP `db/pgtap/config/test-totp-porta-v1.sql`.
+#
+# ── ⭐ IL CATALOGO DELLE MISURE DI PAGINA (dal 2026-09-30) ──────────────────
+#   Brief: brief-db-misure-pagina-catalogo, sezione 2
+#   `ui.misure_pagina` entra in `v_tabelle_sola_lettura_app`: lo possiede il
+#   CSV, come `config.aree_funzionali`. Forward su dev `90_end/20260930-13`;
+#   terza sede il blocco del provisioning; pgTAP
+#   `db/pgtap/ui/test-misure-pagina-v1.sql`.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -224,7 +239,13 @@ databaseChangeLog:
                   'dbops.sec_functions_owner',
                   -- ⭐ Dal 2026-09-28 (Lotto 3, D-L3-j): i blocchi di magazzino li
                   --   aprono e li liberano i verbi fn_apri_blocco / fn_libera_blocco.
-                  'magazzino.movimenti_attesi'
+                  'magazzino.movimenti_attesi',
+                  -- ⭐ Dal 2026-09-29 il DEVICE DEL SECONDO FATTORE: lo scrivono solo
+                  --   i verbi script.fn_totp_* (brief-db-secondo-fattore-totp §3).
+                  'config.auth_totp_device',
+                  -- ⭐ Dal 2026-09-30 il CATALOGO DELLE MISURE DI PAGINA: lo possiede il
+                  --   CSV (brief-db-misure-pagina-catalogo §2).
+                  'ui.misure_pagina'
                 ];
                 -- ⭐ Tabelle SENZA DELETE per l'applicazione (la forma per tabella
                 --   di v_schemi_senza_delete): un blocco di magazzino si chiude

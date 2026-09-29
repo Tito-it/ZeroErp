@@ -79,7 +79,7 @@ JSONB con le chiavi:
 | `colonne` | `jsonb[]` | Array di colonne con `codice`, `ordine`, `larghezza`, `visibile`, `fissata`, `esportabile`, `tipo_colonna`, `etichetta_i18n_key`, `priorita` |
 | `ordinamento` | `jsonb[]` | Array `[{"col": "...", "dir": "asc/desc"}]` |
 | `filtri` | `jsonb` | Filtri preimpostati |
-| `pagina_dimensione` | `integer` | Righe per pagina |
+| `pagina_dimensione` | `integer` | Righe per pagina: sempre una misura del catalogo [`ui.misure_pagina`](/dbzero/ui/tabelle/misure_pagina) — quella scelta (preferenza o preset) se è ammessa, altrimenti il default `PAGINA` del catalogo. Mai vuota (dal 30-09-2026; prima ripiegava su un 25 scritto nella funzione, e senza preferenza né preset poteva uscire vuota) |
 | `ricerca_min_caratteri` | `integer` | La soglia della ricerca libera della lista (`ui.lista_definizione.ricerca_min_caratteri`): sotto questo numero di caratteri il frontend non manda il termine. È la stessa colonna che legge la ricerca del backend |
 | `colonne_nuove` | `integer` | Numero di colonne aggiunte dal merge automatico (>0 = badge "aggiornato" nel frontend) |
 | `preset_aggiornato` | `boolean` | DEF-2: `TRUE` se il preset di base è stato modificato dopo lo snapshot della preferenza utente E l'utente non ha ancora ignorato l'aggiornamento (o il preset è cambiato di nuovo dopo l'ultimo ignore). `FALSE` in tutti gli altri casi: nessuna preferenza, `preset_base_id IS NULL`, snapshot allineato, ignore attivo. |

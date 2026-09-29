@@ -1011,30 +1011,30 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 1011,97,articolo_codice,Articolo,,articolo_codice,identificatore,string,,140,10,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_articolo,100
 1012,97,descrizione,Descrizione,,descrizione,informazione,string,,260,20,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_descrizione,95
 1013,97,qta_operativa,Quantita',,qta_operativa,informazione,numeric,number,100,30,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_quantita,90
-1014,97,importo_riga,Importo,,importo_riga,informazione,numeric,currency_eur,120,40,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_importo,85
-1015,97,prezzo_unitario,Prezzo,,prezzo_unitario,informazione,numeric,currency_eur,120,50,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_prezzo,70
-1016,97,uom_codice,Unita' di misura,,uom_codice,informazione,string,,80,60,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_uom,60
-1017,97,sconto_percentuale,Sconto,,sconto_percentuale,informazione,numeric,,90,70,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_sconto,40
-1018,97,data_consegna,Consegna richiesta dal cliente,,data_consegna_richiesta_cliente,informazione,date,date_short,120,80,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_data_consegna_richiesta_cliente,35
-1019,97,iva,IVA,,iva_descrizione,informazione,string,,140,90,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_iva,30
+1014,97,importo_riga,Importo,,importo_riga,informazione,numeric,currency_eur,120,70,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_importo,85
+1015,97,prezzo_unitario,Prezzo,,prezzo_unitario,informazione,numeric,currency_eur_6,120,50,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_prezzo,70
+1016,97,uom_codice,Unita' di misura,,uom_codice,informazione,string,,100,40,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_uom,60
+1017,97,sconto_percentuale,Sconto,,sconto_percentuale,informazione,numeric,percent_2,90,60,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_sconto,40
+1018,97,data_consegna,Consegna richiesta dal cliente,,data_consegna_richiesta_cliente,informazione,date,date_short,120,90,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_data_consegna_richiesta_cliente,35
+1019,97,iva,IVA,,iva_descrizione,informazione,string,,140,80,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.preventivi.riga_iva,30
 1020,97,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-09-28 00:00:00,mctit,common.col_azioni,100
 1021,98,articolo_codice,Articolo,,articolo_codice,identificatore,string,,140,10,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_articolo,100
 1022,98,descrizione,Descrizione,,descrizione,informazione,string,,260,20,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_descrizione,95
 1023,98,qta_operativa,Quantita',,qta_operativa,informazione,numeric,number,100,30,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_quantita,90
-1024,98,importo_riga,Importo,,importo_riga,informazione,numeric,currency_eur,120,40,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_importo,85
-1025,98,prezzo_unitario,Prezzo,,prezzo_unitario,informazione,numeric,currency_eur,120,50,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_prezzo,70
-1026,98,uom_codice,Unita' di misura,,uom_codice,informazione,string,,80,60,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_uom,60
-1027,98,sconto_percentuale,Sconto,,sconto_percentuale,informazione,numeric,,90,70,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_sconto,40
-1028,98,data_consegna,Consegna confermata,,data_consegna_confermata,informazione,date,date_short,120,80,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_data_consegna_confermata,35
-1029,98,iva,IVA,,iva_descrizione,informazione,string,,140,90,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_iva,30
+1024,98,importo_riga,Importo,,importo_riga,informazione,numeric,currency_eur,120,70,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_importo,85
+1025,98,prezzo_unitario,Prezzo,,prezzo_unitario,informazione,numeric,currency_eur_6,120,50,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_prezzo,70
+1026,98,uom_codice,Unita' di misura,,uom_codice,informazione,string,,100,40,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_uom,60
+1027,98,sconto_percentuale,Sconto,,sconto_percentuale,informazione,numeric,percent_2,90,60,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_sconto,40
+1028,98,data_consegna,Consegna confermata,,data_consegna_confermata,informazione,date,date_short,120,90,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_data_consegna_confermata,35
+1029,98,iva,IVA,,iva_descrizione,informazione,string,,140,80,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_iva,30
 1030,98,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-09-28 00:00:00,mctit,common.col_azioni,100
 1031,99,articolo_codice,Articolo,,articolo_codice,identificatore,string,,140,10,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.ddt.riga_articolo,100
 1032,99,descrizione,Descrizione,,descrizione,informazione,string,,260,20,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.ddt.riga_descrizione,95
 1033,99,qta_operativa,Quantita',,qta_operativa,informazione,numeric,number,100,30,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ddt.riga_quantita,90
-1034,99,importo_riga,Importo,,importo_riga,informazione,numeric,currency_eur,120,40,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ddt.riga_importo,85
-1035,99,prezzo_unitario,Prezzo,,prezzo_unitario,informazione,numeric,currency_eur,120,50,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ddt.riga_prezzo,70
-1036,99,uom_codice,Unita' di misura,,uom_codice,informazione,string,,80,60,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ddt.riga_uom,60
-1037,99,sconto_percentuale,Sconto,,sconto_percentuale,informazione,numeric,,90,70,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ddt.riga_sconto,40
+1034,99,importo_riga,Importo,,importo_riga,informazione,numeric,currency_eur,120,70,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ddt.riga_importo,85
+1035,99,prezzo_unitario,Prezzo,,prezzo_unitario,informazione,numeric,currency_eur_6,120,50,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ddt.riga_prezzo,70
+1036,99,uom_codice,Unita' di misura,,uom_codice,informazione,string,,100,40,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ddt.riga_uom,60
+1037,99,sconto_percentuale,Sconto,,sconto_percentuale,informazione,numeric,percent_2,90,60,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ddt.riga_sconto,40
 1038,99,iva,IVA,,iva_descrizione,informazione,string,,140,80,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ddt.riga_iva,30
 1039,99,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-09-28 00:00:00,mctit,common.col_azioni,100
 1040,100,articolo_codice,Articolo,,articolo_codice,identificatore,string,,140,10,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.resi.riga_articolo,100
@@ -1042,8 +1042,8 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 1042,100,qta_operativa,Q.ta' resa,,qta_operativa,informazione,numeric,number,100,30,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.resi.riga_quantita,90
 1043,100,stato_riconsegna,Ri-consegna,,stato_riconsegna,informazione,string,,130,40,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.resi.riga_stato_riconsegna,80
 1044,100,tipo_reso,Tipo reso,,tipo_reso_descrizione,informazione,string,,150,50,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.resi.riga_tipo,70
-1045,100,uom_codice,UoM,,uom_codice,informazione,string,,80,60,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.resi.riga_uom,60
-1046,100,gia_accreditato,Gia' accreditato,,gia_accreditato,informazione,boolean,yesno,120,70,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.resi.riga_gia_accreditato,50
+1045,100,uom_codice,UoM,,uom_codice,informazione,string,,100,60,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.resi.riga_uom,60
+1046,100,gia_accreditato,Gia' accreditato,,gia_accreditato,informazione,numeric,number,120,70,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.resi.riga_gia_accreditato,50
 1047,100,motivo,Motivo,,motivo,informazione,string,,220,80,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.resi.riga_motivo,40
 1048,100,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-09-28 00:00:00,mctit,common.col_azioni,100
 1049,101,componente_codice,Codice,,componente_codice,identificatore,string,,140,10,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,catalogo.col_codice,100
@@ -1056,21 +1056,21 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 1056,102,riga_nr,N.,,riga_nr,identificatore,numeric,,70,10,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_riga,100
 1057,102,descrizione,Descrizione,,descrizione,informazione,string,,260,20,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_descrizione,95
 1058,102,quantita,Qta',,quantita,informazione,numeric,number,100,30,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_qta,90
-1059,102,importo_riga,Imponibile,,importo_riga,informazione,numeric,currency_eur,120,40,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_imponibile,85
-1060,102,prezzo_unitario,Prezzo,,prezzo_unitario,informazione,numeric,currency_eur,120,50,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_prezzo,70
-1061,102,uom_codice,UdM,,uom_codice,informazione,string,,80,60,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_uom,60
-1062,102,articolo_codice,Articolo,,articolo_codice,informazione,string,,140,70,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,catalogo.articolo,50
-1063,102,sconto_percentuale,Sconto,,sconto_percentuale,informazione,numeric,,90,80,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_sconto,40
-1064,102,iva,IVA,,iva_descrizione,informazione,string,,140,90,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_iva,30
+1059,102,importo_riga,Imponibile,,importo_riga,informazione,numeric,currency_eur,120,70,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_imponibile,85
+1060,102,prezzo_unitario,Prezzo,,prezzo_unitario,informazione,numeric,currency_eur_6,120,50,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_prezzo,70
+1061,102,uom_codice,UdM,,uom_codice,informazione,string,,100,40,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_uom,60
+1062,102,articolo_codice,Articolo,,articolo_codice,informazione,string,,140,15,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,catalogo.articolo,50
+1063,102,sconto_percentuale,Sconto,,sconto_percentuale,informazione,numeric,percent_2,90,60,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_sconto,40
+1064,102,iva,IVA,,iva_descrizione,informazione,string,,140,80,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_iva,30
 1065,102,riga_rettificata,Rettifica riga,,riga_rettificata_documento,informazione,string,,150,100,left,,,f,f,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.fatture.col_rettifica_riga,20
 1066,103,articolo_codice,Articolo,,articolo_codice,identificatore,string,,140,10,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_articolo,100
 1067,103,descrizione,Descrizione,,articolo_descrizione,informazione,string,,260,20,left,,,f,t,t,t,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_descrizione,95
 1068,103,qta_operativa,Qta,,qta_operativa,informazione,numeric,number,100,30,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_qta,90
-1069,103,prezzo_finale,Prezzo finale,,prezzo_finale,informazione,numeric,currency_eur,120,40,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_prezzo_finale,85
-1070,103,prezzo_forzato,Prezzo forzato,,override_prezzo,informazione,numeric,currency_eur,120,50,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_prezzo_forzato,70
-1071,103,uom_codice,UoM,,uom_codice,informazione,string,,80,60,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_uom,60
+1069,103,prezzo_finale,Prezzo finale,,prezzo_finale,informazione,numeric,currency_eur_6,120,40,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_prezzo_finale,85
+1070,103,prezzo_forzato,Prezzo forzato,,override_prezzo,informazione,numeric,currency_eur_6,120,50,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_prezzo_forzato,70
+1071,103,uom_codice,UoM,,uom_codice,informazione,string,,100,60,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_uom,60
 1072,103,tipo_erogazione,Tipo,,tipo_erogazione,informazione,string,,110,70,left,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_tipo_erogazione,45
-1073,103,prezzo_listino,Prezzo listino,,prezzo_listino,informazione,numeric,currency_eur,120,80,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_prezzo_listino,35
+1073,103,prezzo_listino,Prezzo listino,,prezzo_listino,informazione,numeric,currency_eur_6,120,80,right,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_prezzo_listino,35
 1074,103,origine,Origine,,origine,informazione,string,,110,90,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.contratti.col_origine,30
 1075,103,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-09-28 00:00:00,mctit,common.col_azioni,100
-1076,98,data_consegna_richiesta_cliente,Consegna richiesta dal cliente,,data_consegna_richiesta_cliente,informazione,date,date_short,120,85,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_data_consegna_richiesta_cliente,33
+1076,98,data_consegna_richiesta_cliente,Consegna richiesta dal cliente,,data_consegna_richiesta_cliente,informazione,date,date_short,120,95,center,,,f,t,t,f,f,t,2026-09-28 00:00:00,mctit,vendite.ordini.riga_data_consegna_richiesta_cliente,33

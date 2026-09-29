@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# M-12 — IL TRIGGER DEL GUARD DEI PRESET
+#   Brief: brief-db-misure-pagina-catalogo, sezioni 2 (regola 1) e 3.
+#
+#   BEFORE INSERT OR UPDATE OF pagina_dimensione, fase a10: il rifiuto parla
+#   con E_UI_MISURA_PAGINA_NON_AMMESSA prima che la FK risponda 23503.
+#
+# ── ⛔ PERCHE' IN 90_end ─────────────────────────────────────────────
+#   Un trigger di dominio nasce di norma in 20_code. Questo no: da zero i preset
+#   si seminano in 80_data PRIMA del catalogo, e il guard li rifiuterebbe tutti
+#   (brief §3). Dopo il primo giro i due mirror trovano il catalogo gia' pieno.
+#   Non e' un trigger generato da ci_apply (linee-guida §11.5 non si applica).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260930-12-trigger-ui-lista-preset-guard-pagina-mctit.yaml
+
+  - changeSet:
+      id: 20260930-12-trigger-ui-lista-preset-guard-pagina
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Trigger trg_ui_lista_preset_a10_guard_pagina_ins_upd (BEFORE INSERT OR UPDATE OF
+        pagina_dimensione): la misura di un preset deve stare nel catalogo. In 90_end perche' da zero
+        i preset si seminano prima del catalogo. Brief: brief-db-misure-pagina-catalogo §2-3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'ui'
+                     AND p.proname = 'trgfn_ui_lista_preset_guard_pagina_dimensione';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid = 'ui.lista_preset'::regclass
+                     AND t.tgname = 'trg_ui_lista_preset_a10_guard_pagina_ins_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_ui_lista_preset_a10_guard_pagina_ins_upd
+                  BEFORE INSERT OR UPDATE OF pagina_dimensione ON ui.lista_preset
+                  FOR EACH ROW
+                  EXECUTE FUNCTION ui.trgfn_ui_lista_preset_guard_pagina_dimensione();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ui_lista_preset_a10_guard_pagina_ins_upd ON ui.lista_preset;

@@ -58,6 +58,12 @@ databaseChangeLog:
         - tableExists:
             schemaName: config
             tableName: profili_accesso
+        # 2026-09-29 (brief-db-secondo-fattore-totp §2.2): la colonna arriva da
+        # 00_schema/config/20260929-06, che gira prima di 80_data.
+        - columnExists:
+            schemaName: config
+            tableName: profili_accesso
+            columnName: richiede_secondo_fattore
       changes:
         - loadUpdateData:
             relativeToChangelogFile: true
@@ -79,6 +85,10 @@ databaseChangeLog:
               - column: { name: user_insert,  type: STRING }
               - column: { name: data_update,  type: STRING }
               - column: { name: user_update,  type: STRING }
+              # 2026-09-29 (D-T1): il segno del profilo privilegiato. true sul
+              # SUPER_ADMIN (9100), che lo deve avere sempre: il CHECK nasce in
+              # 90_end/20260929-23, dopo questo mirror.
+              - column: { name: richiede_secondo_fattore, type: BOOLEAN }
 
         # ⚠️ La sequenza IDENTITY non avanza sui seed con id espliciti: senza
         #   questo, il primo INSERT applicativo su config.profili_accesso

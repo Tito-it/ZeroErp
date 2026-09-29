@@ -190,4 +190,17 @@ Relazione logica:
 
 ---
 
+### Storia della guardia
+
+* **26-09-2026** (`20260926-11`): la sync diventa riservata al migratore, con
+  una guardia in testa al corpo.
+* **29-09-2026** (`20260929-08`, `-09`, regola del 2): la domanda «la sessione è
+  del migratore?» passa in
+  [fn_sessione_del_migratore](/dbzero/dbops/funzioni/fn_sessione_del_migratore),
+  perché la chiede anche lo sblocco del secondo fattore dal server. Il rifiuto
+  resta lo stesso (42501, fuori dal canale di log). Brief:
+  brief-db-secondo-fattore-totp.
+
+---
+
 {% include-markdown "signature-core.md" %}

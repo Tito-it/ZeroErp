@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-11 — UN MAZZO NUOVO DI CODICI DI RECUPERO: script.fn_totp_rigenera_recovery
+#   Brief: brief-db-secondo-fattore-totp, sezione 3.
+#
+# ── ⭐ COSA FA ───────────────────────────────────────────────────────
+#   Sostituisce il mazzo intero: i codici vecchi, usati o no, non valgono
+#   piu'. Il backend ha verificato prima un codice corrente (chi rigenera ha il
+#   telefono in mano), e mostra i codici nuovi una volta sola.
+#   Solo su un device CONFERMATO: durante il setup i codici si danno con la
+#   registrazione (script.fn_totp_registra_device). Altrimenti
+#   E_TOTP_DEVICE_ASSENTE.
+#
+# Forma del mazzo: script.fn_check_totp_recovery_hash (la stessa della
+# registrazione). Chi agisce: l'utente stesso (script.fn_guard_utente_stesso).
+# SECURITY DEFINER del PROPRIETARIO, search_path bloccato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260929-21-create-fn-totp-rigenera-recovery-mctit.yaml
+
+  - changeSet:
+      id: 20260929-21-create-fn-totp-rigenera-recovery
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_totp_rigenera_recovery(p_auth_user_id, p_recovery_codes_hash): sostituisce il mazzo
+        dei codici di recupero di un device confermato (i vecchi non valgono piu'). Chi agisce:
+        l'utente stesso. Device non confermato -> E_TOTP_DEVICE_ASSENTE. SECURITY DEFINER del
+        proprietario. Brief: brief-db-secondo-fattore-totp §3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_guard_utente_stesso', 'fn_check_totp_recovery_hash');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_totp_rigenera_recovery(
+                  p_auth_user_id        integer,
+                  p_recovery_codes_hash config.auth_totp_device.recovery_codes_hash%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: sostituire il mazzo dei codici di recupero di un device in uso.
+              DECLARE
+                  v_device_id config.auth_totp_device.id%TYPE;
+              BEGIN
+                  -- Prima riga: chi agisce e' la credenziale stessa.
+                  PERFORM script.fn_guard_utente_stesso(
+                      NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                      p_auth_user_id);
+
+                  IF p_auth_user_id <= 0
+                     OR NOT script.fn_check_totp_recovery_hash(p_recovery_codes_hash) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_rigenera_recovery', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id,
+                                             'recovery_tipo', jsonb_typeof(p_recovery_codes_hash)),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_totp_rigenera_recovery',
+                                         'codici di recupero (array non vuoto di hash distinti) obbligatori']);
+                  END IF;
+
+                  UPDATE config.auth_totp_device d
+                     SET recovery_codes_hash = p_recovery_codes_hash
+                   WHERE d.auth_user_id = p_auth_user_id
+                     AND d.confermato
+                  RETURNING d.id INTO v_device_id;
+
+                  IF v_device_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_rigenera_recovery', 'E_TOTP_DEVICE_ASSENTE',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_totp_rigenera_recovery(integer, jsonb) IS
+                  'Sostituisce il mazzo dei codici di recupero del secondo fattore di un device CONFERMATO: i vecchi, usati o no, non valgono piu''. Il backend ha verificato prima un codice corrente e mostra i nuovi una volta sola. Forma del mazzo: script.fn_check_totp_recovery_hash (se no E_AUTH_CHIAMATA_NON_VALIDA). Device assente o non confermato -> E_TOTP_DEVICE_ASSENTE (durante il setup i codici li da'' la registrazione). Chi agisce: la credenziale stessa (script.fn_guard_utente_stesso). SECURITY DEFINER del PROPRIETARIO, search_path bloccato. Brief: brief-db-secondo-fattore-totp §3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_totp_rigenera_recovery(integer, jsonb);

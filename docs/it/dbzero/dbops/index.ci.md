@@ -105,6 +105,7 @@
 - [fn_seed_automazione_guard_utility_tipo_ruolo](manual/fn_seed_automazione_guard_utility_tipo_ruolo.md) — La funzione **`dbops.fn_seed_automazione_guard_utility_tipo_ruolo(p_schemas)`** popola la tabella di configurazione automazione individuando in modo automatico le tabelle candidate.
 - [fn_seed_automazione_overlap](manual/fn_seed_automazione_overlap.md) — (latest review 19-01-26) La funzione **`dbops.fn_seed_automazione_overlap(p_schemas)`** popola (o aggiorna) `dbops.automazione_overlap` rilevando automaticamente le tabelle con periodo di validita (`valido_dal/valido_al` o `valid_from/valid_to`) e valutando se risultano versionate.
 - [fn_seed_fk_index_policy](manual/fn_seed_fk_index_policy.md) — (latest review 27-07-26)
+- [fn_sessione_del_migratore](manual/fn_sessione_del_migratore.md) — (scritta il 29-09-2026)
 - [fn_set_gucs_conn](manual/fn_set_gucs_conn.md) — (latest review 29-12-25) La funzione `dbops.fn_set_gucs_conn` serve a impostare in modo centralizzato le **GUC (Grand Unified Configuration)** custom di PostgreSQL per la **connessione corrente**. Queste variabili sono usate da trigger, funzioni e policy RLS per conoscere l’utente applicativo e il contesto di esecuzione (es. sessione Django, gruppi, tenant).
 - [fn_sorgenti_orfane](manual/fn_sorgenti_orfane.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_sorgenti_orfane_perimetro](manual/fn_sorgenti_orfane_perimetro.md) — (rev 2026-09-18 — Lotto 2 del magazzino)

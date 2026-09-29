@@ -231,10 +231,14 @@ WHERE to_regclass(t.nome) IS NOT NULL
 --   90_end/20260925-24; `db/pgtap/config/test-credenziali-porta-v1.sql` lo dice
 --   se non lo fa. Dal 2026-09-25 anche le gemelle del NOME TENTATO (R-7):
 --   `config.nomi_tentati` e `config.nomi_tentati_provenienze`, forward
---   90_end/20260925-62.
+--   90_end/20260925-62. Dal 2026-09-29 anche il DEVICE DEL SECONDO FATTORE,
+--   `config.auth_totp_device` (brief-db-secondo-fattore-totp §3): lo scrivono
+--   solo i verbi script.fn_totp_*; forward 90_end/20260929-24, pgTAP
+--   `db/pgtap/config/test-totp-porta-v1.sql`.
 SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
 FROM (VALUES ('config.credenziali'), ('config.credenziali_provenienze'),
-             ('config.nomi_tentati'), ('config.nomi_tentati_provenienze')) AS t(nome)
+             ('config.nomi_tentati'), ('config.nomi_tentati_provenienze'),
+             ('config.auth_totp_device')) AS t(nome)
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 
@@ -246,9 +250,12 @@ WHERE to_regclass(t.nome) IS NOT NULL
 --   90_end/20260925-34; `db/pgtap/config/test-pannello-porta-v1.sql` lo dice se
 --   non lo fa. Dal 2026-09-28 anche `config.aree_funzionali` (D-P9, §4.2): la
 --   possiede il CSV, nome e ordine si cambiano li'. Forward 90_end/20260928-30.
+--   Dal 2026-09-30 anche `ui.misure_pagina` (brief-db-misure-pagina-catalogo §2):
+--   le misure «righe per pagina», possedute dal CSV. Forward 90_end/20260930-13,
+--   pgTAP `db/pgtap/ui/test-misure-pagina-v1.sql`.
 SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
 FROM (VALUES ('magazzino.causali'), ('config.tabelle_gestibili'),
-             ('config.aree_funzionali')) AS t(nome)
+             ('config.aree_funzionali'), ('ui.misure_pagina')) AS t(nome)
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 

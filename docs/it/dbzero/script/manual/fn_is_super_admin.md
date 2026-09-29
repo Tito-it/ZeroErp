@@ -165,6 +165,12 @@ CREATE POLICY rls_fatture_bypass_admin ON vendite.fatture
   wrapper `fn_get_ruolo_sistema` e il type `config.ruolo_sistema`.
   Da qui in avanti `fn_is_super_admin` e' l'**unico** entry point
   per il check "bypass totale".
+* **29-09-2026** (`20260929-10`, `-11`, regola del 2): la seconda delle
+  due domande — «la credenziale ha un binding SUPER_ADMIN attivo?» — passa
+  in [fn_is_super_admin_account](/dbzero/script/funzioni/fn_is_super_admin_account),
+  perche' la chiede anche l'obbligo del secondo fattore, che vale su tutte
+  le porte. Qui resta il cancello della veste; risultato invariato. Brief:
+  brief-db-secondo-fattore-totp.
 
 ---
 

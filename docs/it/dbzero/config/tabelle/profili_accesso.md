@@ -20,10 +20,12 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| richiede_secondo_fattore | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_profili_accesso_super_admin_secondo_fattore |  |
 | PRIMARY KEY | pk_profili_accesso | id |
 | UNIQUE | uq_profili_accesso_codice | codice |
 

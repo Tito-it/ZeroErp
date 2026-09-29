@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# M-2 — IL CATALOGO DELLE MISURE DI PAGINA: il mirror del CSV
+#   Brief: brief-db-misure-pagina-catalogo, sezione 2.
+#
+#   Quattro misure (10, 25, 50, 100: quelle che il paginatore offriva, scritte
+#   nella costante del frontend che questo catalogo sostituisce) e i due default
+#   (10 COMPATTA, 25 PAGINA). Il CSV e' la sede: le misure si cambiano li'.
+#
+# ⚠️ Il token NULL, non la cella vuota: con nullValue "" Liquibase scrive ''
+#   su una colonna STRING, e uso_default = '' viola il CHECK (linee-guida §11.7).
+# ⚠️ Spostare un default da una misura a un'altra: il mirror scrive riga per
+#   riga, e per un momento l'uso sarebbe su due righe (indice unico parziale).
+#   Si fa in due giri del CSV: prima si toglie, poi si mette.
+# ⚠️ Una misura tolta dal CSV NON sparisce dalla tabella (loadUpdateData non
+#   cancella): serve un DELETE forward-only, che la FK dei preset rifiuta
+#   finche' un preset la usa.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260930-02-seed-ui-misure-pagina-mctit.yaml
+
+  - changeSet:
+      id: 20260930-02-seed-ui-misure-pagina
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Mirror di 80_data/sql/ui/misure_pagina.csv: le misure «righe per pagina» ammesse (10, 25,
+        50, 100) e i due default (10 COMPATTA, 25 PAGINA). Brief: brief-db-misure-pagina-catalogo §2.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: ui
+            tableName: misure_pagina
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/ui/misure_pagina.csv
+            tableName: misure_pagina
+            schemaName: ui
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id,          type: NUMERIC }
+              - column: { name: misura,      type: NUMERIC }
+              - column: { name: uso_default, type: STRING }
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+
+        # ⚠️ La sequenza IDENTITY non avanza sui seed con id espliciti.
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT setval(
+                  pg_get_serial_sequence('ui.misure_pagina', 'id'),
+                  GREATEST(COALESCE((SELECT MAX(id) FROM ui.misure_pagina), 0), 1),
+                  true
+              );
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DELETE FROM ui.misure_pagina WHERE id IN (1, 2, 3, 4);

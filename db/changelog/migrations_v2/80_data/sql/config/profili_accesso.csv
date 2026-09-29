@@ -1,5 +1,5 @@
-id,tipo,codice,descrizione,attivo,meta,data_insert,user_insert,data_update,user_update
-9001,PORTALE,CLIENTE_PORTALE_STANDARD,Profilo standard cliente portale (LETTURA su vendite e pagamenti),t,{},2026-04-18 00:00:00+02,postgres,2026-04-18 00:00:00+02,postgres
-9002,PORTALE,FORNITORE_PORTALE_STANDARD,Profilo standard fornitore portale (LETTURA su acquisti e pagamenti),t,{},2026-04-18 00:00:00+02,postgres,2026-04-18 00:00:00+02,postgres
-9003,PORTALE,SHOP_CUSTOMER_STANDARD,Profilo standard cliente shop (LETTURA su vendite e pagamenti),t,{},2026-04-18 00:00:00+02,postgres,2026-04-18 00:00:00+02,postgres
-9100,SUPER_ADMIN,SUPER_ADMIN,Profilo SUPER_ADMIN: bypass totale dei permessi (sostituisce ruolo_sistema=ADMIN legacy). Bindabile solo per identita (privilegio personale).,t,{},2026-04-19 00:00:00+02,postgres,2026-08-06 00:00:00+02,mctit
+id,tipo,codice,descrizione,attivo,meta,data_insert,user_insert,data_update,user_update,richiede_secondo_fattore
+9001,PORTALE,CLIENTE_PORTALE_STANDARD,Profilo standard cliente portale (LETTURA su vendite e pagamenti),t,{},2026-04-18 00:00:00+02,postgres,2026-04-18 00:00:00+02,postgres,f
+9002,PORTALE,FORNITORE_PORTALE_STANDARD,Profilo standard fornitore portale (LETTURA su acquisti e pagamenti),t,{},2026-04-18 00:00:00+02,postgres,2026-04-18 00:00:00+02,postgres,f
+9003,PORTALE,SHOP_CUSTOMER_STANDARD,Profilo standard cliente shop (LETTURA su vendite e pagamenti),t,{},2026-04-18 00:00:00+02,postgres,2026-04-18 00:00:00+02,postgres,f
+9100,SUPER_ADMIN,SUPER_ADMIN,Profilo SUPER_ADMIN: bypass totale dei permessi (sostituisce ruolo_sistema=ADMIN legacy). Bindabile solo per identita (privilegio personale).,t,{},2026-04-19 00:00:00+02,postgres,2026-08-06 00:00:00+02,mctit,t

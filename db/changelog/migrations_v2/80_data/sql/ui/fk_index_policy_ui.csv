@@ -7,3 +7,4 @@ ui,lista_preset_colonna,fk_lista_preset_colonna_lista_colonna,t,CREATE INDEX IF 
 ui,lista_preferenza_utente,fk_lista_preferenza_utente_lista_definizione,t,CREATE INDEX IF NOT EXISTS ix_ui_lista_preferenza_utente_lista_id ON ui.lista_preferenza_utente(lista_id);,f,mctit,2026-05-06 00:00:00+02
 ui,lista_preferenza_utente,fk_lista_preferenza_utente_lista_preset,t,CREATE INDEX IF NOT EXISTS ix_ui_lista_preferenza_utente_preset_base_id ON ui.lista_preferenza_utente(preset_base_id) WHERE preset_base_id IS NOT NULL;,f,mctit,2026-05-06 00:00:00+02
 ui,lista_colonna_permesso,fk_lista_colonna_permesso_profili_accesso,t,CREATE INDEX IF NOT EXISTS ix_ui_lista_colonna_permesso_profilo_accesso_id ON ui.lista_colonna_permesso(profilo_accesso_id);,f,mctit,2026-05-06 00:00:00+02
+ui,lista_preset,fk_lista_preset_misure_pagina,f,CREATE INDEX IF NOT EXISTS ix_ui_lista_preset_pagina_dimensione ON ui.lista_preset(pagina_dimensione);,f,mctit,2026-09-30 00:00:00+02
