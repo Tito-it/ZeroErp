@@ -37,3 +37,4 @@ id,area_id,permission_codename,descrizione,pericolosa,attivo,meta,data_insert,us
 36,6,registra_magazzino,"Registra inventario, rettifica o trasferimento interno di magazzino, e la consegna di una bolla di trasferimento (crea i movimenti: irreversibile)",t,t,{},2026-09-22 00:00:00+02,mctit,2026-09-28 00:00:00+02,mctit
 37,2,emetti_ddt,Emette una bolla o annulla una bolla emessa (se muove merce scarica o storna il magazzino: irreversibile),t,t,{},2026-09-28 00:00:00+02,mctit,2026-09-28 00:00:00+02,mctit
 38,6,blocca_merce,Apre o libera un blocco manuale di merce a magazzino (riserva pezzi per qualcuno: ferma gli scarichi degli altri),f,t,{},2026-09-28 00:00:00+02,mctit,2026-09-28 00:00:00+02,mctit
+39,2,conferma_reso,Conferma o annulla un reso (se fa rientrare merce carica o storna il magazzino),t,t,{},2026-09-28 00:00:00+02,mctit,2026-09-28 00:00:00+02,mctit

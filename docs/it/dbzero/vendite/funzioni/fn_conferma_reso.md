@@ -11,8 +11,21 @@ CREATE FUNCTION fn_conferma_reso(p_reso_id bigint)
 CREATE OR REPLACE FUNCTION vendite.fn_conferma_reso(p_reso_id bigint)
  RETURNS void
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
+-- ⭐ rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
+--   VERBO del modello «una scrittura = un verbo». SECURITY DEFINER con
+--   search_path bloccato (ogni nome qui dentro e' qualificato), testata presa
+--   FOR UPDATE con il predicato della policy nella WHERE (fuori perimetro:
+--   E_RESO_NOT_FOUND, no-leak, come prima sotto RLS), permesso 'conferma_reso'
+--   (script.fn_guard_azione) prima di qualunque scrittura. Lo stato si scrive
+--   aprendo la porta del registro (GUC zeroerp.reso_cambio_stato, Regola 2 di
+--   vendite.trgfn_resi_guard_transizione).
 DECLARE
+    v_utente            config.user_override_azioni.auth_user_id%TYPE;
+    v_reso              vendite.resi%ROWTYPE;
+    v_muove             boolean;   -- calcolato, nessuna colonna
     v_stato             config.stati_doc_reso.codice_interno%TYPE;
     v_stato_conf_id     config.stati_doc_reso.id%TYPE;
     v_ddt_uid           vendite.resi.sorgente_uid%TYPE;
@@ -23,6 +36,7 @@ DECLARE
     v_tutto_reso        boolean;
     v_ord               RECORD;
 BEGIN
+    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
     -- 1) Guard input + reso in DRAFT + almeno una riga.
     IF p_reso_id IS NULL OR p_reso_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
@@ -31,11 +45,12 @@ BEGIN
             NULL::uuid, 'p_reso_id deve essere > 0');
     END IF;
 
-    SELECT sdr.codice_interno, r.sorgente_uid
-      INTO v_stato, v_ddt_uid
+    -- La testata, FOR UPDATE, nel perimetro (predicato della policy: DEFINER).
+    SELECT r.* INTO v_reso
       FROM vendite.resi r
-      JOIN config.stati_doc_reso sdr ON sdr.id = r.stato_doc_reso_id
-     WHERE r.id = p_reso_id;
+     WHERE r.id = p_reso_id
+       AND script.fn_scope_ef_whitelist_via_reso(v_utente, r.id)
+       FOR UPDATE;
 
     IF NOT FOUND THEN
         PERFORM script.fn_log_and_raise_error(
@@ -43,6 +58,15 @@ BEGIN
             jsonb_build_object('reso_id', p_reso_id),
             NULL::uuid, p_reso_id::text);
     END IF;
+
+    SELECT sdr.codice_interno INTO v_stato
+      FROM config.stati_doc_reso sdr
+     WHERE sdr.id = v_reso.stato_doc_reso_id;
+    v_ddt_uid := v_reso.sorgente_uid;
+
+    -- Il permesso, prima di scrivere qualunque cosa (D-2). Su OGNI conferma,
+    -- anche di un reso che non muove merce (D-3b-f).
+    PERFORM script.fn_guard_azione(v_utente, 'conferma_reso');
 
     IF v_stato IS DISTINCT FROM 'DRAFT' THEN
         PERFORM script.fn_log_and_raise_error(
@@ -59,12 +83,34 @@ BEGIN
             NULL::uuid, p_reso_id::text);
     END IF;
 
-    -- 2) Transizione a CONFERMATO (gen_numero + guard_transizione).
+    -- 1-bis) La merce che rientra (rev 2026-09-28, D-3b-b/-c). Su un reso
+    --    che fa rientrare merce: il lock della bolla d'origine (il tetto per
+    --    prelievo somma i rientri di tutti i suoi resi: due conferme
+    --    concorrenti si serializzano qui), la conferma che parla (primo
+    --    motivo di script.fn_check_reso_merce, che conta gia' gli
+    --    automatici), poi i rientri automatici, finche' il reso e' in bozza.
+    v_muove := vendite.fn_reso_muove_merce(v_reso);
+    IF v_muove THEN
+        PERFORM 1 FROM vendite.ddt d WHERE d.uid = v_reso.sorgente_uid FOR UPDATE;
+        PERFORM script.fn_raise_primo_motivo_se_presente(
+            'vendite', 'vendite.fn_conferma_reso',
+            script.fn_check_reso_merce(v_reso), NULL, NULL::uuid,
+            jsonb_build_object('reso_id', p_reso_id));
+        INSERT INTO vendite.resi_righe_rientri (resi_riga_id, ddt_riga_prelievo_id, qta)
+        SELECT m.resi_riga_id, m.prelievo_unico_id, m.qta
+          FROM vendite.fn_reso_merce_da_rientrare(v_reso) m
+         WHERE m.automatico;
+    END IF;
+
+    -- 2) Transizione a CONFERMATO (gen_numero + guard_transizione). La
+    --    porta del registro si apre per QUESTO reso (rev 2026-09-28).
     SELECT id INTO v_stato_conf_id FROM config.stati_doc_reso
      WHERE codice_interno = 'CONFERMATO' AND attivo IS TRUE;
+    PERFORM set_config('zeroerp.reso_cambio_stato', p_reso_id::text, true);
     UPDATE vendite.resi
        SET stato_doc_reso_id = v_stato_conf_id
      WHERE id = p_reso_id;
+    PERFORM set_config('zeroerp.reso_cambio_stato', '', true);
 
     -- 3) Proiezione stato ordine per ogni ordine coinvolto (solo
     --    righe ri-consegna: quelle che riaprono il residuo).
@@ -123,11 +169,17 @@ BEGIN
              WHERE id = v_ddt_id;
         END IF;
     END IF;
+
+    -- 5) I carichi (rev 2026-09-28, D-3b-c): uno per rientro, al costo
+    --    dell'uscita d'origine, nella stessa transazione della conferma.
+    IF v_muove THEN
+        PERFORM 1 FROM magazzino.fn_posta_reso(p_reso_id);
+    END IF;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_conferma_reso(p_reso_id bigint)
-IS 'Madre conferma reso: DRAFT->CONFERMATO (numero+guard), proiezione stato ordine (residuo reso-aware -> PARZIALMENTE_EVASO/EVASO), flip DDT origine CONSEGNATO->RESO se reso totale. brief §5. rev 2026-07-13. rev 2026-07-17 (step 2b): il flip conta solo i resi CONFERMATI. rev 2026-07-17 (step 2): il flip legge l helper unico vw_resi_righe_effettive (CONFERMATE+attive, tutti i tipi).';
+IS 'Madre conferma reso: DRAFT->CONFERMATO (numero+guard), proiezione stato ordine (residuo reso-aware -> PARZIALMENTE_EVASO/EVASO), flip DDT origine CONSEGNATO->RESO se reso totale. brief §5. rev 2026-07-13. rev 2026-07-17 (step 2b): il flip conta solo i resi CONFERMATI. rev 2026-07-17 (step 2): il flip legge l helper unico vw_resi_righe_effettive (CONFERMATE+attive, tutti i tipi). ⭐ rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-b/-c/-f): VERBO. SECURITY DEFINER con search_path bloccato; testata FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_reso nella WHERE, fuori perimetro E_RESO_NOT_FOUND); permesso conferma_reso su OGNI conferma (script.fn_guard_azione, E_PERMESSO_NEGATO). Su un reso che fa rientrare merce (vendite.fn_reso_muove_merce): lock della bolla d''origine, primo motivo di script.fn_check_reso_merce, rientri automatici, poi lo stato con la porta del registro aperta (GUC zeroerp.reso_cambio_stato) e in coda i carichi (magazzino.fn_posta_reso, CARICO_RESO_VEN al costo dell''uscita). UNA transazione. La firma non cambia (RETURNS void).';
 ```
 
 ---

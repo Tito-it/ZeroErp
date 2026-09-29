@@ -58,6 +58,7 @@
 - [fn_check_registro_disattivabile](funzioni/fn_check_registro_disattivabile.md)
 - [fn_check_registro_forma_modificabile](funzioni/fn_check_registro_forma_modificabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_check_registro_serie_ammessa](funzioni/fn_check_registro_serie_ammessa.md)
+- [fn_check_reso_merce](funzioni/fn_check_reso_merce.md)
 - [fn_check_riga_contabile_eliminabile](funzioni/fn_check_riga_contabile_eliminabile.md) — (scritta il 14-09-2026)
 - [fn_check_riga_magazzino](funzioni/fn_check_riga_magazzino.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_check_rinuncia_reversibile](funzioni/fn_check_rinuncia_reversibile.md) — (creata 2026-07-26 — brief-db-chiusura-riconsegna-reso-definitivo §5.1)
@@ -146,6 +147,7 @@
 - [fn_login_attesa_secondi](funzioni/fn_login_attesa_secondi.md) — (scritta il 25-09-2026)
 - [fn_login_freno_passo](funzioni/fn_login_freno_passo.md) — (scritta il 25-09-2026)
 - [fn_login_parametri](funzioni/fn_login_parametri.md) — (scritta il 25-09-2026)
+- [fn_magazzino_dell_emittente](funzioni/fn_magazzino_dell_emittente.md)
 - [fn_norm_testo](funzioni/fn_norm_testo.md) — (rev 2026-08-21)
 - [fn_norm_via](funzioni/fn_norm_via.md) — (rev 2026-08-21)
 - [fn_pgtap_emittente_operatore](funzioni/fn_pgtap_emittente_operatore.md) — (rev 2026-08-21)

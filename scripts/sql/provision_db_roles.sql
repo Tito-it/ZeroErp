@@ -283,7 +283,10 @@ WHERE n.nspname = 'magazzino'
   AND p.proname IN ('fn_scrivi_movimento', 'fn_ricalcola_valore_giacenza',
                     -- ⭐ Dal 2026-09-28 (Lotto 3): le operazioni interne della bolla e
                     --   lo storno. Forward 90_end/20260928-83.
-                    'fn_posta_ddt', 'fn_storna_movimenti_sorgente')
+                    'fn_posta_ddt', 'fn_storna_movimenti_sorgente',
+                    -- ⭐ Dal 2026-09-28 (Lotto 3-bis): il posting del reso.
+                    --   Forward 90_end/20260928-98.
+                    'fn_posta_reso')
   AND p.prokind = 'f'
 \gexec
 

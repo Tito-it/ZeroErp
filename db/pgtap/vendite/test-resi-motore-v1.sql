@@ -56,9 +56,18 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(27);
 
--- Contesto (le madri sono SECURITY INVOKER: il pgTAP gira come owner).
+-- Contesto. Dal 2026-09-28 conferma e annullo del reso sono verbi SECURITY DEFINER
+-- col perimetro nella WHERE e il permesso conferma_reso (Lotto 3-bis, D-3b-f).
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 SET LOCAL app.current_user_id = '1';
+
+-- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
+-- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
+-- l'operatore di fixture non ha azioni, si concede qui.
+DO $az$ BEGIN
+    PERFORM dbops.fn_pgtap_concedi_azione(
+        NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
+END $az$;
 
 -- ============================================================
 -- 1) Oggetti motore resi presenti

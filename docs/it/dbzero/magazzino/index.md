@@ -35,6 +35,7 @@
 - [fn_libera_blocco](funzioni/fn_libera_blocco.md)
 - [fn_posta_ddt](funzioni/fn_posta_ddt.md)
 - [fn_posta_inventario](funzioni/fn_posta_inventario.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [fn_posta_reso](funzioni/fn_posta_reso.md)
 - [fn_posta_rettifica](funzioni/fn_posta_rettifica.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_posta_trasferimento](funzioni/fn_posta_trasferimento.md)
 - [fn_ricalcola_valore_giacenza](funzioni/fn_ricalcola_valore_giacenza.md) — (rev 2026-09-18 — Lotto 2 del magazzino)

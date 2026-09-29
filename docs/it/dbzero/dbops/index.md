@@ -184,6 +184,7 @@
 - [vw_processi_roster](views/vw_processi_roster.md) — (latest review 05-09-2026)
 - [vw_punti_canale_campo](views/vw_punti_canale_campo.md) — (latest review 22-09-2026)
 - [vw_punti_primo_motivo](views/vw_punti_primo_motivo.md)
+- [vw_resi_confermati_senza_carico](views/vw_resi_confermati_senza_carico.md)
 - [vw_riferimenti_morti_da_sanare](views/vw_riferimenti_morti_da_sanare.md) — (rev 2026-08-21)
 - [vw_riferimenti_morti_rientrati](views/vw_riferimenti_morti_rientrati.md) — (rev 2026-08-21)
 - [vw_rls_perimetro_scoperto](views/vw_rls_perimetro_scoperto.md) — (latest review 09-09-2026)

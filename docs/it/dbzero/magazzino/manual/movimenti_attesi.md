@@ -35,8 +35,24 @@ soli spazi non vale).
 `stato` vale `APERTA` o `CHIUSA`, con `data_chiusura` obbligatoria se e solo se `CHIUSA`.
 Il vecchio ciclo a quattro stati (`planned`, `picked`, `fulfilled`, `cancelled`) è uscito:
 la *natura* dell'attesa la dicono già la causale (verso) e la sorgente (c'è un documento o
-no); allo stato resta «conta ancora?». Liberare un blocco = `CHIUSA`, con la data; chi lo ha
-fatto lo dice l'audit. Non c'è `attivo`: sarebbe il secondo modo di dire «non conta».
+no); allo stato resta «conta ancora?». Liberare un blocco = `CHIUSA`, con la data. Non c'è
+`attivo`: sarebbe il secondo modo di dire «non conta».
+
+### Un blocco si apre e si libera con un atto (dal 28-09, Lotto 3)
+
+Un blocco manuale è una **promessa**, non un fatto sulla merce: ferma gli scarichi degli
+altri finché qualcuno non lo libera. Per questo lo apre e lo libera **una persona**, con
+due operazioni che chiedono il permesso *Blocca merce* (`blocca_merce`):
+
+* [magazzino.fn_apri_blocco](/dbzero/magazzino/funzioni/fn_apri_blocco) — quanta merce, di
+  quale articolo, per chi o perché; la posizione (lotto, seriale, ubicazione) la giudica la
+  stessa regola dei movimenti. Chi lo ha aperto resta scritto;
+* [magazzino.fn_libera_blocco](/dbzero/magazzino/funzioni/fn_libera_blocco) — porta il
+  blocco a `CHIUSA` e scrive chi, quando e perché. Un blocco già liberato non si libera
+  due volte, e un blocco non si cancella mai.
+
+Non si riusa il permesso delle registrazioni di magazzino: chi può contare la merce non è
+per forza chi può riservarla a un cliente.
 
 `data_prevista` è ammessa **solo senza documento**: dove c'è un documento, la data è la sua.
 
@@ -51,9 +67,14 @@ un asset la quantità è uno.
 
 ### Chi può vedere e scrivere
 
-`magazzino_id` è obbligatorio: è l'ancora del perimetro. Un operatore vede e scrive le attese
-dei magazzini del **proprio emittente** (policy `rls_movimenti_attesi_ef_whitelist`, via
+`magazzino_id` è obbligatorio: è l'ancora del perimetro. Un operatore **vede** le attese dei
+magazzini del **proprio emittente** (policy `rls_movimenti_attesi_ef_whitelist`, via
 magazzino). Meccanismo comune: [Linee guida SQL — sezione 10](/linee-guida-sql#10-row-level-security-rls).
+
+⭐ Dal 28-09 (Lotto 3) l'applicazione le **legge soltanto**: non può inserirle, cambiarle né
+cancellarle direttamente. Si scrivono solo con le due operazioni del blocco qui sopra, che
+controllano il permesso e il perimetro. È il modello «una scrittura = un'operazione» del
+database.
 
 ---
 

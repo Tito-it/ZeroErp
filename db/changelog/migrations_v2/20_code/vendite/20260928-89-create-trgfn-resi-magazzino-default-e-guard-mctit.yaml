@@ -1,0 +1,168 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-4 — Il magazzino di rientro del reso: il default e le regole che un CHECK non vede
+#   vendite.trgfn_resi_default_magazzino() + trg_resi_z10_default_magazzino_ins
+#   vendite.trgfn_resi_guard_magazzino()   + trg_resi_z10_guard_magazzino_ins_upd
+#   Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso, sezione 3 (D-3b-a)
+#
+# -- IL DEFAULT --------------------------------------------------------------------------------------
+#   Il magazzino della BOLLA D'ORIGINE, non il predefinito dell'emittente: la
+#   merce rientra, di norma, da dove era partita. Solo all'INSERT e solo se
+#   manca; in bozza lo si cambia (per esempio un magazzino «resi da verificare»).
+#   ⚠️ Prima occorrenza di un «default dalla bolla d'origine»: resta qui.
+#
+# -- IL GUARD ----------------------------------------------------------------------------------------
+#   1. IMMUTABILE fuori bozza, sullo stato VECCHIO (come la bolla);
+#                                                -> E_RESO_MAGAZZINO_IMMUTABILE
+#   2. dell'EMITTENTE del reso, dal BB script.fn_magazzino_dell_emittente
+#      (20260928-87): la seconda occorrenza della regola della bolla.
+#                                                -> E_RESO_MAGAZZINO_INCOERENTE
+#
+# -- FASCIA z10, E PERCHE' ---------------------------------------------------------------------------
+#   All'INSERT l'emittente lo mette trgfn_resi_normalize (lo eredita dalla
+#   bolla), che in ordine alfabetico gira DOPO le fasce a*: default e guard
+#   stanno in z10, dopo di lui. Fra i due, «default» precede «guard».
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260928-89-create-trgfn-resi-magazzino-default-e-guard-mctit.yaml
+
+  - changeSet:
+      id: 20260928-89-create-trgfn-resi-magazzino-default-e-guard
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il magazzino di rientro del reso: default dal magazzino della bolla d'origine all'INSERT
+        (D-3b-a) e guard — immutabile fuori bozza (E_RESO_MAGAZZINO_IMMUTABILE), dell'emittente del
+        reso dal BB script.fn_magazzino_dell_emittente (E_RESO_MAGAZZINO_INCOERENTE). Brief: brief-
+        db-magazzino-lotto-3-bis-carico-da-reso, sezione 3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: resi
+                columnName: magazzino_id
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_magazzino_dell_emittente';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_default_magazzino()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: un reso nato senza magazzino prende quello da cui era partita la
+              --   bolla d'origine (D-3b-a). Solo se manca: chi lo sceglie vince.
+              -- ⚠️ Non il predefinito dell'emittente (D-L3-h): la domanda del reso e'
+              --   «da dove era partita?», e la risposta sta sulla bolla.
+              DECLARE
+                  v_magazzino_id vendite.ddt.magazzino_id%TYPE;
+              BEGIN
+                  IF NEW.magazzino_id IS NULL AND NEW.sorgente_uid IS NOT NULL THEN
+                      SELECT d.magazzino_id INTO v_magazzino_id
+                        FROM vendite.ddt d
+                        JOIN config.sorgenti s ON s.id = NEW.sorgente_tipo_id
+                                              AND s.codice_interno = 'DDT_VENDITA'
+                       WHERE d.uid = NEW.sorgente_uid;
+                      NEW.magazzino_id := v_magazzino_id;   -- NULL se la bolla non ne ha uno
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_resi_default_magazzino() IS
+                  'BEFORE INSERT su vendite.resi: se magazzino_id manca, prende il magazzino della bolla '
+                  'd''origine (sorgente DDT_VENDITA, per uid) — D-3b-a: la merce rientra, di norma, da dove era '
+                  'partita. Non il predefinito dell''emittente. Bolla senza magazzino: resta NULL, e se il reso '
+                  'muove merce lo chiede la check della conferma. Gira dopo trgfn_resi_normalize e prima del '
+                  'guard (ordine alfabetico dei trigger, fascia z10). Brief: '
+                  'brief-db-magazzino-lotto-3-bis-carico-da-reso.';
+
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_guard_magazzino()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: le regole del magazzino di rientro che un CHECK non vede (D-3b-a):
+              --   immutabile fuori bozza, e dell'emittente del reso.
+              DECLARE
+                  v_stato_old config.stati_doc_reso.codice_interno%TYPE;
+              BEGIN
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.magazzino_id IS NOT DISTINCT FROM OLD.magazzino_id
+                     AND NEW.emittente_fiscale_id IS NOT DISTINCT FROM OLD.emittente_fiscale_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- 1. Immutabile fuori bozza: lo stato VECCHIO decide (l'UPDATE che
+                  --    conferma e sceglie il magazzino insieme resta lecito).
+                  IF TG_OP = 'UPDATE' AND NEW.magazzino_id IS DISTINCT FROM OLD.magazzino_id THEN
+                      SELECT s.codice_interno INTO v_stato_old
+                        FROM config.stati_doc_reso s
+                       WHERE s.id = OLD.stato_doc_reso_id;
+                      IF v_stato_old IS DISTINCT FROM 'DRAFT' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite', 'vendite.trgfn_resi_guard_magazzino',
+                              'E_RESO_MAGAZZINO_IMMUTABILE',
+                              jsonb_build_object('reso_id', NEW.id, 'stato', v_stato_old,
+                                                 'magazzino_da', OLD.magazzino_id, 'magazzino_a', NEW.magazzino_id),
+                              NEW.tx_id,
+                              COALESCE(v_stato_old, 'NULL'));
+                      END IF;
+                  END IF;
+
+                  -- 2. Dell'emittente del reso (M-6), dal BB: letto sotto RLS, un
+                  --    magazzino di un altro emittente non si vede, e la frase e' la stessa.
+                  IF NEW.magazzino_id IS NOT NULL
+                     AND NOT script.fn_magazzino_dell_emittente(NEW.magazzino_id, NEW.emittente_fiscale_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.trgfn_resi_guard_magazzino',
+                          'E_RESO_MAGAZZINO_INCOERENTE',
+                          jsonb_build_object('reso_id', NEW.id, 'magazzino_id', NEW.magazzino_id,
+                                             'emittente_reso', NEW.emittente_fiscale_id),
+                          NEW.tx_id,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_resi_guard_magazzino() IS
+                  'Guard BEFORE INSERT OR UPDATE su vendite.resi (D-3b-a), che esce subito se magazzino ed '
+                  'emittente non cambiano. E_RESO_MAGAZZINO_IMMUTABILE: il magazzino cambia su un reso che non '
+                  'era in bozza (stato VECCHIO). E_RESO_MAGAZZINO_INCOERENTE: il magazzino non e'' '
+                  'dell''emittente del reso, dal BB script.fn_magazzino_dell_emittente (letto sotto RLS: '
+                  'invisibile e inesistente rispondono uguale). Fascia z10: dopo trgfn_resi_normalize, che '
+                  'all''INSERT eredita l''emittente dalla bolla. Il magazzino mancante NON e'' qui: e'' un motivo '
+                  'della conferma (script.fn_check_reso_merce). Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso.';
+
+              CREATE TRIGGER trg_resi_z10_default_magazzino_ins
+                  BEFORE INSERT ON vendite.resi
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_resi_default_magazzino();
+
+              CREATE TRIGGER trg_resi_z10_guard_magazzino_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.resi
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_resi_guard_magazzino();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_resi_z10_guard_magazzino_ins_upd ON vendite.resi;
+              DROP TRIGGER IF EXISTS trg_resi_z10_default_magazzino_ins ON vendite.resi;
+              DROP FUNCTION IF EXISTS vendite.trgfn_resi_guard_magazzino();
+              DROP FUNCTION IF EXISTS vendite.trgfn_resi_default_magazzino();

@@ -1,0 +1,103 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-11 — La postura del Lotto 3-bis, forward su dev
+#   magazzino.fn_posta_reso: RISERVATA (REVOKE a PUBLIC e all'app)
+#   vendite.fn_conferma_reso, vendite.fn_annulla_reso: EXECUTE all'app (i verbi)
+#   Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso, sezione 4 (P-11)
+#
+# -- LE TRE SEDI, come nel Lotto 3 --------------------------------------------------------------------
+#   1. questo forward, per dbdev (che non rinasce da zero);
+#   2. il loop dei grant 90_end/ci_apply/20260205-41 (v_fn_riservate), che
+#      altrimenti riconcederebbe EXECUTE a ogni passata;
+#   3. scripts/sql/provision_db_roles.sql.
+#   ⛔ Nessun REVOKE fuori dal loop che il loop non conosca (linee-guida-sql §11.8).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260928-98-postura-lotto3-bis-magazzino-mctit.yaml
+
+  - changeSet:
+      id: 20260928-98-postura-lotto3-bis-magazzino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Postura del Lotto 3-bis: magazzino.fn_posta_reso riservata (a PUBLIC e all'app); EXECUTE
+        all'app sui verbi del reso. Resa stabile dal loop 20260205-41 e dal provisioning. Brief:
+        brief-db-magazzino-lotto-3-bis-carico-da-reso, sezione 4 (P-11).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "3"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname, p.proname) IN (('magazzino', 'fn_posta_reso'),
+                                                ('vendite', 'fn_conferma_reso'),
+                                                ('vendite', 'fn_annulla_reso'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $porta$
+              DECLARE
+                  v_fn record;
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: skip postura del Lotto 3-bis.';
+                      RETURN;
+                  END IF;
+
+                  -- Il posting del reso: riservato. A PUBLIC e all'app insieme (=X).
+                  FOR v_fn IN
+                      SELECT p.oid::regprocedure AS firma
+                        FROM pg_catalog.pg_proc p
+                        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                       WHERE n.nspname = 'magazzino'
+                         AND p.proname = 'fn_posta_reso'
+                         AND p.prokind = 'f'
+                  LOOP
+                      EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC, zeroerp_app', v_fn.firma);
+                  END LOOP;
+
+                  -- I verbi del reso: la strada dell'app (come prima, ma ora sono DEFINER).
+                  FOR v_fn IN
+                      SELECT p.oid::regprocedure AS firma
+                        FROM pg_catalog.pg_proc p
+                        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                       WHERE (n.nspname, p.proname) IN (('vendite', 'fn_conferma_reso'),
+                                                        ('vendite', 'fn_annulla_reso'))
+                         AND p.prokind = 'f'
+                  LOOP
+                      EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO zeroerp_app', v_fn.firma);
+                  END LOOP;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Riapre il posting all'app. ⚠️ Senza togliere la voce dal loop 20260205-41 e
+              -- dal provisioning, la passata ci_apply successiva la richiude.
+              DO $porta$
+              DECLARE
+                  v_fn record;
+              BEGIN
+                  FOR v_fn IN
+                      SELECT p.oid::regprocedure AS firma
+                        FROM pg_catalog.pg_proc p
+                        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                       WHERE n.nspname = 'magazzino' AND p.proname = 'fn_posta_reso'
+                  LOOP
+                      EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO zeroerp_app', v_fn.firma);
+                  END LOOP;
+              END
+              $porta$;

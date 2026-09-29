@@ -119,3 +119,5 @@ id,schema_tabella,nome_tabella,modo,colonna,padre_schema,padre_tabella,ragione,d
 120,vendite,resi_righe_riconsegne,PADRE,resi_riga_id,vendite,resi_righe,NULL,2026-09-11
 121,vendite,resi_righe_rinunce,PADRE,resi_riga_id,vendite,resi_righe,NULL,2026-09-11
 122,magazzino,lotti,NESSUNO,NULL,NULL,NULL,"Definizione senza magazzino_id ne' emittente: fuori dal perimetro RLS per costruzione (brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.3). La storia di un lotto e' la stessa per tutti gli emittenti, come quella di un articolo.",2026-09-14
+123,vendite,ddt_righe_prelievi,PADRE,ddt_riga_id,vendite,ddt_righe,NULL,2026-09-29
+124,vendite,resi_righe_rientri,PADRE,resi_riga_id,vendite,resi_righe,NULL,2026-09-29

@@ -1,0 +1,94 @@
+# ⚙️ Funzione `fn_reso_merce_da_rientrare`
+
+```sql
+CREATE FUNCTION fn_reso_merce_da_rientrare(p_reso vendite.resi)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_reso_merce_da_rientrare(p_reso vendite.resi)
+ RETURNS TABLE(resi_riga_id bigint, riga_nr integer, ddt_riga_id bigint, ddt_riga_componente_id bigint, articolo_id uuid, prelievo_unico_id bigint, n_prelievi integer, qta numeric, esatta boolean, rientrata numeric, riga_con_rientri boolean, automatico boolean)
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+#variable_conflict use_column
+-- Scopo: le VOCI di un reso che fanno rientrare merce, in una sede sola.
+--   Una voce e' cio' che era USCITO con la riga di bolla d'origine: la riga
+--   stessa, o ciascun componente del kit (D-L3-f l'ha gia' deciso allo
+--   scarico, qui non si riscrive). Si riconosce dai PRELIEVI della riga di
+--   bolla: una riga di reso la cui riga di bolla non ha prelievi non ha mosso
+--   merce, e non ne fa rientrare.
+-- Per voce: quanto dovrebbe rientrare (UoM base), se la proporzione e'
+--   esatta, quanto e' gia' coperto dai rientri, se la riga di reso ne ha
+--   almeno uno, e se il rientro e' AUTOMATICO.
+-- Consumatori: script.fn_check_reso_merce, vendite.fn_reso_muove_merce,
+--   vendite.fn_conferma_reso (crea i rientri automatici).
+-- ⚠️ n_prelievi (un conteggio), esatta, riga_con_rientri e automatico sono
+--   tipi nudi di proposito: sono calcolati, non hanno una colonna di cui
+--   siano il riflesso.
+DECLARE
+    v_ubicazioni magazzino.magazzini.usa_ubicazioni%TYPE;
+BEGIN
+    -- Un magazzino di rientro con ubicazioni obbliga a scegliere dove.
+    v_ubicazioni := COALESCE((SELECT m.usa_ubicazioni FROM magazzino.magazzini m
+                               WHERE m.id = p_reso.magazzino_id), false);
+    RETURN QUERY
+    WITH voci AS (
+        SELECT rr.id        AS v_rr,
+               rr.riga_nr   AS v_nr,
+               rr.quantita  AS v_qta_resa,
+               dr.id        AS v_dr,
+               dr.quantita  AS v_qta_riga,
+               p.ddt_riga_componente_id AS v_comp,
+               COALESCE(drc.componente_id, dr.articolo_id) AS v_art,
+               drc.quantita AS v_qta_comp,
+               count(*)::integer AS v_n,
+               min(p.id)    AS v_p_min
+          FROM vendite.resi_righe rr
+          JOIN vendite.ddt_righe dr          ON dr.id = rr.ddt_riga_id
+          JOIN vendite.ddt_righe_prelievi p  ON p.ddt_riga_id = dr.id
+          LEFT JOIN vendite.ddt_righe_componenti drc ON drc.id = p.ddt_riga_componente_id
+         WHERE rr.reso_id = p_reso.id
+           AND rr.attivo
+         GROUP BY rr.id, rr.riga_nr, rr.quantita, dr.id, dr.quantita,
+                  p.ddt_riga_componente_id, drc.componente_id, dr.articolo_id, drc.quantita
+    ), calcolo AS (
+        SELECT v.*,
+               -- La riga rientra per la quantita' resa; un componente in
+               -- PROPORZIONE a quanto ne era uscito con la riga (D-3b-g).
+               CASE WHEN v.v_comp IS NULL THEN v.v_qta_resa
+                    ELSE round(v.v_qta_comp * v.v_qta_resa / NULLIF(v.v_qta_riga, 0), 6)
+               END AS v_attesa,
+               -- Esatta = la proporzione non ha resto: non si arrotonda un pezzo.
+               (v.v_comp IS NULL
+                OR round(v.v_qta_comp * v.v_qta_resa / NULLIF(v.v_qta_riga, 0), 6) * v.v_qta_riga
+                   = v.v_qta_comp * v.v_qta_resa) AS v_esatta,
+               COALESCE((SELECT sum(x.qta)
+                           FROM vendite.resi_righe_rientri x
+                           JOIN vendite.ddt_righe_prelievi px ON px.id = x.ddt_riga_prelievo_id
+                          WHERE x.resi_riga_id = v.v_rr
+                            AND px.ddt_riga_componente_id IS NOT DISTINCT FROM v.v_comp), 0) AS v_rientrata,
+               EXISTS (SELECT 1 FROM vendite.resi_righe_rientri x
+                        WHERE x.resi_riga_id = v.v_rr) AS v_riga_toccata
+          FROM voci v
+    )
+    SELECT c.v_rr, c.v_nr, c.v_dr, c.v_comp, c.v_art,
+           CASE WHEN c.v_n = 1 THEN c.v_p_min END,
+           c.v_n, c.v_attesa, COALESCE(c.v_esatta, false), c.v_rientrata, c.v_riga_toccata,
+           -- Automatico: niente da scegliere (un solo prelievo, magazzino senza
+           -- ubicazioni, proporzione esatta) E la riga non l'ha ancora toccata
+           -- nessuno. Chi scrive un rientro su una riga se la prende intera:
+           -- un kit reso senza un pezzo si dice cosi'.
+           (c.v_n = 1 AND NOT v_ubicazioni AND COALESCE(c.v_esatta, false) AND NOT c.v_riga_toccata)
+      FROM calcolo c
+     ORDER BY c.v_nr, c.v_rr, c.v_comp NULLS FIRST;
+END;
+$function$
+
+COMMENT ON FUNCTION vendite.fn_reso_merce_da_rientrare(p_reso vendite.resi)
+IS 'Le voci di un reso che fanno rientrare merce, in una sede sola (D-3b-b, D-3b-g). Una voce e'' cio'' che era USCITO con la riga di bolla d''origine: la riga, o ciascun componente del kit — lo dicono i PRELIEVI di quella riga, e la regola del kit (D-L3-f) non si riscrive. Righe di reso attive. Per voce: qta = quanto dovrebbe rientrare (UoM base: la quantita'' resa per la riga; per un componente la proporzione di quanto ne era uscito, arrotondata a 6 decimali), esatta = la proporzione non ha resto, rientrata = somma dei rientri gia'' scritti, riga_con_rientri = la riga di reso ne ha almeno uno, automatico = un solo prelievo, magazzino di rientro senza ubicazioni, proporzione esatta e riga non ancora toccata: allora il rientro lo crea la conferma (prelievo_unico_id). Una riga di reso la cui riga di bolla non ha prelievi non ha voci: la bolla non aveva mosso merce. Prende la RIGA del reso. Consumatori: script.fn_check_reso_merce, vendite.fn_reso_muove_merce, vendite.fn_conferma_reso. Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

@@ -19,7 +19,6 @@ AS $function$
 DECLARE
     v_stato_old config.stati_doc_ddt.codice_interno%TYPE;
     v_causale   config.causali_trasporto.causale_magazzino%TYPE;
-    v_ef        magazzino.magazzini.emittente_fiscale_id%TYPE;
     v_mag_id    magazzino.magazzini.id%TYPE;
 BEGIN
     -- 1. Immutabili fuori bozza: lo stato VECCHIO decide.
@@ -66,15 +65,13 @@ BEGIN
         END IF;
     END IF;
 
-    -- 3. Dell'emittente della bolla (M-6). Sotto RLS: un magazzino di un
-    --    altro emittente non si vede, e la frase e' la stessa.
+    -- 3. Dell'emittente della bolla (M-6). La regola sta nel BB
+    --    script.fn_magazzino_dell_emittente (rev 2026-09-28, regola del 2:
+    --    il reso e' la seconda occorrenza): letta sotto RLS, un magazzino di
+    --    un altro emittente non si vede, e la frase e' la stessa.
     FOREACH v_mag_id IN ARRAY ARRAY[NEW.magazzino_id, NEW.magazzino_arrivo_id] LOOP
         CONTINUE WHEN v_mag_id IS NULL;
-        v_ef := NULL;
-        SELECT m.emittente_fiscale_id INTO v_ef
-          FROM magazzino.magazzini m
-         WHERE m.id = v_mag_id;
-        IF v_ef IS DISTINCT FROM NEW.emittente_fiscale_id THEN
+        IF NOT script.fn_magazzino_dell_emittente(v_mag_id, NEW.emittente_fiscale_id) THEN
             PERFORM script.fn_log_and_raise_error(
                 'vendite', 'vendite.trgfn_ddt_guard_magazzino',
                 'E_DDT_MAGAZZINO_INCOERENTE',
@@ -91,7 +88,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ddt_guard_magazzino()
-IS 'Guard BEFORE INSERT OR UPDATE OF magazzino_id, magazzino_arrivo_id, causale_trasporto_id, emittente_fiscale_id su vendite.ddt (D-L3-a). E_DDT_MAGAZZINO_IMMUTABILE: il magazzino (o l''arrivo) cambia su una bolla che non era in bozza — stato VECCHIO, come la causale. E_DDT_MAGAZZINO_INCOERENTE, con la regola nel VARIADIC: arrivo su una bolla che non e'' di trasferimento (causale di magazzino diversa da TRASF_OUT), arrivo uguale alla partenza, magazzino di un altro emittente (letto sotto RLS: invisibile e inesistente rispondono uguale). L''arrivo mancante NON e'' qui: e'' un motivo dell''emissione (script.fn_check_ddt_merce). Brief: brief-db-magazzino-lotto-3-scarico-da-ddt.';
+IS 'Guard BEFORE INSERT OR UPDATE OF magazzino_id, magazzino_arrivo_id, causale_trasporto_id, emittente_fiscale_id su vendite.ddt (D-L3-a). E_DDT_MAGAZZINO_IMMUTABILE: il magazzino (o l''arrivo) cambia su una bolla che non era in bozza — stato VECCHIO, come la causale. E_DDT_MAGAZZINO_INCOERENTE, con la regola nel VARIADIC: arrivo su una bolla che non e'' di trasferimento (causale di magazzino diversa da TRASF_OUT), arrivo uguale alla partenza, magazzino di un altro emittente (letto sotto RLS: invisibile e inesistente rispondono uguale). L''arrivo mancante NON e'' qui: e'' un motivo dell''emissione (script.fn_check_ddt_merce). Brief: brief-db-magazzino-lotto-3-scarico-da-ddt. rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso, regola del 2): la regola «magazzino dell''emittente» passa al BB script.fn_magazzino_dell_emittente, che il guard del reso (vendite.trgfn_resi_guard_magazzino) usa uguale.';
 ```
 
 ---

@@ -1,0 +1,185 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 — I RIENTRI: che cosa torna di una riga di reso, e dove
+#   vendite.resi_righe_rientri (+ policy RLS e accensione)
+#   Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso, sezione 3
+#          (D-3b-b il rientro punta al prelievo, D-3b-d sorgente del movimento; Tid 28-09)
+#
+# -- PERCHE' IL RIENTRO PUNTA AL PRELIEVO D'ORIGINE ----------------------------------------------
+#   La merce che rientra E' quella che era uscita: il lotto e il seriale non
+#   sono una scelta, sono un fatto gia' registrato dal prelievo della bolla
+#   (vendite.ddt_righe_prelievi). Il rientro lo NOMINA e dice soltanto quanto
+#   ne torna e in quale ubicazione. Articolo, componente del kit, lotto e
+#   seriale NON si copiano: si leggono dal prelievo, che fuori bozza e'
+#   immutabile (trgfn_ddt_righe_prelievi_guard) — il derivato e' completo, e
+#   una copia sarebbe una seconda sede che puo' divergere.
+#   Ne discendono, senza una regola in piu':
+#   * il kit: se erano usciti i componenti, i prelievi sono dei componenti
+#     (D-L3-f non si riscrive);
+#   * un reso da una bolla che non ha mosso merce non ha prelievi da nominare,
+#     e non carica niente.
+#
+# -- PERCHE' IL RIENTRO E' LA SORGENTE DEL MOVIMENTO (D-3b-d) -------------------------------------
+#   E' D-L3-d al verso opposto: l'identita' del movimento non contiene
+#   l'articolo, quindi con sorgente = riga di reso due componenti senza lotto
+#   dello stesso kit collidono. Un rientro = un carico. Sorgente a catalogo:
+#   RESO_VENDITA_RIENTRO (80_data/sql/config/sorgenti.csv).
+#
+# -- REGOLA DEL 2, DICHIARATA ---------------------------------------------------------------------
+#   Non e' la seconda occorrenza dei prelievi: il prelievo SCEGLIE una
+#   posizione fisica, il rientro RITROVA quella di un altro documento. La
+#   seconda occorrenza vera e' la ricezione acquisti (Lotto 4), dove il lotto
+#   si crea.
+#
+# -- I VINCOLI DI RIGA (gli altri li fanno il guard 20260928-90 e la check 20260928-91) ------------
+#   * qta > 0, in UoM base: il verso lo mette l'operazione (M-1);
+#   * una posizione si nomina UNA volta per riga di reso: lo stesso prelievo
+#     nella stessa ubicazione due volte sarebbe due carichi con la stessa
+#     identita';
+#   * il tetto «non oltre quanto era uscito» somma i resi non annullati: guarda
+#     altre righe, lo fa la check della conferma sotto il lock della bolla.
+#   ⚠️ Il seriale (qta = 1) non ha un CHECK qui: il seriale sta sul prelievo, e
+#   il tetto per prelievo (qta del prelievo = 1) lo impone da se'.
+#
+# -- IL PERIMETRO -------------------------------------------------------------------------------
+#   Satellite della riga di reso: la policy e' quella della famiglia
+#   (20260909-41), risalendo con script.fn_scope_ef_whitelist_via_reso_riga.
+#   Accesa qui, nello stesso changeSet: una tabella nuova con FK verso tabelle
+#   protette, senza policy, fa rosso il presidio del perimetro. ENABLE senza
+#   FORCE, come tutto il progetto.
+#
+# -- ARRIVANO DA ci_apply --------------------------------------------------------------------------
+#   audit, tx_id, storico e la coppia ATTIVO sui padri.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260928-85-create-table-resi-righe-rientri-mctit.yaml
+
+  - changeSet:
+      id: 20260928-85-create-table-resi-righe-rientri
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        CREATE TABLE vendite.resi_righe_rientri: quanta merce di un prelievo della bolla d'origine
+        rientra con una riga di reso, e in quale ubicazione. E' la sorgente del carico
+        (RESO_VENDITA_RIENTRO). Lotto, seriale, articolo e componente si leggono dal prelievo.
+        Policy RLS di satellite della riga di reso e RLS accesa. Brief:
+        brief-db-magazzino-lotto-3-bis-carico-da-reso, sezione 3 (D-3b-b, D-3b-d).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: ddt_righe_prelievi
+            - tableExists:
+                schemaName: vendite
+                tableName: resi_righe
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_scope_ef_whitelist_via_reso_riga';
+            - not:
+                - tableExists:
+                    schemaName: vendite
+                    tableName: resi_righe_rientri
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TABLE vendite.resi_righe_rientri (
+                  id                      BIGINT GENERATED BY DEFAULT AS IDENTITY
+                                          CONSTRAINT pk_resi_righe_rientri PRIMARY KEY,
+                  resi_riga_id            BIGINT       NOT NULL,
+                  ddt_riga_prelievo_id    BIGINT       NOT NULL,
+                  qta                     NUMERIC      NOT NULL,
+                  ubicazione_id           BIGINT,
+                  meta                    JSONB        NOT NULL DEFAULT '{}'::jsonb,
+                  tx_id                   UUID,
+                  storicizza              BOOLEAN      NOT NULL DEFAULT true,
+                  data_insert             TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                  user_insert             TEXT         NOT NULL DEFAULT CURRENT_USER,
+                  data_update             TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                  user_update             TEXT         DEFAULT CURRENT_USER,
+                  -- Una riga di reso che se ne va si porta via i suoi rientri: la
+                  -- regola «solo in bozza» vale per i rientri (guard 20260928-90).
+                  CONSTRAINT fk_resi_righe_rientri_riga
+                      FOREIGN KEY (resi_riga_id)
+                      REFERENCES vendite.resi_righe (id)
+                      ON UPDATE CASCADE ON DELETE CASCADE,
+                  -- Il prelievo d'origine non si cancella finche' un reso lo nomina:
+                  -- fuori bozza la bolla e' comunque ferma.
+                  CONSTRAINT fk_resi_righe_rientri_prelievo
+                      FOREIGN KEY (ddt_riga_prelievo_id)
+                      REFERENCES vendite.ddt_righe_prelievi (id)
+                      ON UPDATE CASCADE ON DELETE NO ACTION,
+                  CONSTRAINT fk_resi_righe_rientri_ubicazione
+                      FOREIGN KEY (ubicazione_id)
+                      REFERENCES magazzino.ubicazioni (id)
+                      ON UPDATE CASCADE ON DELETE NO ACTION,
+                  -- Il verso lo mette l'operazione (M-1): qui si dice QUANTO.
+                  CONSTRAINT chk_resi_righe_rientri_qta_positiva
+                      CHECK (qta > 0),
+                  -- Una posizione si nomina UNA volta per riga di reso: due rientri
+                  -- uguali sarebbero due carichi con la stessa identita'.
+                  CONSTRAINT uq_resi_righe_rientri_posizione
+                      UNIQUE NULLS NOT DISTINCT (resi_riga_id, ddt_riga_prelievo_id, ubicazione_id)
+              );
+
+              COMMENT ON TABLE vendite.resi_righe_rientri IS
+                  'I RIENTRI di una riga di reso: quanta merce di un prelievo della bolla d''origine '
+                  'rientra, e in quale ubicazione del magazzino del reso (D-3b-b). Il rientro non '
+                  'sceglie lotto ne'' seriale: li ritrova dal prelievo (vendite.ddt_righe_prelievi), '
+                  'insieme all''articolo e al componente del kit — la merce che torna e'' quella che '
+                  'era uscita. E'' la SORGENTE del carico di magazzino (RESO_VENDITA_RIENTRO, '
+                  'D-3b-d): un rientro = un movimento CARICO_RESO_VEN, al costo dell''uscita '
+                  'd''origine. Dove non c''e'' niente da scegliere (un solo prelievo, magazzino senza '
+                  'ubicazioni) il rientro lo crea da se'' la conferma. Si scrive solo in bozza '
+                  '(trgfn_resi_righe_rientri_guard). Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso.';
+              COMMENT ON COLUMN vendite.resi_righe_rientri.ddt_riga_prelievo_id IS
+                  'Il prelievo della bolla d''origine che rientra: deve appartenere alla riga di '
+                  'bolla della riga di reso (resi_righe.ddt_riga_id, guard). Da qui si leggono '
+                  'articolo, componente, lotto e seriale.';
+              COMMENT ON COLUMN vendite.resi_righe_rientri.qta IS
+                  'Quantita'' che rientra, in UoM BASE (come il prelievo), sempre positiva: il verso '
+                  'lo mette l''operazione (M-1). La somma dei rientri non annullati di un prelievo '
+                  'non supera la sua qta (script.fn_check_reso_merce, alla conferma).';
+              COMMENT ON COLUMN vendite.resi_righe_rientri.ubicazione_id IS
+                  'Ubicazione di RIENTRO, nel magazzino del reso: obbligatoria o vietata secondo '
+                  'magazzini.usa_ubicazioni (D-L2-m), controllato come per ogni movimento da '
+                  'script.fn_check_riga_magazzino.';
+
+              -- ---------- Il perimetro: satellite della riga di reso (famiglia 20260909-41) ----------
+              CREATE POLICY rls_resi_righe_rientri_ef_whitelist
+                  ON vendite.resi_righe_rientri
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_reso_riga(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              resi_riga_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_reso_riga(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              resi_riga_id)
+                  );
+
+              ALTER TABLE vendite.resi_righe_rientri ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TABLE IF EXISTS storico.resi_righe_rientri;
+              DROP TABLE IF EXISTS vendite.resi_righe_rientri;

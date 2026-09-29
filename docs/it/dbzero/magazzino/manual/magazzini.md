@@ -82,6 +82,26 @@ Il magazzino è anche l'**ancora del perimetro** del ledger: il guard di scope s
 magazzini dello stesso emittente, senza trasporto); quello con trasporto è il DDT `TRASFERIMENTO`
 (decisione del 17-09, D-L2-g).
 
+### Il magazzino predefinito (dal 28-09, Lotto 3)
+
+`predefinito` segna **il** magazzino di un'azienda da cui parte la merce quando non si dice
+altro: al massimo **uno per emittente** (indice unico `uq_mag_magazzini_predefinito_emittente`).
+Lo legge la bolla: una bolla nata senza magazzino prende il predefinito della sua azienda
+([trgfn_ddt_default_magazzino](/dbzero/vendite/funzioni/trgfn_ddt_default_magazzino)), e in
+bozza lo si cambia. Nessun predefinito: la bolla resta senza, e se sposta merce il magazzino
+lo chiede l'emissione.
+
+⚠️ Il **reso** non usa il predefinito: la merce resa rientra, di norma, nel magazzino da cui
+era partita la bolla d'origine (Lotto 3-bis,
+[trgfn_resi_default_magazzino](/dbzero/vendite/funzioni/trgfn_resi_default_magazzino)).
+
+### Un documento nomina solo magazzini della sua azienda
+
+Bolla e reso possono indicare soltanto magazzini del **proprio emittente**. La regola sta in un
+punto solo, [script.fn_magazzino_dell_emittente](/dbzero/script/funzioni/fn_magazzino_dell_emittente),
+che legge il magazzino con i permessi di chi scrive: un magazzino di un'altra azienda risponde
+come uno che non esiste, così il rifiuto non rivela niente fuori dal perimetro.
+
 ---
 
 ---

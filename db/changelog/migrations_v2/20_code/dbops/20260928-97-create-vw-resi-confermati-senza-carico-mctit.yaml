@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-13 — Presidio: un reso confermato che fa rientrare merce senza il suo carico
+#   dbops.vw_resi_confermati_senza_carico (+ riga in 80_data/sql/dbops/presidi.csv)
+#   Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso, sezione 4 (P-13)
+#
+# -- LA DOMANDA --------------------------------------------------------------------------------------
+#   Un reso CONFERMATO, con un magazzino, che fa rientrare merce, e nessun carico
+#   a registro dai suoi rientri: la porta del registro del reso non ha tenuto.
+#   Natura ZERO, cadenza GIORNALIERA, perimetro DEFINER, come la gemella della
+#   bolla (dbops.vw_ddt_emessi_senza_scarico, 20260928-82).
+#
+# -- REGOLA DEL 2: PERCHE' DUE VISTE E NON UNA ------------------------------------------------------
+#   Il brief (P-13) proponeva di fondere le due viste in una. Scritti i due
+#   corpi, cio' che hanno in comune e' soltanto il confronto col registro per
+#   sorgente (una JOIN su magazzino.movimenti); la DOMANDA — quale documento,
+#   in quale stato, quali record-sorgente, quale verso — e' di ciascun
+#   documento, come un guard lo e' della sua tabella. Non sono due copie della
+#   stessa regola, e non possono divergere: l'una non sa dell'altra.
+#   E il ritiro della vista della bolla avrebbe un costo che il valore non paga:
+#   dbops.presidi si semina per upsert sul nome della vista, una riga tolta dal
+#   CSV resta nella tabella, e il catalogo pretende che ogni vista iscritta
+#   esista (dbops/test-catalogo-presidi-v1, test 3). Scritto nel brief.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260928-97-create-vw-resi-confermati-senza-carico-mctit.yaml
+
+  - changeSet:
+      id: 20260928-97-create-vw-resi-confermati-senza-carico
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Presidio dbops.vw_resi_confermati_senza_carico: i resi confermati che fanno rientrare merce,
+        con un magazzino, e senza nessun carico a registro dai loro rientri. DEVE restare vuota: e'
+        la porta del registro del reso che non ha tenuto. Brief: brief-db-magazzino-lotto-3-bis-
+        carico-da-reso, sezione 4 (P-13).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_reso_muove_merce';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_resi_confermati_senza_carico
+              WITH (security_invoker = true) AS
+              SELECT r.id                 AS reso_id,
+                     r.numero,
+                     r.data,
+                     r.emittente_fiscale_id,
+                     r.magazzino_id,
+                     s.codice_interno     AS stato_codice_interno
+                FROM vendite.resi r
+                JOIN config.stati_doc_reso s ON s.id = r.stato_doc_reso_id
+               WHERE s.codice_interno = 'CONFERMATO'
+                 AND r.magazzino_id IS NOT NULL
+                 AND vendite.fn_reso_muove_merce(r)
+                 AND NOT EXISTS (
+                         SELECT 1
+                           FROM vendite.resi_righe rr
+                           JOIN vendite.resi_righe_rientri x ON x.resi_riga_id = rr.id
+                           JOIN magazzino.movimenti m        ON m.sorgente_riga = x.id
+                           JOIN config.sorgenti so           ON so.id = m.sorgente_tipo_id
+                                                            AND so.codice_interno = 'RESO_VENDITA_RIENTRO'
+                          WHERE rr.reso_id = r.id
+                            AND m.qta > 0
+                            AND m.storno_di_movimento_id IS NULL);
+
+              COMMENT ON VIEW dbops.vw_resi_confermati_senza_carico IS
+                  'Presidio, DEVE restare vuota. Una riga e'' un reso CONFERMATO, con un magazzino, che fa '
+                  'rientrare merce (vendite.fn_reso_muove_merce), senza nessun carico a registro da uno dei suoi '
+                  'rientri (sorgente RESO_VENDITA_RIENTRO, quantita'' positiva, non uno storno). E'' la porta del '
+                  'registro del reso che non ha tenuto: merce tornata dal cliente che la giacenza non vede. Il '
+                  'rimedio non e'' scrivere il movimento a mano: e'' capire da dove e'' passata la conferma. I '
+                  'resi confermati prima del Lotto 3-bis non hanno magazzino e non sono questo difetto. Gemella '
+                  'di dbops.vw_ddt_emessi_senza_scarico (stessa domanda sul verso opposto: un documento ha '
+                  'passato lo stato che muove merce, e le sue sorgenti non hanno il movimento). '
+                  'security_invoker; il digest conta da proprietario (fn_conta_presidio, perimetro DEFINER). '
+                  'Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso (P-13).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_resi_confermati_senza_carico;
