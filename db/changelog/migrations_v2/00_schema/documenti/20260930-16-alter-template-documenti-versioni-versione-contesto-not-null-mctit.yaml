@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# V-3 — IL NOT NULL, DIETRO UN CANCELLO FAIL-CLOSED
+#   documenti.template_documenti_versioni.versione_contesto SET NOT NULL
+#   Brief: brief-db-documenti-versione-contesto-template.md §4
+#
+# ── IL CANCELLO ─────────────────────────────────────────────────────────
+#   `sqlCheck expectedResult: 0` sulle versioni ancora senza forma, `HALT`.
+#   Se una versione non e' nella tabella del backfill (-15) — un template nato
+#   su questa macchina dopo la lettura del 2026-09-30 — il migrate SI FERMA QUI:
+#   la sua forma va letta e scritta da una persona, non indovinata. ⛔ NON
+#   MARK_RAN: segnerebbe il vincolo come applicato senza applicarlo.
+#   Lecito in 00_schema: «nessuna riga cattiva» e' soddisfatto da un DB vuoto.
+#
+#   Per trovarle: SELECT t.codice_interno, v.versione, v.stato
+#                   FROM documenti.template_documenti_versioni v
+#                   JOIN documenti.template_documenti t ON t.id = v.template_documento_id
+#                  WHERE v.versione_contesto IS NULL;
+#
+# ── ⚠️ CHI SCRIVE UNA VERSIONE DA QUI IN POI ─────────────────────────────
+#   Ogni INSERT deve portare versione_contesto: senza, 23502. Lo scrittore e'
+#   il backend (amministrazione dei template, duplica versione): richiesta nel
+#   brief §10. ⚠️ Tre changeSet di 80_data di agosto (20260805-09, 20260816-01
+#   con INSERT; 20260805-10, 20260816-02 che pubblicano) sono `onFail: CONTINUE`
+#   e su un database dove non sono passati si rivalutano a ogni migrate: se
+#   un giorno trovassero i template che cercano, morirebbero qui (INSERT senza
+#   la colonna) o sulla firma nuova della pubblicazione (-21). Dichiarato nel
+#   brief §5.4: e' voluto che muoiano, non che pubblichino una forma non detta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/documenti/20260930-16-alter-template-documenti-versioni-versione-contesto-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20260930-16-alter-template-documenti-versioni-versione-contesto-not-null
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        SET NOT NULL su documenti.template_documenti_versioni.versione_contesto dietro un
+        cancello fail-closed (zero versioni senza forma, HALT): una versione che il backfill -15
+        non nomina ferma il migrate. Nessun default. Brief:
+        brief-db-documenti-versione-contesto-template §4.
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >-
+            Ci sono versioni di template senza versione_contesto: la loro forma va letta
+            (quali chiavi del contesto usa il template) e scritta a mano prima del NOT NULL.
+            Query nell'intestazione di questo changeSet.
+        - and:
+            - columnExists:
+                schemaName: documenti
+                tableName: template_documenti_versioni
+                columnName: versione_contesto
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT count(*)
+                    FROM documenti.template_documenti_versioni v
+                   WHERE v.versione_contesto IS NULL;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE documenti.template_documenti_versioni
+                  ALTER COLUMN versione_contesto SET NOT NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE documenti.template_documenti_versioni
+                  ALTER COLUMN versione_contesto DROP NOT NULL;

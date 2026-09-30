@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_pubblica_template_documento_versione`
 
 ```sql
-CREATE FUNCTION fn_pubblica_template_documento_versione(p_versione_id bigint, p_valido_dal date, p_valido_al date)
+CREATE FUNCTION fn_pubblica_template_documento_versione(p_versione_id bigint, p_valido_dal date, p_versione_contesto integer, p_valido_al date)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION documenti.fn_pubblica_template_documento_versione(p_versione_id bigint, p_valido_dal date, p_valido_al date DEFAULT NULL::date)
+CREATE OR REPLACE FUNCTION documenti.fn_pubblica_template_documento_versione(p_versione_id bigint, p_valido_dal date, p_versione_contesto integer, p_valido_al date DEFAULT NULL::date)
  RETURNS TABLE(versione_id bigint, template_documento_id bigint, versioni_obsolete integer)
  LANGUAGE plpgsql
 AS $function$
@@ -18,6 +18,12 @@ AS $function$
 -- Regole:
 --   - la versione target deve esistere ed essere BOZZA;
 --   - p_valido_dal e' obbligatorio;
+--   - p_versione_contesto e' la forma dei dati che il builder del
+--     backend produce per quel tipo di documento: la versione si
+--     pubblica solo se dichiara di leggere quella forma
+--     (documenti.fn_guard_versione_contesto, rev 20260930-21).
+--     Una BOZZA puo' dichiarare una forma che il builder non produce
+--     ancora (D-C4): il controllo e' qui, non sulla bozza;
 --   - l'ordine delle date (p_valido_al non precede p_valido_dal) NON si
 --     giudica qui: lo giudica il guard comune script.trgfn_guard_date_validita
 --     sull'UPDATE della versione (rev 20260924-02: ritirata la copia sui
@@ -87,6 +93,12 @@ BEGIN
             p_versione_id::text, v_stato
         );
     END IF;
+
+    -- Il patto versione/forma dei dati (rev 20260930-21): prima di
+    -- toccare qualunque altra versione, cosi' un rifiuto non lascia
+    -- niente a meta' da annullare. La riga e' gia' sotto FOR UPDATE:
+    -- la forma letta dal guard non puo' cambiare fino al commit.
+    PERFORM documenti.fn_guard_versione_contesto(p_versione_id, p_versione_contesto);
 
     -- Lock ordinato di tutte le versioni del template: evita race fra
     -- due pubblicazioni concorrenti dello stesso template.
@@ -162,8 +174,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION documenti.fn_pubblica_template_documento_versione(p_versione_id bigint, p_valido_dal date, p_valido_al date)
-IS 'Pubblica una versione template documento con auto-close atomico delle versioni PUBBLICATE precedenti sovrapposte. Rev 20260924-02: l''ordine delle date non e'' piu'' giudicato sui parametri: lo giudica il guard comune script.trgfn_guard_date_validita sull''UPDATE della versione (E_DATA_AL_MINORE_DAL).';
+COMMENT ON FUNCTION documenti.fn_pubblica_template_documento_versione(p_versione_id bigint, p_valido_dal date, p_versione_contesto integer, p_valido_al date)
+IS 'Pubblica una versione template documento con auto-close atomico delle versioni PUBBLICATE precedenti sovrapposte. Rev 20260930-21: p_versione_contesto (obbligatorio) e'' la forma dei dati che il builder produce; la versione si pubblica solo se dichiara di leggere quella forma (documenti.fn_guard_versione_contesto: E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA). Rev 20260924-02: l''ordine delle date non e'' piu'' giudicato sui parametri: lo giudica il guard comune script.trgfn_guard_date_validita sull''UPDATE della versione (E_DATA_AL_MINORE_DAL).';
 ```
 
 ---

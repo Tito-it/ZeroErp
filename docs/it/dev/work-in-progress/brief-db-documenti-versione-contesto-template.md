@@ -4,9 +4,14 @@
 > (`dev/backend-tid`); Tid per le decisioni di §7.
 > **Origine:** §9.8.4 di [brief-db-liste-righe-documento.md](brief-db-liste-righe-documento.md)
 > (la stampa della fattura dalla lista delle righe).
-> **Stato:** ⏸️ **in attesa del via di Tid per partire.** ✅ **Decisione di Tid (2026-09-29): si fa
-> tutto, per TUTTI i documenti, appena possibile** (non siamo in produzione). ✅ **D-C1 → D-C4
-> accettate da Tid il 2026-09-29** (§7). Nessuna riga scritta.
+> **Stato:** ✅ **lato DB APPLICATO su dbdev il 2026-09-30, pgTAP verdi (corsa di Tid)**
+> (`20260930-14 → -21` + codici 1169-1170). ⏳ Restano: il giro BE (§10, R-1 … R-5, **bloccanti**)
+> e la **versione 4 del template Fattura**, che al 30-09 **non esiste** (§11). ✅ Decisione di Tid
+> (2026-09-29): si fa tutto, per TUTTI i documenti; ✅ D-C1 → D-C4 accettate il 2026-09-29 (§7).
+>
+> **Da leggere per primo: §8 (che cosa è stato scritto, e dove si discosta da §4) e §10 (le richieste
+> al BE, che dopo l'apply sono BLOCCANTI: la pubblicazione e la creazione di una versione dal
+> backend muoiono finché non le fa).**
 >
 > **In una riga:** oggi una versione di template può leggere dati di una forma diversa da quella
 > che il backend le prepara, e stampare un documento **incompleto senza nessun errore**. Ogni
@@ -65,6 +70,9 @@ Vale per **tutti** i tipi di documento, anche per quelli che oggi non cambiano f
 
 ## 4. Lato DB (proposta)
 
+> ⚠️ **Proposta del 29-09.** Quello che è stato scritto il 30-09 è in §8: il nome del guard e
+> il controllo alla pubblicazione sono diversi da qui.
+
 * **Una colonna tipizzata, non una chiave nel jsonb**: `template_documenti_versioni.versione_contesto
   integer NOT NULL`, `CHECK (versione_contesto >= 1)`. Un numero che decide se si stampa deve
   potersi vincolare e leggere con una query, non stare dentro un oggetto libero.
@@ -96,6 +104,25 @@ Vale per **tutti** i tipi di documento, anche per quelli che oggi non cambiano f
   liste (preventivo, ordine, DDT, reso, contratto) passano alla stessa lettura se la loro forma
   cambia — con il loro numero di forma.
 
+### 5.3 Legame con `brief-be-documenti-risorse-esterne-render-pdf.md` (segnalato da Tid il 30-09)
+
+Tutti e due parlano di **che cosa una versione di template si aspetta di trovare al render**:
+qui la *forma dei dati*, là le *risorse esterne* (asset, `url_fetcher`). Non si bloccano a
+vicenda. Il punto in comune è il **momento della pubblicazione** come controllo: se là nasce
+`asset:<codice>`, la verifica «gli asset citati esistono e sono dell'emittente» ha la stessa sede
+naturale di questo patto (`fn_pubblica_template_documento_versione`, o il service che la chiama).
+La domanda §5.3 di quel brief (chiave stabile dell'asset) resta indipendente.
+
+### 5.4 ⚠️ Tre changeSet di agosto dormienti (dichiarato, voluto)
+
+`80_data` `20260805-09`, `20260816-01` (creano BOZZE con `INSERT` esplicito, senza la colonna) e
+`20260805-10`, `20260816-02` (pubblicano con la firma a tre) sono `onFail: CONTINUE`: su un
+database dove non sono passati si rivalutano a **ogni** migrate. Su dbdev sono `EXECUTED`; su un
+DB da zero saltano finché non trovano i template di sviluppo che cercano (`test`, `ord-ven`…).
+Se un giorno li trovassero, morirebbero su `23502` o `42883` invece di creare/pubblicare una
+versione che non dichiara la forma. È il comportamento giusto, ed è scritto qui perché non
+sorprenda: non si toccano (mergiati).
+
 ## 6. L'ordine
 
 1. DB: colonna, funzione, guard, codice; backfill **verificato** delle versioni esistenti.
@@ -114,3 +141,130 @@ Vale per **tutti** i tipi di documento, anche per quelli che oggi non cambiano f
 | D-C2 | Il controllo anche come guard sulle stampe registrate, o solo nel backend? | **Anche il guard**: una funzione sola, due chiamanti. Protegge da una strada di stampa che dimentica il controllo |
 | D-C3 | La validazione delle variabili decisa ad aprile (35-36): si fa ora o resta fuori? | Fuori da questo giro, dichiarata: il numero di forma chiude il caso grave (pezzi mancanti in silenzio); la validazione delle singole variabili è un raffinamento |
 | D-C4 | Una versione **in bozza** può dichiarare una forma che il builder non produce ancora? | Sì: è così che si prepara la versione 4 mentre il builder è ancora a 1. Il controllo vale alla pubblicazione e alla stampa |
+
+## 8. Che cosa è stato scritto (2026-09-30)
+
+| changeSet | cosa |
+| --- | --- |
+| `00_schema/documenti/20260930-14` | colonna `versione_contesto integer` (nullable) + `CHECK >= 1` + COMMENT |
+| `00_schema/documenti/20260930-15` | backfill per **chiave naturale** (codice_interno del template, versione): tabella sotto |
+| `00_schema/documenti/20260930-16` | `SET NOT NULL` dietro cancello fail-closed (`expectedResult: 0`, HALT): una versione non nominata dal backfill ferma il migrate |
+| `20_code/documenti/20260930-17` | `versione_contesto` entra nell'`UPDATE OF` del guard A1: da PUBBLICATA non si cambia (DROP + CREATE del trigger, scritto a mano) |
+| `20_code/documenti/20260930-18` | `documenti.fn_guard_versione_contesto(p_template_versione_id, p_versione_contesto)` |
+| `20_code/documenti/20260930-19` | `documenti.trgfn_documenti_generati_guard_versione_contesto()` |
+| `20_code/documenti/20260930-20` | trigger `trg_documenti_generati_a10_guard_versione_contesto_ins` (BEFORE INSERT) |
+| `20_code/documenti/20260930-21` | `fn_pubblica_template_documento_versione`: **nuovo parametro obbligatorio** `p_versione_contesto`, chiama il guard; firma nuova (DROP + CREATE), md5 del vivo ancorato |
+| `80_data/sql/config/messaggi_errore.csv` 1169-1170, `codici_errore.csv` | `E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA` (`CONFLITTO_STATO`), `E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE` (`TECNICO`) |
+
+Firme, `RETURNS TABLE` e `DECLARE` ancorati con `%TYPE` (anche nelle firme di `COMMENT`/`DROP`);
+risolvono agli stessi tipi del vivo (`bigint, date, integer, date`), nessun overload.
+
+### 8.1 Dove si discosta da §4, e perché
+
+* **`fn_guard_…`, non `fn_check_…`**: solleva, quindi è un guard (linee-guida-sql §5). Nessuna
+  capability a DB: la forma del builder è un fatto del codice e il DB non la conosce.
+* **Il controllo alla pubblicazione sta nel verbo**, non solo nel backend: la stessa ragione di
+  D-C2 per le stampe (una strada che dimentica il controllo non pubblica). Il DB riceve la forma
+  del builder come parametro **obbligatorio**; niente `DEFAULT NULL`, che sarebbe la porta per
+  saltarlo. Costo dichiarato: la firma cambia (R-1).
+* **Due codici, non uno**: forme diverse (`CONFLITTO_STATO`, rimedia chi amministra i template) e
+  forma non dichiarata (`TECNICO`: solo un builder rotto la produce). Nome della famiglia
+  `E_DOCUMENTI_*`, non `E_DOC_*`.
+* **Nessun default** sulla colonna, né ora né dopo: un default è una forma dichiarata da nessuno.
+* **Forma «non intera»** (`"2"` stringa, `2.5`, `null`) = non dichiarata, non un `22P02`.
+
+### 8.2 La tabella del backfill (D-C1) — letta il 2026-09-30 dal team DB
+
+Criterio: la forma 2 di ogni builder aggiunge (o cambia) una chiave; una versione legge la
+forma 2 se usa quella chiave. Letto dall'`html_template` di ognuna delle 20 versioni su dbdev.
+⚠️ D-C1 assegnava la lettura al BE: l'ha fatta il DB perché è un confronto meccanico di chiavi;
+**R-5 chiede al BE di confermarla**.
+
+| template (`codice_interno`) | forma 2 del builder | v1 | v2 | v3 | v4 |
+| --- | --- | --- | --- | --- | --- |
+| `test` (Preventivo) | `indirizzi` a slot (16-08) | 1 (lista) | 1 (lista) | 1 (lista) | **2** (`indirizzi.consegna`) |
+| `contratto` | + `indirizzi` (05-08) | 1 | 1 | **2** | — |
+| `off-comm` | + `indirizzi` (05-08) | 1 | 1 | **2** | — |
+| `ord-ven` | + `indirizzi` (05-08) | 1 | 1 | 1 | **2** |
+| `ddt-ven` | + `indirizzi` (13-07) | 1 | **2** | **2** | — |
+| `fattura` | (forma 1) | 1 | 1 | 1 | — |
+
+Tutte le PUBBLICATE coincidono con la forma di oggi del loro builder. **Verifica, non motivo**
+(fatto datato 30-09): nessuna delle 210 stampe registrate su dbdev ha un `_meta.context_version`
+diverso dal valore assegnato alla sua versione — la tabella non ha controesempi.
+
+## 9. Prova (2026-09-30) — in transazione ritirata, su dbdev, da owner
+
+> ✅ **Superata dall'apply**: migrazione applicata e pgTAP verdi col runner (Tid, 2026-09-30),
+> quindi anche come app. Il resto della sezione resta come storia della prova pre-apply.
+
+SQL **estratto** dagli YAML `-14 → -21` + le righe nuove dei due CSV simulate con `INSERT`, dentro
+`BEGIN … ROLLBACK` (colonna assente sul vivo dopo, verificato).
+
+* tutto il blocco applica; backfill: 0 versioni senza forma; firme risolte come sopra;
+* `plpgsql_check` sulle tre funzioni nuove/riscritte: nessun errore;
+* pgTAP, ciascuno nella sua transazione con l'estratto in testa:
+
+| file | esito |
+| --- | --- |
+| `documenti/test-documenti-versione-contesto-v1.sql` (**nuovo**) | 15/15 |
+| `documenti/test-fn-pubblica-template-documento-versione-v1.sql` (firma a 4, +test 8-11) | 11/11 |
+| `documenti/test-documenti-template-versioni.sql` (+test 10-11) | 11/11 |
+| `documenti/test-documenti-generati.sql` (fixture allineata) | 10/10 |
+| `documenti/test-documenti-generati-file.sql` (fixture allineata) | 8/8 |
+| `documenti/test-documenti-generati-eventi.sql` (fixture allineata) | 15/16 — il 16 (RLS → `42501`) è rosso **da owner per costruzione**, identico sul file di HEAD senza modifiche |
+| `rls/test-rls-documenti-satelliti.sql` (fixture allineata) | 13/13 |
+| `dbops/test-punti-canale-campo-v1.sql` (presidio che nomina `fn_pubblica_…`) | 16/16 |
+
+* cancelli statici: `guardrail_run_on_change`, `_sql_letterali`, `_precondition_seed`,
+  `_ddl_su_trigger_automazione`, `_grant_ruolo_batch`, `_timestamp_senza_fuso`,
+  `_pgtap_preambolo`: verdi.
+* ⚠️ **Non provato qui**: la RLS come app (arriva dalla corsa di Tid), i presidi trasversali col
+  runner (`dbops/test-riferimenti-morti-v1`: provato solo `plpgsql_check` sulle tre funzioni).
+
+⛔ **L'apply e la corsa pgTAP sono di Tid.** Documentazione manuale aggiornata: `documenti/manual/`
+`template_documenti_versioni`, `documenti_generati`, `fn_pubblica_…`, `trgfn_…_protect_pubblicata`,
+e le due pagine nuove `fn_guard_versione_contesto`, `trgfn_documenti_generati_guard_versione_contesto`.
+
+## 10. Richieste al BE (dopo l'apply sono bloccanti)
+
+| # | Cosa | Perché si rompe senza |
+| --- | --- | --- |
+| **R-1** | `documenti_repository.pubblica_versione`: passare `p_versione_contesto => <costante del builder del tipo di documento del template>` | la firma a tre non esiste più: `42883` |
+| **R-2** | `create_versione` / whitelist INSERT (e ogni «duplica versione»): `versione_contesto` obbligatorio; al duplicare si copia dalla sorgente; a video «legge la forma N», modificabile solo in BOZZA | `23502` su ogni versione nuova |
+| **R-3** | prima del render (generazione **e** anteprima di una versione pubblicata): `SELECT documenti.fn_guard_versione_contesto(%s, %s)` con la costante del builder; una costante per builder, da cui esce anche `_meta.context_version` (§5) | senza, il PDF si genera e poi l'INSERT della stampa viene rifiutato: PDF da buttare |
+| **R-4** | rigenerare `error_policies_generated.py` per i due codici nuovi; test Django che scrivono versioni o stampe (in `documenti/tests/…`, `core/tests/db/test_date_validita_guard_comune_db.py`, `ai_assistant/tests/…`, `core/tests/services/test_payload_helpers.py`): versione con `versione_contesto`, contesto con `_meta.context_version` | rossi su `23502` / codice nuovo |
+| **R-5** | confermare la tabella §8.2 (D-C1) | è un dato di catalogo letto da noi |
+
+Poi §5 ultimo punto e §6 punto 4: la fattura alla forma 2 con la **versione 4** del template che
+scorre `riga.componenti`, pubblicata con `p_versione_contesto = 2`, e il ritiro di
+`VenditeRepository.list_fattura_righe`.
+
+## 11. La versione 4 del template Fattura — NON ancora scritta (2026-09-30)
+
+Su dbdev il template `fattura` ha v1 (OBSOLETA), v2 (OBSOLETA), v3 (PUBBLICATA), **tutte
+`versione_contesto = 1`**: la v3 scorre le righe **in fila** e riconosce il componente di kit da
+`tipo_riga`. Nessuna bozza v4 esiste.
+
+Per chiudere §6 punto 4 servono, **nello stesso giro**:
+
+1. **BE** — il builder fattura alla forma 2: righe dalla lettura completa di
+   `vw_fattura_righe_lista` (**ad albero**: il kit con `riga.componenti`), `_meta.context_version = 2`,
+   ritiro di `VenditeRepository.list_fattura_righe`;
+2. **template v4** — una BOZZA che dichiara `versione_contesto = 2` e scorre `riga.componenti`
+   invece di riconoscere i componenti da `tipo_riga`; si può scrivere **prima** del builder (D-C4);
+3. **pubblicazione** — `fn_pubblica_template_documento_versione(v4, <data>, 2, NULL)`, solo quando il
+   builder produce la 2: prima, il verbo la rifiuta con `E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA`.
+
+⚠️ **Chi scrive il corpo della v4 è da decidere.** Il precedente (preventivo a slot, 16-08) era
+BOZZA + pubblicazione in `80_data` con ancore verificate sul corpo vivo, ma i template non sono a
+seed: su un DB da zero quei changeSet saltano. La forma del contesto ad albero la conosce il BE che
+scrive il builder: la strada più corta è che il BE fissi la forma 2 e che la v4 nasca da lì
+(dall'amministrazione dei template o da un changeSet `80_data` che la duplica dalla v3 con le
+sostituzioni ancorate).
+
+**Proposta del team DB (30-09, in attesa del via di Tid):** appena il BE ha fissato le chiavi della
+forma 2 (R-3 e il builder), il DB prepara la **BOZZA v4** come changeSet `80_data` che duplica la v3
+e riscrive il solo ciclo delle righe su `riga.componenti`, con ancore verificate sul corpo vivo e
+`versione_contesto = 2` (stampo: `20260816-01`). La **pubblicazione** resta un passo separato, da
+fare quando il builder produce la 2.

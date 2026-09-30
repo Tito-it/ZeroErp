@@ -149,9 +149,10 @@ SELECT m.lato, t.id AS template_id, m.emittente_fiscale_id, m.auth_user_id
 CREATE TEMP TABLE _versioni AS
 WITH v AS (
     INSERT INTO documenti.template_documenti_versioni
-        (template_documento_id, versione, titolo, html_template, render_engine_id)
+        (template_documento_id, versione, titolo, html_template, render_engine_id,
+         versione_contesto)
     SELECT t.template_id, 1, 'Versione pgTAP ' || t.lato,
-           '<html>pgtap</html>', c.render_engine_id
+           '<html>pgtap</html>', c.render_engine_id, 1
       FROM _template t CROSS JOIN _catalogo c
     RETURNING id, template_documento_id
 )
@@ -175,7 +176,10 @@ WITH d AS (
            c.sorgente_tipo_id, 'PGTAP-' || t.lato, 1,
            'Documento pgTAP RLS ' || t.lato,
            'pgtap-rls-' || t.lato || '.pdf',
-           jsonb_build_object('lato', t.lato),
+           -- _meta.context_version = versione_contesto della versione: lo
+           --   pretende il guard della forma (20260930-20).
+           jsonb_build_object('lato', t.lato,
+                              '_meta', jsonb_build_object('context_version', 1)),
            encode(sha256(('ctx'  || t.lato)::bytea), 'hex')::varchar,
            encode(sha256(('tpl'  || t.lato)::bytea), 'hex')::varchar,
            encode(sha256(('pdf'  || t.lato)::bytea), 'hex')::varchar,

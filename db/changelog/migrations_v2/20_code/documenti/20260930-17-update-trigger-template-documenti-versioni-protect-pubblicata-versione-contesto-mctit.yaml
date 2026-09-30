@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# V-4 — LA FORMA DI UNA VERSIONE PUBBLICATA NON SI CAMBIA
+#   trg_template_documenti_versioni_a10_protect_pubblicata_upd: versione_contesto
+#   entra nell'UPDATE OF
+#   Brief: brief-db-documenti-versione-contesto-template.md §4
+#
+#   Una versione PUBBLICATA e' immutabile (Guard A1, 20260501-01): il corpo, la
+#   pagina, la validita'. Da oggi dichiara anche la forma che legge, e quella
+#   forma e' parte del patto: cambiarla dopo la pubblicazione aggirerebbe il
+#   controllo fatto al momento di pubblicare (-21), e la ristampa leggerebbe
+#   un numero che non era quello della stampa. Per cambiarla si crea una nuova
+#   BOZZA, come per l'HTML.
+#
+#   La funzione del trigger non cambia (blocca qualunque colonna dell'elenco se
+#   OLD.stato = PUBBLICATA): cambia l'elenco. DROP + CREATE nello stesso
+#   changeSet: e' un trigger scritto a mano (non da ci_apply), il nome esiste
+#   su ogni database che ha passato 20260501-01.
+#   ⚠️ Viene DOPO il backfill (-15), che scrive la colonna anche sulle versioni
+#   PUBBLICATE: con l'ordine rovesciato il backfill morirebbe qui.
+#   ℹ️ La pubblicazione (fn_pubblica_…) aggiorna stato/valido_dal/valido_al:
+#   versione_contesto non la tocca, quindi niente cambia per lei.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20260930-17-update-trigger-template-documenti-versioni-protect-pubblicata-versione-contesto-mctit.yaml
+
+  - changeSet:
+      id: 20260930-17-update-trigger-template-documenti-versioni-protect-pubblicata-versione-contesto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il trigger che rende immutabile una versione PUBBLICATA scatta anche su versione_contesto:
+        la forma dei dati dichiarata non si cambia dopo la pubblicazione. Brief:
+        brief-db-documenti-versione-contesto-template §4.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: documenti
+                tableName: template_documenti_versioni
+                columnName: versione_contesto
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'documenti'
+                     AND p.proname = 'trgfn_template_documenti_versioni_protect_pubblicata';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_template_documenti_versioni_a10_protect_pubblicata_upd
+                  ON documenti.template_documenti_versioni;
+
+              CREATE TRIGGER trg_template_documenti_versioni_a10_protect_pubblicata_upd
+                  BEFORE UPDATE OF
+                      html_template, css_template, markdown_template, render_engine_id,
+                      formato_template, page_format, page_orientation,
+                      margin_top_mm, margin_right_mm, margin_bottom_mm, margin_left_mm,
+                      valido_dal, valido_al, context_schema, versione_contesto,
+                      template_documento_id, versione
+                  ON documenti.template_documenti_versioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_protect_pubblicata();
+
+              COMMENT ON TRIGGER trg_template_documenti_versioni_a10_protect_pubblicata_upd
+                  ON documenti.template_documenti_versioni IS
+                  'Guard A1: una versione PUBBLICATA non si modifica (E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE). Dal 2026-09-30 l''elenco comprende versione_contesto: la forma dei dati che la versione legge fa parte del patto controllato alla pubblicazione. Brief: brief-db-documenti-versione-contesto-template.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_template_documenti_versioni_a10_protect_pubblicata_upd
+                  ON documenti.template_documenti_versioni;
+              CREATE TRIGGER trg_template_documenti_versioni_a10_protect_pubblicata_upd
+                  BEFORE UPDATE OF
+                      html_template, css_template, markdown_template, render_engine_id,
+                      formato_template, page_format, page_orientation,
+                      margin_top_mm, margin_right_mm, margin_bottom_mm, margin_left_mm,
+                      valido_dal, valido_al, context_schema,
+                      template_documento_id, versione
+                  ON documenti.template_documenti_versioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_protect_pubblicata();

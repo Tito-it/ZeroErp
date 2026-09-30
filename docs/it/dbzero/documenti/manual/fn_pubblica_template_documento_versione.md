@@ -9,17 +9,19 @@
 > Approfondimento funzioni / trigger:
 > [documenti.trgfn_template_documenti_versioni_protect_pubblicata](/dbzero/documenti/funzioni/trgfn_template_documenti_versioni_protect_pubblicata)
 > [documenti.trgfn_template_documenti_versioni_block_delete](/dbzero/documenti/funzioni/trgfn_template_documenti_versioni_block_delete)
+> [documenti.fn_guard_versione_contesto](/dbzero/documenti/funzioni/fn_guard_versione_contesto)
 > [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 
 ### 🎯 Scopo Principale
 
-(latest review 06-05-2026)
+(latest review 30-09-2026 — il patto versione/forma dei dati: brief-db-documenti-versione-contesto-template)
 
-`documenti.fn_pubblica_template_documento_versione(p_versione_id, p_valido_dal, p_valido_al)`
+`documenti.fn_pubblica_template_documento_versione(p_versione_id, p_valido_dal, p_versione_contesto, p_valido_al)`
 è un **endpoint atomico DB** per **pubblicare una versione BOZZA** di un template documento.
 In una singola transazione:
 
 1. **valida** i parametri di input e lo stato della versione target,
+   e che la versione legga la **forma dei dati** che il builder produce (rev 2026-09-30),
 2. **chiude e rende OBSOLETE** le versioni PUBBLICATE dello stesso template che si
    sovrappongono temporalmente al nuovo intervallo (`valido_dal` / `valido_al`),
 3. **pubblica** la versione target portandola da `BOZZA` a `PUBBLICATA`.
@@ -35,6 +37,7 @@ Restituisce una riga con `versione_id`, `template_documento_id` e `versioni_obso
 |---|---|---|---|
 | `p_versione_id` | `bigint` | — | PK della versione da pubblicare. Deve essere > 0. |
 | `p_valido_dal` | `date` | — | Data inizio validità della versione pubblicata. Obbligatoria. |
+| `p_versione_contesto` | `integer` | — | La **forma dei dati** che il builder del backend produce per quel tipo di documento (la stessa costante da cui esce `_meta.context_version`). Obbligatoria, senza default: la versione si pubblica solo se `versione_contesto` coincide. |
 | `p_valido_al` | `date` | `NULL` | Data fine validità (inclusa). `NULL` = versione aperta (nessuna scadenza). Che non preceda `p_valido_dal` lo verifica il guard comune delle date sull'UPDATE della versione (sotto). |
 | **Ritorno** | `RETURNS TABLE` | — | `versione_id bigint`, `template_documento_id bigint`, `versioni_obsolete integer` |
 
@@ -49,6 +52,8 @@ Restituisce una riga con `versione_id`, `template_documento_id` e `versioni_obso
 | `p_valido_al < p_valido_dal` | `p_valido_al IS NOT NULL` | **Raise** `E_DATA_AL_MINORE_DAL` (campo `valido_al`) dal guard comune `script.trgfn_guard_date_validita`, sull'UPDATE della versione target; le chiusure già fatte si annullano con la transazione |
 | Versione non trovata | `p_versione_id` non esiste in `template_documenti_versioni` | **Raise** `E_DOCUMENTI_VERSIONE_NOT_FOUND` |
 | Stato non BOZZA | `stato IN ('PUBBLICATA', 'OBSOLETA')` | **Raise** `E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO` |
+| Forma dei dati diversa | `versione_contesto` della versione ≠ `p_versione_contesto` | **Raise** `E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA` da `documenti.fn_guard_versione_contesto`, prima di chiudere qualunque altra versione |
+| Forma dei dati non passata | `p_versione_contesto IS NULL` | **Raise** `E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE` (TECNICO) |
 | Overlap con versioni PUBBLICATE precedenti | esistono versioni `PUBBLICATA` + `attivo IS TRUE` con `valido_dal < p_valido_dal` e range sovrapposto | Chiusura atomica (doppio UPDATE: stato → OBSOLETA, poi `valido_al = p_valido_dal - 1`) |
 | Path felice | tutto OK | `stato = 'PUBBLICATA'`, `valido_dal / valido_al` aggiornati; ritorna riga risultato |
 | Race condition finale | la versione target non è più BOZZA alla fase finale (bypass lock improbabile) | **Raise** `E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO` |
@@ -64,6 +69,10 @@ Restituisce una riga con `versione_id`, `template_documento_id` e `versioni_obso
 2. **`SELECT ... FOR UPDATE`** sulla versione target: lock pessimistico + lettura
    `template_documento_id` e `stato`. Se non trovata → `E_DOCUMENTI_VERSIONE_NOT_FOUND`.
 3. **Guard stato BOZZA**: se `stato != 'BOZZA'` → `E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO`.
+3-bis. **Il patto versione/forma dei dati** (rev 2026-09-30): `documenti.fn_guard_versione_contesto(p_versione_id, p_versione_contesto)`.
+   Sta prima di ogni scrittura, quindi un rifiuto non lascia niente a metà. La riga è già sotto
+   `FOR UPDATE`: la forma letta non cambia fino al commit. Una BOZZA può dichiarare una forma che il
+   builder non produce ancora (è così che si prepara la versione successiva): il controllo è qui.
 4. **Lock ordinato su tutte le versioni del template** (`ORDER BY v.id FOR UPDATE`):
    serializza pubblicazioni concorrenti sullo stesso template, evitando deadlock.
 5. **Ricerca versioni da chiudere** (sub-query con `FOR UPDATE`):
@@ -100,6 +109,8 @@ La funzione non duplica nessuna di queste responsabilità.
 | `E_DATA_AL_MINORE_DAL` | — | `valido_al < valido_dal`: lo solleva il guard comune `script.trgfn_guard_date_validita` sull'UPDATE della versione, non la funzione |
 | `E_DOCUMENTI_VERSIONE_NOT_FOUND` | 431 | `p_versione_id` non esiste in `documenti.template_documenti_versioni` |
 | `E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO` | 432 | la versione non è in stato BOZZA (già PUBBLICATA o OBSOLETA), oppure race condition finale |
+| `E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA` | 1169 | la versione dichiara di leggere una forma dei dati diversa da `p_versione_contesto` (dal guard) |
+| `E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE` | 1170 | `p_versione_contesto` NULL (dal guard, TECNICO) |
 
 Tutti i raise della funzione passano da `script.fn_log_and_raise_error('documenti', 'fn_pubblica_template_documento_versione', ...)`
 con contesto JSONB diagnostico. SQLSTATE `P0001`.
@@ -129,6 +140,7 @@ con contesto JSONB diagnostico. SQLSTATE `P0001`.
 SELECT * FROM documenti.fn_pubblica_template_documento_versione(
     42,                          -- p_versione_id (BOZZA)
     '2026-05-01'::date,          -- p_valido_dal
+    2,                           -- p_versione_contesto: la forma del builder
     NULL                         -- p_valido_al = aperta
 );
 -- versione_id | template_documento_id | versioni_obsolete
@@ -142,6 +154,7 @@ SELECT * FROM documenti.fn_pubblica_template_documento_versione(
 SELECT * FROM documenti.fn_pubblica_template_documento_versione(
     42,
     '2026-05-01'::date,
+    2,
     NULL
 );
 -- versione_id | template_documento_id | versioni_obsolete
@@ -152,7 +165,7 @@ SELECT * FROM documenti.fn_pubblica_template_documento_versione(
 **3) Versione già pubblicata (errore):**
 
 ```sql
-SELECT * FROM documenti.fn_pubblica_template_documento_versione(38, '2026-06-01', NULL);
+SELECT * FROM documenti.fn_pubblica_template_documento_versione(38, '2026-06-01', 2, NULL);
 -- ERROR: P0001 — La versione template 38 non puo' essere pubblicata:
 -- stato attuale 'PUBBLICATA', atteso BOZZA.
 ```
@@ -161,10 +174,19 @@ SELECT * FROM documenti.fn_pubblica_template_documento_versione(38, '2026-06-01'
 
 ```sql
 SELECT * FROM documenti.fn_pubblica_template_documento_versione(
-    42, '2026-05-01'::date, '2026-04-30'::date
+    42, '2026-05-01'::date, 2, '2026-04-30'::date
 );
 -- ERROR: P0001 — E_DATA_AL_MINORE_DAL, dal guard comune delle date (campo valido_al).
 -- Nessuna versione precedente resta chiusa: tutto si annulla.
+```
+
+**5) La versione legge una forma che il builder non produce (errore):**
+
+```sql
+-- La versione 42 dichiara versione_contesto = 2, il builder del documento e' alla forma 1
+SELECT * FROM documenti.fn_pubblica_template_documento_versione(42, '2026-05-01'::date, 1, NULL);
+-- ERROR: P0001 — E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA: «La versione … legge i dati nella
+-- forma 2, ma il sistema li prepara nella forma 1 …». Nessuna versione e' stata toccata.
 ```
 
 ---
@@ -192,7 +214,10 @@ SELECT * FROM documenti.fn_pubblica_template_documento_versione(
 - `db/pgtap/documenti/test-fn-pubblica-template-documento-versione-v1.sql` copre:
   - date invertite → guard comune (`E_DATA_AL_MINORE_DAL`, campo `valido_al`), rifiuto atomico;
   - chiusura di una versione aperta anche quando la nuova ha una fine (`versioni_obsolete = 1`);
-  - nessuna chiusura per una versione già finita prima dell'inizio della nuova (`versioni_obsolete = 0`).
+  - nessuna chiusura per una versione già finita prima dell'inizio della nuova (`versioni_obsolete = 0`);
+  - forma dei dati diversa → `E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA`, rifiuto atomico; forma NULL →
+    `E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE`; una bozza preparata per la forma 2 si pubblica
+    quando il builder la produce (test 8-11, rev 2026-09-30).
 - Casi ancora da coprire:
   - Errore `E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO` (versione_id <= 0, valido_dal NULL).
   - Errore `E_DOCUMENTI_VERSIONE_NOT_FOUND` (id inesistente).

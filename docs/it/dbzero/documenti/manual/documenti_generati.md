@@ -51,6 +51,15 @@ versione template usata.
   generato;
 * lo storico non va interpretato come template "vivo": descrive un fatto già
   accaduto.
+* ⭐ **una stampa si registra solo se è fedele al template** (dal 30-09-2026): il
+  contesto congelato dichiara la sua forma in `context_json -> '_meta' -> 'context_version'`
+  (un intero), e deve essere la forma che la versione usata legge
+  (`template_documenti_versioni.versione_contesto`). Lo verifica all'INSERT
+  [`trgfn_documenti_generati_guard_versione_contesto`](/dbzero/documenti/funzioni/trgfn_documenti_generati_guard_versione_contesto),
+  che delega a [`fn_guard_versione_contesto`](/dbzero/documenti/funzioni/fn_guard_versione_contesto):
+  forme diverse → `E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA`, forma assente o non intera →
+  `E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE`. Solo all'INSERT: contesto e versione non
+  cambiano dopo (guard A7), e la ristampa fedele non scrive una riga nuova.
 
 ---
 

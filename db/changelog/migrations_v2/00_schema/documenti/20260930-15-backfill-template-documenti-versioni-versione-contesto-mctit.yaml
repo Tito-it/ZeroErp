@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# V-2 — LA FORMA DI OGNI VERSIONE ESISTENTE, LETTA VERSIONE PER VERSIONE
+#   UPDATE documenti.template_documenti_versioni SET versione_contesto
+#   Brief: brief-db-documenti-versione-contesto-template.md §4, §8.2 (la tabella)
+#
+# ── ⛔ NON «LE VECCHIE VALGONO 1» ────────────────────────────────────────
+#   Cinque builder su sei producono la forma 2: con un 1 per tutti, le versioni
+#   PUBBLICATE che la leggono diventerebbero non stampabili il giorno dopo.
+#   Il valore e' un DATO DI CATALOGO (D-C1), stabilito leggendo ogni versione:
+#   quale chiave aggiunta dalla forma 2 del suo builder il template legge.
+#
+#     builder     forma 2 = (commit del builder)            la versione la legge se
+#     ---------   ---------------------------------------   -------------------------
+#     preventivo  `indirizzi` a slot (2026-08-16)            usa `indirizzi.consegna`
+#     ordine      + blocco `indirizzi` (2026-08-05)          usa `indirizzi`
+#     contratto   + blocco `indirizzi` (2026-08-05)          usa `indirizzi`
+#     offerta     + blocco `indirizzi` (2026-08-05)          usa `indirizzi`
+#     DDT         + blocco `indirizzi` (2026-07-13)          usa `indirizzi`
+#     fattura     (resta alla forma 1)                       —
+#
+#   La tabella per esteso, con la verifica sui documenti gia' stampati, e' nel
+#   brief (§8.2). Qui la chiave e' NATURALE — codice_interno del template +
+#   numero di versione — mai l'id di una macchina.
+#
+# ── SU UN DATABASE DA ZERO ──────────────────────────────────────────────
+#   I template non sono a seed: nascono dall'amministrazione. In CI la tabella
+#   e' vuota e l'UPDATE tocca zero righe. Nessuna preCondition sul contenuto:
+#   qui non si cancella niente, e un template che la tabella non nomina resta
+#   NULL e lo ferma il cancello del changeSet successivo (-16), per nome.
+#
+# ── ⚠️ PRIMA del trigger che rende la colonna immutabile da PUBBLICATA ─────
+#   L'UPDATE tocca anche versioni PUBBLICATE: passa perche' versione_contesto
+#   entra nell'UPDATE OF di trg_template_documenti_versioni_a10_protect_pubblicata_upd
+#   solo con 20260930-17, dopo. Changeset separato dal NOT NULL (-16): gli
+#   eventi AFTER dei trigger lasciati in sospeso da un UPDATE fanno fallire un
+#   ALTER TABLE nella stessa transazione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/documenti/20260930-15-backfill-template-documenti-versioni-versione-contesto-mctit.yaml
+
+  - changeSet:
+      id: 20260930-15-backfill-template-documenti-versioni-versione-contesto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Valore di versione_contesto per le versioni di template esistenti, per chiave naturale
+        (codice_interno del template, numero di versione), letto versione per versione (D-C1).
+        Tocca solo le righe ancora NULL. Brief: brief-db-documenti-versione-contesto-template §8.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: documenti
+            tableName: template_documenti_versioni
+            columnName: versione_contesto
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE documenti.template_documenti_versioni v
+                 SET versione_contesto = m.forma
+                FROM documenti.template_documenti t,
+                     (VALUES
+                         -- template «Preventivo»: v1-v3 indirizzi come lista, v4 a slot
+                         ('test',      1, 1), ('test',      2, 1), ('test',      3, 1), ('test',      4, 2),
+                         -- «Contratto»: v3 legge indirizzi.consegna
+                         ('contratto', 1, 1), ('contratto', 2, 1), ('contratto', 3, 2),
+                         -- «Offerta commerciale»: v3 legge indirizzi.consegna
+                         ('off-comm',  1, 1), ('off-comm',  2, 1), ('off-comm',  3, 2),
+                         -- «Ordine di vendita»: v4 legge indirizzi.consegna
+                         ('ord-ven',   1, 1), ('ord-ven',   2, 1), ('ord-ven',   3, 1), ('ord-ven',   4, 2),
+                         -- «DDT di vendita»: da v2 legge indirizzi.consegna
+                         ('ddt-ven',   1, 1), ('ddt-ven',   2, 2), ('ddt-ven',   3, 2),
+                         -- «Fattura»: il builder e' alla forma 1
+                         ('fattura',   1, 1), ('fattura',   2, 1), ('fattura',   3, 1)
+                     ) AS m(template_codice_interno, versione, forma)
+               WHERE t.id = v.template_documento_id
+                 AND t.codice_interno = m.template_codice_interno
+                 AND v.versione = m.versione
+                 AND v.versione_contesto IS NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

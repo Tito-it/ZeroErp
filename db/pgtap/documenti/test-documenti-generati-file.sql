@@ -68,12 +68,12 @@ SELECT id INTO TEMP TABLE tmp_dgf_template FROM ins_t;
 WITH ins_v AS (
   INSERT INTO documenti.template_documenti_versioni (
     template_documento_id, versione, stato, titolo, html_template,
-    render_engine_id, valido_dal, valido_al
+    render_engine_id, valido_dal, valido_al, versione_contesto
   )
   SELECT (SELECT id FROM tmp_dgf_template),
          1, 'PUBBLICATA', 'v1', '<html>v1</html>',
          (SELECT render_id FROM tmp_dgf_ctx),
-         DATE '2026-01-01', DATE '2026-12-31'
+         DATE '2026-01-01', DATE '2026-12-31', 1
   RETURNING id
 )
 SELECT id INTO TEMP TABLE tmp_dgf_versione FROM ins_v;
@@ -92,7 +92,7 @@ WITH ins_d AS (
     (SELECT sorgente_id FROM tmp_dgf_ctx),
     'PGTAP-FILE-001', NULL, 1,
     'Doc file', 'doc-file.pdf',
-    '{"y": 1}'::jsonb,
+    '{"y": 1, "_meta": {"context_version": 1}}'::jsonb,
     repeat('1', 64), repeat('2', 64), repeat('3', 64),
     (SELECT emittente_id FROM tmp_dgf_ctx)
   RETURNING id
