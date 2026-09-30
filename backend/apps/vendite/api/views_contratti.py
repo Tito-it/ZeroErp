@@ -30,10 +30,12 @@ from apps.core.api.payload_validators import (
 from apps.core.api.request_parsers import parse_iso_date
 from apps.core.api.success_responses import success_response
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
+from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.api.indirizzi_documento_views import (
     build_indirizzi_documento_views,
 )
+from apps.vendite.db.contratti_repository import ContrattoRigheListaRepository
 from apps.vendite.services import contratti_service
 from apps.vendite.services.contratti_service import ContrattiService
 from apps.core.api.openapi_params import param_ricerca_full
@@ -445,6 +447,36 @@ class ApiContrattoRighePreview(DomainAPIView):
         return success_response(
             ContrattiService().list_righe_preview(contratto_id)
         )
+
+
+# ── Righe: la lista configurabile `vendite.contratto_righe` (103) ──
+# Pagina ed export dal factory condiviso `build_lista_figlia_views`
+# (brief-db-liste-righe-documento, lotto D). La closure legge il global di
+# modulo a call-time: i patch dei test sul service restano validi.
+# ⚠️ `GET …/righe/` resta la lettura delle righe PERSISTITE (e il POST di
+#    creazione), `…/righe-preview/` l'anteprima prezzi: la lista e' su
+#    `…/righe/lista/`, e legge le righe OPERATIVE dalla funzione.
+_ContrattoRigheLista, _ContrattoRigheListaExport = build_lista_figlia_views(
+    schema_prefix="ContrattoRighe",
+    operation_id="vendite_contratti_righe_lista",
+    area_funzionale="vendite",
+    lista_emittente_param=EMITTENTE_DOCUMENTO_PARAM,
+    url_kwarg="contratto_id",
+    model_permission=("vendite", "contratto"),
+    pagina_call=lambda documento_id, **kw: ContrattiService().list_righe_pagina(documento_id, **kw),
+    colonne_ordinabili=ContrattoRigheListaRepository.righe_colonne_ordinabili(),
+    ordine_assente=ContrattoRigheListaRepository.righe_ordine_di_partenza(),
+)
+
+
+# ⭐ Il cancello di perimetro come LETTERALE nel corpo della classe: e' la
+#    forma che `test_perimetro_emittente_copertura` legge (vedi la factory).
+class ApiContrattoRigheListaView(_ContrattoRigheLista):
+    lista_codice = "vendite.contratto_righe"
+
+
+class ApiContrattoRigheListaExportView(_ContrattoRigheListaExport):
+    lista_codice = "vendite.contratto_righe"
 
 
 class ApiContrattoRigaDetail(DomainAPIView):

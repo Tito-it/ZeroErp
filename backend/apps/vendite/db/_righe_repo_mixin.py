@@ -27,6 +27,13 @@
 #    dove il padre di un kit non ha un `id` e la chiave e' `riga_key`, e non
 #    c'e' `attivo` da filtrare.
 #
+# ⭐ LA SORGENTE PUO' ESSERE UNA FUNZIONE (lotto D, 2026-09-30). Le righe del
+#    contratto non stanno in una vista: le calcola
+#    `vendite.fn_contratto_righe_preview(contratto)` (listino + eccezioni), e la
+#    lista 103 ha `vista_sql` NULL. Con `_righe_funzione` il BB legge da
+#    `fn(documento) v`: la funzione e' gia' del documento, quindi niente FK da
+#    filtrare. Il resto — ricerca, ordinamento, pagina, totale — e' lo stesso.
+#
 # ⚠️ Scope emittente: le viste sono `security_invoker` e le tabelle in RLS;
 #    la testata la verifica il service prima di leggere le righe («leggi
 #    prima la testata»: fuori perimetro e' un 404, non una lista vuota).
@@ -93,10 +100,15 @@ class RigheListaMixin:
     - ``_righe_ordine_documento_extra``: colonne che seguono
       ``_righe_ordine_documento`` nell'ordine del documento, sempre crescenti
       (default nessuna; ``("riga_nr",)`` sulla fattura, dove l'ordine e'
-      ``ordinamento, riga_nr``).
+      ``ordinamento, riga_nr``);
+    - ``_righe_funzione``: nome FQN di una funzione ``fn(documento_id)`` che
+      restituisce le righe del documento, al posto di ``_righe_vista`` e
+      ``_righe_fk_documento`` (default ``None``; il contratto:
+      ``"vendite.fn_contratto_righe_preview"``).
     """
 
     _righe_vista: str
+    _righe_funzione: str | None = None
     _righe_fk_documento: str
     _righe_ordine_documento: str
     _righe_ordinamento: Mapping[str, str]
@@ -106,19 +118,50 @@ class RigheListaMixin:
     _righe_solo_attive: bool = True
     _righe_ordine_documento_extra: tuple[str, ...] = ()
 
+    # Scopo: una sorgente sola per classe. Vista e funzione insieme non si
+    #        rifiutano da sole: vincerebbe la funzione in silenzio, e la vista
+    #        dichiarata sarebbe una bugia per chi legge la classe.
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        if cls._righe_funzione is not None and "_righe_vista" in vars(cls):
+            raise TypeError(
+                f"{cls.__name__}: `_righe_vista` e `_righe_funzione` sono "
+                "alternative, se ne dichiara una sola"
+            )
+
     # Scopo: le chiavi ordinabili della lista, per chi le deve DIRE (la doc
     #        OpenAPI della view). Una sede: la whitelist che il BB applica.
     @classmethod
     def righe_colonne_ordinabili(cls) -> tuple[str, ...]:
         return tuple(cls._righe_ordinamento)
 
-    # Scopo: le condizioni comuni alle due letture: il documento, e le sole
-    #        righe attive dove la vista le distingue. Ritorna (condizioni, params).
-    def _righe_condizioni(self, documento_id: int) -> tuple[list[str], list[Any]]:
-        conditions = [f"v.{self._righe_fk_documento} = %s"]
+    # Scopo: l'ordine di partenza della lista, per chi lo deve DIRE (la doc
+    #        OpenAPI della view), letto dagli attributi con cui il BB ordina:
+    #        una frase ricopiata a mano accanto divergerebbe al primo cambio.
+    @classmethod
+    def righe_ordine_di_partenza(cls) -> str:
+        colonne = (cls._righe_ordine_documento, *cls._righe_ordine_documento_extra, cls._righe_chiave)
+        return ", ".join(f"`{c}`" for c in colonne) + "."
+
+    # Scopo: la sorgente comune alle due letture: il `FROM` (alias `v`), le
+    #        condizioni che la restringono al documento e alle sole righe
+    #        attive dove la sorgente le distingue, e i loro parametri. Una
+    #        funzione del documento e' gia' ristretta: nessuna condizione sua.
+    #        Ritorna (from_sql, condizioni, params).
+    def _righe_da(self, documento_id: int) -> tuple[str, list[str], list[Any]]:
+        if self._righe_funzione is not None:
+            from_sql, conditions = f"{self._righe_funzione}(%s) v", []
+        else:
+            from_sql = f"{self._righe_vista} v"
+            conditions = [f"v.{self._righe_fk_documento} = %s"]
         if self._righe_solo_attive:
             conditions.append("v.attivo IS TRUE")
-        return conditions, [documento_id]
+        return from_sql, conditions, [documento_id]
+
+    # Scopo: la clausola WHERE di un elenco di condizioni, anche vuoto.
+    @staticmethod
+    def _righe_where(conditions: list[str]) -> str:
+        return f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
     # Scopo: l'ordine del DOCUMENTO come elenco di colonne qualificate
     #        (`v.ordinamento, v.riga_nr`), per la lettura completa.
@@ -132,13 +175,13 @@ class RigheListaMixin:
     #        chiuse, come consuntivo). ⛔ Non e' la lista a video: quella e'
     #        `list_righe_pagina`.
     def list_righe(self, documento_id: int) -> list[dict[str, Any]]:
-        conditions, params = self._righe_condizioni(documento_id)
+        from_sql, conditions, params = self._righe_da(documento_id)
         sql = f"""
             SELECT v.*
-              FROM {self._righe_vista} v
-             WHERE {' AND '.join(conditions)}
+              FROM {from_sql}
+             {self._righe_where(conditions)}
              ORDER BY {self._righe_ordine_documento_sql()}, v.{self._righe_chiave}
-        """  # noqa: S608 — vista, FK e colonne d'ordine sono attributi di classe costanti; valori come parametri
+        """  # noqa: S608 — sorgente, FK e colonne d'ordine sono attributi di classe costanti; valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return rows_to_list(cursor)
@@ -180,9 +223,9 @@ class RigheListaMixin:
             colonne_desc=self._righe_colonne_desc,
         )
         safe_limit, safe_offset = limiti_pagina(limit, offset, tetto=max_limit)
-        conditions, params = self._righe_condizioni(documento_id)
+        from_sql, conditions, params = self._righe_da(documento_id)
         add_ricerca_full_condition(conditions, params, search, self._righe_ricerca)
-        from_where = f"FROM {self._righe_vista} v WHERE {' AND '.join(conditions)}"
+        from_where = f"FROM {from_sql} {self._righe_where(conditions)}"
         return fetch_paged_with_total(
             f"""
             SELECT v.*, COUNT(*) OVER () AS total_count

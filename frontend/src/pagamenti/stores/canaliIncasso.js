@@ -22,10 +22,10 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
-import { PAGINATION } from '../../core/constants'
 import { paramsPagina } from '../../core/utils/listParams'
 import { listEntiIncasso } from '../api/pagamenti'
 import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
+import { USO_MISURA, misuraDefault } from '../../core/misurePagina'
 
 function buildParams(f) {
   // ⚠️ `orderDirDefault: 'asc'`: e' l'ordine naturale di un elenco di codici, ed
@@ -59,7 +59,7 @@ export const useCanaliIncassoStore = defineStore(
       // Dichiarata per contratto con `useSearchTable`, che la scrive su
       // deep-link `?search=`. Il backend dei canali non ha ricerca testuale.
       search: '',
-      limit: PAGINATION.DEFAULT_ROWS,
+      limit: misuraDefault(USO_MISURA.PAGINA),
       offset: 0,
       order_by: 'codice',
       order_dir: 'asc',

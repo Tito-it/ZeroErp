@@ -17,10 +17,10 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
-import { PAGINATION } from '../../core/constants'
 import { paramsPagina, paramsRicerca } from '../../core/utils/listParams'
 import { listRateFuoriCapienza } from '../api/pagamenti'
 import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
+import { USO_MISURA, misuraDefault } from '../../core/misurePagina'
 
 function buildParams(f, _termine, ricerca) {
   const p = paramsPagina(f)
@@ -52,7 +52,7 @@ export const useRateFuoriCapienzaStore = defineStore(
       // inoltra `buildParams` (`paramsRicerca`). Le colonne le decide il
       // catalogo (brief-be-ricerca-full-liste-residue §5.3).
       search: '',
-      limit: PAGINATION.DEFAULT_ROWS,
+      limit: misuraDefault(USO_MISURA.PAGINA),
       offset: 0,
       order_by: 'data_scadenza',
       order_dir: 'desc',

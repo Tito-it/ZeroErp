@@ -4,7 +4,7 @@
 // lingua + dark mode), logout. Su mobile mostra hamburger per aprire il
 // drawer sidebar; ricerca+AI inline scompaiono e si promuovono come prime
 // voci nello stesso kebab utente — un solo kebab per tutto.
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import Badge from 'primevue/badge'
@@ -33,6 +33,14 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const ui = useUiStore()
+
+// ⚠️ La ricerca si MONTA alla prima apertura, non con la topbar: legge le
+//    misure di pagina (BB `core/misurePagina`) quando nasce, e la topbar sta
+//    anche su pagine dove le misure non ci sono — la 404 o la forbidden di una
+//    veste che non e' l'operatore, per cui il guard non le carica. Dopo la
+//    prima apertura resta montata (la chiusura anima e lo stato si conserva).
+const ricercaMontata = ref(false)
+watch(() => ui.searchDrawerVisible, (aperta) => { if (aperta) ricercaMontata.value = true }, { immediate: true })
 const context = useContextStore()
 
 defineProps({
@@ -413,7 +421,7 @@ onMounted(async () => {
     </div>
   </header>
 
-  <SearchDrawer v-model:visible="ui.searchDrawerVisible" />
+  <SearchDrawer v-if="ricercaMontata" v-model:visible="ui.searchDrawerVisible" />
   <AiAssistantDrawer v-model:visible="ui.aiDrawerVisible" />
   <CodeLavoroDrawer v-model:visible="ui.codeDrawerVisible" />
 </template>

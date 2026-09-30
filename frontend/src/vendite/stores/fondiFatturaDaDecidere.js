@@ -22,6 +22,7 @@ import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptySta
 import { paramsPagina } from '../../core/utils/listParams'
 import { listFondiFatturaDaDecidere } from '../api/fondiFattura'
 import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
+import { USO_MISURA, misuraDefault } from '../../core/misurePagina'
 
 // Scopo: mappa i filtri dello store nei query param dell'endpoint.
 //
@@ -56,7 +57,7 @@ export const useFondiFatturaDaDecidereStore = defineStore(
 
     const filters = ref({
       ...FILTRI_DEFAULT,
-      limit: 25,
+      limit: misuraDefault(USO_MISURA.PAGINA),
       offset: 0,
       // Default `data desc`, lo stesso che applica il backend quando non gli
       // si dice nulla: la lista non si riordina sotto gli occhi

@@ -15,6 +15,7 @@
 #          - DELETE /liste/<codice>/preferenza    -> elimina preferenza utente
 #          - POST   /liste/<codice>/preferenza/ignore-preset-update
 #                                                 -> tombstone DEF-2 "preset aggiornato"
+#          - GET    /misure-pagina                -> fn_get_misure_pagina
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -88,6 +89,44 @@ class ApiListaConfigView(DomainAPIView):
             ),
         )
         return success_response(config)
+
+
+class ApiMisurePaginaView(DomainAPIView):
+    """
+    GET /api/v1/ui/misure-pagina/
+
+    Le misure «righe per pagina» che ogni paginatore offre e i due default
+    (`default_compatta` per drawer e dialog, `default_pagina` per le pagine),
+    dal catalogo `ui.misure_pagina`. Servite a TUTTA l'applicazione, non
+    dentro la configurazione di una lista: le usano anche tabelle grezze,
+    dialog e cruscotti. Il frontend le legge una volta per sessione.
+    """
+
+    skip_area_check = True
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="UiMisurePaginaResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="UiMisurePagina",
+                        fields={
+                            "misure": serializers.ListField(
+                                child=serializers.IntegerField(),
+                            ),
+                            "default_compatta": serializers.IntegerField(),
+                            "default_pagina": serializers.IntegerField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            ),
+        },
+    )
+    # Scopo: Restituisce misure ammesse e default dal catalogo DB.
+    def get(self, request: Request) -> JsonResponse:
+        return success_response(UiService().get_misure_pagina())
 
 
 class ApiListaCatalogoView(DomainAPIView):

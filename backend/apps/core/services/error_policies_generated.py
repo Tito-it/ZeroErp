@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 932, di cui 98 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 958, di cui 98 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -392,6 +392,12 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DDT_EMISSIONE_SENZA_RIGHE": "CONFLITTO_STATO",
     # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6.
     "E_DDT_EMITTENTE_BA_INCOERENTE": "DATO_ERRATO",
+    # vendite.trgfn_ddt_guard_magazzino (2026-09-28, D-L3-a): il magazzino (o l'arrivo) cambia su una bolla che non era in bozza. Si guarda lo stato VECCHIO, come per la causale: l'UPDATE che emette e sceglie il magazzino insieme resta lecito. Il VARIADIC porta lo stato.
+    "E_DDT_MAGAZZINO_IMMUTABILE": "CONFLITTO_STATO",
+    # vendite.trgfn_ddt_guard_magazzino (2026-09-28, D-L3-a): il magazzino di arrivo su una bolla che non e' di trasferimento, un arrivo uguale alla partenza, o un magazzino di un altro emittente (letto sotto RLS: invisibile e inesistente rispondono uguale). Il VARIADIC dice quale regola.
+    "E_DDT_MAGAZZINO_INCOERENTE": "DATO_ERRATO",
+    # script.fn_check_ddt_merce, motivi 1 e 2 (2026-09-28, brief-db-magazzino-lotto-3-scarico-da-ddt, P-6): una bolla che muove merce non si emette senza il magazzino di partenza, ne' - se e' una bolla di trasferimento - senza quello di arrivo. Lo nomina la check, lo solleva il verbo vendite.fn_cambia_stato_ddt col primo motivo; la capability Emetti lo mostra. Il VARIADIC dice quale (di partenza / di arrivo). CONFLITTO_STATO come la causale obbligatoria: e' la bozza incompleta, non un dato sbagliato.
+    "E_DDT_MAGAZZINO_OBBLIGATORIO": "CONFLITTO_STATO",
     "E_DDT_NESSUNA_RIGA": "CONFLITTO_STATO",
     "E_DDT_NIENTE_DA_EVADERE": "CONFLITTO_STATO",
     # DDT di vendita (CRUD + emissione + macchina a stati + evasione da · ordine + push singolo). Famiglia speculare a E_ORD_*. I codici trigger · DB (E_STATO_DDT_*, E_COMPONENTE_PREZZO_PENDENTE, E_QTA_SUPERA_RESIDUO) · passano invece via regex in ddt_service._db_errors: registrati qui per · fissare lo status/ui_action lato FE.
@@ -399,10 +405,16 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Evasione da ordine (fn_genera_ddt_da_ordine): l'ordine sorgente non · esiste, non e' in uno stato evadibile, o non ha residuo da evadere.
     "E_DDT_ORDINE_NOT_FOUND": "NON_TROVATO",
     "E_DDT_ORDINE_STATO_NON_EVADIBILE": "CONFLITTO_STATO",
+    # script.fn_check_ddt_merce, motivo 3 (2026-09-28, P-6, D-L3-b): una voce della bolla che muove merce ha prelievi che non ne coprono la quantita', oppure non ne ha e il prelievo non e' automatico (articolo a lotti o a seriale, o magazzino con ubicazioni: c'e' una scelta da fare). Lo solleva il verbo col primo motivo. Il VARIADIC porta numero di riga, quantita' prelevata e attesa.
+    "E_DDT_PRELIEVI_INCOMPLETI": "CONFLITTO_STATO",
+    # vendite.trgfn_ddt_righe_prelievi_guard (2026-09-28, D-L3-f): il prelievo non rispetta la regola del kit - una riga il cui articolo non e' gestito, un componente di un'altra riga o non gestito, un componente su una riga gestita (si preleva la riga) - oppure cambia riga o componente. Il VARIADIC porta il numero di riga e la regola.
+    "E_DDT_PRELIEVO_INCOERENTE": "DATO_ERRATO",
     "E_DDT_PREZZO_NON_RISOLVIBILE": "CONFLITTO_STATO",
     # Una riga di DDT che porta un PREZZO deve portare anche l'ALIQUOTA: senza, vendite.vw_ddt_righe_iva_base la fa entrare nel riepilogo (filtra prezzo_unitario e NON iva_id) e vw_ddt_riepilogo_iva_dettaglio la somma con COALESCE(aliquota,0), producendo un imponibile pieno con codice IVA vuoto e imposta zero - su un documento emesso e stampato. Sollevato dal gate all'emissione vendite.trgfn_ddt_guard_causale_emissione, via il sesto motivo di script.fn_check_ddt_emittibile. CONFLITTO_STATO come i due gemelli (E_DDT_CAUSALE_OBBLIGATORIA, E_DDT_PREZZO_NON_RISOLVIBILE): la richiesta e' "porta il DDT a EMESSO" e non c'e' un campo di quella richiesta da correggere, e' la situazione che non lo consente - ne discende che nel contesto non va la chiave `campo`. ⛔ Il discrimine e' il PREZZO e non la causale, quindi il controllo sta FUORI dal ramo fatturabile: la vista del riepilogo la causale non la guarda. ⛔ Niente `bersaglio`: si solleva sul DDT che l'operatore sta gia' guardando, e un pulsante che riporta dove si e' gia' non e' un gesto. ⚠️ Nel VARIADIC va il NUMERO di riga, non l'id: e' la frase che legge una persona. Decisione di Tid 2026-08-28 (R4-ter): una riga senza iva_id e' impossibile, e "impossibile" si traduce in non emittibile - in bozza il NULL resta legittimo, come gia' per la causale. Piano: brief-db-ddt-riconsegna-eredita-testata, Fase C.
     "E_DDT_RIGA_IVA_MANCANTE": "CONFLITTO_STATO",
     "E_DDT_RIGA_NON_TROVATA": "NON_TROVATO",
+    # vendite.trgfn_ddt_guard_transizione, Regola 3 - la porta del registro (2026-09-28, D-L3-e): emissione, annullo di una bolla emessa o consegna di una bolla di trasferimento, su una bolla che muove merce, tentati con un UPDATE diretto invece che dal verbo vendite.fn_cambia_stato_ddt (manca la GUC transazionale, o chi scrive non e' il proprietario). TECNICO: e' un chiamante che scavalca il verbo, non una scelta dell'operatore. Il VARIADIC porta numero della bolla e stato di destinazione.
+    "E_DDT_STATO_SOLO_DA_VERBO": "TECNICO",
     "E_DDT_STATO_TRANSIZIONE": "CONFLITTO_STATO",
     "E_DDT_VALIDAZIONE": "DATO_ERRATO",
     "E_DEFAULT_CONTATTO_MISSING": "DATO_ERRATO",
@@ -687,6 +699,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_LISTINO_RIGA_COMP_BOM_INCOERENTE": "DATO_ERRATO",
     "E_LISTINO_RIGA_COMPOSITO_VIETATO": "DATO_ERRATO",
     "E_LISTINO_TIPOLOGIA_UTILITY": "DATO_ERRATO",
+    "E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI": "CONFLITTO_STATO",
     # Resolver pricing v5 (fn_resolve_prezzo_listino_v2, rev 2026-05-13 · bundle-prioritario): versione listino non trovata o non attiva · alla data del documento. Indica un mismatch fra il listino eletto · (contratto o categoria) e la disponibilita' di una versione · operativa per quel periodo. · 404 -> 422 (audit 2026-08-06). Non era un «non trovato»: il · listino c'e', la query di `fn_resolve_prezzo_listino_v2` cerca una · versione `attivo = TRUE AND stato IN (ATTIVA, CHIUSA)` valida ALLA · DATA, e non ne trova. La richiesta si capisce e non si puo' · eseguire: e' la definizione del 422. Allineato al fratello · `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA`, che dice quasi la · stessa cosa ed era gia' 422.
     "E_LISTINO_VERSIONE_NON_ATTIVA": "NON_ESEGUIBILE",
     "E_LOCK_COLUMNS": "TECNICO",
@@ -732,6 +745,10 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_MAG_ASSET_POSIZIONE_INCOERENTE": "CONFLITTO_STATO",
     # Validazione del payload degli endpoint di magazzino, sollevato dal BACKEND (apps/magazzino/services/magazzino_service.py) - decisione di Tid del 2026-09-22 (R-6 di brief-db-magazzino-lotto-2-bis-be-fe). Gemello di E_PAGAMENTI_VALIDATION: fino a oggi il magazzino usava il generico E_VALIDATION_INPUT, quindi nel registro degli errori i suoi rifiuti non si distinguevano da quelli di qualunque altro dominio. Nessuna funzione a DB lo nomina: il rubinetto B-7 non lo vede, questa riga e' cio' che lo rende un codice registrato. * LA FRASE E' SENZA SEGNAPOSTO, come quella dei diciotto fratelli *_VALIDATION (E_PAGAMENTI_VALIDATION, E_VENDITE_VALIDATION, E_CORE_VALIDATION...): a riempire un %s e' script.fn_log_and_raise_error, e un codice che nessuna funzione PL/pgSQL solleva da li' non ci passa mai - il %s uscirebbe grezzo a video. Quale campo non va lo dice il ServiceError del BE (context.field + detail), non la frase.
     "E_MAGAZZINO_VALIDATION": "DATO_ERRATO",
+    # magazzino.fn_libera_blocco (2026-09-28, D-L3-j): il blocco e' gia' CHIUSA. Si libera una volta sola, con un atto che resta (chi, quando, perche' in meta).
+    "E_MAG_BLOCCO_GIA_CHIUSO": "CONFLITTO_STATO",
+    # magazzino.fn_libera_blocco (2026-09-28, D-L3-j): il blocco non esiste, non e' un blocco manuale (ha una sorgente), oppure e' fuori dal perimetro di chi agisce - il 404 e' lo stesso (convenzione no-leak).
+    "E_MAG_BLOCCO_NON_TROVATO": "NON_TROVATO",
     # Guard di parametro delle funzioni di magazzino (fn_scrivi_movimento, fn_check_disponibilita_uscita, fn_inventario_piano, fn_posta_inventario, fn_posta_rettifica) su valori che NESSUNA interfaccia puo' produrre: un id <= 0, un codice obbligatorio vuoto, una quantita' zero, due chiavi di sorgente insieme. Gemello di E_VENDITE_CHIAMATA_NON_VALIDA (2026-08-22) e di E_PAGAMENTI_CHIAMATA_NON_VALIDA, per la stessa ragione: E_PARAMETRO_INVALIDO e' uno split rimandato (D11 di brief-db-be-classe-codici-errore) e non si riusa. TECNICO perche' il chiamante e' rotto, non il dato. SOLO guard di parametro (famiglia PARAMETRO nel rubinetto B-7): il magazzino inesistente ha il suo codice, E_MAG_MAGAZZINO_NON_VALIDO. Nasce il 2026-09-18 (brief-db-magazzino-lotto-2-motore, sezione 4.2 passo 1).
     "E_MAG_CHIAMATA_NON_VALIDA": "TECNICO",
     # magazzino.fn_scrivi_movimento, passo 12 (D-L2-c): p_costo_unitario e' stato passato dove il costo lo decide il REGISTRO — uno storno (costo dell'originale), l'entrata gemella di un trasferimento (costo della OUT con lo stesso transfer_uid), qualunque uscita (media corrente). Il costo si passa solo su un'entrata da documento o da conteggio. TECNICO: chiamante rotto. Nasce il 2026-09-18 (brief-db-magazzino-lotto-2-motore, sezione 3 D-L2-c).
@@ -786,6 +803,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_MAG_STORNO_INCOERENTE": "TECNICO",
     # magazzino.trgfn_trasferimenti_guard_stesso_emittente: i due magazzini di un trasferimento non appartengono allo stesso emittente fiscale, o uno dei due non è visibile a chi scrive (lettura sotto RLS, fail-closed). Nessuna operazione di magazzino attraversa due emittenti (M-6): fra due emittenti sarebbe una cessione con un documento, non uno spostamento. DATO_ERRATO perché la destinazione la sceglie una persona nel form: campo = magazzino_id_to. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.7.
     "E_MAG_TRASFERIMENTO_EMITTENTI_DIVERSI": "DATO_ERRATO",
+    # script.fn_check_documento_interno_registrabile, famiglia TRASFERIMENTO (2026-09-28, P-4): in un trasferimento interno dentro lo stesso magazzino una riga non indica due ubicazioni - partenza e arrivo coincidono. E' la regola che il CHECK di testata non sapeva esprimere (magazzini diversi OPPURE ubicazioni diverse). Il VARIADIC porta l'id della riga.
+    "E_MAG_TRASFERIMENTO_STESSA_POSIZIONE": "DATO_ERRATO",
     # magazzino.fn_scrivi_movimento, passo 8: ubicazioni.magazzino_id <> p_magazzino_id, oppure l'ubicazione non e' (piu') attiva — il controllo cross-tabella che il Lotto 1 (sezione 4.4) rinviava alla primitiva. DATO_ERRATO, campo = ubicazione_id. Nasce il 2026-09-18 (brief-db-magazzino-lotto-2-motore, sezione 4.2 passo 8).
     "E_MAG_UBICAZIONE_DI_ALTRO_MAGAZZINO": "DATO_ERRATO",
     # magazzino.ubicazioni.magazzino_id via script.trgfn_lock_columns (dbops.automation_lock_columns): il magazzino di un'ubicazione non si cambia dopo la creazione. Un'ubicazione che cambiasse magazzino porterebbe con se' i FIGLI (resterebbero nel magazzino vecchio col padre in quello nuovo) e il REGISTRO (movimenti.ubicazione_id accanto a movimenti.magazzino_id: le righe storiche direbbero «ubicazione di B in un movimento di A»). E' identita', come magazzini.codice. Per spostarla: disattivare e crearne una nel magazzino giusto. CONFLITTO_STATO come gli altri lock (E_ORD_CLIENTE_IMMUTABILE). Nasce il 2026-09-21 (brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici, sezione 4-bis D1, deciso da Tid — al posto del ramo UPDATE OF magazzino_id del guard).
@@ -1079,10 +1098,18 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # vendite.fn_annulla_reso: il reso ha almeno una riga di ponte in vendite.resi_righe_accrediti, cioe' un accredito gia' registrato. Gemello esatto di E_RESO_ANNULLO_CON_RICONSEGNE (540): stessa classe di problema — un effetto gia' in viaggio che l'annullo del documento non saprebbe stornare. Senza questa guardia l'annullo passava e lasciava vive le commesse_attivita tipo_movimento = 'RETTIFICA' in APPROVATA / NON_EMESSA: al primo giro di fatturazione ne usciva una nota di credito per un reso annullato, perche' fn_list_emittibili_lane e fn_emit_attivita_fatturabili_da_commessa non nominano mai il reso e non riparano a valle. Il predicato e' l'ESISTENZA del ponte e non lo stato delle rettifiche: se l'accredito e' troppo tardi per essere disfatto lo dice la sua madre con E_ACCREDITO_ANNULLO_NON_AMMESSO, e ricalcolarlo qui sarebbe una seconda copia della regola. Si RIFIUTA e non si cascata: l'annullo dell'accredito pretende un motivo obbligatorio che una cascata automatica dovrebbe inventarsi. VINCOLO RECIPROCO su TRE posti con script.fn_check_rinuncia_reversibile e vendite.fn_annulla_accredito_riga_reso: la guardia si auto-ripara perche' l'annullo dell'accredito CANCELLA le righe di ponte. Origine: collaudo in-app note di credito resi (prova 4/7), segnalazione BE del 2026-08-19. Piano: brief-design-note-credito-resi.
     "E_RESO_ANNULLO_CON_ACCREDITO": "CONFLITTO_STATO",
     "E_RESO_ANNULLO_CON_RICONSEGNE": "CONFLITTO_STATO",
+    # vendite.trgfn_resi_guard_ddt_consegnato (2026-09-28, D-L3-c): un reso da una bolla di trasferimento fra depositi. La merce e' rimasta nostra (e' entrata nel magazzino di arrivo alla consegna): un reso la farebbe rientrare due volte, con un accredito verso chi non l'ha comprata. Il VARIADIC porta il numero della bolla.
+    "E_RESO_DA_DDT_TRASFERIMENTO": "CONFLITTO_STATO",
     # Guard DB sorgente reso (trgfn_resi_guard_ddt_consegnato, a10 INSERT): · il reso richiede il DDT sorgente in CONSEGNATO. Il service ha il · guard gemello parlante (crea_reso); questo copre le scritture non-BE.
     "E_RESO_DDT_NON_CONSEGNATO": "CONFLITTO_STATO",
     # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6.
     "E_RESO_EMITTENTE_BA_INCOERENTE": "DATO_ERRATO",
+    # vendite.trgfn_resi_guard_magazzino (2026-09-28, D-3b-a): il magazzino di rientro cambia su un reso che non era in bozza. Si guarda lo stato VECCHIO, come per la bolla. Il VARIADIC porta lo stato.
+    "E_RESO_MAGAZZINO_IMMUTABILE": "CONFLITTO_STATO",
+    # vendite.trgfn_resi_guard_magazzino (2026-09-28, D-3b-a): il magazzino di rientro non e' dell'emittente del reso, dal BB script.fn_magazzino_dell_emittente (letto sotto RLS: invisibile e inesistente rispondono uguale). Nessun VARIADIC.
+    "E_RESO_MAGAZZINO_INCOERENTE": "DATO_ERRATO",
+    # script.fn_check_reso_merce, motivo 1 (2026-09-28, brief-db-magazzino-lotto-3-bis-carico-da-reso, P-6): un reso che fa rientrare merce non si conferma senza il magazzino di rientro. Lo nomina la check, lo solleva il verbo vendite.fn_conferma_reso col primo motivo; la capability Conferma lo mostra. CONFLITTO_STATO come per la bolla: e' la bozza incompleta, non un dato sbagliato.
+    "E_RESO_MAGAZZINO_OBBLIGATORIO": "CONFLITTO_STATO",
     "E_RESO_NESSUNA_RICONSEGNA_PENDENTE": "CONFLITTO_STATO",
     # fn_genera_ddt_riconsegna: reso non CONFERMATO / nessuna copertura · residua da ri-spedire.
     "E_RESO_NON_CONFERMATO": "CONFLITTO_STATO",
@@ -1096,6 +1123,12 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_RESO_RICONSEGNA_SUPERA_RESO": "CONFLITTO_STATO",
     # Guard ponte ri-consegna (trgfn_resi_riconsegne_guard): aggancio · ammesso solo su righe con tipo_reso.riapre_residuo = true.
     "E_RESO_RICONSEGNA_TIPO_NON_VALIDO": "CONFLITTO_STATO",
+    # script.fn_check_reso_merce, motivo 2 (2026-09-28, P-6, D-3b-b/-g): una voce del reso non e' coperta dai rientri - la riga uscita intera non rientra per la quantita' resa, un componente rientra oltre la sua proporzione, o una riga senza rientri ha una voce non automatica (piu' prelievi d'origine, magazzino con ubicazioni, proporzione con resto: c'e' una scelta da fare). Lo solleva il verbo col primo motivo. Il VARIADIC porta numero di riga, quantita' indicata e attesa.
+    "E_RESO_RIENTRI_INCOMPLETI": "CONFLITTO_STATO",
+    # vendite.trgfn_resi_righe_rientri_guard (2026-09-28, D-3b-b): il rientro nomina un prelievo che non e' della riga di bolla da cui viene la riga di reso, oppure cambia riga o prelievo. Il VARIADIC porta il numero di riga e la regola.
+    "E_RESO_RIENTRO_INCOERENTE": "DATO_ERRATO",
+    # script.fn_check_reso_merce, motivo 4 (2026-09-28, P-6, D-3b-b): sommando i resi non annullati della bolla, da un prelievo rientrerebbe piu' di quanto era uscito. Il VARIADIC porta numero di riga, quantita' che rientrerebbe e quantita' uscita.
+    "E_RESO_RIENTRO_OLTRE_USCITO": "CONFLITTO_STATO",
     # script.fn_check_rinuncia_reversibile: la quota rinunciata risulta gia' ACCREDITATA (esiste almeno una riga in vendite.resi_righe_accrediti per quella riga di reso), quindi riaprire la rinuncia sfalserebbe un accredito gia' in viaggio verso una nota di credito. ⭐ E' il gate che il commento della funzione teneva in caldo dal 2026-07-26 dichiarando di NON registrare il codice «per non lasciare a catalogo un codice mai sollevato»: la slice NC e' arrivata, e ora si solleva. ⚠️ VINCOLO RECIPROCO con vendite.fn_annulla_accredito_riga_reso: il gate si auto-ripara perche' l'annullo CANCELLA le righe di ponte — se un giorno diventasse un soft-delete, questo ramo va cambiato insieme, o vieterebbe per sempre una rinuncia ormai reversibile e lo farebbe in silenzio. Piano: brief-db-note-credito-prerequisiti-be-fe §12 (P-3 / passo 4).
     "E_RESO_RINUNCIA_ACCREDITO_ESEGUITO": "CONFLITTO_STATO",
     # Gemello del precedente sull'ALTRA uscita della stessa copertura · (id 560): ri-spedizioni e rinunce condividono il residuo · `quantita - Sigma ric - Sigma rin`, quindi anche la rinuncia puo' · eccederlo. Causa tipica: due operatori sulla stessa riga reso, uno · ri-spedisce e l'altro dichiara definitiva la quota -> 409, conflitto · di stato, non errore di validazione del payload.
@@ -1105,6 +1138,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_RESO_STATO_NON_ANNULLABILE": "CONFLITTO_STATO",
     # fn_conferma_reso: conferma ammessa solo da DRAFT / con righe attive.
     "E_RESO_STATO_NON_CONFERMABILE": "CONFLITTO_STATO",
+    # vendite.trgfn_resi_guard_transizione, Regola 2 - la porta del registro (2026-09-28, D-3b-f): conferma o annullo di un reso confermato, su un reso che fa rientrare merce, tentati con un UPDATE diretto invece che dai verbi vendite.fn_conferma_reso / fn_annulla_reso (manca la GUC transazionale, o chi scrive non e' il proprietario). TECNICO: e' un chiamante che scavalca il verbo. Il VARIADIC porta numero del reso e stato di destinazione.
+    "E_RESO_STATO_SOLO_DA_VERBO": "TECNICO",
     "E_RESO_STATO_TRANSIZIONE": "CONFLITTO_STATO",
     "E_RESO_VALIDAZIONE": "DATO_ERRATO",
     "E_RIGA_COMMESSA_GIA_ANNULLATA": "CONFLITTO_STATO",
@@ -1308,6 +1343,18 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_TITOLO_IVA_UTILIZZATO_NEGATIVO": "DATO_ERRATO",
     # <- E_AI_CONFIRMATION_REQUIRED RIMOSSO il 2026-08-06 (audit coerenza · status). Non lo sollevava nessuno — ne' Python, ne' Vue, ne' il · database — e il motivo e' che il flusso di conferma dei tool in · scrittura ha scelto un'altra strada, migliore: `ai_assistant_service` · restituisce **200 con `requires_confirmation` nel payload**. Una · conferma richiesta non e' un errore HTTP. · ⚠️ E il 428 non c'entrava comunque: RFC 6585 lo definisce come «la · richiesta deve essere condizionale» (`If-Match`, per non perdere · aggiornamenti concorrenti), non «l'utente deve confermare». · Se un giorno servisse davvero un errore per questo caso, i due · presidi lo pretenderanno dichiarato: si riparte da qui, non dal 428. · --- Autenticazione: token, email, invito, cambio/reset password ---
     "E_TOKEN": "DATO_ERRATO",
+    # Il codice del secondo fattore non corrisponde al segreto: lo solleva il BACKEND, perche' la verifica del codice e' sua (il DB non vede mai il segreto in chiaro). A catalogo per la frase e la classe. Conta come tentativo fallito della credenziale (D-T2, script.fn_registra_tentativo_login). Nasce il 2026-09-29 (brief-db-secondo-fattore-totp).
+    "E_TOTP_CODICE_NON_VALIDO": "DATO_ERRATO",
+    # Conferma, uso, codice di recupero, rigenerazione o disabilitazione del secondo fattore senza il device che servirebbe: nessun device (mai registrato o disabilitato) oppure, per uso, recupero e rigenerazione, un device non ancora confermato. CONFLITTO_STATO e non NON_TROVATO: la credenziale c'e', e' il suo stato che non ammette l'operazione. Frase chiusa. Nasce il 2026-09-29 (brief-db-secondo-fattore-totp).
+    "E_TOTP_DEVICE_ASSENTE": "CONFLITTO_STATO",
+    # script.fn_totp_registra_device su una credenziale che ha gia' un device del secondo fattore CONFERMATO, o script.fn_totp_conferma_device su un device gia' confermato. Un device in uso non si sostituisce registrandone un altro: va prima disabilitato (script.fn_totp_disabilita_device). Frase chiusa: l'id viaggia nel contesto. Nasce il 2026-09-29 (brief-db-secondo-fattore-totp).
+    "E_TOTP_DEVICE_GIA_ATTIVO": "CONFLITTO_STATO",
+    # script.fn_totp_disabilita_device senza motivo quando ad agire non e' la credenziale stessa (un SUPER_ADMIN o la sessione del migratore). Gemello di E_CREDENZIALE_MOTIVO_OBBLIGATORIO. campo = motivo nel contesto. Nasce il 2026-09-29 (brief-db-secondo-fattore-totp).
+    "E_TOTP_MOTIVO_OBBLIGATORIO": "DATO_ERRATO",
+    # script.fn_totp_registra_uso con un PASSO non successivo all'ultimo usato (anti-replay, RFC 6238 §5.2): lo stesso codice due volte, o il codice di un intervallo gia' superato. Rimedia chi digita, aspettando il codice nuovo: DATO_ERRATO. Frase chiusa: il passo viaggia nel contesto. Nasce il 2026-09-29 (brief-db-secondo-fattore-totp).
+    "E_TOTP_PASSO_GIA_USATO": "DATO_ERRATO",
+    # script.fn_totp_consuma_recovery con un hash che non e' nel mazzo dei codici di recupero del device: codice sbagliato, gia' usato, o di un mazzo rigenerato. Frase chiusa: l'hash non esce mai. Nasce il 2026-09-29 (brief-db-secondo-fattore-totp).
+    "E_TOTP_RECOVERY_NON_VALIDO": "DATO_ERRATO",
     # Trigger montato con argomenti sbagliati (TG_NARGS, o TG_ARGV che nomina colonne non castabili). E' un difetto di MONTAGGIO: se ne accorge chi installa il trigger, mai l'operatore. Scorporato da E_ERRORE_PARAMETRI il 2026-08-08 (3 punti su 13 che dicevano 400 dove serve 500). Precedente: E_ATTIVO_REQUIRE.
     "E_TRIGGER_ARGOMENTI_INVALIDI": "TECNICO",
     "E_TX_ID": "TECNICO",
@@ -1339,6 +1386,10 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_UI_LISTA_EMITTENTE_DA_SCEGLIERE": "NON_ESEGUIBILE",
     # E_UI_LISTA_NON_TROVATA: sollevato dal building block ui.fn_lista_da_codice (dal 2026-09-25; lo chiamano fn_resolve_lista_config · fn_lista_colonne_ricerca_full · il BB di ricerca del backend) quando il codice · lista non esiste o e' attivo=false (seedato in messaggi_errore.csv id 427). · Gli E_UI_VISTA_SQL_NON_TROVATA / E_UI_CAMPO_SORGENTE_NON_TROVATO sono guard · admin-only dei trigger B1/B2: l'utente finale non li vede in flussi normali.
     "E_UI_LISTA_NON_TROVATA": "NON_TROVATO",
+    # ui.fn_misura_pagina_default: il catalogo ui.misure_pagina non ha la misura di default per quell'uso (COMPATTA o PAGINA), o l'uso e' fuori vocabolario. E' un catalogo rotto, non un dato dell'operatore: rimedia chi governa il CSV (80_data/sql/ui/misure_pagina.csv). Mai un NULL al suo posto: tornerebbe a video come il selettore vuoto. Segnaposto: l'uso. Nasce il 2026-09-30 (brief-db-misure-pagina-catalogo).
+    "E_UI_MISURA_PAGINA_DEFAULT_MANCANTE": "TECNICO",
+    # ui.fn_guard_misura_pagina: una misura «righe per pagina» (di un preset, ui.lista_preset.pagina_dimensione, o di una preferenza utente, nel jsonb) che non e' nel catalogo ui.misure_pagina, o un valore che non e' un numero intero. Al posto del 23503 grezzo della FK e del selettore vuoto a video (il caso del 28-09: un preset a 15). campo = pagina_dimensione. Segnaposto: il valore scritto e l'elenco delle misure ammesse. Nasce il 2026-09-30 (brief-db-misure-pagina-catalogo).
+    "E_UI_MISURA_PAGINA_NON_AMMESSA": "DATO_ERRATO",
     # Guard ui.trgfn_lista_definizione_guard_multi_emittente: tentativo di scrivere ui.lista_definizione.multi_emittente da un ruolo diverso dal proprietario della tabella (cioe' dall'applicazione). Il flag dichiara una CAPACITA' DEL SOFTWARE — «questa lista sa dire da quale emittente arriva ogni riga» — non una preferenza dell'utente, e una capacita' non si dichiara per stanchezza. Si accende SOLO dal seed lista_definizione.csv, insieme (o dopo) al lavoro di P-4 che la rende vera. ⚠️ Il presidio e' un TRIGGER e non un permesso di colonna: il GRANT verrebbe ri-concesso a ogni passata di ci_apply dal giro dei grant runtime, che cicla su tutti gli schemi. Piano: brief-db-perimetro-emittente-liste-e-gerarchia-ba Q1 e §11.5.
     "E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE": "NON_PERMESSO",
     "E_UI_PERMESSO_NON_TROVATO": "NON_TROVATO",

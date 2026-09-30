@@ -490,6 +490,7 @@ _DdtRigheLista, _DdtRigheListaExport = build_lista_figlia_views(
     model_permission=('vendite', 'ddt'),
     pagina_call=lambda documento_id, **kw: ddt_service.list_righe_pagina(documento_id, **kw),
     colonne_ordinabili=DdtRepository.righe_colonne_ordinabili(),
+    ordine_assente=DdtRepository.righe_ordine_di_partenza(),
 )
 
 

@@ -62,6 +62,13 @@
 >   doc auto-gen** (le 7 pagine nuove agganciano la loro scheda `manual/`) — e
 >   il lavoro **BE/FE** dei lotti L2-L4 (§8.14.3-4). Il brief resta in
 >   `work-in-progress/` finché BE e FE non chiudono.
+> - ✅ **2026-09-30 (`dev/backend-tid`)**: letti gli aggiornamenti DB del 29-30
+>   (seed §9.3, §9.4, §9.7 migrati; catalogo delle misure applicato, brief a
+>   parte). **Lotto D lato BE fatto** (§9.10), **lotto E chiuso** (§9.12).
+>   🔴 **Trovato nel giro un difetto di modello già vivo** sulla sorgente della
+>   lista 103: le righe AGGIUNTA escono con l'UdM dell'articolo e non con quella
+>   della riga, e il form di modifica la riscrive al primo salvataggio.
+>   ⏳ **Richiesta al team DB in §9.11**: il FE del contratto la attende.
 
 ---
 
@@ -1381,8 +1388,8 @@ vuol dire quindi: **prima del commit** di CSV e doc.
 | **A** | BE liste 97-100: repository sulle viste, lista paginata + export, presidi | ✅ 2026-09-28 (§9.1) |
 | **B** | FE L2: preventivo, ordine, DDT, reso su `DrawerTabLista` | ✅ 2026-09-28 (§9.2); ✅ seed §9.3 e §9.4 migrati il 2026-09-29 (verificati sul DB) |
 | **C** | BE + FE: BoM (101) e fattura (102) | ✅ 2026-09-28 (§9.8); ✅ decisa il 2026-09-29 la stampa (§9.8.4): prosegue in `brief-db-documenti-versione-contesto-template.md` |
-| **D** | BE + FE: contratto (103) | ⏳ |
-| **E** | policy `E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI`, ~~15~~ **10** righe nei drawer (§9.7), date della versione CHIUSA, doc §6 | ⏳ |
+| **D** | BE + FE: contratto (103) | ✅ BE 2026-09-30 (§9.10); ⏳ **FE fermo sulla richiesta al team DB §9.11** (due colonne della funzione, una è un difetto di modello già vivo) |
+| **E** | policy `E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI`, ~~15~~ **10** righe nei drawer (§9.7), date della versione CHIUSA, doc §6 | ✅ 2026-09-30 (§9.12); le misure del paginatore proseguono in `brief-db-misure-pagina-catalogo.md` |
 
 ### 9.1 Lotto A — BE delle liste 97-100 (2026-09-28)
 
@@ -1824,3 +1831,166 @@ stessa lettura paginata di `RigheListaMixin.list_righe_pagina` (vista, ricerca,
 whitelist, spareggio, `fetch_paged_with_total`), più il filtro `valido_al`.
 Seconda copia anche questa, ma il mixin sta in `vendite/db`: portarlo in una
 sede comune è un'estrazione fra domini a sé, da concordare.
+
+### 9.10 Lotto D — BE della lista 103 (2026-09-30)
+
+| Dove | Cosa |
+| --- | --- |
+| `vendite/db/_righe_repo_mixin.py` | ⭐ **la sorgente può essere una FUNZIONE del documento**: `_righe_funzione` (FQN di `fn(documento_id)`) al posto di vista e FK. Il BB legge `fn(doc) v`, senza condizione sul documento e senza `WHERE` quando non c'è ricerca (`_righe_da`, `_righe_where`). I cinque documenti con vista non cambiano (lo prova `test_i_documenti_con_tabella_non_cambiano`) |
+| `vendite/db/contratti_repository.py` | `ContrattoRigheListaRepository(RigheListaMixin)` su `vendite.fn_contratto_righe_preview`: chiave `riga_key`, ordine di partenza `articolo_codice` (le righe del listino non hanno un numero di riga, §8.13.5), niente `attivo`; whitelist `_ORDER_COLS_RIGHE_CONTRATTO` (le 9 `ordinabile`), `_RICERCA_RIGHE_CONTRATTO` (codice e descrizione) |
+| `contratti_service.list_righe_pagina` | «leggi prima la testata» (404 `E_VENDITE_NOT_FOUND`, mai una lista vuota: la funzione su un contratto che non si vede risponde zero righe). Una sorgente per le due forme: senza listino la funzione dà le sole AGGIUNTA, il service non decide niente per forma |
+| `views_contratti.py`, `urls_contratti.py` | `GET contratti/<id>/righe/lista/` + `export/` dalla factory `build_lista_figlia_views`, `lista_emittente_param = emittente_fiscale_id` (la lista è `perimetro_emittente = t`, `multi_emittente = f`). ⚠️ Su un **percorso suo**, come i gemelli: `…/righe/` resta righe persistite + `POST`, `…/righe-preview/` l'anteprima prezzi |
+| presidi | `_RICERCHE`, `test_liste_configurabili_seed`, `gen_seed_lista.py` (+1); **`_ESERCIZI`** di `test_lista_proiezione_campo_sorgente` (+1): il rosso atteso D-8.1 della lista 103 è chiuso; **`_ESERCITATE_DAL_REPOSITORY`** di `test_ricerca_full_db` (+1): la lista non ha vista, e la sua ricerca si prova sul DB vero in `vendite/tests/db/test_ricerca_liste_db` (contratto senza listino **costruito** con una AGGIUNTA: codice e descrizione la trovano, un termine assente no; mutazione — descrizione tolta dalla ricerca dichiarata → rosso) |
+| test | `tests/db/test_righe_contratto_lista.py` (5), `tests/api/test_contratto_righe_lista_api.py` (7: percorso, cancello con lista ed emittente, tetto dell'export, permesso del contratto, `…/righe/` senza cancello di lista, service 404 e lettura dopo la testata). Mutazioni: ramo funzione del BB tolto → 4 rossi su 5; lettura della testata tolta → rosso il test del 404 |
+| doc | `api_righe_documento.md` (riga e sezione del contratto), rimando in `api_contratti.md`; catalogo BB backend (`RigheListaMixin`, `build_lista_figlia_views`) |
+
+⚠️ **Non ritirato, e perché**: `ContrattiRepository.list_righe_preview` (la
+lettura completa della stessa funzione) resta per i suoi tre consumatori —
+anteprima prezzi del momento dell'inserimento, `righe_count` del dettaglio e
+**contesto di stampa** del contratto. Passarlo al BB cambierebbe l'ordine delle
+righe stampate (oggi quello della funzione), e il contesto di stampa ha il suo
+cantiere (`brief-db-documenti-versione-contesto-template.md`). La lettura
+completa del BB su `ContrattoRigheListaRepository` non ha consumatori, ed è
+scritto nella classe.
+
+**Prove:** suite backend 5631 test verdi (140 skip). Con i test su DB vero
+accesi, 5873 test: tre rossi, uno di questo giro (la lista 103 non era in
+`_ESERCITATE_DAL_REPOSITORY`, sanato come sopra) e due **non** di questo brief —
+`test_config_panel_registro_db` (la colonna `causale_magazzino` del pannello
+config senza chiave `config_panel.campi.*` nei locales: lotto 3 di magazzino) e
+`test_il_giornale_mostra_solo_l_emittente_di_chi_legge` (il fuso UTC del
+giornale trasversale, già in PROJECT_CONTEXT: la corsa era all'01:15). Presidi
+delle liste su DB provvisto (ricerca, seed, proiezione, export pari,
+paginazione, OpenAPI, perimetro) verdi; `gen_seed_lista.py --verifica-ordinamento
+vendite.contratto_righe` allineato nelle tre direzioni; `ruff` pulito.
+⭐ **Sul DB vero** (come operatore, GUC `app.*`, in transazione annullata;
+fatti datati 2026-09-30): 24 contratti visibili, ogni colonna della whitelist ×
+tre versi × con e senza ricerca = **1440 query senza errori**; righe su 4
+contratti con listino e 12 senza; una pagina oltre la fine risponde il totale
+vero.
+
+#### 9.10.1 Verifica critica del lotto D (2026-09-30)
+
+| Dove | Difetto | Correzione |
+| --- | --- | --- |
+| `views_contratti.py` | la frase OpenAPI dell'ordine senza richiesta («il codice articolo») era **ricopiata a mano** accanto all'attributo che ordina: al primo cambio avrebbe mentito. Le altre cinque view dicevano un generico «l'ordine del documento» | BB `righe_ordine_di_partenza()` nel mixin, letto dagli attributi di ordinamento; lo usano le **sei** view di vendita (`ordine_assente`) |
+| `_righe_repo_mixin.py` | una classe con **sia** `_righe_vista` **sia** `_righe_funzione` era accettata: vinceva la funzione in silenzio | `__init_subclass__` la rifiuta con `TypeError` alla definizione |
+| `api_righe_documento.md` | «poi `id`» e «tutte e tre filtrano `attivo`» valevano per quattro documenti su sei | riscritte: chiave `riga_key` su fattura e contratto, niente riga singola né filtro per loro |
+
+Test: +2 (`test_righe_contratto_lista`: le due sorgenti si rifiutano, l'ordine
+detto dagli attributi); 195 test delle liste figlie, dei presidi e del registro
+OpenAPI verdi su DB provvisto; `ruff` pulito. ⚠️ **Resta, dichiarata**: la
+lettura completa `list_righe` del BB su `ContrattoRigheListaRepository` duplica
+`ContrattiRepository.list_righe_preview` e non ha consumatori (§9.10).
+
+### 9.11 ⏳ Richiesta al team DB — la sorgente della lista 103 porta i dati della riga (2026-09-30)
+
+> **Destinatario:** team DB (`dev/db-tid`). **Blocca** il FE del lotto D
+> (`ContrattoRigheDrawer` su `DrawerTabLista` + `useFormInline`): senza, la
+> conversione porterebbe il difetto qui sotto anche sui contratti senza listino,
+> che oggi ne sono fuori.
+
+Letto sul **contratto** (corpo vivo di `vendite.fn_contratto_righe_preview`
+nella doc auto-gen, `contratti_righe` e il form di riga del drawer), non sui
+dati: nessuna misura regge l'argomento.
+
+**R-D1 🔴 — difetto di modello, già vivo: l'unità di misura di una AGGIUNTA.**
+Le parti 2a e 2b della funzione proiettano `a.uom_id` / `um.codice` — l'UdM
+**dell'articolo** — e non `cr.uom_operativa_id`, l'UdM in cui la riga è
+quotata e quantificata (il form la sceglie fra le UdM operative dell'articolo,
+con la base solo preselezionata: il modello ammette un'UdM diversa). Tre
+effetti, nessuno dà errore:
+
+1. **a video e nell'export** quantità e prezzo della riga escono accanto a
+   un'UdM che non è la loro;
+2. **nel contesto di stampa** (`righe_preview`) lo stesso;
+3. ⛔ **il form di modifica la riscrive**: legge `uom_operativa_id ?? uom_id`,
+   la riga di anteprima non ha il primo, e il salvataggio manda l'UdM
+   dell'articolo — la riga cambia unità di misura al primo «Salva», in
+   silenzio. **Vivo oggi** sui contratti con listino, che l'anteprima la usano
+   già come sorgente del drawer; con la lista 103 si estenderebbe a quelli senza.
+
+⇒ Per le AGGIUNTA, `uom_id` / `uom_codice` dalla **riga**. `uom_operativa_id`
+è nullable: al team DB dire cosa significa NULL (ripiego sull'UdM
+dell'articolo, o un vincolo che lo esclude).
+
+**R-D2 — i dati della riga persistita che il form riscrive.** Il form di
+modifica di una riga persistita (OVERRIDE, ESCLUSIONE, AGGIUNTA) rimanda al
+`PATCH` anche `ordine` e `uom_operativa_id`, che la funzione non espone:
+
+- `ordine` → oggi il form ripiega su **10**: ogni modifica fatta dall'anteprima
+  **azzera l'ordine** della riga (vivo sui contratti con listino);
+- `uom_operativa_id` di un'eccezione su una riga del listino → oggi il form usa
+  l'UdM della riga di listino cliccata. Con la decisione §8.13.2 b («il prezzo
+  forzato vale per tutte le UdM dell'articolo») resta vero che l'eccezione ne ha
+  **una** persistita: il frontend non deve indovinarla.
+
+⇒ Ogni riga della lista porta `uom_operativa_id` e `ordine` della riga di
+`contratti_righe` (vuoti sulle righe `DA_LISTINO`). Lato BE nessuna modifica:
+repository e lista leggono `v.*`. ⚠️ Il contesto di stampa del contratto passa la riga
+**intera** (`_shape_righe` formatta solo le misure): le due colonne vi
+compariranno senza che nessun template le legga — innocuo, ma è un cambio del
+contesto, e R-D1 cambia l'UdM stampata delle AGGIUNTA (è la correzione).
+
+**Da provare**: una AGGIUNTA in un'UdM operativa diversa dalla base
+(standalone e bundle) esce con l'UdM della riga; `ordine` e `uom_operativa_id`
+ci sono sulle eccezioni e sono vuoti sulle righe dal listino. ⚠️ Fatto datato (2026-09-30, dev, come
+operatore): nessuna AGGIUNTA con UdM diversa dalla base — non è un argomento:
+il form lo ammette, e un test che itera su ciò che c'è passerebbe a vuoto.
+
+**Lato FE, a colonne arrivate** (il resto del lotto D, §8.13.5 punto 3):
+`ContrattoRigheDrawer` su `DrawerTabLista` (store per istanza, padre
+contratto + emittente, `data-key="riga_key"`) e `useFormInline`; azioni di riga
+dalla colonna `azioni`, «Escludi» spento col tooltip da
+`escludi_blocco_codice` (`vendite.contratti.escludi_blocco.<reason>`); i
+componenti del kit nella riga espandibile dalla colonna `componenti`; si
+ritirano `buildRigaActions`, `_row_key`, il filtro articolo lato client, lo
+shortcut F5 scritto a mano e la doppia sorgente `righeIniziali`/anteprima. Esce
+dal registro delle `DataTable` grezze.
+
+### 9.12 Lotto E — chiuso (2026-09-30)
+
+| Voce | Esito |
+| --- | --- |
+| policy `E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI` | ✅ `genera_error_policies` (classe `CONFLITTO_STATO`, 409) + ripiego senza segnaposto. ⚠️ La rigenerazione ha portato **tutti** i codici già a catalogo e in git senza policy: 26, di cantieri diversi (magazzino lotto 3 e 3-bis, secondo fattore TOTP, misure di pagina). Verificato prima che ognuno fosse nel `codici_errore.csv` di git (DB non avanti rispetto al repo); ripieghi per tutti e 26. Presidi dei codici verdi (`test_error_codes_db_policy_guardrail` su DB, classi, dichiarati) |
+| ~~15~~ **10** righe nei drawer | ✅ seed migrato il 29-09 (§9.7). Le tre liste montate sia in pagina sia in drawer (`vendite.contratti`, `vendite.giornale`, `catalogo.conversioni_uom`, §8.15.4) **non** si forzano qui con `PAGINATION.COMPACT_ROWS`: la misura di default «compatta» è ora un dato del catalogo e la costante si ritira (`brief-db-misure-pagina-catalogo.md` §6) — forzarla adesso aggiungerebbe consumatori a una costante in uscita. Prosegue là |
+| date della versione CHIUSA (FE, §8.15.3) | ✅ **nessun codice da toccare**, verificato: le date di una versione si cambiano solo da «Chiudi» (`ChiudiVersioneDialog`, offerta solo su una versione **ATTIVA** non ancora scaduta: `statoVersioneVisibile`) e da «Attiva» (`AttivaVersioneDialog`, solo su **BOZZA**); `VersioneDrawer` le mostra in sola lettura, `VersioneFormDrawer` crea solo bozze |
+| doc §6 | ✅ `frontend-standards` e catalogo BB FE già scritti coi lotti B-C; **piano PrimeVue 5 §Gruppo B**: la seconda domanda del criterio è ritirata (le righe di un documento sono Gruppo A); pagine API: `api_righe_documento.md` col contratto (§9.10) |
+
+### 9.13 Il drawer della commessa sul BB delle liste in drawer (2026-09-30)
+
+Segnalato dalla sessione delle misure di pagina: `CommessaGestioneDrawer`
+riscriveva a mano la macchina di `useListaDrawerPaginata` (pagina,
+ordinamento, preset applicato una volta, opzioni del paginatore), come diceva
+l'intestazione stessa del BB («quarto consumatore naturale»). Regola del 2.
+
+| Dove | Cosa |
+| --- | --- |
+| `CommessaGestioneDrawer.vue` | la lista delle righe dal BB: il fetcher porta i due filtri del drawer (stato emissione, tipo movimento); restano del drawer solo filtri e selezione attraverso le pagine. Ritirati `loadRighe`, `onRighePage`, `onRigheSort`, `onConfigLoaded`, `righePaginatorOptions` e sette `ref` di stato. ⭐ **La copia stava già divergendo**: partiva dalla misura di PAGINA dentro un drawer, il BB da quella compatta |
+| `useListaDrawerPaginata.js` | 🔴 **difetto del BB, che la copia non aveva**: le fetch che il BB parte da solo (pagina, ordinamento, preset) non avevano un chiamante che le attendesse — un errore era una promise rifiutata che nessuno guardava, e a video restava la pagina di prima. Ora `carica` lo mostra (toast col messaggio dell'API), lascia le righe e non rilancia (chi la attende con altro non lo mostra due volte). Vale anche per le quattro liste del drawer del lotto e per i «Recuperi» dei lotti |
+| `GET commesse/<id>/attivita/` (BE) | le righe passano da `rows` a **`results`**, l'envelope lista standard (api.md) che il BB legge: repository, export, schema OpenAPI, test, `api_commessa_attivita.md`. Unico consumatore FE, il drawer. ⚠️ Il registro (`…/registro/`) risponde ancora `rows`: fuori da questo giro |
+| test | `useListaDrawerPaginata.spec.js` (nuovo, 4: misura compatta ed envelope, ordinamento a pagina 1, preset una volta e di nuovo dopo `reset`, errore mostrato senza rilanciare; mutazione — errore rilanciato → rosso) |
+
+Prove: vitest 65 file / 505 test, `npm run guards`, `vite build`, eslint verdi;
+backend: test di commesse e registro OpenAPI verdi, proiezione della lista 38
+su DB verde. ⚠️ **Non provato a video**.
+
+### 9.14 ⏳ Richiesta al team DB — tre liste di drawer con il preset a 25 (2026-09-30)
+
+> **Destinatario:** team DB (`dev/db-tid`). Solo dato.
+
+La regola del §9.7 (Tid, 2026-09-28): una lista dentro un drawer parte da 10
+righe. Il censimento del §8.15.4 cercava le liste montate con
+`useDrawerTabLista` e ha saltato quelle sull'altra macchina
+(`useListaDrawerPaginata`). Tre liste vivono **solo** dentro un drawer e hanno
+il preset di sistema a 25, che il BB applica al primo caricamento:
+
+| Lista | Dove vive |
+| --- | --- |
+| `vendite.commesse_attivita` (38) | drawer della commessa |
+| `vendite.lotto_fatture` (45) | drawer del lotto, scheda «Documenti» |
+| `vendite.lotto_gruppi` (67) | drawer del lotto, scheda «Presi in carico» |
+
+⇒ Serve che le tre partano dalla misura **compatta** del catalogo. Chi ha già
+salvato una sua personalizzazione la tiene.
+

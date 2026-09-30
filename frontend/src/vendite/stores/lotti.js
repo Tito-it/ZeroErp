@@ -21,10 +21,10 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
-import { PAGINATION } from '../../core/constants'
 import { paramsPagina } from '../../core/utils/listParams'
 import { listLotti } from '../api/lotti'
 import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
+import { USO_MISURA, misuraDefault } from '../../core/misurePagina'
 
 // Scopo: IL PERIMETRO DELLA PAGINA come query param, in una sede sola — mese,
 //        stato e interruttore degli annullati, cioe' i tre filtri che valgono
@@ -78,7 +78,7 @@ export const useLottiStore = defineStore('vendite-lotti', () => {
     // di `useSearchTable` (che la scrive su deep-link `?search=` e ricerca
     // universale): meglio dichiararla che farla nascere per assegnazione.
     search: '',
-    limit: PAGINATION.DEFAULT_ROWS,
+    limit: misuraDefault(USO_MISURA.PAGINA),
     offset: 0,
     // Default allineato all'ordine storico del BE (`fl.data_insert DESC`): la
     // lista si apre come si e' sempre aperta, il giro piu' recente in cima.

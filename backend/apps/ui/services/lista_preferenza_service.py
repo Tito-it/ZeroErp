@@ -15,7 +15,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.permissions_resolver import PermissionResolver
@@ -211,18 +210,17 @@ class ListaPreferenzaService:
             )
             config["filtri"] = filtri
 
-        # pagina_dimensione: int positivo
+        # pagina_dimensione: qui solo la FORMA (un intero). Quali misure sono
+        # ammesse lo dice il catalogo `ui.misure_pagina`, e lo fa rispettare il
+        # guard a DB sulla preferenza (`E_UI_MISURA_PAGINA_NON_AMMESSA`, 400
+        # dal middleware). ⛔ Il vecchio tetto `MAX_LIMIT` era una seconda
+        # regola, diversa dal catalogo: ammetteva 37, che il paginatore non
+        # offre.
         pagina_dim = self._validator.optional_positive_int(
             payload, key="pagina_dimensione",
             message="Preferenza lista non valida.",
         )
         if pagina_dim is not None:
-            ErrorManager.require(
-                pagina_dim <= MAX_LIMIT,
-                code=E_UI_PREFERENZA_VALIDAZIONE,
-                message="Preferenza lista non valida.",
-                detail=f"pagina_dimensione massima ammessa: {MAX_LIMIT}",
-            )
             config["pagina_dimensione"] = pagina_dim
 
         return config

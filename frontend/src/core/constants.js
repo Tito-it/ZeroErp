@@ -91,12 +91,9 @@ export const TIPO_RUOLO = {
   PSP: 'PSP',
 }
 
-// Paginazione default
-export const PAGINATION = {
-  DEFAULT_ROWS: 25,
-  COMPACT_ROWS: 10,
-  ROWS_OPTIONS: [10, 25, 50, 100]
-}
+// ⛔ Le misure «righe per pagina» NON stanno qui: fino al 2026-09-30 c'era
+//    `PAGINATION`, una copia del catalogo DB `ui.misure_pagina`. Si leggono dal
+//    BB `core/misurePagina.js` (`USO_MISURA`, `misuraDefault`, `misureOpzioni`).
 
 // Ricerca libera delle liste: la soglia del termine, sotto la quale NON si
 // manda (la lista resta quella di prima mentre si digita).

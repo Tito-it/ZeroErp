@@ -335,7 +335,7 @@ abbassata nello stesso giro.
 > `DataTable` a mano: quella decisione la prende la regola zero.
 
 - **Paginazione SOPRA** la tabella (`paginatorPosition: 'top'`)
-- **Righe per pagina default**: 25 su desktop, 10 sotto `BREAKPOINTS.TABLET`; gestito centralmente da `useSearchTable`. Le liste che nascono esplicitamente a 10 restano eccezioni e non vengono rialzate a 25 — e dal 2026-09-18 si dichiarano con l'opzione `limit` di `useListaStoreCore`/`createListaStore` (`limit: PAGINATION.COMPACT_ROWS`), non riscrivendo lo store a mano. Il caso che l'ha fatta nascere: la **lista dentro un dialog**, che è alta dieci righe (vedi §`AppDialog`, «Dialog con una lista dentro»). ⭐ **Dentro un drawer o un dialog la lista parte da 10** (`PAGINATION.COMPACT_ROWS`, decisione di Tid del 2026-09-28): lo dichiara il preset di sistema della lista (`ui.lista_preset.pagina_dimensione`). ⛔ La misura deve essere una di `PAGINATION.ROWS_OPTIONS`: un valore fuori elenco (il 15 provato lo stesso giorno) lascia **vuoto** il selettore del paginatore, senza errore.
+- **Righe per pagina**: ⭐ **misure e default stanno nel DATABASE** (catalogo `ui.misure_pagina`, dal 2026-09-30, decisioni di Tid del 29-09) e si leggono dal BB [`core/misurePagina.js`](../../../../frontend/src/core/misurePagina.js): `misureOpzioni()` per il selettore, `misuraDefault(USO_MISURA.PAGINA | USO_MISURA.COMPATTA)` per la partenza. Le carica il guard del router **una volta per sessione, attese**, prima di qualunque rotta sotto `AppLayout` per l'operatore (anche 404 e forbidden: le legge anche il layout); se la chiamata fallisce si apre la pagina «Avvio non riuscito», che sta **fuori** dal layout, ⛔ **senza ripiego** scritto nel FE (sarebbe una copia del catalogo). ⛔ Nessun numero di righe e nessun array di opzioni scritto in un componente o in uno store: fino al 2026-09-30 erano `PAGINATION` in `constants.js` più due array a mano, e un preset a 15 lasciava il selettore **vuoto** senza errore. Una lista standard parte dalla misura `PAGINA`, adattata al viewport da `useSearchTable` (la `COMPATTA` sotto `BREAKPOINTS.TABLET`, regola unica in `misuraPerViewport`). ⭐ **Dentro un drawer o un dialog la lista parte dalla `COMPATTA`** (decisione di Tid del 2026-09-28): lo dichiara lo store con l'**uso**, `misura: USO_MISURA.COMPATTA` in `useListaStoreCore`/`createListaStore`/`createCrudStore` (e in `usePagedDashFetch`) — ⛔ mai il numero: le opzioni di uno store si scrivono a livello di modulo, e un numero letto lì verrebbe letto **prima** che il guard carichi il catalogo (la vecchia opzione `limit` è ritirata e **solleva**). Il preset di sistema della lista lo dichiara a DB (`ui.lista_preset.pagina_dimensione`), che rifiuta una misura fuori catalogo (`E_UI_MISURA_PAGINA_NON_AMMESSA`).
 - **Indicatore pagina**: `1/5` con JumpToPageDropdown per salto diretto. ⭐ Su **tablet e schermo stretto** (`(hover: none), (max-width: 1023.98px)`) il JumpToPageDropdown è **nascosto** via CSS in `main.css` (2026-09-28): doppia la navigazione ◀ 1 2 3 ▶, e `1/5` resta visibile
 - **Font compatto** sul paginator (`0.8rem`)
 - **Azioni pagina/lista**: building block `PageActionsBar` — refresh, nuovo e azioni utility/secondarie con comportamento responsive unico
@@ -1506,7 +1506,7 @@ paginator li legge, non li ricalcola.
 
 1. `paginatorOptions.rows` / `.first` del **caller** — lo stato vero;
 2. `config.pagina_dimensione` — il preset a catalogo, finché il caller non ha uno stato suo;
-3. `PAGINATION.DEFAULT_ROWS`.
+3. la misura `PAGINA` del catalogo (`misuraDefault(USO_MISURA.PAGINA)`).
 
 ⛔ **Fino al 2026-08-28 il caller non era nella cascata**: `rows` veniva dalla
 sola config e **sovrascriveva** quello che il caller dichiarava. La scelta
@@ -1525,7 +1525,7 @@ tornava a disegnarsi con i 25 del catalogo. Poi PrimeVue calcolava l'offset del
 
 ⚠️ **Il difetto si nasconde dove i numeri combaciano.** Sulla Lente 1 saltavano
 **tre liste su quattro**: gli `errori` hanno `pagina_dimensione = 10` a catalogo,
-uguale a `PAGINATION.COMPACT_ROWS`, quindi lì i due numeri coincidevano per caso
+uguale alla misura compatta di allora, quindi lì i due numeri coincidevano per caso
 e non succedeva niente. Sembrava il problema di una lista sola.
 
 ⚠️ **Conseguenza da conoscere**: con la cascata, `pagina_dimensione` del preset
@@ -1966,7 +1966,7 @@ sta cercando (rilievo di Tid sul picker delle rate).
 
 **Regola**: il blocco lista porta la classe **`app-dialog-lista`** (altezza
 **definita**, token `--app-dialog-lista-h` in `theme.css`, ~dieci righe) e lo
-store nasce a **dieci righe per pagina** (`limit: PAGINATION.COMPACT_ROWS`).
+store nasce alla misura **compatta** (`misura: USO_MISURA.COMPATTA`, dieci righe al 2026-09-30).
 Così la pagina vuota e la pagina piena sono alte uguali, il dialog si apre già
 alto e non si muove più; una pagina più lunga scorre **dentro** la tabella
 (`scroll-height="flex"`, che è esattamente il caso per cui esiste), non
@@ -4563,7 +4563,6 @@ Soggetto, indirizzi, contatti, conti bancari e geografia: fino al 2026-09-26 sta
 | `DRAWER_WIDTH` | Larghezze drawer: SIMPLE, STANDARD, COMPLEX, WIDE, WIDE_PLUS, XLARGE (§«Larghezze standard») |
 | `DATE_FORMAT` | Formato data PrimeVue DatePicker (`dd/mm/yy`) |
 | `TOAST_DURATION` | Durata toast: SUCCESS, INFO, WARN, ERROR, ERROR_CON_SOLUZIONE, SYSTEM_ERROR, AZIONI (§«Notifiche») |
-| `PAGINATION` | Default righe e opzioni righe/pagina |
 | `TABS` | Max tab aperti |
 | `BREAKPOINTS` | Breakpoint responsive (MOBILE, TABLET) |
 | `SHORTCUTS` | Shortcut tastiera (Ctrl+K, Ctrl+Tab, ecc.) |

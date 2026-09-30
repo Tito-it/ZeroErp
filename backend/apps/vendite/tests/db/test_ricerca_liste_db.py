@@ -15,7 +15,7 @@
 #        e non vedono la SQL; `EXPLAIN` dice che la SQL parte, non che TROVA.
 # Note: ⚠️ Il mondo si COSTRUISCE, non si cerca (regola zero, .codex/AGENTS.md):
 #       azienda, operatore, cliente, articolo, listino, promo, preventivo e la
-#       sua attivita' di competenza nascono dai BB `dbops.fn_pgtap_*` e dalle
+#       sua attivita' di competenza, un contratto con la sua riga nascono dai BB `dbops.fn_pgtap_*` e dalle
 #       madri di dominio, in transazione ANNULLATA e col contesto operatore
 #       aperto dal builder. Le famiglie di documento sono SEED (contratto, non
 #       fotografia): se ne ritocca una riga, sempre in transazione annullata.
@@ -34,6 +34,7 @@ from uuid import uuid4
 from django.db import connection, transaction
 
 from apps.core.tests.db_e2e import richiedi_db_provvisto, verifica_ricerca_colonna_per_colonna
+from apps.vendite.db.contratti_repository import ContrattoRigheListaRepository
 from apps.vendite.db.famiglie_repository import FamiglieDocumentoRepository
 from apps.vendite.db.listini_repository import ListiniRepository
 from apps.vendite.db.promo_articoli_repository import PromoArticoliRepository
@@ -183,6 +184,33 @@ _FIXTURE: tuple[str, ...] = (
         p_meta                          => '{"test_scope": "be_ricerca_liste_vendite"}'::jsonb
     )
     """,
+    # ── Le righe di un contratto (lista 103, 2026-09-30) ───────────────────
+    # Senza listino: la sola riga e' l'AGGIUNTA sull'articolo costruito, e la
+    # funzione sorgente la restituisce con chiave `A:<id>`.
+    """
+    CREATE TEMP TABLE _cnt AS
+    WITH ins AS (
+        INSERT INTO vendite.contratti (numero, billing_account_id, istanza_utility_id, utility_id,
+               stato_doc_contratto_id, valido_dal, valido_al)
+        SELECT 'RVCNT-' || %(sfx)s, m.billing_account_id, m.istanza_utility_id, m.utility_id,
+               (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'),
+               current_date, current_date + 365
+          FROM _mondo m
+        RETURNING id
+    )
+    SELECT id AS contratto_id FROM ins
+    """,
+    """
+    CREATE TEMP TABLE _cnt_riga AS
+    WITH ins AS (
+        INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario,
+               tipo_erogazione, fonte_quantita_attesa, quantita, qta_operativa, uom_operativa_id)
+        SELECT (SELECT contratto_id FROM _cnt), a.id, 'AGGIUNTA', 40.00, 'CANONE', 'FISSA', 1, 1, a.uom_id
+          FROM catalogo.articoli a WHERE a.id = (SELECT articolo_id FROM _art)
+        RETURNING id
+    )
+    SELECT id AS riga_id FROM ins
+    """,
     # ── La famiglia di documento: SEED, se ne ritocca una riga ─────────────
     # ⭐ `codice` e' la colonna nuova (changeSet `20260924-03…-07`), mutabile:
     #    e' quella che la lista mostra e cerca al posto del `codice_interno`.
@@ -286,6 +314,16 @@ class RicercaListeVenditeDbTests(unittest.TestCase):
                     competenza_mese=_COMPETENZA, stadio=None, search=f"RVPRV-{sfx}",
                 )
                 self.assertEqual(acc["riepilogo"]["n_gruppi"], 1)
+                cur.execute("SELECT c.contratto_id, r.riga_id FROM _cnt c, _cnt_riga r")
+                contratto, riga_contratto = cur.fetchone()
+                verifica_ricerca_colonna_per_colonna(
+                    self, cur, "vendite.contratto_righe", f"A:{riga_contratto}",
+                    {"articolo_codice": f"RVART-{sfx}", "articolo_descrizione": "ricdescart"},
+                    lambda t: ContrattoRigheListaRepository().list_righe_pagina(
+                        contratto, search=t, limit=200,
+                    )[0],
+                    chiave="riga_key",
+                )
                 verifica_ricerca_colonna_per_colonna(
                     self, cur, "vendite.famiglie_documento", famiglia,
                     {"codice": f"RVFAM-{sfx}", "descrizione": "ricdescfam", "prefisso_default": "RVX/"},

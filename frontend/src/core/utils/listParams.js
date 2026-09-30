@@ -26,7 +26,8 @@
 //       resta il ripiego finche' la configurazione non e' arrivata.
 // ------------------------------------------------------------
 
-import { PAGINATION, RICERCA } from '../constants'
+import { RICERCA } from '../constants'
+import { USO_MISURA, misuraDefault } from '../misurePagina'
 
 // Scopo: i due parametri di pagina che un endpoint page-based si aspetta, piu'
 //        l'ordinamento quando c'e'. Cio' che varia — i filtri di dominio —
@@ -55,7 +56,7 @@ import { PAGINATION, RICERCA } from '../constants'
 //    lista che si apre col piu' recente in cima, il giorno in cui quel ramo si
 //    fosse acceso. Un'estrazione appiana la duplicazione, non le differenze.
 export function paramsPagina(f, {
-  pageSizeDefault = PAGINATION.DEFAULT_ROWS,
+  pageSizeDefault = misuraDefault(USO_MISURA.PAGINA),
   orderDirDefault = 'desc',
 } = {}) {
   const pageSize = f.limit > 0 ? f.limit : pageSizeDefault

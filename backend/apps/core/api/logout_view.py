@@ -14,6 +14,7 @@ from drf_spectacular.utils import extend_schema
 from rest_framework.request import Request
 from rest_framework.response import Response
 from apps.core.api.base_views import DomainAPIView
+from apps.core.api.cancello_obblighi import TUTTI_GLI_OBBLIGHI
 from apps.core.api.refresh_cookie import (
     cancella_refresh_cookie,
     claims_refresh_firmati,
@@ -33,6 +34,8 @@ class LogoutView(DomainAPIView):
     """Logout utente: revoca della sessione del refresh + evento LOGOUT."""
 
     skip_area_check = True
+    # Si deve poter uscire anche con un obbligo pendente (cancello_obblighi).
+    obblighi_ammessi = TUTTI_GLI_OBBLIGHI
 
     @extend_schema(request=None, summary="Logout utente", responses={204: None})
     # Scopo: Revoca la sessione del refresh presentato e registra l'evento LOGOUT.

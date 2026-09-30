@@ -13,20 +13,11 @@
 //     :rows="pagination.rows.value" @page="pagination.onPage">
 
 import { ref, computed } from 'vue'
-import { BREAKPOINTS, PAGINATION } from '../constants'
-
-function defaultRowsForViewport() {
-  if (typeof window === 'undefined') return PAGINATION.DEFAULT_ROWS
-  // `width <` e non `max-width: TABLET - 1`: con lo zoom la larghezza e'
-  // frazionaria, e fra 1023 e 1024 il CSS e questa soglia non concorderebbero.
-  return window.matchMedia(`(width < ${BREAKPOINTS.TABLET}px)`).matches
-    ? PAGINATION.COMPACT_ROWS
-    : PAGINATION.DEFAULT_ROWS
-}
+import { misureOpzioni, misuraPerViewport } from '../misurePagina'
 
 export function usePagination(options = {}) {
   const page = ref(1)
-  const rows = ref(options.rows || defaultRowsForViewport())
+  const rows = ref(options.rows || misuraPerViewport())
   const totalRecords = ref(0)
   const totalPages = computed(() => Math.max(1, Math.ceil(totalRecords.value / rows.value)))
 
@@ -78,7 +69,7 @@ export function usePagination(options = {}) {
     totalPages,
     first,
     queryParams,
-    rowsOptions: PAGINATION.ROWS_OPTIONS,
+    rowsOptions: misureOpzioni(),
     onPage,
     goToPage,
     reset,

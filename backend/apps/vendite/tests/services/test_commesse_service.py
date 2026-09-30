@@ -814,7 +814,7 @@ class CommesseServiceTests(TestCase):
 
         mock_repo_cls.return_value.list_commessa_attivita.return_value = {
             "count": 0,
-            "rows": [],
+            "results": [],
         }
 
         result = fn_list_commessa_attivita(commessa_id=1, limit=50, offset=0)
@@ -837,7 +837,7 @@ class CommesseServiceTests(TestCase):
 
         mock_repo_cls.return_value.list_commessa_attivita.return_value = {
             "count": 0,
-            "rows": [],
+            "results": [],
         }
 
         fn_list_commessa_attivita(
@@ -862,7 +862,7 @@ class CommesseServiceTests(TestCase):
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
     def test_fn_list_commessa_attivita_tipo_movimento_normalizzato(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_list_commessa_attivita
-        mock_repo_cls.return_value.list_commessa_attivita.return_value = {"count": 0, "rows": []}
+        mock_repo_cls.return_value.list_commessa_attivita.return_value = {"count": 0, "results": []}
 
         fn_list_commessa_attivita(commessa_id=1, tipo_movimento="  rettifica  ")
 
@@ -875,7 +875,7 @@ class CommesseServiceTests(TestCase):
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
     def test_fn_list_commessa_attivita_tipo_movimento_vuoto_e_tutti(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_list_commessa_attivita
-        mock_repo_cls.return_value.list_commessa_attivita.return_value = {"count": 0, "rows": []}
+        mock_repo_cls.return_value.list_commessa_attivita.return_value = {"count": 0, "results": []}
 
         fn_list_commessa_attivita(commessa_id=1, tipo_movimento="   ")
 
@@ -905,7 +905,7 @@ class CommesseServiceTests(TestCase):
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
     def test_fn_list_commessa_attivita_export_supera_il_tetto_di_pagina(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_list_commessa_attivita
-        mock_repo_cls.return_value.list_commessa_attivita.return_value = {"count": 0, "rows": []}
+        mock_repo_cls.return_value.list_commessa_attivita.return_value = {"count": 0, "results": []}
 
         # `limit` resta il suo default: sul percorso export non e' lui a contare.
         fn_list_commessa_attivita(commessa_id=1, max_rows=10_001)

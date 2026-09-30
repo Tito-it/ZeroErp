@@ -16,8 +16,9 @@ import {
   fetchCodaLavoro, prendiInCaricoFlusso, listFlussi, fetchPercorso,
 } from '../api/pratiche-api'
 import { useTabEvents } from '../../core/composables/useTabEvents'
-import { PAGINATION, TAB_ENTITIES } from '../../core/constants'
+import { TAB_ENTITIES } from '../../core/constants'
 import { useAuthStore } from '../../stores/auth'
+import { USO_MISURA } from '../../core/misurePagina'
 
 export const usePraticheStore = defineStore('pratiche', () => {
   const { emitDataChanged } = useTabEvents()
@@ -39,7 +40,7 @@ export const usePraticheStore = defineStore('pratiche', () => {
   // dashboard: `selectedItem` si risolve da `items`, e una lista svuotata
   // mentre si digita annulla il guard readonly della pratica terminale
   // selezionata e il contesto cliente del percorso.
-  // ⚠️ Nasce a DIECI righe (`PAGINATION.COMPACT_ROWS`): e' la lista della
+  // ⚠️ Nasce a DIECI righe (`USO_MISURA.COMPATTA`): e' la lista della
   //    dashboard, che ha il dettaglio a lato — e' l'eccezione dichiarata da
   //    `useSearchTable` («le liste che nascono a 10 restano eccezioni»).
   // ⛔ E IL PRESET DICE LO STESSO NUMERO (`lista_preset` 17,
@@ -58,7 +59,7 @@ export const usePraticheStore = defineStore('pratiche', () => {
     fetchPage: (params) => listPratiche({ ...params, emittente_fiscale_id: auth.emittenteCorrente?.id }),
     startsEmpty: false,
     ricercaCorta: 'ignora',
-    limit: PAGINATION.COMPACT_ROWS,
+    misura: USO_MISURA.COMPATTA,
     filterDefaults: {
       // Codice stato (es. 'APERTA'): il BE filtra per codice_interno via param
       // `stato` (fix 2026-06-12: prima si inviava `stato_id`, ignorato dal BE).

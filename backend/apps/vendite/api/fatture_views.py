@@ -345,6 +345,7 @@ _FatturaRigheLista, _FatturaRigheListaExport = build_lista_figlia_views(
     model_permission=("vendite", "fattura"),
     pagina_call=lambda documento_id, **kw: vendite_service.list_fattura_righe_pagina(documento_id, **kw),
     colonne_ordinabili=FattureRepository.righe_colonne_ordinabili(),
+    ordine_assente=FattureRepository.righe_ordine_di_partenza(),
     con_scope=True,
 )
 

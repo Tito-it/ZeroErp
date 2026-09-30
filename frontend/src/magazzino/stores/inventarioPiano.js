@@ -7,7 +7,7 @@
 //        posizione, con l'esito e — sulle `NON_POSTABILE` — il motivo.
 // Note: ⭐ Vive in un DIALOG (`InventarioPianoDialog`, `AppDialog` xl) alto
 //       dieci righe (`app-dialog-lista`), quindi nasce a DIECI righe per pagina
-//       (`limit: PAGINATION.COMPACT_ROWS`) — e il preset a catalogo dice lo
+//       (`misura: USO_MISURA.COMPATTA`) — e il preset a catalogo dice lo
 //       stesso numero (frontend-standards §«Dialog con una lista dentro»).
 //       ⭐ Il padre e' l'inventario (`inventarioId`, nel path dell'endpoint):
 //       la lista si azzera alla chiusura del dialog, cosi' il piano del
@@ -19,14 +19,14 @@
 //       fotografia contro cui si registra (D-L2-n).
 // ------------------------------------------------------------
 
-import { PAGINATION } from '../../core/constants'
 import { createListaStore } from '../../core/stores/createListaStore'
 import { listPiano } from '../api/magazzino'
+import { USO_MISURA } from '../../core/misurePagina'
 
 export const useInventarioPianoStore = createListaStore('magazzino-inventario-piano', {
   fetchPage: listPiano,
   parentField: 'inventarioId',
   startsEmpty: false,
   orderDir: null,
-  limit: PAGINATION.COMPACT_ROWS,
+  misura: USO_MISURA.COMPATTA,
 })

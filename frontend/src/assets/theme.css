@@ -230,9 +230,11 @@
    * righe arrivano — senza, la lista si rende all'altezza del contenuto e il
    * dialog salta da «corto a vuoto» ad «alto con le righe» (rilievo di Tid
    * sul picker delle rate, 2026-09-18). ~32rem = barra filtri + paginatore +
-   * intestazione + DIECI righe, il passo con cui quelle liste nascono
-   * (`PAGINATION.COMPACT_ROWS`); una pagina piu' lunga scorre dentro la
-   * tabella, non allunga il dialog. */
+   * intestazione + DIECI righe, il passo con cui quelle liste nascono (la
+   * misura COMPATTA del catalogo DB `ui.misure_pagina`, 10 al 2026-09-30);
+   * una pagina piu' lunga scorre dentro la tabella, non allunga il dialog.
+   * ⚠️ Se il CSV sposta la COMPATTA, quest'altezza non la segue da sola: la
+   * lista resta giusta, e scorre. */
   --app-dialog-lista-h: 32rem;
 
   /* ===== AI Assistant Widget ===== */

@@ -182,6 +182,19 @@ class UiRepository:
         #    quindi valeva la pena verificarlo prima di toglierla.
         return jsonb_out(row[0])
 
+    # Scopo: le misure «righe per pagina» ammesse e i due default, per TUTTI i
+    #        paginatori dell'applicazione. Wrapper 1:1 di
+    #        `ui.fn_get_misure_pagina()`: `{misure, default_compatta,
+    #        default_pagina}`. Se un default manca a catalogo la fn solleva
+    #        `E_UI_MISURA_PAGINA_DEFAULT_MANCANTE` (TECNICO): mai un NULL.
+    def get_misure_pagina(self) -> dict[str, Any]:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT ui.fn_get_misure_pagina()")
+            row = cursor.fetchone()
+        # La fn e' un SELECT senza FROM: una riga c'e' sempre.
+        assert row is not None
+        return jsonb_out(row[0])
+
     # Scopo: la lista ha, per l'utente CORRENTE, almeno una colonna in cui la
     #        ricerca libera cerca? Legge la stessa sede del BB di ricerca
     #        (`colonne_ricerca_accese`, cioe' `ui.fn_lista_colonne_ricerca_full`,

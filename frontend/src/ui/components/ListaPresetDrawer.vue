@@ -22,6 +22,7 @@ import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { DRAWER_WIDTH } from '../../core/constants'
+import { USO_MISURA, misuraDefault, misureOpzioni } from '../../core/misurePagina'
 import { NAV_ICONS } from '../../core/navigation'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
@@ -134,9 +135,9 @@ function buildPayload() {
     is_default: form.value.is_default,
     attivo: form.value.attivo,
   }
-  if (form.value.pagina_dimensione != null) {
-    payload.pagina_dimensione = form.value.pagina_dimensione
-  }
+  // Sempre, anche NULL: in modifica e' il modo di tornare al default. Prima si
+  // mandava solo se valorizzata, e una misura tolta a video restava a DB.
+  payload.pagina_dimensione = form.value.pagina_dimensione ?? null
   if (!isEdit.value) {
     // Campi immutabili: solo in create.
     payload.ambito = form.value.ambito
@@ -210,11 +211,15 @@ const suVisibile = gestoreVisibile(emit, chiudi)
           </div>
           <div class="form-field">
             <label>{{ t('ui.admin.preset_pagina_dimensione') }}</label>
-            <InputNumber
+            <!-- ⭐ Le misure del catalogo DB (`ui.misure_pagina`), non un numero
+                 libero: fino al 2026-09-30 era un InputNumber 1-500, che faceva
+                 scrivere misure che il paginatore non offre. Vuoto = «il
+                 default» (NULL a DB). -->
+            <Select
               v-model="form.pagina_dimensione"
-              :min="1"
-              :max="500"
-              show-buttons
+              :options="misureOpzioni()"
+              :placeholder="t('ui.admin.preset_pagina_dimensione_default', { misura: misuraDefault(USO_MISURA.PAGINA) })"
+              show-clear
               :invalid="campiErrati.includes('pagina_dimensione')"
             />
           </div>

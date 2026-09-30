@@ -61,6 +61,7 @@ from apps.core.services.payload_helpers import (
 from apps.vendite.db.contratti_repository import (
     _ORDER_COLS_CONTRATTI,
     ContrattiRepository,
+    ContrattoRigheListaRepository,
 )
 from apps.vendite.db.listini_repository import ListiniRepository
 from apps.vendite.services._componenti_service_helpers import (
@@ -1181,6 +1182,35 @@ class ContrattiService:
             "listino_senza_versione_oggi": listino_senza_versione_oggi,
             "righe": preview_rows,
         }
+
+    # Scopo: una PAGINA delle righe operative del contratto, per la lista
+    #        configurabile `vendite.contratto_righe` (lotto D del
+    #        brief-db-liste-righe-documento): ricerca dal catalogo, ordinamento
+    #        dalla whitelist, codice articolo quando nessuno chiede altro.
+    #        Ritorna `(righe, totale)`.
+    # ⭐ «Leggi prima la testata»: un contratto fuori perimetro e' un 404, non
+    #    una lista vuota (la funzione su un id che non vede risponde zero righe).
+    # ⭐ Una sorgente per le due forme: senza listino la funzione risponde le
+    #    sole aggiunte, quindi qui non si decide niente per forma.
+    def list_righe_pagina(
+        self,
+        contratto_id: int,
+        *,
+        search: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int,
+        offset: int = 0,
+        max_limit: int = MAX_LIMIT,
+    ) -> tuple[list[dict[str, Any]], int]:
+        self._v.guard_positive_int(contratto_id, field="contratto_id")
+        self._get_contratto_or_raise(
+            contratto_id, op="list_righe_pagina", getter=self._repo.get_stato_codice,
+        )
+        return ContrattoRigheListaRepository().list_righe_pagina(
+            contratto_id, search=search, order_by=order_by, order_dir=order_dir,
+            limit=limit, offset=offset, max_limit=max_limit,
+        )
 
     # =================================================================
     # Guard sotto-entita' (righe + utility): solo DRAFT

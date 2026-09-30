@@ -19,6 +19,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
+from apps.core.api.cancello_obblighi import OBBLIGO_CAMBIO_PASSWORD
 from apps.core.api.jwt_audit_authentication import E_IDENTITA_NON_ATTIVA
 from apps.core.api.multi_veste_token_serializer import emetti_refresh_veste
 from apps.core.api.payload_validators import password_digitata
@@ -53,6 +54,8 @@ class ChangePasswordView(DomainAPIView):
     """Cambio password: valida vecchia, applica nuova, resetta flag, rigenera token."""
 
     skip_area_check = True
+    # E' la strada che soddisfa l'obbligo di cambio password (cancello_obblighi).
+    obblighi_ammessi = frozenset({OBBLIGO_CAMBIO_PASSWORD})
 
     @extend_schema(request=_CHANGE_PASSWORD_REQUEST, summary="Cambio password", responses={200: dict})
     # Scopo: Cambio password con validazione completa. Obiettivo: permettere

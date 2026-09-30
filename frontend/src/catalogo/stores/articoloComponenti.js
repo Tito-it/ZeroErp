@@ -23,9 +23,9 @@
 // ------------------------------------------------------------
 import { createListaStore } from '../../core/stores/createListaStore'
 import { storePerIstanza } from '../../core/stores/storePerIstanza'
-import { PAGINATION } from '../../core/constants'
 import { addDaysToToday, toDateString } from '../../core/utils/date'
 import { listArticoloComponentiLista } from '../api/catalogo'
+import { USO_MISURA } from '../../core/misurePagina'
 
 // ⭐ Uno store per ISTANZA del drawer (`storePerIstanza`): due drawer vivi
 //    insieme non si scrivono addosso la lista.
@@ -37,5 +37,5 @@ export const useArticoloComponentiStore = storePerIstanza('catalogo-articolo-com
   startsEmpty: false,
   orderBy: null,
   orderDir: null,
-  limit: PAGINATION.COMPACT_ROWS,
+  misura: USO_MISURA.COMPATTA,
 }))

@@ -1457,8 +1457,9 @@ a {
  * scorre per lui, e il tetto e' il `max-height: 90%` del `Dialog`.
  *
  * Il numero sta in theme.css (`--app-dialog-lista-h`, ~dieci righe): e' il
- * passo con cui una lista in dialog nasce (`limit: PAGINATION.COMPACT_ROWS`
- * nello store), cosi' la pagina di default entra intera senza barra.
+ * passo con cui una lista in dialog nasce (`misura: USO_MISURA.COMPATTA`
+ * nello store, la COMPATTA del catalogo DB), cosi' la pagina di default entra
+ * intera senza barra.
  * `flex: none`: dentro una colonna flex l'altezza definita non si deve
  * ripartire — e' l'ambiguita' che ha gia' fatto sparire il blocco lista delle
  * dashboard (vedi `.app-dash-fermi`). */

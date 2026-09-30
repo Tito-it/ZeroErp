@@ -27,6 +27,7 @@ import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptySta
 import { listCodaLavori, listCodaStampa } from '../../core/api/tracciamento'
 import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
 import { defaultFiltroDataDaString } from '../../core/utils/date'
+import { USO_MISURA, misuraDefault } from '../../core/misurePagina'
 
 // Scopo: mappa filtri store → query param degli endpoint coda (limit/offset +
 //        filtri opzionali + sort_by/sort_dir maiuscolo come da contratto BE).
@@ -95,7 +96,7 @@ function createCodaJobsStore(id, fetchPage, { orderBy }) {
 
     const filters = ref({
       ...FILTRI_DEFAULT,
-      limit: 25,
+      limit: misuraDefault(USO_MISURA.PAGINA),
       offset: 0,
       order_by: orderBy,
       order_dir: 'desc',

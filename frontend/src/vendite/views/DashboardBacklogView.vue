@@ -23,7 +23,7 @@ import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
-import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS, STATUS_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, READONLY_DOMAINS, STATUS_ICONS } from '../../core/constants'
 import { extractApiError } from '../../core/utils/apiError'
 import { displayDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
@@ -41,6 +41,7 @@ import {
 import { useDashboardBacklogStore } from '../stores/dashboardBacklog'
 import FiltriLista from '../../core/components/FiltriLista.vue'
 import { useContrattoFiltriLocali } from '../../core/composables/useContrattoFiltriLocali'
+import { misureOpzioni } from '../../core/misurePagina'
 
 const { t, te } = useI18n()
 const notify = useNotify()
@@ -76,7 +77,7 @@ const documentiPaginatorOptions = computed(() => ({
   totalRecords: documentiCount.value,
   rows: documentiPageSize.value,
   first: (documentiPage.value - 1) * documentiPageSize.value,
-  rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
+  rowsPerPageOptions: misureOpzioni(),
 }))
 
 // Scopo: allinea una volta la dimensione pagina a quella risolta dal BE.

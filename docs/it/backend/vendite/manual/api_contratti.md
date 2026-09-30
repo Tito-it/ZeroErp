@@ -624,6 +624,14 @@ Soft delete (`attivo=FALSE`). Il trigger DB di ricalcolo padre lo esclude
 dalla SUM. Idempotente: se gia' soft-deleted ritorna `{deleted: false}`
 senza errore. Stesso scope check anti-tampering di update.
 
+### Lista righe `GET /api/v1/vendite/contratti/<id>/righe/lista/` (+ `export/`)
+
+Le righe **operative** del contratto come lista configurabile
+`vendite.contratto_righe` (103), paginata, con ricerca, ordinamento ed export,
+sulla funzione `vendite.fn_contratto_righe_preview` (dal 2026-09-30, lotto D del
+brief-db-liste-righe-documento). Contratto comune alle righe dei documenti di
+vendita: [api_righe_documento.md](api_righe_documento.md).
+
 ### Preview righe contratto `GET /api/v1/vendite/contratti/<id>/righe-preview/`
 
 Endpoint readonly che restituisce tutte le righe del drawer `ContrattoRigheDrawer`:

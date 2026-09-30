@@ -91,7 +91,6 @@ UPDATE_KEYS: frozenset[str] = frozenset(
 
 _MAX_CODICE_LEN = 80
 _MAX_DESCRIZIONE_LEN = 200
-_MAX_PAGINA_DIMENSIONE = 500
 
 # Mapping vincoli DB -> codice + messaggio applicativo. I nomi sono
 # allineati a 20260506-04 (CHECK + UNIQUE + partial UNIQUE).
@@ -393,14 +392,13 @@ class ListaPresetAdminService:
         attivo = self._v.optional_bool(payload, "attivo")
         data["attivo"] = bool(attivo) if attivo is not None else True
 
+        # pagina_dimensione: qui solo la FORMA (un intero). Quali misure sono
+        # ammesse lo dice il catalogo `ui.misure_pagina`, e lo fa rispettare
+        # il DB (guard + FK: `E_UI_MISURA_PAGINA_NON_AMMESSA`, 400 dal
+        # middleware). ⛔ Nessun tetto qui: era una seconda regola, diversa dal
+        # catalogo (ammetteva 37, che il paginatore non offre).
         pag_dim = self._v.optional_positive_int(payload, "pagina_dimensione")
         if pag_dim is not None:
-            ErrorManager.require(
-                pag_dim <= _MAX_PAGINA_DIMENSIONE,
-                code=E_PRESET_VALIDATION,
-                message="pagina_dimensione fuori range.",
-                detail=f"max={_MAX_PAGINA_DIMENSIONE}",
-            )
             data["pagina_dimensione"] = pag_dim
 
         if "ordinamento_default" in payload:
@@ -454,17 +452,11 @@ class ListaPresetAdminService:
             )
             data["attivo"] = bool(value)
         if "pagina_dimensione" in payload:
-            pag_dim = self._v.optional_positive_int(
+            # Solo la forma: l'ammissibilita' la decide il catalogo a DB
+            # (vedi `_build_create_data`). NULL = «il default».
+            data["pagina_dimensione"] = self._v.optional_positive_int(
                 payload, "pagina_dimensione"
             )
-            if pag_dim is not None:
-                ErrorManager.require(
-                    pag_dim <= _MAX_PAGINA_DIMENSIONE,
-                    code=E_PRESET_VALIDATION,
-                    message="pagina_dimensione fuori range.",
-                    detail=f"max={_MAX_PAGINA_DIMENSIONE}",
-                )
-            data["pagina_dimensione"] = pag_dim
         if "ordinamento_default" in payload:
             value = payload["ordinamento_default"]
             ErrorManager.require(

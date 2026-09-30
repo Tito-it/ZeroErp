@@ -129,6 +129,27 @@ class AuthRepository:
             )
             return bool(fetchone_scalar(cursor))
 
+    # Scopo: I fatti che servono al cancello degli obblighi (brief sicurezza
+    # §3.4-bis, T-0), in UNA andata e ritorno perche' il cancello gira a ogni
+    # richiesta col Bearer: il cambio password obbligatorio, l'obbligo del
+    # secondo fattore col suo motivo, lo stato del device. Le tre funzioni
+    # rispondono sempre con una riga, anche a riga assente: il significato
+    # dell'assenza resta loro. Il segreto del device NON si legge qui.
+    def get_fatti_obblighi(self, auth_user_id: int) -> dict[str, Any]:
+        sql = """
+            SELECT script.fn_get_deve_cambiare_password(%(id)s) AS deve_cambiare_password,
+                   o.obbligatorio                               AS totp_obbligatorio,
+                   o.motivo                                     AS totp_motivo,
+                   d.stato                                      AS totp_stato
+              FROM script.fn_totp_obbligatorio(%(id)s) o
+             CROSS JOIN script.fn_get_totp_device(%(id)s) d
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, {"id": auth_user_id})
+            row = row_to_dict(cursor)
+        assert row is not None
+        return row
+
     # Scopo: Recupera unita_organizzativa_id dell'operatore via helper DB
     # script.fn_get_uo_id_for_user (post multi-face §13.3.7).
     def get_unita_organizzativa_id(self, auth_user_id: int) -> int | None:

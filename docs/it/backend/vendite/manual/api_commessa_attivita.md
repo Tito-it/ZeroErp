@@ -32,14 +32,18 @@ View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
 
 ## Output
 
-- `200`: lista attività
+- `200`: lista attività, nell'envelope lista standard (`count`, `results`).
+  ⚠️ Fino al 2026-09-30 le righe stavano in `rows`: rinominate per la forma di
+  tutte le liste, che il BB frontend `useListaDrawerPaginata` legge
+  (brief-db-liste-righe-documento §9.13). Il registro (`…/registro/`) ha ancora
+  `rows`, fuori da questo giro.
 
 ```json
 {
   "data": {
     "commessa_id": 1,
     "count": 3,
-    "rows": [
+    "results": [
       {
         "id": 100,
         "commessa_id": 1,

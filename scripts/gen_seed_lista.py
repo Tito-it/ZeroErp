@@ -184,6 +184,8 @@ WHITELIST_BE: dict[str, tuple] = {
                                      "COMPONENTI_SORT_COLUMNS"),
     # Le righe di una fattura (2026-09-28, lotto C).
     "vendite.fattura_righe": ("apps/vendite/db/fatture_repository.py", "_ORDER_COLS_RIGHE_FATTURA"),
+    # Le righe di un contratto (2026-09-30, lotto D).
+    "vendite.contratto_righe": ("apps/vendite/db/contratti_repository.py", "_ORDER_COLS_RIGHE_CONTRATTO"),
     "magazzino.inventario_righe": ("apps/magazzino/db/magazzino_repository.py",
                                    "INVENTARIO_RIGHE_SORT_COLUMNS"),
     "magazzino.rettifica_righe": ("apps/magazzino/db/magazzino_repository.py",

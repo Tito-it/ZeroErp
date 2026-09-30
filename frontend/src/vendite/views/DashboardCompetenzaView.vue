@@ -53,7 +53,7 @@ import { useActionPermission } from '../../core/composables/useActionPermission'
 import { useDebouncedAction } from '../../core/composables/useDebouncedAction'
 import { useJobPolling } from '../../core/composables/useJobPolling'
 import { useRigheInGiro } from '../../core/composables/useRigheInGiro'
-import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS, STATUS_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, READONLY_DOMAINS, STATUS_ICONS } from '../../core/constants'
 import { MODO_DATA_DOCUMENTO, STATO_EMISSIONE_ATTIVITA, STATO_ESECUZIONE_LOTTO } from '../constants'
 import { extractApiError } from '../../core/utils/apiError'
 import { displayDate } from '../../core/utils/date'
@@ -66,6 +66,7 @@ import { useDocumentoDrawer } from '../../core/composables/useDocumentoDrawer'
 import { buildApriDocumentoAction } from '../dashboardAree'
 import { useSelezioneToggle } from '../../core/composables/useSelezioneToggle'
 import { checkRiportabili, riportaDaEmettere } from '../api/attivitaFatturabili'
+import { misureOpzioni } from '../../core/misurePagina'
 import {
   GRUPPI_CLIENTE_NON_DETERMINABILE,
   GRUPPI_REGISTRO_NON_RISOLVIBILE,
@@ -1126,25 +1127,25 @@ const erroriPaginatorOptions = computed(() => ({
   totalRecords: erroriCount.value,
   rows: erroriPageSize.value,
   first: (erroriPage.value - 1) * erroriPageSize.value,
-  rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
+  rowsPerPageOptions: misureOpzioni(),
 }))
 const gruppiPaginatorOptions = computed(() => ({
   totalRecords: gruppiCount.value,
   rows: gruppiPageSize.value,
   first: (gruppiPage.value - 1) * gruppiPageSize.value,
-  rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
+  rowsPerPageOptions: misureOpzioni(),
 }))
 const residuiPaginatorOptions = computed(() => ({
   totalRecords: residuiCount.value,
   rows: residuiPageSize.value,
   first: (residuiPage.value - 1) * residuiPageSize.value,
-  rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
+  rowsPerPageOptions: misureOpzioni(),
 }))
 const commessePaginatorOptions = computed(() => ({
   totalRecords: commesseCount.value,
   rows: commessePageSize.value,
   first: (commessePage.value - 1) * commessePageSize.value,
-  rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
+  rowsPerPageOptions: misureOpzioni(),
 }))
 
 // Scopo: display del numero documento della fattura in errore.

@@ -587,6 +587,8 @@
     "not_found_message": "La pagina richiesta non esiste.",
     "forbidden_title": "Accesso negato",
     "forbidden_message": "Non hai i permessi per accedere a questa area.",
+    "avvio_non_riuscito_title": "Avvio non riuscito",
+    "avvio_non_riuscito_message": "Non è stato possibile leggere la configurazione dell'applicazione dal server. Riprova tra poco; se il problema continua, avvisa l'assistenza.",
     "back_home": "Torna alla Home",
     "lookup_load_failed": "Caricamento elenco non riuscito. Riprova oppure contatta l'amministratore.",
     "bersaglio_apri_senza_id": "Apri {entita}"
@@ -5845,6 +5847,7 @@
       "preset_is_default": "Preset di default",
       "preset_default": "Default",
       "preset_pagina_dimensione": "Pagina (righe)",
+      "preset_pagina_dimensione_default": "Default ({misura})",
       "preset_emittente": "Emittente",
       "preset_colonne_count": "Colonne",
       "preset_gestisci_colonne": "Gestisci composizione",

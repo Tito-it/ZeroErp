@@ -39,8 +39,12 @@ export default defineConfig({
   //    globalmente rallenterebbe i test puri — che sono la maggioranza — per
   //    servire i pochi che montano, e nasconderebbe QUALI file toccano il DOM.
   //    Il presidio e' la riga stessa: si legge in cima al file che la usa.
+  //    ⭐ `setupFiles`: le misure «righe per pagina» (BB `core/misurePagina`)
+  //    nell'app le carica il guard del router; nei test le registra
+  //    `src/core/misurePagina.setup-test.js`, prima di ogni file.
   test: {
     include: ['src/**/*.{test,spec}.js'],
+    setupFiles: ['src/core/misurePagina.setup-test.js'],
     reporters: ['default'],
   },
   resolve: {

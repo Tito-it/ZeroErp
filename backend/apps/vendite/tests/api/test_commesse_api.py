@@ -215,7 +215,7 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
         mocked_list.return_value = {
             "commessa_id": 1,
             "count": 0,
-            "rows": [],
+            "results": [],
         }
         response = self.client.get("/api/v1/vendite/commesse/1/attivita/?limit=20&offset=0")
         self.assertEqual(response.status_code, 200)
@@ -238,7 +238,7 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views.fn_list_commessa_attivita")
     def test_get_commessa_attivita_con_filtri(self, mocked_list, _mock_auth):
-        mocked_list.return_value = {"commessa_id": 1, "count": 0, "rows": []}
+        mocked_list.return_value = {"commessa_id": 1, "count": 0, "results": []}
         response = self.client.get(
             "/api/v1/vendite/commesse/1/attivita/?stato_emissione=NON_EMESSA&stato_approvazione=APPROVATA&competenza_mese=2026-02-01"
         )
@@ -254,7 +254,7 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views.fn_list_commessa_attivita")
     def test_get_commessa_attivita_con_ordinamento(self, mocked_list, _mock_auth):
-        mocked_list.return_value = {"commessa_id": 1, "count": 0, "rows": []}
+        mocked_list.return_value = {"commessa_id": 1, "count": 0, "results": []}
         response = self.client.get(
             "/api/v1/vendite/commesse/1/attivita/?order_by=data_attivita&order_dir=desc"
         )

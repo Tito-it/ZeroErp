@@ -9,7 +9,8 @@
 > **pgTAP verdi col runner** (Tid). Verificato dopo l'apply: il catalogo ha 10 (COMPATTA), 25
 > (PAGINA), 50, 100 — il loader del CSV ha scritto il token NULL come NULL —, i due trigger ci
 > sono, l'app non scrive il catalogo, `ui.fn_get_misure_pagina()` risponde.
-> ⏳ **Resta il BE/FE** (§6). Il brief si archivia quando il backend ha chiuso le richieste.
+> ✅ **BE/FE consegnato a codice il 2026-09-30** (`dev/backend-tid`, §6-bis): Django e Vitest verdi,
+> build e lint puliti. ⏳ Resta il **collaudo a video** di Tid; poi il brief si archivia.
 >
 > **In una riga:** oggi le misure «righe per pagina» sono scritte in tre posti (una costante del
 > frontend, un'altra per il default compatto, e un `25` ripetuto cinque volte nel resolver delle
@@ -118,7 +119,10 @@ catalogo e dei due codici simulato (⚠️ non prova il loader di Liquibase: lo 
    `COMPACT_ROWS` e `DEFAULT_ROWS` **si ritirano nello stesso giro** (25 file, regola del 2).
    Finché la risposta non è arrivata, cosa mostra il paginatore è da decidere col FE (una
    chiamata al boot, come le altre configurazioni globali).
-3. **BE**: le policy HTTP dei due codici nuovi.
+3. ✅ **BE**: le policy HTTP dei due codici nuovi — fatte il 2026-09-30 con la rigenerazione
+   di `error_policies_generated.py` (brief-db-liste-righe-documento §9.12):
+   `E_UI_MISURA_PAGINA_NON_AMMESSA` `DATO_ERRATO`, `E_UI_MISURA_PAGINA_DEFAULT_MANCANTE`
+   `TECNICO`, con i ripieghi senza segnaposto.
 4. **BE — una quarta sede della regola**: `apps/ui/services/lista_preferenza_service.py` valida
    `pagina_dimensione` da sé («intero positivo, al massimo `MAX_LIMIT`»). È una regola **diversa**
    dal catalogo (ammette 37, che il paginatore non offre) e con il guard a DB diventa
@@ -128,3 +132,38 @@ catalogo e dei due codici simulato (⚠️ non prova il loader di Liquibase: lo 
 5. **BE**: i limiti di pagina propri del backend (i `limit` di default nelle firme dei repository,
    brief liste §9.6 punto 3) sono un tema vicino ma diverso — quanti record al massimo si chiedono
    — e restano fuori.
+
+## 6-bis. ✅ Esito BE/FE (`dev/backend-tid`, 2026-09-30)
+
+Decisioni di Tid del 30-09: le misure si caricano **nel guard del router, una volta, attese**; se
+la chiamata fallisce si apre la pagina «Avvio non riuscito», **senza ripiego** nel FE. Ok ai due BB
+nuovi e al ritiro di `PAGINATION` nello stesso giro.
+
+| # | Esito |
+| --- | --- |
+| 1 | ✅ `GET /api/v1/ui/misure-pagina/` → `UiService.get_misure_pagina` → `UiRepository.get_misure_pagina` (1:1 su `ui.fn_get_misure_pagina()`), `skip_area_check`. Pagina API: `api_ui_liste.md` §6 |
+| 2 | ✅ BB FE `core/misurePagina.js`: il guard la carica per il namespace operatore; letture sincrone (`misureOpzioni`, `misuraDefault(uso)`, `misuraPerViewport`). Gli store dichiarano l'**uso** (`misura: USO_MISURA.COMPATTA`), non il numero; l'opzione `limit` del core è ritirata e solleva. Ritirati nello stesso giro: `PAGINATION` (circa 30 file), gli array a mano di `ContrattoRigheDrawer` (`[10, 25, 50]`) e `OffertaEccezioniDrawer` (`[10, 25]`), quattro `limit: 25` scritti a mano (`codeJobs`, `fondiFatturaDaDecidere`, `approvazioniPrezzo`, `resiCoda`) e la regola «compatta sotto il tablet», che era scritta due volte. Il drawer dei preset sceglie da un `Select` sulle misure del catalogo (prima era un `InputNumber` 1-500) e manda sempre la misura, anche `null`: prima tornare al default da video non si poteva |
+| 3 | ✅ Le policy dei due codici sono nel file generato (`DATO_ERRATO` → 400, `TECNICO` → 500) con i ripieghi. ⚠️ La rigenerazione conteneva anche i codici di **altri** brief (DDT, reso, TOTP…): nel commit di questo cantiere sono entrate **solo** le quattro righe `E_UI_MISURA_PAGINA_*`; il resto lo committa chi lo ha rigenerato |
+| 4 | ✅ Ritirati `MAX_LIMIT` (preferenza) e `_MAX_PAGINA_DIMENSIONE = 500` (preset): resta il solo controllo di forma. Il test mock `…_oltre_max_raises` ora prova il contrario (la misura arriva intatta al repository); `…_non_int_raises` resta com'è, perché prova la forma. Nel preset nessun test provava il tetto. Il trasporto dal DB è provato sul DB vero in `apps/ui/tests/db/test_misure_pagina_db.py`: preset e preferenza fuori catalogo → `E_UI_MISURA_PAGINA_NON_AMMESSA`, 400 |
+| 5 | fuori perimetro, come previsto: `DEFAULT_LIMIT` del backend resta; lo dice api.md §Paginazione |
+
+⚠️ **Da sapere**: l'altezza del blocco lista nei dialog (`--app-dialog-lista-h`, theme.css) è
+calibrata su dieci righe. Se il CSV sposta la `COMPATTA`, la lista resta giusta ma scorre dentro
+la tabella; l'altezza va riallineata a mano.
+
+**Rilettura critica dello stesso giorno (2026-09-30), difetti trovati e corretti:**
+
+* 🔴 **La pagina d'errore cadeva per la stessa causa che doveva mostrare.** Il layout (`AppTopbar` →
+  `SearchDrawer` → `usePagination`) legge le misure quando nasce, ma il guard le caricava solo sulle
+  rotte non universali: una 404 al ricaricamento, o la stessa «Avvio non riuscito» che era dentro
+  `AppLayout`, lanciavano un errore nel layout. Ora il guard carica per **ogni rotta sotto
+  `AppLayout`** (veste operatore), la pagina d'errore sta **fuori** dal layout, e `SearchDrawer` si
+  monta alla prima apertura (la topbar c'è anche sulle 404/forbidden delle vesti non operatore, per
+  cui le misure non si caricano).
+* 🟡 `useListaDrawerPaginata`, il BB delle liste **in drawer**, partiva dalla misura di pagina
+  contro la regola del 28-09: ora parte dalla `COMPATTA` (il preset, se c'è, vince comunque).
+* 🟡 Una quinta copia del 25: `pageSize = 25` di default in tre funzioni di `vendite/api/lotti.js`;
+  ora il default viene dal BB.
+* 🟢 `registraMisurePagina` rifiuta anche misure non strettamente crescenti o doppie (l'ordine è
+  quello del selettore); tolto un wrapper inutile in `useSearchTable`; corretto un commento stantio
+  in `listiniRighe`.
