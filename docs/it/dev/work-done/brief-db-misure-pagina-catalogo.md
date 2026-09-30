@@ -2,15 +2,19 @@
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-09-30. **A chi:** team DB; richieste al backend e al
 > frontend (`dev/backend-tid`) in §6.
-> **Origine:** §9.7 di [brief-db-liste-righe-documento.md](brief-db-liste-righe-documento.md).
+> **Origine:** §9.7 di [brief-db-liste-righe-documento.md](../work-in-progress/brief-db-liste-righe-documento.md).
 > ✅ **Decisioni di Tid (2026-09-29):** strada 3 — l'elenco delle misure vive in UNA sede, il
 > database, e il frontend lo legge da lì; e **anche le misure di default** stanno nel catalogo.
-> **Stato:** ✅ **Lato DB CHIUSO il 2026-09-30**: `20260930-01 → -13` applicati da Tid alle 00:40,
-> **pgTAP verdi col runner** (Tid). Verificato dopo l'apply: il catalogo ha 10 (COMPATTA), 25
-> (PAGINA), 50, 100 — il loader del CSV ha scritto il token NULL come NULL —, i due trigger ci
-> sono, l'app non scrive il catalogo, `ui.fn_get_misure_pagina()` risponde.
-> ✅ **BE/FE consegnato a codice il 2026-09-30** (`dev/backend-tid`, §6-bis): Django e Vitest verdi,
-> build e lint puliti. ⏳ Resta il **collaudo a video** di Tid; poi il brief si archivia.
+> **Stato: ✅ CHIUSO il 2026-09-30.** Tutte le parti sono fatte, applicate, committate e
+> collaudate; il brief è in `work-done/`.
+>
+> * **DB**: `20260930-01 → -13` applicati da Tid alle 00:40, **pgTAP verdi col runner** (Tid).
+>   Verificato dopo l'apply: il catalogo ha 10 (COMPATTA), 25 (PAGINA), 50, 100 — il loader del
+>   CSV ha scritto il token NULL come NULL —, i due trigger ci sono, l'app non scrive il catalogo,
+>   `ui.fn_get_misure_pagina()` risponde.
+> * **BE/FE** (`dev/backend-tid`, §6-bis, commit `15a407e1b`): Django e Vitest verdi, build e lint
+>   puliti.
+> * **Collaudo a video** di Tid: ✅ superato il 2026-09-30.
 >
 > **In una riga:** oggi le misure «righe per pagina» sono scritte in tre posti (una costante del
 > frontend, un'altra per il default compatto, e un `25` ripetuto cinque volte nel resolver delle
@@ -111,7 +115,7 @@ catalogo e dei due codici simulato (⚠️ non prova il loader di Liquibase: lo 
   primo `THEN` (servono le parentesi); il nome del trigger sulla preferenza superava i 63
   caratteri (accorciato).
 
-## 6. ⏳ Richieste al BE / FE (`dev/backend-tid`)
+## 6. ✅ Richieste al BE / FE (`dev/backend-tid`) — evase, esito in §6-bis
 
 1. **BE**: servire `ui.fn_get_misure_pagina()` **a tutta l'applicazione** (non dentro la
    configurazione di una lista): le usano anche tabelle grezze, dialog e dashboard.

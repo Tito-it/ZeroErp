@@ -1688,7 +1688,7 @@ Il lavoro, da impostare: DB — il catalogo delle misure ammesse e il vincolo di
 `ui.lista_preset.pagina_dimensione` (e delle personalizzazioni degli utenti) verso di lui;
 BE — le misure (e i default) serviti a tutta l'applicazione (vedi sotto); FE — il paginatore le prende da
 lì e `PAGINATION.ROWS_OPTIONS` si ritira nello stesso giro (regola del 2). ✅ **Lato DB applicato il
-2026-09-30 (pgTAP verdi)**, prosegue in [brief-db-misure-pagina-catalogo.md](brief-db-misure-pagina-catalogo.md).
+2026-09-30 (pgTAP verdi)**, prosegue in [brief-db-misure-pagina-catalogo.md](../work-done/brief-db-misure-pagina-catalogo.md).
 ✅ **E anche la misura di DEFAULT sta nel catalogo** (Tid, 2026-09-29): «compatta» (10: drawer e
 dialog) e «pagina» (25) sono dati del catalogo, non regole scritte nel frontend — la costante
 `PAGINATION.COMPACT_ROWS` si ritira insieme a `ROWS_OPTIONS`. ⚠️ Le due costanti sono usate in
