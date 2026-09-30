@@ -79,7 +79,7 @@ import {
 } from '../api/commesse'
 import { lookupArticoli } from '../../catalogo/api/catalogo'
 import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
-import { USO_MISURA, misuraDefault, misureOpzioni } from '../../core/misurePagina'
+import { useListaDrawerPaginata } from '../../core/composables/useListaDrawerPaginata'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -131,16 +131,7 @@ const canEditRighe = computed(() => capabilities.value.can_edit_righe === true)
 
 // ------------------------------------------------------------------ stato
 const stato = ref(null)
-const righe = ref([])
-const righePage = ref(1)
-const righePageSize = ref(misuraDefault(USO_MISURA.PAGINA))
-const righeLoading = ref(false)
 const selected = ref([])
-// Ordinamento server-side: l'ORDER BY vive dentro fn_list_commessa_attivita
-// (whitelist chiusa) — ordinare la pagina a valle risponderebbe sbagliato.
-// null = ordine storico per id (removable-sort riporta qui).
-const righeSortBy = ref(null)
-const righeSortDir = ref(1)
 // Filtro stato emissione applicato alla lista: parte dalla prop (card di
 // provenienza) ed e' modificabile a video. null = tutte.
 const filtroStatoEmissione = ref(props.statoEmissione)
@@ -148,11 +139,27 @@ const filtroStatoEmissione = ref(props.statoEmissione)
 // Non arriva da nessuna prop: nasce sempre vuoto, perche' nessuna card di
 // provenienza parla di movimenti.
 const filtroTipoMovimento = ref(null)
-// Totale FILTRATO, dal `count` della risposta lista. Non si usa
-// `stato.total_attivita` (contatore di testata, sempre su TUTTE le righe):
-// con un filtro attivo il paginator direbbe 4 righe mostrandone 1, e la
-// seconda pagina sarebbe vuota.
-const righeTotale = ref(0)
+
+// ⭐ La lista delle righe: pagina, ordinamento, dimensione pagina e preset dal
+//    BB delle liste in drawer (regola del 2, 2026-09-30) — la stessa macchina
+//    era scritta qui a mano, e aveva gia' preso una strada sua (partiva dalla
+//    misura di pagina, non da quella compatta di un drawer). Il drawer tiene
+//    solo cio' che e' suo: i due filtri e la selezione.
+// ⚠️ L'ordinamento e' server-side: l'ORDER BY vive dentro
+//    fn_list_commessa_attivita (whitelist chiusa), `null` = ordine storico per
+//    id (removable-sort riporta qui).
+// ⚠️ Il totale e' il `count` FILTRATO della risposta, non
+//    `stato.total_attivita` (contatore di testata, sempre su TUTTE le righe):
+//    con un filtro attivo il paginatore direbbe 4 righe mostrandone 1.
+const lista = useListaDrawerPaginata(({ page, pageSize, sortBy, sortDir }) =>
+  listCommessaAttivita(props.commessaId, {
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
+    ...(sortBy ? { order_by: sortBy, order_dir: sortDir } : {}),
+    ...(filtroStatoEmissione.value ? { stato_emissione: filtroStatoEmissione.value } : {}),
+    ...(filtroTipoMovimento.value ? { tipo_movimento: filtroTipoMovimento.value } : {}),
+  }))
+const righe = lista.righe
 
 const capabilities = computed(() => stato.value?.capabilities ?? {})
 
@@ -176,7 +183,7 @@ const righeApprovabili = computed(() =>
   ),
 )
 // ⛔ La terna «in pagina», non `toggleAll`/`anySelected`. Questa lista e'
-//    paginata LATO SERVER (`loadRighe` a ogni cambio pagina) e `onRighePage`
+//    paginata LATO SERVER (una fetch a ogni cambio pagina) e il BB della lista
 //    NON azzera la selezione: si compone attraverso le pagine, di proposito.
 //    Fino al 2026-08-27 qui c'era `toggleAll`, che SOSTITUISCE la selezione con
 //    la pagina corrente — spuntare «tutte» a pagina 2 buttava via quanto
@@ -198,41 +205,10 @@ async function loadStato() {
   return true
 }
 
-// Scopo: carica la pagina corrente delle righe (limit/offset; totale dal
-//        contatore di testata total_attivita — la lista non espone il totale).
-async function loadRighe() {
-  righeLoading.value = true
-  try {
-    const params = {
-      limit: righePageSize.value,
-      offset: (righePage.value - 1) * righePageSize.value,
-    }
-    if (righeSortBy.value) {
-      params.order_by = righeSortBy.value
-      params.order_dir = righeSortDir.value === -1 ? 'desc' : 'asc'
-    }
-    if (filtroStatoEmissione.value) {
-      params.stato_emissione = filtroStatoEmissione.value
-    }
-    if (filtroTipoMovimento.value) {
-      params.tipo_movimento = filtroTipoMovimento.value
-    }
-    const res = await listCommessaAttivita(props.commessaId, params)
-    righe.value = res.data?.data?.rows ?? []
-    // `count` e' il totale gia' filtrato (stessa WHERE della pagina).
-    righeTotale.value = res.data?.data?.count ?? 0
-  } catch (err) {
-    // Fail-visible: una tabella vuota per errore non deve sembrare "no righe".
-    notify.error(extractApiError(err, t('common.error')))
-  } finally {
-    righeLoading.value = false
-  }
-}
-
 // Scopo: ricarica completa post-azione (testata + righe, selezione azzerata).
 async function reloadAll() {
   selected.value = []
-  if (await loadStato()) await loadRighe()
+  if (await loadStato()) await lista.carica()
 }
 
 // ------------------------------------------------------------------ testata leggibile
@@ -341,11 +317,7 @@ watch(
     // Baseline del form di testata azzerata PRIMA che `stato` cambi: il
     // non-salvato di un'altra commessa non deve sopravvivere alla riapertura.
     resetTestata()
-    righe.value = []
-    righeTotale.value = 0
-    righePage.value = 1
-    righeSortBy.value = null
-    righeSortDir.value = 1
+    lista.reset()
     // Il filtro torna al default del chiamante a ogni apertura: riaprendo la
     // stessa commessa da una card diversa deve valere la card nuova, non
     // quella di prima.
@@ -390,39 +362,11 @@ const {
     formato,
     ...(filtroStatoEmissione.value ? { stato_emissione: filtroStatoEmissione.value } : {}),
     ...(filtroTipoMovimento.value ? { tipo_movimento: filtroTipoMovimento.value } : {}),
-    ...(righeSortBy.value
-      ? { order_by: righeSortBy.value, order_dir: righeSortDir.value === -1 ? 'desc' : 'asc' }
+    ...(lista.sortField.value
+      ? { order_by: lista.sortField.value, order_dir: lista.sortOrder.value === -1 ? 'desc' : 'asc' }
       : {}),
   }),
 })
-
-// Prop paginator per il BB: qui non c'e' useSearchTable (il drawer non e' una
-// pagina lista), quindi la compone il drawer con lo stato che gia' possiede.
-const righePaginatorOptions = computed(() => ({
-  totalRecords: righeTotale.value,
-  rows: righePageSize.value,
-  first: (righePage.value - 1) * righePageSize.value,
-  rowsPerPageOptions: misureOpzioni(),
-}))
-
-// Scopo: allinea la dimensione pagina a quella risolta dal BE (una volta).
-const configAllineata = ref(false)
-function onConfigLoaded(config) {
-  if (configAllineata.value) return
-  configAllineata.value = true
-  const nuovoLimit = config?.pagina_dimensione
-  if (nuovoLimit && nuovoLimit !== righePageSize.value) {
-    righePageSize.value = nuovoLimit
-    righePage.value = 1
-    loadRighe()
-  }
-}
-
-function onRighePage(event) {
-  righePage.value = Math.floor(event.first / event.rows) + 1
-  righePageSize.value = event.rows
-  loadRighe()
-}
 
 // Opzioni del filtro stato emissione: i tre valori del dominio + «tutte»
 // (null). Derivate dalla costante, non riscritte a mano.
@@ -448,18 +392,9 @@ const opzioniTipoMovimento = computed(() => [
 //        apparterrebbe a un insieme di righe diverso) e si azzera la
 //        selezione, che potrebbe contenere righe ora fuori filtro.
 function onFiltroStatoChange() {
-  righePage.value = 1
+  lista.page.value = 1
   selected.value = []
-  loadRighe()
-}
-
-// Scopo: ordinamento server-side; cambio criterio riparte da pagina 1.
-//        sortField null (removable-sort al terzo click) = ordine storico.
-function onRigheSort(event) {
-  righeSortBy.value = event.sortField ?? null
-  righeSortDir.value = event.sortOrder ?? 1
-  righePage.value = 1
-  loadRighe()
+  lista.carica()
 }
 
 // ------------------------------------------------------------------ approva (A-1)
@@ -1051,16 +986,16 @@ const suVisibile = gestoreVisibile(emit, onChiudi)
           ref="listaRef"
           codice="vendite.commesse_attivita"
           data-key="id"
-          :rows="righe"
-          :total="righeTotale"
-          :loading="righeLoading"
-          :paginator-options="righePaginatorOptions"
-          :page="righePage"
-          :sort-field="righeSortBy"
-          :sort-order="righeSortDir"
-          @page="onRighePage"
-          @sort="onRigheSort"
-          @config-loaded="onConfigLoaded"
+          :rows="lista.righe.value"
+          :total="lista.totale.value"
+          :loading="lista.loading.value"
+          :paginator-options="lista.paginatorOptions.value"
+          :page="lista.page.value"
+          :sort-field="lista.sortField.value"
+          :sort-order="lista.sortOrder.value"
+          @page="lista.onPage"
+          @sort="lista.onSort"
+          @config-loaded="lista.onConfigLoaded"
         >
           <!-- Checkbox custom (pattern useSelezioneToggle): solo approvabili.
                Colonna di CHROME del BB, non a catalogo. -->

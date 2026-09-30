@@ -84,6 +84,24 @@ class JwtMockedApiTest(SimpleTestCase):
         lingua_patcher.start()
         self.addCleanup(lingua_patcher.stop)
 
+        # Gli obblighi della credenziale (`cancello_obblighi`, T-0 del brief
+        # sicurezza): il QUARTO effetto sul database, a ogni richiesta col
+        # Bearer che arriva in fondo all'autenticazione. ⭐ Come per lo scope
+        # qui sotto, si mocka la LETTURA dei fatti («nessun obbligo»), non il
+        # cancello: il suo codice gira in ogni test API. I test del cancello
+        # sovrascrivono questo mock (`apps/core/tests/api/test_cancello_obblighi.py`).
+        obblighi_patcher = patch(
+            "apps.core.db.auth_repository.AuthRepository.get_fatti_obblighi",
+            return_value={
+                "deve_cambiare_password": False,
+                "totp_obbligatorio": False,
+                "totp_motivo": None,
+                "totp_stato": "ASSENTE",
+            },
+        )
+        obblighi_patcher.start()
+        self.addCleanup(obblighi_patcher.stop)
+
         # Scope emittente dell'utente finto: UN emittente, cioe' l'operatore
         # configurato — lo scenario normale.
         #

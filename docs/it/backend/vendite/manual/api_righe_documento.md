@@ -18,6 +18,7 @@ Design-of-record:
 | DDT | `/api/v1/vendite/ddt/<id>/righe/lista/` | `vendite.ddt_righe` | `vw_ddt_righe_dettaglio` | `riga_nr` |
 | Reso | `/api/v1/vendite/resi/<id>/righe/lista/` | `vendite.reso_righe` | `vw_resi_righe_dettaglio` | `riga_nr` |
 | Fattura (sola lettura) | `/api/v1/vendite/fatture/<id>/righe/lista/` | `vendite.fattura_righe` | `vw_fattura_righe_lista` | `ordinamento, riga_nr` |
+| Contratto | `/api/v1/vendite/contratti/<id>/righe/lista/` | `vendite.contratto_righe` | funzione `fn_contratto_righe_preview` | `articolo_codice` |
 
 ### La fattura, e cosa cambia (lotto C, 2026-09-28)
 
@@ -39,6 +40,30 @@ Design-of-record:
 - il legame riga-riga di una nota di credito porta il numero **parlante** della
   fattura rettificata (`riga_rettificata_documento`) e `riga_rettificata_nr`.
 
+### Il contratto, e cosa cambia (lotto D, 2026-09-30)
+
+- **La sorgente è una funzione**, non una vista: le righe **operative** del
+  contratto le calcola `vendite.fn_contratto_righe_preview(contratto)` — con
+  listino, le righe del listino con l'overlay delle eccezioni `OVERRIDE` /
+  `ESCLUSIONE` più le `AGGIUNTA`; senza listino, le sole `AGGIUNTA`. Una
+  sorgente per le due forme: la lista non decide niente per forma. Il BB legge
+  `fn(contratto) v` (`_righe_funzione`), senza FK da filtrare;
+- **La chiave è `riga_key`**: `L:<articolo>:<uom>` per le righe del listino,
+  `A:<id>` per le aggiunte. Le righe del listino non hanno un numero di riga:
+  l'ordine di partenza è il **codice articolo**, poi `riga_key`;
+- **Nessun filtro `attivo`**: la funzione legge già le sole eccezioni attive;
+- **La riga porta le sue azioni**: `azioni` (i verbi che l'origine ammette:
+  `SOVRASCRIVI_PREZZO`, `ESCLUDI`, `MODIFICA`, `RIPRISTINA_LISTINO`,
+  `RIPRISTINA_ARTICOLO`, `RIMUOVI`) ed `escludi_blocco_codice` (il motivo che
+  spegne «Escludi», dalla stessa check del guard). Il backend li trasporta;
+- **`prezzo_forzato`** della lista è `override_prezzo` della funzione: il prezzo
+  scritto a mano sull'eccezione, vuoto sulle righe che lo prendono dal listino;
+- «leggi prima la testata»: contratto inesistente o fuori perimetro → `404
+  E_VENDITE_NOT_FOUND`, mai una lista vuota;
+- `GET …/righe/` resta la lettura delle righe **persistite** in
+  `contratti_righe` (e il `POST` di creazione), `…/righe-preview/` l'anteprima
+  prezzi del momento dell'inserimento.
+
 ## Endpoint
 
 | Metodo / Path | Scopo |
@@ -56,7 +81,9 @@ Design-of-record:
 - `search` — ricerca libera sulle colonne che il catalogo accende
   (`ricercabile_full`: codice articolo e descrizione; sul reso anche il motivo);
 - `order_by` / `order_dir` — un `campo_sorgente` ordinabile della lista.
-  **Assente**, l'ordine del documento (tabella sopra), poi `id`. Una colonna
+  **Assente**, l'ordine del documento (tabella sopra), poi la chiave di riga
+  (`id`; `riga_key` su fattura e contratto) — lo schema OpenAPI lo legge dal
+  repository (`righe_ordine_di_partenza`). Una colonna
   fuori whitelist ripiega sull'ordine del documento. Le date di consegna
   partono DESC quando la direzione manca;
 - `limit` / `offset` — pagina (tetto `MAX_LIMIT` di `apps.core.api.constants`).
@@ -73,9 +100,11 @@ cancello guarda solo la lista (decisione di Tid, 2026-09-28).
 
 ## Le tre letture, una sorgente
 
-La pagina, la lettura completa e la riga singola (`get_riga`, usata dai
+Sui quattro documenti con una tabella di righe (preventivo, ordine, DDT, reso)
+la pagina, la lettura completa e la riga singola (`get_riga`, usata dai
 controlli «la riga appartiene al documento») leggono **la stessa vista**, e
-tutte e tre filtrano le righe attive (`attivo IS TRUE`). L'eliminazione di una
+tutte e tre filtrano le righe attive (`attivo IS TRUE`). Fattura e contratto
+non hanno la riga singola né il filtro (sezioni sopra). L'eliminazione di una
 riga è fisica (`DELETE`): il filtro sulla riga singola non cambia niente per le
 righe eliminate, allinea la riga singola alle altre due letture nel caso, che il
 modello ammette, di una riga con `attivo = false`.

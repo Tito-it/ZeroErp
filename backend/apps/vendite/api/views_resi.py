@@ -840,6 +840,7 @@ _ResoRigheLista, _ResoRigheListaExport = build_lista_figlia_views(
     model_permission=('vendite', 'reso'),
     pagina_call=lambda documento_id, **kw: resi_service.list_righe_pagina(documento_id, **kw),
     colonne_ordinabili=ResiRepository.righe_colonne_ordinabili(),
+    ordine_assente=ResiRepository.righe_ordine_di_partenza(),
 )
 
 

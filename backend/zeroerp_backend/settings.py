@@ -306,7 +306,9 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'apps.core.middleware.jwt_audit_middleware.JwtAuditMiddleware',
-    'apps.core.middleware.password_change_middleware.PasswordChangeRequiredMiddleware',
+    # Il cambio password obbligatorio non e' piu' un middleware: a `process_view`
+    # l'utente del Bearer e' ancora anonimo (A-8). Lo fa rispettare il cancello
+    # degli obblighi dentro JwtAuditAuthentication (apps/core/api/cancello_obblighi.py).
     'apps.core.middleware.request_log_middleware.RequestLogMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',

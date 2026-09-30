@@ -29,6 +29,7 @@ from apps.core.db._helpers import (
     add_ricerca_full_condition,
     sql_order_clause,
     call_jsonb_fn,
+    colonne_identita,
     row_to_dict,
     rows_to_list,
 )
@@ -36,6 +37,7 @@ from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
+from apps.vendite.db._righe_repo_mixin import RigheListaMixin
 
 
 # Colonne jsonb delle tabelle scritte qui (testata, righe, utility): dichiarate
@@ -1263,3 +1265,48 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             )
             row = cursor.fetchone()
             return None if row is None else str(row[0])
+
+
+# =================================================================
+# Righe del contratto come LISTA CONFIGURABILE (`vendite.contratto_righe`, 103)
+# =================================================================
+
+# Whitelist ORDER BY: i `campo_sorgente` `ordinabile = t` della lista 103, che
+# la funzione espone con lo stesso nome (identita').
+# ⚠️ `prezzo_forzato` e' `override_prezzo` della funzione: il prezzo scritto a
+#    mano sull'eccezione (D-8.4 del brief-db-liste-righe-documento).
+_ORDER_COLS_RIGHE_CONTRATTO: dict[str, str] = colonne_identita(
+    "articolo_codice", "articolo_descrizione", "qta_operativa", "prezzo_finale",
+    "override_prezzo", "uom_codice", "tipo_erogazione", "prezzo_listino", "origine",
+)
+# Le `ricercabile_full = t` del seed. `test_ricerca_full_seed` legge questa costante.
+_RICERCA_RIGHE_CONTRATTO = RicercaFull(
+    "vendite.contratto_righe", ("articolo_codice", "articolo_descrizione"),
+)
+
+
+class ContrattoRigheListaRepository(RigheListaMixin):
+    """Le righe OPERATIVE di un contratto come lista paginata (BB
+    `RigheListaMixin`), per le due forme — con listino (righe del listino con
+    l'overlay delle eccezioni, piu' le aggiunte) e senza (le sole aggiunte).
+
+    ⭐ La sorgente e' la FUNZIONE `vendite.fn_contratto_righe_preview`, non una
+    vista: la lista 103 ha `vista_sql` NULL. Porta la chiave di riga
+    (`riga_key`), i verbi ammessi (`azioni`) e il motivo che spegne «Escludi»
+    (`escludi_blocco_codice`): il backend li trasporta, non li deduce.
+
+    ⚠️ L'ordine di partenza e' il codice articolo: le righe del listino non hanno
+    un numero di riga (§8.13.5 del brief). La chiave `riga_key` fa da spareggio,
+    e distingue le righe dello stesso articolo in due unita' di misura.
+    ⚠️ Nessun filtro `attivo`: la funzione legge gia' le sole eccezioni attive.
+    ⚠️ La lettura completa del BB (`list_righe`) non ha consumatori: anteprima
+    prezzi, conteggio del dettaglio e contesto di stampa leggono
+    `ContrattiRepository.list_righe_preview`, nell'ordine della funzione.
+    """
+
+    _righe_funzione = "vendite.fn_contratto_righe_preview"
+    _righe_ordine_documento = "articolo_codice"
+    _righe_chiave = "riga_key"
+    _righe_solo_attive = False
+    _righe_ordinamento = _ORDER_COLS_RIGHE_CONTRATTO
+    _righe_ricerca = _RICERCA_RIGHE_CONTRATTO

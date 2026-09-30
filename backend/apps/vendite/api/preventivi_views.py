@@ -1191,6 +1191,7 @@ _PreventivoRigheLista, _PreventivoRigheListaExport = build_lista_figlia_views(
     model_permission=('vendite', 'preventivo'),
     pagina_call=lambda documento_id, **kw: preventivi_service.list_righe_pagina(documento_id, **kw),
     colonne_ordinabili=PreventiviRepository.righe_colonne_ordinabili(),
+    ordine_assente=PreventiviRepository.righe_ordine_di_partenza(),
 )
 
 

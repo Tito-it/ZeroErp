@@ -696,6 +696,15 @@ _ESERCIZI: dict[str, Esercizio] = {
             "apps.vendite.db.offerte_repository", "OfferteRepository"
         ).list_revisioni(_ID_FINTO, limit=1, offset=0, **_ordine(ob, od)),
     ),
+    # Le righe di un contratto (2026-09-30, brief-db-liste-righe-documento
+    # lotto D): la sorgente e' `fn_contratto_righe_preview`, che su un contratto
+    # che non esiste risponde zero righe ma dichiara le sue colonne.
+    "vendite.contratto_righe": Esercizio(
+        dove="vendite/db/_righe_repo_mixin.py::list_righe_pagina (ContrattoRigheListaRepository)",
+        chiama=lambda ob, od: _r(
+            "apps.vendite.db.contratti_repository", "ContrattoRigheListaRepository"
+        ).list_righe_pagina(_ID_FINTO, limit=1, offset=0, **_ordine(ob, od)),
+    ),
     "vendite.commesse_attivita": Esercizio(
         dove="vendite/db/commesse_repository.py::list_commessa_attivita",
         # ⚠️ `fn_list_commessa_attivita` rifiuta una commessa inesistente: qui

@@ -23,8 +23,9 @@
 > 4. ✅ CSP applicata in Nginx (2026-09-28, §1.6);
 > 5. ✅ frase dopo un logout da un'altra scheda (2026-09-29); resta da decidere, prima della
 >    produzione, la scheda rimasta con il frontend di una versione precedente (§2.5);
-> 6. §3 TOTP, dopo il lavoro DB di [brief-db-secondo-fattore-totp.md](brief-db-secondo-fattore-totp.md);
->    decisioni 3 e 4 di §6 e D-T1 → D-T3 prese il 2026-09-28.
+> 6. 🔵 §3 TOTP: DB consegnato il 2026-09-29 ([brief-db-secondo-fattore-totp.md](brief-db-secondo-fattore-totp.md)),
+>    BE/FE **in corso dal 2026-09-30** coi lotti T-0 → T-5 di §3.4-bis (decisioni 5 → 8 di §6).
+>    Tre codici a catalogo in [brief-db-codici-cancello-obblighi-e-sfida-totp.md](brief-db-codici-cancello-obblighi-e-sfida-totp.md).
 >
 > **Contesto:** [Sicurezza e qualità statica](../sicurezza-e-qualita-statica.md), sezione
 > «Aperto». Registro del debito: [migliorie generali](migliorie-generali-BE-FE-da-test-valutazione.md),
@@ -375,6 +376,36 @@ con tre decisioni per Tid (D-T1 → D-T3). I punti sotto restano come origine.
     `struct`: una trentina di righe, più i test con i vettori della RFC);
   * QR code: generato nel backend (`qrcode`, SVG) o nel frontend (una libreria npm).
 
+#### 3.4-bis Il piano (2026-09-30, DB consegnato il 2026-09-29)
+
+Il DB del secondo fattore è applicato ([brief-db-secondo-fattore-totp.md](brief-db-secondo-fattore-totp.md),
+richieste al BE/FE in §9.5). Decisioni di Tid del 2026-09-30: le decisioni 5 → 8 di §6.
+
+⛔ **Il «middleware sul modello di `PasswordChangeRequiredMiddleware`» non si fa**: quel
+middleware è **inerte col JWT** (A-8 del [piano accessi](piano-be-fe-accessi-credenziale-e-vesti.md):
+a `process_view` l'utente del Bearer è ancora anonimo) e scrive a mano un codice che non è a
+catalogo. Copiato, anche l'obbligo del secondo fattore sarebbe fatto rispettare dal solo
+frontend. L'analisi [2FA](autenticazione-due-fattori-e-provider.md) A.2.11 lo diceva già: **lo
+stesso meccanismo, non un secondo**.
+
+| Lotto | Cosa |
+| --- | --- |
+| **T-0** | Il **cancello degli obblighi** dopo l'autenticazione DRF (chiude A-8; A-7 resta in L-6): cambio password e configurazione del secondo fattore in **una** sede, ciascuno coi suoi percorsi ammessi. Prima un test che provi che oggi non scatta, poi la correzione. Codici a catalogo: [brief-db-codici-cancello-obblighi-e-sfida-totp.md](brief-db-codici-cancello-obblighi-e-sfida-totp.md) |
+| **T-1** | `pyotp` e `segno` in `requirements.in`; `genera_error_policies` per i sei `E_TOTP_*`; `totp_service` (verifica che restituisce il **passo** accettato, periodo in una sede sola; codici di recupero; QR SVG); i verbi DB dietro `AuthRepository`; `auth_totp_device.secret_encrypted` in `CAMPI_CIFRATI` |
+| **T-2** | Login a due passi sulle **tre** porte: device `ATTIVO` → niente JWT, `two_factor_required` + sfida firmata di 5 minuti (credenziale, veste, porta, provenienza). `POST /api/v1/{porta}/token/secondo-fattore/` con il codice **o** un codice di recupero: blocco ricontrollato, codice sbagliato = `fn_registra_tentativo_login(successo => false)` (D-T2), il successo si registra **solo** qui |
+| **T-3** | Self-service `/api/v1/auth/secondo-fattore/` (stato, registrazione, conferma, codici di recupero, disattivazione); per il `SUPER_ADMIN` l'obbligo sulla credenziale e la disattivazione del device di un altro con motivo, traccia `TOTP_DISABILITATO` (`via: APP`) in `dbops.sessioni_utente` (D-T3); il segno `richiede_secondo_fattore` nell'editor del profilo di reparto — oggi l'unico profilo con una scrittura |
+| **T-4** | FE: il secondo passo in `LoginView`; la pagina «Sicurezza» (QR, conferma, codici di recupero mostrati una volta) con la voce nel menu utente e il guard dell'obbligo; la sezione nel drawer operatore; il toggle nell'editor del reparto; i18n. **Solo il FE admin**: le pagine di login di portale e shop non esistono (Q-3 del piano accessi) — il BE copre le tre porte |
+| **T-5** | Test (il login a due passi anche col DB vero), smoke, doc (api.md, manuale del token multi-veste, cataloghi BB, runbook del DBA per lo sblocco dal server, §9.5 punto 7 del brief DB), collaudo |
+
+⚠️ **Dichiarati, non decisi:**
+
+* chi ha l'obbligo e non ha ancora un device entra con la sola password e configura al primo
+  accesso: chi conosce solo la password può registrare il **proprio** telefono prima del
+  titolare. È il limite noto dell'iscrizione al primo accesso;
+* i codici di recupero hanno circa 80 bit casuali e si salvano come SHA-256 semplice, senza una
+  chiave del backend: ruotare la `SECRET_KEY` non li invalida, e con quell'entropia una chiave
+  non aggiunge difesa.
+
 ### 3.5 ⛔ Prerequisito: separare la chiave di cifratura dalla `SECRET_KEY`
 
 Oggi `crypto_service` ricava la chiave Fernet dalla `SECRET_KEY`. Con i segreti TOTP cifrati
@@ -527,3 +558,7 @@ Emerse nel giro, rimandate il 2026-09-28 e ✅ **fatte lo stesso giorno** (richi
 | 2 | ✅ Più schede: coordinamento fra schede (strada A), access a 10 minuti (Tid, 2026-09-28) | 2.4 |
 | 3 | ✅ Obbligo del secondo fattore: **entrambi** — flag sulla credenziale più regola automatica per gli account privilegiati (Tid, 2026-09-28) | 3.3 |
 | 4 | ✅ Dipendenze TOTP e QR: librerie esistenti (Tid, 2026-09-28) | 3.4 |
+| 5 | ✅ Il cancello degli obblighi (A-8) si fa **prima** del TOTP, come lotto T-0, con cambio password e secondo fattore nella stessa sede; A-7 resta in L-6 (Tid, 2026-09-30) | 3.4-bis |
+| 6 | ✅ I codici mancanti con un mini brief DB, il BE lavora in parallelo e il merge aspetta l'apply (Tid, 2026-09-30) | 3.4-bis |
+| 7 | ✅ L'utente che disattiva da sé il proprio device presenta un codice TOTP **o** di recupero: una sessione rubata da sola non spegne il secondo fattore (Tid, 2026-09-30) | 3.4-bis |
+| 8 | ✅ Il `SUPER_ADMIN` che disattiva il device di un altro **non** chiude le sue sessioni: sono state aperte col secondo fattore, e il telefono perso non le compromette (Tid, 2026-09-30) | 3.4-bis |

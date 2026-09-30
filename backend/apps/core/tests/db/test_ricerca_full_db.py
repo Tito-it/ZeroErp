@@ -139,6 +139,7 @@ _ESERCITATE_DAL_REPOSITORY: dict[str, str] = {
     "vendite.listini_righe": _VEN + "test_la_ricerca_trova_ogni_colonna_accesa",
     "vendite.promo_articoli": _VEN + "test_la_ricerca_trova_ogni_colonna_accesa",
     "vendite.dash_competenza_gruppi": _VEN + "test_la_ricerca_trova_ogni_colonna_accesa",
+    "vendite.contratto_righe": _VEN + "test_la_ricerca_trova_ogni_colonna_accesa",
 }
 
 

@@ -598,6 +598,7 @@ _OrdineRigheLista, _OrdineRigheListaExport = build_lista_figlia_views(
     model_permission=('vendite', 'ordine'),
     pagina_call=lambda documento_id, **kw: ordini_service.list_righe_pagina(documento_id, **kw),
     colonne_ordinabili=OrdiniRepository.righe_colonne_ordinabili(),
+    ordine_assente=OrdiniRepository.righe_ordine_di_partenza(),
 )
 
 

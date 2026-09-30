@@ -1649,7 +1649,7 @@ class CommesseRepository(EventLogRepositoryMixin):
 
         order_by/order_dir passano alla fn DB (whitelist ATTIVITA_SORT_COLUMNS,
         validata a monte dal service); None = ordine storico ca.id.
-        Restituisce {"count": <total_righe_filtrate>, "rows": [dict, ...]}.
+        Restituisce {"count": <total_righe_filtrate>, "results": [dict, ...]}.
         """
         # `max_rows` = percorso EXPORT: salta la paginazione, come i `fetch`
         # dei cruscotti (`build_dash_export_response`). Senza, il file uscirebbe
@@ -1734,7 +1734,7 @@ class CommesseRepository(EventLogRepositoryMixin):
                 row_dict[col] = val
             rows.append(row_dict)
 
-        return {"count": total_count, "rows": rows}
+        return {"count": total_count, "results": rows}
 
     # --- Gruppo 4: Push log ---
 

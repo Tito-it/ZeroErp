@@ -2019,7 +2019,7 @@ class ApiCommessaAttivita(DomainAPIView):
                         fields={
                             "commessa_id": serializers.IntegerField(),
                             "count": serializers.IntegerField(),
-                            "rows": serializers.ListField(child=serializers.DictField()),
+                            "results": serializers.ListField(child=serializers.DictField()),
                         },
                     ),
                     "meta": serializers.DictField(required=False),
@@ -2121,7 +2121,7 @@ class ApiCommessaAttivitaExport(DomainAPIView):
         return build_export_response(
             request,
             lista_codice="vendite.commesse_attivita",
-            results=data["rows"],
+            results=data["results"],
             total=data["count"],
             filtri_applicati=filtri_applicati,
             fmt=fmt,
