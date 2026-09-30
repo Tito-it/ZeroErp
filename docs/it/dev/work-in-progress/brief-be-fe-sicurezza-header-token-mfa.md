@@ -25,7 +25,9 @@
 >    produzione, la scheda rimasta con il frontend di una versione precedente (§2.5);
 > 6. 🔵 §3 TOTP: DB consegnato il 2026-09-29 ([brief-db-secondo-fattore-totp.md](brief-db-secondo-fattore-totp.md)),
 >    BE/FE **in corso dal 2026-09-30** coi lotti T-0 → T-5 di §3.4-bis (decisioni 5 → 8 di §6).
->    Tre codici a catalogo in [brief-db-codici-cancello-obblighi-e-sfida-totp.md](brief-db-codici-cancello-obblighi-e-sfida-totp.md).
+>    Tre codici a catalogo in [brief-db-codici-cancello-obblighi-e-sfida-totp.md](brief-db-codici-cancello-obblighi-e-sfida-totp.md):
+   ✅ consegnati a file dal DB il 2026-09-30 (id 1182 → 1184), da applicare; poi
+   `genera_error_policies` e il merge del BE.
 >
 > **Contesto:** [Sicurezza e qualità statica](../sicurezza-e-qualita-statica.md), sezione
 > «Aperto». Registro del debito: [migliorie generali](migliorie-generali-BE-FE-da-test-valutazione.md),

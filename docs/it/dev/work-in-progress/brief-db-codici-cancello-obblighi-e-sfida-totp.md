@@ -3,9 +3,10 @@
 > **Chi scrive:** backend (`dev/backend-tid`), 2026-09-30. **A chi:** team DB (`dev/db-tid`).
 > **Origine:** §3.4 di [brief-be-fe-sicurezza-header-token-mfa.md](brief-be-fe-sicurezza-header-token-mfa.md),
 > lotti T-0 e T-2 (decisioni di Tid del 2026-09-30).
-> **Stato:** 🟡 da fare. Il backend lavora in parallelo (decisione di Tid del 2026-09-30) e
-> rigenera `error_policies_generated.py` all'arrivo dei codici; il **merge** del BE aspetta
-> questo apply.
+> **Stato:** 🟢 consegnato a file il 2026-09-30 (`dev/db-tid`), **da applicare**: le righe sono
+> nei due CSV (§4), le carica il loader `runOnChange` `20260614-08` al prossimo migrate. Il
+> backend lavora in parallelo (decisione di Tid del 2026-09-30) e rigenera
+> `error_policies_generated.py` all'arrivo dei codici; il **merge** del BE aspetta questo apply.
 >
 > **In una riga:** solo righe di `80_data` (`codici_errore.csv` + `messaggi_errore.csv`),
 > nessun oggetto nuovo. Tre codici che il **backend** solleva e che oggi non hanno una sede a
@@ -64,3 +65,37 @@ Nelle `note` di `codici_errore.csv`: tutti e tre li solleva il **backend** (come
 
 Nessuna ricaduta su pgTAP oltre ai presidi del catalogo (`catalogo-messaggi-errore-completo`,
 `vw-codici-errore-*`).
+
+## 4. Fatto (DB, 2026-09-30)
+
+Tre righe in `80_data/sql/config/codici_errore.csv` e tre in `messaggi_errore.csv` (id
+**1182 → 1184**), nessun changeSet nuovo: le carica `20260614-08-upsert-messaggi-errore-…`
+(`runOnChange`), classi prima, codici poi, messaggi per ultimi.
+
+| Codice | Classe | id |
+| --- | --- | --- |
+| `E_CAMBIO_PASSWORD_RICHIESTO` | `NON_PERMESSO` | 1182 |
+| `E_TOTP_CONFIGURAZIONE_RICHIESTA` | `NON_PERMESSO` | 1183 |
+| `E_TOTP_SFIDA_NON_VALIDA` | `NON_AUTENTICATO` | 1184 |
+
+Frasi, cause e soluzioni sono quelle di §2 (con gli accenti in apostrofo, come il resto del
+catalogo), tutte **chiuse**: nessuna funzione PL/pgSQL le solleva, quindi nessuno riempirebbe un
+`%s`. Le `note` dicono chi solleva (il backend), perché la classe, e **perché non si riusa** il
+fratello più vicino:
+
+* `E_TOTP_CONFIGURAZIONE_RICHIESTA` ≠ `E_TOTP_DEVICE_ASSENTE`: quello è il verbo DB che non trova
+  il device (409), questo è l'accesso fermato finché il device non c'è (403);
+* `E_TOTP_SFIDA_NON_VALIDA` ≠ `E_TOTP_CODICE_NON_VALIDO`: quello è il codice sbagliato su una
+  sfida buona (400, si riprova e conta come tentativo), questo è la sfida da rifare (401). Una
+  frase sola per i quattro casi, di proposito: non si dice a chi prova quale controllo è fallito.
+
+`E_CAMBIO_PASSWORD_CHECK_FALLITO` **non** è stato registrato, come chiesto in §1.
+
+**Verifica:** i due CSV rilevati col parser `csv` (colonne coerenti, nessun `codice`/`id`
+doppio); le classi esistono in `classi_errore.csv`; i presidi del catalogo
+(`test-catalogo-messaggi-errore-completo`, `test-vw-codici-errore-*`) non pinnano conteggi.
+pgTAP da lanciare da Tid dopo l'apply.
+
+➡️ **Al backend:** `./manage-env.sh genera_error_policies` dopo l'apply, i ripieghi in
+`error_messages_fallback.py`, e il ritiro di `PasswordChangeRequiredMiddleware` coi suoi due
+codici scritti a mano (§3).
