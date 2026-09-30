@@ -84,7 +84,7 @@ import { computed, ref } from 'vue'
 import { useContrattoFiltriLista } from './useContrattoFiltriLista'
 import { clonaFiltri } from '../utils/clonaFiltri'
 import { useListaEmptyStateFetch } from './useListaEmptyStateFetch'
-import { PAGINATION } from '../constants'
+import { USO_MISURA, misuraDefault } from '../misurePagina'
 import { paramsOrdinamento, paramsRicerca } from '../utils/listParams'
 
 // Params:
@@ -139,16 +139,20 @@ import { paramsOrdinamento, paramsRicerca } from '../utils/listParams'
 //       comportamento invariato (2026-09-19, regola del 2: le righe della
 //       distinta ne avevano bisogno e lo store era sul core, dove l'hook non
 //       arrivava).
-//   - limit: righe per pagina di PARTENZA. Default `PAGINATION.DEFAULT_ROWS`
-//       (25), che `useSearchTable` tratta come «lista standard» e adatta al
-//       viewport (10 sotto il tablet). ⭐ Una lista che nasce a un altro
-//       numero — `PAGINATION.COMPACT_ROWS` per una lista dentro un dialog,
-//       dove l'altezza e' quella di dieci righe — resta a quel numero: e'
-//       l'eccezione che `useSearchTable` gia' dichiara («le liste che nascono
-//       a 10 restano eccezioni»), e prima di questa opzione si poteva
-//       scrivere solo negli store a mano (`listini`, `pratiche`).
-//       ⚠️ Vale anche per `reset()`: uno store che rinasce a 25 dopo essere
-//       nato a 10 cambierebbe passo alla seconda apertura.
+//   - misura: l'USO della lista, da cui esce la misura di PARTENZA
+//       (righe per pagina) — `USO_MISURA.PAGINA` di default, che
+//       `useSearchTable` tratta come «lista standard» e adatta al viewport
+//       (la compatta sotto il tablet). ⭐ Una lista che nasce per un altro uso
+//       — `USO_MISURA.COMPATTA` per una lista dentro un dialog, dove l'altezza
+//       e' quella di poche righe — resta a quella misura: e' l'eccezione che
+//       `useSearchTable` gia' dichiara. Il NUMERO lo dice il catalogo DB
+//       (BB `core/misurePagina`), e si legge qui, quando lo store nasce.
+//       ⛔ Fino al 2026-09-30 l'opzione era `limit`, un numero preso da
+//       `PAGINATION`: scritto nelle opzioni a livello di modulo, oggi sarebbe
+//       letto PRIMA che il guard carichi il catalogo.
+//       ⚠️ Vale anche per `reset()`: uno store che rinasce alla misura di
+//       pagina dopo essere nato compatto cambierebbe passo alla seconda
+//       apertura.
 export function useListaStoreCore({
   fetchPage,
   parentField = null,
@@ -170,9 +174,16 @@ export function useListaStoreCore({
   orderDir = 'asc',
   orderDirDefault = 'asc',
   paramNames = {},
-  limit = PAGINATION.DEFAULT_ROWS,
+  misura = USO_MISURA.PAGINA,
   onPayload = null,
+  // ⛔ Ritirata il 2026-09-30: si dichiara `misura`. Un'opzione che lo store
+  //    scrive e il BB ignora e' un errore silenzioso — qui solleva.
+  limit: limitRitirato,
 } = {}) {
+  if (limitRitirato !== undefined) {
+    throw new Error('useListaStoreCore: `limit` e\' ritirata, dichiarare `misura` (USO_MISURA)')
+  }
+  const limit = misuraDefault(misura)
   // Le parti del padre nel PATH, una ref per nome. `null` = non ancora scelta.
   const nomiPath = parentField == null ? [] : [].concat(parentField)
   const partiPath = nomiPath.map(() => ref(null))

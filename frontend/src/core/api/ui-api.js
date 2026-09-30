@@ -31,6 +31,14 @@ export function getListaConfig(codice, { emittenteEsplicito = null } = {}) {
   return api.get(`${BASE}/liste/${encodeURIComponent(codice)}/config/`, { params })
 }
 
+// Scopo: Le misure «righe per pagina» di TUTTI i paginatori e i due default,
+// dal catalogo DB `ui.misure_pagina`: {misure, default_compatta,
+// default_pagina}. La legge solo il BB `core/misurePagina.js`, una volta per
+// sessione.
+export function getMisurePagina() {
+  return api.get(`${BASE}/misure-pagina/`)
+}
+
 // Scopo: Catalogo colonne per la modale di personalizzazione.
 // Restituisce {colonne: [...]} arricchito di metadati (etichetta, gruppo,
 // formato, ecc.). Filtrato per i permessi dell'utente: colonne BLOCCATE

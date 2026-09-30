@@ -12,7 +12,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useDashRiepilogo } from '../../core/composables/useDashRiepilogo'
 import { usePagedDashFetch } from '../../core/composables/usePagedDashFetch'
-import { PAGINATION } from '../../core/constants'
+import { USO_MISURA } from '../../core/misurePagina'
 import {
   getDashboardCompetenza,
   listDashboardCompetenzaCommesse,
@@ -270,7 +270,7 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
         order_dir: erroriSort.orderDir.value,
         ...paging,
       }),
-    { defaultPageSize: PAGINATION.COMPACT_ROWS }
+    { misura: USO_MISURA.COMPATTA }
   )
 
   // Drill-down RESIDUI (card «Emesse non fatturate»): l'elenco su cui agisce
@@ -297,7 +297,7 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
         order_dir: residuiSort.orderDir.value,
         ...paging,
       }),
-    { defaultPageSize: PAGINATION.COMPACT_ROWS }
+    { misura: USO_MISURA.COMPATTA }
   )
 
   // Scopo: carica una pagina di residui del mese. Parte solo con la card

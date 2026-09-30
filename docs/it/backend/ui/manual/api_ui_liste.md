@@ -116,7 +116,10 @@ Campi top-level:
   preferenza salvata (per il badge UX "N nuove colonne disponibili")
 - `ordinamento` / `filtri` / `pagina_dimensione` — stato derivato dalla
   cascata (preferenza > preset di ruolo > preset di emittente > preset
-  di sistema > default `pagina_dimensione=25`)
+  di sistema > la misura di default `PAGINA` del catalogo
+  `ui.misure_pagina`). ⭐ Dal 2026-09-30 `pagina_dimensione` e' **sempre
+  una misura del catalogo**: quella scelta se ammessa, altrimenti il
+  default — mai `NULL`, mai un numero che il paginatore non offre
 - `ricerca_full` — `true` se la lista ha, **per l'utente corrente**, almeno
   una colonna in cui la ricerca libera cerca (`ricercabile_full = t`,
   attiva, non `BLOCCATO` per i permessi di colonna). Il frontend mostra la
@@ -256,8 +259,12 @@ Whitelist root payload: `colonne`, `ordinamento`, `filtri`,
 - `ordine`, `larghezza` (int positivo) — opzionali
 - `visibile`, `fissata` (bool stretto) — opzionali; non accetta `"true"`
   o `1`
-- `pagina_dimensione` (int positivo) — max `200` (allineato a
-  `apps.core.api.constants.MAX_LIMIT`)
+- `pagina_dimensione` (int) — una delle misure del catalogo
+  `ui.misure_pagina` (endpoint 6). ⭐ Il backend ne controlla solo la
+  **forma**; l'ammissibilita' la decide il guard a DB, e una misura fuori
+  catalogo risponde `400 E_UI_MISURA_PAGINA_NON_AMMESSA`. ⛔ Fino al
+  2026-09-30 il service applicava un suo tetto (`MAX_LIMIT`, 200): una
+  seconda regola, diversa dal catalogo, che ammetteva 37
 - `ordinamento` — lista di oggetti, formato trasparente al BE (decisione
   congiunta col componente Vue, vedi WIP §10.1.2)
 - `filtri` — oggetto, formato trasparente al BE
@@ -287,8 +294,10 @@ Errori:
 
 - `400` `E_IDEMPOTENCY_KEY_REQUIRED` — header `Idempotency-Key` mancante
 - `400` `E_UI_PREFERENZA_VALIDAZIONE` — payload non whitelisted, tipi
-  errati, `pagina_dimensione > 200`, ecc. Il dettaglio indica
-  esattamente quale chiave/colonna ha violato il vincolo.
+  errati, ecc. Il dettaglio indica esattamente quale chiave/colonna ha
+  violato il vincolo.
+- `400` `E_UI_MISURA_PAGINA_NON_AMMESSA` — `pagina_dimensione` non e' una
+  misura del catalogo (dal guard a DB; il messaggio elenca le ammesse)
 - `401` — JWT mancante o non valido
 - `404` `E_UI_LISTA_NON_TROVATA` — codice lista non esistente o non attivo
 
@@ -405,6 +414,50 @@ Errori:
 
 ---
 
+### 6. GET misure-pagina
+
+#### Scopo
+
+Le misure «righe per pagina» che **ogni** paginatore dell'applicazione
+offre, e i due default, lette da `ui.fn_get_misure_pagina()` (catalogo
+`ui.misure_pagina`, sede unica per DB, backend e frontend — decisioni di
+Tid del 2026-09-29). Non sono dentro la configurazione di una lista perche'
+le usano anche tabelle grezze, dialog e cruscotti. Il frontend le legge
+**una volta per sessione**, dal guard del router, prima di aprire
+qualunque pagina dell'operatore (BB `core/misurePagina.js`).
+
+#### Input
+
+`GET /api/v1/ui/misure-pagina/` — nessun parametro. JWT obbligatorio.
+
+#### Output
+
+- `200`:
+
+```json
+{
+  "data": {
+    "misure": [10, 25, 50, 100],
+    "default_compatta": 10,
+    "default_pagina": 25
+  },
+  "meta": {"request_id": "..."}
+}
+```
+
+- `misure` — in ordine crescente (l'ordine del selettore)
+- `default_compatta` — la misura di partenza delle liste in drawer e dialog
+- `default_pagina` — quella delle liste a pagina intera, e il ripiego del
+  resolver quando nessuno ha scelto
+
+Errori:
+
+- `401` — JWT mancante o non valido
+- `500` `E_UI_MISURA_PAGINA_DEFAULT_MANCANTE` (`TECNICO`) — il catalogo non
+  ha la riga di uno dei due default: anomalia di seed, non un valore vuoto
+
+---
+
 ## Regole
 
 - **Permessi**: `skip_area_check = True` su tutte le view. JWT
@@ -432,8 +485,8 @@ Errori:
 
 - Tabelle: `ui.lista_definizione`, `ui.lista_colonna`, `ui.lista_preset`,
   `ui.lista_preset_colonna`, `ui.lista_preferenza_utente`,
-  `ui.lista_colonna_permesso`
-- Funzioni: `ui.fn_resolve_lista_config`,
+  `ui.lista_colonna_permesso`, `ui.misure_pagina`
+- Funzioni: `ui.fn_resolve_lista_config`, `ui.fn_get_misure_pagina`,
   `script.fn_get_profili_accesso_applicabili`,
   `script.fn_resolve_emittente_for_user` (via Python
   `PermissionResolver.get_emittente_for_user`)
@@ -466,6 +519,8 @@ In `apps/core/services/error_policies.py`:
 | `E_UI_PREFERENZA_VALIDAZIONE` | 400 | `highlight_form_fields` | Service write (whitelist/tipi) |
 | `E_UI_GENERIC_FAILED` | 400 | `show_error_banner` | Service (DatabaseError non riconosciuto) |
 | `E_UI_CHIAMATA_NON_VALIDA` | 500 | `show_error_banner` | Service (`get_lista_config_per_video`: contesto di sessione ≠ utente della chiamata) |
+| `E_UI_MISURA_PAGINA_NON_AMMESSA` | 400 | default `DATO_ERRATO` | Guard DB su preset e preferenza (misura fuori catalogo) |
+| `E_UI_MISURA_PAGINA_DEFAULT_MANCANTE` | 500 | default `TECNICO` | fn DB (`ui.fn_misura_pagina_default`: il catalogo non ha il default) |
 
 ## Note di migrazione
 

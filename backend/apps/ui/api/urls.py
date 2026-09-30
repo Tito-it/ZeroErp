@@ -15,6 +15,7 @@ from apps.ui.api.views import (
     ApiListaConfigView,
     ApiListaIgnorePresetUpdateView,
     ApiListaPreferenzaView,
+    ApiMisurePaginaView,
 )
 from apps.ui.api.views_dashboard import (
     ApiDashboardConfigView,
@@ -64,6 +65,12 @@ urlpatterns = [
         "liste/<str:codice>/preferenza/ignore-preset-update/",
         ApiListaIgnorePresetUpdateView.as_view(),
         name="ui-liste-preferenza-ignore-preset-update",
+    ),
+    # Misure «righe per pagina» per tutti i paginatori (catalogo DB)
+    path(
+        "misure-pagina/",
+        ApiMisurePaginaView.as_view(),
+        name="ui-misure-pagina",
     ),
     # ── Dashboard configurabili (card KPI home) ─────────────────────────
     path(

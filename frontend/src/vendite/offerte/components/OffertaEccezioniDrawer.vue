@@ -51,6 +51,7 @@ import {
   deleteEccezioneComponente,
 } from '../api/offerteApi'
 import { useOfferteStore } from '../stores/offerte'
+import { USO_MISURA, misuraDefault, misureOpzioni } from '../../../core/misurePagina'
 
 const { t } = useI18n()
 const store = useOfferteStore()
@@ -569,8 +570,8 @@ const suVisibile = gestoreVisibile(emit, chiudi)
           :value="eccezioni"
           :loading="loading"
           paginator
-          :rows="10"
-          :rows-per-page-options="[10, 25]"
+          :rows="misuraDefault(USO_MISURA.COMPATTA)"
+          :rows-per-page-options="misureOpzioni()"
           paginator-position="top"
           striped-rows
           removable-sort

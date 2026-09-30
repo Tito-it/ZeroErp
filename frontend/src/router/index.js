@@ -5,6 +5,7 @@ import { useTabsStore } from '../stores/tabs'
 import { DOMAINS, findMenuItem, isMenuItemAllowed, resolveTabLabel, resolveTabIcon } from '../core/navigation'
 import { FE_NAMESPACE, STATUS_ICONS, resolveRuoloFeConfig } from '../core/constants'
 import { MOTIVO_USCITA, sessioneDichiarataChiusa } from '../core/sessione'
+import { caricaMisurePagina } from '../core/misurePagina'
 import i18n from '../core/i18n'
 import { chiudiTuttiIDrawer } from '../core/composables/useDrawerChiusuraGlobale'
 import { CODE } from '../pagamenti/vocabolari'
@@ -18,10 +19,13 @@ const t = i18n.global.t
 // Rotte autenticate universali: accessibili a tutte le vesti, non
 // passano per il check namespace. Include la pagina cambio password
 // (tipicamente forzata post-invito) e le pagine d'errore.
+const ROTTA_AVVIO_NON_RIUSCITO = 'avvio-non-riuscito'
+
 const UNIVERSAL_ROUTE_NAMES = new Set([
   'change-password',
   'forbidden',
-  'not-found'
+  'not-found',
+  ROTTA_AVVIO_NON_RIUSCITO
 ])
 
 // Tabella statica path → namespace. Definita come array ordinato per
@@ -109,6 +113,18 @@ const router = createRouter({
       name: 'attivazione-shop',
       component: () => import('../shop/views/AttivazioneShopView.vue'),
       meta: { public: true, domain: 'shop', menuKey: 'attivazione' }
+    },
+
+    // Configurazione globale non letta (le misure di pagina, BB
+    // `core/misurePagina`): la apre il guard. ⛔ FUORI da `AppLayout`, ed e' il
+    // punto: il layout monta componenti che le misure le leggono, quindi una
+    // pagina d'errore dentro il layout cadrebbe per la stessa causa che deve
+    // mostrare. «Torna alla home» ripassa dal guard e riprova.
+    {
+      path: '/avvio-non-riuscito',
+      name: ROTTA_AVVIO_NON_RIUSCITO,
+      component: () => import('../core/views/ErrorView.vue'),
+      meta: { errorKey: 'avvio_non_riuscito', errorIcon: STATUS_ICONS.ERRORE }
     },
 
     // Rotte autenticate — con layout principale
@@ -707,6 +723,24 @@ router.beforeEach(async (to) => {
       // loop su rotte child di AppLayout; altrimenti path string.
       if (ruoloConfig.homeRouteName) return { name: ruoloConfig.homeRouteName }
       return ruoloConfig.homePath
+    }
+  }
+
+  // ⭐ Le misure «righe per pagina» (catalogo DB, BB `core/misurePagina`):
+  //    una volta per sessione, ATTESE, prima di qualunque rotta sotto
+  //    `AppLayout` — anche 404 e forbidden, perche' e' il LAYOUT a leggerle
+  //    (la ricerca della topbar), non solo le liste. Solo per l'operatore: e'
+  //    la veste di quel layout, e l'endpoint e' della sua API.
+  //    ⛔ Nessun ripiego se la chiamata fallisce (sarebbe una copia del
+  //    catalogo): si apre la pagina d'errore, fuori dal layout.
+  if (
+    to.matched.some((r) => r.components?.default === AppLayout) &&
+    resolveRuoloFeConfig(auth.ruoloApplicativo)?.namespace === FE_NAMESPACE.ADMIN
+  ) {
+    try {
+      await caricaMisurePagina()
+    } catch {
+      return { name: ROTTA_AVVIO_NON_RIUSCITO }
     }
   }
 

@@ -45,7 +45,7 @@ import { useSelezioneToggle } from '../../core/composables/useSelezioneToggle'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { lookupRisorseUmane } from '../../core/apiCore'
-import { DRAWER_WIDTH, PAGINATION } from '../../core/constants'
+import { DRAWER_WIDTH } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import DocumentoDrawerHost from '../../core/components/DocumentoDrawerHost.vue'
 import { DOCUMENTO_DRAWER_TIPI } from '../../core/drawerEntita'
@@ -79,6 +79,7 @@ import {
 } from '../api/commesse'
 import { lookupArticoli } from '../../catalogo/api/catalogo'
 import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
+import { USO_MISURA, misuraDefault, misureOpzioni } from '../../core/misurePagina'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -132,7 +133,7 @@ const canEditRighe = computed(() => capabilities.value.can_edit_righe === true)
 const stato = ref(null)
 const righe = ref([])
 const righePage = ref(1)
-const righePageSize = ref(PAGINATION.DEFAULT_ROWS)
+const righePageSize = ref(misuraDefault(USO_MISURA.PAGINA))
 const righeLoading = ref(false)
 const selected = ref([])
 // Ordinamento server-side: l'ORDER BY vive dentro fn_list_commessa_attivita
@@ -401,7 +402,7 @@ const righePaginatorOptions = computed(() => ({
   totalRecords: righeTotale.value,
   rows: righePageSize.value,
   first: (righePage.value - 1) * righePageSize.value,
-  rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
+  rowsPerPageOptions: misureOpzioni(),
 }))
 
 // Scopo: allinea la dimensione pagina a quella risolta dal BE (una volta).

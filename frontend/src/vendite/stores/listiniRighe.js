@@ -12,8 +12,8 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useListaStoreCore } from '../../core/composables/useListaStoreCore'
-import { PAGINATION } from '../../core/constants'
 import { listRighe } from '../api/listini'
+import { USO_MISURA } from '../../core/misurePagina'
 
 export const useListiniRigheStore = defineStore('vendite-listini-righe', () => {
   // Il listino corrente (nonno): impostato dal drawer padre con `setContext`.
@@ -23,8 +23,8 @@ export const useListiniRigheStore = defineStore('vendite-listini-righe', () => {
 
   // `ricercaCorta: 'ignora'`: la ricerca corta qui e' sempre stata un no-op
   // (la lista resta com'e' mentre si digita, nessuna richiesta). Nasce a
-  // DIECI righe, coerente col pattern master-detail inline (frontend-standards:
-  // 10 righe + rows-per-page-options [10, 25]).
+  // alla misura COMPATTA, coerente col pattern master-detail inline
+  // (frontend-standards: la lista dentro un drawer parte compatta).
   // ⛔ E IL PRESET DICE LO STESSO NUMERO (`lista_preset` 37,
   //    `pagina_dimensione = 10`): al primo `config-loaded` lo scaffolding
   //    allinea `filters.limit` alla `pagina_dimensione` del catalogo, che il
@@ -36,7 +36,7 @@ export const useListiniRigheStore = defineStore('vendite-listini-righe', () => {
     parentField: 'versioneId',
     startsEmpty: false,
     ricercaCorta: 'ignora',
-    limit: PAGINATION.COMPACT_ROWS,
+    misura: USO_MISURA.COMPATTA,
     filterDefaults: { billing_account_id: null },
     orderBy: 'articolo_descrizione',
   })

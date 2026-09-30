@@ -16,7 +16,7 @@
 //  1. `afterWrite` riceve (id, azione) su create, update e azione extra
 //  2. `afterWrite` viene PRIMA di `emitDataChanged`
 //  3. senza `afterWrite` il giro e' quello di sempre (solo l'evento)
-//  4. le opzioni del core passano tal quali (`limit`, `ricercaCorta`)
+//  4. le opzioni del core passano tal quali (`misura`, `ricercaCorta`)
 // ------------------------------------------------------------
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -24,7 +24,7 @@ import { createPinia, setActivePinia } from 'pinia'
 
 import { createCrudStore } from './createCrudStore'
 import { useTabEvents } from '../composables/useTabEvents'
-import { PAGINATION } from '../constants'
+import { USO_MISURA, misuraDefault } from '../misurePagina'
 
 // Scopo: una api finta che risponde `{ data: { data } }` come axios.
 const risponde = (data) => vi.fn(async () => ({ data: { data } }))
@@ -85,8 +85,9 @@ describe('createCrudStore — il giro di scrittura', () => {
   //    nel core la mattina stessa — non arrivava: lo store lo scriveva, il BB lo
   //    ignorava, nessun errore.
   it('le opzioni del core passano tal quali', () => {
-    const store = storeDiProva({ limit: PAGINATION.COMPACT_ROWS, orderBy: 'codice' })
-    expect(store.filters.limit).toBe(PAGINATION.COMPACT_ROWS)
+    const store = storeDiProva({ misura: USO_MISURA.COMPATTA, orderBy: 'codice' })
+    expect(store.filters.limit).toBe(misuraDefault(USO_MISURA.COMPATTA))
+    expect(store.filters.limit).not.toBe(misuraDefault(USO_MISURA.PAGINA))
     expect(store.filters.order_by).toBe('codice')
     // E il core si riespone INTERO: `paramsFiltro` e `fetchSospesa` compresi.
     expect(typeof store.paramsFiltro).toBe('function')

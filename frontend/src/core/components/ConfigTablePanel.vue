@@ -18,7 +18,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useReadonlyMode } from '../composables/useReadonlyMode'
 import { useApiHandler } from '../composables/useApiHandler'
-import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../constants'
+import { MANAGE_ICONS, READONLY_DOMAINS } from '../constants'
 import { NAV_ICONS } from '../navigation'
 import { labelOrCode } from '../utils/i18nLabel'
 import { chiaveEtichettaTabella } from '../utils/campoConfig'
@@ -33,6 +33,7 @@ import InputText from 'primevue/inputtext'
 import AttivoTag from './AttivoTag.vue'
 import { getConfigTableMetadata, listConfigRecords, listConfigTables } from '../api/configTables'
 import FiltriLista from './FiltriLista.vue'
+import { USO_MISURA, misuraDefault, misureOpzioni } from '../misurePagina'
 
 const { t, te } = useI18n()
 useReadonlyMode(READONLY_DOMAINS.CONFIG)
@@ -48,7 +49,7 @@ const items = ref([])
 const totalRecords = ref(0)
 const loading = ref(false)
 const page = ref(1)
-const pageSize = ref(PAGINATION.DEFAULT_ROWS)
+const pageSize = ref(misuraDefault(USO_MISURA.PAGINA))
 const sortField = ref('descrizione')
 const sortOrder = ref(1)
 
@@ -238,7 +239,7 @@ function selectTable(rel) {
           :total-records="totalRecords"
           :rows="pageSize"
           :first="(page - 1) * pageSize"
-          :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
+          :rows-per-page-options="misureOpzioni()"
           paginator
           paginator-position="top"
           :paginator-template="'FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport'"

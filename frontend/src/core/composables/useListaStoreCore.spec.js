@@ -60,7 +60,12 @@
 import { describe, it, expect, vi } from 'vitest'
 
 import { useListaStoreCore } from './useListaStoreCore'
-import { PAGINATION } from '../constants'
+import { USO_MISURA, misuraDefault } from '../misurePagina'
+
+// Le misure le fabbrica il setup di Vitest; qui si legge l'USO, e i due usi
+// devono dare numeri DIVERSI o i test sotto non distinguerebbero niente.
+const PAGINA = () => misuraDefault(USO_MISURA.PAGINA)
+const COMPATTA = () => misuraDefault(USO_MISURA.COMPATTA)
 
 const fetchMai = () => { throw new Error('fetchPage non deve essere chiamata') }
 
@@ -70,25 +75,29 @@ function spiaFetch(righe = [{ id: 1 }]) {
 }
 
 describe('useListaStoreCore — le righe per pagina di partenza', () => {
-  it('senza `limit` nasce alle righe delle liste standard', () => {
-    const s = useListaStoreCore({ fetchPage: fetchMai })
-    expect(s.filters.value.limit).toBe(PAGINATION.DEFAULT_ROWS)
+  it('i due usi danno misure diverse (premessa dei test sotto)', () => {
+    expect(COMPATTA()).not.toBe(PAGINA())
   })
 
-  it('con `limit` nasce a quel numero', () => {
-    const s = useListaStoreCore({ fetchPage: fetchMai, limit: PAGINATION.COMPACT_ROWS })
-    expect(s.filters.value.limit).toBe(PAGINATION.COMPACT_ROWS)
+  it('senza `misura` nasce alla misura di pagina', () => {
+    const s = useListaStoreCore({ fetchPage: fetchMai })
+    expect(s.filters.value.limit).toBe(PAGINA())
+  })
+
+  it('con `misura: COMPATTA` nasce alla misura compatta', () => {
+    const s = useListaStoreCore({ fetchPage: fetchMai, misura: USO_MISURA.COMPATTA })
+    expect(s.filters.value.limit).toBe(COMPATTA())
   })
 
   // ⚠️ E' il caso che conta: il picker si azzera a ogni chiusura (`reset()`
   //    dal legame col padre), e uno store che rinascesse a 25 cambierebbe
   //    passo alla seconda apertura — senza nessun errore.
-  it('`reset()` riporta al `limit` di nascita, non al default', () => {
-    const s = useListaStoreCore({ fetchPage: fetchMai, limit: PAGINATION.COMPACT_ROWS })
+  it('`reset()` riporta alla misura di nascita, non al default', () => {
+    const s = useListaStoreCore({ fetchPage: fetchMai, misura: USO_MISURA.COMPATTA })
     s.filters.value.limit = 100
     s.filters.value.offset = 200
     s.reset()
-    expect(s.filters.value.limit).toBe(PAGINATION.COMPACT_ROWS)
+    expect(s.filters.value.limit).toBe(COMPATTA())
     expect(s.filters.value.offset).toBe(0)
   })
 
@@ -174,7 +183,7 @@ describe('useListaStoreCore — la fetch', () => {
     expect(fetchPage).toHaveBeenCalledTimes(1)
     expect(fetchPage.mock.calls[0][0]).toEqual({
       attivo: true, order_by: 'codice', order_dir: 'desc',
-      limit: PAGINATION.DEFAULT_ROWS, offset: 25,
+      limit: PAGINA(), offset: 25,
     })
     expect(s.items.value).toEqual([{ id: 1 }])
     expect(s.totalRecords.value).toBe(1)
@@ -189,7 +198,7 @@ describe('useListaStoreCore — la fetch', () => {
     s.fatturaId.value = 42
     await s.fetchList()
     expect(fetchPage.mock.calls[0][0]).toBe(42)
-    expect(fetchPage.mock.calls[0][1]).toMatchObject({ limit: PAGINATION.DEFAULT_ROWS, offset: 0 })
+    expect(fetchPage.mock.calls[0][1]).toMatchObject({ limit: PAGINA(), offset: 0 })
   })
 
   it("ricercaCorta 'svuota': con 1-2 caratteri nessuna fetch e lista svuotata", async () => {
@@ -327,7 +336,7 @@ describe('useListaStoreCore — il padre composto', () => {
     await s.fetchList()
     const [soggettoId, titoloId, params] = fetchPage.mock.calls[0]
     expect([soggettoId, titoloId]).toEqual(['uuid-1', 7])
-    expect(params).toMatchObject({ limit: PAGINATION.DEFAULT_ROWS, offset: 0 })
+    expect(params).toMatchObject({ limit: PAGINA(), offset: 0 })
   })
 
   it('con `emittenteParam` senza emittente non legge, ed e\' in attesa', async () => {
@@ -424,7 +433,8 @@ describe('useListaStoreCore — la pagina che non c\'e\' piu\'', () => {
   //    pagina giusta e' la 2, non la 1.
   it('oltre l\'ultima pagina, col totale vero: rilegge dall\'ULTIMA pagina reale', async () => {
     const fetchPage = risposte([[], 20], [[{ id: 11 }], 20])
-    const s = useListaStoreCore({ fetchPage, startsEmpty: false, limit: 10 })
+    const s = useListaStoreCore({ fetchPage, startsEmpty: false })
+    s.filters.value.limit = 10 // il passo del caso: aritmetica di pagina, non una misura del catalogo
     s.filters.value.offset = 20
     expect(await s.fetchList()).toBe(true)
     expect(fetchPage).toHaveBeenCalledTimes(2)
@@ -435,7 +445,8 @@ describe('useListaStoreCore — la pagina che non c\'e\' piu\'', () => {
 
   it('oltre l\'ultima col totale 0 (backend che non sa contare li\'): da capo', async () => {
     const fetchPage = risposte([[], 0], [[{ id: 1 }], 3])
-    const s = useListaStoreCore({ fetchPage, startsEmpty: false, limit: 10 })
+    const s = useListaStoreCore({ fetchPage, startsEmpty: false })
+    s.filters.value.limit = 10 // il passo del caso: aritmetica di pagina, non una misura del catalogo
     s.filters.value.offset = 30
     await s.fetchList()
     expect(fetchPage.mock.calls[1][0]).toMatchObject({ offset: 0 })
@@ -444,7 +455,8 @@ describe('useListaStoreCore — la pagina che non c\'e\' piu\'', () => {
 
   it('pagina piena: nessuna rilettura', async () => {
     const fetchPage = risposte([[{ id: 21 }], 21])
-    const s = useListaStoreCore({ fetchPage, startsEmpty: false, limit: 10 })
+    const s = useListaStoreCore({ fetchPage, startsEmpty: false })
+    s.filters.value.limit = 10 // il passo del caso: aritmetica di pagina, non una misura del catalogo
     s.filters.value.offset = 20
     await s.fetchList()
     expect(fetchPage).toHaveBeenCalledTimes(1)
@@ -459,7 +471,8 @@ describe('useListaStoreCore — la pagina che non c\'e\' piu\'', () => {
 
   it('una rilettura sola, anche se la seconda risposta e\' ancora vuota', async () => {
     const fetchPage = risposte([[], 20], [[], 0], [[{ id: 1 }], 1])
-    const s = useListaStoreCore({ fetchPage, startsEmpty: false, limit: 10 })
+    const s = useListaStoreCore({ fetchPage, startsEmpty: false })
+    s.filters.value.limit = 10 // il passo del caso: aritmetica di pagina, non una misura del catalogo
     s.filters.value.offset = 20
     await s.fetchList()
     expect(fetchPage).toHaveBeenCalledTimes(2)

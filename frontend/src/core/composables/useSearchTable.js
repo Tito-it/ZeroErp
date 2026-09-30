@@ -19,7 +19,8 @@ import { ref, computed, watch, onMounted, onActivated, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useContextStore } from '../../stores/context'
-import { BREAKPOINTS, MANAGE_ICONS, PAGINATION } from '../constants'
+import { MANAGE_ICONS } from '../constants'
+import { QUERY_VIEWPORT_COMPATTO, USO_MISURA, misuraDefault, misuraPerViewport, misureOpzioni } from '../misurePagina'
 import { SEARCH_DEBOUNCE_MS } from './useDebouncedAction'
 
 export function useSearchTable(store, options = {}) {
@@ -49,9 +50,9 @@ export function useSearchTable(store, options = {}) {
   const ctx = useContextStore()
   const { t } = useI18n()
   const initialLimit = store.filters.limit
-  const useResponsiveDefaultRows = initialLimit === PAGINATION.DEFAULT_ROWS
+  const useResponsiveDefaultRows = initialLimit === misuraDefault(USO_MISURA.PAGINA)
   const compactRowsQuery = typeof window !== 'undefined'
-    ? window.matchMedia(`(width < ${BREAKPOINTS.TABLET}px)`)
+    ? window.matchMedia(QUERY_VIEWPORT_COMPATTO)
     : null
   let userChangedRows = false
 
@@ -133,15 +134,11 @@ export function useSearchTable(store, options = {}) {
     store.fetchList()
   }
 
-  function defaultRowsForViewport() {
-    return compactRowsQuery?.matches ? PAGINATION.COMPACT_ROWS : PAGINATION.DEFAULT_ROWS
-  }
-
   // Scopo: applica il default responsive solo alle liste standard che nascono
-  // a 25 righe. Le rare liste che nascono a 10 restano eccezioni esplicite.
+  // alla misura di pagina. Le liste che nascono compatte restano eccezioni esplicite.
   function applyResponsiveDefaultRows({ fetch = false } = {}) {
     if (!useResponsiveDefaultRows || userChangedRows) return
-    const nextLimit = defaultRowsForViewport()
+    const nextLimit = misuraPerViewport()
     if (store.filters.limit === nextLimit) return
     store.filters.limit = nextLimit
     store.filters.offset = 0
@@ -308,7 +305,7 @@ export function useSearchTable(store, options = {}) {
     totalRecords: store.totalRecords,
     rows: store.filters.limit,
     first: store.filters.offset,
-    rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
+    rowsPerPageOptions: misureOpzioni(),
     paginator: true,
     paginatorPosition: 'top',
     paginatorTemplate: 'FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown JumpToPageDropdown CurrentPageReport',

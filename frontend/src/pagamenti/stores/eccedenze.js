@@ -19,10 +19,10 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
-import { PAGINATION } from '../../core/constants'
 import { paramsPagina, paramsRicerca } from '../../core/utils/listParams'
 import { listEccedenze } from '../api/pagamenti'
 import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
+import { USO_MISURA, misuraDefault } from '../../core/misurePagina'
 
 function buildParams(f, _termine, ricerca) {
   const p = paramsPagina(f)
@@ -54,7 +54,7 @@ export const useEccedenzeStore = defineStore(
       // inoltra `buildParams` (`paramsRicerca`). Le colonne le decide il
       // catalogo (brief-be-ricerca-full-liste-residue §5.3).
       search: '',
-      limit: PAGINATION.DEFAULT_ROWS,
+      limit: misuraDefault(USO_MISURA.PAGINA),
       offset: 0,
       // ⭐ Il default e' il totale del CLIENTE, non quello del documento: e' il
       // numero su cui si decide.

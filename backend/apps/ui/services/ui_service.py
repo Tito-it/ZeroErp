@@ -12,6 +12,8 @@
 #        - get_catalogo(): catalogo colonne per la modale di
 #          personalizzazione (filtra colonne BLOCCATE riusando
 #          get_lista_config — single source of truth permessi).
+#        - get_misure_pagina(): le misure «righe per pagina» e i due
+#          default, per tutti i paginatori (catalogo `ui.misure_pagina`).
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -220,3 +222,11 @@ class UiService:
         ]
 
         return {"colonne": colonne_visibili}
+
+    # Scopo: le misure «righe per pagina» ammesse e i due default
+    #        (`COMPATTA`, `PAGINA`), lette dal catalogo `ui.misure_pagina`:
+    #        la sede unica per DB, backend e frontend. Non dipendono
+    #        dall'utente ne' dalla lista: il frontend le legge una volta per
+    #        sessione. Un default mancante e' un errore del DB, non si ripiega.
+    def get_misure_pagina(self) -> dict[str, Any]:
+        return self._repo.get_misure_pagina()

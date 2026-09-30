@@ -8,7 +8,8 @@
 import { ref } from 'vue'
 import { createCrudStore } from '../../core/stores/createCrudStore'
 import { listListini, getListino, createListino, updateListino, listVersioni } from '../api/listini'
-import { PAGINATION, TAB_ENTITIES } from '../../core/constants'
+import { TAB_ENTITIES } from '../../core/constants'
+import { USO_MISURA } from '../../core/misurePagina'
 
 export const useListiniStore = createCrudStore('vendite-listini', {
   api: { list: listListini, detail: getListino, create: createListino, update: updateListino },
@@ -27,7 +28,7 @@ export const useListiniStore = createCrudStore('vendite-listini', {
   //    DB risolve sempre (`COALESCE(..., 25)`) — col preset a 25 il `limit`
   //    di nascita durava fino al primo caricamento (trovato il 18/09 sul
   //    picker delle rate; frontend-standards §Dialog con una lista dentro).
-  limit: PAGINATION.COMPACT_ROWS,
+  misura: USO_MISURA.COMPATTA,
   filterDefaults: { utility_id: null, tipologia_id: null, attivo: true },
   // `codice`: e' il preset default del seed della lista `vendite.listini`
   // (identificatore, colonna fissata). Il `defaultSortField` del componente

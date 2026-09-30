@@ -1151,6 +1151,8 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_UI_GENERIC_FAILED": "Errore configurazione lista.",
     "E_UI_LISTA_EMITTENTE_DA_SCEGLIERE": "Questa lista non dice da quale emittente arriva ogni riga: scegli un emittente per entrare.",
     "E_UI_LISTA_NON_TROVATA": "Lista non trovata.",
+    "E_UI_MISURA_PAGINA_DEFAULT_MANCANTE": "Manca la misura di default delle righe per pagina: anomalia di catalogo.",
+    "E_UI_MISURA_PAGINA_NON_AMMESSA": "La misura di righe per pagina non e' fra quelle ammesse.",
     "E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE": "Il flag multi_emittente di una lista non si imposta dall'applicazione: si dichiara dal seed, insieme al lavoro che lo rende vero.",
     "E_UI_PERMESSO_NON_TROVATO": "Permesso colonna non trovato.",
     "E_UI_PERMESSO_VALIDAZIONE": "Permesso colonna non valido.",

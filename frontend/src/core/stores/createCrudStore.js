@@ -58,7 +58,7 @@ import { useListaStoreCore } from '../composables/useListaStoreCore'
 //   - options: passthrough a defineStore (default { userScoped: true })
 //   - ...core: TUTTE le altre opzioni vanno a `useListaStoreCore` tal quali
 //       (`filterDefaults`, `gateKeys`, `startsEmpty`, `ricercaCorta`, `orderBy`,
-//       `orderDir`, `orderDirDefault`, `paramNames`, `limit`).
+//       `orderDir`, `orderDirDefault`, `paramNames`, `misura`).
 //       ⚠️ Passthrough e non un elenco: fino al 2026-09-18 la factory
 //       ricopiava sei nomi a mano, e `limit` — nato nel core la mattina stessa —
 //       qui NON arrivava. Un'opzione del core che la factory non conosce e'

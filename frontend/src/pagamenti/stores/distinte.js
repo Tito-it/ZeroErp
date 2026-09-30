@@ -18,10 +18,10 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
-import { PAGINATION } from '../../core/constants'
 import { paramsPagina, paramsRicerca } from '../../core/utils/listParams'
 import { listDistinte } from '../api/pagamenti'
 import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
+import { USO_MISURA, misuraDefault } from '../../core/misurePagina'
 
 // Scopo: filtri dello store -> query param dell'endpoint.
 // Note: la `search` si inoltra con `paramsRicerca` (brief-be-ricerca-full-liste-
@@ -67,7 +67,7 @@ export const useDistinteStore = defineStore(
       // inoltra `buildParams` (`paramsRicerca`). Le colonne le decide il
       // catalogo (brief-be-ricerca-full-liste-residue §5.3).
       search: '',
-      limit: PAGINATION.DEFAULT_ROWS,
+      limit: misuraDefault(USO_MISURA.PAGINA),
       offset: 0,
       // Il giorno piu' recente in cima: e' il default del backend, quindi la
       // lista non si riordina sotto gli occhi al primo caricamento.

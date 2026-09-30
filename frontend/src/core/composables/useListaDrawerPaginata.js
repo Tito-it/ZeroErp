@@ -23,7 +23,7 @@
 //   ...
 //   <ListaConfigurabile :rows="doc.righe.value" :total="doc.totale.value" ... />
 import { computed, ref } from 'vue'
-import { PAGINATION } from '../constants'
+import { USO_MISURA, misuraDefault, misureOpzioni } from '../misurePagina'
 
 /**
  * @param {Function} fetcher - riceve `{page, pageSize, sortBy, sortDir}` e
@@ -39,7 +39,11 @@ export function useListaDrawerPaginata(fetcher, { sortBy = null, sortDir = 1 } =
   const totale = ref(0)
   const loading = ref(false)
   const page = ref(1)
-  const pageSize = ref(PAGINATION.DEFAULT_ROWS)
+  // ⭐ La misura COMPATTA: e' la lista di un drawer (catalogo `ui.misure_pagina`,
+  //    decisione di Tid del 2026-09-28). Fino al 2026-09-30 partiva dalla misura
+  //    di pagina, contro la regola; il preset della lista, se ne dichiara una,
+  //    vince comunque al primo `config-loaded`.
+  const pageSize = ref(misuraDefault(USO_MISURA.COMPATTA))
   const sortField = ref(sortBy)
   const sortOrder = ref(sortDir)
   // La dimensione pagina risolta dal BE si applica UNA volta sola: dopo, il
@@ -98,7 +102,7 @@ export function useListaDrawerPaginata(fetcher, { sortBy = null, sortDir = 1 } =
     totalRecords: totale.value,
     rows: pageSize.value,
     first: (page.value - 1) * pageSize.value,
-    rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
+    rowsPerPageOptions: misureOpzioni(),
   }))
 
   // Scopo: riporta la lista allo stato iniziale (riapertura del drawer su un

@@ -587,6 +587,8 @@
     "not_found_message": "The requested page does not exist.",
     "forbidden_title": "Access denied",
     "forbidden_message": "You do not have permission to access this area.",
+    "avvio_non_riuscito_title": "Startup failed",
+    "avvio_non_riuscito_message": "The application configuration could not be read from the server. Try again shortly; if the problem persists, contact support.",
     "back_home": "Back to Home",
     "lookup_load_failed": "Could not load the list. Retry or contact the administrator.",
     "bersaglio_apri_senza_id": "Open {entita}"
@@ -5845,6 +5847,7 @@
       "preset_is_default": "Default preset",
       "preset_default": "Default",
       "preset_pagina_dimensione": "Page size",
+      "preset_pagina_dimensione_default": "Default ({misura})",
       "preset_emittente": "Issuer",
       "preset_colonne_count": "Columns",
       "preset_gestisci_colonne": "Manage composition",

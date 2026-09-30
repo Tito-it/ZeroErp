@@ -50,7 +50,7 @@
 //       definitive, inviate a SDI» — e arrivera' come regola di dominio in una
 //       sede sola a DB: registrato nel piano D19, §8.
 //
-//       ⭐ NASCE A DIECI RIGHE (`PAGINATION.COMPACT_ROWS`), non a 25: e' la
+//       ⭐ NASCE A DIECI RIGHE (`USO_MISURA.COMPATTA`), non a 25: e' la
 //       lista di un DIALOG, e il dialog ha l'altezza di dieci righe
 //       (`app-dialog-lista`, main.css) — cosi' la pagina piena e la pagina
 //       vuota sono alte uguali e il dialog non salta quando arrivano le
@@ -68,8 +68,8 @@
 // ------------------------------------------------------------
 
 import { createListaStore } from '../../core/stores/createListaStore'
-import { PAGINATION } from '../../core/constants'
 import { listRate } from '../api/pagamenti'
+import { USO_MISURA } from '../../core/misurePagina'
 
 export const useRateStore = createListaStore('pagamenti-rate', {
   fetchPage: listRate,
@@ -83,5 +83,5 @@ export const useRateStore = createListaStore('pagamenti-rate', {
   startsEmpty: true,
   orderBy: 'data_scadenza',
   orderDir: 'asc',
-  limit: PAGINATION.COMPACT_ROWS,
+  misura: USO_MISURA.COMPATTA,
 })

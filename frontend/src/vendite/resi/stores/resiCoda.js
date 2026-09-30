@@ -21,6 +21,7 @@ import { useListaEmptyStateFetch } from '../../../core/composables/useListaEmpty
 import { listDaAccreditare, listDaRiconsegnare } from '../api/resiApi'
 import { useContrattoFiltriLista } from '../../../core/composables/useContrattoFiltriLista'
 import { paramsRicerca } from '../../../core/utils/listParams'
+import { USO_MISURA, misuraDefault } from '../../../core/misurePagina'
 
 // Scopo: mappa filtri store → query params degli endpoint coda. Search con la
 //        regola comune (`paramsRicerca`, soglia della lista in `ricerca`,
@@ -82,7 +83,7 @@ function createResiCodaStore(id, fetchPage, extraFilters = {}) {
       // ⚠️ Fuori da `FILTRI_DEFAULT`: la ricerca non e' un filtro (D2).
       search: '',
       ...FILTRI_DEFAULT,
-      limit: 25,
+      limit: misuraDefault(USO_MISURA.PAGINA),
       offset: 0,
       // Default sort `data desc` (parità lista resi/DDT), allineato al
       // default backend e al defaultSortField della ResiCodaTable.

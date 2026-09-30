@@ -57,6 +57,7 @@ import Message from 'primevue/message'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import FiltriLista from '../../core/components/FiltriLista.vue'
+import { USO_MISURA, misuraDefault, misureOpzioni } from '../../core/misurePagina'
 
 const { t } = useI18n()
 const store = useContrattiStore()
@@ -1105,8 +1106,8 @@ function origineSeverity(origine) {
         class="app-datatable app-datatable--inner"
         striped-rows
         paginator
-        :rows="10"
-        :rows-per-page-options="[10, 25, 50]"
+        :rows="misuraDefault(USO_MISURA.COMPATTA)"
+        :rows-per-page-options="misureOpzioni()"
         paginator-position="top"
         sort-field="articolo_descrizione"
         :sort-order="1"
