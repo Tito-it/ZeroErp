@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 — «LE RIGHE DI QUESTA DISTINTA SI LAVORANO ANCORA?» sta nel catalogo
+#   pagamenti.vendite_contabili_stati.righe_lavorabili boolean NOT NULL DEFAULT false
+#   Brief: brief-db-righe-distinta-annullata-fuori-dalle-code §3, §4.1 (D-1)
+#
+# ── IL DIFETTO (collaudo in-app della casella di ricerca, 2026-09-29) ─
+#   Una riga DA_ABBINARE sotto una distinta ANNULLATA restava nella coda del
+#   riconciliatore, con tutte le azioni spente e per sempre. La domanda aveva
+#   tre risposte in tre sedi: la coda (lo stato della riga e basta), il
+#   frontend (`finale && !registrata`, con data_conferma presa in prestito
+#   dalla testata) e il guard (sospendere e scartare ammessi).
+#
+# ── ⭐ PERCHE' is_final NON BASTA ──────────────────────────────────
+#   CHIUSA e ANNULLATA sono entrambe finali, ma opposte per le righe: sotto
+#   la prima si lavorano ancora (la registrazione tardiva di una SOSPESA,
+#   «Riprendi» di una SCARTATA), sotto la seconda no — non e' mai successa.
+#   E' una proprieta' dello STATO, statica, con una risposta per stato: la
+#   stessa forma di is_registrabile (D20-d). Una bandiera, non una fn_check.
+#
+# ── COSA RISPONDE ──────────────────────────────────────────────────
+#   true su BOZZA, IMPORTATA, VALIDATA, CHIUSA; false su ANNULLATA. Il valore
+#   sta nel CSV vendite_contabili_stati.csv (mirror 20260821-30), mai in un
+#   UPDATE. La leggono il guard delle righe (quinta mossa, 20260930-32), la
+#   check di eliminabilita' (20260930-31), la coda del backend e il frontend.
+#
+# ── ⚠️ DEFAULT false, FAIL-CLOSED ──────────────────────────────────
+#   Uno stato nuovo non classificato non apre il lavoro sulle righe finche'
+#   qualcuno non lo decide nel CSV.
+#
+# Verifica: db/pgtap/pagamenti/test-stati-contabili-vocabolario.sql (test 9),
+#           db/pgtap/pagamenti/test-righe-distinta-annullata-congelate-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260930-30-alter-vendite-contabili-stati-add-righe-lavorabili-mctit.yaml
+
+  - changeSet:
+      id: 20260930-30-alter-vendite-contabili-stati-add-righe-lavorabili
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D-1 (brief-db-righe-distinta-annullata-fuori-dalle-code): la bandiera
+        `righe_lavorabili` sul catalogo degli stati della distinta contabile — false solo
+        su ANNULLATA (CSV, mirror 20260821-30). E' la sede unica della risposta «le righe
+        di questa distinta si lavorano ancora?», che is_final non sa dare: CHIUSA e
+        ANNULLATA sono entrambe finali e opposte per le righe. Default false, fail-closed.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_stati
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_stati
+                columnName: is_final
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE pagamenti.vendite_contabili_stati
+                ADD COLUMN IF NOT EXISTS righe_lavorabili boolean NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN pagamenti.vendite_contabili_stati.righe_lavorabili IS
+                'D-1 (2026-09-30): «sotto questo stato le righe della distinta si lavorano ancora?». false SOLO su ANNULLATA, true su BOZZA, IMPORTATA, VALIDATA e CHIUSA (CSV vendite_contabili_stati.csv, mirror 20260821-30). ⭐ is_final non basta: CHIUSA e ANNULLATA sono entrambe finali ma opposte per le righe — sotto una CHIUSA una SOSPESA ha ancora la registrazione tardiva e una SCARTATA si riprende, sotto una ANNULLATA non c''e'' niente da dire perche'' quel denaro, per il registro, non e'' mai arrivato. Sotto false le righe sono in SOLA LETTURA (D-3): la quinta mossa di pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale rifiuta ogni UPDATE, script.fn_check_riga_contabile_eliminabile nomina DISTINTA_ANNULLATA per il DELETE e la disattivazione — entrambe con E_RIGA_CONTABILE_DISTINTA_ANNULLATA. La leggono anche la coda del riconciliatore (le righe escono dalla lista di lavoro) e il frontend (azioni di riga spente). Una bandiera e non una fn_check: la risposta e'' una per stato, statica — stessa forma di is_registrabile. Default false = fail-closed su uno stato nuovo. Brief: brief-db-righe-distinta-annullata-fuori-dalle-code §3, §4.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Togliere la colonna rompe la check di eliminabilita' (20260930-31)
+              --    e il guard delle righe (20260930-32), che la leggono: si torna
+              --    indietro dopo di loro.
+              ALTER TABLE pagamenti.vendite_contabili_stati
+                DROP COLUMN IF EXISTS righe_lavorabili;

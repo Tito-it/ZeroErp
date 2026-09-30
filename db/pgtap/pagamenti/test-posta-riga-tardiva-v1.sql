@@ -349,7 +349,11 @@ SELECT throws_like(
             AND cr.meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti)),
          (SELECT id FROM tmp_fatture WHERE ruolo = 'F'),
          (SELECT billing_account_id FROM tmp_refs)),
-  '%annullata%',
+  -- ⚠️ Non '%annullata%': dal 2026-09-30 la contiene anche la frase di
+  --    E_RIGA_CONTABILE_DISTINTA_ANNULLATA (quinta mossa del guard sulle
+  --    righe), e il test resterebbe verde per coincidenza se la tardiva
+  --    smettesse di rifiutare per prima. Si lega alla frase propria.
+  '%si registra in ritardo solo%',
   '13) Caso 5: una SOSPESA sotto una distinta ANNULLATA non si registra — quel denaro non e'' mai successo'
 );
 

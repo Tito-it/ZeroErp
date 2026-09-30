@@ -27,6 +27,16 @@ degli stati della **testata contabile vendite**.
   409 (rilievo §1 del terzo collaudo). Una bandiera e non una `fn_check`: il
   motivo e` uno e statico, lo stato. Default `false`, fail-closed su uno stato
   nuovo. ⚠️ Il valore sta nel CSV (mirror `20260821-30`), mai in un `UPDATE`.
+* `righe_lavorabili` *(30-09-2026, D-1)*: «sotto questo stato le righe della
+  distinta si lavorano ancora?». `false` **solo** su `ANNULLATA`. ⭐ `is_final` non
+  basta: `CHIUSA` e `ANNULLATA` sono entrambe finali ma opposte per le righe.
+  Sotto una chiusa una sospesa ha ancora la registrazione tardiva e una scartata
+  si riprende; sotto un'annullata non c'e` niente da dire, perche` quel denaro per
+  il registro non e` mai arrivato. La leggono il guard delle righe (quinta mossa:
+  sotto `false` ogni `UPDATE` e` rifiutato), la check di eliminabilita`, la coda del
+  riconciliatore (le righe escono dalla lista di lavoro) e il frontend (azioni di
+  riga spente). Default `false`, fail-closed. ⚠️ Il valore sta nel CSV, mai in un
+  `UPDATE`. Brief: `brief-db-righe-distinta-annullata-fuori-dalle-code`.
 * `ordine`: priorita`/sequenza di avanzamento stato.
 * `attivo`: abilita/disabilita stato per nuovi processi.
 * `meta`: estensioni configurative. Dal 2026-09-15 porta su **tutte e cinque**
@@ -47,6 +57,8 @@ degli stati della **testata contabile vendite**.
 * `codice` univoco.
 * Stati finali marcati con `is_final = true`.
 * Si registra **solo** dagli stati con `is_registrabile = true` — oggi `VALIDATA`.
+* Sotto gli stati con `righe_lavorabili = false` — oggi `ANNULLATA` — le righe si
+  **leggono soltanto**; e in quegli stati entra solo una distinta `MANUALE`.
 * `ordine` usato come supporto per ordinamento operativo.
 
 ---

@@ -27,13 +27,18 @@ AS $function$
 -- ⚠️ I motivi sono tutti sulla TESTATA: la riga in se' non ha niente da
 --    dire — una riga POSTATA sta per costruzione sotto una CHIUSA, e la
 --    ferma il motivo 1. Brief: brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga §2.2.
+-- ⭐ Rev 2026-09-30 (D-2, D-3): il motivo 1 si sdoppia — prima
+--    DISTINTA_ANNULLATA (righe_lavorabili = false), poi in alternativa
+--    DISTINTA_FINALE. Brief: brief-db-righe-distinta-annullata-fuori-dalle-code §4.2.
 DECLARE
-    v_motivi       jsonb := '[]'::jsonb;
-    v_contabile_id pagamenti.vendite_contabili.id%TYPE;
-    v_codice       pagamenti.vendite_contabili.codice%TYPE;
-    v_origine      pagamenti.vendite_contabili.origine%TYPE;
-    v_stato        pagamenti.vendite_contabili_stati.codice_interno%TYPE;
-    v_is_final     pagamenti.vendite_contabili_stati.is_final%TYPE;
+    -- NUDO di proposito: l'array dei motivi non riflette nessuna colonna.
+    v_motivi           jsonb := '[]'::jsonb;
+    v_contabile_id     pagamenti.vendite_contabili.id%TYPE;
+    v_codice           pagamenti.vendite_contabili.codice%TYPE;
+    v_origine          pagamenti.vendite_contabili.origine%TYPE;
+    v_stato            pagamenti.vendite_contabili_stati.codice_interno%TYPE;
+    v_is_final         pagamenti.vendite_contabili_stati.is_final%TYPE;
+    v_righe_lavorabili pagamenti.vendite_contabili_stati.righe_lavorabili%TYPE;
 BEGIN
     -- ⛔ Guard di PARAMETRO, e solleva: un id assente o <= 0 non lo
     --    produce nessuna interfaccia — e' il chiamante a essere rotto.
@@ -55,8 +60,10 @@ BEGIN
     -- catena di scope (via contabile), quindi «non trovata» qui
     -- vuol dire «non esiste» oppure «non e' tua» — e le due risposte
     -- devono restare indistinguibili.
-    SELECT c.id, c.codice, c.origine, s.codice_interno, s.is_final
-      INTO v_contabile_id, v_codice, v_origine, v_stato, v_is_final
+    SELECT c.id, c.codice, c.origine, s.codice_interno, s.is_final,
+           s.righe_lavorabili
+      INTO v_contabile_id, v_codice, v_origine, v_stato, v_is_final,
+           v_righe_lavorabili
       FROM pagamenti.vendite_contabili_righe r
       JOIN pagamenti.vendite_contabili c       ON c.id = r.contabile_id
       JOIN pagamenti.vendite_contabili_stati s ON s.id = c.stato_id
@@ -75,13 +82,34 @@ BEGIN
             p_riga_id::text);
     END IF;
 
-    -- MOTIVO 1 — la distinta e' FINALE (CHIUSA o ANNULLATA).
+    -- MOTIVO 1a — le righe di questa distinta NON SI LAVORANO PIU'
+    --    (righe_lavorabili = false: l'ANNULLATA). Rev 2026-09-30, D-2/D-3.
+    -- ⭐ La domanda si fa al CATALOGO, non a is_final: CHIUSA e
+    --    ANNULLATA sono entrambe finali e opposte per le righe.
+    -- ⚠️ IS NOT TRUE: la colonna e' NOT NULL, ma se la testata non
+    --    si leggesse la risposta resta il rifiuto (fail-closed).
+    -- ⭐ Codice proprio (D-2): il rimedio e' diverso da quello di una
+    --    chiusa — sotto un'annullata non c'e' niente da fare.
+    IF v_righe_lavorabili IS NOT TRUE THEN
+        v_motivi := v_motivi || jsonb_build_object(
+            'codice',     'E_RIGA_CONTABILE_DISTINTA_ANNULLATA',
+            'reason',     'DISTINTA_ANNULLATA',
+            'reason_key', 'pagamenti.righe.elimina_reason.distinta_annullata',
+            'dettaglio',  jsonb_build_object('contabile_id',   v_contabile_id,
+                                             'stato_distinta', v_stato),
+            'valori',     jsonb_build_array(v_codice));
+
+    -- MOTIVO 1b — la distinta e' FINALE ma le sue righe si lavorano
+    --    ancora (oggi: la CHIUSA — tardiva, «Riprendi»): eliminare no.
     -- ⭐ Riuso di E_RIGA_CONTABILE_DISTINTA_FINALE con gli STESSI due
     --    valori del guard d'ingresso: e' la stessa condizione da una
     --    porta in piu', non un accumulo. Vale per ogni origine, e
     --    copre da sola la riga POSTATA (sta sotto una CHIUSA per
     --    costruzione): nessun motivo «riga registrata».
-    IF v_is_final IS TRUE THEN
+    -- ⚠️ ELSIF e non IF: sotto un'annullata il motivo 1a ha gia'
+    --    detto la cosa giusta, e questo aggiungerebbe un rimedio
+    --    sbagliato al `motivi` del contesto.
+    ELSIF v_is_final IS TRUE THEN
         v_motivi := v_motivi || jsonb_build_object(
             'codice',     'E_RIGA_CONTABILE_DISTINTA_FINALE',
             'reason',     'DISTINTA_FINALE',
@@ -145,7 +173,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_riga_contabile_eliminabile(p_riga_id bigint)
-IS 'Pure check (§12.5.1): i motivi che impediscono di ELIMINARE una riga contabile — attivo = false, oppure DELETE. Ritorna [] se si puo'' (la distinta e'' MANUALE e in BOZZA), altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio, valori}. NOMINA i codici e non solleva (salvo i due guard di chiamata). ⭐ SEDE UNICA del predicato: pagamenti.trgfn_vendite_contabili_righe_guard_contenuto la CHIAMA su UPDATE OF attivo (true -> false) e su DELETE e solleva il codice del primo motivo con fn_raise_primo_motivo_se_presente; il backend la legge in LATERAL sulla lista delle righe (elimina_blocco_reason) per spegnere il cestino col perche'' — cosi'' tooltip e rifiuto non possono divergere (§12.5.2). ⚠️ L''ORDINE e'' il contratto: (1) DISTINTA_FINALE — CHIUSA o ANNULLATA, per ogni origine, riusa E_RIGA_CONTABILE_DISTINTA_FINALE con gli stessi valori del guard d''ingresso e copre da sola la riga POSTATA (sta sotto una CHIUSA per costruzione: nessun motivo «riga registrata», sarebbe irraggiungibile); (2) DISTINTA_NON_MANUALE — GENERATA o AUTOMATICA: eliminare a mano e'' il rimedio a un errore di digitazione, e li'' nessuno ha digitato — la generata la governa il giro che l''ha prodotta; (3) DISTINTA_VALIDATA — la MANUALE non piu'' in BOZZA (D18): si riapre, si elimina, si rivalida. Il 3 e'' scritto SOLO per la manuale: su una generata «torna in bozza» non e'' un rimedio. ⚠️ SECURITY INVOKER e legge sotto la row security: chi vede la riga vede la testata per la stessa catena di scope (via contabile). Riga non leggibile — inesistente o di un altro — solleva E_RIGA_CONTABILE_NON_TROVATA (404, no-leak): rispondere [] sarebbe un fail-open. ⛔ Guard di parametro su E_PAGAMENTI_CHIAMATA_NON_VALIDA (TECNICO), non su E_PARAMETRO_INVALIDO. ⛔ Il reason non porta il prefisso E_. ⚠️ Le tre reason_key pagamenti.righe.elimina_reason.* sono un DEBITO VERSO IL FE (§12.3): vanno nei locales it/en nello stesso giro del lavoro frontend (FE-5). Brief: brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga §2.2 (D17), §4 P-1.';
+IS 'Pure check (§12.5.1): i motivi che impediscono di ELIMINARE una riga contabile — attivo = false, oppure DELETE. Ritorna [] se si puo'' (la distinta e'' MANUALE e in BOZZA), altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio, valori}. NOMINA i codici e non solleva (salvo i due guard di chiamata). ⭐ SEDE UNICA del predicato: pagamenti.trgfn_vendite_contabili_righe_guard_contenuto la CHIAMA su UPDATE OF attivo (true -> false) e su DELETE e solleva il codice del primo motivo con fn_raise_primo_motivo_se_presente; il backend la legge in LATERAL sulla lista delle righe (elimina_blocco_reason) per spegnere il cestino col perche'' — cosi'' tooltip e rifiuto non possono divergere (§12.5.2). ⚠️ L''ORDINE e'' il contratto: (1a) DISTINTA_ANNULLATA — la testata e'' in uno stato con righe_lavorabili = false (l''ANNULLATA), E_RIGA_CONTABILE_DISTINTA_ANNULLATA: le righe di un documento che non e'' mai successo si leggono soltanto (D-3), e il rimedio non e'' quello di una chiusa (D-2); (1b) in ALTERNATIVA, DISTINTA_FINALE — le altre finali, oggi la CHIUSA, per ogni origine: riusa E_RIGA_CONTABILE_DISTINTA_FINALE con gli stessi valori del guard d''ingresso e copre da sola la riga POSTATA (sta sotto una CHIUSA per costruzione: nessun motivo «riga registrata», sarebbe irraggiungibile); (2) DISTINTA_NON_MANUALE — GENERATA o AUTOMATICA: eliminare a mano e'' il rimedio a un errore di digitazione, e li'' nessuno ha digitato — la generata la governa il giro che l''ha prodotta; (3) DISTINTA_VALIDATA — la MANUALE non piu'' in BOZZA (D18): si riapre, si elimina, si rivalida. Il 3 e'' scritto SOLO per la manuale: su una generata «torna in bozza» non e'' un rimedio. ⭐ 1a si legge dalla bandiera di catalogo e non da is_final: CHIUSA e ANNULLATA sono entrambe finali e opposte per le righe. ⚠️ SECURITY INVOKER e legge sotto la row security: chi vede la riga vede la testata per la stessa catena di scope (via contabile). Riga non leggibile — inesistente o di un altro — solleva E_RIGA_CONTABILE_NON_TROVATA (404, no-leak): rispondere [] sarebbe un fail-open. ⛔ Guard di parametro su E_PAGAMENTI_CHIAMATA_NON_VALIDA (TECNICO), non su E_PARAMETRO_INVALIDO. ⛔ Il reason non porta il prefisso E_. ⚠️ Le reason_key pagamenti.righe.elimina_reason.* sono un DEBITO VERSO IL FE (§12.3): distinta_annullata nasce il 2026-09-30 e va nei locales it/en nello stesso giro. Brief: brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga §2.2 (D17), §4 P-1; brief-db-righe-distinta-annullata-fuori-dalle-code §4.2, §8.1 (D-2, D-3).';
 ```
 
 ---

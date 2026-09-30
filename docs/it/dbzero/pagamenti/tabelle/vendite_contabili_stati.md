@@ -22,6 +22,7 @@
 | user_update | text | NO | CURRENT_USER |
 | obsoleto_dal | date | YES |  |
 | is_registrabile | boolean | NO | false |
+| righe_lavorabili | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

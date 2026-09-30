@@ -30,6 +30,9 @@ AS $function$
 -- 2026-09-25: la riga della lista la legge ui.fn_lista_da_codice() (BB
 --        condiviso con la ricerca libera e col backend), e il JSONB porta
 --        ricerca_min_caratteri, la soglia della ricerca libera della lista.
+-- 2026-09-30: la misura di pagina dal catalogo ui.misure_pagina (brief-db-
+--        misure-pagina-catalogo): via il 25 scritto cinque volte, e la misura
+--        che risponde e' sempre una del catalogo (passo 5-ter).
 DECLARE
   -- La riga della lista, letta una volta dal BB: id, multi_emittente (P-2b,
   -- 2026-08-18), perimetro_emittente (2026-09-02), ricerca_min_caratteri
@@ -39,7 +42,9 @@ DECLARE
   v_config_colonne   JSONB;
   v_ordinamento      ui.lista_preset.ordinamento_default%TYPE;
   v_filtri           ui.lista_preset.filtri_default%TYPE;
-  v_pagina_dim       ui.lista_preset.pagina_dimensione%TYPE := 25;
+  -- La misura scelta (preferenza o preset); NULL = nessuna scelta. Quella che
+  -- risponde la decide il passo 5-ter, dal catalogo.
+  v_pagina_dim       ui.lista_preset.pagina_dimensione%TYPE;
   v_profili_ids      INTEGER[];
   v_colonne_nuove    INTEGER := 0;
   -- I codici mergiati dal catalogo al passo 3. Servono al passo 5-bis per
@@ -94,7 +99,10 @@ BEGIN
       (pu.configurazione -> 'colonne'),
       (pu.configurazione -> 'ordinamento'),
       (pu.configurazione -> 'filtri'),
-      COALESCE((pu.configurazione ->> 'pagina_dimensione')::INTEGER, 25),
+      -- Nessun cast che possa cadere: un valore che intero non e' vale «nessuna
+      -- scelta» (lo rifiuta alla scrittura il guard della preferenza).
+      CASE WHEN (pu.configurazione ->> 'pagina_dimensione') ~ '^[0-9]{1,9}$'
+           THEN (pu.configurazione ->> 'pagina_dimensione')::INTEGER END,
       pu.preset_base_id,
       pu.preset_base_data_update,
       pu.preset_aggiornato_ignored_at
@@ -126,7 +134,7 @@ BEGIN
         ),
         lp.ordinamento_default,
         lp.filtri_default,
-        COALESCE(lp.pagina_dimensione, 25)
+        lp.pagina_dimensione
       INTO v_config_colonne, v_ordinamento, v_filtri, v_pagina_dim
       FROM ui.lista_preset lp
       JOIN script.fn_get_profili_accesso_applicabili(p_auth_user_id, v_ruolo_guc) pa
@@ -160,7 +168,7 @@ BEGIN
         ),
         lp.ordinamento_default,
         lp.filtri_default,
-        COALESCE(lp.pagina_dimensione, 25)
+        lp.pagina_dimensione
       INTO v_config_colonne, v_ordinamento, v_filtri, v_pagina_dim
       FROM ui.lista_preset lp
      WHERE lp.lista_id             = v_lista_id
@@ -192,7 +200,7 @@ BEGIN
         ),
         lp.ordinamento_default,
         lp.filtri_default,
-        COALESCE(lp.pagina_dimensione, 25)
+        lp.pagina_dimensione
       INTO v_config_colonne, v_ordinamento, v_filtri, v_pagina_dim
       FROM ui.lista_preset lp
      WHERE lp.lista_id   = v_lista_id
@@ -373,6 +381,14 @@ BEGIN
       FROM jsonb_array_elements(v_config_colonne) AS elem
      WHERE (elem ->> 'codice') = ANY (v_codici_mergiati);
   END IF;
+
+  -- -------------------------------------------------------
+  -- 5-ter. La misura di pagina (2026-09-30): quella scelta se e' nel catalogo,
+  --   altrimenti il default PAGINA del catalogo. Chiude anche il NULL del
+  --   ripiego 2e (il SELECT INTO del passo 2a a zero righe azzera la misura).
+  -- -------------------------------------------------------
+  v_pagina_dim := CASE WHEN ui.fn_misura_pagina_ammessa(v_pagina_dim) THEN v_pagina_dim
+                       ELSE ui.fn_misura_pagina_default('PAGINA') END;
 
   -- -------------------------------------------------------
   -- 6. Ritorna il JSONB finale

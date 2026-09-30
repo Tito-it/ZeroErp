@@ -35,10 +35,10 @@
 - [trgfn_vendite_contabili_guard_chiusura](funzioni/trgfn_vendite_contabili_guard_chiusura.md) — (rev 2026-08-21)
 - [trgfn_vendite_contabili_guard_ente_centro](funzioni/trgfn_vendite_contabili_guard_ente_centro.md) — Validare la coerenza tra `centro_riscossione_id` della testata e `ente_incasso_id` quando presente.
 - [trgfn_vendite_contabili_guard_transizione](funzioni/trgfn_vendite_contabili_guard_transizione.md) — (rev 2026-08-21)
-- [trgfn_vendite_contabili_guard_validazione](funzioni/trgfn_vendite_contabili_guard_validazione.md) — (rev 2026-08-21)
+- [trgfn_vendite_contabili_guard_validazione](funzioni/trgfn_vendite_contabili_guard_validazione.md) — (rev 2026-09-30)
 - [trgfn_vendite_contabili_lotti_guard_sistemazione](funzioni/trgfn_vendite_contabili_lotti_guard_sistemazione.md) — (rev 2026-08-22 — sostituisce `trgfn_vendite_contabili_lotti_guard_compensazione`)
 - [trgfn_vendite_contabili_righe_guard_contenuto](funzioni/trgfn_vendite_contabili_righe_guard_contenuto.md) — (scritto il 14-09-2026)
-- [trgfn_vendite_contabili_righe_guard_distinta_finale](funzioni/trgfn_vendite_contabili_righe_guard_distinta_finale.md) — (rev 2026-08-22)
+- [trgfn_vendite_contabili_righe_guard_distinta_finale](funzioni/trgfn_vendite_contabili_righe_guard_distinta_finale.md) — (rev 2026-09-30)
 - [trgfn_vendite_contabili_righe_guard_rata](funzioni/trgfn_vendite_contabili_righe_guard_rata.md) — (rev 2026-08-22)
 - [trgfn_vendite_contabili_righe_guard_stato_dati](funzioni/trgfn_vendite_contabili_righe_guard_stato_dati.md) — (rev 2026-08-21)
 - [trgfn_vendite_contabili_righe_guard_transizione](funzioni/trgfn_vendite_contabili_righe_guard_transizione.md) — (rev 2026-08-21)

@@ -1,10 +1,11 @@
 ## 📘 Documentazione Concettuale – Funzione `pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale`
 
 ### 🎯 Scopo Principale
-(rev 2026-08-22)
+(rev 2026-09-30)
 
 Impedire che una riga contabile finisca — o **torni utile** — sotto una distinta
-in stato **finale** (`CHIUSA` o `ANNULLATA`).
+in stato **finale** (`CHIUSA` o `ANNULLATA`). E, dal 2026-09-30, **congelare** le
+righe che stanno già sotto una distinta annullata: lì si leggono soltanto.
 
 ### 🔴 Il difetto, in tre negazioni
 Una riga appesa lì dentro:
@@ -23,9 +24,9 @@ chiusa sono già registrate, quindi escluse comunque. L'unica cosa che quel filt
 riesce a escludere è **proprio la riga anomala**. *Un filtro che nasconde ciò che
 non sa gestire sembra un presidio finché non si guarda che cosa esclude davvero.*
 
-### Regole applicate — quattro mosse, non una
-Sotto una distinta finale una riga può diventare un problema in quattro modi, e
-chiuderne uno solo non serve a niente:
+### Regole applicate — cinque mosse
+Sotto una distinta finale una riga può diventare un problema in quattro modi
+d'**ingresso**, e chiuderne uno solo non serve a niente:
 
 1. **nascendoci** (INSERT di una riga attiva);
 2. essendo **riattivata** (`attivo` da falso a vero);
@@ -44,11 +45,42 @@ chiuderne uno solo non serve a niente:
 > chiusa la rifiuta. È il danno di sempre, dalla porta che il difetto originale
 > non aveva nominato.
 
-⚠️ **Ciò che non si rifiuta**: le altre scritture su una riga già lì. Rifiutare
-tutto impedirebbe perfino di correggere il motivo di sospensione di una riga di una
-distinta annullata — e, dalla quarta mossa in poi, impedirebbe di **dire che cosa
-ne è stato** di quel denaro (sospenderla, scartarla), che è l'unica cosa che
-resta da fare.
+### ⭐ La quinta mossa: sotto un'annullata le righe si leggono soltanto (dal 30-09-2026)
+
+`CHIUSA` e `ANNULLATA` sono entrambe finali, ma per le righe sono **opposte**:
+
+| Sotto una… | Le righe… | Perché |
+| --- | --- | --- |
+| `CHIUSA` | si lavorano ancora: si sospendono, si scartano, si riprendono, si registrano in ritardo | il denaro è arrivato, e resta da dire che cosa ne è stato |
+| `ANNULLATA` | si **leggono soltanto** | la distinta non è mai successa: quel denaro, per il registro, non è mai arrivato |
+
+La differenza sta nel catalogo, nella bandiera
+[`righe_lavorabili`](/dbzero/pagamenti/tabelle/vendite_contabili_stati) (oggi
+`false` solo su `ANNULLATA`). `is_final` non basta a rispondere.
+
+La quinta mossa si valuta **per prima**, su **ogni** `UPDATE`. Se la distinta dove
+la riga **sta** (quella di partenza) ha `righe_lavorabili = false`, il rifiuto è
+`E_RIGA_CONTABILE_DISTINTA_ANNULLATA`. Vale per un cambio di stato (anche verso
+sospesa o scartata), per la correzione di un dato, per la riattivazione e per lo
+spostamento **fuori**. Le quattro mosse guardano la distinta d'arrivo, e tirare una
+riga fuori da un'annullata non lo vedevano.
+
+* ℹ️ Il `DELETE` e la disattivazione hanno la loro sede nel guard del contenuto,
+  che chiama [script.fn_check_riga_contabile_eliminabile](/dbzero/script/funzioni/fn_check_riga_contabile_eliminabile)
+  (motivo `DISTINTA_ANNULLATA`, stesso codice). Il cestino si spegne col perché
+  e il rifiuto dice la stessa cosa.
+* ⚠️ La porta della tardiva qui non vale: la tardiva lavora solo sotto una
+  distinta registrata.
+* ⭐ Perché nessun giro di sistema ci sbatta contro, una distinta **non manuale**
+  non va più in `ANNULLATA`
+  ([guard di validazione](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_guard_validazione),
+  regola 3). Il sync dei fondi e la cancellazione di un atto lavorano solo sotto
+  distinte generate.
+
+⚠️ **Ciò che non si rifiuta**, e solo dove le righe si lavorano ancora (sotto una
+`CHIUSA`): le altre scritture su una riga già lì. Sospenderla, scartarla,
+riprenderla, correggerne il motivo: è **dire che cosa ne è stato** di quel denaro,
+che è l'unica cosa che resta da fare.
 
 ⚠️ **Non blocca il posting**, e vale la pena saperlo per due ragioni
 indipendenti: lo stato «registrata» **non è** uno stato pronto, e la distinta è
@@ -84,7 +116,11 @@ che ha ancora righe registrabili — è la strada che capita davvero, e la chiud
 * `BEFORE INSERT OR UPDATE` su `pagamenti.vendite_contabili_righe`.
 
 ### ⚠️ Error handling
-* `E_RIGA_CONTABILE_DISTINTA_FINALE` (`CONFLITTO_STATO`, 409).
+* `E_RIGA_CONTABILE_DISTINTA_ANNULLATA` (`CONFLITTO_STATO`, 409): la quinta mossa;
+* `E_RIGA_CONTABILE_DISTINTA_FINALE` (`CONFLITTO_STATO`, 409): le quattro mosse
+  d'ingresso.
+
+Brief: `brief-db-righe-distinta-annullata-fuori-dalle-code` §4, §8.
 
 ### ⚠️ Nota per chi porterà la RLS su `pagamenti`
 Il guard **legge la testata**. Quando lo schema avrà le policy di riga, quella
