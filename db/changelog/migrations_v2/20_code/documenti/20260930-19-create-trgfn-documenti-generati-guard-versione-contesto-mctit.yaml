@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# V-6 — UNA STAMPA INCOERENTE NON SI REGISTRA
+#   documenti.trgfn_documenti_generati_guard_versione_contesto()
+#   Brief: brief-db-documenti-versione-contesto-template.md §4 (D-C2)
+#
+#   Il secondo chiamante del guard (-18): all'INSERT di una stampa confronta la
+#   forma dichiarata dal CONTESTO CONGELATO (context_json -> _meta ->
+#   context_version) con la forma della versione di template usata. Protegge
+#   da una strada di stampa che dimentica il controllo prima del render.
+#
+# ── SOLO INSERT ─────────────────────────────────────────────────────────
+#   context_json e template_versione_id non cambiano dopo la nascita della
+#   riga (trgfn_documenti_generati_protect_snapshot): il patto si giudica una
+#   volta sola, quando la stampa nasce. La ristampa fedele non scrive una riga
+#   nuova (lascia un evento), e rilegge proprio queste due cose.
+#
+# ── LA FORMA DEI DATI COME LA SCRIVE IL BUILDER ─────────────────────────
+#   Un numero intero JSON (`"context_version": 2`). Qualunque altra cosa — la
+#   chiave assente, una stringa "2", 2.5, null — e' «forma non dichiarata»: il
+#   trigger passa NULL e il guard risponde NON_VERIFICABILE (TECNICO), perche'
+#   solo un builder rotto la produce. ⚠️ CASE e non un cast: un "2a"::integer
+#   solleverebbe 22P02 al posto del codice di catalogo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20260930-19-create-trgfn-documenti-generati-guard-versione-contesto-mctit.yaml
+
+  - changeSet:
+      id: 20260930-19-create-trgfn-documenti-generati-guard-versione-contesto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.trgfn_documenti_generati_guard_versione_contesto(): all'INSERT di una stampa
+        chiama documenti.fn_guard_versione_contesto con la versione di template e la forma
+        dichiarata dal contesto congelato (_meta.context_version, intero; altrimenti NULL).
+        Brief: brief-db-documenti-versione-contesto-template §4.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'documenti' AND p.proname = 'fn_guard_versione_contesto';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_guard_versione_contesto()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: una stampa si registra solo se il contesto congelato ha la forma
+              --   che la versione di template legge. La regola sta in
+              --   documenti.fn_guard_versione_contesto; qui si legge solo la forma dei dati.
+              DECLARE
+                  -- La forma com'e' scritta nel contesto, per decidere se e' un intero.
+                  v_forma_json documenti.documenti_generati.context_json%TYPE
+                                   := NEW.context_json -> '_meta' -> 'context_version';
+                  v_forma      documenti.template_documenti_versioni.versione_contesto%TYPE;
+              BEGIN
+                  v_forma := CASE
+                                 WHEN jsonb_typeof(v_forma_json) = 'number'
+                                  AND (v_forma_json #>> '{}') ~ '^[0-9]{1,9}$'
+                                 THEN (v_forma_json #>> '{}')::integer
+                             END;
+
+                  PERFORM documenti.fn_guard_versione_contesto(NEW.template_versione_id, v_forma);
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION documenti.trgfn_documenti_generati_guard_versione_contesto() IS
+                  'Guard sull''INSERT di documenti.documenti_generati: la forma dichiarata dal contesto congelato (context_json -> _meta -> context_version, un intero JSON; altrimenti NULL = non dichiarata) deve essere quella che la versione di template legge. Delega a documenti.fn_guard_versione_contesto (E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA / _NON_VERIFICABILE). Solo INSERT: il contesto e la versione di una stampa non cambiano dopo (protect_snapshot). Brief: brief-db-documenti-versione-contesto-template.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS documenti.trgfn_documenti_generati_guard_versione_contesto();

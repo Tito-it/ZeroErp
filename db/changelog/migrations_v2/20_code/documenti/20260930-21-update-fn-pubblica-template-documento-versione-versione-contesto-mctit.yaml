@@ -1,0 +1,277 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# V-8 — NON SI PUBBLICA UNA VERSIONE CHE LEGGE UNA FORMA CHE NON C'E'
+#   documenti.fn_pubblica_template_documento_versione: nuovo parametro
+#   p_versione_contesto (obbligatorio), e la chiamata al guard -18
+#   Brief: brief-db-documenti-versione-contesto-template.md §3 punto 4, §4
+#
+# ── ⭐ PERCHE' IL CONTROLLO STA NEL VERBO E NON SOLO NEL BACKEND ──────────
+#   Il brief (§5) chiedeva al backend di chiamare la funzione del DB alla
+#   pubblicazione. Qui il verbo stesso la chiama: e' la stessa ragione di D-C2
+#   per le stampe — una strada di pubblicazione che dimentica il controllo non
+#   deve poter pubblicare. Il DB non conosce la forma che il builder produce
+#   (e' un fatto del codice, §5 del brief): la riceve dal chiamante, OBBLIGATORIA.
+#   ⛔ Niente `DEFAULT NULL` «per non rompere i chiamanti»: sarebbe la porta
+#   da cui il controllo si salta, e un NULL qui risponde comunque
+#   E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE (TECNICO) dal guard.
+#
+# ── LA FIRMA CAMBIA: DROP + CREATE ──────────────────────────────────────
+#   (p_versione_id bigint, p_valido_dal date, p_versione_contesto integer,
+#    p_valido_al date DEFAULT NULL). Il nuovo parametro sta PRIMA di
+#   p_valido_al perche' dopo un parametro con default ne vengono solo altri
+#   con default. La vecchia firma a tre si toglie: due overload sarebbero due
+#   verbi, uno dei quali senza il controllo.
+#   Chiamanti censiti il 2026-09-30:
+#     - backend: documenti_repository.pubblica_versione (parametri per nome):
+#       muore con 42883 finche' non passa p_versione_contesto — richiesta R-1,
+#       brief §10. Voluto: un errore rumoroso, non una pubblicazione non controllata;
+#     - pgTAP: documenti/test-fn-pubblica-template-documento-versione-v1 (rivisto);
+#     - 80_data 20260804-66 (MARK_RAN), 20260805-10 e 20260816-02 (CONTINUE):
+#       gia' eseguiti su dev; su un DB da zero vedi -16 e il brief §5.4.
+#   ACL: EXECUTE a PUBLIC come ogni funzione nuova (il vivo aveva =X/…), e il
+#   loop dei grant di ci_apply lo rifa' all'app. Nessun GRANT a ruoli batch
+#   (linee-guida-sql §11.6): li copre il provisioning.
+#
+# ── ORIGINE DEL CORPO ───────────────────────────────────────────────────
+#   Corpo VIVO (pg_get_functiondef, 2026-09-30) = rev 20260924-02; md5 del
+#   prosrc ancorato in preCondition. Cambiano: la firma, il guard dopo il
+#   controllo di stato (prima di chiudere le versioni precedenti), l'intestazione
+#   e il COMMENT. ⭐ Firma e RETURNS TABLE passano a %TYPE (il vivo era a tipi
+#   nudi): risolvono agli stessi tipi, nessun overload nasce dall'ancoraggio.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20260930-21-update-fn-pubblica-template-documento-versione-versione-contesto-mctit.yaml
+
+  - changeSet:
+      id: 20260930-21-update-fn-pubblica-template-documento-versione-versione-contesto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.fn_pubblica_template_documento_versione: nuovo parametro obbligatorio
+        p_versione_contesto (la forma dei dati che il builder produce) e chiamata a
+        documenti.fn_guard_versione_contesto prima di pubblicare. Firma nuova (DROP + CREATE),
+        md5 del corpo vivo ancorato. Brief: brief-db-documenti-versione-contesto-template §4.
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >-
+            documenti.fn_pubblica_template_documento_versione: il corpo non e' quello letto
+            il 2026-09-30 (md5 diverso), oppure manca documenti.fn_guard_versione_contesto.
+            Rileggere il vivo e rigenerare questo changeSet, non applicarlo.
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'documenti' AND p.proname = 'fn_pubblica_template_documento_versione'
+                     AND md5(p.prosrc) = 'cd6b5f0bbccc97643d0ccd03404633f7'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'documenti' AND p.proname = 'fn_guard_versione_contesto'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La firma vecchia, per tipi ancorati: risolve a (bigint, date, date).
+              DROP FUNCTION documenti.fn_pubblica_template_documento_versione(
+                  documenti.template_documenti_versioni.id%TYPE, documenti.template_documenti_versioni.valido_dal%TYPE, documenti.template_documenti_versioni.valido_al%TYPE);
+
+              CREATE FUNCTION documenti.fn_pubblica_template_documento_versione(
+                  p_versione_id       documenti.template_documenti_versioni.id%TYPE,
+                  p_valido_dal        documenti.template_documenti_versioni.valido_dal%TYPE,
+                  p_versione_contesto documenti.template_documenti_versioni.versione_contesto%TYPE,
+                  p_valido_al         documenti.template_documenti_versioni.valido_al%TYPE DEFAULT NULL
+              )
+               RETURNS TABLE(
+                  versione_id           documenti.template_documenti_versioni.id%TYPE,
+                  template_documento_id documenti.template_documenti_versioni.template_documento_id%TYPE,
+                  -- un conteggio: nessuna colonna di cui sia il riflesso
+                  versioni_obsolete     integer
+              )
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo:
+              --   Pubblica una versione template documento in modo atomico.
+              --
+              -- Regole:
+              --   - la versione target deve esistere ed essere BOZZA;
+              --   - p_valido_dal e' obbligatorio;
+              --   - p_versione_contesto e' la forma dei dati che il builder del
+              --     backend produce per quel tipo di documento: la versione si
+              --     pubblica solo se dichiara di leggere quella forma
+              --     (documenti.fn_guard_versione_contesto, rev 20260930-21).
+              --     Una BOZZA puo' dichiarare una forma che il builder non produce
+              --     ancora (D-C4): il controllo e' qui, non sulla bozza;
+              --   - l'ordine delle date (p_valido_al non precede p_valido_dal) NON si
+              --     giudica qui: lo giudica il guard comune script.trgfn_guard_date_validita
+              --     sull'UPDATE della versione (rev 20260924-02: ritirata la copia sui
+              --     parametri, che rispondeva con E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO);
+              --   - prima della pubblicazione vengono rese OBSOLETE e chiuse a
+              --     p_valido_dal - 1 le versioni PUBBLICATE attive dello stesso
+              --     template con valido_dal < p_valido_dal e intervallo sovrapposto;
+              --   - il vincolo EXCLUDE resta il guardrail finale contro overlap
+              --     residui o race concorrenti.
+              DECLARE
+                  v_template_id  documenti.template_documenti_versioni.template_documento_id%TYPE;
+                  v_stato        documenti.template_documenti_versioni.stato%TYPE;
+                  -- id di documenti.template_documenti_versioni: %TYPE[] non e' sintassi valida
+                  v_closed_ids   bigint[] := ARRAY[]::bigint[];
+                  -- un conteggio: nessuna colonna di cui sia il riflesso
+                  v_closed_count integer  := 0;
+              BEGIN
+                  IF p_versione_id IS NULL OR p_versione_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti',
+                          'fn_pubblica_template_documento_versione',
+                          'E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO',
+                          jsonb_build_object('versione_id', p_versione_id),
+                          NULL::uuid,
+                          'versione_id deve essere un intero positivo'
+                      );
+                  END IF;
+
+                  IF p_valido_dal IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti',
+                          'fn_pubblica_template_documento_versione',
+                          'E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO',
+                          jsonb_build_object('campo', 'valido_dal', 'versione_id', p_versione_id),
+                          NULL::uuid,
+                          'valido_dal e'' obbligatorio'
+                      );
+                  END IF;
+
+                  SELECT v.template_documento_id, v.stato
+                    INTO v_template_id, v_stato
+                    FROM documenti.template_documenti_versioni v
+                   WHERE v.id = p_versione_id
+                   FOR UPDATE;
+
+                  IF v_template_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti',
+                          'fn_pubblica_template_documento_versione',
+                          'E_DOCUMENTI_VERSIONE_NOT_FOUND',
+                          jsonb_build_object('versione_id', p_versione_id),
+                          NULL::uuid,
+                          p_versione_id::text
+                      );
+                  END IF;
+
+                  IF v_stato <> 'BOZZA' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti',
+                          'fn_pubblica_template_documento_versione',
+                          'E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO',
+                          jsonb_build_object(
+                              'versione_id',   p_versione_id,
+                              'stato_corrente', v_stato
+                          ),
+                          NULL::uuid,
+                          p_versione_id::text, v_stato
+                      );
+                  END IF;
+
+                  -- Il patto versione/forma dei dati (rev 20260930-21): prima di
+                  -- toccare qualunque altra versione, cosi' un rifiuto non lascia
+                  -- niente a meta' da annullare. La riga e' gia' sotto FOR UPDATE:
+                  -- la forma letta dal guard non puo' cambiare fino al commit.
+                  PERFORM documenti.fn_guard_versione_contesto(p_versione_id, p_versione_contesto);
+
+                  -- Lock ordinato di tutte le versioni del template: evita race fra
+                  -- due pubblicazioni concorrenti dello stesso template.
+                  PERFORM 1
+                    FROM documenti.template_documenti_versioni v
+                   WHERE v.template_documento_id = v_template_id
+                   ORDER BY v.id
+                   FOR UPDATE;
+
+                  SELECT COALESCE(array_agg(c.id ORDER BY c.valido_dal, c.id), ARRAY[]::bigint[])
+                    INTO v_closed_ids
+                    FROM (
+                        SELECT v.id, v.valido_dal
+                          FROM documenti.template_documenti_versioni v
+                         WHERE v.template_documento_id = v_template_id
+                           AND v.id <> p_versione_id
+                           AND v.stato = 'PUBBLICATA'
+                           AND v.attivo IS TRUE
+                           AND v.valido_dal < p_valido_dal
+                           -- ⚠️ rev 20260924-02: la finestra nuova e' [p_valido_dal, oltre).
+                           --   Una versione che parte PRIMA di p_valido_dal si sovrappone
+                           --   alla nuova se e solo se e' ancora aperta a p_valido_dal:
+                           --   p_valido_al non conta. Prima qui si costruiva
+                           --   daterange(p_valido_dal, p_valido_al): con le date invertite
+                           --   sollevava 22000 (limite inferiore > superiore) PRIMA che
+                           --   l'UPDATE incontrasse il guard comune delle date.
+                           AND v.validita && daterange(p_valido_dal, NULL, '[)')
+                         ORDER BY v.valido_dal, v.id
+                         FOR UPDATE
+                    ) c;
+
+                  -- Calcola subito: evita GET DIAGNOSTICS post-UPDATE.
+                  v_closed_count := COALESCE(array_length(v_closed_ids, 1), 0);
+
+                  IF v_closed_count > 0 THEN
+                      -- Il trigger A1 blocca UPDATE OF valido_al quando OLD.stato = PUBBLICATA.
+                      -- Step 1: porta a OBSOLETA (colonna stato non e' nell''UPDATE OF' del trigger).
+                      -- Step 2: aggiorna valido_al (ora OLD.stato = OBSOLETA, trigger non blocca).
+                      UPDATE documenti.template_documenti_versioni
+                         SET stato = 'OBSOLETA'
+                       WHERE id = ANY(v_closed_ids);
+
+                      UPDATE documenti.template_documenti_versioni
+                         SET valido_al = p_valido_dal - 1
+                       WHERE id = ANY(v_closed_ids);
+                  END IF;
+
+                  UPDATE documenti.template_documenti_versioni
+                     SET stato      = 'PUBBLICATA',
+                         valido_dal = p_valido_dal,
+                         valido_al  = p_valido_al
+                   WHERE id    = p_versione_id
+                     AND stato = 'BOZZA';
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti',
+                          'fn_pubblica_template_documento_versione',
+                          'E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO',
+                          jsonb_build_object(
+                              'versione_id',    p_versione_id,
+                              'stato_corrente', v_stato
+                          ),
+                          NULL::uuid,
+                          p_versione_id::text, v_stato
+                      );
+                  END IF;
+
+                  versione_id           := p_versione_id;
+                  template_documento_id := v_template_id;
+                  versioni_obsolete     := v_closed_count;
+                  RETURN NEXT;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION documenti.fn_pubblica_template_documento_versione(
+                  documenti.template_documenti_versioni.id%TYPE, documenti.template_documenti_versioni.valido_dal%TYPE,
+                  documenti.template_documenti_versioni.versione_contesto%TYPE, documenti.template_documenti_versioni.valido_al%TYPE) IS
+                  'Pubblica una versione template documento con auto-close atomico delle versioni PUBBLICATE precedenti sovrapposte. Rev 20260930-21: p_versione_contesto (obbligatorio) e'' la forma dei dati che il builder produce; la versione si pubblica solo se dichiara di leggere quella forma (documenti.fn_guard_versione_contesto: E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA). Rev 20260924-02: l''ordine delle date non e'' piu'' giudicato sui parametri: lo giudica il guard comune script.trgfn_guard_date_validita sull''UPDATE della versione (E_DATA_AL_MINORE_DAL).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS documenti.fn_pubblica_template_documento_versione(
+                  documenti.template_documenti_versioni.id%TYPE, documenti.template_documenti_versioni.valido_dal%TYPE,
+                  documenti.template_documenti_versioni.versione_contesto%TYPE, documenti.template_documenti_versioni.valido_al%TYPE);

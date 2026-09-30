@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# V-7 — IL TRIGGER DELLE STAMPE
+#   trg_documenti_generati_a10_guard_versione_contesto_ins
+#   Brief: brief-db-documenti-versione-contesto-template.md §4 (D-C2)
+#
+#   BEFORE INSERT, fase a10 (guard). Nell'ordine alfabetico dei BEFORE ROW
+#   della tabella parla DOPO check_coerenza (la versione appartiene al
+#   template dichiarato?) e dopo guard_emittente_scope (chi scrive vede
+#   quell'emittente?): prima si stabilisce che la riga dice cose coerenti e
+#   ammesse, poi se la stampa e' fedele al template. ⭐ E' voluto: su una riga
+#   incoerente la frase giusta e' quella della coerenza, non quella della forma.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20260930-20-create-trigger-documenti-generati-guard-versione-contesto-mctit.yaml
+
+  - changeSet:
+      id: 20260930-20-create-trigger-documenti-generati-guard-versione-contesto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Trigger trg_documenti_generati_a10_guard_versione_contesto_ins (BEFORE INSERT): una stampa
+        si registra solo se la forma del contesto congelato e' quella della versione di template.
+        Brief: brief-db-documenti-versione-contesto-template §4.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'documenti'
+                     AND p.proname = 'trgfn_documenti_generati_guard_versione_contesto';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid = 'documenti.documenti_generati'::regclass
+                     AND t.tgname = 'trg_documenti_generati_a10_guard_versione_contesto_ins';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_documenti_generati_a10_guard_versione_contesto_ins
+                  BEFORE INSERT ON documenti.documenti_generati
+                  FOR EACH ROW
+                  EXECUTE FUNCTION documenti.trgfn_documenti_generati_guard_versione_contesto();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_documenti_generati_a10_guard_versione_contesto_ins
+                  ON documenti.documenti_generati;

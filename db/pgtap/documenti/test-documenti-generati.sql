@@ -20,6 +20,11 @@
 --  8) A7: UPDATE template_versione_id bloccato
 --  9) A7: UPDATE stato (non protetto) ammesso
 -- 10) A7: UPDATE meta (non protetto) ammesso
+-- ⚠️ Dal 2026-09-30 ogni contesto porta _meta.context_version e la versione
+--    versione_contesto (brief-db-documenti-versione-contesto-template): senza,
+--    il guard della forma (20260930-20, BEFORE INSERT) parlerebbe al posto dei
+--    rifiuti che questi test attendono — il 23505 del test 5 per primo. Il
+--    guard ha il suo file: test-documenti-versione-contesto-v1.sql.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -72,12 +77,12 @@ SELECT id INTO TEMP TABLE tmp_dg_template FROM ins_t;
 WITH ins_v AS (
   INSERT INTO documenti.template_documenti_versioni (
     template_documento_id, versione, stato, titolo, html_template,
-    render_engine_id, valido_dal, valido_al
+    render_engine_id, valido_dal, valido_al, versione_contesto
   )
   SELECT (SELECT id FROM tmp_dg_template),
          1, 'PUBBLICATA', 'v1', '<html>v1</html>',
          (SELECT render_id FROM tmp_dg_ctx),
-         DATE '2026-01-01', DATE '2026-12-31'
+         DATE '2026-01-01', DATE '2026-12-31', 1
   RETURNING id
 )
 SELECT id INTO TEMP TABLE tmp_dg_versione FROM ins_v;
@@ -104,7 +109,7 @@ SELECT
   (SELECT sorgente_id FROM tmp_dg_ctx),
   'PGTAP-SOURCE-001', NULL, 1,
   'Doc 1', 'doc1.pdf',
-  '{"tot": 100}'::jsonb,
+  '{"tot": 100, "_meta": {"context_version": 1}}'::jsonb,
   repeat('1', 64), repeat('2', 64), repeat('3', 64),
   (SELECT emittente_id FROM tmp_dg_ctx);
 
@@ -132,7 +137,7 @@ SELECT throws_ok(
       (SELECT sorgente_id FROM tmp_dg_ctx),
       'PGTAP-SOURCE-002', NULL, 2,
       'Doc bad tipo', 'doc-bad.pdf',
-      '{"x": 1}'::jsonb,
+      '{"x": 1, "_meta": {"context_version": 1}}'::jsonb,
       repeat('a', 64), repeat('b', 64), repeat('c', 64),
       (SELECT emittente_id FROM tmp_dg_ctx)$$,
   NULL,
@@ -174,7 +179,7 @@ SELECT throws_ok(
       (SELECT sorgente_id FROM tmp_dg_ctx),
       'PGTAP-SOURCE-003', NULL, 3,
       'Doc bad em', 'doc-bad-em.pdf',
-      '{"x": 2}'::jsonb,
+      '{"x": 2, "_meta": {"context_version": 1}}'::jsonb,
       repeat('a', 64), repeat('b', 64), repeat('c', 64),
       %s
   $q$, (SELECT id FROM tmp_dg_em2)),
@@ -200,7 +205,7 @@ SELECT throws_ok(
       (SELECT sorgente_id FROM tmp_dg_ctx),
       'PGTAP-SOURCE-001', NULL, 1,
       'Doc dup', 'doc-dup.pdf',
-      '{"x": 9}'::jsonb,
+      '{"x": 9, "_meta": {"context_version": 1}}'::jsonb,
       repeat('a', 64), repeat('b', 64), repeat('c', 64),
       (SELECT emittente_id FROM tmp_dg_ctx)$$,
   '23505',

@@ -96,15 +96,21 @@ SELECT
 -- ⚠️ `CREATE TABLE AS INSERT ... RETURNING` non esiste in PostgreSQL: la
 --   scrittura va incapsulata in una CTE e la temp table si popola dal suo
 --   RETURNING.
+-- ⚠️ origine MANUALE DICHIARATA (2026-09-30): il default della colonna e'
+--   GENERATA, e da D-4 una GENERATA non va in ANNULLATA
+--   (E_CONTABILE_ANNULLO_NON_MANUALE) — l'UPDATE piu' sotto farebbe abortire
+--   il file. L'origine non e' il soggetto di questo test: lo e' il filtro su
+--   is_final. brief-db-righe-distinta-annullata-fuori-dalle-code §8.3.
 CREATE TEMP TABLE tmp_vcso_contabile AS
 WITH ins AS (
   INSERT INTO pagamenti.vendite_contabili
-    (codice, centro_riscossione_id, data_contabile, data_registrazione, meta)
+    (codice, centro_riscossione_id, data_contabile, data_registrazione, origine, meta)
   SELECT
     'VCSO_' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS'),
     r.centro_id,
     current_date,
     current_date,
+    'MANUALE',
     jsonb_build_object('test_scope', 'pgtap_vendite_contabili_stato_obbligatorio')
   FROM tmp_vcso_ref r
   RETURNING id, stato_id

@@ -20,7 +20,7 @@
 ---
 
 ### 🎯 Scopo Principale
-(scritta il 14-09-2026)
+(scritta il 14-09-2026, rev 30-09-2026)
 
 Elenca i motivi, **ordinati**, che impediscono di **eliminare** una riga
 contabile — cioè portarla ad `attivo = false`, oppure cancellarla. Risponde `[]`
@@ -45,19 +45,27 @@ posto solo.
 
 ---
 
-### I tre motivi, nell'ordine in cui li nomina
+### I motivi, nell'ordine in cui li nomina
 
 L'ordine è il **contratto**: il guard solleva il primo, e lo specifico batte il
 generico.
 
 | # | `reason` | Quando | `codice` | `valori` |
 | --- | --- | --- | --- | --- |
-| 1 | `DISTINTA_FINALE` | la testata è `CHIUSA` o `ANNULLATA` — per **ogni** origine | **riuso** `E_RIGA_CONTABILE_DISTINTA_FINALE` | `(codice distinta, chiusa \| annullata)` |
+| 1a | `DISTINTA_ANNULLATA` | la testata è in uno stato con [`righe_lavorabili = false`](/dbzero/pagamenti/tabelle/vendite_contabili_stati) — oggi `ANNULLATA` — per **ogni** origine *(dal 30-09-2026)* | `E_RIGA_CONTABILE_DISTINTA_ANNULLATA` | `(codice distinta)` |
+| 1b | `DISTINTA_FINALE` | **in alternativa** alla 1a: le altre finali — oggi `CHIUSA` — per **ogni** origine | **riuso** `E_RIGA_CONTABILE_DISTINTA_FINALE` | `(codice distinta, chiusa \| annullata)` |
 | 2 | `DISTINTA_NON_MANUALE` | `origine <> 'MANUALE'` | `E_RIGA_CONTABILE_DISTINTA_NON_MANUALE` | `(codice distinta, arrivata da un file \| prodotta dal sistema)` |
 | 3 | `DISTINTA_VALIDATA` | `MANUALE`, non finale, **non in `BOZZA`** | `E_RIGA_CONTABILE_DISTINTA_VALIDATA` | `(codice distinta)` |
 
-Le `reason_key` sono `pagamenti.righe.elimina_reason.{distinta_finale,
-distinta_non_manuale, distinta_validata}` — un **debito verso il frontend**
+> ⭐ **1a e 1b si escludono** (`ELSIF`, dal 30-09-2026). Sotto un'annullata le
+> righe si leggono soltanto (D-3), e il rimedio non è quello di una chiusa (D-2).
+> Un `DISTINTA_FINALE` messo dietro aggiungerebbe al `motivi` del contesto un
+> secondo rimedio, e sbagliato. La domanda si fa alla bandiera di catalogo e non
+> a `is_final`, perché `CHIUSA` e `ANNULLATA` sono entrambe finali e opposte per
+> le righe. Brief: `brief-db-righe-distinta-annullata-fuori-dalle-code`.
+
+Le `reason_key` sono `pagamenti.righe.elimina_reason.{distinta_annullata,
+distinta_finale, distinta_non_manuale, distinta_validata}` — un **debito verso il frontend**
 (§12.3): senza la voce nei locales il cestino spento ha il tooltip vuoto.
 
 > ⚠️ **Nessun motivo «riga registrata»**, ed è voluto. Una riga `POSTATA` sta
@@ -95,7 +103,8 @@ detto di una cosa che non si vede — un fail-open silenzioso.
 
 | Codice | Classe | Quando |
 | --- | --- | --- |
-| `E_RIGA_CONTABILE_DISTINTA_FINALE` | `CONFLITTO_STATO` | motivo 1 — riusato |
+| `E_RIGA_CONTABILE_DISTINTA_ANNULLATA` | `CONFLITTO_STATO` | motivo 1a — lo stesso codice della quinta mossa del guard sulla distinta finale |
+| `E_RIGA_CONTABILE_DISTINTA_FINALE` | `CONFLITTO_STATO` | motivo 1b — riusato |
 | `E_RIGA_CONTABILE_DISTINTA_NON_MANUALE` | `CONFLITTO_STATO` | motivo 2 |
 | `E_RIGA_CONTABILE_DISTINTA_VALIDATA` | `CONFLITTO_STATO` | motivo 3 — lo stesso codice della terza mossa del guard (D18) |
 | `E_RIGA_CONTABILE_NON_TROVATA` | `NON_TROVATO` | la riga non si legge |

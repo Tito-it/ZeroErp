@@ -10,7 +10,7 @@
 > • [vendite.listini_versioni](/dbzero/vendite/manual/listini_versioni)  
 >
 ### 🎯 Scopo Principale
-(latest review 29-04-2026)
+(latest review 30-09-2026)
 `documenti.template_documenti_versioni` contiene le **versioni
 renderizzabili** del template documentale, con stato di pubblicazione e
 finestra temporale di validità.
@@ -47,6 +47,37 @@ finestra temporale di validità.
 
 ---
 
+### Il patto con la forma dei dati (`versione_contesto`)
+
+(dal 30-09-2026 — brief `brief-db-documenti-versione-contesto-template`)
+
+Un PDF nasce da due pezzi: il **template** (questa riga) e i **dati** che un builder del
+backend prepara. Il template legge i dati aspettandosi una certa forma; se la forma cambia e il
+template no, le chiavi che non trova diventano vuote e il documento esce **incompleto senza
+errore**. Il patto chiude questo caso:
+
+* ogni versione dichiara in `versione_contesto` la forma che **legge** (obbligatoria, `>= 1`,
+  **senza default**: chi crea la versione la dichiara);
+* il builder dichiara la forma che **produce** (`_meta.context_version` nel contesto);
+* si stampa solo se i due numeri coincidono. La regola sta in una funzione,
+  `documenti.fn_guard_versione_contesto`, chiamata dal backend prima del render, dal trigger
+  sull'INSERT di `documenti_generati` e da `fn_pubblica_template_documento_versione`.
+
+Regole di stato:
+
+* in **BOZZA** la forma si cambia liberamente, anche verso una forma che il builder non produce
+  ancora: è così che si prepara la versione per la forma successiva;
+* in **PUBBLICATA** non si cambia (guard A1, `trgfn_template_documenti_versioni_protect_pubblicata`):
+  cambiarla aggirerebbe il controllo fatto alla pubblicazione;
+* il numero è **del tipo di documento**, non globale: la forma 2 del preventivo non è la forma 2
+  del DDT.
+
+Un cambio di forma si fa così, nello stesso giro: forma N+1 nel builder **e** una versione nuova
+del template che la dichiara, pubblicata. La ristampa dei documenti già emessi non cambia: rilegge
+il contesto congelato e la versione usata allora.
+
+---
+
 ### Semantica stato + date
 
 * `BOZZA`: versione in preparazione, non applicabile nel motore;
@@ -68,7 +99,9 @@ stato.
   `markdown_template`, `formato_template`.
 * **Motore di resa**: `render_engine_id`.
 * **Layout PDF**: `page_format`, `page_orientation`, margini.
-* **Contratto dati**: `context_schema`.
+* **Forma dei dati letta**: `versione_contesto` (sotto, «Il patto con la forma dei dati»).
+* **Contratto dati**: `context_schema` — oggi vuoto e non controllato: la validazione delle
+  singole variabili è fuori dal patto sulla forma (decisione D-C3 del 29-09-2026).
 
 ---
 

@@ -22,12 +22,16 @@ BEFORE UPDATE OF
     page_format, page_orientation,
     margin_top_mm, margin_right_mm, margin_bottom_mm, margin_left_mm,
     valido_dal, valido_al,
-    context_schema,
+    context_schema, versione_contesto,
     template_documento_id, versione
 ON documenti.template_documenti_versioni
 FOR EACH ROW
 EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_protect_pubblicata();
 ```
+
+* **`versione_contesto`** entra nell'elenco il 30-09-2026 (`20260930-17`): la forma dei dati che la
+  versione legge fa parte del patto controllato alla pubblicazione, e dopo non si cambia
+  (brief `brief-db-documenti-versione-contesto-template`).
 
 * **Fase**: `a10` (guard fail-fast, prima dei trigger di automazione `z90` storico/audit).
 * **`UPDATE OF` mirato**: il trigger non scatta su modifiche di `stato`, `meta`, `attivo`, `data_update`, `user_update`, `tx_id` — colonne che hanno volutamente un proprio ciclo di vita anche su righe `PUBBLICATA` (es. obsolescenza, audit incrementale).

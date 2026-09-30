@@ -36,6 +36,7 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | validita | daterange | NO |  |
+| versione_contesto | integer | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -49,6 +50,7 @@
 | CHECK | chk_template_documenti_versioni_stato |  |
 | CHECK | chk_template_documenti_versioni_titolo_non_vuoto |  |
 | CHECK | chk_template_documenti_versioni_valido_dal_pubblicata |  |
+| CHECK | chk_template_documenti_versioni_versione_contesto_pos |  |
 | CHECK | chk_template_documenti_versioni_versione_pos |  |
 | FOREIGN KEY | template_documenti_versioni_render_engine_id_fkey | render_engine_id |
 | FOREIGN KEY | template_documenti_versioni_template_documento_id_fkey | template_documento_id |

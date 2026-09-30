@@ -1,15 +1,16 @@
 ## 📘 Documentazione Concettuale – Funzione `pagamenti.trgfn_vendite_contabili_guard_validazione`
 
 ### 🎯 Scopo Principale
-(rev 2026-08-21)
+(rev 2026-09-30)
 
 Le **condizioni su una transizione che la matrice non sa esprimere**, perché
-dipendono da colonne della riga e non dalla coppia di stati. Sono due, e stanno
+dipendono da colonne della riga e non dalla coppia di stati. Sono tre, e stanno
 insieme perché sono la stessa specie:
 
 1. **entrando in `VALIDATA`** — se la distinta dichiara un totale, la somma delle
    righe deve corrispondere;
-2. **uscendo da `VALIDATA` verso `BOZZA`** — solo se la distinta è `MANUALE`.
+2. **uscendo da `VALIDATA` verso `BOZZA`** — solo se la distinta è `MANUALE`;
+3. **entrando in `ANNULLATA`** — solo se la distinta è `MANUALE` (dal 30-09-2026).
 
 ⚠️ **Chi legge la sola matrice non vede queste regole.** È il motivo per cui i due
 codici errore esistono e per cui i loro messaggi nominano il totale e l'origine:
@@ -67,6 +68,27 @@ registrare.
 non porta condizioni. La restrizione vive qui: una distinta **automatica** è la
 copia di un file ed è immutabile; una **generata** non si corregge, si rigenera.
 
+### ⭐ 3) L'annullo è solo della manuale (dal 30-09-2026, D-4)
+
+Una distinta **generata** (fondi fattura, sistemazioni) la governa il giro che
+l'ha prodotta: per togliere un fondo si cancella il fondo, per togliere una
+sistemazione si annulla la sistemazione. Annullarne la testata a mano era un
+gesto che il giro disfaceva: al ricalcolo successivo della fattura il sync dei
+fondi **spostava** la riga in una distinta nuova, e il denaro «mai successo»
+tornava a contare. Da quando sotto un'annullata le righe si leggono soltanto
+([quinta mossa](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_distinta_finale)),
+quel gesto sarebbe diventato un blocco: un errore sul ricalcolo, o un fondo che
+non si cancella più.
+
+* ⭐ La regola guarda la **bandiera** dello stato d'arrivo
+  ([`righe_lavorabili = false`](/dbzero/pagamenti/tabelle/vendite_contabili_stati)),
+  non il nome `ANNULLATA`: la collisione col giro nasce dal congelamento delle
+  righe, e uno stato nuovo che le congelasse la riprodurrebbe identica.
+* ⚠️ È una whitelist sull'origine: l'**automatica** (l'import non esiste ancora)
+  cade nel rifiuto, finché il cantiere dell'import non decide.
+* Il codice è proprio, `E_CONTABILE_ANNULLO_NON_MANUALE` (D-5): quello della
+  riapertura dice «non si riapre».
+
 ### Quando si attiva
 * `BEFORE UPDATE OF stato_id` su `pagamenti.vendite_contabili`.
 
@@ -77,7 +99,9 @@ copia di un file ed è immutabile; una **generata** non si corregge, si rigenera
 * `E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA` (`DATO_ERRATO`, 400) — il messaggio
   dice **quanto** è stato dichiarato e **quanto** sommano le righe;
 * `E_CONTABILE_RIAPERTURA_NON_MANUALE` (`CONFLITTO_STATO`, 409) — il messaggio
-  nomina l'origine in parole («arrivata da un file», «prodotta dal sistema»).
+  nomina l'origine in parole («arrivata da un file», «prodotta dal sistema»);
+* `E_CONTABILE_ANNULLO_NON_MANUALE` (`CONFLITTO_STATO`, 409) — dal 30-09-2026,
+  stessi due valori della riapertura.
 
 ### ⚠️ Ordine fra i quattro guard della testata
 I `BEFORE ROW` scattano in ordine alfabetico: `guard_chiusura` →

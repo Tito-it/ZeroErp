@@ -1,0 +1,293 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-5 — LA QUINTA MOSSA: sotto un'annullata le righe si leggono soltanto
+#   pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale()
+#   (+ COMMENT di pagamenti.trgfn_vendite_contabili_righe_guard_contenuto)
+#   Brief: brief-db-righe-distinta-annullata-fuori-dalle-code §4.2, §8.1 (D-2, D-3)
+#
+# ── IL DIFETTO ─────────────────────────────────────────────────────
+#   Le quattro mosse vietano che una riga ENTRI utile sotto una finale, e
+#   lasciano di proposito «le altre scritture su una riga gia' li'»: giusto
+#   sotto una CHIUSA (la SOSPESA ha la tardiva), sbagliato sotto una
+#   ANNULLATA, dove non c'e' niente da dire. Il guard ammetteva sospendere,
+#   scartare e correggere righe di un documento che non e' mai successo.
+#
+# ── COSA CAMBIA ────────────────────────────────────────────────────
+#   Una mossa in piu', valutata PER PRIMA, su ogni UPDATE: se la distinta di
+#   PARTENZA (OLD.contabile_id) ha righe_lavorabili = false (20260930-30), si
+#   rifiuta con E_RIGA_CONTABILE_DISTINTA_ANNULLATA. Copre anche lo
+#   spostamento FUORI da un'annullata, che le quattro mosse (guardano solo
+#   l'arrivo) non vedevano. Le quattro mosse restano identiche.
+#
+# ── ⭐ NIENTE EVENTO DELETE, NIENTE RINOMINA DEL TRIGGER ─────────────
+#   Il DELETE e la disattivazione passano gia' da guard_contenuto, che chiama
+#   script.fn_check_riga_contabile_eliminabile: il motivo nuovo sta li'
+#   (20260930-31), cosi' cestino e rifiuto restano una sede sola. Il trigger
+#   trg_vendite_contabili_righe_a10_guard_distinta_finale_ins_upd non cambia.
+#
+# ── ⭐ LE MADRI (verifica chiesta dal brief §4.2, fatta il 30-09) ────
+#   Sei funzioni scrivono le righe; quattro non scrivono mai sotto
+#   un'annullata. Le due che lo facevano (fn_sync_contabili_fondo_fattura,
+#   fn_cancella_fondo_fattura) lavorano sotto distinte GENERATE, che dopo D-4
+#   non vanno piu' in ANNULLATA (20260930-33). Brief §8.2.
+#
+# ── IL COMMENT DI guard_contenuto ──────────────────────────────────
+#   Dichiarava come residuo «sotto una distinta FINALE l'importo resta
+#   modificabile da SQL». Sotto l'ANNULLATA non e' piu' vero: si riscrive la
+#   frase, il resto del commento e' quello della doc auto-gen del 30-09.
+#
+# Dipendenze: 20260930-30 (colonna). Il codice errore si risolve a runtime
+#   (§11.4: nessuna preCondition sul seed). Corpo dalla doc auto-gen del 30-09.
+# Verifica: db/pgtap/pagamenti/test-righe-distinta-annullata-congelate-v1.sql,
+#           db/pgtap/pagamenti/test-posta-riga-tardiva-v1.sql (8-9, 13)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260930-32-update-trgfn-righe-guard-distinta-finale-annullata-mctit.yaml
+
+  - changeSet:
+      id: 20260930-32-update-trgfn-righe-guard-distinta-finale-annullata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        D-2/D-3 (brief-db-righe-distinta-annullata-fuori-dalle-code): la quinta mossa del
+        guard sulle righe — ogni UPDATE di una riga la cui distinta di partenza ha
+        righe_lavorabili = false (l'ANNULLATA) e' rifiutato con
+        E_RIGA_CONTABILE_DISTINTA_ANNULLATA, valutato prima delle quattro mosse d'ingresso,
+        che non cambiano. Riscritto il COMMENT di guard_contenuto (il residuo dichiarato
+        si restringe alla CHIUSA). Corpo dalla doc auto-gen del 30-09.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_stati
+                columnName: righe_lavorabili
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'pagamenti'
+                    AND p.proname = 'trgfn_vendite_contabili_righe_guard_distinta_finale'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'pagamenti'
+                    AND p.proname = 'trgfn_vendite_contabili_righe_guard_contenuto'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_is_final         pagamenti.vendite_contabili_stati.is_final%TYPE;
+                  v_stato            pagamenti.vendite_contabili_stati.codice_interno%TYPE;
+                  v_codice           pagamenti.vendite_contabili.codice%TYPE;
+                  v_diventa_pronta   pagamenti.vendite_contabili_righe_stati.is_postabile%TYPE;
+                  v_righe_lavorabili pagamenti.vendite_contabili_stati.righe_lavorabili%TYPE;
+                  -- NUDO di proposito: l'esito di una decisione, non il riflesso di una colonna.
+                  v_da_guardare      boolean;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Impedire che una riga contabile finisca — o torni utile —
+                  --   sotto una distinta in stato finale (CHIUSA o ANNULLATA):
+                  --   la' non entra in nessun conto e non verra' mai registrata.
+                  --   E, dal 2026-09-30, CONGELARE le righe che stanno gia' sotto
+                  --   una distinta le cui righe non si lavorano piu' (ANNULLATA).
+                  --
+                  -- ⚠️ CINQUE mosse. Le quattro d'INGRESSO: nascere li', esserci
+                  --    RIATTIVATA, esserci SPOSTATA da un'altra distinta, e — dal
+                  --    2026-08-22 — diventarci PRONTA DA REGISTRARE restando
+                  --    dov'e'. Poi la quinta, che si valuta per PRIMA: TOCCARE una
+                  --    riga che sta gia' sotto una distinta con
+                  --    righe_lavorabili = false.
+                  --
+                  -- ⚠️ Cio' che NON si rifiuta — SOLO dove le righe sono ancora
+                  --    lavorabili, cioe' sotto una CHIUSA: sospendere, scartare,
+                  --    riprendere, correggere il motivo_sospeso di una riga gia'
+                  --    li'. E' dire che cosa ne e' stato di quel denaro, e sotto
+                  --    una CHIUSA ha un futuro (la registrazione tardiva, D20-b).
+                  --    Sotto una ANNULLATA non c'e' niente da dire: quel denaro,
+                  --    per il registro, non e' mai arrivato, e le righe si leggono
+                  --    soltanto (D-3, Tid 2026-09-30).
+                  --
+                  -- ⭐ Rev 2026-09-18 (D20-b): la quarta mossa ha UNA porta, e
+                  --    la apre solo pagamenti.fn_posta_riga_tardiva. Una SOSPESA
+                  --    sotto una distinta REGISTRATA si abbina e si registra
+                  --    nello stesso gesto: la madre si presenta con la GUC
+                  --    transazionale app.registrazione_tardiva_riga_id = <id>,
+                  --    e questo guard lascia passare SOLO quella riga, SOLO in
+                  --    quella transazione, SOLO nel ramo del cambio di stato.
+                  --    Le altre mosse non la leggono: la tardiva non fa
+                  --    nascere, non riattiva, non sposta — e non lavora sotto
+                  --    un'annullata. Precedente: app.cessazione_automatica in
+                  --    vendite.
+                  -- =========================================================
+
+                  -- ⭐ QUINTA MOSSA (2026-09-30, D-2/D-3). La riga STA gia' sotto
+                  --    una distinta le cui righe non si lavorano piu': ogni UPDATE
+                  --    e' rifiutato — cambio di stato (anche verso SOSPESA o
+                  --    SCARTATA), correzione di un dato, riattivazione, spostamento
+                  --    FUORI. Annullata vuol dire sola lettura.
+                  -- ⭐ Si guarda la distinta di PARTENZA (OLD.contabile_id): e'
+                  --    quella dove la riga sta. Le quattro mosse guardano l'arrivo,
+                  --    e tirare una riga fuori da un'annullata non lo vedevano.
+                  -- ⭐ Si valuta PRIMA delle altre: lo specifico batte il generico,
+                  --    e una riattivazione sotto un'annullata deve sentirsi dire
+                  --    «si legge soltanto», non «non accetta altre righe».
+                  -- ⚠️ La domanda si fa al CATALOGO (righe_lavorabili), non a
+                  --    is_final: CHIUSA e ANNULLATA sono entrambe finali e opposte
+                  --    per le righe.
+                  -- ⚠️ IS FALSE e non IS NOT TRUE: la colonna e' NOT NULL, quindi
+                  --    NULL vuol dire solo «testata non letta» — e dire «annullata»
+                  --    di una testata che non si legge sarebbe un messaggio falso.
+                  --    Chi non legge la testata non legge nemmeno la riga (la RLS
+                  --    delle righe passa dalla testata).
+                  -- ⚠️ La porta della tardiva NON vale qui: la tardiva lavora solo
+                  --    sotto una CHIUSA registrata, e rifiuta l'annullata prima di
+                  --    scrivere.
+                  -- ℹ️ Il DELETE e la disattivazione hanno la loro sede in
+                  --    guard_contenuto, che chiama script.fn_check_riga_contabile_eliminabile
+                  --    (motivo DISTINTA_ANNULLATA, stesso codice): la disattivazione
+                  --    arriva qui solo se quella check l'ha gia' lasciata passare.
+                  IF TG_OP = 'UPDATE' THEN
+                      SELECT s.righe_lavorabili, s.codice_interno, c.codice
+                        INTO v_righe_lavorabili, v_stato, v_codice
+                        FROM pagamenti.vendite_contabili c
+                        JOIN pagamenti.vendite_contabili_stati s ON s.id = c.stato_id
+                       WHERE c.id = OLD.contabile_id;
+
+                      IF v_righe_lavorabili IS FALSE THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale',
+                              'E_RIGA_CONTABILE_DISTINTA_ANNULLATA',
+                              jsonb_build_object(
+                                  'contabile_riga_id', OLD.id,
+                                  'contabile_id',      OLD.contabile_id,
+                                  'contabile_codice',  v_codice,
+                                  'stato_distinta',    v_stato,
+                                  'operazione',        TG_OP,
+                                  'reason',            'DISTINTA_ANNULLATA'
+                              ),
+                              NEW.tx_id,
+                              COALESCE(v_codice, OLD.contabile_id::text)
+                          );
+                      END IF;
+                  END IF;
+
+                  v_da_guardare := CASE
+                      WHEN TG_OP = 'INSERT' THEN NEW.attivo IS TRUE
+                      -- riattivazione, oppure spostamento sotto un'altra distinta
+                      ELSE (NEW.attivo IS TRUE AND OLD.attivo IS NOT TRUE)
+                        OR (NEW.contabile_id IS DISTINCT FROM OLD.contabile_id)
+                  END;
+
+                  -- ⭐ QUARTA MOSSA. La riga non si sposta e non si riattiva:
+                  --    cambia stato, e il nuovo stato la rende PRONTA DA
+                  --    REGISTRARE. Sotto una distinta finale quel denaro non
+                  --    verrebbe mai registrato — il posting parte dalla testata,
+                  --    e una CHIUSA la rifiuta.
+                  -- ⚠️ La domanda si fa al CATALOGO (`is_postabile`), non a un
+                  --    elenco di stati scritto qui: e' la stessa scelta di
+                  --    `richiede_abbinamento` sul guard gemello.
+                  -- ℹ️ La lettura si paga solo se le altre tre mosse non hanno
+                  --    gia' deciso, e solo su un cambio di stato vero.
+                  IF NOT v_da_guardare
+                     AND TG_OP = 'UPDATE'
+                     AND NEW.attivo IS TRUE
+                     AND NEW.stato_id IS DISTINCT FROM OLD.stato_id
+                  THEN
+                      SELECT s.is_postabile
+                        INTO v_diventa_pronta
+                        FROM pagamenti.vendite_contabili_righe_stati s
+                       WHERE s.id = NEW.stato_id;
+
+                      v_da_guardare := COALESCE(v_diventa_pronta, false);
+
+                      -- ⭐ LA PORTA DELLA TARDIVA (D20-b). Si apre per UNA riga —
+                      --    quella nominata dalla GUC — e si richiude col ROLLBACK
+                      --    o il COMMIT, perche' set_config(..., true) e'
+                      --    transazionale. ⚠️ current_setting(name, true) risponde
+                      --    NULL se la GUC non e' mai stata impostata nella sessione
+                      --    e '' se lo e' stata in una transazione gia' chiusa:
+                      --    NULLIF le tratta uguali, e nessuna delle due apre.
+                      -- ⛔ La GUC settata su un ALTRO id non apre: e' la
+                      --    condizione che il pgTAP prova per prima.
+                      IF v_da_guardare
+                         AND NULLIF(current_setting('app.registrazione_tardiva_riga_id', true), '')
+                             = NEW.id::text
+                      THEN
+                          v_da_guardare := false;
+                      END IF;
+                  END IF;
+
+                  IF NOT v_da_guardare THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- ⚠️ Quando pagamenti avra' la RLS (slice 3, S3-5) questa
+                  --    lettura va riguardata: un guard che legge sotto RLS non
+                  --    distingue «non lo vedo» da «e' di un altro».
+                  SELECT s.is_final, s.codice_interno, c.codice
+                    INTO v_is_final, v_stato, v_codice
+                    FROM pagamenti.vendite_contabili c
+                    JOIN pagamenti.vendite_contabili_stati s ON s.id = c.stato_id
+                   WHERE c.id = NEW.contabile_id;
+
+                  IF COALESCE(v_is_final, false) IS FALSE THEN
+                      RETURN NEW;
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale',
+                      'E_RIGA_CONTABILE_DISTINTA_FINALE',
+                      jsonb_build_object(
+                          'contabile_riga_id', NEW.id,
+                          'contabile_id',      NEW.contabile_id,
+                          'contabile_codice',  v_codice,
+                          'stato_distinta',    v_stato,
+                          'stato_riga_id',     NEW.stato_id,
+                          'diventa_pronta',    COALESCE(v_diventa_pronta, false),
+                          'operazione',        TG_OP
+                      ),
+                      NEW.tx_id,
+                      COALESCE(v_codice, NEW.contabile_id::text),
+                      CASE WHEN v_stato = 'ANNULLATA' THEN 'annullata' ELSE 'chiusa' END
+                  );
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale()
+              IS 'Porta d''INGRESSO del difetto C-5, e dal 2026-09-30 il CONGELAMENTO delle righe di una distinta annullata. ⚠️ CINQUE mosse. Le quattro d''ingresso — nessuna riga contabile utile sotto una distinta in stato finale (CHIUSA o ANNULLATA), dove non entrerebbe in nessun conto e non verrebbe mai registrata: nascere li'', esserci RIATTIVATA, esserci SPOSTATA da un''altra distinta, e — dal 2026-08-22, lotto 4 — DIVENTARCI PRONTA DA REGISTRARE restando dov''e'' (E_RIGA_CONTABILE_DISTINTA_FINALE). ⭐ La quarta e'' nata con la madre del posting: la madre chiude la distinta appena ha registrato (la chiusura e'' la conseguenza del registrare, decisione di Tid), e sotto possono restare righe DA_ABBINARE — che il guard di chiusura NON considera un ostacolo, deliberatamente, o la distinta non si chiuderebbe mai. Abbinarne una il giorno dopo produrrebbe denaro dichiarato e pronto sotto una distinta che il posting rifiuta perche'' finale. ⭐ La QUINTA (2026-09-30, D-2/D-3, brief-db-righe-distinta-annullata-fuori-dalle-code §4.2, §8.1) si valuta per PRIMA: ogni UPDATE di una riga la cui distinta di PARTENZA (OLD.contabile_id, dove la riga sta) ha righe_lavorabili = false — oggi l''ANNULLATA — e'' rifiutato con E_RIGA_CONTABILE_DISTINTA_ANNULLATA: cambio di stato (anche verso SOSPESA o SCARTATA), correzione di un dato, riattivazione, spostamento fuori. Annullata vuol dire sola lettura: il documento non e'' mai successo. La domanda si fa al catalogo (righe_lavorabili) e non a is_final, perche'' CHIUSA e ANNULLATA sono entrambe finali e opposte per le righe. IS FALSE e non IS NOT TRUE: la colonna e'' NOT NULL, NULL vuol dire solo testata non letta, e dire «annullata» di una testata che non si legge sarebbe falso. Il DELETE e la disattivazione hanno la loro sede in pagamenti.trgfn_vendite_contabili_righe_guard_contenuto, che chiama script.fn_check_riga_contabile_eliminabile (motivo DISTINTA_ANNULLATA, stesso codice). ⚠️ Sotto una CHIUSA si vieta SOLO l''ingresso in uno stato is_postabile: sospendere, scartare, riprendere o correggere il motivo di una riga che sta li'' resta possibile, ed e'' deliberato — dire che cosa ne e'' stato di quel denaro, e sotto una CHIUSA ha ancora un futuro (la tardiva). ⚠️ Non blocca il posting per due ragioni indipendenti: POSTATA non e'' uno stato postabile, e la distinta e'' ancora VALIDATA quando la madre muove le righe. ⚠️ La domanda «questo stato e'' pronto?» si fa al catalogo (is_postabile) e non a un elenco scritto dentro il guard. Gemello d''uscita: pagamenti.trgfn_vendite_contabili_guard_chiusura (E_CONTABILE_CHIUSURA_CON_RIGHE_PRONTE). ⭐ rev 2026-09-18 (20260918-39, D20-b): la quarta mossa ha UNA porta — la GUC transazionale app.registrazione_tardiva_riga_id = <id>, che imposta SOLO pagamenti.fn_posta_riga_tardiva (set_config con is_local = true) — e lascia passare SOLO quella riga, SOLO in quella transazione, SOLO nel ramo del cambio di stato: una SOSPESA sotto una distinta REGISTRATA si abbina e si registra nello stesso gesto, quindi non esiste piu'' il momento in cui sta pronta ad aspettare. Le altre mosse non leggono la GUC, e la quinta nemmeno: la tardiva non lavora sotto un''annullata. Precedente: app.cessazione_automatica. Brief: brief-db-validata-e-registrazione-tardiva §2.2, §4.1; brief-db-righe-distinta-annullata-fuori-dalle-code §4.2.';
+
+              -- ⭐ Il residuo dichiarato dal guard gemello si restringe: si riscrive il
+              --    suo COMMENT (il corpo non cambia).
+              COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_contenuto()
+              IS 'Il guard del CONTENUTO della distinta contabile: chi puo'' togliere, aggiungere o cambiare una riga, e quando. DUE PORTE. (1) ELIMINAZIONE (D17): attivo true -> false, e DELETE — ammessa solo su una MANUALE in BOZZA. Il predicato NON sta qui: sta in script.fn_check_riga_contabile_eliminabile, che il guard CHIAMA sollevando il PRIMO motivo con fn_raise_primo_motivo_se_presente (§12.5.2: tooltip del cestino e rifiuto non possono divergere). (2) CONGELAMENTO (D18, confermata da Tid il 2026-09-14): INSERT, riattivazione, spostamento da/verso un''altra distinta e UPDATE di un FATTO (importo, data_pagamento, data_valuta, data_operazione, riferimento_ente) sono rifiutati sotto una MANUALE che non e'' piu'' in BOZZA — E_RIGA_CONTABILE_DISTINTA_VALIDATA. ⭐ Le DECISIONI restano libere anche a distinta validata (stato_id, fattura_id, billing_account_id, scadenza_id, forzata, motivo_forzatura, motivo_sospeso, meta): l''abbinamento non tocca la quadratura (D12-e) e la madre del posting muove lo stato delle righe mentre la distinta e'' ancora VALIDATA — per questo il trigger e'' UPDATE OF sui soli fatti e su quelle non scatta. ⛔ La porta 2 e'' SOLO della MANUALE: fn_sync_contabili_fondo_fattura inserisce e aggiorna righe sotto GENERATE che nascono VALIDATE, fn_conferma_sistemazione sotto una GENERATA in BOZZA. L''immutabilita'' di GENERATA e AUTOMATICA e'' di D12-d e arriva con l''import. ⚠️ La condizione della porta 2 e'' il motivo 3 della check, scritta due volte perche'' sull''INSERT non c''e'' una riga da passare: copia dichiarata, legata dal pgTAP. ⭐ IL DELETE FISICO passa dalla stessa check (D12-d, tre porte), e la riga POSTATA riceve il messaggio giusto PRIMA della FK del movimento. 🔴 Ma vendite.fn_cancella_fondo_fattura — sede unica dei DELETE del giro dei fondi — cancella fisicamente le righe del suo atto sotto una GENERATA, dove la check risponde DISTINTA_NON_MANUALE: la madre APRE la porta con la GUC transazionale zeroerp.allow_contabile_riga_delete_override (SET LOCAL ''on'' prima, '''' dopo; changeSet 20260914-06), che questo guard onora SOLO su DELETE — precedente identico: fn_change_user_emittenti_scope su trgfn_user_emittenti_fiscali_guard_delete. Non e'' un permesso, e'' la madre che dichiara «sono io» dopo aver letto il SUO criterio (fn_check_fondo_cancellabile). ⚠️ Ordine alfabetico dei BEFORE ROW: parla PRIMA degli altri guard di riga; sotto una FINALE la porta 2 tace e lascia il messaggio a guard_distinta_finale, che e'' la sua sede. ⚠️ Residuo dichiarato, ristretto il 2026-09-30: sotto una distinta ANNULLATA (righe_lavorabili = false) nessuna scrittura passa piu'' — la quinta mossa di guard_distinta_finale rifiuta ogni UPDATE con E_RIGA_CONTABILE_DISTINTA_ANNULLATA, e su attivo -> false e DELETE parla gia'' qui la check (motivo DISTINTA_ANNULLATA, prima di DISTINTA_FINALE); sotto una CHIUSA l''importo di una riga — anche POSTATA — resta modificabile da SQL, perche'' li'' le righe si lavorano ancora (tardiva, «Riprendi») e guard_distinta_finale lascia di proposito le altre scritture (brief-db-righe-distinta-annullata-fuori-dalle-code §8.1). Brief: brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga §2.2, §2.3, §4 P-2/P-5.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: si riapplica il corpo precedente (20260918-39, doc auto-gen
+              -- del 30-09). Nessun DROP: il trigger la monta.
+              SELECT 1;

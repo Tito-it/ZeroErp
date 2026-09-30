@@ -8,9 +8,11 @@
 -- Oggetti:
 --   documenti.fn_pubblica_template_documento_versione   (rev 20260924-02)
 --   script.trgfn_guard_date_validita                    (20260923-40)
--- Brief: brief-db-guard-date-validita.md §13
+--   documenti.fn_guard_versione_contesto                (20260930-18)
+-- Brief: brief-db-guard-date-validita.md §13;
+--        brief-db-documenti-versione-contesto-template.md (test 8-11, firma a 4)
 --
--- Elenco test (plan 7):
+-- Elenco test (plan 11):
 --  1) date invertite -> parla il guard comune (E_DATA_AL_MINORE_DAL), non il
 --     daterange della ricerca (22000) ne' il vecchio E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO
 --  2) i due canali strutturati: CONSTRAINT = E_DATA_AL_MINORE_DAL, COLUMN = valido_al
@@ -22,6 +24,10 @@
 --  6) una versione gia' chiusa PRIMA di p_valido_dal non si tocca
 --     (versioni_obsolete = 0)
 --  7) ... e resta PUBBLICATA con la sua fine
+--  8) forma dichiarata 2, builder alla 1 -> E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA (rev 20260930-21)
+--  9) ... e il rifiuto e' atomico: V3 pubblicata e aperta, V4 bozza
+-- 10) p_versione_contesto NULL -> E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE
+-- 11) forma dichiarata 2, builder alla 2 -> pubblicata (D-C4)
 --
 -- Scopo:
 --  - ⭐ i test 1-3 provano il ritiro della copia (20260924-02): la regola del
@@ -42,7 +48,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(7);
+SELECT plan(11);
 
 -- ============================================================
 -- Fixture: un template dell'emittente di chi agisce, tre bozze
@@ -74,24 +80,26 @@ SELECT id FROM ins;
 CREATE TEMP TABLE tmp_ptv_v AS
 WITH ins AS (
     INSERT INTO documenti.template_documenti_versioni (
-        template_documento_id, versione, stato, titolo, html_template, render_engine_id
+        template_documento_id, versione, stato, titolo, html_template, render_engine_id,
+        versione_contesto
     )
+    -- V1-V3 leggono la forma 1; la V4 e' preparata per la forma 2 (D-C4).
     SELECT (SELECT id FROM tmp_ptv_template), n, 'BOZZA', 'Versione ' || n, '<p>v' || n || '</p>',
-           (SELECT render_id FROM tmp_ptv_ctx)
-      FROM generate_series(1, 3) n
+           (SELECT render_id FROM tmp_ptv_ctx), CASE WHEN n = 4 THEN 2 ELSE 1 END
+      FROM generate_series(1, 4) n
     RETURNING id, versione
 )
 SELECT id, versione FROM ins;
 
 -- La V1 aperta dal 2026-01-01: la base su cui si pubblica dopo.
 SELECT documenti.fn_pubblica_template_documento_versione(
-    (SELECT id FROM tmp_ptv_v WHERE versione = 1), DATE '2026-01-01', NULL);
+    (SELECT id FROM tmp_ptv_v WHERE versione = 1), DATE '2026-01-01', 1, NULL);
 
 -- ============================================================
 -- 1-3) Date invertite: il guard comune, e nessuna traccia
 -- ============================================================
 SELECT throws_like(
-    format($q$SELECT documenti.fn_pubblica_template_documento_versione(%s, DATE '2026-03-01', DATE '2026-02-01')$q$,
+    format($q$SELECT documenti.fn_pubblica_template_documento_versione(%s, DATE '2026-03-01', 1, DATE '2026-02-01')$q$,
            (SELECT id FROM tmp_ptv_v WHERE versione = 2)),
     '%è inferiore alla data dal%',
     '1) date invertite: parla il guard comune, non il daterange della ricerca ne'' il vecchio codice'
@@ -104,7 +112,7 @@ DECLARE v_cst text; v_col text;
 BEGIN
     BEGIN
         PERFORM documenti.fn_pubblica_template_documento_versione(
-            (SELECT id FROM tmp_ptv_v WHERE versione = 2), DATE '2026-03-01', DATE '2026-02-01');
+            (SELECT id FROM tmp_ptv_v WHERE versione = 2), DATE '2026-03-01', 1, DATE '2026-02-01');
         INSERT INTO tmp_ptv_diag VALUES (NULL, NULL);
     EXCEPTION WHEN OTHERS THEN
         GET STACKED DIAGNOSTICS v_cst = CONSTRAINT_NAME, v_col = COLUMN_NAME;
@@ -131,7 +139,7 @@ SELECT is(
 -- ============================================================
 CREATE TEMP TABLE tmp_ptv_esito_v2 AS
 SELECT * FROM documenti.fn_pubblica_template_documento_versione(
-    (SELECT id FROM tmp_ptv_v WHERE versione = 2), DATE '2026-03-01', DATE '2026-06-30');
+    (SELECT id FROM tmp_ptv_v WHERE versione = 2), DATE '2026-03-01', 1, DATE '2026-06-30');
 
 SELECT is(
     (SELECT versioni_obsolete FROM tmp_ptv_esito_v2),
@@ -152,7 +160,7 @@ SELECT is(
 -- ============================================================
 CREATE TEMP TABLE tmp_ptv_esito_v3 AS
 SELECT * FROM documenti.fn_pubblica_template_documento_versione(
-    (SELECT id FROM tmp_ptv_v WHERE versione = 3), DATE '2026-08-01', NULL);
+    (SELECT id FROM tmp_ptv_v WHERE versione = 3), DATE '2026-08-01', 1, NULL);
 
 SELECT is(
     (SELECT versioni_obsolete FROM tmp_ptv_esito_v3),
@@ -166,6 +174,49 @@ SELECT is(
       WHERE t.id = (SELECT id FROM tmp_ptv_v WHERE versione = 2)),
     'PUBBLICATA[2026-06-30]',
     '7) la V2 resta PUBBLICATA con la sua fine'
+);
+
+-- ============================================================
+-- 8-11) Il patto versione/forma dei dati alla pubblicazione (rev 20260930-21)
+-- ============================================================
+-- La V4 dichiara di leggere la forma 2. Il builder (qui: il chiamante) dice
+-- di produrre la forma 1: non si pubblica.
+SELECT throws_like(
+    format($q$SELECT documenti.fn_pubblica_template_documento_versione(%s, DATE '2026-10-01', 1, NULL)$q$,
+           (SELECT id FROM tmp_ptv_v WHERE versione = 4)),
+    '%legge i dati nella forma 2, ma il sistema li prepara nella forma 1%',
+    '8) forma dichiarata 2, builder alla 1: E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA, con le due forme nella frase'
+);
+
+-- Il rifiuto arriva PRIMA di chiudere le versioni precedenti: niente da annullare.
+SELECT is(
+    (SELECT string_agg(t.versione || '=' || t.stato || '[' || coalesce(t.valido_al::text, 'aperta') || ']', ', ' ORDER BY t.versione)
+       FROM documenti.template_documenti_versioni t
+      WHERE t.id IN (SELECT id FROM tmp_ptv_v WHERE versione IN (3, 4))),
+    '3=PUBBLICATA[aperta], 4=BOZZA[aperta]',
+    '9) rifiuto atomico: la V3 resta pubblicata e aperta, la V4 resta bozza'
+);
+
+-- Senza la forma del builder il controllo non si fa: TECNICO, non un passaggio.
+SELECT throws_like(
+    format($q$SELECT documenti.fn_pubblica_template_documento_versione(%s, DATE '2026-10-01', NULL, NULL)$q$,
+           (SELECT id FROM tmp_ptv_v WHERE versione = 4)),
+    '%manca la forma dichiarata dai dati%',
+    '10) p_versione_contesto NULL: E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE, non un salto del controllo'
+);
+
+-- D-C4 fino in fondo: la bozza preparata per la forma 2 si pubblica quando il
+-- builder produce la 2.
+CREATE TEMP TABLE tmp_ptv_esito_v4 AS
+SELECT * FROM documenti.fn_pubblica_template_documento_versione(
+    (SELECT id FROM tmp_ptv_v WHERE versione = 4), DATE '2026-10-01', 2, NULL);
+
+SELECT is(
+    (SELECT t.stato || '/' || t.versione_contesto
+       FROM documenti.template_documenti_versioni t
+      WHERE t.id = (SELECT id FROM tmp_ptv_v WHERE versione = 4)),
+    'PUBBLICATA/2',
+    '11) forma dichiarata 2, builder alla 2: la V4 si pubblica'
 );
 
 SELECT * FROM finish();

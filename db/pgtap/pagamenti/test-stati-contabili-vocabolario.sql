@@ -6,7 +6,7 @@
 -- Presidia i passi S1-1, S1-2 e S1-21 del lotto 2 del cantiere incassi
 --   (brief-db-posting-e-abbinamento-rata.md §2.1).
 --
--- Elenco test (plan 6):
+-- Elenco test (plan 10):
 -- 1) STORNATA è RITIRATA con obsoleto_dal, e resta ATTIVA
 -- 2) Nessun altro stato di riga è ritirato
 -- 3) 🔴 S1-21: SCARTATA NON è più uno stato finale
@@ -14,6 +14,8 @@
 -- 5) ⚠️ richiede_abbinamento non è derivabile da is_final
 -- 7) ⭐ lavorata: non lavorati SOLO IMPORTATA e DA_ABBINARE (D20-a)
 -- 8) ⭐ is_registrabile: SOLO VALIDATA (D20-d)
+-- 9) ⭐ righe_lavorabili: false SOLO su ANNULLATA (D-1, 2026-09-30)
+-- 10) ⚠️ righe_lavorabili non è derivabile da is_final
 -- 6) C-8: codice_interno è obbligatorio su entrambi i cataloghi
 --
 -- Scopo:
@@ -35,7 +37,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(8);
+SELECT plan(10);
 
 -- ============================================================
 -- 1) STORNATA: ritirata, ma NON spenta
@@ -133,6 +135,38 @@ SELECT is(
     WHERE is_registrabile),
   ARRAY['VALIDATA']::text[],
   'D20-d: si registra solo da VALIDATA, e lo dice il catalogo'
+);
+
+-- ============================================================
+-- 9) ⭐ D-1 (2026-09-30) — `righe_lavorabili`: false SOLO su ANNULLATA
+--   La leggono la quinta mossa del guard sulle righe, la check di
+--   eliminabilita', la coda del riconciliatore e il frontend. Uno stato in
+--   piu' a false congela le righe di un documento vivo; uno in meno riapre
+--   quelle di un documento che «non e' mai successo».
+--   brief-db-righe-distinta-annullata-fuori-dalle-code §3.
+-- ============================================================
+SELECT is(
+  (SELECT array_agg(codice_interno ORDER BY codice_interno)
+     FROM pagamenti.vendite_contabili_stati
+    WHERE righe_lavorabili IS NOT TRUE),
+  ARRAY['ANNULLATA']::text[],
+  'D-1: le righe non si lavorano piu'' solo sotto una ANNULLATA'
+);
+
+-- ============================================================
+-- 10) ⚠️ La bandiera NON e' derivabile da is_final
+--   Il presidio della decisione di forma: CHIUSA e ANNULLATA sono entrambe
+--   finali e vogliono cose opposte per le righe — sotto la CHIUSA la
+--   registrazione tardiva e «Riprendi» restano vivi. Se un giorno qualcuno
+--   volesse leggere is_final al posto della bandiera, questo test dice
+--   perche' non si puo'.
+-- ============================================================
+SELECT is(
+  (SELECT array_agg(codice_interno ORDER BY codice_interno)
+     FROM pagamenti.vendite_contabili_stati
+    WHERE is_final AND righe_lavorabili),
+  ARRAY['CHIUSA']::text[],
+  'D-1: CHIUSA e'' finale ma le sue righe si lavorano ancora — is_final non risponde alla domanda'
 );
 
 SELECT * FROM finish();
