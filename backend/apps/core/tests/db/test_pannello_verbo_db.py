@@ -47,7 +47,7 @@ from apps.core.api.permissions import MotivoDiniego, ZeroERPPermission
 from apps.core.api.views_config_crud import ConfigTableRecordsView
 from apps.core.services.config_crud_service import ConfigCrudService
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_contesto_operatore, apri_transazione_annullata, richiedi_db_provvisto
 
 _REL = "magazzino.causali"
 
@@ -60,15 +60,10 @@ class PannelloVerboDbTests(TestCase):
         richiedi_db_provvisto()
 
     def setUp(self) -> None:
-        self._atomic = transaction.atomic()
-        self._atomic.__enter__()
+        apri_transazione_annullata(self)
         with connection.cursor() as cur:
             apri_contesto_operatore(cur)
         self.svc = ConfigCrudService()
-
-    def tearDown(self) -> None:
-        transaction.set_rollback(True)
-        self._atomic.__exit__(None, None, None)
 
     # Scopo: Esegue `azione` in un savepoint e ne ritorna il codice del ServiceError.
     def _codice(self, azione) -> str | None:
@@ -191,17 +186,12 @@ class PannelloDuePuntiDiApplicazioneDbTests(TestCase):
         richiedi_db_provvisto()
 
     def setUp(self) -> None:
-        self._atomic = transaction.atomic()
-        self._atomic.__enter__()
+        apri_transazione_annullata(self)
         with connection.cursor() as cur:
             cur.execute("SELECT auth_user_id FROM dbops.fn_pgtap_crea_emittente_operatore()")
             self.uid = int(cur.fetchone()[0])
             cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [self.uid])
         self.svc = ConfigCrudService()
-
-    def tearDown(self) -> None:
-        transaction.set_rollback(True)
-        self._atomic.__exit__(None, None, None)
 
     # Scopo: Da' all'operatore costruito `livello` sull'area della riga
     #        (`fn_area_di_oggetto('magazzino', 'causali')` = `magazzino`).

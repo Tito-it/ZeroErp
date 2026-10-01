@@ -40,7 +40,7 @@ from apps.core.db.auth_repository import AuthRepository
 from apps.core.db.secondo_fattore_repository import SecondoFattoreRepository
 from apps.core.services import crypto_service, totp_service
 from apps.core.services.db_error_fields import structured_db_error_code
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
 
 
 # Scopo: Credenziale fabbricata, senza vesti e senza device.
@@ -58,12 +58,7 @@ class _TransazioneAnnullata(unittest.TestCase):
         richiedi_db_provvisto()
 
     def setUp(self) -> None:
-        self._atomic = transaction.atomic()
-        self._atomic.__enter__()
-
-    def tearDown(self) -> None:
-        transaction.set_rollback(True)
-        self._atomic.__exit__(None, None, None)
+        apri_transazione_annullata(self)
 
     # Scopo: Esegue `azione` in un savepoint e ne ritorna il codice d'errore del DB.
     def _codice_errore(self, azione) -> str | None:
