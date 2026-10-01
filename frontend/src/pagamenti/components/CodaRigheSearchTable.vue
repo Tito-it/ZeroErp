@@ -105,14 +105,16 @@ const codaCorrente = computed({
 function onRowClick(data) { emit('row-click', data) }
 
 // ── azioni di riga ────────────────────────────────────────────────
-// I fatti della testata arrivano SULLA RIGA (BE-4: `contabile_is_final`,
+// I fatti della testata arrivano SULLA RIGA (BE-4: `contabile_righe_lavorabili`,
 // `contabile_registrata`), perche' qui ogni riga viene da una distinta
-// diversa e non c'e' un dettaglio da cui leggerli.
+// diversa e non c'e' un dettaglio da cui leggerli. ⚠️ La coda seleziona gia'
+// le sole righe lavorabili: la bandiera si passa lo stesso, perche' la regola
+// del kebab non deve dipendere dal filtro da cui la riga e' passata.
 const { buildRowActions } = useAzioniRigaContabile({
   statiRiga: () => store.statiRiga,
   transizioniRiga: () => store.transizioniRiga,
   testataDi: (riga) => ({
-    finale: riga.contabile_is_final === true,
+    righeLavorabili: riga.contabile_righe_lavorabili,
     registrata: riga.contabile_registrata === true,
   }),
   readonly: () => isReadonly.value,
