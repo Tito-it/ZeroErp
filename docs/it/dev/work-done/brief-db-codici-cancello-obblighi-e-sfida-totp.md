@@ -1,12 +1,15 @@
 # Brief DB — Tre codici a catalogo: il cancello degli obblighi e la sfida del login TOTP
 
 > **Chi scrive:** backend (`dev/backend-tid`), 2026-09-30. **A chi:** team DB (`dev/db-tid`).
-> **Origine:** §3.4 di [brief-be-fe-sicurezza-header-token-mfa.md](brief-be-fe-sicurezza-header-token-mfa.md),
+> **Origine:** §3.4 di [brief-be-fe-sicurezza-header-token-mfa.md](../work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md),
 > lotti T-0 e T-2 (decisioni di Tid del 2026-09-30).
-> **Stato:** 🟢 consegnato a file il 2026-09-30 (`dev/db-tid`), **da applicare**: le righe sono
-> nei due CSV (§4), le carica il loader `runOnChange` `20260614-08` al prossimo migrate. Il
-> backend lavora in parallelo (decisione di Tid del 2026-09-30) e rigenera
-> `error_policies_generated.py` all'arrivo dei codici; il **merge** del BE aspetta questo apply.
+> **Stato:** ✅ **chiuso il 2026-09-30.** DB: righe nei due CSV (§4, `dev/db-tid` `4e627064a`)
+> e applicate. Backend: `genera_error_policies` (solo le tre voci nuove, nessuna classe
+> spostata, `--check` pulito), i tre ripieghi senza `%s` in `error_messages_fallback.py`,
+> `PasswordChangeRequiredMiddleware` ritirato col file e i suoi test (§3).
+> `E_TOTP_CONFIGURAZIONE_RICHIESTA` e' a catalogo ma il cancello non lo solleva ancora: il
+> secondo fattore entra in `OBBLIGHI_IN_VIGORE` coi suoi endpoint (T-3); `E_TOTP_SFIDA_NON_VALIDA`
+> lo solleva T-2.
 >
 > **In una riga:** solo righe di `80_data` (`codici_errore.csv` + `messaggi_errore.csv`),
 > nessun oggetto nuovo. Tre codici che il **backend** solleva e che oggi non hanno una sede a
@@ -17,7 +20,7 @@
 ## 1. Perché servono
 
 * **Il cancello degli obblighi** (lotto T-0, chiude A-8 del
-  [piano accessi](piano-be-fe-accessi-credenziale-e-vesti.md) §4.4): il controllo «questa
+  [piano accessi](../work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md) §4.4): il controllo «questa
   credenziale deve prima fare qualcosa» si sposta dopo l'autenticazione DRF, dove l'utente del
   JWT è noto. Oggi `PasswordChangeRequiredMiddleware` è inerte col JWT e scrive a mano un
   envelope con `E_CAMBIO_PASSWORD_RICHIESTO`, un codice **mai registrato a catalogo**: nessuna

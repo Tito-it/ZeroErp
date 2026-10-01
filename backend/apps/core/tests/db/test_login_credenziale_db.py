@@ -39,6 +39,9 @@ Indice test eseguiti:
 8) CicloOperatoreDbTests.test_operatore_nuovo_crea_invita_attiva_entra
 9) CicloOperatoreDbTests.test_credenziale_riusata_un_clic_e_password_intatta
    (con la lettura del dialog, B-20: la conferma dichiara l'id letto dall'endpoint)
+10) CicloOperatoreDbTests.test_login_a_due_passi_col_secondo_fattore_attivo
+   (T-2 del brief sicurezza §3.4-bis: password -> sfida -> codice -> sessione -> Bearer;
+    il codice ripresentato e' rifiutato dall'anti-replay del DB)
 """
 
 from __future__ import annotations
@@ -440,6 +443,63 @@ class CicloOperatoreDbTests(_ViewVere):
         self.assertEqual(r.status_code, 200, r.content)
         self.assertIsNotNone(User.objects.get(id=uid).last_login)  # D-8
         self.assertIs(self._veste_attiva(uid), True)
+
+    # Scopo: T-2. Il login a due passi per intero, sulle view e sul DB veri.
+    def test_login_a_due_passi_col_secondo_fattore_attivo(self):
+        import pyotp
+
+        from apps.core.db.secondo_fattore_repository import SecondoFattoreRepository
+        from apps.core.services import crypto_service, totp_service
+
+        nome = f"op_{uuid.uuid4().hex[:10]}"
+        uid = self._crea(email=f"{nome}@example.invalid", username=nome)["auth_user_id"]
+        r = self._post("/api/v1/auth/attivazione/", {
+            "token": self._invita(uid), "new_password": _PASSWORD, "new_password_confirm": _PASSWORD,
+        })
+        self.assertEqual(r.status_code, 200, r.content)
+
+        # Il device, scritto dai verbi come la credenziale stessa. La conferma
+        # registra un passo di due periodi fa: il codice di adesso e' successivo.
+        segreto = totp_service.nuovo_segreto()
+        repo = SecondoFattoreRepository()
+        with connection.cursor() as cur:
+            cur.execute("SELECT set_config('app.current_user_id', %s, true)", [str(uid)])
+        repo.registra_device(
+            uid,
+            secret_encrypted=crypto_service.encrypt(segreto),
+            impronte_recupero=[totp_service.impronta_codice_recupero(c) for c in totp_service.nuovi_codici_recupero()],
+        )
+        repo.conferma_device(uid, passo=totp_service.passo_corrente() - 2)
+        with connection.cursor() as cur:
+            cur.execute("SELECT set_config('app.current_user_id', %s, true)", [str(self.admin_id)])
+
+        ip = "198.51.100.40"
+        url_secondo = "/api/v1/admin/token/secondo-fattore/"
+        # Primo passo: la password non basta.
+        r = self._login(nome, _PASSWORD, ip)
+        self.assertEqual(r.status_code, 200, r.content)
+        primo = r.json()
+        self.assertTrue(primo["two_factor_required"])
+        self.assertNotIn("access", primo)
+        self.assertNotIn("zeroerp_refresh", r.cookies)
+
+        # Secondo passo: il codice di adesso apre la sessione.
+        codice = pyotp.TOTP(segreto).now()
+        r = self._post(url_secondo, {"sfida": primo["sfida"], "codice": codice}, ip)
+        self.assertEqual(r.status_code, 200, r.content)
+        access = r.json()["data"]["access"]
+        self.assertIn("zeroerp_refresh", r.cookies)
+        self.assertIsNotNone(User.objects.get(id=uid).last_login)
+
+        # La sessione vale: una richiesta col Bearer passa autenticazione e cancello.
+        client = APIClient(REMOTE_ADDR=ip)
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+        self.assertEqual(client.get("/api/v1/core/me/").status_code, 200)
+
+        # Lo stesso codice, con una sfida nuova: l'anti-replay sul passo lo rifiuta.
+        sfida = self._login(nome, _PASSWORD, ip).json()["sfida"]
+        r = self._post(url_secondo, {"sfida": sfida, "codice": codice}, ip)
+        self.assertEqual(r.json()["error"]["code"], "E_TOTP_PASSO_GIA_USATO", r.content)
 
     # ⭐ Il riuso vuole il CONSENSO (`20260925-51`, brief §12.7): la prima
     # creazione si ferma con E_CREDENZIALE_DA_CONFERMARE, e passa solo

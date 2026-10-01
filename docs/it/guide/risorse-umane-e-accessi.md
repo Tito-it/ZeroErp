@@ -392,14 +392,15 @@ sistema. Il meccanismo e':
 
 1. **Al login**: se il flag e' attivo, la response JWT include `password_change_required: true`
 2. **Frontend**: il router guard redirect a `/change-password` e blocca ogni altra navigazione
-3. **Backend**: il middleware `PasswordChangeRequiredMiddleware` blocca tutte le API tranne:
+3. **Backend**: il cancello degli obblighi (`apps/core/api/cancello_obblighi.py`, dopo
+   l'autenticazione DRF) risponde 403 `E_CAMBIO_PASSWORD_RICHIESTO` a tutte le API tranne:
    * `POST /auth/change-password/`
    * `POST /auth/logout/`
    * `GET /core/me/`
 4. **Dopo il cambio**: il flag viene resettato, i vecchi token JWT invalidati, nuovi token rilasciati
 
-Il middleware opera in **fail-closed**: se il DB non risponde durante il check, l'accesso
-viene bloccato (503) piuttosto che concesso.
+Il cancello opera in **fail-closed**: se il DB non risponde durante il check, la richiesta
+fallisce con `E_DATABASE` piuttosto che passare.
 
 Chi lo accende e chi lo spegne:
 

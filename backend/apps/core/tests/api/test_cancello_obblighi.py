@@ -22,16 +22,20 @@ Indice test eseguiti:
 10) test_si_ferma_al_primo_pendente — pagina del secondo fattore chiusa finche' c'e' la password
 11) test_view_senza_dichiarazione_non_ammette_niente
 12) test_view_ammesse_dichiarate — logout e profilo tutti, cambio password il suo
+13) test_secondo_fattore_non_in_vigore_passa — senza la sua strada non ferma (T-3)
+14) test_ogni_obbligo_in_vigore_ha_la_sua_strada — una view negli URL che lo ammette
 """
 
 from unittest.mock import MagicMock, patch
 
 from django.db import DatabaseError
 from django.test import Client, SimpleTestCase
+from django.urls import URLPattern, URLResolver, get_resolver
 
 from apps.core.api.cancello_obblighi import (
     OBBLIGO_CAMBIO_PASSWORD,
     OBBLIGO_SECONDO_FATTORE,
+    OBBLIGHI_IN_VIGORE,
     TUTTI_GLI_OBBLIGHI,
     CambioPasswordRichiestoError,
     SecondoFattoreDaConfigurareError,
@@ -49,6 +53,10 @@ _URL_QUALUNQUE = "/api/v1/core/lookup/tipi-ruolo/EF/utilities/"
 _REPO_QUALUNQUE = "apps.core.api.views_lookup.LookupRepository"
 # La permission viene DOPO il cancello e non e' materia di questi test.
 _PERMISSION = "apps.core.api.permissions.ZeroERPPermission.has_permission"
+# Il secondo fattore entra in vigore con T-3: i test del suo meccanismo lo
+# accendono, cosi' il meccanismo resta provato fino ad allora.
+_IN_VIGORE = "apps.core.api.cancello_obblighi.OBBLIGHI_IN_VIGORE"
+_TUTTI_IN_VIGORE = patch(_IN_VIGORE, TUTTI_GLI_OBBLIGHI)
 
 
 # Scopo: I fatti come li restituisce `AuthRepository.get_fatti_obblighi`.
@@ -119,6 +127,7 @@ class CancelloObblighiBearerTests(JwtMockedApiTest):
         self.assertEqual(resp.status_code, 200, resp.content)
 
     # Scopo: Il secondo obbligo, con la stessa strada.
+    @_TUTTI_IN_VIGORE
     def test_bearer_con_secondo_fattore_da_configurare_e_fermato(self):
         resp = self._get(_fatti(totp=True, stato="ASSENTE"))
         self.assertEqual(resp.status_code, 403, resp.content)
@@ -136,6 +145,15 @@ class CancelloObblighiBearerTests(JwtMockedApiTest):
         resp = self._get(DatabaseError("giu'"))
         self.assertNotEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.json()["error"]["code"], "E_DATABASE")
+
+    # Scopo: Oggi il secondo fattore NON si puo' configurare (endpoint T-3,
+    #        pagina T-4): un obbligo che ferma tutto senza una strada mura
+    #        l'utenza. Il 2026-09-30 il SUPER_ADMIN (obbligo per PROFILO) non
+    #        apriva piu' nessuna pagina. Il fatto resta pendente, la richiesta
+    #        passa.
+    def test_secondo_fattore_non_in_vigore_passa(self):
+        resp = self._get(_fatti(totp=True, stato="ASSENTE"))
+        self.assertEqual(resp.status_code, 200, resp.content)
 
 
 class _View:
@@ -166,18 +184,21 @@ class RegolaObblighiTests(SimpleTestCase):
     def test_device_attivo_soddisfa_l_obbligo(self):
         self.assertEqual(obblighi_pendenti(_fatti(totp=True, stato="ATTIVO")), ())
 
+    @_TUTTI_IN_VIGORE
     @patch(_FATTI, return_value=_fatti(totp=True))
     def test_view_che_ammette_l_obbligo_passa(self, _f):
         verifica_obblighi(_View(frozenset({OBBLIGO_SECONDO_FATTORE})), 42)
 
     # Scopo: Con la password da cambiare, la pagina del secondo fattore
     #        resta chiusa: si risponde col PRIMO obbligo pendente.
+    @_TUTTI_IN_VIGORE
     @patch(_FATTI, return_value=_fatti(password=True, totp=True))
     def test_si_ferma_al_primo_pendente(self, _f):
         with self.assertRaises(CambioPasswordRichiestoError):
             verifica_obblighi(_View(frozenset({OBBLIGO_SECONDO_FATTORE})), 42)
         verifica_obblighi(_View(frozenset({OBBLIGO_CAMBIO_PASSWORD})), 42)
 
+    @_TUTTI_IN_VIGORE
     @patch(_FATTI, return_value=_fatti(totp=True))
     def test_view_senza_dichiarazione_non_ammette_niente(self, _f):
         with self.assertRaises(SecondoFattoreDaConfigurareError):
@@ -194,3 +215,23 @@ class RegolaObblighiTests(SimpleTestCase):
         self.assertEqual(LogoutView.obblighi_ammessi, TUTTI_GLI_OBBLIGHI)
         self.assertEqual(UserProfileView.obblighi_ammessi, TUTTI_GLI_OBBLIGHI)
         self.assertEqual(ChangePasswordView.obblighi_ammessi, frozenset({OBBLIGO_CAMBIO_PASSWORD}))
+
+    # Scopo: La regola di `OBBLIGHI_IN_VIGORE`: ogni obbligo che il cancello
+    #        fa rispettare ha, negli URL VERI, una view che lo ammette e non
+    #        e' una delle universali (logout, profilo) — la strada che lo
+    #        chiude. Quando T-3 accende il secondo fattore senza i suoi
+    #        endpoint, questo test lo dice prima di un'utenza murata.
+    def test_ogni_obbligo_in_vigore_ha_la_sua_strada(self):
+        strade: set[str] = set()
+
+        def visita(patterns) -> None:
+            for p in patterns:
+                if isinstance(p, URLResolver):
+                    visita(p.url_patterns)
+                elif isinstance(p, URLPattern):
+                    ammessi = getattr(getattr(p.callback, "cls", None), "obblighi_ammessi", None)
+                    if ammessi and ammessi != TUTTI_GLI_OBBLIGHI:
+                        strade.update(ammessi)
+
+        visita(get_resolver().url_patterns)
+        self.assertLessEqual(OBBLIGHI_IN_VIGORE, strade)

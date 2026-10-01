@@ -189,25 +189,27 @@ Se attivo, la response include:
 
 (il refresh, come sempre, nel `Set-Cookie`). Il token JWT viene comunque rilasciato (serve per chiamare `/change-password/`).
 
-### 2. Middleware blocco
+### 2. Cancello degli obblighi
 
-`PasswordChangeRequiredMiddleware` intercetta TUTTE le richieste `/api/v1/*` e blocca
-con 403 se il flag e' attivo. Endpoint consentiti:
+Il blocco lo fa il **cancello degli obblighi** (`apps/core/api/cancello_obblighi.py`), che
+`JwtAuditAuthentication` chiama a ogni richiesta col Bearer, **dopo** l'autenticazione DRF:
+e' il solo punto che conosce l'utente del token e che ogni view attraversa. Se la credenziale
+ha `deve_cambiare_password`, passano solo le view che dichiarano l'obbligo in
+`obblighi_ammessi`:
 
 - `POST /api/v1/auth/change-password/`
 - `POST /api/v1/auth/logout/`
 - `GET /api/v1/core/me/`
 
-Qualsiasi altro endpoint ritorna 403:
+Qualsiasi altro endpoint ritorna 403 `E_CAMBIO_PASSWORD_RICHIESTO` (a catalogo, classe
+`NON_PERMESSO`). Il superuser **non** e' esentato. Se il DB non risponde la richiesta fallisce
+con `E_DATABASE` (fail-closed), mai un «nessun obbligo».
 
-```json
-{
-  "error": {
-    "code": "E_CAMBIO_PASSWORD_RICHIESTO",
-    "message": "Devi cambiare la password prima di procedere."
-  }
-}
-```
+Lo stesso cancello ospita l'obbligo del secondo fattore (`E_TOTP_CONFIGURAZIONE_RICHIESTA`), che
+entra in vigore coi suoi endpoint di configurazione (lotto T-3 di
+[brief-be-fe-sicurezza-header-token-mfa](../../../dev/work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md)).
+Fino al 2026-09-30 il blocco era `PasswordChangeRequiredMiddleware`, che guardava
+`request.user` in `process_view`, prima dell'autenticazione DRF: per un Bearer non scattava mai.
 
 ### 3. Cambio password
 
@@ -217,35 +219,6 @@ Al successo, il flag viene resettato e i token precedenti invalidati.
 ### 4. Navigazione libera
 
 Con i nuovi token, tutte le API sono di nuovo accessibili.
-
----
-
-## Middleware — Comportamento in caso di errore DB
-
-Se la query per il flag fallisce (DB irraggiungibile), il middleware **blocca per sicurezza**
-(fail-closed) ritornando 503:
-
-```json
-{
-  "error": {
-    "code": "E_CAMBIO_PASSWORD_CHECK_FALLITO",
-    "message": "Impossibile verificare lo stato delle credenziali. Riprova."
-  }
-}
-```
-
-Superuser bypassa completamente il middleware.
-
-> ⚠️ Difetto noto ([E-1](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)): `E_CAMBIO_PASSWORD_RICHIESTO` ed
-> `E_CAMBIO_PASSWORD_CHECK_FALLITO` sono scritti a mano dal middleware e non sono a
-> catalogo codici: niente classe, `ui_action` ne' ripiego. La risposta 503 esce anche
-> senza `meta`.
->
-> ⛔ Difetto noto ([S-2](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md), verificato il 2026-09-28): il blocco gira in `process_view`,
-> dove per le richieste con JWT Bearer `request.user` e' ancora anonimo
-> (l'autenticazione DRF avviene dopo, nel dispatch della view): per i client Bearer
-> **non scatta**, e nessun'altra sede fa rispettare `deve_cambiare_password`. Si
-> sposta dopo l'autenticazione col lotto L-6 del piano accessi.
 
 ---
 
@@ -266,7 +239,7 @@ Superuser bypassa completamente il middleware.
 | `apps/core/db/token_repository.py` | Repository: create, find_valid, consume, invalidate_all |
 | `apps/core/services/token_service.py` | Service: hash, generate, validate, consume |
 | `apps/core/api/change_password_view.py` | Endpoint POST /auth/change-password/ |
-| `apps/core/middleware/password_change_middleware.py` | Blocco navigazione se flag attivo |
+| `apps/core/api/cancello_obblighi.py` | Blocco navigazione se flag attivo (cancello degli obblighi, dopo l'autenticazione DRF) |
 | `apps/core/db/auth_repository.py` | `get/set_deve_cambiare_password(auth_user_id)` — della credenziale, senza veste |
 | `apps/core/api/auth_views.py` | +flag password_change_required nella response login |
 
@@ -282,7 +255,6 @@ UserLanguageMiddleware
 CsrfViewMiddleware
 AuthenticationMiddleware
 JwtAuditMiddleware              ← reset GUC, guard BYPASSRLS (non autentica)
-PasswordChangeRequiredMiddleware ← blocca se deve cambiare password
 RequestLogMiddleware
 MessageMiddleware
 XFrameOptionsMiddleware
