@@ -17,7 +17,7 @@ Guide: brief `brief-db-magazzino-lotto-1-terreno-vuoto` (§4.7) · analisi caric
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-09-15 — Lotto 1 del magazzino)
+(rev 2026-09-15 — Lotto 1 del magazzino; rev 2026-10-01 — il contratto esce)
 
 **Il pezzo serializzato**: l'istanza fisica di un bene con matricola — un contatore,
 un'apparecchiatura, una stampante — che il magazzino sposta **uno alla volta**
@@ -26,8 +26,20 @@ smette di essere nostro: installato presso un cliente, in comodato, in riparazio
 
 Ogni asset dice: che cosa è (`articolo_id`), la sua **matricola** (`seriale`, unica), di chi
 è la **proprietà** (`ownership_id`: nostro, in conto deposito, del cliente — è la dimensione
-per la merce di terzi), in che **stato** è (`stato_id`), e — facoltativi — presso quale
-billing account e sotto quale contratto si trova.
+per la merce di terzi), in che **stato** è (`stato_id`), e — facoltativo — presso quale
+billing account si trova.
+
+---
+
+### L'asset non sa sotto quale contratto sta
+
+Fino al 30-09-2026 la tabella portava anche il **contratto** sotto cui il bene si trova,
+con un collegamento verso i contratti di vendita. Non lo leggeva e non lo scriveva
+nessuno, ed è uscito il 1° ottobre: l'asset fa parte del **registro** del magazzino, che è
+un servizio usato dai processi e non deve conoscerli
+([vista di controllo](/dbzero/dbops/manual/vw_magazzino_dipendenze_inverse)). Se un
+contratto dovrà sapere quali beni ha in carico, il legame nascerà **nel contratto**, e
+punterà all'asset.
 
 ---
 

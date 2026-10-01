@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I REGIMI FISCALI DEL TRACCIATO FatturaPA
+#   config.regimi_fiscali: RF01 ... RF20 (senza RF03, soppresso dal tracciato)
+#   Brief: brief-db-esigibilita-iva-per-cassa-emittente, sezioni 4.1, 8.4
+#
+# ⚠️ Mirror `loadUpdateData`, `runOnChange`: un valore si cambia nel CSV, mai
+#   con un UPDATE a parte (linee-guida-sql 11.2). Colonne di audit ai DEFAULT.
+# ⚠️ Chiave dell'upsert: `id`, fisso nel CSV, come config.modi_approvvigionamento.
+#   La FK di emittenti_fiscali va su codice_interno (20261001-17), quindi un
+#   reseed con id diversi non sposta niente.
+# ⚠️ Il catalogo segue le specifiche FatturaPA lette dal team DB il 2026-10-01:
+#   RF03 non c'e' (soppresso), RF20 c'e' (regime transfrontaliero di
+#   franchigia, specifiche 2025). DA VERIFICARE sulle specifiche in vigore
+#   insieme al consulente (brief, sezione 9): un codice che esce dal
+#   tracciato si spegne con attivo = false, non si cancella.
+# ⚠️ iva_per_cassa = true solo su RF17 (art. 32-bis). RF16 («IVA per cassa
+#   P.A.», art. 6 c. 5) resta false: e' la differita verso la PA, oggi
+#   assorbita dalla scissione dei pagamenti; e' una domanda per il consulente,
+#   non una regola da dedurre (brief, sezione 9).
+# ⚠️ annotazione_documento solo su RF17: e' l'unico regime per cui la regola
+#   produce righe D, e l'annotazione si stampa solo se il documento ne ha.
+# ⚠️ nullValue "NULL": annotazione_documento e' nullable, e una cella vuota su
+#   STRING entrerebbe come '' (il CHECK la rifiuterebbe).
+# ⚠️ Deve girare PRIMA di 20261001-16/-17 (backfill e FK), che lo presuppongono:
+#   in 80_data l'ordine e' quello dei nomi dei file.
+# ⚠️ Seed di CATALOGO: nessuna FK verso anagrafiche.*, nessun `context`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261001-15-seed-regimi-fiscali-mctit.yaml
+
+  - changeSet:
+      id: 20261001-15-seed-regimi-fiscali
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Seed config.regimi_fiscali: i codici RegimeFiscale del tracciato FatturaPA, con
+        iva_per_cassa = true e l'annotazione art. 32-bis sul solo RF17. Mirror
+        loadUpdateData. Brief: brief-db-esigibilita-iva-per-cassa-emittente, sezioni 4.1 e 8.4.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: regimi_fiscali
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/regimi_fiscali.csv
+            tableName: regimi_fiscali
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: codice, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: iva_per_cassa, type: BOOLEAN }
+              - column: { name: annotazione_documento, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column: { name: ordine, type: NUMERIC }
+              - column: { name: meta, type: JSON }
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DELETE FROM config.regimi_fiscali WHERE codice_interno ~ '^RF[0-9]{2}$';

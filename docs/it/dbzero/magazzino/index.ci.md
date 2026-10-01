@@ -1,7 +1,7 @@
 # Schema `magazzino`
 
 ## 📚 Tabelle (manuale)
-- [assets](manual/assets.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
+- [assets](manual/assets.md) — (rev 2026-09-15 — Lotto 1 del magazzino; rev 2026-10-01 — il contratto esce)
 - [causali](manual/causali.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [eventi_assets](manual/eventi_assets.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [inventari](manual/inventari.md) — (rev 2026-09-15 — Lotto 1 del magazzino)

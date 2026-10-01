@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PRESIDIO SUL REGIME CHE NESSUNO HA DICHIARATO (D-1, D-11)
+#   dbops.vw_emittenti_regime_non_confermato
+#   Brief: brief-db-esigibilita-iva-per-cassa-emittente, sezioni 4.1, 8.6 (D-1, D-11)
+#
+# -- PERCHE' ----------------------------------------------------
+#   D-1 da' a regime_fiscale_rf il default RF01: un emittente nasce
+#   «ordinario» anche se e' in IVA per cassa, e le sue fatture escono a
+#   esigibilita' immediata senza un errore. Un default e' una forma che
+#   nessuno ha dichiarato: questo presidio la rende visibile finche' una
+#   persona non conferma il regime (regime_fiscale_confermato_il, scritto dal
+#   form dell'emittente).
+#
+# -- PERCHE' TUTTI I REGIMI E NON SOLO RF01 ---------------------
+#   D-1 nomina RF01 perche' e' il default. Ma la conferma si azzera anche
+#   quando il regime cambia senza una conferma nuova
+#   (trg_emittenti_fiscali_a20_regime_conferma_upd): un RF17 non confermato
+#   e' lo stesso fatto, «nessuno ha dichiarato questo regime». Filtrare su
+#   RF01 sarebbe un letterale di codice in un presidio, e un buco.
+#
+# -- A CATALOGO -------------------------------------------------
+#   dbops.presidi (80_data/sql/dbops/presidi.csv): ZERO, SETTIMANALE,
+#   LIBERO — e' una condizione di prontezza, non un incidente, e
+#   anagrafiche.emittenti_fiscali non ha RLS. Solo emittenti attivi: uno
+#   spento non emette.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261001-14-create-vw-emittenti-regime-non-confermato-mctit.yaml
+
+  - changeSet:
+      id: 20261001-14-create-vw-emittenti-regime-non-confermato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_emittenti_regime_non_confermato: gli emittenti fiscali attivi il cui regime
+        fiscale nessuno ha confermato (regime_fiscale_confermato_il NULL). Deve restare
+        vuota. Presidio a catalogo (ZERO, SETTIMANALE). Brief:
+        brief-db-esigibilita-iva-per-cassa-emittente (D-1, D-11).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: anagrafiche
+            tableName: emittenti_fiscali
+            columnName: regime_fiscale_confermato_il
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_emittenti_regime_non_confermato AS
+              SELECT ef.id               AS emittente_fiscale_id,
+                     ef.codice           AS emittente_codice,
+                     ef.regime_fiscale_rf
+                FROM anagrafiche.emittenti_fiscali ef
+               WHERE ef.attivo IS TRUE
+                 AND ef.regime_fiscale_confermato_il IS NULL;
+
+              COMMENT ON VIEW dbops.vw_emittenti_regime_non_confermato IS
+                  'Gli emittenti fiscali attivi il cui regime fiscale nessuno ha confermato '
+                  '(regime_fiscale_confermato_il NULL): il regime e'' quello del default RF01 '
+                  '(D-1) o di un cambio senza conferma. DEVE restare VUOTA. ⛔ Copre un guasto '
+                  'che non assomiglia a un errore: un emittente in IVA per cassa lasciato a RF01 '
+                  'emette tutte le fatture a esigibilita'' immediata. Tutti i regimi e non solo '
+                  'RF01: un regime non confermato e'' un regime che nessuno ha dichiarato, '
+                  'qualunque codice abbia. Si svuota confermando il regime dal form '
+                  'dell''emittente. Brief: brief-db-esigibilita-iva-per-cassa-emittente (D-1, D-11).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_emittenti_regime_non_confermato;

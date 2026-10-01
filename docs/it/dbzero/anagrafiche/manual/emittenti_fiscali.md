@@ -34,6 +34,19 @@ avviene tramite la tabella di mapping `anagrafiche.emittenti_fiscali_billing_acc
 * `regime_fiscale_rf` identifica il **codice RF del tracciato fattura elettronica/SdI**
   del soggetto emittente e viene mantenuto in questa tabella perche' esposto come
   metadato del ruolo emittente nei flussi applicativi.
+  ⭐ Dal 2026-10-01 non è più un testo libero: è una FK su
+  [config.regimi_fiscali](/dbzero/config/tabelle/regimi_fiscali)`(codice_interno)`,
+  `NOT NULL DEFAULT 'RF01'`, e **decide l'esigibilità IVA** delle righe (un
+  emittente RF17 emette a esigibilità differita, salvo le esclusioni della regola
+  [script.fn_esigibilita_iva](/dbzero/script/funzioni/fn_esigibilita_iva)).
+* `regime_fiscale_confermato_il` / `regime_fiscale_confermato_da` dicono **chi ha
+  dichiarato** il regime e quando: con un default, un RF01 dichiarato e uno messo
+  dal default sarebbero la stessa riga. Le scrive il form dell'emittente; se il
+  regime cambia senza una conferma nuova si **azzerano** da sole
+  ([trgfn_emittenti_fiscali_regime_conferma](/dbzero/anagrafiche/funzioni/trgfn_emittenti_fiscali_regime_conferma)).
+  Un emittente attivo senza conferma compare nel presidio
+  [dbops.vw_emittenti_regime_non_confermato](/dbzero/dbops/views/vw_emittenti_regime_non_confermato).
+  Brief: `brief-db-esigibilita-iva-per-cassa-emittente` (D-1, D-9, D-11).
 * `bollo_auto`, `bollo_soglia`, `valuta_id` e `rounding_policy` sono configurazioni
   operative dell'emissione e appartengono al ruolo emittente.
 * `rounding_policy`, quando valorizzata, usa gli stessi valori ammessi della

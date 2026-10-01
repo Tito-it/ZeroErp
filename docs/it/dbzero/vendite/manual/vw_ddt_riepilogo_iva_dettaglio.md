@@ -56,17 +56,19 @@ emittente che non risolve.
 
 ---
 
-### Le quattro colonne sempre nulle sono volute
+### Natura sempre nulla, esigibilità e scissione dalla regola
 
-`natura_id`, `natura_codice`, `esigibilita`, `split_payment` sono costanti `NULL`, tipizzate
-esplicitamente (`NULL::integer`, `NULL::text`, `NULL::character(1)`, `NULL::boolean`).
+`natura_id` e `natura_codice` sono costanti `NULL`, tipizzate esplicitamente: servono ad
+**allineare la forma** a quella del riepilogo preventivi, e sul DDT la natura nasce con il
+documento fiscale.
 
-Non sono un lavoro lasciato a metà: servono ad **allineare la forma** a quella del riepilogo
-preventivi, così che un consumatore possa leggere le due viste con lo stesso codice. Sul DDT
-quei quattro attributi non esistono ancora — nascono con il documento fiscale.
-
-⚠️ Chi li legge da qui aspettandosi un valore troverà sempre `NULL`, e non è un dato mancante:
-è un attributo che a questo stadio del ciclo non è ancora stato deciso.
+⭐ `esigibilita` e `split_payment` **non sono più nulle** dal 2026-10-01 (D-6 di
+`brief-db-esigibilita-iva-per-cassa-emittente`): escono per codice IVA da
+[script.fn_esigibilita_iva_documento](/dbzero/script/funzioni/fn_esigibilita_iva_documento),
+con l'emittente e il billing account del DDT — la stessa regola delle righe di fattura,
+degli ordini e dei preventivi, calcolata al momento (il DDT non ha snapshot). Il cast
+`::character(1)` tiene il tipo della colonna. Un DDT senza `billing_account_id` dà
+`NULL`/`NULL`: il cliente non è noto.
 
 ---
 

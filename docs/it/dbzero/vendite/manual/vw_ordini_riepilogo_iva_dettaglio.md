@@ -61,7 +61,7 @@ e' la combinazione `ordine_id + iva_id + aliquota_effettiva`.
 | `iva_id`, `iva_codice`, `iva_descrizione` | Codice IVA e descrizioni da `config.iva` |
 | `iva_aliquota` | Aliquota effettiva usata per il calcolo |
 | `natura_id`, `natura_codice` | Sempre `NULL` per ordini |
-| `esigibilita`, `split_payment` | Sempre `NULL` per ordini |
+| `esigibilita`, `split_payment` | Dal 2026-10-01 (D-4): per codice IVA da [script.fn_esigibilita_iva_documento](/dbzero/script/funzioni/fn_esigibilita_iva_documento), con emittente e cliente dell'ordine — la stessa regola delle righe di fattura, calcolata al momento. Senza cliente: `NULL` |
 | `imponibile` | Imponibile aggregato e arrotondato a 2 decimali |
 | `imposta` | IVA calcolata sull'imponibile aggregato |
 | `arrotondamento` | Differenza tra full precision e imponibile arrotondato |

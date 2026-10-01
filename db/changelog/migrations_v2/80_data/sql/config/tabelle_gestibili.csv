@@ -86,3 +86,4 @@ id,codice_interno,schema_tabella,nome_tabella,app_label,model_name,lookup,pannel
 85,vendite.listini,vendite,listini,vendite,listino,true,false
 86,vendite.stati_commessa,vendite,stati_commessa,vendite,stati_commessa,true,true
 87,vendite.tipi_fondi_fattura,vendite,tipi_fondi_fattura,vendite,tipi_fondi_fattura,true,true
+88,config.regimi_fiscali,config,regimi_fiscali,config,regimi_fiscali,true,false

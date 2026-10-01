@@ -1,0 +1,162 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL RIEPILOGO IVA DELL'ORDINE PORTA ESIGIBILITA' E SCISSIONE (D-4)
+#   vendite.vw_ordini_riepilogo_iva_dettaglio
+#   Brief: brief-db-esigibilita-iva-per-cassa-emittente, sezione 4.5 (D-4)
+#
+# -- CHE COSA CAMBIA ----------------------------------------------
+#   Le colonne esigibilita e split_payment erano NULL fissi. Ora escono, per
+#   codice IVA, da script.fn_esigibilita_iva_documento con emittente
+#   (emittente_fiscale_id) e cliente (billing_account_id) del ordine: la
+#   stessa regola delle righe di fattura e del riepilogo del preventivo.
+#   Calcolate al momento: il documento non e' fiscale e non ha snapshot.
+#   Nome, ordine e tipo delle colonne invariati (CREATE OR REPLACE VIEW):
+#   ⚠️ il cast ::character(1) serve, un RETURNS TABLE perde il typmod.
+#   ⚠️ JOIN su vendite.ordini per le chiavi di testata: le righe di
+#   vw_ordini_righe_iva_base appartengono sempre a un ordine (FK).
+#   ⚠️ LEFT JOIN LATERAL ... ON true: la regola rende sempre una riga, ma i
+#   totali letti da questa vista non devono poter perdere un gruppo.
+#
+# -- SECURITY_INVOKER ----------------------------------------------
+#   Ri-specificata: CREATE OR REPLACE VIEW la azzererebbe (doc auto-gen).
+#
+# -- IL CORPO ------------------------------------------------------
+#   Dalla doc auto-generata (corpo vivo di 20260605-16); toccate le due colonne
+#   e il FROM. Natura resta NULL (fuori da D-4). Rollback: il corpo vivo.
+#   Lettori: vendite.fn_ricalcola_totali_ordine e script.fn_check_ordine_confermabile
+#   (leggono imponibile/imposta, non toccati).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261001-10-update-vw-ordini-riepilogo-iva-dettaglio-esigibilita-mctit.yaml
+
+  - changeSet:
+      id: 20261001-10-update-vw-ordini-riepilogo-iva-dettaglio-esigibilita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_ordini_riepilogo_iva_dettaglio: esigibilita e split_payment escono da
+        script.fn_esigibilita_iva_documento (emittente e cliente del ordine) invece che
+        NULL fissi. Colonne invariate, security_invoker ri-specificata. Brief:
+        brief-db-esigibilita-iva-per-cassa-emittente, sezione 4.5 (D-4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_esigibilita_iva_documento';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_ordini_riepilogo_iva_dettaglio
+              WITH (security_invoker=on) AS
+              WITH imponibili AS (
+                       SELECT b.ordine_id,
+                          b.iva_id,
+                          b.aliquota_effettiva,
+                          sum(b.imponibile_riga_full) AS imponibile_full
+                         FROM vendite.vw_ordini_righe_iva_base b
+                        GROUP BY b.ordine_id, b.iva_id, b.aliquota_effettiva
+                      ), aggregati AS (
+                       SELECT i.ordine_id,
+                          i.iva_id,
+                          i.aliquota_effettiva,
+                          round(i.imponibile_full, 2) AS imponibile,
+                          (i.imponibile_full - round(i.imponibile_full, 2)) AS arrotondamento
+                         FROM imponibili i
+                      ), riepilogo AS (
+                       SELECT a.ordine_id,
+                          a.iva_id,
+                          a.aliquota_effettiva,
+                          a.imponibile,
+                          round(((a.imponibile * COALESCE(a.aliquota_effettiva, (0)::numeric)) / (100)::numeric), 2) AS imposta,
+                          a.arrotondamento
+                         FROM aggregati a
+                      )
+               SELECT r.ordine_id,
+                  r.iva_id,
+                  iva.codice AS iva_codice,
+                  iva.descrizione AS iva_descrizione,
+                  r.aliquota_effettiva AS iva_aliquota,
+                  NULL::integer AS natura_id,
+                  NULL::text AS natura_codice,
+                  -- ⭐ rev 2026-10-01 (D-4): la stessa regola delle righe di fattura,
+                  --   per codice IVA, con emittente e cliente del documento. Il cast
+                  --   tiene il tipo della colonna: un RETURNS TABLE perde il typmod.
+                  e.esigibilita::character(1) AS esigibilita,
+                  e.split_payment AS split_payment,
+                  r.imponibile,
+                  r.imposta,
+                  r.arrotondamento,
+                  (r.imponibile + r.imposta) AS totale_riga
+                 FROM riepilogo r
+                   JOIN vendite.ordini d ON d.id = r.ordine_id
+                   LEFT JOIN config.iva iva ON iva.id = r.iva_id
+                   -- LEFT ... ON true: la regola rende sempre una riga, ma un totale non
+                   -- deve poter perdere un gruppo per un join.
+                   LEFT JOIN LATERAL script.fn_esigibilita_iva_documento(
+                               d.emittente_fiscale_id, d.billing_account_id, r.iva_id) e ON true;
+
+              COMMENT ON VIEW vendite.vw_ordini_riepilogo_iva_dettaglio IS
+                  'Riepilogo IVA per ordine vendita derivato dalle righe ordine attive. Aggrega per ordine, iva_id e aliquota effettiva; arrotonda l''imponibile dopo la SUM e calcola l''imposta sull''imponibile aggregato arrotondato. Natura resta NULL. Esigibilita e split_payment (rev 2026-10-01, D-4 di brief-db-esigibilita-iva-per-cassa-emittente) escono per codice IVA da script.fn_esigibilita_iva_documento con emittente e cliente del documento: la stessa regola delle righe di fattura, calcolata al momento (il documento non e'' fiscale e non ha snapshot).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_ordini_riepilogo_iva_dettaglio
+              WITH (security_invoker=on) AS
+              WITH imponibili AS (
+                       SELECT b.ordine_id,
+                          b.iva_id,
+                          b.aliquota_effettiva,
+                          sum(b.imponibile_riga_full) AS imponibile_full
+                         FROM vendite.vw_ordini_righe_iva_base b
+                        GROUP BY b.ordine_id, b.iva_id, b.aliquota_effettiva
+                      ), aggregati AS (
+                       SELECT i.ordine_id,
+                          i.iva_id,
+                          i.aliquota_effettiva,
+                          round(i.imponibile_full, 2) AS imponibile,
+                          (i.imponibile_full - round(i.imponibile_full, 2)) AS arrotondamento
+                         FROM imponibili i
+                      ), riepilogo AS (
+                       SELECT a.ordine_id,
+                          a.iva_id,
+                          a.aliquota_effettiva,
+                          a.imponibile,
+                          round(((a.imponibile * COALESCE(a.aliquota_effettiva, (0)::numeric)) / (100)::numeric), 2) AS imposta,
+                          a.arrotondamento
+                         FROM aggregati a
+                      )
+               SELECT r.ordine_id,
+                  r.iva_id,
+                  iva.codice AS iva_codice,
+                  iva.descrizione AS iva_descrizione,
+                  r.aliquota_effettiva AS iva_aliquota,
+                  NULL::integer AS natura_id,
+                  NULL::text AS natura_codice,
+                  NULL::character(1) AS esigibilita,
+                  NULL::boolean AS split_payment,
+                  r.imponibile,
+                  r.imposta,
+                  r.arrotondamento,
+                  (r.imponibile + r.imposta) AS totale_riga
+                 FROM (riepilogo r
+                   LEFT JOIN config.iva iva ON ((iva.id = r.iva_id)));
+
+              COMMENT ON VIEW vendite.vw_ordini_riepilogo_iva_dettaglio IS
+                  'Riepilogo IVA per ordine vendita derivato dalle righe ordine attive. Aggrega per ordine, iva_id e aliquota effettiva; arrotonda l''imponibile dopo la SUM e calcola l''imposta sull''imponibile aggregato arrotondato. Natura, esigibilita e split_payment sono NULL per ordini finche'' non esiste uno snapshot dedicato.';

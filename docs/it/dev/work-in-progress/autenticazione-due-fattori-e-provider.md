@@ -9,9 +9,20 @@
 > P-1 e P-2 applicati il 2026-09-25). La versione di aprile metteva l'obbligo
 > del 2FA sulla veste (`identita_digitali.totp_obbligatorio`) e citava
 > `risorse_umane_auth_user`: entrambe le cose non esistono più.
-> **Stato**: **PIANIFICATO — non in sviluppo.** Decisione di Tid (D-10,
-> 2026-09-24): il TOTP è una funzione nuova, non un difetto, e non si
-> costruisce ora. Prima di partire vanno chiuse le **domande aperte del §F**.
+> **Stato**:
+>
+> * **Parte A (TOTP): 🔵 IN SVILUPPO.** Il rinvio di D-10 (2026-09-24: *«funzione
+>   nuova, non un difetto, non si costruisce ora»*) è superato dal
+>   [brief sicurezza](brief-be-fe-sicurezza-header-token-mfa.md) §3 (decisioni
+>   di Tid del 2026-09-26/28). **DB chiuso il 2026-09-29**
+>   ([brief-db-secondo-fattore-totp.md](brief-db-secondo-fattore-totp.md):
+>   obbligo sulla credenziale o sul profilo, sei verbi del device, anti-replay
+>   sul passo); **BE/FE in corso dal 2026-09-30** coi lotti T-0 → T-5 del brief
+>   sicurezza §3.4-bis. ⚠️ La sede del lavoro sono quei due brief: la Parte A
+>   di questo documento resta come **disegno d'origine**, e dove dissente vale
+>   il brief.
+> * **Parte B (provider esterni / OAuth): PIANIFICATO — non in sviluppo.** Prima
+>   di partire vanno chiuse le **domande aperte del §F**.
 >
 > Copertura:
 >

@@ -7,7 +7,7 @@ CREATE FUNCTION fn_posta_reso(p_reso_id bigint)
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION magazzino.fn_posta_reso(p_reso_id bigint)
+CREATE OR REPLACE FUNCTION vendite.fn_posta_reso(p_reso_id bigint)
  RETURNS TABLE(movimento_id bigint, rientro_id bigint, qta numeric)
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -25,15 +25,15 @@ DECLARE
     v_rientro     record;
 BEGIN
     IF p_reso_id IS NULL OR p_reso_id <= 0 THEN
-        PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_reso',
-            'E_MAG_CHIAMATA_NON_VALIDA',
+        PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_reso',
+            'E_VENDITE_CHIAMATA_NON_VALIDA',
             jsonb_build_object('detail', 'reso maggiore di zero', 'p_reso_id', p_reso_id),
-            NULL::uuid, 'magazzino.fn_posta_reso', 'p_reso_id (obbligatorio, maggiore di zero)');
+            NULL::uuid, 'vendite.fn_posta_reso', 'p_reso_id (obbligatorio, maggiore di zero)');
     END IF;
 
     SELECT r.* INTO v_reso FROM vendite.resi r WHERE r.id = p_reso_id;
     IF NOT FOUND THEN
-        PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_reso',
+        PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_reso',
             'E_RESO_NOT_FOUND', jsonb_build_object('reso_id', p_reso_id), NULL::uuid,
             p_reso_id::text);
     END IF;
@@ -45,7 +45,7 @@ BEGIN
       FROM config.sorgenti s
      WHERE s.codice_interno = 'DDT_VENDITA_PRELIEVO';
     IF v_sorgente_id IS NULL OR v_prel_src_id IS NULL THEN
-        PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_reso',
+        PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_reso',
             'E_CONFIG_MANCANTE',
             jsonb_build_object('config', 'config.sorgenti.RESO_VENDITA_RIENTRO / DDT_VENDITA_PRELIEVO'),
             NULL::uuid, VARIADIC ARRAY['sorgenti RESO_VENDITA_RIENTRO (attiva) e DDT_VENDITA_PRELIEVO (config.sorgenti)']);
@@ -96,8 +96,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION magazzino.fn_posta_reso(p_reso_id bigint)
-IS 'Il posting di un reso: un carico per rientro (sorgente RESO_VENDITA_RIENTRO, D-3b-d), righe attive, in ordine di riga e di rientro. Nel magazzino del reso, causale CARICO_RESO_VEN, quantita'' positiva, articolo, lotto e seriale dal prelievo d''origine, ubicazione del rientro, data del reso. Il costo e'' quello dell''USCITA del prelievo d''origine (sorgente DDT_VENDITA_PRELIEVO, non uno storno: D-3b-e), passato alla primitiva come p_costo_unitario: la merce rientra al valore al quale era uscita; uscita senza costo -> NULL, e vale la media. Non ricontrolla (la primitiva e'' la rete, la check della merce ha gia'' parlato), non crea rientri, non guarda lo stato: QUANDO lo decide il verbo. SECURITY DEFINER, RISERVATA: ci si arriva solo da vendite.fn_conferma_reso. Ritorna (movimento_id, rientro_id, qta). Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso (P-7).';
+COMMENT ON FUNCTION vendite.fn_posta_reso(p_reso_id bigint)
+IS 'Il posting di un reso: un carico per rientro (sorgente RESO_VENDITA_RIENTRO, D-3b-d), righe attive, in ordine di riga e di rientro. Nel magazzino del reso, causale CARICO_RESO_VEN, quantita'' positiva, articolo, lotto e seriale dal prelievo d''origine, ubicazione del rientro, data del reso. Il costo e'' quello dell''USCITA del prelievo d''origine (sorgente DDT_VENDITA_PRELIEVO, non uno storno: D-3b-e), passato alla primitiva come p_costo_unitario: la merce rientra al valore al quale era uscita; uscita senza costo -> NULL, e vale la media. Non ricontrolla (la primitiva e'' la rete, la check della merce ha gia'' parlato), non crea rientri, non guarda lo stato: QUANDO lo decide il verbo. SECURITY DEFINER, RISERVATA: ci si arriva solo da vendite.fn_conferma_reso. Ritorna (movimento_id, rientro_id, qta). Sta in vendite e non in magazzino: chi muove merce scrive il proprio posting e chiama la primitiva, il registro non legge le tabelle di un documento (D-2). Fino al 2026-10-01 era magazzino.fn_posta_reso. Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso (P-7), brief-db-magazzino-registro-anello-interno (P-2).';
 ```
 
 ---

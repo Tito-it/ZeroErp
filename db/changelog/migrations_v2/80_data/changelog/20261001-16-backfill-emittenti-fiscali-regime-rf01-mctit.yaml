@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BACKFILL (D-1): GLI EMITTENTI COL REGIME VUOTO -> RF01
+#   anagrafiche.emittenti_fiscali.regime_fiscale_rf NULL o '' -> 'RF01'
+#   Brief: brief-db-esigibilita-iva-per-cassa-emittente, sezioni 4.1, 8.6 (D-1)
+#
+# -- IL CANCELLO, PRIMA ------------------------------------------
+#   La colonna e' un varchar libero fino a 20261001-17, che la lega al
+#   catalogo con una FK. Un valore NON vuoto e fuori catalogo ('rf17 ',
+#   'RF 17', un codice inventato) non si corregge da solo: indovinarlo
+#   sarebbe normalizzare in silenzio un dato fiscale. La preCondition HALT
+#   ferma il migrate e li elenca la query qui sotto; si correggono a mano.
+#   ⚠️ «Oggi sono vuoti» non e' un motivo per togliere il cancello: la
+#   colonna li ammette (regola zero).
+#   ⚠️ preCondition sul contenuto di 80_data, ma DENTRO 80_data e dopo il
+#   seed 20261001-15: e' la timeline giusta (linee-guida-sql 11.4 vieta
+#   00_schema/20_code). Su un DB da zero emittenti_fiscali e' vuota o
+#   seminata senza la colonna: il conteggio e' zero.
+#
+#     SELECT id, codice, regime_fiscale_rf
+#       FROM anagrafiche.emittenti_fiscali ef
+#      WHERE NULLIF(btrim(ef.regime_fiscale_rf), '') IS NOT NULL
+#        AND NOT EXISTS (SELECT 1 FROM config.regimi_fiscali rf
+#                         WHERE rf.codice_interno = ef.regime_fiscale_rf);
+#
+# -- IL BACKFILL ---------------------------------------------------
+#   Vuoto (NULL o solo spazi) -> RF01, la decisione D-1. Non e' una conferma:
+#   regime_fiscale_confermato_il resta NULL, e il presidio
+#   dbops.vw_emittenti_regime_non_confermato mostra queste righe finche' una
+#   persona non conferma il regime.
+#   ⚠️ L'UPDATE attraversa i trigger di emittenti_fiscali (audit, storico, la
+#   conferma che si azzera: era gia' NULL). Transazione separata dal SET NOT
+#   NULL e dalla FK (20261001-17): eventi trigger in sospeso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261001-16-backfill-emittenti-fiscali-regime-rf01-mctit.yaml
+
+  - changeSet:
+      id: 20261001-16-backfill-emittenti-fiscali-regime-rf01
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Backfill anagrafiche.emittenti_fiscali.regime_fiscale_rf vuoto -> RF01 (D-1), dietro
+        un cancello HALT sui valori non vuoti fuori dal catalogo config.regimi_fiscali (si
+        correggono a mano). Idempotente. Brief: brief-db-esigibilita-iva-per-cassa-emittente (D-1).
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >-
+            Ci sono emittenti con regime_fiscale_rf valorizzato e fuori dal catalogo
+            config.regimi_fiscali: vanno corretti a mano (query nell'intestazione del
+            changeSet) prima della FK.
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: regimi_fiscali
+            - sqlCheck:
+                expectedResult: "0"
+                sql: |
+                  SELECT count(*)
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE NULLIF(btrim(ef.regime_fiscale_rf), '') IS NOT NULL
+                     AND NOT EXISTS (SELECT 1 FROM config.regimi_fiscali rf
+                                      WHERE rf.codice_interno = ef.regime_fiscale_rf);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $BACKFILL$
+              DECLARE
+                  v_updated integer;
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM config.regimi_fiscali
+                                  WHERE codice_interno = 'RF01' AND attivo IS TRUE) THEN
+                      RAISE EXCEPTION
+                          'Regime RF01 non trovato o spento in config.regimi_fiscali: '
+                          'seed 20261001-15 non applicato.';
+                  END IF;
+
+                  UPDATE anagrafiche.emittenti_fiscali
+                     SET regime_fiscale_rf = 'RF01'
+                   WHERE NULLIF(btrim(regime_fiscale_rf), '') IS NULL;
+
+                  GET DIAGNOSTICS v_updated = ROW_COUNT;
+                  RAISE NOTICE 'Backfill emittenti_fiscali.regime_fiscale_rf vuoto -> RF01: % righe',
+                      v_updated;
+              END
+              $BACKFILL$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Non reversibile per riga (non si sa quali erano vuoti): RF01 resta.
+              SELECT 1;

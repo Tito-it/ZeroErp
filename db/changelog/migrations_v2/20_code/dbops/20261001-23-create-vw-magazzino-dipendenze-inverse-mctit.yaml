@@ -1,0 +1,186 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-6 — IL CANCELLO: il registro di magazzino non nomina i suoi consumatori
+#   dbops.vw_magazzino_dipendenze_inverse
+#   Brief: brief-db-magazzino-registro-anello-interno, sezioni 2 (D-1) e 4
+#
+# La matrice delle dipendenze della mappa concentrica era SCRITTA, e nessun
+# test la controllava: il verso inverso (magazzino -> vendite) e' entrato coi
+# Lotti 3 e 3-bis senza che niente diventasse rosso. Da qui la regola e' un
+# controllo, sul codice vivo:
+#
+#   nessun oggetto dello schema `magazzino` nomina uno schema di processo.
+#
+# ── IL PERIMETRO E' DICHIARATO, NON DEDOTTO ─────────────────────────────
+#   Gli schemi di processo (anello 3) sono scritti nella vista: `vendite`,
+#   `acquisti`, `pagamenti`. Uno schema di processo nuovo si aggiunge QUI, con
+#   un changeSet che qualcuno firma. `contabilita` non c'e': e' vuoto e fuori
+#   perimetro (PROJECT_CONTEXT).
+#   ⚠️ Lo schema `magazzino` contiene anche i documenti di magazzino (inventari,
+#   rettifiche, trasferimenti interni: anello 3, D-1). La regola vale anche per
+#   loro: fra processi la dipendenza sarebbe laterale, vietata comunque.
+#
+# ── DUE LENTI, PERCHE' IL CATALOGO NON VEDE TUTTO ───────────────────────
+#   CATALOGO — pg_depend: ogni dipendenza che PostgreSQL registra da un
+#     oggetto di magazzino verso una tabella, vista, sequenza, funzione o tipo
+#     di uno schema di processo. Copre FK (pg_constraint), viste (pg_rewrite),
+#     default, policy, trigger (la funzione eseguita), i tipi nella firma di una
+#     funzione e i corpi SQL standard (BEGIN ATOMIC). E' esatta: non legge testo.
+#     ⚠️ Regole (le viste), trigger, policy e default non hanno uno schema
+#     proprio — pg_identify_object lo da' NULL — e prendono quello della tabella
+#     che li porta. Senza, la lente sarebbe cieca sulle viste: l'ha detto il
+#     testimone del pgTAP alla prima prova (2026-10-01).
+#   CORPO — il sorgente delle funzioni di cui il catalogo non registra le
+#     dipendenze (plpgsql e sql a stringa: prosqlbody NULL), con i commenti di
+#     riga `--` TOLTI: un presidio sul testo si accende sulla prosa che lo
+#     spiega (lezione del rubinetto del primo motivo). Cerca `<schema>.` a
+#     inizio parola. I `COMMENT ON` non stanno in prosrc: i rimandi nei commenti
+#     degli oggetti restano liberi.
+#
+# ── CHE COSA NON VEDE, DICHIARATO ───────────────────────────────────────
+#   * gli ARGOMENTI dei trigger: i `block_deact` che il framework ATTIVO monta
+#     sul padre (es. trg_magazzini_a10_ddt_block_deact_upd nomina
+#     'vendite','ddt' come argomento di dbops.trgfn_prevent_deactivate_if_children)
+#     sono il riflesso meccanico di una FK che punta VERSO il registro: il verso
+#     giusto. Sono stringhe passate a una funzione di dbops, non dipendenze;
+#   * un nome di schema composto a runtime (format('%I.%I', ...)) o fra
+#     virgolette doppie ("vendite".ddt): nessuna funzione di magazzino lo fa.
+#
+# ── NATURA: CANCELLO ────────────────────────────────────────────────────
+#   Come `vw_audit_log_scrittori_fuori_perimetro`: DEVE essere vuota, e una riga
+#   fa rosso db/pgtap/magazzino/test-registro-non-nomina-i-consumatori-v1.sql,
+#   che gira in CI e prova anche che la lente veda (sei testimoni costruiti:
+#   una funzione, una vista, una FK, un trigger, una policy, un default). A
+#   catalogo in dbops.presidi con
+#   cadenza MAI: non entra nel digest, ferma la build. ZERO e non una soglia:
+#   dopo P-1 … P-4 e D-3 il conteggio e' zero, e una soglia lascerebbe crescere
+#   il buco.
+#
+# ⚠️ `security_invoker=true` va ri-specificato a ogni CREATE OR REPLACE VIEW:
+#   PostgreSQL lo azzera. Legge solo il catalogo: chiunque puo'. GRANT
+#   all'app in 90_end/20261001-26 (su dev il loop ci_apply non gira da solo).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261001-23-create-vw-magazzino-dipendenze-inverse-mctit.yaml
+
+  - changeSet:
+      id: 20261001-23-create-vw-magazzino-dipendenze-inverse
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea dbops.vw_magazzino_dipendenze_inverse: gli oggetti dello schema magazzino che
+        nominano uno schema di processo (vendite, acquisti, pagamenti), dal catalogo
+        (pg_depend: FK, viste, firme, trigger, policy) e dal corpo delle funzioni senza
+        commenti. Deve restare vuota: il registro di magazzino e' un servizio dell'anello 2 e
+        non conosce i suoi consumatori (D-1). Natura CANCELLO, presidiata dal pgTAP
+        test-registro-non-nomina-i-consumatori-v1. Brief:
+        brief-db-magazzino-registro-anello-interno, sezione 4 (P-6).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_magazzino_dipendenze_inverse
+              WITH (security_invoker = true) AS
+              WITH schemi_processo AS (
+                  -- ⭐ Il perimetro DICHIARATO: uno schema di processo nuovo si aggiunge qui.
+                  SELECT unnest(ARRAY['vendite', 'acquisti', 'pagamenti']::name[]) AS nspname
+              ), nominabili AS (
+                  -- Gli oggetti degli schemi di processo che una dipendenza puo' nominare.
+                  SELECT 'pg_class'::regclass AS classid, c.oid, n.nspname
+                    FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname IN (SELECT sp.nspname FROM schemi_processo sp)
+                  UNION ALL
+                  SELECT 'pg_proc'::regclass, p.oid, n.nspname
+                    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname IN (SELECT sp.nspname FROM schemi_processo sp)
+                  UNION ALL
+                  SELECT 'pg_type'::regclass, t.oid, n.nspname
+                    FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+                   WHERE n.nspname IN (SELECT sp.nspname FROM schemi_processo sp)
+              ), dal_catalogo AS (
+                  -- Lente 1: cio' che PostgreSQL registra. Esatta, non legge testo.
+                  SELECT o.identity AS oggetto,
+                         o.type     AS tipo_oggetto,
+                         'CATALOGO'::text AS come,
+                         x.nspname::text  AS schema_nominato,
+                         r.identity AS nominato
+                    FROM pg_depend d
+                    JOIN nominabili x ON x.classid = d.refclassid AND x.oid = d.refobjid
+                    CROSS JOIN LATERAL pg_identify_object(d.classid, d.objid, d.objsubid) o
+                    CROSS JOIN LATERAL pg_identify_object(d.refclassid, d.refobjid, d.refobjsubid) r
+                    -- ⚠️ Regole (cioe' viste), trigger, policy e default non hanno uno
+                    --    schema proprio: pg_identify_object lo da' NULL. Il loro schema
+                    --    e' quello della tabella che li porta.
+                    LEFT JOIN LATERAL (
+                        SELECT rw.ev_class AS relid FROM pg_rewrite rw
+                         WHERE d.classid = 'pg_rewrite'::regclass AND rw.oid = d.objid
+                        UNION ALL
+                        SELECT tg.tgrelid FROM pg_trigger tg
+                         WHERE d.classid = 'pg_trigger'::regclass AND tg.oid = d.objid
+                        UNION ALL
+                        SELECT po.polrelid FROM pg_policy po
+                         WHERE d.classid = 'pg_policy'::regclass AND po.oid = d.objid
+                        UNION ALL
+                        SELECT ad.adrelid FROM pg_attrdef ad
+                         WHERE d.classid = 'pg_attrdef'::regclass AND ad.oid = d.objid
+                    ) portatore ON true
+                    LEFT JOIN pg_class pc ON pc.oid = portatore.relid
+                    LEFT JOIN pg_namespace pn ON pn.oid = pc.relnamespace
+                   WHERE d.deptype IN ('n', 'a')
+                     AND COALESCE(o.schema, pn.nspname::text) = 'magazzino'
+              ), sorgenti AS (
+                  -- Lente 2: i corpi che il catalogo non segue, senza i commenti di riga.
+                  SELECT p.oid, regexp_replace(p.prosrc, '--[^\n]*', '', 'g') AS corpo
+                    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'magazzino'
+                     AND p.prosqlbody IS NULL
+              ), dal_corpo AS (
+                  SELECT (pg_identify_object('pg_proc'::regclass, s.oid, 0)).identity AS oggetto,
+                         'function'::text AS tipo_oggetto,
+                         'CORPO'::text    AS come,
+                         sp.nspname::text AS schema_nominato,
+                         m.nome[1]        AS nominato
+                    FROM sorgenti s
+                    CROSS JOIN schemi_processo sp
+                    CROSS JOIN LATERAL regexp_matches(s.corpo, '\m(' || sp.nspname || '\.\w+)', 'gi') AS m(nome)
+              )
+              SELECT u.oggetto,
+                     u.tipo_oggetto,
+                     u.come,
+                     u.schema_nominato,
+                     string_agg(DISTINCT u.nominato, ', ' ORDER BY u.nominato) AS nominati
+                FROM (SELECT * FROM dal_catalogo
+                      UNION ALL
+                      SELECT * FROM dal_corpo) u
+               GROUP BY u.oggetto, u.tipo_oggetto, u.come, u.schema_nominato
+               ORDER BY u.oggetto, u.schema_nominato;
+
+              COMMENT ON VIEW dbops.vw_magazzino_dipendenze_inverse IS
+                  'CANCELLO — deve restare VUOTA. Gli oggetti dello schema magazzino che nominano '
+                  'uno schema di processo (vendite, acquisti, pagamenti: il perimetro e'' scritto '
+                  'nella vista, uno schema nuovo si aggiunge qui). Il registro di magazzino e'' un '
+                  'servizio dell''anello 2 (D-1): chi muove merce scrive il proprio posting e chiama '
+                  'la primitiva, e il registro non conosce i suoi consumatori. Due lenti: CATALOGO '
+                  '(pg_depend — FK, viste, default, policy, trigger, firme, corpi SQL standard) e '
+                  'CORPO (prosrc delle funzioni senza dipendenze registrate, commenti di riga tolti). '
+                  'Non vede gli argomenti dei trigger (i block_deact generati dal framework ATTIVO '
+                  'riflettono una FK che punta verso il registro: il verso giusto). Una riga fa '
+                  'rosso db/pgtap/magazzino/test-registro-non-nomina-i-consumatori-v1.sql, che '
+                  'gira in CI. security_invoker: legge solo il catalogo. Brief: '
+                  'brief-db-magazzino-registro-anello-interno (P-6).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_magazzino_dipendenze_inverse;

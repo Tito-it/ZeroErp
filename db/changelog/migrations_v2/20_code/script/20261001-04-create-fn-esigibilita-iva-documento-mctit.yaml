@@ -1,0 +1,147 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE PARTI DI UN DOCUMENTO DI VENDITA, PER LA REGOLA DELL'ESIGIBILITA'
+#   script.fn_esigibilita_iva_documento(p_emittente_fiscale_id,
+#       p_billing_account_id, p_iva_id, p_regime_fiscale_rf DEFAULT NULL)
+#   Brief: brief-db-esigibilita-iva-per-cassa-emittente, sezioni 4.5, 8.2, 8.8 (D-4, D-6, D-8)
+#
+# -- PERCHE' ESISTE ---------------------------------------------
+#   Preventivi, ordini e DDT (D-4, D-6) e la fattura chiedono la stessa cosa
+#   con le stesse chiavi di testata: l'emittente fiscale e il billing
+#   account del cliente. Quattro chiamanti con la stessa catena di join sono
+#   quattro copie (regola del 2): la catena sta qui, e la regola resta in
+#   script.fn_esigibilita_iva.
+#
+# -- p_regime_fiscale_rf: IL REGIME CONGELATO DEL DOCUMENTO (D-8) --
+#   La fattura congela il regime nello snapshot dell'intestazione
+#   (vendite.fn_snapshot_intestazione_fattura). Da quel momento le righe
+#   devono seguire il regime STAMPATO in testata, non quello vivo
+#   dell'emittente, o testata e righe direbbero due regimi diversi.
+#   vendite.fn_esigibilita_iva_fattura lo passa qui; i documenti fratelli
+#   non hanno snapshot e non lo passano (DEFAULT NULL = il regime vivo).
+#   ⚠️ Non e' un filtro «p IS NULL OR ...»: e' una fonte di valore, e il
+#   COALESCE sceglie fra due fonti dello stesso dato.
+#
+# -- SECURITY INVOKER --------------------------------------------
+#   Legge emittente, billing account e soggetto con i diritti di chi chiama,
+#   come facevano il trigger e il risolutore. Un cliente fuori perimetro
+#   diventa «cliente non noto»: la coppia esce NULL/NULL, che e' la risposta
+#   onesta (D32), non un'affermazione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261001-04-create-fn-esigibilita-iva-documento-mctit.yaml
+
+  - changeSet:
+      id: 20261001-04-create-fn-esigibilita-iva-documento
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_esigibilita_iva_documento: risolve le parti di un documento di vendita
+        (regime per cassa dell'emittente, o quello congelato passato dal chiamante;
+        scissione e partita IVA del cliente dal billing account) e chiama
+        script.fn_esigibilita_iva. Usata dalla fattura e dai riepiloghi di preventivi,
+        ordini e DDT. Brief: brief-db-esigibilita-iva-per-cassa-emittente (D-4, D-6, D-8).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_esigibilita_iva';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_esigibilita_iva_documento(
+                  p_emittente_fiscale_id  anagrafiche.emittenti_fiscali.id%TYPE,
+                  p_billing_account_id    anagrafiche.billing_account.id%TYPE,
+                  p_iva_id                config.iva.id%TYPE,
+                  p_regime_fiscale_rf     anagrafiche.emittenti_fiscali.regime_fiscale_rf%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE(
+                  esigibilita    vendite.fatture_righe.esigibilita%TYPE,
+                  split_payment  vendite.fatture_righe.split_payment%TYPE
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: le parti di un documento di vendita per
+              --   script.fn_esigibilita_iva. p_regime_fiscale_rf = il regime
+              --   congelato del documento, se c'e' (la fattura); altrimenti
+              --   quello vivo dell'emittente.
+              DECLARE
+                  v_regime     anagrafiche.emittenti_fiscali.regime_fiscale_rf%TYPE;
+                  v_per_cassa  config.regimi_fiscali.iva_per_cassa%TYPE;
+                  v_split      anagrafiche.soggetti.split_payment%TYPE;
+                  v_piva       anagrafiche.soggetti.partita_iva%TYPE;
+              BEGIN
+                  v_regime := NULLIF(btrim(p_regime_fiscale_rf), '');
+
+                  IF v_regime IS NULL AND p_emittente_fiscale_id IS NOT NULL THEN
+                      SELECT ef.regime_fiscale_rf
+                        INTO v_regime
+                        FROM anagrafiche.emittenti_fiscali ef
+                       WHERE ef.id = p_emittente_fiscale_id;
+                  END IF;
+
+                  -- Un codice fuori catalogo resta «regime non noto» (NULL): la FK
+                  -- lo impedisce sulla colonna viva, ma uno snapshot e' un testo.
+                  IF v_regime IS NOT NULL THEN
+                      SELECT rf.iva_per_cassa
+                        INTO v_per_cassa
+                        FROM config.regimi_fiscali rf
+                       WHERE rf.codice_interno = v_regime;
+                  END IF;
+
+                  -- Il cliente: lo stesso percorso che il trigger di riga
+                  -- usava per la scissione (billing account -> ruolo -> soggetto).
+                  IF p_billing_account_id IS NOT NULL THEN
+                      SELECT s.split_payment, s.partita_iva
+                        INTO v_split, v_piva
+                        FROM anagrafiche.billing_account ba
+                        JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
+                        JOIN anagrafiche.soggetti s        ON s.id  = sr.soggetto_id
+                       WHERE ba.id = p_billing_account_id;
+                  END IF;
+
+                  RETURN QUERY
+                  SELECT e.esigibilita, e.split_payment
+                    FROM script.fn_esigibilita_iva(v_per_cassa, v_split, v_piva, p_iva_id) e;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_esigibilita_iva_documento(
+                  anagrafiche.emittenti_fiscali.id%TYPE,
+                  anagrafiche.billing_account.id%TYPE,
+                  config.iva.id%TYPE,
+                  anagrafiche.emittenti_fiscali.regime_fiscale_rf%TYPE) IS
+                  'Le parti di un documento di vendita per la regola dell''esigibilita'' '
+                  '(script.fn_esigibilita_iva): il regime per cassa dell''emittente (o quello '
+                  'CONGELATO che il chiamante passa in p_regime_fiscale_rf: la fattura lo prende '
+                  'dallo snapshot dell''intestazione, cosi'' righe e testata dicono lo stesso '
+                  'regime, D-8) e scissione e partita IVA del cliente dal billing account. Una '
+                  'catena sola per fattura, preventivi, ordini e DDT (regola del 2). SECURITY '
+                  'INVOKER: un cliente che chi chiama non vede diventa «non noto» e la coppia esce '
+                  'NULL/NULL. Brief: brief-db-esigibilita-iva-per-cassa-emittente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_esigibilita_iva_documento(
+                  anagrafiche.emittenti_fiscali.id%TYPE,
+                  anagrafiche.billing_account.id%TYPE,
+                  config.iva.id%TYPE,
+                  anagrafiche.emittenti_fiscali.regime_fiscale_rf%TYPE);

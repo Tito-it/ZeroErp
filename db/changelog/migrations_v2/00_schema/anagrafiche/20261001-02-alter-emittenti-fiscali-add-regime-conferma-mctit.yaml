@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CONFERMA DEL REGIME FISCALE (D-11)
+#   anagrafiche.emittenti_fiscali.regime_fiscale_confermato_il / _da
+#   Brief: brief-db-esigibilita-iva-per-cassa-emittente, sezione 8.6 (D-1, D-11)
+#
+# -- PERCHE' SERVONO ---------------------------------------------
+#   D-1 da' alla colonna regime_fiscale_rf il default RF01 (20261001-17) e
+#   vuole un presidio sugli emittenti a RF01 NON confermati da una persona.
+#   Con un default, un RF01 dichiarato e un RF01 messo dal default sono la
+#   stessa riga: senza un dato che lo dica il presidio non si scrive.
+#   Queste due colonne SONO quel dato: le scrive chi dichiara il regime (il
+#   form dell'emittente, richiesta al BE nel brief).
+#
+# -- PERCHE' NULLABILI, E PERCHE' IN COPPIA ---------------------
+#   NULL = nessuno l'ha confermato: e' esattamente il caso che il presidio
+#   (dbops.vw_emittenti_regime_non_confermato, 20261001-14) deve mostrare.
+#   Le due colonne stanno insieme o mancano insieme (CHECK): una data senza
+#   chi, o un chi senza data, non e' una conferma.
+#   ⚠️ Una conferma vale per il regime a cui e' stata data: se il regime
+#   cambia senza una conferma nuova, la vecchia si azzera
+#   (trg_emittenti_fiscali_a20_regime_conferma_upd, 20261001-13).
+#
+# ⚠️ Colonne nuove su una tabella storicizzata: la tabella ombra in
+#   `storico` la allinea STORICO_PROVISION a ci_apply, come per ogni colonna.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261001-02-alter-emittenti-fiscali-add-regime-conferma-mctit.yaml
+
+  - changeSet:
+      id: 20261001-02-alter-emittenti-fiscali-add-regime-conferma
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.emittenti_fiscali: regime_fiscale_confermato_il (timestamptz) e
+        regime_fiscale_confermato_da (text), nullabili e in coppia. Distinguono un regime
+        dichiarato da una persona da quello messo dal default RF01 (D-1); le legge il
+        presidio dbops.vw_emittenti_regime_non_confermato. Brief:
+        brief-db-esigibilita-iva-per-cassa-emittente, sezione 8.6 (D-11).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: emittenti_fiscali
+            - not:
+                - columnExists:
+                    schemaName: anagrafiche
+                    tableName: emittenti_fiscali
+                    columnName: regime_fiscale_confermato_il
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.emittenti_fiscali
+                  ADD COLUMN regime_fiscale_confermato_il timestamptz,
+                  ADD COLUMN regime_fiscale_confermato_da text;
+
+              ALTER TABLE anagrafiche.emittenti_fiscali
+                  ADD CONSTRAINT chk_emittenti_fiscali_regime_conferma_coppia
+                  CHECK (
+                      (regime_fiscale_confermato_il IS NULL) = (regime_fiscale_confermato_da IS NULL)
+                      AND (regime_fiscale_confermato_da IS NULL OR btrim(regime_fiscale_confermato_da) <> '')
+                  );
+
+              COMMENT ON COLUMN anagrafiche.emittenti_fiscali.regime_fiscale_confermato_il IS
+                  'Quando una persona ha dichiarato il regime fiscale di questo emittente. NULL = '
+                  'nessuno l''ha confermato: il regime e'' quello del default RF01 (D-1) o di un '
+                  'cambio senza conferma, ed e'' cio'' che mostra il presidio '
+                  'dbops.vw_emittenti_regime_non_confermato. Si azzera da solo quando il regime '
+                  'cambia senza una conferma nuova. In coppia con regime_fiscale_confermato_da. '
+                  'Brief: brief-db-esigibilita-iva-per-cassa-emittente (D-11).';
+              COMMENT ON COLUMN anagrafiche.emittenti_fiscali.regime_fiscale_confermato_da IS
+                  'Chi ha confermato il regime fiscale (l''utente dell''applicazione, scritto dal '
+                  'form dell''emittente). In coppia con regime_fiscale_confermato_il.';
+              COMMENT ON CONSTRAINT chk_emittenti_fiscali_regime_conferma_coppia
+                  ON anagrafiche.emittenti_fiscali IS
+                  'Data e autore della conferma del regime stanno insieme o mancano insieme, e '
+                  'l''autore non e'' una stringa vuota.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.emittenti_fiscali
+                  DROP CONSTRAINT IF EXISTS chk_emittenti_fiscali_regime_conferma_coppia,
+                  DROP COLUMN IF EXISTS regime_fiscale_confermato_da,
+                  DROP COLUMN IF EXISTS regime_fiscale_confermato_il;

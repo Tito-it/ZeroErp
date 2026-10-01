@@ -4,8 +4,9 @@ Normalizza i dati di riga fattura su inserimento/aggiornamento:
 * eredita `dest_billing_account_id` dalla testata se assente;
 * allinea lo snapshot `iva_natura` in base a `config.iva`;
 * ⭐ **congela `aliquota_iva`** (dal 2026-08-29);
-* ⭐ **riempie `esigibilita` e `split_payment`** dal soggetto **cliente**
-  (dal 2026-08-30).
+* ⭐ **riempie `esigibilita` e `split_payment`** (dal 2026-08-30); dal
+  2026-10-01 le **riscrive sempre**, chiedendole alla regola unica, che guarda
+  anche il **regime dell'emittente** (IVA per cassa).
 
 > ⚠️ **Le ultime due voci non c'erano in questo manuale**, ed è il genere di
 > assenza che inganna: chi leggeva pensava che quelle colonne le riempisse il
@@ -24,27 +25,35 @@ Normalizza i dati di riga fattura su inserimento/aggiornamento:
   risolta per lo **stato dell'emittente**. ⚠️ Lo fa a **ogni** scrittura: non e`
   uno snapshot «una volta», e diventa una fotografia solo quando il documento
   smette di essere scritto;
-* legge `split_payment` dal soggetto **cliente** (dal `billing_account` della
-  testata, non dall'emittente) e da li` deriva la coppia
-  `split_payment` / `esigibilita`.
+* chiede la coppia `esigibilita` / `split_payment` a
+  [vendite.fn_esigibilita_iva_fattura](/dbzero/vendite/funzioni/fn_esigibilita_iva_fattura)
+  e la **riscrive a ogni scrittura**. La regola è
+  [script.fn_esigibilita_iva](/dbzero/script/funzioni/fn_esigibilita_iva):
+  scissione del cliente, regime dell'emittente (quello **congelato nello
+  snapshot** dell'intestazione, se c'è), partita IVA del cliente, inversione
+  contabile del codice IVA.
 
 ---
 
-### ⚠️ Le due meta` della coppia si comportano diversamente, **apposta**
+### ⭐ Una derivazione pura, tutte e due le colonne (rev 2026-10-01)
 
-* **`split_payment`** e` una *derivazione pura*: non esiste una scelta legittima
-  per riga, quindi il trigger la **riscrive sempre**. Una riga che dissentisse dal
-  proprio cliente e` un errore, non un'eccezione.
-* **`esigibilita`** no. Con la scissione, `'S'` e` **imposta**; senza, restano
-  `'I'` (immediata) e `'D'` (**differita**) — e la differita e` una **scelta del
-  documento** che nessuna colonna sa dedurre. Fuori dalla scissione il trigger
-  riempie percio` **solo il vuoto**: sovrascrivere cancellerebbe in silenzio una
-  `'D'` scelta da qualcuno.
+Fino al 2026-09-30 le due metà della coppia si comportavano diversamente:
+`split_payment` si riscriveva sempre, `esigibilita` fuori dalla scissione
+riempiva **solo il vuoto**, perché una `'D'` poteva venire solo da una persona.
 
-> ⛔ **Se il soggetto cliente non si risolve, non scrive nulla** e le due colonne
-> restano `NULL`. «Non scissa» sarebbe un'**affermazione** su un documento che
-> potrebbe andare a una Pubblica Amministrazione; `NULL` dice «non determinato»,
-> ed e` vero.
+Con l'IVA per cassa anche la `'D'` è **dedotta** (dal regime dell'emittente), e
+una colonna non sa dire chi l'ha scritta. Il «solo il vuoto» lasciava valori
+stantii: `'I'` su una fattura di un emittente passato a RF17 in bozza, `'D'` su
+una riga il cui cliente era tornato privato. Ora **tutte e due** si riscrivono
+sempre (decisione D-7). Una differita scelta a mano, se mai servirà, avrà una
+colonna sua.
+
+> ⛔ **Se il soggetto cliente non si risolve, la coppia esce `NULL`/`NULL`**:
+> «non scissa» sarebbe un'**affermazione** su un documento che potrebbe andare a
+> una Pubblica Amministrazione; `NULL` dice «non determinato», ed è vero. Prima
+> del 2026-10-01 il trigger lasciava i valori che c'erano.
+
+Brief: `brief-db-esigibilita-iva-per-cassa-emittente`.
 
 ### ⭐ Perche` questi campi stanno qui e non nel chiamante
 

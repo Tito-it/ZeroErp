@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Riepilogo IVA per ordine vendita derivato dalle righe ordine attive. Aggrega per ordine, iva_id e aliquota effettiva; arrotonda l'imponibile dopo la SUM e calcola l'imposta sull'imponibile aggregato arrotondato. Natura, esigibilita e split_payment sono NULL per ordini finche' non esiste uno snapshot dedicato.
+> Riepilogo IVA per ordine vendita derivato dalle righe ordine attive. Aggrega per ordine, iva_id e aliquota effettiva; arrotonda l'imponibile dopo la SUM e calcola l'imposta sull'imponibile aggregato arrotondato. Natura resta NULL. Esigibilita e split_payment (rev 2026-10-01, D-4 di brief-db-esigibilita-iva-per-cassa-emittente) escono per codice IVA da script.fn_esigibilita_iva_documento con emittente e cliente del documento: la stessa regola delle righe di fattura, calcolata al momento (il documento non e' fiscale e non ha snapshot).
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -40,14 +40,16 @@ WITH imponibili AS (
     r.aliquota_effettiva AS iva_aliquota,
     NULL::integer AS natura_id,
     NULL::text AS natura_codice,
-    NULL::character(1) AS esigibilita,
-    NULL::boolean AS split_payment,
+    (e.esigibilita)::character(1) AS esigibilita,
+    e.split_payment,
     r.imponibile,
     r.imposta,
     r.arrotondamento,
     (r.imponibile + r.imposta) AS totale_riga
-   FROM (riepilogo r
-     LEFT JOIN config.iva iva ON ((iva.id = r.iva_id)));
+   FROM (((riepilogo r
+     JOIN vendite.ordini d ON ((d.id = r.ordine_id)))
+     LEFT JOIN config.iva iva ON ((iva.id = r.iva_id)))
+     LEFT JOIN LATERAL script.fn_esigibilita_iva_documento(d.emittente_fiscale_id, d.billing_account_id, r.iva_id) e(esigibilita, split_payment) ON (true));
 ```
 
 

@@ -57,6 +57,7 @@
 - [profili_accesso_bindings](tabelle/profili_accesso_bindings.md) — (latest revision 18-04-2026)
 - [province](tabelle/province.md) — * **Elenco delle province**   Contiene tutte le province di uno stato (es. in Italia: RM, MI, FI), con sigla e nome descrittivo.
 - [qualifiche](tabelle/qualifiche.md) — La tabella **`config.qualifiche`** definisce il catalogo delle mansioni/posizioni assegnabili alle risorse (es. Amministratore, Dipendente, Consulente). Serve per distinguere la funzione operativa della persona all'interno dell'organizzazione.
+- [regimi_fiscali](tabelle/regimi_fiscali.md) — (rev 2026-10-01 — nata con `20261001-01`, seminata da `20261001-15`)
 - [regioni](tabelle/regioni.md) — * **Elenco delle regioni**   Comprende tutte le regioni appartenenti a uno stato (es. in Italia: `Lazio`, `Campania`, `Sicilia`), con collegamento al rispettivo `stato_id` in **`config.stati`**.
 - [registri_giornale](tabelle/registri_giornale.md) — (rev 2026-09-19 — nata con `20260919-08`, seminata da `20260919-09`)
 - [scope_policy](tabelle/scope_policy.md) — (latest revision 18-04-2026)

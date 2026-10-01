@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D-3 — L'asset non sa sotto quale contratto sta: e' il contratto che lo sa
+#   magazzino.assets.contratto_id (+ fk_mag_assets_contratto -> vendite.contratti)
+#   Brief: brief-db-magazzino-registro-anello-interno, sezione 2 (D-3)
+#
+# -- PERCHE' --------------------------------------------------------------------------------------
+#   Gli asset sono il registro dei seriali, anello 2 (D-1). La FK verso
+#   vendite.contratti era il SECONDO verso inverso del registro, oltre ai due
+#   posting: l'ha trovata il presidio scritto in questo cantiere
+#   (dbops.vw_magazzino_dipendenze_inverse, 20261001-23), il brief la dava per
+#   assente. Nata il 2025-10-01 come «FK opzionale verso contratto/noleggio»,
+#   rimasta nullable col Lotto 1 («non e' l'ancora»).
+#   La regola e' quella di D-2 applicata ai dati: chi usa il legame lo porta.
+#   Se un contratto dovra' sapere quali asset ha, il legame nasce in vendite
+#   (sulla riga di contratto, o in una tabella del contratto), e punta
+#   all'asset: verso l'interno. Tid, 2026-10-01.
+#
+# -- CHE COSA CADE CON LA COLONNA -----------------------------------------------------------------
+#   La FK fk_mag_assets_contratto (dipendenza unica della colonna in pg_depend,
+#   letta il 2026-10-01). Nessun indice (fk_index_policy 'f': la sua riga si
+#   toglie in 80_data/20261001-25), nessun trigger generato (vendite.contratti
+#   non ne porta verso assets), nessuna vista, nessun lettore in funzioni DB,
+#   backend o pgTAP. Lo storico salva uno snapshot jsonb: la shadow non ha
+#   colonne da allineare.
+#
+# -- PRECONDIZIONE «NESSUN LEGAME SCRITTO» --------------------------------------------------------
+#   expectedResult 0 sulle righe con contratto_id valorizzato (la forma ammessa
+#   da linee-guida-sql 11.4: un database vuoto la soddisfa). Il modello
+#   ammette il valore, e un legame scritto a mano non si butta in silenzio: se
+#   c'e', il migrate si ferma e si decide a mano dove portarlo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20261001-22-alter-assets-drop-contratto-mctit.yaml
+
+  - changeSet:
+      id: 20261001-22-alter-assets-drop-contratto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie magazzino.assets.contratto_id e la FK fk_mag_assets_contratto verso
+        vendite.contratti: il registro dei seriali (anello 2) non conosce i documenti che lo
+        usano. Se servira', il legame nasce nel contratto e punta all'asset. Brief:
+        brief-db-magazzino-registro-anello-interno, sezione 2 (D-3).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: magazzino
+                tableName: assets
+                columnName: contratto_id
+            - sqlCheck:
+                expectedResult: "0"
+                sql: SELECT count(*) FROM magazzino.assets WHERE contratto_id IS NOT NULL;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La FK cade con la colonna.
+              ALTER TABLE magazzino.assets DROP COLUMN contratto_id;
+
+              COMMENT ON TABLE magazzino.assets IS
+                  'Istanza fisica di un bene serializzato (contatore, apparecchiatura): '
+                  'l''oggetto che movimenti.asset_id sposta uno alla volta (|qta| = 1). '
+                  'Di un emittente (emittente_fiscale_id), con una proprieta'' '
+                  '(ownership_id), eventualmente presso un billing account. Dal 2026-09-15 '
+                  'non porta piu'' la posizione (magazzino, ubicazione): la dice il registro. '
+                  'Dal 2026-10-01 non porta il contratto: il registro non conosce i documenti '
+                  'che lo usano, e il legame, se servira'', nasce nel contratto. Brief: '
+                  'brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.7; '
+                  'brief-db-magazzino-registro-anello-interno (D-3).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE magazzino.assets ADD COLUMN IF NOT EXISTS contratto_id BIGINT;
+              ALTER TABLE magazzino.assets
+                  ADD CONSTRAINT fk_mag_assets_contratto
+                      FOREIGN KEY (contratto_id) REFERENCES vendite.contratti (id) ON UPDATE RESTRICT;
