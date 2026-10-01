@@ -157,7 +157,7 @@ export function useApiHandler() {
       azioneUi.value = errore?.ui_action ?? null
       bersagli.value = estraiBersagli(errore)
       const codice = errore?.code
-      messaggioErrore.value = extractErrorMessage(err)
+      messaggioErrore.value = extractErrorMessage(err) ?? await messaggioStatoProxy(err)
       // ⚠️ Il filtro sta a MONTE, non qui: `_apply_policy` toglie l'`hint` sui
       //    tre codici tecnici, dove quel canale non porta una soluzione a
       //    catalogo ma il testo che PostgreSQL scrive per lo sviluppatore.
@@ -226,10 +226,35 @@ function estraiSoluzione(errore) {
   return typeof hint === 'string' && hint.trim() ? hint : null
 }
 
+// Risposte che arrivano da NGINX, non da Django: niente envelope, e quindi
+// nessun messaggio da leggere. Senza questo ripiego il toast mostrava un errore
+// generico, e l'operatore non sapeva che cosa correggere.
+// ⭐ 413 (2026-10-01, rilievo di Tid): un file sopra `client_max_body_size` si
+//    ferma in Nginx PRIMA di Django — nel log del backend non resta niente, e
+//    l'unico punto che puo' dire «il file e' troppo grande» e' questo.
+// ⚠️ Il testo NON scrive il limite in MB: il numero vive nel vhost
+//    (configurazione-django.md) e nei parametri `documenti_*_upload_max_mb`, e
+//    una terza copia qui sarebbe la prima a diventare falsa.
+const MESSAGGI_STATO_PROXY = {
+  413: 'errors.http_413_file_troppo_grande',
+}
+
+// Scopo: Il messaggio di uno stato del proxy, quando l'envelope non ne porta
+//        uno. `null` per ogni altro stato: resta il ripiego del chiamante.
+// ⚠️ `i18n` si carica QUI, pigro, e non in cima al modulo: `core/i18n` legge
+//    `localStorage` mentre viene valutato, e ogni file che importa questo
+//    composable — anche un test senza DOM — lo pagherebbe senza usarlo.
+async function messaggioStatoProxy(err) {
+  const chiave = MESSAGGI_STATO_PROXY[err.response?.status]
+  if (!chiave) return null
+  const { default: i18n } = await import('../i18n')
+  return i18n.global.t(chiave)
+}
+
 // Estrae il messaggio di errore dall'envelope backend { error: { code, message } }
 function extractErrorMessage(err) {
   const data = err.response?.data
-  if (!data) return null
+  if (!data || typeof data !== 'object') return null
 
   // Envelope standard: { error: { code, message } }
   if (data.error?.message) return data.error.message

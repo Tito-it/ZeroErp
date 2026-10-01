@@ -41,6 +41,8 @@ vi.mock('../bersagli', () => ({
   estraiBersagli: (error) => (Array.isArray(error?.targets) ? error.targets : []),
 }))
 vi.mock('../bersaglioGesto', () => ({ azioniDaBersagli: () => azioniFinte }))
+// i18n reale non serve: qui interessa QUALE chiave il messaggio usa.
+vi.mock('../i18n', () => ({ default: { global: { t: (chiave) => `t:${chiave}` } } }))
 
 const { useApiHandler } = await import('./useApiHandler')
 
@@ -114,6 +116,20 @@ describe('useApiHandler — il contratto dell’envelope d’errore', () => {
     expect(messaggioErrore.value).toBe('semplificata')
     await execute(() => Promise.reject(errore(400, { detail: 'drf' })))
     expect(messaggioErrore.value).toBe('drf')
+  })
+
+  // ⭐ 2026-10-01: il 413 arriva da Nginx (corpo HTML, nessun envelope). Il
+  //    messaggio deve dire «file troppo grande», non un errore generico; e un
+  //    envelope del backend, se c'e', vince sul ripiego.
+  it('un 413 senza envelope (Nginx) dice che il file e’ troppo grande', async () => {
+    const { execute, messaggioErrore } = useApiHandler()
+    await execute(() => Promise.reject(errore(413, '<html>413 Request Entity Too Large</html>')))
+    expect(messaggioErrore.value).toBe('t:errors.http_413_file_troppo_grande')
+    expect(notifiche.error).toHaveBeenCalledWith('t:errors.http_413_file_troppo_grande', null)
+    await execute(() => Promise.reject(errore(413, { error: { message: 'dal backend' } })))
+    expect(messaggioErrore.value).toBe('dal backend')
+    await execute(() => Promise.reject(errore(400, '<html>altro</html>')))
+    expect(messaggioErrore.value).toBeNull()
   })
 
   it('`hint` diventa `soluzione` — la frase che dice cosa fare adesso', async () => {
